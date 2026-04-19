@@ -256,7 +256,7 @@ function saveStore(d) { try { localStorage.setItem(SK, JSON.stringify(d)); } cat
 // ═════════════════════════════════════════════════════════════════════════════
 // LOGO — Fyra flame icon + Spotr wordmark
 // ═════════════════════════════════════════════════════════════════════════════
-function SpotrLogo({ C, big = false }) {
+function IgniteLogo({ C, big = false }) {
   const size = big ? 52 : 32;
   const id = big ? "flame-big" : "flame-sm";
   return (
@@ -353,7 +353,7 @@ function SpotrLogo({ C, big = false }) {
         lineHeight: 1,
         fontFamily: F,
       }}>
-        Spotr
+        Ignite
       </span>
     </div>
   );
@@ -1126,11 +1126,11 @@ function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick,
         <button
           onClick={() => {
             const shareText = post.caption
-              ? `${user?.username} on Spotr: ${post.caption}`
-              : `Check out ${user?.username}'s workout on Spotr`;
+              ? `${user?.username} on Ignite: ${post.caption}`
+              : `Check out ${user?.username}'s workout on Ignite`;
             const shareUrl = typeof window !== "undefined" ? window.location.href : "";
             if (navigator.share) {
-              navigator.share({ title: "Spotr", text: shareText, url: shareUrl }).catch(() => {});
+              navigator.share({ title: "Ignite", text: shareText, url: shareUrl }).catch(() => {});
             } else if (navigator.clipboard) {
               navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => {
                 alert("Link copied to clipboard!");
@@ -2711,6 +2711,10 @@ export default function App() {
   const [showWrapped, setShowWrapped] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(!store.seenOnboarding);
   const [storyIndex, setStoryIndex] = useState(null); // index into story users array
+  const [pullDist, setPullDist] = useState(0); // pull-to-refresh distance in px
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartY = useRef(0);
+  const pullScrollRef = useRef(null);
 
   useEffect(() => saveStore(store), [store]);
 
@@ -2778,7 +2782,7 @@ export default function App() {
 
   if (profileUserId) {
     return (
-      <div style={{ background:C.bg, height:"100vh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
+      <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
         <ProfileScreen
           userId={profileUserId}
           store={store}
@@ -2795,7 +2799,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ background:C.bg, height:"100vh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden" }}>
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
 
       {/* TOP BAR — Instagram thin, minimal, SVG icons */}
@@ -2850,7 +2854,61 @@ export default function App() {
       {/* CONTENT */}
       <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {tab === "feed" && (
-          <div style={{ overflowY:"auto", flex:1 }}>
+          <div
+            ref={pullScrollRef}
+            onTouchStart={(e) => {
+              if (pullScrollRef.current?.scrollTop === 0) {
+                touchStartY.current = e.touches[0].clientY;
+              } else {
+                touchStartY.current = 0;
+              }
+            }}
+            onTouchMove={(e) => {
+              if (touchStartY.current === 0 || isRefreshing) return;
+              const dist = e.touches[0].clientY - touchStartY.current;
+              if (dist > 0 && pullScrollRef.current?.scrollTop === 0) {
+                // Only allow pull down when at top, with resistance
+                setPullDist(Math.min(dist * 0.5, 100));
+              }
+            }}
+            onTouchEnd={() => {
+              if (pullDist > 60 && !isRefreshing) {
+                setIsRefreshing(true);
+                setPullDist(50);
+                // Simulate refresh (in Phase 2 this will re-fetch from backend)
+                setTimeout(() => {
+                  setIsRefreshing(false);
+                  setPullDist(0);
+                  touchStartY.current = 0;
+                }, 900);
+              } else {
+                setPullDist(0);
+                touchStartY.current = 0;
+              }
+            }}
+            style={{ overflowY:"auto", flex:1, position:"relative" }}
+          >
+            {/* Pull-to-refresh indicator */}
+            <div style={{
+              position:"absolute", top:0, left:0, right:0,
+              height: pullDist, display:"flex", alignItems:"center", justifyContent:"center",
+              pointerEvents:"none", transition: isRefreshing ? "height 0.2s" : "none",
+              zIndex:5
+            }}>
+              {pullDist > 0 && (
+                <div style={{
+                  width:24, height:24, border:`2.5px solid ${C.divider}`,
+                  borderTopColor: isRefreshing || pullDist > 60 ? C.accent : C.sub,
+                  borderRadius:"50%",
+                  transform: isRefreshing ? "none" : `rotate(${pullDist * 4}deg)`,
+                  animation: isRefreshing ? "spotrSpin 0.8s linear infinite" : "none",
+                  opacity: Math.min(pullDist / 40, 1),
+                }}/>
+              )}
+            </div>
+            <style>{`@keyframes spotrSpin { to { transform: rotate(360deg); } }`}</style>
+
+            <div style={{ transform:`translateY(${pullDist}px)`, transition: pullDist === 0 || isRefreshing ? "transform 0.2s" : "none" }}>
             {/* Stories strip */}
             <div style={{ display:"flex", gap:12, overflowX:"auto", padding:"12px 14px", paddingBottom:12, scrollbarWidth:"none", borderBottom:`1px solid ${C.divider}` }}>
               {[me, ...store.users.filter(u => following.includes(u.id))].filter(Boolean).map((u, i) => (
@@ -2893,6 +2951,7 @@ export default function App() {
                   )}
                 </div>
               ))}
+            </div>
             </div>
           </div>
         )}
