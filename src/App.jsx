@@ -1786,10 +1786,77 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
             </div>
             <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
               {[
-                { id:"ppl", name:"Push Pull Legs", icon:"🔥", desc:"6-day hypertrophy", days:[
-                  { name:"Push A", exercises:["Barbell Bench Press","Incline DB Press","Lateral Raises","Tricep Pushdown"] },
-                  { name:"Pull A", exercises:["Pull-Ups","Barbell Row","Face Pulls","Barbell Curl"] },
-                  { name:"Legs A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Standing Calf Raise"] },
+                { id:"mypp6", name:"No Mercy PPL · 6 Day", icon:"⭐", desc:"Built for you · detailed notes · daily laterals", featured:true, days:[
+                  { name:"Push A · Heavy Chest", exercises:[
+                    { name:"Barbell Bench Press", reps:"5–7", note:"Last set: rest-pause" },
+                    { name:"Incline DB Press", reps:"8–10", note:"2 sec negative" },
+                    { name:"Cable Fly (Low-to-High)", reps:"10–12", note:"Drop set final set" },
+                    { name:"Weighted Dips", reps:"8–12", note:"Lean forward for chest" },
+                    { name:"DB Shoulder Press", reps:"10–12", note:"Superset with laterals" },
+                    { name:"Lateral Raises", reps:"15–20", note:"No rest after press" },
+                    { name:"Tricep Rope Pushdown", reps:"12–15", note:"Drop set final set" },
+                    { name:"Overhead Tricep Extension", reps:"12–15", note:"Slow eccentric" },
+                    { name:"Lateral Raises (finisher)", reps:"15–25", note:"Light pump finisher" },
+                  ]},
+                  { name:"Pull A · Back Width", exercises:[
+                    { name:"Weighted Pull-Ups", reps:"6–10", note:"Full dead hang each rep" },
+                    { name:"Lat Pulldown (wide)", reps:"10–12", note:"Extended set if needed" },
+                    { name:"Pendlay Row", reps:"5–7", note:"Bar dead stops on floor" },
+                    { name:"Seated Cable Row (narrow)", reps:"10–12", note:"Full stretch + contraction" },
+                    { name:"Straight-Arm Pulldown", reps:"12–15", note:"Isolates lat, no bicep" },
+                    { name:"Face Pulls (rope)", reps:"15–20", note:"External rotate at peak" },
+                    { name:"Incline DB Curl", reps:"10–12", note:"Best for bicep peak" },
+                    { name:"Hammer Curl → Cable Curl", reps:"10+10", note:"Back to back, no rest" },
+                    { name:"Lateral Raises (finisher)", reps:"15–25", note:"Light pump finisher" },
+                  ]},
+                  { name:"Legs A · Quad Focus", exercises:[
+                    { name:"Barbell Back Squat", reps:"5–8", note:"2 feeder sets first" },
+                    { name:"Leg Press (quad bias)", reps:"10–12", note:"Feet low/narrow" },
+                    { name:"Hack Squat / Bulgarian", reps:"10–12", note:"Alternate week to week" },
+                    { name:"Leg Extension", reps:"12–15", note:"Drop set + 2 sec pause" },
+                    { name:"Romanian Deadlift", reps:"10–12", note:"Slow eccentric" },
+                    { name:"Lying Leg Curl", reps:"12–15", note:"Supinate feet" },
+                    { name:"Standing Calf Raise", reps:"15–20", note:"Full stretch, no bounce" },
+                    { name:"Seated Calf Raise", reps:"15–20", note:"Hits soleus" },
+                    { name:"Lateral Raises (finisher)", reps:"15–20", note:"Even after legs" },
+                  ]},
+                  { name:"Push B · Shoulders/Arms", exercises:[
+                    { name:"Standing Barbell OHP", reps:"5–7", note:"Brace hard, arc press" },
+                    { name:"DB Arnold Press", reps:"10–12", note:"Full rotation" },
+                    { name:"DB Lateral Raises (heavy)", reps:"10–15", note:"Volume work" },
+                    { name:"Cable Lateral Raise (single)", reps:"15–20", note:"Lean away from cable" },
+                    { name:"Incline DB Press", reps:"10–12", note:"Upper chest secondary" },
+                    { name:"Cable Chest Fly", reps:"12–15", note:"Stretch and squeeze" },
+                    { name:"Skull Crushers → CGBP", reps:"10+8", note:"Extend to failure then switch" },
+                    { name:"Tricep Dips (burnout)", reps:"Failure", note:"Absolute failure" },
+                    { name:"Lateral Raises (finisher)", reps:"20–25", note:"Lighter — high vol day" },
+                  ]},
+                  { name:"Pull B · Back Thickness", exercises:[
+                    { name:"Barbell Bent-Over Row", reps:"5–7", note:"Bar to lower chest, explosive" },
+                    { name:"T-Bar / Chest-Supported Row", reps:"8–10", note:"Use straps" },
+                    { name:"Single-Arm DB Row", reps:"10–12", note:"Elbow past torso" },
+                    { name:"Lat Pulldown (underhand)", reps:"10–12", note:"Different angle from Pull A" },
+                    { name:"Rear Delt Fly (bent-over)", reps:"15–20", note:"Drop set last set" },
+                    { name:"Cable Face Pull", reps:"15–20", note:"High anchor, external rotate" },
+                    { name:"EZ Bar Curl → Reverse Curl", reps:"10+10", note:"Both bicep heads" },
+                    { name:"Cable Curl (single-arm)", reps:"12–15", note:"Constant tension" },
+                    { name:"Lateral Raises (finisher)", reps:"15–25", note:"Light finisher" },
+                  ]},
+                  { name:"Legs B · Posterior Chain", exercises:[
+                    { name:"Conventional Deadlift", reps:"4–6", note:"Full deadlift from floor" },
+                    { name:"Romanian Deadlift (heavy)", reps:"8–10", note:"Heavier than Legs A" },
+                    { name:"Bulgarian Split Squat", reps:"10–12", note:"Non-negotiable" },
+                    { name:"Leg Press (high/wide)", reps:"12–15", note:"Glute + ham bias" },
+                    { name:"Seated Leg Curl", reps:"12–15", note:"Different from lying" },
+                    { name:"Hip Thrust (barbell)", reps:"10–12", note:"Chin to chest, full squeeze" },
+                    { name:"Standing Calf Raise", reps:"15–20", note:"Full ROM, slow" },
+                    { name:"Lateral Raises (finisher)", reps:"15–20", note:"Even after deadlifts" },
+                  ]},
+                ]},
+                { id:"ppl", name:"Push Pull Legs", icon:"🔥", desc:"3-day hypertrophy", days:[
+                  { name:"Push", exercises:["Barbell Bench Press","Incline DB Press","Lateral Raises","Tricep Pushdown"] },
+                  { name:"Pull", exercises:["Pull-Ups","Barbell Row","Face Pulls","Barbell Curl"] },
+                  { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Standing Calf Raise"] },
                 ]},
                 { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"Wendler strength", days:[
                   { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press"] },
@@ -1806,9 +1873,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                 ]},
               ].map(t => (
                 <div key={t.id} style={{
-                  background:"none", border:`1px solid ${C.border}`,
+                  background: t.featured ? `linear-gradient(135deg, ${C.accentSoft}, transparent)` : "none",
+                  border:`1px solid ${t.featured ? C.accent : C.border}`,
                   borderRadius:12, padding:"14px", marginBottom:10
                 }}>
+                  {t.featured && (
+                    <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>FEATURED · YOUR PROGRAM</div>
+                  )}
                   <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:2 }}>{t.icon} {t.name}</div>
                   <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>{t.desc} · {t.days.length} days</div>
                   <button onClick={() => {
@@ -1817,7 +1888,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                       name: t.name,
                       days: t.days.map(d => ({
                         ...d, id: uid(),
-                        exercises: d.exercises.map(name => ({ name, reps: "8–12", note: "" }))
+                        exercises: d.exercises.map(ex =>
+                          typeof ex === "string"
+                            ? { name: ex, reps: "8–12", note: "" }
+                            : { name: ex.name, reps: ex.reps || "8–12", note: ex.note || "" }
+                        )
                       }))
                     };
                     setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
