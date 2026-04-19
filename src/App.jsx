@@ -2841,6 +2841,14 @@ export default function App() {
 
   useEffect(() => saveStore(store), [store]);
 
+  // Lock the document to prevent iOS overscroll bouncing and keep bottom nav visible
+  useEffect(() => {
+    const html = document.documentElement;
+    const prevStyle = html.getAttribute("style") || "";
+    html.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;";
+    return () => { html.setAttribute("style", prevStyle); };
+  }, []);
+
   const C = THEMES[store.theme || "light"];
   const currentUserId = store.currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
