@@ -244,7 +244,7 @@ function loadStore() {
     activeProgramId: null,
     defaultRestTime: 120,
     unit: "lbs",
-    theme: "dark",
+    theme: "light",
     challenges: SEED_CHALLENGES,
     groups: SEED_GROUPS,
     workoutDates: {},
@@ -676,8 +676,8 @@ function OneRMModal({ onClose, unit, C }) {
     : [];
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.border}` }}>
           <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Close</button>
           <div style={{ fontSize:15, fontWeight:600, color:C.text }}>1RM Calculator</div>
@@ -739,8 +739,8 @@ function WrappedModal({ store, C, onClose }) {
   const streak = calcStreak(store.workoutDates);
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div style={{ background:"linear-gradient(135deg,#1d4ed8,#2563eb,#0ea5e9)", borderRadius:20, padding:"32px 20px", width:"100%", maxWidth:340, color:"#fff", textAlign:"center", position:"relative" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"linear-gradient(135deg,#1d4ed8,#2563eb,#0ea5e9)", borderRadius:20, padding:"32px 20px", width:"100%", maxWidth:340, color:"#fff", textAlign:"center", position:"relative" }}>
         <button onClick={onClose} style={{ position:"absolute", top:12, right:12, background:"rgba(255,255,255,0.18)", border:"none", color:"#fff", width:28, height:28, borderRadius:"50%", cursor:"pointer", fontSize:12 }}>✕</button>
         <div style={{ fontSize:10, fontWeight:700, letterSpacing:2, marginBottom:4, opacity:0.8 }}>WEEKLY WRAPPED</div>
         <div style={{ fontSize:24, fontWeight:800, marginBottom:18 }}>Your Week 📊</div>
@@ -818,8 +818,176 @@ function Onboarding({ C, onComplete }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// POST CARD — Instagram-inspired: borderless, full-width, minimal chrome
+// PROGRAM BUILDER — Build your own custom program
 // ═════════════════════════════════════════════════════════════════════════════
+function ProgramBuilder({ C, onCancel, onSave }) {
+  const [name, setName] = useState("");
+  const [days, setDays] = useState([
+    { id: uid(), name: "Day 1", exercises: [] }
+  ]);
+
+  function addDay() {
+    setDays(ds => [...ds, { id: uid(), name: `Day ${ds.length + 1}`, exercises: [] }]);
+  }
+  function removeDay(idx) {
+    if (days.length <= 1) return;
+    setDays(ds => ds.filter((_, i) => i !== idx));
+  }
+  function updateDayName(idx, newName) {
+    setDays(ds => ds.map((d, i) => i === idx ? { ...d, name: newName } : d));
+  }
+  function addExercise(dayIdx, exName) {
+    if (!exName) return;
+    setDays(ds => ds.map((d, i) => i === dayIdx ? {
+      ...d,
+      exercises: [...d.exercises, { name: exName, reps: "8–12", note: "" }]
+    } : d));
+  }
+  function removeExercise(dayIdx, exIdx) {
+    setDays(ds => ds.map((d, i) => i === dayIdx ? {
+      ...d,
+      exercises: d.exercises.filter((_, j) => j !== exIdx)
+    } : d));
+  }
+  function updateReps(dayIdx, exIdx, reps) {
+    setDays(ds => ds.map((d, i) => i === dayIdx ? {
+      ...d,
+      exercises: d.exercises.map((ex, j) => j === exIdx ? { ...ex, reps } : ex)
+    } : d));
+  }
+  function save() {
+    if (!name.trim()) {
+      alert("Please give your program a name.");
+      return;
+    }
+    const validDays = days.filter(d => d.exercises.length > 0);
+    if (validDays.length === 0) {
+      alert("Add at least one exercise to one day.");
+      return;
+    }
+    onSave({
+      id: uid(),
+      name: name.trim(),
+      days: validDays.map(d => ({ ...d, id: uid() }))
+    });
+  }
+
+  return (
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:80 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, position:"sticky", top:0, background:C.bg, zIndex:5 }}>
+        <button onClick={onCancel} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+        <div style={{ fontSize:15, fontWeight:600, color:C.text }}>New Program</div>
+        <button onClick={save} style={{ fontSize:14, fontWeight:600, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Save</button>
+      </div>
+
+      <div style={{ padding:"16px 14px" }}>
+        <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:6 }}>PROGRAM NAME</div>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. My Upper/Lower Split"
+          style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", marginBottom:20, fontFamily:F }}/>
+
+        {days.map((day, di) => (
+          <div key={day.id} style={{ border:`1px solid ${C.border}`, borderRadius:12, padding:"12px", marginBottom:10 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+              <input value={day.name} onChange={e => updateDayName(di, e.target.value)}
+                style={{ flex:1, background:"transparent", border:"none", fontSize:14, fontWeight:700, color:C.text, outline:"none", fontFamily:F }}/>
+              {days.length > 1 && (
+                <button onClick={() => removeDay(di)} style={{ background:"none", border:"none", color:C.sub, fontSize:14, cursor:"pointer", padding:4 }}>✕</button>
+              )}
+            </div>
+
+            {day.exercises.map((ex, ei) => {
+              const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+              return (
+                <div key={ei} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderTop: ei > 0 ? `1px solid ${C.divider}` : "none" }}>
+                  {exInfo && <div style={{ fontSize:16 }}>{exInfo.emoji}</div>}
+                  <div style={{ flex:1, fontSize:13, color:C.text }}>{ex.name}</div>
+                  <input value={ex.reps} onChange={e => updateReps(di, ei, e.target.value)}
+                    style={{ width:70, background:C.divider, border:"none", borderRadius:6, padding:"5px 8px", fontSize:11, color:C.text, outline:"none", textAlign:"center", fontFamily:F }}/>
+                  <button onClick={() => removeExercise(di, ei)} style={{ background:"none", border:"none", color:C.sub, fontSize:14, cursor:"pointer", padding:4 }}>✕</button>
+                </div>
+              );
+            })}
+
+            <div style={{ marginTop: day.exercises.length > 0 ? 8 : 0 }}>
+              <ExerciseInput key={`ex-${di}-${day.exercises.length}`} value="" onChange={v => { if (v) addExercise(di, v); }} C={C}/>
+            </div>
+          </div>
+        ))}
+
+        <button onClick={addDay} style={{
+          width:"100%", background:"none", border:`1.5px dashed ${C.border}`,
+          borderRadius:10, padding:"12px", fontSize:13, color:C.accent, fontWeight:600, cursor:"pointer", fontFamily:F
+        }}>+ Add Day</button>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// STORY VIEWER — Instagram-style full-screen with auto-advance
+// ═════════════════════════════════════════════════════════════════════════════
+function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, C }) {
+  const [progress, setProgress] = useState(0);
+  const duration = 5000; // 5 seconds per story
+
+  useEffect(() => {
+    setProgress(0);
+    const start = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const p = Math.min((elapsed / duration) * 100, 100);
+      setProgress(p);
+      if (p >= 100) {
+        clearInterval(interval);
+        if (hasNext) onNext(); else onClose();
+      }
+    }, 50);
+    return () => clearInterval(interval);
+  }, [user?.id, hasNext, onNext, onClose]);
+
+  if (!user) return null;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#000", zIndex:700, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto" }}>
+      {/* Progress bar */}
+      <div style={{ display:"flex", gap:3, padding:"10px 12px 0" }}>
+        <div style={{ flex:1, height:3, background:"rgba(255,255,255,0.3)", borderRadius:2, overflow:"hidden" }}>
+          <div style={{ height:"100%", width:`${progress}%`, background:"#fff", transition:"width 0.05s linear" }}/>
+        </div>
+      </div>
+
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 14px 10px" }}>
+        <Avatar user={user} size={34} C={C}/>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:600, color:"#fff" }}>{user.username}</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>now</div>
+        </div>
+        <button onClick={onClose} style={{ background:"none", border:"none", color:"#fff", fontSize:24, cursor:"pointer", padding:4, lineHeight:1 }}>✕</button>
+      </div>
+
+      {/* Story content — placeholder (in real app, would be user's latest post image/video) */}
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", position:"relative", padding:20 }}>
+        {/* Tap zones for next/prev */}
+        <div onClick={onPrev} style={{ position:"absolute", left:0, top:0, bottom:0, width:"33%", cursor:"pointer", zIndex:2 }}/>
+        <div onClick={hasNext ? onNext : onClose} style={{ position:"absolute", right:0, top:0, bottom:0, width:"67%", cursor:"pointer", zIndex:2 }}/>
+
+        <div style={{ width:"100%", aspectRatio:"9/16", maxHeight:"100%", background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
+          <div style={{ fontSize:60, marginBottom:16 }}>{user.avatar}</div>
+          <div style={{ fontSize:24, fontWeight:700, color:"#fff", marginBottom:8 }}>{user.name}</div>
+          <div style={{ fontSize:14, color:"rgba(255,255,255,0.9)", lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
+        </div>
+      </div>
+
+      {/* Reply footer */}
+      <div style={{ padding:"10px 14px 24px" }}>
+        <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:24, padding:"10px 16px", color:"rgba(255,255,255,0.7)", fontSize:13 }}>
+          Reply to {user.username}...
+        </div>
+      </div>
+    </div>
+  );
+}
 function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
@@ -956,6 +1124,19 @@ function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick,
           </svg>
         </button>
         <button
+          onClick={() => {
+            const shareText = post.caption
+              ? `${user?.username} on Spotr: ${post.caption}`
+              : `Check out ${user?.username}'s workout on Spotr`;
+            const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+            if (navigator.share) {
+              navigator.share({ title: "Spotr", text: shareText, url: shareUrl }).catch(() => {});
+            } else if (navigator.clipboard) {
+              navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => {
+                alert("Link copied to clipboard!");
+              }).catch(() => {});
+            }
+          }}
           aria-label="Share"
           style={{
             background:"none", border:"none", cursor:"pointer",
@@ -1035,6 +1216,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
   const [show1RM, setShow1RM] = useState(false);
   const [subTab, setSubTab] = useState("today");
   const [showTemplates, setShowTemplates] = useState(false);
+  const [viewingProgram, setViewingProgram] = useState(null); // program ID
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [previewDay, setPreviewDay] = useState(null); // {day, programName}
   const elRef = useRef(null);
   const rtRef = useRef(null);
 
@@ -1278,8 +1462,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
 
         {/* Finish modal */}
         {showFinish && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-            <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"20px 18px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+          <div onClick={() => setShowFinish(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"20px 18px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
               <div style={{ fontSize:19, fontWeight:700, color:C.text, marginBottom:4 }}>Finish Workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
               <button onClick={() => finishWorkout(true)} style={{ width:"100%", background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:"pointer", marginBottom:8, fontFamily:F }}>Save & Share to Feed</button>
@@ -1349,7 +1533,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                 ACTIVE · {prog.name.toUpperCase()}
               </div>
               {prog.days.map(day => (
-                <button key={day.id} onClick={() => startWorkout(day)} style={{
+                <button key={day.id} onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
                   width:"100%", background:"none", border:`1px solid ${C.border}`,
                   borderRadius:10, padding:"12px 14px",
                   display:"flex", alignItems:"center", gap:11, cursor:"pointer", textAlign:"left", marginBottom:6, fontFamily:F
@@ -1377,53 +1561,145 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
         </div>
       )}
 
-      {subTab === "programs" && (
+      {subTab === "programs" && !viewingProgram && !showBuilder && (
         <div style={{ padding:"16px 14px" }}>
-          <button onClick={() => setShowTemplates(true)} style={{
-            width:"100%", background:C.accent, color:"#fff", border:"none",
-            borderRadius:10, padding:"11px", fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:16, fontFamily:F
-          }}>+ Import Template</button>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+            <button onClick={() => setShowBuilder(true)} style={{
+              background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none",
+              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+            }}>
+              <div style={{ fontSize:18, marginBottom:3 }}>✨</div>
+              Build Your Own
+            </button>
+            <button onClick={() => setShowTemplates(true)} style={{
+              background:"none", color:C.text, border:`1px solid ${C.border}`,
+              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+            }}>
+              <div style={{ fontSize:18, marginBottom:3 }}>📋</div>
+              Use Template
+            </button>
+          </div>
+
           <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
             MY PROGRAMS · {store.programs?.length || 0}
           </div>
           {(!store.programs || !store.programs.length) && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet.</div>
+            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
           )}
           {(store.programs || []).map(p => (
-            <div key={p.id} style={{
+            <div key={p.id} onClick={() => setViewingProgram(p.id)} style={{
               background:"none", border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-              borderRadius:10, padding:"13px 14px", marginBottom:8
+              borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
+              display:"flex", alignItems:"center", gap:12
             }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                <div>
+              <div style={{ flex:1 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
                   <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-                  <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{p.days?.length || 0} days</div>
+                  {store.activeProgramId === p.id && (
+                    <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
+                  )}
                 </div>
-                {store.activeProgramId === p.id && (
-                  <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"3px 8px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
-                )}
+                <div style={{ fontSize:11, color:C.sub }}>
+                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
+                </div>
               </div>
-              <div style={{ display:"flex", gap:6 }}>
-                {store.activeProgramId !== p.id && (
-                  <button onClick={() => setStore(s => ({ ...s, activeProgramId: p.id }))} style={{
-                    background:C.accent, color:"#fff", border:"none", borderRadius:6,
-                    padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-                  }}>Set Active</button>
-                )}
-                <button onClick={() => {
-                  if (window.confirm("Delete?")) setStore(s => ({
-                    ...s,
-                    programs: s.programs.filter(x => x.id !== p.id),
-                    activeProgramId: s.activeProgramId === p.id ? null : s.activeProgramId
-                  }));
-                }} style={{
-                  background:"none", color:C.red, border:`1px solid ${C.border}`, borderRadius:6,
-                  padding:"5px 12px", fontSize:11, cursor:"pointer", fontFamily:F
-                }}>Delete</button>
-              </div>
+              <span style={{ fontSize:18, color:C.sub }}>›</span>
             </div>
           ))}
         </div>
+      )}
+
+      {/* Program Detail View */}
+      {subTab === "programs" && viewingProgram && (() => {
+        const prog = store.programs?.find(p => p.id === viewingProgram);
+        if (!prog) { setViewingProgram(null); return null; }
+        const isActive = store.activeProgramId === prog.id;
+        return (
+          <div style={{ padding:"14px" }}>
+            <button onClick={() => setViewingProgram(null)} style={{
+              background:"none", border:"none", color:C.text, fontSize:14, cursor:"pointer",
+              padding:"4px 0 12px", fontFamily:F
+            }}>‹ Back to Programs</button>
+
+            <div style={{ marginBottom:18 }}>
+              <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>{prog.name}</div>
+              <div style={{ fontSize:13, color:C.sub }}>{prog.days?.length || 0} days · {prog.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises</div>
+            </div>
+
+            <div style={{ display:"flex", gap:8, marginBottom:18 }}>
+              {!isActive && (
+                <button onClick={() => setStore(s => ({ ...s, activeProgramId: prog.id }))} style={{
+                  flex:1, background:C.accent, color:"#fff", border:"none", borderRadius:8,
+                  padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
+                }}>Set as Active</button>
+              )}
+              {isActive && (
+                <button onClick={() => setStore(s => ({ ...s, activeProgramId: null }))} style={{
+                  flex:1, background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:8,
+                  padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
+                }}>Deactivate</button>
+              )}
+              <button onClick={() => {
+                if (window.confirm(`Delete "${prog.name}"?`)) {
+                  setStore(s => ({
+                    ...s,
+                    programs: s.programs.filter(x => x.id !== prog.id),
+                    activeProgramId: s.activeProgramId === prog.id ? null : s.activeProgramId
+                  }));
+                  setViewingProgram(null);
+                }
+              }} style={{
+                background:"none", color:C.red, border:`1px solid ${C.border}`, borderRadius:8,
+                padding:"10px 16px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
+              }}>Delete</button>
+            </div>
+
+            {(prog.days || []).map((day, di) => (
+              <div key={day.id || di} style={{
+                border:`1px solid ${C.border}`, borderRadius:12, padding:"14px", marginBottom:10
+              }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{day.name}</div>
+                  <button onClick={() => { startWorkout(day); }} style={{
+                    background:C.accent, color:"#fff", border:"none", borderRadius:6,
+                    padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
+                  }}>Start</button>
+                </div>
+                {(day.exercises || []).map((ex, ei) => {
+                  const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+                  return (
+                    <div key={ei} style={{
+                      display:"flex", alignItems:"center", gap:10, padding:"8px 0",
+                      borderTop: ei > 0 ? `1px solid ${C.divider}` : "none"
+                    }}>
+                      {exInfo && <div style={{ fontSize:18 }}>{exInfo.emoji}</div>}
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{ex.name}</div>
+                        {ex.reps && <div style={{ fontSize:11, color:C.sub }}>{ex.reps} reps</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+                {(!day.exercises || day.exercises.length === 0) && (
+                  <div style={{ fontSize:12, color:C.sub, textAlign:"center", padding:"8px 0" }}>No exercises</div>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Custom Program Builder */}
+      {subTab === "programs" && showBuilder && (
+        <ProgramBuilder
+          C={C}
+          onCancel={() => setShowBuilder(false)}
+          onSave={prog => {
+            setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
+            setShowBuilder(false);
+            setViewingProgram(prog.id);
+          }}
+        />
       )}
 
       {subTab === "exercises" && (
@@ -1501,8 +1777,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
       )}
 
       {showTemplates && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-          <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+        <div onClick={() => setShowTemplates(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowTemplates(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Starter Templates</div>
@@ -1552,6 +1828,65 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                   }}>Import & Set Active</button>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Day Preview modal — shows exercises before starting */}
+      {previewDay && (
+        <div onClick={() => setPreviewDay(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
+              <button onClick={() => setPreviewDay(null)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{previewDay.day.name}</div>
+              <div style={{ width:50 }}/>
+            </div>
+            <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 6px" }}>
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:4 }}>
+                {(previewDay.programName || "").toUpperCase()}
+              </div>
+              <div style={{ fontSize:13, color:C.sub, marginBottom:16 }}>
+                {previewDay.day.exercises.length} exercise{previewDay.day.exercises.length === 1 ? "" : "s"}
+              </div>
+              {previewDay.day.exercises.map((ex, i) => {
+                const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+                const pr = store.prs?.[ex.name];
+                return (
+                  <div key={i} style={{
+                    display:"flex", alignItems:"center", gap:12,
+                    padding:"12px 0", borderBottom: i < previewDay.day.exercises.length - 1 ? `1px solid ${C.divider}` : "none"
+                  }}>
+                    {exInfo && (
+                      <div style={{
+                        width:44, height:44, borderRadius:10,
+                        background:C.divider,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:22, flexShrink:0
+                      }}>{exInfo.emoji}</div>
+                    )}
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
+                      <div style={{ fontSize:11, color:C.sub, marginTop:2, display:"flex", gap:10 }}>
+                        {ex.reps && <span>{ex.reps} reps</span>}
+                        {exInfo?.muscle && <span>· {exInfo.muscle}</span>}
+                        {pr && <span style={{ color:C.gold }}>· PR {cvt(pr, "lbs", unit)} {unit}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding:"12px 14px 24px", borderTop:`1px solid ${C.divider}` }}>
+              <button onClick={() => {
+                const day = previewDay.day;
+                setPreviewDay(null);
+                startWorkout(day);
+              }} style={{
+                width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+                color:"#fff", border:"none", borderRadius:10, padding:"14px",
+                fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
+              }}>Start Workout</button>
             </div>
           </div>
         </div>
@@ -1689,8 +2024,8 @@ function GroupsScreen({ store, setStore, currentUserId, C }) {
       ))}
 
       {showCreate && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+        <div onClick={() => setShowCreate(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
             <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:14 }}>New Group</div>
             <input
               value={newName} onChange={e => setNewName(e.target.value)}
@@ -1888,8 +2223,8 @@ function ChallengesScreen({ store, setStore, currentUserId, C }) {
         );
       })}
       {showCreate && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+        <div onClick={() => setShowCreate(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
             <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:14 }}>New Challenge</div>
             <input
               value={name} onChange={e => setName(e.target.value)}
@@ -1916,7 +2251,7 @@ function ChallengesScreen({ store, setStore, currentUserId, C }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // PROFILE
 // ═════════════════════════════════════════════════════════════════════════════
-function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme }) {
+function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
@@ -1926,6 +2261,33 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   const streak = isMe ? calcStreak(store.workoutDates) : 0;
   const followers = store.users.find(u => u.id === userId)?.followers?.length || 0;
   const following2 = store.users.find(u => u.id === userId)?.following?.length || 0;
+  const [showEdit, setShowEdit] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [listModal, setListModal] = useState(null); // "followers" | "following" | null
+  const [editName, setEditName] = useState(user?.name || "");
+  const [editUsername, setEditUsername] = useState(user?.username || "");
+  const [editBio, setEditBio] = useState(user?.bio || "");
+
+  useEffect(() => {
+    if (showEdit) {
+      setEditName(user?.name || "");
+      setEditUsername(user?.username || "");
+      setEditBio(user?.bio || "");
+    }
+  }, [showEdit, user]);
+
+  function saveProfile() {
+    setStore(p => ({
+      ...p,
+      users: p.users.map(u => u.id === currentUserId ? {
+        ...u,
+        name: editName.trim() || u.name,
+        username: editUsername.trim().replace(/\s/g, "") || u.username,
+        bio: editBio
+      } : u)
+    }));
+    setShowEdit(false);
+  }
 
   function toggleFollow() {
     setStore(p => ({
@@ -1967,8 +2329,14 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
             <div><div style={{ fontSize:17, fontWeight:700, color:C.text }}>{posts.length}</div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text }}>{followers}</div><div style={{ fontSize:12, color:C.sub }}>Followers</div></div>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text }}>{following2}</div><div style={{ fontSize:12, color:C.sub }}>Following</div></div>
+            <div onClick={() => followers > 0 && setListModal("followers")} style={{ cursor: followers > 0 ? "pointer" : "default" }}>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{followers}</div>
+              <div style={{ fontSize:12, color:C.sub }}>Followers</div>
+            </div>
+            <div onClick={() => following2 > 0 && setListModal("following")} style={{ cursor: following2 > 0 ? "pointer" : "default" }}>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{following2}</div>
+              <div style={{ fontSize:12, color:C.sub }}>Following</div>
+            </div>
           </div>
         </div>
         <div style={{ marginBottom:12 }}>
@@ -1987,46 +2355,30 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             cursor:"pointer", fontFamily:F
           }}>{isFollowing ? "Following" : "Follow"}</button>
         ) : (
-          <button style={{
-            width:"100%", padding:"7px", background:"transparent",
-            border:`1px solid ${C.border}`, borderRadius:8,
-            fontSize:13, fontWeight:600, color:C.text,
-            cursor:"pointer", fontFamily:F
-          }}>Edit profile</button>
+          <div style={{ display:"flex", gap:6 }}>
+            <button onClick={() => setShowEdit(true)} style={{
+              flex:1, padding:"7px", background:"transparent",
+              border:`1px solid ${C.border}`, borderRadius:8,
+              fontSize:13, fontWeight:600, color:C.text,
+              cursor:"pointer", fontFamily:F
+            }}>Edit profile</button>
+            <button
+              onClick={() => setShowSettings(true)}
+              aria-label="Settings"
+              style={{
+                width:38, padding:"7px 0", background:"transparent",
+                border:`1px solid ${C.border}`, borderRadius:8,
+                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center"
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
         )}
       </div>
-
-      {isMe && (
-        <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
-          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, margin:"14px 0 10px" }}>SETTINGS</div>
-          <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-              <div style={{ fontSize:13, color:C.text }}>Appearance</div>
-              <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
-                {["dark","light"].map(th => (
-                  <button key={th} onClick={() => onToggleTheme(th)} style={{
-                    padding:"5px 12px", background:(store.theme||"dark")===th?C.accent:"transparent",
-                    color:(store.theme||"dark")===th?"#fff":C.sub, border:"none", borderRadius:20,
-                    fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-                  }}>{th==="dark"?"🌙":"☀️"}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px" }}>
-              <div style={{ fontSize:13, color:C.text }}>Weight Units</div>
-              <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
-                {["lbs","kg"].map(u => (
-                  <button key={u} onClick={() => setStore(p => ({ ...p, unit: u }))} style={{
-                    padding:"5px 14px", background:(store.unit||"lbs")===u?C.accent:"transparent",
-                    color:(store.unit||"lbs")===u?"#fff":C.sub, border:"none", borderRadius:20,
-                    fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-                  }}>{u.toUpperCase()}</button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {isMe && (
         <div style={{ padding:"0 14px" }}>
@@ -2054,6 +2406,129 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
           />
         ))}
       </div>
+
+      {/* Edit Profile modal */}
+      {showEdit && (
+        <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"90vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
+              <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Edit Profile</div>
+              <button onClick={saveProfile} style={{ fontSize:14, fontWeight:600, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Done</button>
+            </div>
+            <div style={{ padding:"16px", overflowY:"auto" }}>
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:18 }}>
+                <Avatar user={user} size={84} C={C} onClick={() => avatarRef.current?.click()}/>
+                <button onClick={() => avatarRef.current?.click()} style={{ marginTop:8, background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Change photo</button>
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:6 }}>NAME</div>
+                <input value={editName} onChange={e => setEditName(e.target.value)}
+                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:6 }}>USERNAME</div>
+                <input value={editUsername} onChange={e => setEditUsername(e.target.value)}
+                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:6 }}>BIO</div>
+                <textarea value={editBio} onChange={e => setEditBio(e.target.value)} rows={3}
+                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", resize:"none", fontFamily:F }}/>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings modal */}
+      {showSettings && (
+        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
+              <div style={{ width:50 }}/>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
+              <button onClick={() => setShowSettings(false)} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, width:50 }}>Done</button>
+            </div>
+            <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PREFERENCES</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ fontSize:14, color:C.text }}>Appearance</div>
+                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
+                    {["light","dark"].map(th => (
+                      <button key={th} onClick={() => onToggleTheme(th)} style={{
+                        padding:"6px 14px", background:(store.theme||"light")===th?C.accent:"transparent",
+                        color:(store.theme||"light")===th?"#fff":C.sub, border:"none", borderRadius:20,
+                        fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+                      }}>{th==="light"?"Light":"Dark"}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
+                  <div style={{ fontSize:14, color:C.text }}>Weight Units</div>
+                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
+                    {["lbs","kg"].map(u => (
+                      <button key={u} onClick={() => setStore(p => ({ ...p, unit: u }))} style={{
+                        padding:"6px 16px", background:(store.unit||"lbs")===u?C.accent:"transparent",
+                        color:(store.unit||"lbs")===u?"#fff":C.sub, border:"none", borderRadius:20,
+                        fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+                      }}>{u.toUpperCase()}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ABOUT</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
+                  <div style={{ fontSize:14, color:C.text }}>Version</div>
+                  <div style={{ fontSize:13, color:C.sub }}>1.0 (beta)</div>
+                </div>
+              </div>
+
+              <div style={{ fontSize:11, color:C.muted, textAlign:"center", padding:"14px 0" }}>
+                More settings coming soon
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Followers / Following list modal */}
+      {listModal && (() => {
+        const targetUser = store.users.find(u => u.id === userId);
+        const idList = listModal === "followers" ? (targetUser?.followers || []) : (targetUser?.following || []);
+        const listUsers = idList.map(id => store.users.find(u => u.id === id)).filter(Boolean);
+        return (
+          <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"80vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ width:60 }}/>
+                <div style={{ fontSize:15, fontWeight:600, color:C.text, textTransform:"capitalize" }}>{listModal}</div>
+                <button onClick={() => setListModal(null)} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, width:60 }}>Close</button>
+              </div>
+              <div style={{ overflowY:"auto", flex:1, padding:"6px 14px 14px" }}>
+                {listUsers.length === 0 && (
+                  <div style={{ textAlign:"center", color:C.sub, padding:"40px 0", fontSize:13 }}>No {listModal} yet.</div>
+                )}
+                {listUsers.map(u => (
+                  <div key={u.id} onClick={() => {
+                    setListModal(null);
+                    if (onUserClick) onUserClick(u.id);
+                  }} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0", borderBottom:`1px solid ${C.divider}`, cursor:"pointer" }}>
+                    <Avatar user={u} size={42} C={C}/>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+                      <div style={{ fontSize:12, color:C.sub }}>{u.name}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2160,10 +2635,11 @@ export default function App() {
   const [prModal, setPrModal] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(!store.seenOnboarding);
+  const [storyIndex, setStoryIndex] = useState(null); // index into story users array
 
   useEffect(() => saveStore(store), [store]);
 
-  const C = THEMES[store.theme || "dark"];
+  const C = THEMES[store.theme || "light"];
   const currentUserId = store.currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
@@ -2237,6 +2713,7 @@ export default function App() {
           displayUnit={unit}
           C={C}
           onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
+          onUserClick={setProfileUserId}
         />
       </div>
     );
@@ -2302,7 +2779,7 @@ export default function App() {
             {/* Stories strip */}
             <div style={{ display:"flex", gap:12, overflowX:"auto", padding:"12px 14px", paddingBottom:12, scrollbarWidth:"none", borderBottom:`1px solid ${C.divider}` }}>
               {[me, ...store.users.filter(u => following.includes(u.id))].filter(Boolean).map((u, i) => (
-                <div key={u.id} onClick={() => i > 0 && setProfileUserId(u.id)} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0, cursor:i>0?"pointer":"default" }}>
+                <div key={u.id} onClick={() => { if (i > 0) setStoryIndex(i - 1); }} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0, cursor:i>0?"pointer":"default" }}>
                   <Avatar user={u} size={56} C={C} ring={i > 0}/>
                   <span style={{ fontSize:11, color:C.text, whiteSpace:"nowrap" }}>
                     {i === 0 ? "Your story" : u.username}
@@ -2388,6 +2865,7 @@ export default function App() {
             displayUnit={unit}
             C={C}
             onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
+            onUserClick={setProfileUserId}
           />
         )}
       </div>
@@ -2460,6 +2938,22 @@ export default function App() {
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost}/>}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
+      {storyIndex !== null && (() => {
+        const storyUsers = store.users.filter(u => following.includes(u.id));
+        const currentStoryUser = storyUsers[storyIndex];
+        if (!currentStoryUser) { setStoryIndex(null); return null; }
+        return (
+          <StoryViewer
+            user={currentStoryUser}
+            onClose={() => setStoryIndex(null)}
+            onNext={() => setStoryIndex(i => i + 1)}
+            onPrev={() => setStoryIndex(i => Math.max(0, i - 1))}
+            hasNext={storyIndex < storyUsers.length - 1}
+            hasPrev={storyIndex > 0}
+            C={C}
+          />
+        );
+      })()}
     </div>
   );
 }
