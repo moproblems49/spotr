@@ -3,26 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-
     <title>Ignite</title>
-    <meta name="description" content="Fitness tracking and community. Track workouts, follow friends, crush PRs." />
-
+    <meta name="description" content="Fitness tracking and community" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Ignite" />
     <meta name="theme-color" content="#000000" />
-
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="shortcut icon" href="/favicon-32.png" />
-
     <link rel="manifest" href="/manifest.json" />
   </head>
-  <body style="margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;background:#fff;position:fixed;top:0;left:0;right:0;bottom:0;">
-    <div id="root" style="height:100%;width:100%;overflow:hidden;"></div>
+  <body>
+    <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
