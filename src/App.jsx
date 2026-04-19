@@ -922,7 +922,7 @@ function Onboarding({ C, onComplete }) {
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
         <div style={{ marginBottom:40 }}>
-          <SpotrLogo C={C} big/>
+          <IgniteLogo C={C} big/>
         </div>
         <div style={{ fontSize:64, marginBottom:20 }}>{s.icon}</div>
         <div style={{ fontSize:24, fontWeight:700, color:C.text, marginBottom:10 }}>{s.title}</div>
@@ -2931,7 +2931,7 @@ export default function App() {
         borderBottom:`1px solid ${C.divider}`,
         padding:"10px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
-        <SpotrLogo C={C}/>
+        <IgniteLogo C={C}/>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {streak > 0 && <div style={{ marginRight:4 }}><StreakBadge streak={streak} size="sm"/></div>}
           {tab === "feed" && (

@@ -1,3 +1,58 @@
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { margin: 0; background: #000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; }
-#root { min-height: 100vh; }
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- App identity -->
+    <title>Ignite</title>
+    <meta name="description" content="Fitness tracking and community. Track workouts, follow friends, crush PRs." />
+
+    <!-- iOS PWA -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Ignite" />
+    <meta name="theme-color" content="#000000" />
+
+    <!-- Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="shortcut icon" href="/favicon-32.png" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+        background: #fff;
+      }
+      body {
+        position: fixed;
+        inset: 0;
+        -webkit-overflow-scrolling: touch;
+        touch-action: manipulation;
+      }
+      #root {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+      }
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
