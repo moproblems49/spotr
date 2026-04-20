@@ -2851,7 +2851,7 @@ export default function App() {
     const prevBody = body.getAttribute("style") || "";
     const prevRoot = root ? (root.getAttribute("style") || "") : "";
     html.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;";
-    body.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;-webkit-tap-highlight-color:transparent;";
+    body.style.cssText = "margin:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;-webkit-tap-highlight-color:transparent;box-sizing:border-box;";
     if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
     return () => {
       html.setAttribute("style", prevHtml);
