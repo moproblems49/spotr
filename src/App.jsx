@@ -2851,7 +2851,7 @@ export default function App() {
     const prevBody = body.getAttribute("style") || "";
     const prevRoot = root ? (root.getAttribute("style") || "") : "";
     html.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;";
-    body.style.cssText = "margin:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;-webkit-tap-highlight-color:transparent;box-sizing:border-box;";
+    body.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;-webkit-tap-highlight-color:transparent;";
     if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
     return () => {
       html.setAttribute("style", prevHtml);
@@ -2948,7 +2948,8 @@ export default function App() {
       <div style={{
         background:C.tabBg, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
         borderBottom:`1px solid ${C.divider}`,
-        padding:"10px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
+        padding:"calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)",
+        display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
         <IgniteLogo C={C}/>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
@@ -3150,6 +3151,9 @@ export default function App() {
       <div style={{
         background:C.tabBg, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
         borderTop:`1px solid ${C.divider}`,
+        paddingBottom:"env(safe-area-inset-bottom)",
+        paddingLeft:"env(safe-area-inset-left)",
+        paddingRight:"env(safe-area-inset-right)",
         display:"flex", flexShrink:0
       }}>
         {[
