@@ -1,6 +1,108 @@
 import { useState, useEffect, useRef, memo, useCallback } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
+// SUPABASE CLIENT
+// ═════════════════════════════════════════════════════════════════════════════
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Lightweight Supabase client — no npm package needed
+const sb = (() => {
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": "return=representation",
+  };
+
+  function authHeaders(token) {
+    if (!token) return headers;
+    return { ...headers, "Authorization": `Bearer ${token}` };
+  }
+
+  async function query(path, opts = {}, token = null) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: authHeaders(token),
+      ...opts,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || res.statusText);
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  async function rpc(fn, params = {}, token = null) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(params),
+    });
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  // Auth helpers
+  async function signUp(email, password, username, name) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        email, password,
+        data: { username, name }
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || data.msg || "Signup failed");
+    return data;
+  }
+
+  async function signIn(email, password) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (data.error || data.error_description) throw new Error(data.error_description || data.error || "Sign in failed");
+    return data; // { access_token, refresh_token, user }
+  }
+
+  async function signOut(token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+  }
+
+  async function refreshToken(refresh_token) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ refresh_token }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error_description || "Session expired");
+    return data;
+  }
+
+  return { query, rpc, signUp, signIn, signOut, refreshToken };
+})();
+
+// Session storage
+const SESSION_STORAGE_KEY = "ignite_session";
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)); } catch { return null; }
+}
+function saveSession(s) {
+  try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s)); } catch {}
+}
+function clearSession() {
+  try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // EXERCISE DATABASE
 // ═════════════════════════════════════════════════════════════════════════════
 const EXERCISE_DB = [
@@ -653,6 +755,29 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C }) {
   );
 });
 
+// BufferedInput: local state while typing, commits to parent only on blur.
+// This means typing never triggers parent re-renders — zero lag.
+function BufferedInput({ value, onCommit, placeholder, done, C }) {
+  const [local, setLocal] = useState(value || "");
+  useEffect(() => { setLocal(value || ""); }, [value]);
+  return (
+    <input
+      type="number" inputMode="decimal"
+      value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={() => onCommit(local)}
+      placeholder={placeholder || "0"}
+      style={{
+        background: done ? `${C.green}22` : C.divider,
+        border:"none", borderRadius:8, padding:"8px 4px",
+        fontSize:15, fontWeight:600, color:C.text,
+        textAlign:"center", outline:"none", width:"100%", boxSizing:"border-box",
+        fontFamily:F
+      }}
+    />
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (extracted to fix hooks bug)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -716,32 +841,15 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           {prev ? `${prev.w}×${prev.r}` : "—"}
         </div>
 
-        <input
-          type="number" inputMode="decimal"
-          value={set.weight}
-          onChange={e => onUpdate({ weight: e.target.value })}
+        <BufferedInput
+          value={set.weight} onCommit={v => onUpdate({ weight: v })}
           placeholder={prev?.w || "0"}
-          style={{
-            background: set.done ? `${C.green}22` : C.divider,
-            border:"none", borderRadius:8, padding:"8px 4px",
-            fontSize:15, fontWeight:600, color:C.text,
-            textAlign:"center", outline:"none", width:"100%", boxSizing:"border-box",
-            fontFamily:F
-          }}
+          done={set.done} C={C}
         />
-
-        <input
-          type="number" inputMode="decimal"
-          value={set.reps}
-          onChange={e => onUpdate({ reps: e.target.value })}
+        <BufferedInput
+          value={set.reps} onCommit={v => onUpdate({ reps: v })}
           placeholder={prev?.r || "0"}
-          style={{
-            background: set.done ? `${C.green}22` : C.divider,
-            border:"none", borderRadius:8, padding:"8px 4px",
-            fontSize:15, fontWeight:600, color:C.text,
-            textAlign:"center", outline:"none", width:"100%", boxSizing:"border-box",
-            fontFamily:F
-          }}
+          done={set.done} C={C}
         />
 
         <button onClick={onToggleDone} style={{
@@ -1623,7 +1731,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
           ...p.history,
           [dk]: {
             ...(p.history[dk] || {}),
-            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: elapsed, unit }
+            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: elapsed, unit, note: session.workoutNote || "" }
           }
         },
         prs: newPRs,
@@ -1693,6 +1801,20 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
         <div style={{ padding:"5px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div style={{ fontSize:11, color:C.sub }}>{done}/{total} sets · {unit.toUpperCase()}</div>
           <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM Calc</button>
+        </div>
+
+        {/* Workout-level note */}
+        <div style={{ padding:"6px 14px 8px", borderBottom:`1px solid ${C.divider}` }}>
+          <input
+            value={session.workoutNote || ""}
+            onChange={e => setSession(p => ({ ...p, workoutNote: e.target.value }))}
+            placeholder="📝 Workout note (e.g. 'felt strong, increase weight next session')"
+            style={{
+              width:"100%", background:C.divider, border:"none", borderRadius:8,
+              padding:"8px 12px", fontSize:13, color:C.text, outline:"none",
+              fontFamily:F, boxSizing:"border-box"
+            }}
+          />
         </div>
 
         {/* Rest timer */}
@@ -1775,33 +1897,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                     }}>− Remove</button>
                   )}
                 </div>
-
-                {/* Exercise note */}
-                {(() => {
-                  const savedNote = store.exerciseNotes?.[ex.name];
-                  return (
-                    <div style={{ padding:"6px 14px 0" }}>
-                      {savedNote && !ex.note && (
-                        <div style={{ fontSize:11, color:C.sub, marginBottom:4, fontStyle:"italic" }}>
-                          💡 Last note: {savedNote}
-                        </div>
-                      )}
-                      <input
-                        value={ex.note || ""}
-                        onChange={e => setSession(p => ({
-                          ...p,
-                          exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, note: e.target.value })
-                        }))}
-                        placeholder="Add note (e.g. 'felt heavy, try 185 next time')"
-                        style={{
-                          width:"100%", background:C.divider, border:"none", borderRadius:8,
-                          padding:"8px 12px", fontSize:13, color:C.text, outline:"none",
-                          fontFamily:F, boxSizing:"border-box"
-                        }}
-                      />
-                    </div>
-                  );
-                })()}
               </div>
             );
           })}
@@ -1888,18 +1983,34 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                 ACTIVE · {prog.name.toUpperCase()}
               </div>
               {prog.days.map(day => (
-                <button key={day.id} onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
-                  width:"100%", background:"none", border:`1px solid ${C.border}`,
-                  borderRadius:10, padding:"12px 14px",
-                  display:"flex", alignItems:"center", gap:11, cursor:"pointer", textAlign:"left", marginBottom:6, fontFamily:F
-                }}>
-                  <div style={{ width:3, height:32, borderRadius:2, background:C.accent, flexShrink:0 }}/>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{day.exercises.length} exercises</div>
+                <div key={day.id} style={{ marginBottom:6, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
+                  <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
+                    width:"100%", background:"none", border:"none",
+                    padding:"12px 14px",
+                    display:"flex", alignItems:"center", gap:11, cursor:"pointer", textAlign:"left", fontFamily:F
+                  }}>
+                    <div style={{ width:3, height:32, borderRadius:2, background:C.accent, flexShrink:0 }}/>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
+                      <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{day.exercises.length} exercises</div>
+                    </div>
+                    <span style={{ fontSize:16, color:C.sub }}>›</span>
+                  </button>
+                  <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
+                    <button onClick={() => {
+                      // Edit day — navigate to Programs tab and open this program
+                      setSubTab("programs");
+                      setViewingProgram(prog.id);
+                    }} style={{
+                      flex:1, padding:"8px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
+                      fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+                    }}>✏️ Edit</button>
+                    <button onClick={() => startWorkout(day)} style={{
+                      flex:1, padding:"8px", background:"none", border:"none",
+                      fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+                    }}>▶ Start</button>
                   </div>
-                  <span style={{ fontSize:16, color:C.sub }}>›</span>
-                </button>
+                </div>
               ))}
             </>
           ) : (
@@ -3542,107 +3653,531 @@ function EditPostModal({ C, post, onSave, onClose }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// AUTH SCREEN
+// ═════════════════════════════════════════════════════════════════════════════
+function AuthScreen({ onAuth, C }) {
+  const [mode, setMode] = useState("signin"); // "signin" | "signup"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit() {
+    setError("");
+    if (!email || !password) { setError("Email and password required"); return; }
+    if (mode === "signup" && !username) { setError("Username required"); return; }
+    if (mode === "signup" && username.length < 3) { setError("Username must be at least 3 characters"); return; }
+    if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
+    setLoading(true);
+    try {
+      if (mode === "signup") {
+        const data = await sb.signUp(email, password, username.toLowerCase().replace(/\s/g,""), name || username);
+        if (data.access_token) {
+          onAuth(data);
+        } else {
+          setError("Check your email to confirm your account, then sign in.");
+          setMode("signin");
+        }
+      } else {
+        const data = await sb.signIn(email, password);
+        onAuth(data);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputStyle = {
+    width:"100%", background:C.divider, border:"none", borderRadius:10,
+    padding:"13px 14px", fontSize:16, color:C.text, outline:"none",
+    fontFamily:F, boxSizing:"border-box", marginBottom:10
+  };
+
+  return (
+    <div style={{
+      height:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", padding:"0 28px",
+      paddingTop:"env(safe-area-inset-top)", paddingBottom:"env(safe-area-inset-bottom)"
+    }}>
+      {/* Logo */}
+      <div style={{ marginBottom:32, textAlign:"center" }}>
+        <IgniteLogo C={C} big/>
+        <div style={{ fontSize:13, color:C.sub, marginTop:8 }}>
+          {mode === "signin" ? "Welcome back 🔥" : "Join Ignite — start your journey 🔥"}
+        </div>
+      </div>
+
+      {/* Form */}
+      <div style={{ width:"100%", maxWidth:360 }}>
+        {mode === "signup" && (
+          <>
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="Full name" style={inputStyle}/>
+            <input value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""))}
+              placeholder="Username (letters, numbers, _)" style={inputStyle}
+              autoCapitalize="none" autoCorrect="off"/>
+          </>
+        )}
+        <input value={email} onChange={e => setEmail(e.target.value)}
+          placeholder="Email" type="email" style={inputStyle}
+          autoCapitalize="none" autoCorrect="off"/>
+        <input value={password} onChange={e => setPassword(e.target.value)}
+          placeholder="Password (min 6 chars)" type="password" style={inputStyle}/>
+
+        {error && (
+          <div style={{ fontSize:13, color:C.red, marginBottom:10, textAlign:"center", lineHeight:1.4 }}>
+            {error}
+          </div>
+        )}
+
+        <button onClick={handleSubmit} disabled={loading} style={{
+          width:"100%", background:loading ? C.sub : `linear-gradient(135deg,${C.accent},${C.accent2})`,
+          color:"#fff", border:"none", borderRadius:10, padding:"14px",
+          fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer",
+          fontFamily:F, marginBottom:14, transition:"background 0.2s"
+        }}>
+          {loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Create Account"}
+        </button>
+
+        <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
+          width:"100%", background:"none", border:"none", color:C.accent,
+          fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F, padding:8
+        }}>
+          {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ═════════════════════════════════════════════════════════════════════════════
 export default function App() {
+  // ── Auth state ──────────────────────────────────────────────────
+  const [session, setSession] = useState(loadSession);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // ── App data state ──────────────────────────────────────────────
   const [store, setStore] = useState(loadStore);
+  const [dbReady, setDbReady] = useState(false);
+
+  const token = session?.access_token || null;
+  const currentUserId = session?.user?.id || null;
+
+  // ── Restore/refresh session on mount ────────────────────────────
+  useEffect(() => {
+    async function init() {
+      const saved = loadSession();
+      if (!saved?.refresh_token) { setAuthLoading(false); return; }
+      try {
+        const fresh = await sb.refreshToken(saved.refresh_token);
+        const merged = { ...saved, ...fresh };
+        saveSession(merged);
+        setSession(merged);
+      } catch {
+        clearSession();
+        setSession(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+    init();
+  }, []);
+
+  // ── Load user data from Supabase once authenticated ─────────────
+  useEffect(() => {
+    if (!token || !currentUserId) return;
+    loadUserData();
+  }, [token, currentUserId]);
+
+  async function loadUserData() {
+    try {
+      // Load profile
+      const [profiles, programs, prs, history] = await Promise.all([
+        sb.query(`profiles?select=*`, {}, token),
+        sb.query(`programs?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, token),
+        sb.query(`personal_records?user_id=eq.${currentUserId}&select=*`, {}, token),
+        sb.query(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc&limit=100`, {}, token),
+      ]);
+
+      const me = profiles?.find(p => p.id === currentUserId);
+      const activeProgram = programs?.find(p => p.is_active) || programs?.[0];
+
+      // Convert DB programs to app format
+      const appPrograms = (programs || []).map(p => ({
+        id: p.id, name: p.name, days: p.days || []
+      }));
+
+      // Convert PRs to app format { exerciseName: weightLbs }
+      const appPrs = {};
+      (prs || []).forEach(pr => { appPrs[pr.exercise_name] = pr.weight_lbs; });
+
+      // Convert history to app format
+      const appHistory = {};
+      (history || []).forEach(w => {
+        const dk = w.workout_date;
+        if (!appHistory[dk]) appHistory[dk] = {};
+        appHistory[dk][w.id] = {
+          dayName: w.day_name, exercises: w.exercises,
+          duration: w.duration_secs, unit: w.unit, note: w.note
+        };
+      });
+
+      // Load posts (from people user follows + own)
+      await loadFeed(token, currentUserId, profiles || []);
+
+      setStore(prev => ({
+        ...prev,
+        users: (profiles || []).map(p => ({
+          id: p.id, username: p.username, name: p.name,
+          bio: p.bio, avatar: p.avatar_emoji, avatarUrl: p.avatar_url,
+          unit: p.unit, theme: p.theme,
+          followers: [], following: [] // loaded separately
+        })),
+        currentUserId,
+        programs: appPrograms,
+        activeProgramId: activeProgram?.id || null,
+        prs: appPrs,
+        history: appHistory,
+        unit: me?.unit || "lbs",
+        theme: me?.theme || "light",
+        defaultRestTime: me?.default_rest_time || 120,
+        seenOnboarding: true,
+      }));
+
+      // Load follows
+      const follows = await sb.query(`follows?select=follower_id,following_id`, {}, token);
+      setStore(prev => ({
+        ...prev,
+        users: prev.users.map(u => ({
+          ...u,
+          followers: (follows||[]).filter(f => f.following_id === u.id).map(f => f.follower_id),
+          following: (follows||[]).filter(f => f.follower_id === u.id).map(f => f.following_id),
+        }))
+      }));
+
+      setDbReady(true);
+    } catch (e) {
+      console.error("loadUserData error:", e);
+      setDbReady(true); // Still show app even if load fails
+    }
+  }
+
+  async function loadFeed(tok, uid, profiles) {
+    try {
+      // Get all posts with kudos + comments counts
+      const posts = await sb.query(
+        `posts?select=*,kudos(user_id),comments(id,user_id,text,created_at)&order=created_at.desc&limit=50`,
+        {}, tok
+      );
+      if (!posts) return;
+
+      const appPosts = posts.map(p => ({
+        id: p.id,
+        userId: p.user_id,
+        type: p.type,
+        caption: p.caption || "",
+        imageData: p.image_url,
+        location: p.location,
+        workout: p.workout,
+        run: p.run,
+        yoga: p.yoga,
+        achievement: p.achievement,
+        unit: p.unit || "lbs",
+        isPR: p.is_pr,
+        kudos: (p.kudos || []).map(k => k.user_id),
+        comments: (p.comments || []).map(c => ({
+          id: c.id, userId: c.user_id, text: c.text, createdAt: new Date(c.created_at).getTime()
+        })),
+        createdAt: new Date(p.created_at).getTime(),
+      }));
+
+      setStore(prev => ({ ...prev, posts: appPosts }));
+    } catch (e) {
+      console.error("loadFeed error:", e);
+    }
+  }
+
+  // ── Auth handlers ─────────────────────────────────────────────
+  function handleAuth(data) {
+    saveSession(data);
+    setSession(data);
+  }
+
+  async function handleSignOut() {
+    try { await sb.signOut(token); } catch {}
+    clearSession();
+    setSession(null);
+    setStore(loadStore());
+    setDbReady(false);
+  }
+
+  // ── Supabase-backed action handlers ──────────────────────────
+  async function handleNewPost(postData) {
+    if (!token) return;
+    try {
+      const row = {
+        user_id: currentUserId,
+        type: postData.type || "photo",
+        caption: postData.caption || "",
+        location: postData.location || null,
+        workout: postData.workout || null,
+        run: postData.run || null,
+        yoga: postData.yoga || null,
+        achievement: postData.achievement || null,
+        unit: store.unit || "lbs",
+        is_pr: postData.isPR || false,
+      };
+      const result = await sb.query("posts", {
+        method: "POST", body: JSON.stringify(row)
+      }, token);
+      const newPost = Array.isArray(result) ? result[0] : result;
+      if (newPost) {
+        const appPost = {
+          id: newPost.id, userId: newPost.user_id, type: newPost.type,
+          caption: newPost.caption || "", imageData: postData.imageData || null,
+          location: newPost.location, workout: newPost.workout,
+          run: newPost.run, yoga: newPost.yoga, achievement: newPost.achievement,
+          unit: newPost.unit, isPR: newPost.is_pr,
+          kudos: [], comments: [],
+          createdAt: new Date(newPost.created_at).getTime(),
+        };
+        setStore(prev => ({ ...prev, posts: [appPost, ...prev.posts] }));
+      }
+    } catch (e) { console.error("post error:", e); }
+  }
+
+  async function handleKudos(postId) {
+    if (!token) return;
+    const post = store.posts.find(p => p.id === postId);
+    if (!post) return;
+    const hasKudos = post.kudos.includes(currentUserId);
+    // Optimistic update
+    setStore(prev => ({
+      ...prev,
+      posts: prev.posts.map(p => p.id !== postId ? p : {
+        ...p,
+        kudos: hasKudos ? p.kudos.filter(id => id !== currentUserId) : [...p.kudos, currentUserId]
+      })
+    }));
+    try {
+      if (hasKudos) {
+        await sb.query(`kudos?post_id=eq.${postId}&user_id=eq.${currentUserId}`, { method:"DELETE" }, token);
+      } else {
+        await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, token);
+      }
+    } catch (e) {
+      // Revert on failure
+      setStore(prev => ({
+        ...prev,
+        posts: prev.posts.map(p => p.id !== postId ? p : {
+          ...p,
+          kudos: hasKudos ? [...p.kudos, currentUserId] : p.kudos.filter(id => id !== currentUserId)
+        })
+      }));
+    }
+  }
+
+  async function handleComment(postId, text) {
+    if (!token || !text.trim()) return;
+    try {
+      const result = await sb.query("comments", {
+        method: "POST",
+        body: JSON.stringify({ post_id: postId, user_id: currentUserId, text: text.trim() })
+      }, token);
+      const newComment = Array.isArray(result) ? result[0] : result;
+      if (newComment) {
+        setStore(prev => ({
+          ...prev,
+          posts: prev.posts.map(p => p.id !== postId ? p : {
+            ...p,
+            comments: [...p.comments, {
+              id: newComment.id, userId: newComment.user_id,
+              text: newComment.text, createdAt: new Date(newComment.created_at).getTime()
+            }]
+          })
+        }));
+      }
+    } catch (e) { console.error("comment error:", e); }
+  }
+
+  async function handleDelete(postId) {
+    if (!token) return;
+    setStore(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== postId) }));
+    try {
+      await sb.query(`posts?id=eq.${postId}`, { method:"DELETE" }, token);
+    } catch (e) { console.error("delete error:", e); }
+  }
+
+  async function handleSaveProgram(program) {
+    if (!token) return;
+    try {
+      // Deactivate all others first
+      await sb.query(`programs?user_id=eq.${currentUserId}`, {
+        method:"PATCH", body: JSON.stringify({ is_active: false })
+      }, token);
+      // Upsert this program
+      if (program.id && store.programs.find(p => p.id === program.id)) {
+        await sb.query(`programs?id=eq.${program.id}`, {
+          method:"PATCH", body: JSON.stringify({ name: program.name, days: program.days, is_active: true })
+        }, token);
+      } else {
+        const result = await sb.query("programs", {
+          method:"POST",
+          body: JSON.stringify({ user_id: currentUserId, name: program.name, days: program.days, is_active: true })
+        }, token);
+        const newProg = Array.isArray(result) ? result[0] : result;
+        if (newProg) program = { ...program, id: newProg.id };
+      }
+      setStore(prev => ({
+        ...prev,
+        programs: prev.programs.find(p => p.id === program.id)
+          ? prev.programs.map(p => p.id === program.id ? program : p)
+          : [...prev.programs, program],
+        activeProgramId: program.id
+      }));
+    } catch (e) { console.error("program save error:", e); }
+  }
+
+  async function handleSaveWorkout(workoutData) {
+    if (!token) return;
+    try {
+      const row = {
+        user_id: currentUserId,
+        day_name: workoutData.dayName,
+        exercises: workoutData.exercises,
+        duration_secs: workoutData.duration,
+        unit: workoutData.unit || "lbs",
+        note: workoutData.note || "",
+        workout_date: new Date().toISOString().split("T")[0],
+      };
+      await sb.query("workout_history", { method:"POST", body: JSON.stringify(row) }, token);
+
+      // Save PRs
+      if (workoutData.prs) {
+        for (const [exName, weight] of Object.entries(workoutData.prs)) {
+          await sb.query("personal_records", {
+            method:"POST",
+            headers_extra: { "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify({ user_id: currentUserId, exercise_name: exName, weight_lbs: weight })
+          }, token);
+        }
+      }
+    } catch (e) { console.error("workout save error:", e); }
+  }
+
+  // Pull to refresh
+  async function handleRefresh() {
+    if (!token) return;
+    const profiles = store.users;
+    await loadFeed(token, currentUserId, profiles);
+  }
+
+  // Persist non-Supabase store changes to localStorage as fallback
+  useEffect(() => { saveStore(store); }, [store]);
+
+  // ── Lock document scroll ──────────────────────────────────────
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById("root");
+    html.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;";
+    body.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;-webkit-tap-highlight-color:transparent;";
+    if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
+  }, []);
+
+  const C = THEMES[store.theme || "light"];
+  const unit = store.unit || "lbs";
+  const me = store.users.find(u => u.id === currentUserId);
+
+  // ── Show loading screen ───────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
+        <IgniteLogo C={C} big/>
+        <div style={{ fontSize:13, color:C.sub }}>Loading...</div>
+      </div>
+    );
+  }
+
+  // ── Show auth screen if not logged in ─────────────────────────
+  if (!session || !currentUserId) {
+    return <AuthScreen onAuth={handleAuth} C={C}/>;
+  }
+
+  // ── Show loading while fetching data ─────────────────────────
+  if (!dbReady) {
+    return (
+      <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
+        <IgniteLogo C={C} big/>
+        <div style={{ fontSize:13, color:C.sub }}>Setting up your account...</div>
+      </div>
+    );
+  }
+
+  // ── UI state (must come after auth guards) ────────────────────
   const [tab, setTab] = useState("feed");
   const [showNewPost, setShowNewPost] = useState(false);
   const [profileUserId, setProfileUserId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
   const [prModal, setPrModal] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(!store.seenOnboarding);
-  const [storyIndex, setStoryIndex] = useState(null); // index into story users array
-  const [pullDist, setPullDist] = useState(0); // pull-to-refresh distance in px
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [storyIndex, setStoryIndex] = useState(null);
+  const [pullDist, setPullDist] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
   const pullScrollRef = useRef(null);
-
-  // Horizontal swipe navigation between tabs + edge-swipe back
   const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
   const [swipeX, setSwipeX] = useState(0);
   const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
 
-  useEffect(() => saveStore(store), [store]);
-
-  // Lock the document to prevent iOS overscroll bouncing and keep bottom nav visible.
-  // All styles set from JS to avoid CSS minifier issues.
-  useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const root = document.getElementById("root");
-    const prevHtml = html.getAttribute("style") || "";
-    const prevBody = body.getAttribute("style") || "";
-    const prevRoot = root ? (root.getAttribute("style") || "") : "";
-    html.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;";
-    body.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;-webkit-tap-highlight-color:transparent;";
-    if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
-    return () => {
-      html.setAttribute("style", prevHtml);
-      body.setAttribute("style", prevBody);
-      if (root) root.setAttribute("style", prevRoot);
-    };
-  }, []);
-
-  const C = THEMES[store.theme || "light"];
-  const currentUserId = store.currentUserId;
-  const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
-  const unit = store.unit || "lbs";
-  const streak = calcStreak(store.workoutDates);
-  const feedPosts = store.posts
+  const streak = calcStreak(store.workoutDates || {});
+  const feedPosts = (store.posts || [])
     .filter(p => p.userId === currentUserId || following.includes(p.userId))
     .sort((a, b) => b.createdAt - a.createdAt);
 
-  function handleKudos(id) {
-    setStore(p => ({
-      ...p,
-      posts: p.posts.map(pt => pt.id !== id ? pt : {
-        ...pt,
-        kudos: (pt.kudos || []).includes(currentUserId)
-          ? (pt.kudos || []).filter(x => x !== currentUserId)
-          : [...(pt.kudos || []), currentUserId]
-      })
-    }));
-  }
-  function handleComment(id, t) {
-    setStore(p => ({
-      ...p,
-      posts: p.posts.map(pt => pt.id !== id ? pt : {
-        ...pt,
-        comments: [...pt.comments, { id: uid(), userId: currentUserId, text: t, createdAt: Date.now() }]
-      })
-    }));
-  }
-  function handleNewPost(d) {
-    setStore(p => ({
-      ...p,
-      posts: [{ id: uid(), userId: currentUserId, createdAt: Date.now(), kudos: [], comments: [], ...d }, ...p.posts]
-    }));
-  }
-  function handleDelete(id) {
-    if (window.confirm("Delete this post?")) setStore(p => ({ ...p, posts: p.posts.filter(pt => pt.id !== id) }));
-  }
-  function handleEditSave(id, cap) {
+  async function handleEditSave(id, cap) {
     setStore(p => ({ ...p, posts: p.posts.map(pt => pt.id !== id ? pt : { ...pt, caption: cap }) }));
     setEditingPost(null);
+    try {
+      await sb.query(`posts?id=eq.${id}`, {
+        method:"PATCH", body: JSON.stringify({ caption: cap })
+      }, token);
+    } catch (e) { console.error("edit error:", e); }
   }
 
-  const notifCount = store.posts
-    .filter(p => p.userId === currentUserId)
-    .reduce((a, pt) => a + (pt.kudos || []).filter(x => x !== currentUserId).length + pt.comments.filter(c => c.userId !== currentUserId).length, 0);
+  async function handleFollow(userId) {
+    const isFollowing = me?.following?.includes(userId);
+    setStore(prev => ({
+      ...prev,
+      users: prev.users.map(u => u.id !== currentUserId ? u : {
+        ...u,
+        following: isFollowing ? u.following.filter(id => id !== userId) : [...(u.following||[]), userId]
+      })
+    }));
+    try {
+      if (isFollowing) {
+        await sb.query(`follows?follower_id=eq.${currentUserId}&following_id=eq.${userId}`, { method:"DELETE" }, token);
+      } else {
+        await sb.query("follows", { method:"POST", body: JSON.stringify({ follower_id: currentUserId, following_id: userId }) }, token);
+      }
+    } catch (e) { console.error("follow error:", e); }
+  }
 
-  if (showOnboarding) {
-    return (
-      <Onboarding
-        C={C}
-        onComplete={() => {
-          setStore(p => ({ ...p, seenOnboarding: true }));
-          setShowOnboarding(false);
-        }}
-      />
-    );
+  const notifCount = (store.posts || [])
+    .filter(p => p.userId === currentUserId)
+    .reduce((a, pt) => a + (pt.kudos||[]).filter(x => x !== currentUserId).length + (pt.comments||[]).filter(c => c.userId !== currentUserId).length, 0);
+
+  // Add sign out to settings
+  function handleSignOutFromSettings() {
+    if (window.confirm("Sign out?")) handleSignOut();
   }
 
   if (prModal) return <PRModal pr={prModal} unit={unit} onClose={() => setPrModal(null)}/>;
@@ -3668,17 +4203,18 @@ export default function App() {
   return (
     <div
       onTouchStart={(e) => {
-        // Don't intercept if a modal is open or in a workout session
-        if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null || showOnboarding || profileUserId) {
+        // Block swipes only when modals that capture input are open
+        if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null || showOnboarding) {
           swipeStart.current = { x: 0, y: 0, t: 0, type: null };
           return;
         }
         const t = e.touches[0];
+        const isEdge = t.clientX < 28;
         swipeStart.current = {
           x: t.clientX,
           y: t.clientY,
           t: Date.now(),
-          type: t.clientX < 25 ? "edge-back" : "horizontal"
+          type: isEdge ? "edge-back" : "horizontal"
         };
       }}
       onTouchMove={(e) => {
@@ -3686,18 +4222,22 @@ export default function App() {
         const t = e.touches[0];
         const dx = t.clientX - swipeStart.current.x;
         const dy = t.clientY - swipeStart.current.y;
-        // If vertical movement dominates, cancel (let scroll happen)
-        if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+        // If vertical movement dominates early, cancel horizontal swipe
+        if (Math.abs(dy) > Math.abs(dx) * 1.5 && Math.abs(dx) < 15) {
           swipeStart.current.type = null;
           setSwipeX(0);
           return;
         }
         if (swipeStart.current.type === "edge-back") {
-          // Only allow rightward drag from edge
-          if (dx > 0) setSwipeX(Math.min(dx, 200));
+          if (dx > 0) setSwipeX(Math.min(dx, 300));
         } else if (swipeStart.current.type === "horizontal") {
-          // Only engage if drag is clearly horizontal and > 20px
-          if (Math.abs(dx) > 20) setSwipeX(dx);
+          // Let finger drag the tab view — no threshold, starts immediately
+          const idx = TABS_ORDER.indexOf(tab);
+          const canRight = idx < TABS_ORDER.length - 1;
+          const canLeft = idx > 0;
+          if ((dx < 0 && canRight) || (dx > 0 && canLeft)) {
+            setSwipeX(dx);
+          }
         }
       }}
       onTouchEnd={() => {
@@ -3706,13 +4246,15 @@ export default function App() {
         swipeStart.current = { x: 0, y: 0, t: 0, type: null };
         setSwipeX(0);
         if (!type) return;
+
         if (type === "edge-back" && dx > 60) {
-          // Go back: close any overlay state, or previous tab
+          // Back priority stack: profile first, then previous tab
           if (profileUserId) { setProfileUserId(null); return; }
           const idx = TABS_ORDER.indexOf(tab);
           if (idx > 0) setTab(TABS_ORDER[idx - 1]);
           return;
         }
+
         if (type === "horizontal") {
           const idx = TABS_ORDER.indexOf(tab);
           if (dx < -80 && idx < TABS_ORDER.length - 1) setTab(TABS_ORDER[idx + 1]);
@@ -3773,9 +4315,31 @@ export default function App() {
         </div>
       </div>
 
-      {/* CONTENT */}
-      <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-        {tab === "feed" && (
+      {/* CONTENT — sliding tab strip */}
+      {(() => {
+        const tabIdx = TABS_ORDER.indexOf(tab);
+        // Base offset: each tab is 100vw wide
+        // swipeX adds live finger position (negative = dragging left = going to next tab)
+        const baseOffset = -tabIdx * 100;
+        // Convert swipeX pixels to vw percentage (approximate, good enough for feel)
+        const dragVw = swipeStart.current.type === "horizontal" ? (swipeX / window.innerWidth) * 100 : 0;
+        const totalOffset = baseOffset + dragVw;
+        const isAnimating = swipeX === 0; // animate snap when finger lifted
+
+        return (
+          <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
+            <div style={{
+              display:"flex",
+              flexDirection:"row",
+              width:`${TABS_ORDER.length * 100}%`,
+              height:"100%",
+              transform:`translateX(${totalOffset / TABS_ORDER.length}%)`,
+              transition: isAnimating ? "transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
+              willChange:"transform"
+            }}>
+              {/* FEED */}
+              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+        {tab === "feed" ? (
           <div
             ref={pullScrollRef}
             onTouchStart={(e) => {
@@ -3797,12 +4361,11 @@ export default function App() {
               if (pullDist > 60 && !isRefreshing) {
                 setIsRefreshing(true);
                 setPullDist(50);
-                // Simulate refresh (in Phase 2 this will re-fetch from backend)
-                setTimeout(() => {
+                handleRefresh().finally(() => {
                   setIsRefreshing(false);
                   setPullDist(0);
                   touchStartY.current = 0;
-                }, 900);
+                });
               } else {
                 setPullDist(0);
                 touchStartY.current = 0;
@@ -3876,55 +4439,42 @@ export default function App() {
             </div>
             </div>
           </div>
-        )}
-        {tab === "tracker" && <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onPRHit={setPrModal} C={C}/>}
-        {tab === "discover" && <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C}/>}
-        {tab === "challenges" && <ChallengesScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C}/>}
-        {tab === "groups" && <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C}/>}
-        {tab === "activity" && (
-          <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 20px" }}>
-            <div style={{ fontSize:22, fontWeight:700, marginBottom:14, color:C.text }}>Activity</div>
-            {(() => {
-              const n = [];
-              store.posts.filter(p => p.userId === currentUserId).forEach(post => {
-                (post.kudos || []).filter(id => id !== currentUserId).forEach(kid => {
-                  const u = store.users.find(x => x.id === kid);
-                  n.push({ id: `k${post.id}${kid}`, type: "kudos", user: u, ts: post.createdAt });
-                });
-                post.comments.filter(c => c.userId !== currentUserId).forEach(c => {
-                  const u = store.users.find(x => x.id === c.userId);
-                  n.push({ id: c.id, type: "comment", user: u, comment: c, ts: c.createdAt });
-                });
-              });
-              n.sort((a, b) => b.ts - a.ts);
-              if (!n.length) return <div style={{ textAlign:"center", color:C.sub, padding:"50px 0", fontSize:14 }}>No notifications yet.</div>;
-              return n.map(x => (
-                <div key={x.id} style={{ display:"flex", alignItems:"center", gap:11, padding:"12px 0", borderBottom:`1px solid ${C.divider}` }}>
-                  <Avatar user={x.user} size={40} C={C}/>
-                  <div style={{ flex:1, fontSize:13, color:C.text, lineHeight:1.4 }}>
-                    <span style={{ fontWeight:600 }}>{x.user?.username}</span>
-                    {x.type === "kudos" && " gave you Kudos 👏"}
-                    {x.type === "comment" && <> commented: <span style={{ color:C.sub }}>"{x.comment?.text}"</span></>}
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(x.ts)}</div>
-                  </div>
-                </div>
-              ));
-            })()}
+        ) : <div style={{ flex:1 }}/>}
+              </div>
+
+              {/* WORKOUT */}
+              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                {(tab === "tracker" || tabIdx === 1 || Math.abs(tabIdx - 1) <= 1) && (
+                  <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onPRHit={setPrModal} C={C}/>
+                )}
+              </div>
+
+              {/* DISCOVER */}
+              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                {(tab === "discover" || Math.abs(tabIdx - 2) <= 1) && (
+                  <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C}/>
+                )}
+              </div>
+
+              {/* PROFILE */}
+              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                {(tab === "profile" || tabIdx === 3) && (
+                  <ProfileScreen
+                    userId={currentUserId}
+                    store={store}
+                    setStore={setStore}
+                    currentUserId={currentUserId}
+                    displayUnit={unit}
+                    C={C}
+                    onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
+                    onUserClick={setProfileUserId}
+                  />
+                )}
+              </div>
+            </div>
           </div>
-        )}
-        {tab === "profile" && (
-          <ProfileScreen
-            userId={currentUserId}
-            store={store}
-            setStore={setStore}
-            currentUserId={currentUserId}
-            displayUnit={unit}
-            C={C}
-            onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
-            onUserClick={setProfileUserId}
-          />
-        )}
-      </div>
+        );
+      })()}
 
       {/* BOTTOM NAV — Instagram: clean SVG icons with filled/outlined states */}
       <div style={{
