@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo, useCallback } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // EXERCISE DATABASE
@@ -351,7 +351,7 @@ const SEED_GROUPS = [
 // ═════════════════════════════════════════════════════════════════════════════
 // STORAGE
 // ═════════════════════════════════════════════════════════════════════════════
-const SK = "ignite_v1";
+const SK = "ignite_v2";
 function loadStore() {
   try {
     const r = localStorage.getItem(SK);
@@ -581,7 +581,7 @@ function Heatmap({ workoutDates, C }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // EXERCISE SEARCH INPUT
 // ═════════════════════════════════════════════════════════════════════════════
-function ExerciseInput({ value, onChange, C }) {
+const ExerciseInput = memo(function ExerciseInput({ value, onChange, C }) {
   const [q, setQ] = useState(value || "");
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -651,12 +651,12 @@ function ExerciseInput({ value, onChange, C }) {
       )}
     </div>
   );
-}
+});
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (extracted to fix hooks bug)
 // ═════════════════════════════════════════════════════════════════════════════
-function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, C }) {
+const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const typeMenuRef = useRef(null);
 
@@ -761,7 +761,7 @@ function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, C }) {
       )}
     </div>
   );
-}
+});
 
 // ═════════════════════════════════════════════════════════════════════════════
 // CONFETTI (for PR modal)
@@ -996,7 +996,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:80 }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, position:"sticky", top:0, background:C.bg, zIndex:5 }}>
         <button onClick={onCancel} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
         <div style={{ fontSize:15, fontWeight:600, color:C.text }}>New Program</div>
@@ -1049,15 +1049,28 @@ function ProgramBuilder({ C, onCancel, onSave }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STORY VIEWER — Instagram-style full-screen with auto-advance
 // ═════════════════════════════════════════════════════════════════════════════
-function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, C }) {
+function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, C }) {
   const [progress, setProgress] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [drag, setDrag] = useState({ x: 0, y: 0 });
+  const dragStart = useRef(null);
   const duration = 5000; // 5 seconds per story
 
   useEffect(() => {
     setProgress(0);
     const start = Date.now();
+    let pausedFor = 0;
+    let lastPauseStart = null;
     const interval = setInterval(() => {
-      const elapsed = Date.now() - start;
+      if (paused) {
+        if (lastPauseStart === null) lastPauseStart = Date.now();
+        return;
+      }
+      if (lastPauseStart !== null) {
+        pausedFor += Date.now() - lastPauseStart;
+        lastPauseStart = null;
+      }
+      const elapsed = Date.now() - start - pausedFor;
       const p = Math.min((elapsed / duration) * 100, 100);
       setProgress(p);
       if (p >= 100) {
@@ -1066,21 +1079,92 @@ function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, C }) {
       }
     }, 50);
     return () => clearInterval(interval);
-  }, [user?.id, hasNext, onNext, onClose]);
+  }, [user?.id, hasNext, onNext, onClose, paused]);
+
+  function startDrag(x, y) {
+    dragStart.current = { x, y };
+    setPaused(true);
+  }
+  function moveDrag(x, y) {
+    if (!dragStart.current) return;
+    setDrag({ x: x - dragStart.current.x, y: y - dragStart.current.y });
+  }
+  function endDrag() {
+    if (!dragStart.current) {
+      setDrag({ x: 0, y: 0 });
+      setPaused(false);
+      return;
+    }
+    const { x, y } = drag;
+    const absX = Math.abs(x);
+    const absY = Math.abs(y);
+    dragStart.current = null;
+
+    // Determine primary direction
+    if (absY > absX) {
+      // Vertical dominant
+      if (y > 100) {
+        onClose();
+        return;
+      }
+      if (y < -100) {
+        if (onViewProfile) onViewProfile();
+        else setDrag({ x: 0, y: 0 });
+        setPaused(false);
+        return;
+      }
+    } else {
+      // Horizontal dominant
+      if (x < -80 && hasNext) {
+        onNext();
+        return;
+      }
+      if (x > 80 && hasPrev) {
+        onPrev();
+        return;
+      }
+    }
+    setDrag({ x: 0, y: 0 });
+    setPaused(false);
+  }
 
   if (!user) return null;
 
+  // Derive visual transform and opacity based on drag
+  const dragDist = Math.sqrt(drag.x ** 2 + drag.y ** 2);
+  const opacity = Math.max(0.35, 1 - dragDist / 500);
+
   return (
-    <div style={{ position:"fixed", inset:0, background:"#000", zIndex:700, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto" }}>
+    <div
+      onTouchStart={(e) => { const t = e.touches[0]; startDrag(t.clientX, t.clientY); }}
+      onTouchMove={(e) => { const t = e.touches[0]; moveDrag(t.clientX, t.clientY); }}
+      onTouchEnd={endDrag}
+      onMouseDown={(e) => startDrag(e.clientX, e.clientY)}
+      onMouseMove={(e) => { if (dragStart.current) moveDrag(e.clientX, e.clientY); }}
+      onMouseUp={endDrag}
+      onMouseLeave={endDrag}
+      style={{
+        position:"fixed", inset:0, background:"#000", zIndex:700,
+        display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto",
+        transform: `translate(${drag.x}px, ${drag.y}px)`,
+        transition: (drag.x === 0 && drag.y === 0) ? "transform 0.2s" : "none",
+        opacity,
+        paddingTop:"env(safe-area-inset-top)",
+        paddingBottom:"env(safe-area-inset-bottom)",
+        touchAction:"none",
+        userSelect:"none",
+        cursor: dragStart.current ? "grabbing" : "default"
+      }}
+    >
       {/* Progress bar */}
-      <div style={{ display:"flex", gap:3, padding:"10px 12px 0" }}>
+      <div style={{ display:"flex", gap:3, padding:"10px 12px 0", flexShrink:0 }}>
         <div style={{ flex:1, height:3, background:"rgba(255,255,255,0.3)", borderRadius:2, overflow:"hidden" }}>
           <div style={{ height:"100%", width:`${progress}%`, background:"#fff", transition:"width 0.05s linear" }}/>
         </div>
       </div>
 
       {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 14px 10px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 14px 10px", flexShrink:0 }}>
         <Avatar user={user} size={34} C={C}/>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:13, fontWeight:600, color:"#fff" }}>{user.username}</div>
@@ -1089,11 +1173,11 @@ function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, C }) {
         <button onClick={onClose} style={{ background:"none", border:"none", color:"#fff", fontSize:24, cursor:"pointer", padding:4, lineHeight:1 }}>✕</button>
       </div>
 
-      {/* Story content — placeholder (in real app, would be user's latest post image/video) */}
-      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", position:"relative", padding:20 }}>
+      {/* Story content */}
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", position:"relative", padding:20, minHeight:0 }}>
         {/* Tap zones for next/prev */}
-        <div onClick={onPrev} style={{ position:"absolute", left:0, top:0, bottom:0, width:"33%", cursor:"pointer", zIndex:2 }}/>
-        <div onClick={hasNext ? onNext : onClose} style={{ position:"absolute", right:0, top:0, bottom:0, width:"67%", cursor:"pointer", zIndex:2 }}/>
+        <div onClick={(e) => { e.stopPropagation(); if (hasPrev) onPrev(); }} style={{ position:"absolute", left:0, top:0, bottom:0, width:"33%", cursor: hasPrev ? "pointer" : "default", zIndex:2 }}/>
+        <div onClick={(e) => { e.stopPropagation(); hasNext ? onNext() : onClose(); }} style={{ position:"absolute", right:0, top:0, bottom:0, width:"67%", cursor:"pointer", zIndex:2 }}/>
 
         <div style={{ width:"100%", aspectRatio:"9/16", maxHeight:"100%", background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
           <div style={{ fontSize:60, marginBottom:16 }}>{user.avatar}</div>
@@ -1102,16 +1186,19 @@ function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, C }) {
         </div>
       </div>
 
-      {/* Reply footer */}
-      <div style={{ padding:"10px 14px 24px" }}>
+      {/* Reply footer + swipe hints */}
+      <div style={{ padding:"10px 14px 14px", flexShrink:0 }}>
         <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:24, padding:"10px 16px", color:"rgba(255,255,255,0.7)", fontSize:13 }}>
           Reply to {user.username}...
+        </div>
+        <div style={{ textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.4)", marginTop:8 }}>
+          Swipe ← → to navigate · ↑ for profile · ↓ to close
         </div>
       </div>
     </div>
   );
 }
-function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
+const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
   const isOwn = post.userId === currentUserId;
@@ -1179,6 +1266,41 @@ function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick,
         post.imageData
           ? <img src={post.imageData} alt="" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
           : <div style={{ width:"100%", aspectRatio:"1", background:`linear-gradient(135deg,${post.imageColor||"#1e293b"},#0f172a)`, display:"flex", alignItems:"center", justifyContent:"center" }}><span style={{ fontSize:48 }}>📸</span></div>
+      )}
+
+      {post.type === "run" && post.run && (
+        <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#0ea5e9,#0284c7)", borderRadius:12, padding:"18px 18px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+            <span style={{ fontSize:28 }}>🏃</span>
+            <div>
+              <div style={{ fontSize:16, fontWeight:700, color:"#fff" }}>
+                {post.run.distance} {post.run.distUnit}
+              </div>
+              {post.run.route && <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)" }}>📍 {post.run.route}</div>}
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:16 }}>
+            {[
+              ["⏱", `${Math.floor(post.run.durationMins/60) ? Math.floor(post.run.durationMins/60)+"h " : ""}${post.run.durationMins%60}m`, "Time"],
+              post.run.pace && ["⚡", post.run.pace, "Pace"],
+            ].filter(Boolean).map(([icon, val, label]) => (
+              <div key={label} style={{ flex:1, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.7)", marginBottom:2 }}>{icon} {label}</div>
+                <div style={{ fontSize:14, fontWeight:700, color:"#fff", fontFamily:MONO }}>{val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {post.type === "yoga" && post.yoga && (
+        <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#7c3aed,#a78bfa)", borderRadius:12, padding:"18px 18px", display:"flex", alignItems:"center", gap:14 }}>
+          <span style={{ fontSize:40 }}>🧘</span>
+          <div>
+            <div style={{ fontSize:16, fontWeight:700, color:"#fff", textTransform:"capitalize" }}>{post.yoga.style} Yoga</div>
+            <div style={{ fontSize:13, color:"rgba(255,255,255,0.85)", marginTop:2 }}>{post.yoga.durationMins} minutes</div>
+          </div>
+        </div>
       )}
 
       {post.type === "workout" && post.workout && (
@@ -1325,13 +1447,21 @@ function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick,
       )}
     </div>
   );
-}
+});
 
 // ═════════════════════════════════════════════════════════════════════════════
 // WORKOUT TRACKER
 // ═════════════════════════════════════════════════════════════════════════════
+const SESSION_KEY = "ignite_active_session";
+
 function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
-  const [session, setSession] = useState(null);
+  // Restore any in-progress session from storage
+  const [session, setSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SESSION_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [elapsed, setElapsed] = useState(0);
   const [wStart, setWStart] = useState(null);
   const [rest, setRest] = useState(null);
@@ -1339,11 +1469,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
   const [show1RM, setShow1RM] = useState(false);
   const [subTab, setSubTab] = useState("today");
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showAICoach, setShowAICoach] = useState(false);
   const [viewingProgram, setViewingProgram] = useState(null); // program ID
   const [showBuilder, setShowBuilder] = useState(false);
   const [previewDay, setPreviewDay] = useState(null); // {day, programName}
   const elRef = useRef(null);
   const rtRef = useRef(null);
+
+  // Auto-save active session every 5 seconds
+  useEffect(() => {
+    if (!session) { localStorage.removeItem(SESSION_KEY); return; }
+    const id = setInterval(() => {
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
+    }, 5000);
+    return () => clearInterval(id);
+  }, [session]);
 
   const unit = store.unit || "lbs";
   const prog = store.programs?.find(p => p.id === store.activeProgramId);
@@ -1357,10 +1497,59 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
   useEffect(() => {
     clearInterval(rtRef.current);
     if (rest?.running && rest.secs > 0) {
-      rtRef.current = setInterval(() => setRest(p => p?.secs > 0 ? { ...p, secs: p.secs - 1 } : null), 1000);
+      rtRef.current = setInterval(() => setRest(p => {
+        if (!p) return null;
+        if (p.secs > 1) {
+          return { ...p, secs: p.secs - 1 };
+        }
+        // Timer just hit 0 — play ping + fire notification
+        try {
+          // Audio ping via Web Audio API (no file needed)
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (Ctx) {
+            const ac = new Ctx();
+            const now = ac.currentTime;
+            [880, 1320].forEach((freq, i) => {
+              const osc = ac.createOscillator();
+              const gain = ac.createGain();
+              osc.type = "sine";
+              osc.frequency.value = freq;
+              gain.gain.setValueAtTime(0.0001, now + i * 0.2);
+              gain.gain.exponentialRampToValueAtTime(0.35, now + i * 0.2 + 0.02);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.2 + 0.35);
+              osc.connect(gain).connect(ac.destination);
+              osc.start(now + i * 0.2);
+              osc.stop(now + i * 0.2 + 0.4);
+            });
+            setTimeout(() => { try { ac.close(); } catch {} }, 1500);
+          }
+        } catch (e) {}
+        // Vibrate if supported (Android / some iOS)
+        try { if (navigator.vibrate) navigator.vibrate([120, 60, 120]); } catch (e) {}
+        // Fire a notification if the app is hidden / backgrounded
+        try {
+          if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+            new Notification("Rest time's up 🔥", {
+              body: "Get back to it.",
+              icon: "/icon-192.png",
+              tag: "rest-timer",
+            });
+          }
+        } catch (e) {}
+        return null;
+      }), 1000);
     }
     return () => clearInterval(rtRef.current);
   }, [rest?.running]);
+
+  // Request notification permission once on mount (so it's ready when rest timer ends)
+  useEffect(() => {
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        // Don't auto-prompt on load — we'll request when user first starts a rest timer
+      }
+    } catch (e) {}
+  }, []);
 
   function startWorkout(day) {
     const exs = day
@@ -1387,6 +1576,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
       })
     }));
     setRest({ secs: store.defaultRestTime || 120, total: store.defaultRestTime || 120, running: true });
+    // Request notification permission on first rest timer (user gesture required)
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch (e) {}
   }
 
   function updateSet(ei, si, patch) {
@@ -1432,7 +1627,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
           }
         },
         prs: newPRs,
-        workoutDates: { ...p.workoutDates, [dk]: true }
+        workoutDates: { ...p.workoutDates, [dk]: true },
+        // Save per-exercise notes so they show next session
+        exerciseNotes: {
+          ...(p.exerciseNotes || {}),
+          ...Object.fromEntries(
+            session.exercises
+              .filter(ex => ex.name && ex.note?.trim())
+              .map(ex => [ex.name, ex.note.trim()])
+          )
+        }
       };
     });
 
@@ -1454,6 +1658,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
     }
 
     clearInterval(elRef.current);
+    localStorage.removeItem(SESSION_KEY);
     setSession(null);
     setWStart(null);
     setElapsed(0);
@@ -1473,7 +1678,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
 
         {/* Header */}
         <div style={{ background:C.bg, padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <button onClick={() => { clearInterval(elRef.current); setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+          <button onClick={() => { clearInterval(elRef.current); localStorage.removeItem(SESSION_KEY); setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ textAlign:"center" }}>
             <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1 }}>{session.dayName.toUpperCase()}</div>
             <div style={{ fontSize:22, fontWeight:700, color:C.text, fontFamily:MONO }}>{fmtTime(elapsed)}</div>
@@ -1570,6 +1775,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                     }}>− Remove</button>
                   )}
                 </div>
+
+                {/* Exercise note */}
+                {(() => {
+                  const savedNote = store.exerciseNotes?.[ex.name];
+                  return (
+                    <div style={{ padding:"6px 14px 0" }}>
+                      {savedNote && !ex.note && (
+                        <div style={{ fontSize:11, color:C.sub, marginBottom:4, fontStyle:"italic" }}>
+                          💡 Last note: {savedNote}
+                        </div>
+                      )}
+                      <input
+                        value={ex.note || ""}
+                        onChange={e => setSession(p => ({
+                          ...p,
+                          exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, note: e.target.value })
+                        }))}
+                        placeholder="Add note (e.g. 'felt heavy, try 185 next time')"
+                        style={{
+                          width:"100%", background:C.divider, border:"none", borderRadius:8,
+                          padding:"8px 12px", fontSize:13, color:C.text, outline:"none",
+                          fontFamily:F, boxSizing:"border-box"
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -1608,7 +1840,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
   );
 
   return (
-    <div style={{ overflowY:"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:80 }}>
+    <div style={{ overflowY:"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:20 }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
         {[["today","Today"],["programs","Programs"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
@@ -1901,13 +2133,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
 
       {showTemplates && (
         <div onClick={() => setShowTemplates(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowTemplates(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Starter Templates</div>
               <div style={{ width:50 }}/>
             </div>
-            <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
+
+            {/* AI Coach button */}
+            <div style={{ padding:"12px 14px 0" }}>
+              <button onClick={() => { setShowTemplates(false); setShowAICoach(true); }} style={{
+                width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+                border:"none", borderRadius:12, padding:"14px", cursor:"pointer", fontFamily:F,
+                display:"flex", alignItems:"center", gap:12, marginBottom:2
+              }}>
+                <span style={{ fontSize:24 }}>🤖</span>
+                <div style={{ textAlign:"left" }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:"#fff" }}>AI Coach — Build My Program</div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)" }}>Answer 5 questions, get a custom plan</div>
+                </div>
+                <span style={{ marginLeft:"auto", color:"rgba(255,255,255,0.7)", fontSize:18 }}>›</span>
+              </button>
+              <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginBottom:10, marginTop:6 }}>— or pick from templates below —</div>
+            </div>
+
+            <div style={{ overflowY:"auto", flex:1, padding:"0 14px 14px" }}>
               {[
                 { id:"mypp6", name:"No Mercy PPL · 6 Day", icon:"⭐", desc:"Built for you · detailed notes · daily laterals", featured:true, days:[
                   { name:"Push A · Heavy Chest", exercises:[
@@ -2033,14 +2283,24 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
 
       {/* Day Preview modal — shows exercises before starting */}
       {previewDay && (
-        <div onClick={() => setPreviewDay(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-              <button onClick={() => setPreviewDay(null)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{previewDay.day.name}</div>
-              <div style={{ width:50 }}/>
+        <div onClick={() => setPreviewDay(null)} style={{
+          position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200,
+          display:"flex", alignItems:"flex-end", justifyContent:"center"
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background:C.bg, borderRadius:"16px 16px 0 0",
+            width:"100%", maxWidth:480,
+            height:"85dvh",
+            display:"flex", flexDirection:"column",
+            borderTop:`1px solid ${C.border}`,
+            paddingBottom:"env(safe-area-inset-bottom)"
+          }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+              <button onClick={() => setPreviewDay(null)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"left" }}>Cancel</button>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text, flex:1, textAlign:"center" }}>{previewDay.day.name}</div>
+              <div style={{ minWidth:60 }}/>
             </div>
-            <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 6px" }}>
+            <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 6px", WebkitOverflowScrolling:"touch" }}>
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:4 }}>
                 {(previewDay.programName || "").toUpperCase()}
               </div>
@@ -2065,17 +2325,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
                     )}
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
-                      <div style={{ fontSize:11, color:C.sub, marginTop:2, display:"flex", gap:10 }}>
+                      <div style={{ fontSize:11, color:C.sub, marginTop:2, display:"flex", gap:10, flexWrap:"wrap" }}>
                         {ex.reps && <span>{ex.reps} reps</span>}
                         {exInfo?.muscle && <span>· {exInfo.muscle}</span>}
                         {pr && <span style={{ color:C.gold }}>· PR {cvt(pr, "lbs", unit)} {unit}</span>}
                       </div>
+                      {ex.note && <div style={{ fontSize:11, color:C.sub, marginTop:4, fontStyle:"italic" }}>💡 {ex.note}</div>}
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div style={{ padding:"12px 14px 24px", borderTop:`1px solid ${C.divider}` }}>
+            <div style={{ padding:"12px 14px 16px", borderTop:`1px solid ${C.divider}`, flexShrink:0 }}>
               <button onClick={() => {
                 const day = previewDay.day;
                 setPreviewDay(null);
@@ -2089,12 +2350,361 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
           </div>
         </div>
       )}
+
+      {/* AI Coach modal */}
+      {showAICoach && (
+        <AICoachModal
+          C={C}
+          onClose={() => setShowAICoach(false)}
+          onImport={(prog) => {
+            setStore(p => ({ ...p, programs: [...(p.programs||[]), prog], activeProgramId: prog.id }));
+            setShowAICoach(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// GROUPS
+// AI COACH MODAL
+// ═════════════════════════════════════════════════════════════════════════════
+function AICoachModal({ C, onClose, onImport }) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [result, setResult] = useState(null);
+
+  const questions = [
+    {
+      key:"goal", label:"What's your main goal?",
+      options:[
+        { id:"muscle", label:"💪 Build Muscle", desc:"Hypertrophy focus, moderate reps" },
+        { id:"strength", label:"🏋️ Get Stronger", desc:"Heavy compounds, low reps" },
+        { id:"fat_loss", label:"🔥 Lose Fat", desc:"Higher volume, circuits" },
+        { id:"general", label:"⚡ General Fitness", desc:"Balanced, all-around" },
+      ]
+    },
+    {
+      key:"days", label:"How many days can you train per week?",
+      options:[
+        { id:"3", label:"3 Days", desc:"Full body or push/pull split" },
+        { id:"4", label:"4 Days", desc:"Upper/lower or PPL+" },
+        { id:"5", label:"5 Days", desc:"Classic bro split or PPL" },
+        { id:"6", label:"6 Days", desc:"Full PPL double" },
+      ]
+    },
+    {
+      key:"level", label:"What's your experience level?",
+      options:[
+        { id:"beginner", label:"🌱 Beginner", desc:"Under 1 year lifting" },
+        { id:"intermediate", label:"📈 Intermediate", desc:"1–3 years" },
+        { id:"advanced", label:"🔥 Advanced", desc:"3+ years, know your lifts" },
+      ]
+    },
+    {
+      key:"equipment", label:"What equipment do you have?",
+      options:[
+        { id:"full", label:"🏋️ Full Gym", desc:"Barbells, cables, machines" },
+        { id:"home", label:"🏠 Home Gym", desc:"Barbell + bench + rack" },
+        { id:"dumbbells", label:"💪 Dumbbells Only", desc:"Adjustable or fixed set" },
+      ]
+    },
+    {
+      key:"focus", label:"Any specific focus area?",
+      options:[
+        { id:"none", label:"No Preference", desc:"Balanced program" },
+        { id:"upper", label:"💪 Upper Body", desc:"More chest, back, arms" },
+        { id:"legs", label:"🦵 Legs", desc:"Quad/glute/hamstring focus" },
+        { id:"posterior", label:"🍑 Posterior Chain", desc:"Glutes, hamstrings, back" },
+      ]
+    },
+  ];
+
+  // Program library — matched by goal/days/level
+  function buildProgram() {
+    const { goal, days, level, equipment, focus } = answers;
+
+    // Define programs for key combinations
+    const PROGRAMS = {
+      "muscle-6-advanced-full": {
+        name:"No Mercy PPL · Advanced", icon:"🔥",
+        days:[
+          { name:"Push A · Chest Heavy", exercises:[
+            { name:"Barbell Bench Press", reps:"4×5–7", note:"Rest-pause last set" },
+            { name:"Incline DB Press", reps:"3×8–10", note:"2 sec negative" },
+            { name:"Cable Fly (Low-to-High)", reps:"3×12", note:"Drop set" },
+            { name:"DB Shoulder Press", reps:"3×10" },
+            { name:"Lateral Raises", reps:"4×15–20" },
+            { name:"Tricep Rope Pushdown", reps:"3×12–15" },
+          ]},
+          { name:"Pull A · Back Width", exercises:[
+            { name:"Weighted Pull-Ups", reps:"4×6–8", note:"Dead hang" },
+            { name:"Lat Pulldown (wide)", reps:"3×10–12" },
+            { name:"Seated Cable Row", reps:"3×10" },
+            { name:"Face Pulls", reps:"3×15" },
+            { name:"Barbell Curl", reps:"3×10" },
+            { name:"Hammer Curl", reps:"3×12" },
+          ]},
+          { name:"Legs A · Quad", exercises:[
+            { name:"Barbell Back Squat", reps:"4×5–8" },
+            { name:"Leg Press", reps:"3×10–12" },
+            { name:"Leg Extension", reps:"3×12–15", note:"Drop set" },
+            { name:"Romanian Deadlift", reps:"3×10" },
+            { name:"Lying Leg Curl", reps:"3×12" },
+            { name:"Standing Calf Raise", reps:"4×15" },
+          ]},
+          { name:"Push B · Shoulders", exercises:[
+            { name:"Overhead Press", reps:"4×5–7" },
+            { name:"DB Arnold Press", reps:"3×10" },
+            { name:"Lateral Raises", reps:"4×12–15" },
+            { name:"Incline DB Press", reps:"3×10" },
+            { name:"Skull Crushers", reps:"3×10" },
+            { name:"Tricep Rope Pushdown", reps:"3×15" },
+          ]},
+          { name:"Pull B · Thickness", exercises:[
+            { name:"Barbell Row", reps:"4×5–7" },
+            { name:"T-Bar Row", reps:"3×8" },
+            { name:"Single-Arm DB Row", reps:"3×10" },
+            { name:"Rear Delt Fly", reps:"3×15" },
+            { name:"EZ Bar Curl", reps:"3×10" },
+            { name:"Cable Curl", reps:"3×12" },
+          ]},
+          { name:"Legs B · Posterior", exercises:[
+            { name:"Deadlift", reps:"4×4–6" },
+            { name:"Romanian Deadlift", reps:"3×8" },
+            { name:"Bulgarian Split Squat", reps:"3×10" },
+            { name:"Hip Thrust", reps:"3×10" },
+            { name:"Seated Leg Curl", reps:"3×12" },
+            { name:"Seated Calf Raise", reps:"3×15" },
+          ]},
+        ]
+      },
+      "muscle-4-intermediate-full": {
+        name:"Upper/Lower Hypertrophy · 4 Day", icon:"💪",
+        days:[
+          { name:"Upper A · Push Focus", exercises:[
+            { name:"Barbell Bench Press", reps:"4×8–10" },
+            { name:"Overhead Press", reps:"3×10" },
+            { name:"Incline DB Press", reps:"3×10–12" },
+            { name:"Lateral Raises", reps:"3×15" },
+            { name:"Tricep Rope Pushdown", reps:"3×12" },
+          ]},
+          { name:"Lower A · Quad Focus", exercises:[
+            { name:"Barbell Back Squat", reps:"4×8" },
+            { name:"Leg Press", reps:"3×12" },
+            { name:"Leg Extension", reps:"3×15" },
+            { name:"Romanian Deadlift", reps:"3×10" },
+            { name:"Standing Calf Raise", reps:"4×15" },
+          ]},
+          { name:"Upper B · Pull Focus", exercises:[
+            { name:"Barbell Row", reps:"4×8" },
+            { name:"Pull-Ups", reps:"3×8–10" },
+            { name:"Seated Cable Row", reps:"3×12" },
+            { name:"Face Pulls", reps:"3×15" },
+            { name:"Barbell Curl", reps:"3×10" },
+            { name:"Hammer Curl", reps:"3×12" },
+          ]},
+          { name:"Lower B · Posterior", exercises:[
+            { name:"Deadlift", reps:"4×5" },
+            { name:"Bulgarian Split Squat", reps:"3×10" },
+            { name:"Hip Thrust", reps:"3×12" },
+            { name:"Lying Leg Curl", reps:"3×12" },
+            { name:"Seated Calf Raise", reps:"3×15" },
+          ]},
+        ]
+      },
+      "strength-3-intermediate-full": {
+        name:"3-Day Powerbuilding", icon:"🏋️",
+        days:[
+          { name:"Day A · Squat + Push", exercises:[
+            { name:"Barbell Back Squat", reps:"5×5", note:"Work up to heavy 5" },
+            { name:"Barbell Bench Press", reps:"4×5" },
+            { name:"Overhead Press", reps:"3×8" },
+            { name:"Lateral Raises", reps:"3×15" },
+            { name:"Tricep Rope Pushdown", reps:"3×12" },
+          ]},
+          { name:"Day B · Deadlift + Pull", exercises:[
+            { name:"Deadlift", reps:"3×3", note:"Heavy triples" },
+            { name:"Barbell Row", reps:"4×5" },
+            { name:"Pull-Ups", reps:"3×8" },
+            { name:"Barbell Curl", reps:"3×10" },
+          ]},
+          { name:"Day C · Volume", exercises:[
+            { name:"Barbell Back Squat", reps:"3×8", note:"Lighter, more volume" },
+            { name:"Barbell Bench Press", reps:"3×8" },
+            { name:"Barbell Row", reps:"3×8" },
+            { name:"Overhead Press", reps:"3×8" },
+            { name:"Romanian Deadlift", reps:"3×10" },
+          ]},
+        ]
+      },
+      "general-3-beginner-full": {
+        name:"Beginner Full Body · 3 Day", icon:"🌱",
+        days:[
+          { name:"Full Body A", exercises:[
+            { name:"Barbell Back Squat", reps:"3×8" },
+            { name:"Barbell Bench Press", reps:"3×8" },
+            { name:"Barbell Row", reps:"3×8" },
+            { name:"Overhead Press", reps:"3×10" },
+            { name:"Standing Calf Raise", reps:"3×15" },
+          ]},
+          { name:"Full Body B", exercises:[
+            { name:"Deadlift", reps:"3×5" },
+            { name:"Incline DB Press", reps:"3×10" },
+            { name:"Pull-Ups", reps:"3×6–8" },
+            { name:"Lateral Raises", reps:"3×12" },
+            { name:"Barbell Curl", reps:"3×10" },
+          ]},
+          { name:"Full Body C", exercises:[
+            { name:"Leg Press", reps:"3×10" },
+            { name:"Barbell Bench Press", reps:"3×10" },
+            { name:"Seated Cable Row", reps:"3×10" },
+            { name:"Overhead Press", reps:"3×10" },
+            { name:"Romanian Deadlift", reps:"3×10" },
+          ]},
+        ]
+      },
+      "fat_loss-4-intermediate-full": {
+        name:"Fat Loss · 4 Day Circuit", icon:"🔥",
+        days:[
+          { name:"Upper Circuit A", exercises:[
+            { name:"Barbell Bench Press", reps:"4×12" },
+            { name:"Barbell Row", reps:"4×12" },
+            { name:"Overhead Press", reps:"3×12" },
+            { name:"Pull-Ups", reps:"3×10" },
+            { name:"Lateral Raises", reps:"3×15" },
+            { name:"Tricep Rope Pushdown", reps:"3×15" },
+            { name:"Barbell Curl", reps:"3×15" },
+          ]},
+          { name:"Lower Circuit A", exercises:[
+            { name:"Barbell Back Squat", reps:"4×12" },
+            { name:"Romanian Deadlift", reps:"3×12" },
+            { name:"Leg Press", reps:"3×15" },
+            { name:"Lying Leg Curl", reps:"3×15" },
+            { name:"Standing Calf Raise", reps:"4×20" },
+          ]},
+          { name:"Upper Circuit B", exercises:[
+            { name:"Incline DB Press", reps:"4×12" },
+            { name:"Single-Arm DB Row", reps:"4×12" },
+            { name:"Lateral Raises", reps:"4×15" },
+            { name:"Face Pulls", reps:"3×15" },
+            { name:"Hammer Curl", reps:"3×15" },
+            { name:"Skull Crushers", reps:"3×12" },
+          ]},
+          { name:"Lower Circuit B", exercises:[
+            { name:"Deadlift", reps:"4×8" },
+            { name:"Bulgarian Split Squat", reps:"3×12" },
+            { name:"Hip Thrust", reps:"3×15" },
+            { name:"Leg Extension", reps:"3×15" },
+            { name:"Seated Calf Raise", reps:"4×20" },
+          ]},
+        ]
+      },
+    };
+
+    // Build lookup key, fallback gracefully
+    const key = `${goal}-${days}-${level}-${equipment}`;
+    let selected = PROGRAMS[key];
+
+    // Fallback chain
+    if (!selected) {
+      // Try without level
+      const keyNoLevel = `${goal}-${days}-intermediate-${equipment}`;
+      selected = PROGRAMS[keyNoLevel];
+    }
+    if (!selected) {
+      // Fallback to general
+      selected = PROGRAMS["general-3-beginner-full"];
+    }
+
+    // Convert to program format
+    return {
+      id: uid(),
+      name: selected.name,
+      days: selected.days.map(d => ({
+        ...d, id: uid(),
+        exercises: d.exercises.map(ex =>
+          typeof ex === "string"
+            ? { name:ex, reps:"8–12", note:"" }
+            : { name:ex.name, reps:ex.reps||"8–12", note:ex.note||"" }
+        )
+      }))
+    };
+  }
+
+  const q = questions[step];
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:250, display:"flex", alignItems:"flex-end" }}>
+      <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+        {/* Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
+          <button onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
+            {step > 0 ? "‹ Back" : "Cancel"}
+          </button>
+          <div style={{ fontSize:12, color:C.sub }}>Step {step + 1} of {questions.length}</div>
+          <div style={{ width:60 }}/>
+        </div>
+
+        {result ? (
+          // Show result
+          <div style={{ overflowY:"auto", flex:1, padding:20 }}>
+            <div style={{ textAlign:"center", marginBottom:20 }}>
+              <div style={{ fontSize:36, marginBottom:8 }}>🤖</div>
+              <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Your Program is Ready</div>
+              <div style={{ fontSize:13, color:C.sub, marginTop:4 }}>{result.name}</div>
+            </div>
+            {result.days.map((d, i) => (
+              <div key={i} style={{ padding:"10px 14px", background:C.divider, borderRadius:10, marginBottom:8 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{d.name}</div>
+                <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{d.exercises.length} exercises</div>
+              </div>
+            ))}
+            <button onClick={() => onImport(result)} style={{
+              width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+              color:"#fff", border:"none", borderRadius:12, padding:"14px",
+              fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, marginTop:12
+            }}>Import & Set Active</button>
+          </div>
+        ) : (
+          // Show question
+          <div style={{ overflowY:"auto", flex:1, padding:20 }}>
+            {/* Progress bar */}
+            <div style={{ background:C.divider, borderRadius:4, height:4, marginBottom:20, overflow:"hidden" }}>
+              <div style={{ width:`${((step) / questions.length) * 100}%`, height:"100%", background:C.accent, transition:"width 0.3s" }}/>
+            </div>
+            <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:16 }}>{q.label}</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {q.options.map(opt => (
+                <button key={opt.id} onClick={() => {
+                  const newAnswers = { ...answers, [q.key]: opt.id };
+                  setAnswers(newAnswers);
+                  if (step < questions.length - 1) {
+                    setStep(s => s + 1);
+                  } else {
+                    // All answers collected — build program
+                    setResult(buildProgram());
+                  }
+                }} style={{
+                  background:answers[q.key] === opt.id ? C.accentSoft : C.divider,
+                  border:`1.5px solid ${answers[q.key] === opt.id ? C.accent : "transparent"}`,
+                  borderRadius:12, padding:"14px 16px", cursor:"pointer",
+                  display:"flex", alignItems:"center", gap:12, textAlign:"left", fontFamily:F
+                }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{opt.label}</div>
+                    <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{opt.desc}</div>
+                  </div>
+                  {answers[q.key] === opt.id && <span style={{ color:C.accent, fontSize:18 }}>✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 // ═════════════════════════════════════════════════════════════════════════════
 function GroupsScreen({ store, setStore, currentUserId, C }) {
   const [showCreate, setShowCreate] = useState(false);
@@ -2117,7 +2727,7 @@ function GroupsScreen({ store, setStore, currentUserId, C }) {
     const notMembers = store.users.filter(u => !g.members.includes(u.id) && u.id !== currentUserId);
 
     return (
-      <div style={{ overflowY:"auto", flex:1, paddingBottom:80 }}>
+      <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
         <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:12 }}>
           <button onClick={() => setActiveGroup(null)} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer" }}>‹</button>
           <div style={{ flex:1 }}>
@@ -2179,7 +2789,7 @@ function GroupsScreen({ store, setStore, currentUserId, C }) {
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, padding:"16px 14px 80px" }}>
+    <div style={{ overflowY:"auto", flex:1, padding:"16px 14px 20px" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
         <div style={{ fontSize:22, fontWeight:700, color:C.text }}>Groups</div>
         <button onClick={() => setShowCreate(true)} style={{
@@ -2271,7 +2881,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:80 }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
       <div style={{ padding:"10px 14px 6px", position:"relative" }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:26, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
           <circle cx="11" cy="11" r="7"/>
@@ -2383,7 +2993,7 @@ function ChallengesScreen({ store, setStore, currentUserId, C }) {
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, padding:"16px 14px 80px" }}>
+    <div style={{ overflowY:"auto", flex:1, padding:"16px 14px 20px" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
         <div style={{ fontSize:22, fontWeight:700, color:C.text }}>Challenges</div>
         <button onClick={() => setShowCreate(true)} style={{
@@ -2510,7 +3120,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:80 }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
       <div style={{ padding:"12px 14px" }}>
         {onBack && (
           <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", marginBottom:10, display:"block" }}>‹</button>
@@ -2735,10 +3345,21 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 // NEW POST MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 function NewPostModal({ C, onClose, onPost }) {
+  const [postKind, setPostKind] = useState("photo"); // "photo" | "run" | "yoga"
   const [caption, setCaption] = useState("");
   const [img, setImg] = useState(null);
   const [isFC, setIsFC] = useState(false);
   const [loc, setLoc] = useState("");
+  // Run fields
+  const [runDist, setRunDist] = useState("");
+  const [runDistUnit, setRunDistUnit] = useState("mi");
+  const [runHrs, setRunHrs] = useState("");
+  const [runMins, setRunMins] = useState("");
+  const [runSecs, setRunSecs] = useState("");
+  const [runRoute, setRunRoute] = useState("");
+  // Yoga fields
+  const [yogaMins, setYogaMins] = useState("");
+  const [yogaType, setYogaType] = useState("vinyasa");
   const fileRef = useRef(null);
 
   function handleFile(f) {
@@ -2748,56 +3369,155 @@ function NewPostModal({ C, onClose, onPost }) {
     r.readAsDataURL(f);
   }
 
+  function calcPace() {
+    const dist = parseFloat(runDist);
+    const totalMins = (parseInt(runHrs)||0)*60 + (parseInt(runMins)||0) + (parseInt(runSecs)||0)/60;
+    if (!dist || !totalMins) return null;
+    const paceMin = Math.floor(totalMins / dist);
+    const paceSec = Math.round(((totalMins / dist) - paceMin) * 60);
+    return `${paceMin}:${String(paceSec).padStart(2,"0")} /${runDistUnit}`;
+  }
+
+  function canShare() {
+    if (postKind === "photo") return !!(caption || img);
+    if (postKind === "run") return !!(runDist && (runMins || runHrs));
+    if (postKind === "yoga") return !!yogaMins;
+    return false;
+  }
+
+  function handleShare() {
+    if (!canShare()) return;
+    if (postKind === "photo") {
+      onPost({ type: isFC ? "form_check" : "photo", caption, imageData: img, location: loc });
+    } else if (postKind === "run") {
+      const totalMins = (parseInt(runHrs)||0)*60 + (parseInt(runMins)||0) + (parseInt(runSecs)||0)/60;
+      onPost({ type: "run", caption, location: loc || runRoute, run: {
+        distance: parseFloat(runDist), distUnit: runDistUnit,
+        durationMins: Math.round(totalMins), pace: calcPace(), route: runRoute
+      }});
+    } else if (postKind === "yoga") {
+      onPost({ type: "yoga", caption, yoga: { durationMins: parseInt(yogaMins), style: yogaType }});
+    }
+    onClose();
+  }
+
+  const kinds = [
+    { id:"photo", label:"📸 Photo" },
+    { id:"run", label:"🏃 Run" },
+    { id:"yoga", label:"🧘 Yoga" },
+  ];
+
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"92vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+      <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"92dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
           <button onClick={onClose} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ fontSize:15, fontWeight:600, color:C.text }}>New Post</div>
-          <button onClick={() => {
-            if (caption || img) {
-              onPost({ type: isFC ? "form_check" : "photo", caption, imageData: img, location: loc });
-              onClose();
-            }
-          }} style={{
-            fontSize:14, fontWeight:600, color:C.accent,
-            background:"none", border:"none", cursor:"pointer", fontFamily:F
-          }}>Share</button>
+          <button onClick={handleShare} style={{ fontSize:14, fontWeight:600, color: canShare() ? C.accent : C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Share</button>
         </div>
+
+        {/* Kind selector tabs */}
+        <div style={{ display:"flex", gap:6, padding:"10px 14px", borderBottom:`1px solid ${C.divider}` }}>
+          {kinds.map(k => (
+            <button key={k.id} onClick={() => setPostKind(k.id)} style={{
+              padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600,
+              background: postKind === k.id ? C.accent : C.divider,
+              color: postKind === k.id ? "#fff" : C.sub,
+              border:"none", cursor:"pointer", fontFamily:F
+            }}>{k.label}</button>
+          ))}
+        </div>
+
         <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
-          <div onClick={() => fileRef.current?.click()} style={{
-            border:`1.5px dashed ${C.border}`, borderRadius:10, minHeight:150,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            flexDirection:"column", gap:8, cursor:"pointer", marginBottom:12, overflow:"hidden"
-          }}>
-            {img
-              ? <img src={img} alt="" style={{ width:"100%", maxHeight:270, objectFit:"cover" }}/>
-              : <>
-                  <span style={{ fontSize:28 }}>📸</span>
-                  <span style={{ fontSize:13, color:C.sub }}>Tap to add photo or video</span>
-                  <span style={{ fontSize:10, color:C.muted }}>Up to 90 seconds</span>
-                </>
-            }
-          </div>
-          <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display:"none" }} onChange={e => handleFile(e.target.files[0])}/>
-          <button onClick={() => setIsFC(!isFC)} style={{
-            marginBottom:10, padding:"6px 12px",
-            background:isFC?C.accent:"transparent",
-            color:isFC?"#fff":C.sub,
-            border:`1px solid ${isFC?C.accent:C.border}`, borderRadius:20,
-            fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-          }}>🎥 Form Check</button>
-          <input
-            value={loc} onChange={e => setLoc(e.target.value)}
-            placeholder="📍 Add location"
-            style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:12, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}
-          />
-          <textarea
-            value={caption} onChange={e => setCaption(e.target.value)}
-            placeholder="Write a caption..."
-            rows={3}
-            style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}
-          />
+          {postKind === "photo" && (<>
+            <div onClick={() => fileRef.current?.click()} style={{
+              border:`1.5px dashed ${C.border}`, borderRadius:10, minHeight:150,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              flexDirection:"column", gap:8, cursor:"pointer", marginBottom:12, overflow:"hidden"
+            }}>
+              {img
+                ? <img src={img} alt="" style={{ width:"100%", maxHeight:270, objectFit:"cover" }}/>
+                : <><span style={{ fontSize:28 }}>📸</span><span style={{ fontSize:13, color:C.sub }}>Tap to add photo or video</span></>
+              }
+            </div>
+            <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display:"none" }} onChange={e => handleFile(e.target.files[0])}/>
+            <button onClick={() => setIsFC(!isFC)} style={{
+              marginBottom:10, padding:"6px 12px",
+              background:isFC?C.accent:"transparent", color:isFC?"#fff":C.sub,
+              border:`1px solid ${isFC?C.accent:C.border}`, borderRadius:20,
+              fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
+            }}>🎥 Form Check</button>
+            <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Add location"
+              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
+            <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="Write a caption..." rows={3}
+              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+          </>)}
+
+          {postKind === "run" && (<>
+            <div style={{ fontSize:13, fontWeight:600, color:C.sub, letterSpacing:0.5, marginBottom:12 }}>RUN DETAILS</div>
+            {/* Distance */}
+            <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:11, color:C.sub, marginBottom:4 }}>Distance</div>
+                <input value={runDist} onChange={e => setRunDist(e.target.value)} placeholder="0.0" type="number" inputMode="decimal"
+                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 12px", fontSize:16, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+              </div>
+              <div style={{ flexShrink:0, marginTop:18 }}>
+                <button onClick={() => setRunDistUnit(u => u === "mi" ? "km" : "mi")} style={{
+                  background:C.divider, border:"none", borderRadius:8, padding:"11px 14px",
+                  fontSize:13, fontWeight:700, color:C.accent, cursor:"pointer", fontFamily:F
+                }}>{runDistUnit}</button>
+              </div>
+            </div>
+            {/* Time */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:4 }}>Time (h : m : s)</div>
+              <div style={{ display:"flex", gap:6 }}>
+                {[["Hours", runHrs, setRunHrs], ["Mins", runMins, setRunMins], ["Secs", runSecs, setRunSecs]].map(([label, val, set]) => (
+                  <div key={label} style={{ flex:1 }}>
+                    <input value={val} onChange={e => set(e.target.value)} placeholder="0" type="number" inputMode="numeric"
+                      style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 8px", fontSize:16, color:C.text, outline:"none", textAlign:"center", boxSizing:"border-box", fontFamily:F }}/>
+                    <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginTop:3 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Auto pace */}
+            {calcPace() && (
+              <div style={{ background:C.accentSoft, borderRadius:8, padding:"10px 14px", marginBottom:12, display:"flex", justifyContent:"space-between" }}>
+                <span style={{ fontSize:13, color:C.sub }}>Avg Pace</span>
+                <span style={{ fontSize:13, fontWeight:700, color:C.accent }}>{calcPace()}</span>
+              </div>
+            )}
+            <input value={runRoute} onChange={e => setRunRoute(e.target.value)} placeholder="📍 Route name (e.g. 'Around the park')"
+              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
+            <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="How did it feel?" rows={3}
+              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+          </>)}
+
+          {postKind === "yoga" && (<>
+            <div style={{ fontSize:13, fontWeight:600, color:C.sub, letterSpacing:0.5, marginBottom:12 }}>YOGA SESSION</div>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:4 }}>Duration (minutes)</div>
+              <input value={yogaMins} onChange={e => setYogaMins(e.target.value)} placeholder="45" type="number" inputMode="numeric"
+                style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 12px", fontSize:16, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+            </div>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:8 }}>Style</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {["Vinyasa","Yin","Power","Hatha","Restorative","Hot","Ashtanga"].map(s => (
+                  <button key={s} onClick={() => setYogaType(s.toLowerCase())} style={{
+                    padding:"6px 14px", borderRadius:20, fontSize:12, fontWeight:600,
+                    background: yogaType === s.toLowerCase() ? C.accent : C.divider,
+                    color: yogaType === s.toLowerCase() ? "#fff" : C.text,
+                    border:"none", cursor:"pointer", fontFamily:F
+                  }}>{s}</button>
+                ))}
+              </div>
+            </div>
+            <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="How was the session?" rows={3}
+              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+          </>)}
         </div>
       </div>
     </div>
@@ -2838,6 +3558,11 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
   const pullScrollRef = useRef(null);
+
+  // Horizontal swipe navigation between tabs + edge-swipe back
+  const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
+  const [swipeX, setSwipeX] = useState(0);
+  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
 
   useEffect(() => saveStore(store), [store]);
 
@@ -2941,7 +3666,61 @@ export default function App() {
   }
 
   return (
-    <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <div
+      onTouchStart={(e) => {
+        // Don't intercept if a modal is open or in a workout session
+        if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null || showOnboarding || profileUserId) {
+          swipeStart.current = { x: 0, y: 0, t: 0, type: null };
+          return;
+        }
+        const t = e.touches[0];
+        swipeStart.current = {
+          x: t.clientX,
+          y: t.clientY,
+          t: Date.now(),
+          type: t.clientX < 25 ? "edge-back" : "horizontal"
+        };
+      }}
+      onTouchMove={(e) => {
+        if (!swipeStart.current.type) return;
+        const t = e.touches[0];
+        const dx = t.clientX - swipeStart.current.x;
+        const dy = t.clientY - swipeStart.current.y;
+        // If vertical movement dominates, cancel (let scroll happen)
+        if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+          swipeStart.current.type = null;
+          setSwipeX(0);
+          return;
+        }
+        if (swipeStart.current.type === "edge-back") {
+          // Only allow rightward drag from edge
+          if (dx > 0) setSwipeX(Math.min(dx, 200));
+        } else if (swipeStart.current.type === "horizontal") {
+          // Only engage if drag is clearly horizontal and > 20px
+          if (Math.abs(dx) > 20) setSwipeX(dx);
+        }
+      }}
+      onTouchEnd={() => {
+        const { type } = swipeStart.current;
+        const dx = swipeX;
+        swipeStart.current = { x: 0, y: 0, t: 0, type: null };
+        setSwipeX(0);
+        if (!type) return;
+        if (type === "edge-back" && dx > 60) {
+          // Go back: close any overlay state, or previous tab
+          if (profileUserId) { setProfileUserId(null); return; }
+          const idx = TABS_ORDER.indexOf(tab);
+          if (idx > 0) setTab(TABS_ORDER[idx - 1]);
+          return;
+        }
+        if (type === "horizontal") {
+          const idx = TABS_ORDER.indexOf(tab);
+          if (dx < -80 && idx < TABS_ORDER.length - 1) setTab(TABS_ORDER[idx + 1]);
+          else if (dx > 80 && idx > 0) setTab(TABS_ORDER[idx - 1]);
+        }
+      }}
+      style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
+    >
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
 
       {/* TOP BAR — Instagram thin, minimal, SVG icons */}
@@ -3103,7 +3882,7 @@ export default function App() {
         {tab === "challenges" && <ChallengesScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C}/>}
         {tab === "groups" && <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C}/>}
         {tab === "activity" && (
-          <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 80px" }}>
+          <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 20px" }}>
             <div style={{ fontSize:22, fontWeight:700, marginBottom:14, color:C.text }}>Activity</div>
             {(() => {
               const n = [];
@@ -3230,6 +4009,7 @@ export default function App() {
             onPrev={() => setStoryIndex(i => Math.max(0, i - 1))}
             hasNext={storyIndex < storyUsers.length - 1}
             hasPrev={storyIndex > 0}
+            onViewProfile={() => { const uid = currentStoryUser.id; setStoryIndex(null); setProfileUserId(uid); }}
             C={C}
           />
         );
