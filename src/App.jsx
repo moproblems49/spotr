@@ -3769,7 +3769,22 @@ export default function App() {
   const token = session?.access_token || null;
   const currentUserId = session?.user?.id || null;
 
-  // ── Restore/refresh session on mount ────────────────────────────
+  // ── All UI state — must be at top level before any returns ──
+  const [tab, setTab] = useState("feed");
+  const [showNewPost, setShowNewPost] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
+  const [editingPost, setEditingPost] = useState(null);
+  const [prModal, setPrModal] = useState(null);
+  const [showWrapped, setShowWrapped] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [storyIndex, setStoryIndex] = useState(null);
+  const [pullDist, setPullDist] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartY = useRef(0);
+  const pullScrollRef = useRef(null);
+  const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
+  const [swipeX, setSwipeX] = useState(0);
+  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
   useEffect(() => {
     async function init() {
       const saved = loadSession();
@@ -4091,9 +4106,9 @@ export default function App() {
     if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
   }, []);
 
-  const C = THEMES[store.theme || "light"];
+  // C needs to be available for loading screens
+  const C = THEMES[(store.theme || "light")];
   const unit = store.unit || "lbs";
-  const me = store.users.find(u => u.id === currentUserId);
 
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
@@ -4120,23 +4135,18 @@ export default function App() {
     );
   }
 
-  // ── UI state (must come after auth guards) ────────────────────
-  const [tab, setTab] = useState("feed");
-  const [showNewPost, setShowNewPost] = useState(false);
-  const [profileUserId, setProfileUserId] = useState(null);
-  const [editingPost, setEditingPost] = useState(null);
-  const [prModal, setPrModal] = useState(null);
-  const [showWrapped, setShowWrapped] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [storyIndex, setStoryIndex] = useState(null);
-  const [pullDist, setPullDist] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const touchStartY = useRef(0);
-  const pullScrollRef = useRef(null);
-  const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
-  const [swipeX, setSwipeX] = useState(0);
-  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
+  // ── me is only valid after dbReady ────────────────────────────
+  const me = store.users.find(u => u.id === currentUserId) || {
+    id: currentUserId,
+    username: session?.user?.email?.split("@")[0] || "you",
+    name: "You",
+    bio: "",
+    avatar: "💪",
+    followers: [],
+    following: [],
+  };
 
+  // ── me, following, feed computed after dbReady guard ────────────
   const following = me?.following || [];
   const streak = calcStreak(store.workoutDates || {});
   const feedPosts = (store.posts || [])
