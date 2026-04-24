@@ -200,6 +200,35 @@ const THEMES = {
 const F = "-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
 const MONO = "'SF Mono',Menlo,monospace";
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let _setToast = null;
+function toast(msg, type = "info") {
+  if (_setToast) _setToast({ msg, type, id: Date.now() });
+}
+function ToastHost() {
+  const [t, setT] = useState(null);
+  _setToast = setT;
+  useEffect(() => {
+    if (!t) return;
+    const id = setTimeout(() => setT(null), 2800);
+    return () => clearTimeout(id);
+  }, [t?.id]);
+  if (!t) return null;
+  const bg = t.type === "error" ? "#ef4444" : t.type === "success" ? "#22c55e" : "#1d4ed8";
+  return (
+    <div style={{
+      position:"fixed", bottom:90, left:"50%", transform:"translateX(-50%)",
+      background:bg, color:"#fff", borderRadius:20, padding:"10px 20px",
+      fontSize:13, fontWeight:600, zIndex:999, whiteSpace:"nowrap",
+      boxShadow:"0 4px 20px rgba(0,0,0,0.2)", fontFamily:F,
+      animation:"fadeInUp 0.2s ease"
+    }}>
+      {t.msg}
+      <style>{`@keyframes fadeInUp{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+    </div>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SET TYPES
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1088,12 +1117,12 @@ function ProgramBuilder({ C, onCancel, onSave }) {
   }
   function save() {
     if (!name.trim()) {
-      alert("Please give your program a name.");
+      toast("Give your program a name.", "error");
       return;
     }
     const validDays = days.filter(d => d.exercises.length > 0);
     if (validDays.length === 0) {
-      alert("Add at least one exercise to one day.");
+      toast("Add at least one exercise to one day.", "error");
       return;
     }
     onSave({
@@ -1486,7 +1515,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
               navigator.share({ title: "Ignite", text: shareText, url: shareUrl }).catch(() => {});
             } else if (navigator.clipboard) {
               navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => {
-                alert("Link copied to clipboard!");
+                toast("Link copied! 🔗", "success");
               }).catch(() => {});
             }
           }}
@@ -1562,7 +1591,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 // ═════════════════════════════════════════════════════════════════════════════
 const SESSION_KEY = "ignite_active_session";
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHit, C }) {
   // Restore any in-progress session from storage
   const [session, setSession] = useState(() => {
     try {
@@ -1765,6 +1794,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
       });
     }
 
+    // Save to Supabase
+    onSaveWorkout({
+      dayName: session.dayName,
+      exercises: session.exercises.filter(ex => ex.name),
+      duration: elapsed,
+      unit,
+      note: session.workoutNote || "",
+      prs: newPRs,
+    });
+
     clearInterval(elRef.current);
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
@@ -1772,6 +1811,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onPRHit, C }) {
     setElapsed(0);
     setRest(null);
     setShowFinish(false);
+    toast(share ? "Workout posted! 🔥" : "Workout saved! 💪", "success");
     if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
   }
 
@@ -3409,6 +3449,22 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
               <div style={{ fontSize:11, color:C.muted, textAlign:"center", padding:"14px 0" }}>
                 More settings coming soon
               </div>
+
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ACCOUNT</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ fontSize:14, color:C.text }}>Signed in as</div>
+                  <div style={{ fontSize:12, color:C.sub }}>{session?.user?.email || ""}</div>
+                </div>
+                <button onClick={() => { setShowSettings(false); setTimeout(handleSignOutFromSettings, 200); }} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px",
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:"#ef4444", fontWeight:600 }}>Sign Out</div>
+                  <span style={{ fontSize:16, color:"#ef4444" }}>→</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -4187,7 +4243,7 @@ export default function App() {
 
   // Add sign out to settings
   function handleSignOutFromSettings() {
-    if (window.confirm("Sign out?")) handleSignOut();
+    handleSignOut();
   }
 
   if (prModal) return <PRModal pr={prModal} unit={unit} onClose={() => setPrModal(null)}/>;
@@ -4274,6 +4330,7 @@ export default function App() {
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
     >
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
+      <ToastHost/>
 
       {/* TOP BAR — Instagram thin, minimal, SVG icons */}
       <div style={{
@@ -4420,9 +4477,17 @@ export default function App() {
             <div style={{ paddingTop:4 }}>
               {feedPosts.length === 0 && (
                 <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
-                  <div style={{ fontSize:32, marginBottom:12 }}>🏋️</div>
-                  <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>Nothing here yet</div>
-                  <div style={{ fontSize:13 }}>Follow athletes or post your first workout</div>
+                  <div style={{ fontSize:48, marginBottom:12 }}>🔥</div>
+                  <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Your feed is empty</div>
+                  <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>
+                    Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
+                  </div>
+                  <button onClick={() => setTab("tracker")} style={{
+                    background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+                    color:"#fff", border:"none", borderRadius:10,
+                    padding:"11px 22px", fontSize:13, fontWeight:700,
+                    cursor:"pointer", fontFamily:F
+                  }}>Start a Workout</button>
                 </div>
               )}
               {feedPosts.map((post, i) => (
@@ -4439,11 +4504,6 @@ export default function App() {
                     onEdit={setEditingPost}
                     onDelete={handleDelete}
                   />
-                  {(i + 1) % 5 === 0 && i < feedPosts.length - 1 && (
-                    <div style={{ padding:"12px 14px", textAlign:"center", borderBottom:`1px solid ${C.divider}`, marginBottom:16, opacity:0.4 }}>
-                      <div style={{ fontSize:9, color:C.muted, letterSpacing:2 }}>SPONSORED · AdMob</div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -4455,7 +4515,7 @@ export default function App() {
               {/* WORKOUT */}
               <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
                 {(tab === "tracker" || tabIdx === 1 || Math.abs(tabIdx - 1) <= 1) && (
-                  <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onPRHit={setPrModal} C={C}/>
+                  <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onPRHit={setPrModal} C={C}/>
                 )}
               </div>
 
