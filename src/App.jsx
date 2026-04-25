@@ -5309,11 +5309,11 @@ export default function App() {
                 </div>
                 {storyUsers.map((u, i) => (
                   <div key={u.id} onClick={() => setStoryIndex(i)} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
-                    <StoryRing onClick={() => setStoryIndex(i)}>
+                    <div style={{ padding:2, borderRadius:"50%", background:"linear-gradient(135deg,#f97316,#ea580c,#be123c)", cursor:"pointer" }}>
                       <div style={{ background:C.bg, padding:2, borderRadius:"50%" }}>
                         <Avatar user={u} size={56} C={C}/>
                       </div>
-                    </StoryRing>
+                    </div>
                     <div style={{ fontSize:11, color:C.text, maxWidth:60, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.username}</div>
                   </div>
                 ))}
