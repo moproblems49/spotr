@@ -268,126 +268,33 @@ const MONO = "'SF Mono',Menlo,monospace";
 
 // ─── Muscle group icon (replaces emoji) ──────────────────────────────────────
 function MuscleIcon({ muscle = "", size = 28, C }) {
-  const bg = C?.divider || "#f0f0f0";
-  const stroke = C?.accent || "#2563eb";
-  const s = size;
-  const m = (muscle || "").toLowerCase();
-
-  // Chest
-  if (m.includes("chest")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M6 16 C6 11 10 8 14 8 C18 8 22 11 22 16" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M6 16 C6 19 8 21 10 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M22 16 C22 19 20 21 18 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
-  );
-  // Back
-  if (m.includes("back") || m.includes("lat") || m.includes("rear delt")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M14 7 L14 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M8 10 C8 10 11 12 14 12 C17 12 20 10 20 10" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M9 15 C9 15 11 17 14 17 C17 17 19 15 19 15" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
-  );
-  // Shoulders
-  if (m.includes("shoulder") || m.includes("delt")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <circle cx="14" cy="10" r="3" stroke={stroke} strokeWidth="1.8"/>
-      <path d="M6 20 C6 15 10 13 14 13 C18 13 22 15 22 20" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
-  );
-  // Biceps
-  if (m.includes("bicep")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M9 20 L9 14 C9 10 12 8 14 8 C17 8 19 10 19 12 C19 15 16 16 14 15" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-  // Triceps
-  if (m.includes("tricep")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M10 8 C10 8 8 13 8 16 C8 19 10 20 14 20 C18 20 20 19 20 16 C20 13 18 8 18 8" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-  // Quads / legs
-  if (m.includes("quad") || m.includes("leg") && !m.includes("curl")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M11 7 L10 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M17 7 L18 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M10 14 C10 14 12 16 14 16 C16 16 18 14 18 14" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
-  );
-  // Hamstrings
-  if (m.includes("hamstring") || m.includes("curl")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M11 7 C11 7 10 14 11 18 C12 21 14 21 14 21 C14 21 16 21 17 18 C18 14 17 7 17 7" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-  // Glutes
-  if (m.includes("glute")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M7 20 C7 14 10 9 14 9 C18 9 21 14 21 20" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M14 9 L14 20" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeDasharray="1.5 2"/>
-    </svg>
-  );
-  // Calves
-  if (m.includes("calf") || m.includes("calve")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M12 7 C12 7 10 13 11 17 C12 20 13 21 14 21 C15 21 16 20 17 17 C18 13 16 7 16 7" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-  // Core / abs
-  if (m.includes("core") || m.includes("abs") || m.includes("ab")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <rect x="10" y="8" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
-      <rect x="14.5" y="8" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
-      <rect x="10" y="12.5" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
-      <rect x="14.5" y="12.5" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
-      <rect x="10" y="17" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
-      <rect x="14.5" y="17" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
-    </svg>
-  );
-  // Full body
-  if (m.includes("full")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <circle cx="14" cy="8" r="2.5" stroke={stroke} strokeWidth="1.5"/>
-      <path d="M14 11 L14 18 M10 13 L18 13 M11 18 L13 23 M17 18 L15 23" stroke={stroke} strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-  );
-  // Traps
-  if (m.includes("trap")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M8 20 L14 8 L20 20 Z" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-  // Forearms
-  if (m.includes("forearm")) return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <path d="M10 8 C10 8 8 14 9 18 C10 21 13 21 14 20 C15 21 18 21 19 18 C20 14 18 8 18 8" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-  // Default dumbbell
+  const m = (muscle || "").toLowerCase().split("/")[0].trim();
+  const colors = {
+    chest:"#ef4444", back:"#3b82f6", shoulders:"#8b5cf6", biceps:"#f59e0b",
+    triceps:"#f97316", quads:"#10b981", hamstrings:"#10b981", glutes:"#ec4899",
+    calves:"#06b6d4", core:"#84cc16", traps:"#6366f1", forearms:"#f59e0b",
+    "full body":"#2563eb", "rear delts":"#8b5cf6", "shoulders/traps":"#8b5cf6",
+    "chest/tris":"#ef4444", "quads/glutes":"#10b981",
+  };
+  const color = colors[m] || C?.accent || "#2563eb";
+  const abbrevs = {
+    chest:"CHE", back:"BCK", shoulders:"SHO", biceps:"BIC", triceps:"TRI",
+    quads:"QUA", hamstrings:"HAM", glutes:"GLU", calves:"CAL", core:"COR",
+    traps:"TRP", forearms:"FOR", "full body":"FULL", "rear delts":"RD",
+    "chest/tris":"CT", "quads/glutes":"QG", "shoulders/traps":"ST",
+  };
+  const label = abbrevs[m] || m.substring(0,3).toUpperCase();
   return (
-    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill={bg}/>
-      <rect x="5" y="12" width="4" height="4" rx="1.5" stroke={stroke} strokeWidth="1.5"/>
-      <rect x="19" y="12" width="4" height="4" rx="1.5" stroke={stroke} strokeWidth="1.5"/>
-      <line x1="9" y1="14" x2="19" y2="14" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
+    <div style={{
+      width:size, height:size, borderRadius:Math.round(size*0.25),
+      background:color+"18", display:"flex", alignItems:"center",
+      justifyContent:"center", flexShrink:0, border:`1.5px solid ${color}55`
+    }}>
+      <span style={{ fontSize:Math.round(size*0.32), fontWeight:800, color, fontFamily:"monospace", lineHeight:1, letterSpacing:-0.5 }}>{label}</span>
+    </div>
   );
 }
+
 let _setToast = null;
 function toast(msg, type = "info") {
   if (_setToast) _setToast({ msg, type, id: Date.now() });
@@ -2092,14 +1999,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0 }}>
                     <MuscleIcon muscle={exInfo?.muscle || ""} size={32} C={C}/>
                   </button>
-                  <ExerciseInput
-                    value={ex.name}
-                    onChange={v => setSession(p => ({
-                      ...p,
-                      exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, name: v })
-                    }))}
-                    C={C}
-                  />
+                  <div style={{ flex:1, display:"flex", alignItems:"center", gap:6 }}>
+                    <ExerciseInput
+                      value={ex.name}
+                      onChange={v => setSession(p => ({
+                        ...p,
+                        exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, name: v })
+                      }))}
+                      C={C}
+                    />
+                    {ex.name && (
+                      <button onClick={() => setViewingExercise(ex.name)} style={{
+                        background:"none", border:"none", cursor:"pointer", padding:"4px 6px",
+                        fontSize:11, color:C.accent, fontWeight:600, fontFamily:F, flexShrink:0, whiteSpace:"nowrap"
+                      }}>How to ›</button>
+                    )}
+                  </div>
                   <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_, i) => i !== ei) }))} style={{
                     color:C.sub, background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"4px", flexShrink:0
                   }}>🗑</button>
@@ -3238,80 +3153,122 @@ function getCues(name, muscle) {
 }
 
 // ── Animated SVG exercise demos ───────────────────────────────────────────────
+// ExerciseDB name normalizer — maps our names to ExerciseDB search terms
+function toExerciseDBQuery(name) {
+  return name
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")           // remove parentheses content
+    .replace(/barbell /g, "")
+    .replace(/dumbbell /g, "")
+    .replace(/db /g, "")
+    .replace(/ez bar /g, "")
+    .replace(/cable /g, "")
+    .replace(/machine /g, "")
+    .replace(/weighted /g, "")
+    .replace(/\bpress\b/, "press")
+    .replace(/low-to-high/g, "")
+    .replace(/high-to-low/g, "")
+    .replace(/single-arm /g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function ExerciseAnimation({ name, muscle, C }) {
   const [gifUrl, setGifUrl] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const CACHE_KEY = "ignite_exercise_gifs";
+  const [muscles, setMuscles] = useState(null);
+  const CACHE_KEY = "ignite_exercise_gifs_v2";
 
   useEffect(() => {
     let cancelled = false;
     async function fetchGif() {
       setLoading(true);
-      setError(false);
-      // Check localStorage cache first
+      // Check cache
       try {
         const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
         if (cache[name]) {
-          setGifUrl(cache[name]);
+          setGifUrl(cache[name].gif);
+          setMuscles(cache[name].muscles);
           setLoading(false);
           return;
         }
       } catch {}
 
       try {
-        const q = encodeURIComponent(name.toLowerCase().replace(/[()]/g, "").trim());
+        const q = encodeURIComponent(toExerciseDBQuery(name));
         const res = await fetch(
-          `https://exercisedb.p.rapidapi.com/exercises/name/${q}?limit=1&offset=0`,
+          `https://exercisedb.p.rapidapi.com/exercises/name/${q}?limit=5&offset=0`,
           { headers: {
             "x-rapidapi-key": "f317d32637mshd756e2856fa6208p16919cjsnf9bff66528f4",
             "x-rapidapi-host": "exercisedb.p.rapidapi.com"
           }}
         );
-        if (!res.ok) throw new Error("API error");
+        if (!res.ok) throw new Error("API " + res.status);
         const data = await res.json();
-        const gif = data?.[0]?.gifUrl || null;
+        // Pick best match — prefer exact name match, then first result
+        const best = data?.find(e =>
+          e.name?.toLowerCase().includes(toExerciseDBQuery(name).split(" ")[0])
+        ) || data?.[0];
+        const gif = best?.gifUrl || null;
+        const mGroups = best ? {
+          target: best.target,
+          secondary: best.secondaryMuscles || [],
+          bodyPart: best.bodyPart
+        } : null;
         if (!cancelled) {
           setGifUrl(gif);
+          setMuscles(mGroups);
           setLoading(false);
           if (gif) {
             try {
               const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-              cache[name] = gif;
-              // Keep cache under 100 entries
+              cache[name] = { gif, muscles: mGroups };
               const keys = Object.keys(cache);
-              if (keys.length > 100) delete cache[keys[0]];
+              if (keys.length > 150) delete cache[keys[0]];
               localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
             } catch {}
           }
         }
       } catch (e) {
-        if (!cancelled) { setError(true); setLoading(false); }
+        if (!cancelled) setLoading(false);
       }
     }
     fetchGif();
     return () => { cancelled = true; };
   }, [name]);
 
-  const W = 200, H = 200;
-
   if (loading) return (
-    <div style={{ width:W, height:H, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12 }}>
-      <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${C.divider}`, borderTopColor:C.accent, animation:"spotrSpin 0.8s linear infinite" }}/>
+    <div style={{ width:"100%", height:220, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12 }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${C.divider}`, borderTopColor:C.accent, animation:"spotrSpin 0.8s linear infinite", margin:"0 auto 10px" }}/>
+        <div style={{ fontSize:11, color:C.sub }}>Loading demo...</div>
+      </div>
     </div>
   );
 
-  if (gifUrl) return (
-    <div style={{ width:W, height:W, borderRadius:12, overflow:"hidden", background:C.divider }}>
-      <img src={gifUrl} alt={name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-    </div>
-  );
-
-  // Fallback SVG if API fails or no result
   return (
-    <div style={{ width:W, height:H, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12, flexDirection:"column", gap:8 }}>
-      <MuscleIcon muscle={muscle} size={48} C={C}/>
-      <div style={{ fontSize:11, color:C.sub, textAlign:"center", padding:"0 16px" }}>{name}</div>
+    <div style={{ width:"100%", borderRadius:12, overflow:"hidden", background:C.divider }}>
+      {gifUrl ? (
+        <img src={gifUrl} alt={name} style={{ width:"100%", maxHeight:280, objectFit:"contain", display:"block", background:"#000" }}/>
+      ) : (
+        <div style={{ height:160, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10 }}>
+          <div style={{ fontSize:11, color:C.sub }}>No demo available</div>
+        </div>
+      )}
+      {muscles && (
+        <div style={{ padding:"10px 14px", display:"flex", gap:8, flexWrap:"wrap" }}>
+          {muscles.target && (
+            <span style={{ background:C.accent, color:"#fff", borderRadius:12, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
+              🎯 {muscles.target}
+            </span>
+          )}
+          {(muscles.secondary || []).slice(0,3).map(m => (
+            <span key={m} style={{ background:C.divider, color:C.sub, borderRadius:12, padding:"3px 10px", fontSize:11 }}>
+              {m}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -4495,6 +4452,9 @@ export default function App() {
 
   // ── All UI state — must be at top level before any returns ──
   const [tab, setTab] = useState("feed");
+  const [prevTab, setPrevTab] = useState(null);
+  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
+  function switchTab(t) { setPrevTab(tab); setTab(t); }
   const [showNewPost, setShowNewPost] = useState(false);
   const [profileUserId, setProfileUserId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
@@ -5020,7 +4980,7 @@ export default function App() {
         if (type === "edge-back" && dx > 60) {
           if (profileUserId) { setProfileUserId(null); return; }
           const idx = TABS_ORDER.indexOf(tab);
-          if (idx > 0) setTab(TABS_ORDER[idx - 1]);
+          if (idx > 0) switchTab(TABS_ORDER[idx - 1]);
         }
       }}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
@@ -5078,16 +5038,30 @@ export default function App() {
         </div>
       </div>
 
-      {/* CONTENT — single tab visible at a time */}
-      <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative" }}>
-        {/* Edge-back drag indicator overlay */}
-        {swipeStart.current.type === "edge-back" && swipeX > 0 && (
-          <div style={{
-            position:"absolute", left:0, top:0, bottom:0, width:Math.min(swipeX, 200),
-            background:"linear-gradient(to right, rgba(0,0,0,0.08), transparent)",
-            zIndex:50, pointerEvents:"none"
-          }}/>
-        )}
+      {/* CONTENT — single tab visible at a time with slide transition */}
+      {(() => {
+        const prevIdx = TABS_ORDER.indexOf(prevTab);
+        const curIdx = TABS_ORDER.indexOf(tab);
+        const dir = prevIdx < curIdx ? "left" : "right";
+        const animKey = tab + prevTab;
+        return (
+          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative" }}>
+            <style>{`
+              @keyframes slideInLeft { from { transform:translateX(30px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+              @keyframes slideInRight { from { transform:translateX(-30px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+            `}</style>
+            {/* Edge-back drag indicator */}
+            {swipeStart.current.type === "edge-back" && swipeX > 0 && (
+              <div style={{
+                position:"absolute", left:0, top:0, bottom:0, width:Math.min(swipeX, 200),
+                background:"linear-gradient(to right, rgba(0,0,0,0.08), transparent)",
+                zIndex:50, pointerEvents:"none"
+              }}/>
+            )}
+            <div key={animKey} style={{
+              flex:1, display:"flex", flexDirection:"column", overflow:"hidden",
+              animation: prevTab ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.22s ease` : "none"
+            }}>
 
         {tab === "feed" && (
           <div
@@ -5175,7 +5149,7 @@ export default function App() {
                     <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>
                       Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
                     </div>
-                    <button onClick={() => setTab("tracker")} style={{
+                    <button onClick={() => switchTab("tracker")} style={{
                       background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
                       color:"#fff", border:"none", borderRadius:10,
                       padding:"11px 22px", fontSize:13, fontWeight:700,
@@ -5224,7 +5198,10 @@ export default function App() {
             onUserClick={setProfileUserId}
           />
         )}
-      </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* BOTTOM NAV — Instagram: clean SVG icons with filled/outlined states */}
       <div style={{
@@ -5280,7 +5257,7 @@ export default function App() {
           return (
             <button
               key={id}
-              onClick={() => setTab(id)}
+              onClick={() => switchTab(id)}
               aria-label={label}
               style={{
                 flex:1, padding:"12px 4px 18px", background:"none", border:"none",
