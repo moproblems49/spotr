@@ -2146,6 +2146,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     }}>− Remove</button>
                   )}
                 </div>
+
+                {/* Per-exercise note */}
+                <div style={{ padding:"8px 14px 0" }}>
+                  {(() => {
+                    const savedNote = store.exerciseNotes?.[ex.name];
+                    return (savedNote && !ex.note) ? (
+                      <div style={{ fontSize:11, color:C.sub, marginBottom:4, fontStyle:"italic" }}>
+                        💡 Last note: {savedNote}
+                      </div>
+                    ) : null;
+                  })()}
+                  <input
+                    value={ex.note || ""}
+                    onChange={e => setSession(p => ({
+                      ...p,
+                      exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, note: e.target.value })
+                    }))}
+                    placeholder="📝 Note for this exercise (felt heavy, try 185 next time...)"
+                    style={{
+                      width:"100%", background:C.divider, border:"none", borderRadius:8,
+                      padding:"8px 12px", fontSize:12, color:C.text, outline:"none",
+                      fontFamily:F, boxSizing:"border-box"
+                    }}
+                  />
+                </div>
               </div>
             );
           })}
@@ -4794,6 +4819,7 @@ export default function App() {
         user_id: currentUserId,
         type: postData.type || "photo",
         caption: postData.caption || "",
+        image_url: postData.imageData || null,
         location: postData.location || null,
         workout: postData.workout || null,
         run: postData.run || null,
@@ -4809,7 +4835,8 @@ export default function App() {
       if (newPost) {
         const appPost = {
           id: newPost.id, userId: newPost.user_id, type: newPost.type,
-          caption: newPost.caption || "", imageData: postData.imageData || null,
+          caption: newPost.caption || "",
+          imageData: newPost.image_url || postData.imageData || null,
           location: newPost.location, workout: newPost.workout,
           run: newPost.run, yoga: newPost.yoga, achievement: newPost.achievement,
           unit: newPost.unit, isPR: newPost.is_pr,
@@ -4818,7 +4845,7 @@ export default function App() {
         };
         setStore(prev => ({ ...prev, posts: [appPost, ...prev.posts] }));
       }
-    } catch (e) { console.error("post error:", e); }
+    } catch (e) { console.error("post error:", e); toast("Couldn't save post", "error"); }
   }
 
   async function handleKudos(postId) {
@@ -5111,11 +5138,15 @@ export default function App() {
         }
         const t = e.touches[0];
         const isEdge = t.clientX < 28;
+        if (!isEdge) {
+          swipeStart.current = { x: 0, y: 0, t: 0, type: null };
+          return;
+        }
         swipeStart.current = {
           x: t.clientX,
           y: t.clientY,
           t: Date.now(),
-          type: isEdge ? "edge-back" : "horizontal"
+          type: "edge-back"
         };
       }}
       onTouchMove={(e) => {
@@ -5123,22 +5154,13 @@ export default function App() {
         const t = e.touches[0];
         const dx = t.clientX - swipeStart.current.x;
         const dy = t.clientY - swipeStart.current.y;
-        // If vertical movement dominates early, cancel horizontal swipe
         if (Math.abs(dy) > Math.abs(dx) * 1.5 && Math.abs(dx) < 15) {
           swipeStart.current.type = null;
           setSwipeX(0);
           return;
         }
-        if (swipeStart.current.type === "edge-back") {
-          if (dx > 0) setSwipeX(Math.min(dx, 300));
-        } else if (swipeStart.current.type === "horizontal") {
-          // Let finger drag the tab view — no threshold, starts immediately
-          const idx = TABS_ORDER.indexOf(tab);
-          const canRight = idx < TABS_ORDER.length - 1;
-          const canLeft = idx > 0;
-          if ((dx < 0 && canRight) || (dx > 0 && canLeft)) {
-            setSwipeX(dx);
-          }
+        if (swipeStart.current.type === "edge-back" && dx > 0) {
+          setSwipeX(Math.min(dx, 300));
         }
       }}
       onTouchEnd={() => {
@@ -5149,17 +5171,9 @@ export default function App() {
         if (!type) return;
 
         if (type === "edge-back" && dx > 60) {
-          // Back priority stack: profile first, then previous tab
           if (profileUserId) { setProfileUserId(null); return; }
           const idx = TABS_ORDER.indexOf(tab);
           if (idx > 0) setTab(TABS_ORDER[idx - 1]);
-          return;
-        }
-
-        if (type === "horizontal") {
-          const idx = TABS_ORDER.indexOf(tab);
-          if (dx < -80 && idx < TABS_ORDER.length - 1) setTab(TABS_ORDER[idx + 1]);
-          else if (dx > 80 && idx > 0) setTab(TABS_ORDER[idx - 1]);
         }
       }}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
@@ -5217,35 +5231,18 @@ export default function App() {
         </div>
       </div>
 
-      {/* CONTENT — sliding tab strip */}
-      {(() => {
-        const tabIdx = TABS_ORDER.indexOf(tab);
-        const n = TABS_ORDER.length;
-        // Each panel is (100/n)% of the strip width
-        // Base: show panel at tabIdx → translate strip left by tabIdx panels
-        // dragVw: finger position in vw, clamped to adjacent panels only
-        const isHoriz = swipeStart.current.type === "horizontal";
-        const dragPx = isHoriz ? swipeX : 0;
-        // Convert px drag to % of the full strip width
-        // Strip is n*100vw wide, so 1vw = (1/n)% of strip width
-        const dragPct = (dragPx / window.innerWidth) * (100 / n);
-        const basePct = -(tabIdx * 100) / n;
-        const totalPct = basePct + dragPct;
-        const isAnimating = swipeX === 0;
+      {/* CONTENT — single tab visible at a time */}
+      <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative" }}>
+        {/* Edge-back drag indicator overlay */}
+        {swipeStart.current.type === "edge-back" && swipeX > 0 && (
+          <div style={{
+            position:"absolute", left:0, top:0, bottom:0, width:Math.min(swipeX, 200),
+            background:"linear-gradient(to right, rgba(0,0,0,0.08), transparent)",
+            zIndex:50, pointerEvents:"none"
+          }}/>
+        )}
 
-        return (
-          <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
-            <div style={{
-              display:"flex",
-              flexDirection:"row",
-              width:`${n * 100}%`,
-              height:"100%",
-              transform:`translateX(${totalPct}%)`,
-              transition: isAnimating ? "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
-            }}>
-              {/* FEED */}
-              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-        {tab === "feed" ? (
+        {tab === "feed" && (
           <div
             ref={pullScrollRef}
             onTouchStart={(e) => {
@@ -5259,7 +5256,6 @@ export default function App() {
               if (touchStartY.current === 0 || isRefreshing) return;
               const dist = e.touches[0].clientY - touchStartY.current;
               if (dist > 0 && pullScrollRef.current?.scrollTop === 0) {
-                // Only allow pull down when at top, with resistance
                 setPullDist(Math.min(dist * 0.5, 100));
               }
             }}
@@ -5279,111 +5275,109 @@ export default function App() {
             }}
             style={{ overflowY:"auto", flex:1, position:"relative" }}
           >
-            {/* Pull-to-refresh indicator */}
             <div style={{
               position:"absolute", top:0, left:0, right:0,
-              height: pullDist, display:"flex", alignItems:"center", justifyContent:"center",
-              pointerEvents:"none", transition: isRefreshing ? "height 0.2s" : "none",
-              zIndex:5
+              height:pullDist, display:"flex", alignItems:"center", justifyContent:"center",
+              transition: pullDist === 0 ? "height 0.2s" : "none",
+              pointerEvents:"none"
             }}>
               {pullDist > 0 && (
                 <div style={{
-                  width:24, height:24, border:`2.5px solid ${C.divider}`,
-                  borderTopColor: isRefreshing || pullDist > 60 ? C.accent : C.sub,
-                  borderRadius:"50%",
-                  transform: isRefreshing ? "none" : `rotate(${pullDist * 4}deg)`,
+                  width:32, height:32, borderRadius:"50%",
+                  border:`2.5px solid ${C.divider}`,
+                  borderTopColor: C.accent,
                   animation: isRefreshing ? "spotrSpin 0.8s linear infinite" : "none",
-                  opacity: Math.min(pullDist / 40, 1),
+                  transform: `rotate(${pullDist * 3}deg)`
                 }}/>
               )}
             </div>
             <style>{`@keyframes spotrSpin { to { transform: rotate(360deg); } }`}</style>
 
-            <div style={{ transform:`translateY(${pullDist}px)`, transition: pullDist === 0 || isRefreshing ? "transform 0.2s" : "none" }}>
-            {/* Stories strip */}
-            <div style={{ display:"flex", gap:12, overflowX:"auto", padding:"12px 14px", paddingBottom:12, scrollbarWidth:"none", borderBottom:`1px solid ${C.divider}` }}>
-              {[me, ...store.users.filter(u => following.includes(u.id))].filter(Boolean).map((u, i) => (
-                <div key={u.id} onClick={() => { if (i > 0) setStoryIndex(i - 1); }} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0, cursor:i>0?"pointer":"default" }}>
-                  <Avatar user={u} size={56} C={C} ring={i > 0}/>
-                  <span style={{ fontSize:11, color:C.text, whiteSpace:"nowrap" }}>
-                    {i === 0 ? "Your story" : u.username}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Posts */}
-            <div style={{ paddingTop:4 }}>
-              {feedPosts.length === 0 && (
-                <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
-                  <div style={{ fontSize:48, marginBottom:12 }}>🔥</div>
-                  <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Your feed is empty</div>
-                  <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>
-                    Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
+            <div style={{ paddingTop: pullDist }}>
+              {/* Stories */}
+              <div style={{ display:"flex", gap:14, padding:"12px 14px", overflowX:"auto", overflowY:"hidden", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
+                  <div onClick={() => setShowNewPost(true)} style={{
+                    width:60, height:60, borderRadius:"50%",
+                    background:C.divider,
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, cursor:"pointer", position:"relative"
+                  }}>
+                    {me?.avatar || "💪"}
+                    <div style={{ position:"absolute", bottom:-2, right:-2, width:22, height:22, borderRadius:"50%", background:C.accent, color:"#fff", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
                   </div>
-                  <button onClick={() => setTab("tracker")} style={{
-                    background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-                    color:"#fff", border:"none", borderRadius:10,
-                    padding:"11px 22px", fontSize:13, fontWeight:700,
-                    cursor:"pointer", fontFamily:F
-                  }}>Start a Workout</button>
+                  <div style={{ fontSize:11, color:C.text }}>Your story</div>
                 </div>
-              )}
-              {feedPosts.map((post, i) => (
-                <div key={post.id}>
-                  <PostCard
-                    post={post}
-                    store={store}
-                    currentUserId={currentUserId}
-                    displayUnit={unit}
-                    C={C}
-                    onKudos={handleKudos}
-                    onComment={handleComment}
-                    onUserClick={setProfileUserId}
-                    onEdit={setEditingPost}
-                    onDelete={handleDelete}
-                  />
-                </div>
-              ))}
-            </div>
-            </div>
-          </div>
-        ) : <div style={{ flex:1 }}/>}
+                {storyUsers.map((u, i) => (
+                  <div key={u.id} onClick={() => setStoryIndex(i)} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
+                    <StoryRing onClick={() => setStoryIndex(i)}>
+                      <div style={{ background:C.bg, padding:2, borderRadius:"50%" }}>
+                        <Avatar user={u} size={56} C={C}/>
+                      </div>
+                    </StoryRing>
+                    <div style={{ fontSize:11, color:C.text, maxWidth:60, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.username}</div>
+                  </div>
+                ))}
               </div>
 
-              {/* WORKOUT */}
-              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-                {(tab === "tracker" || tabIdx === 1 || Math.abs(tabIdx - 1) <= 1) && (
-                  <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}/>
+              {/* Posts */}
+              <div style={{ paddingTop:4 }}>
+                {feedPosts.length === 0 && (
+                  <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
+                    <div style={{ fontSize:48, marginBottom:12 }}>🔥</div>
+                    <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Your feed is empty</div>
+                    <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>
+                      Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
+                    </div>
+                    <button onClick={() => setTab("tracker")} style={{
+                      background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+                      color:"#fff", border:"none", borderRadius:10,
+                      padding:"11px 22px", fontSize:13, fontWeight:700,
+                      cursor:"pointer", fontFamily:F
+                    }}>Start a Workout</button>
+                  </div>
                 )}
-              </div>
-
-              {/* DISCOVER */}
-              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-                {(tab === "discover" || Math.abs(tabIdx - 2) <= 1) && (
-                  <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C}/>
-                )}
-              </div>
-
-              {/* PROFILE */}
-              <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-                {(tab === "profile" || tabIdx === 3) && (
-                  <ProfileScreen
-                    userId={currentUserId}
-                    store={store}
-                    setStore={setStore}
-                    currentUserId={currentUserId}
-                    displayUnit={unit}
-                    C={C}
-                    onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
-                    onUserClick={setProfileUserId}
-                  />
-                )}
+                {feedPosts.map((post, i) => (
+                  <div key={post.id}>
+                    <PostCard
+                      post={post}
+                      store={store}
+                      currentUserId={currentUserId}
+                      displayUnit={unit}
+                      C={C}
+                      onKudos={handleKudos}
+                      onComment={handleComment}
+                      onUserClick={setProfileUserId}
+                      onEdit={setEditingPost}
+                      onDelete={handleDelete}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-        );
-      })()}
+        )}
+
+        {tab === "tracker" && (
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}/>
+        )}
+
+        {tab === "discover" && (
+          <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C}/>
+        )}
+
+        {tab === "profile" && (
+          <ProfileScreen
+            userId={currentUserId}
+            store={store}
+            setStore={setStore}
+            currentUserId={currentUserId}
+            displayUnit={unit}
+            C={C}
+            onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
+            onUserClick={setProfileUserId}
+          />
+        )}
+      </div>
 
       {/* BOTTOM NAV — Instagram: clean SVG icons with filled/outlined states */}
       <div style={{
