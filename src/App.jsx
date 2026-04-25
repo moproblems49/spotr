@@ -3239,238 +3239,83 @@ function getCues(name, muscle) {
 
 // ── Animated SVG exercise demos ───────────────────────────────────────────────
 function ExerciseAnimation({ name, muscle, C }) {
-  const [frame, setFrame] = useState(0);
-  const m = (muscle||"").toLowerCase();
+  const [gifUrl, setGifUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const CACHE_KEY = "ignite_exercise_gifs";
 
   useEffect(() => {
-    const id = setInterval(() => setFrame(f => (f + 1) % 60), 33); // ~30fps
-    return () => clearInterval(id);
-  }, []);
+    let cancelled = false;
+    async function fetchGif() {
+      setLoading(true);
+      setError(false);
+      // Check localStorage cache first
+      try {
+        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+        if (cache[name]) {
+          setGifUrl(cache[name]);
+          setLoading(false);
+          return;
+        }
+      } catch {}
 
-  // Shared drawing helpers
-  const t = (frame / 60) * Math.PI * 2; // full cycle
-  const ease = (x) => Math.sin(x * Math.PI); // 0→1→0
-  const lerp = (a, b, x) => a + (b - a) * x;
+      try {
+        const q = encodeURIComponent(name.toLowerCase().replace(/[()]/g, "").trim());
+        const res = await fetch(
+          `https://exercisedb.p.rapidapi.com/exercises/name/${q}?limit=1&offset=0`,
+          { headers: {
+            "x-rapidapi-key": "f317d32637mshd756e2856fa6208p16919cjsnf9bff66528f4",
+            "x-rapidapi-host": "exercisedb.p.rapidapi.com"
+          }}
+        );
+        if (!res.ok) throw new Error("API error");
+        const data = await res.json();
+        const gif = data?.[0]?.gifUrl || null;
+        if (!cancelled) {
+          setGifUrl(gif);
+          setLoading(false);
+          if (gif) {
+            try {
+              const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+              cache[name] = gif;
+              // Keep cache under 100 entries
+              const keys = Object.keys(cache);
+              if (keys.length > 100) delete cache[keys[0]];
+              localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+            } catch {}
+          }
+        }
+      } catch (e) {
+        if (!cancelled) { setError(true); setLoading(false); }
+      }
+    }
+    fetchGif();
+    return () => { cancelled = true; };
+  }, [name]);
 
-  // Determine which animation to show
-  const isChest = m.includes("chest") || name.toLowerCase().includes("bench") || name.toLowerCase().includes("fly") || name.toLowerCase().includes("dip") || name.toLowerCase().includes("push-up");
-  const isBack = m.includes("back") || name.toLowerCase().includes("row") || name.toLowerCase().includes("pull-up") || name.toLowerCase().includes("pulldown");
-  const isShoulder = m.includes("shoulder") || m.includes("delt") || name.toLowerCase().includes("press") && m.includes("shoulder") || name.toLowerCase().includes("lateral") || name.toLowerCase().includes("overhead");
-  const isLeg = m.includes("quad") || m.includes("hamstring") || m.includes("glute") || m.includes("calf") || name.toLowerCase().includes("squat") || name.toLowerCase().includes("deadlift") || name.toLowerCase().includes("lunge");
-  const isBicep = m.includes("bicep") || name.toLowerCase().includes("curl");
-  const isTricep = m.includes("tricep") || name.toLowerCase().includes("pushdown") || name.toLowerCase().includes("extension");
+  const W = 200, H = 200;
 
-  const progress = ease(frame / 60); // 0→1→0 smooth cycle
-  const BG = C.divider;
-  const SK = C.accent;
-  const BODY = C.sub;
-  const W = 200, H = 160;
+  if (loading) return (
+    <div style={{ width:W, height:H, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12 }}>
+      <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${C.divider}`, borderTopColor:C.accent, animation:"spotrSpin 0.8s linear infinite" }}/>
+    </div>
+  );
 
-  if (isChest) {
-    // Bench press animation
-    const elbowY = lerp(90, 110, progress);
-    const barY = lerp(82, 102, progress);
-    return (
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-        <rect width={W} height={H} rx="12" fill={BG}/>
-        {/* Bench */}
-        <rect x="30" y="115" width="140" height="8" rx="4" fill={BODY} opacity="0.3"/>
-        {/* Body lying */}
-        <ellipse cx="100" cy="113" rx="55" ry="8" fill={BODY} opacity="0.15"/>
-        {/* Head */}
-        <circle cx="148" cy="108" r="9" fill={BODY} opacity="0.5"/>
-        {/* Torso */}
-        <rect x="55" y="104" width="88" height="12" rx="6" fill={BODY} opacity="0.4"/>
-        {/* Left arm */}
-        <line x1="70" y1="108" x2="65" y2={elbowY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.5"/>
-        <line x1="65" y1={elbowY} x2="70" y2={barY} stroke={BODY} strokeWidth="4" strokeLinecap="round" opacity="0.5"/>
-        {/* Right arm */}
-        <line x1="130" y1="108" x2="135" y2={elbowY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.5"/>
-        <line x1="135" y1={elbowY} x2="130" y2={barY} stroke={BODY} strokeWidth="4" strokeLinecap="round" opacity="0.5"/>
-        {/* Bar */}
-        <line x1="45" y1={barY} x2="155" y2={barY} stroke={SK} strokeWidth="5" strokeLinecap="round"/>
-        {/* Plates */}
-        <rect x="38" y={barY - 9} width="7" height="18" rx="2" fill={SK} opacity="0.7"/>
-        <rect x="155" y={barY - 9} width="7" height="18" rx="2" fill={SK} opacity="0.7"/>
-        {/* Muscle highlight */}
-        <ellipse cx="100" cy="107" rx="20" ry="6" fill={SK} opacity={0.15 + progress * 0.2}/>
-        {/* Label */}
-        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>CHEST PRESS</text>
-      </svg>
-    );
-  }
+  if (gifUrl) return (
+    <div style={{ width:W, height:W, borderRadius:12, overflow:"hidden", background:C.divider }}>
+      <img src={gifUrl} alt={name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+    </div>
+  );
 
-  if (isBicep) {
-    // Curl animation
-    const angle = lerp(160, 50, progress); // degrees
-    const rad = angle * Math.PI / 180;
-    const elbowX = 100, elbowY = 95;
-    const forearmLen = 45;
-    const handX = elbowX + Math.cos(rad) * forearmLen;
-    const handY = elbowY - Math.abs(Math.sin(rad)) * forearmLen;
-    return (
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-        <rect width={W} height={H} rx="12" fill={BG}/>
-        {/* Standing figure outline */}
-        <circle cx="100" cy="30" r="12" fill={BODY} opacity="0.4"/>
-        <line x1="100" y1="42" x2="100" y2="95" stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.3"/>
-        {/* Legs */}
-        <line x1="100" y1="95" x2="85" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
-        <line x1="100" y1="95" x2="115" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
-        {/* Upper arm fixed */}
-        <line x1="100" y1="58" x2={elbowX} y2={elbowY} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
-        {/* Forearm moving */}
-        <line x1={elbowX} y1={elbowY} x2={handX} y2={handY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
-        {/* Dumbbell */}
-        <rect x={handX-12} y={handY-4} width="24" height="8" rx="4" fill={SK}/>
-        <rect x={handX-16} y={handY-6} width="5" height="12" rx="2" fill={SK} opacity="0.7"/>
-        <rect x={handX+11} y={handY-6} width="5" height="12" rx="2" fill={SK} opacity="0.7"/>
-        {/* Bicep highlight */}
-        <ellipse cx={lerp(100,elbowX,0.4)} cy={lerp(58,elbowY,0.4)} rx="8" ry="5"
-          fill={SK} opacity={0.1 + progress * 0.35}
-          transform={`rotate(-70,${lerp(100,elbowX,0.4)},${lerp(58,elbowY,0.4)})`}/>
-        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>BICEP CURL</text>
-      </svg>
-    );
-  }
-
-  if (isShoulder) {
-    // Lateral raise animation
-    const armAngle = lerp(15, 80, progress);
-    const rad = armAngle * Math.PI / 180;
-    const armLen = 40;
-    const lHandX = 100 - Math.cos(rad) * armLen;
-    const lHandY = 80 - Math.sin(rad) * armLen + 10;
-    const rHandX = 100 + Math.cos(rad) * armLen;
-    const rHandY = 80 - Math.sin(rad) * armLen + 10;
-    return (
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-        <rect width={W} height={H} rx="12" fill={BG}/>
-        <circle cx="100" cy="28" r="12" fill={BODY} opacity="0.4"/>
-        <line x1="100" y1="40" x2="100" y2="95" stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.3"/>
-        <line x1="100" y1="95" x2="87" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
-        <line x1="100" y1="95" x2="113" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
-        {/* Arms */}
-        <line x1="100" y1="58" x2={lHandX} y2={lHandY} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.6"/>
-        <line x1="100" y1="58" x2={rHandX} y2={rHandY} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.6"/>
-        {/* Dumbbells */}
-        <circle cx={lHandX} cy={lHandY} r="7" fill={SK} opacity="0.85"/>
-        <circle cx={rHandX} cy={rHandY} r="7" fill={SK} opacity="0.85"/>
-        {/* Shoulder highlights */}
-        <circle cx={lerp(100,lHandX,0.15)} cy={lerp(58,lHandY,0.15)} r="7" fill={SK} opacity={0.12 + progress * 0.25}/>
-        <circle cx={lerp(100,rHandX,0.15)} cy={lerp(58,rHandY,0.15)} r="7" fill={SK} opacity={0.12 + progress * 0.25}/>
-        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>LATERAL RAISE</text>
-      </svg>
-    );
-  }
-
-  if (isBack) {
-    // Row animation
-    const elbowX = lerp(115, 90, progress);
-    return (
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-        <rect width={W} height={H} rx="12" fill={BG}/>
-        {/* Hinge body */}
-        <circle cx="130" cy="55" r="10" fill={BODY} opacity="0.4"/>
-        <line x1="130" y1="65" x2="100" y2="100" stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.35"/>
-        {/* Legs */}
-        <line x1="100" y1="100" x2="90" y2="140" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
-        <line x1="100" y1="100" x2="110" y2="140" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
-        {/* Upper arm */}
-        <line x1="116" y1="78" x2={elbowX} y2="88" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.6"/>
-        {/* Forearm + bar */}
-        <line x1={elbowX} y1="88" x2={elbowX - 12} y2="108" stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.6"/>
-        {/* Bar */}
-        <line x1={elbowX-26} y1="112" x2={elbowX+4} y2="104" stroke={SK} strokeWidth="5" strokeLinecap="round"/>
-        <rect x={elbowX-32} y="107" width="7" height="13" rx="2" fill={SK} opacity="0.7"/>
-        {/* Back muscle */}
-        <ellipse cx="118" cy="82" rx="16" ry="8" fill={SK} opacity={0.1 + progress * 0.3} transform="rotate(-35,118,82)"/>
-        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>BACK ROW</text>
-      </svg>
-    );
-  }
-
-  if (isLeg) {
-    // Squat animation
-    const hipY = lerp(78, 108, progress);
-    const kneeY = lerp(110, 130, progress);
-    const kneeX_l = lerp(88, 82, progress);
-    const kneeX_r = lerp(112, 118, progress);
-    return (
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-        <rect width={W} height={H} rx="12" fill={BG}/>
-        {/* Head */}
-        <circle cx="100" cy="28" r="11" fill={BODY} opacity="0.4"/>
-        {/* Torso */}
-        <line x1="100" y1="39" x2="100" y2={hipY} stroke={BODY} strokeWidth="10" strokeLinecap="round" opacity="0.35"/>
-        {/* Hips to knees */}
-        <line x1="100" y1={hipY} x2={kneeX_l} y2={kneeY} stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.45"/>
-        <line x1="100" y1={hipY} x2={kneeX_r} y2={kneeY} stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.45"/>
-        {/* Knees to feet */}
-        <line x1={kneeX_l} y1={kneeY} x2="86" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.4"/>
-        <line x1={kneeX_r} y1={kneeY} x2="114" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.4"/>
-        {/* Bar on back */}
-        <line x1="70" y1="50" x2="130" y2="50" stroke={SK} strokeWidth="5" strokeLinecap="round"/>
-        <rect x="63" y="44" width="7" height="14" rx="2" fill={SK} opacity="0.7"/>
-        <rect x="130" y="44" width="7" height="14" rx="2" fill={SK} opacity="0.7"/>
-        {/* Quad highlight */}
-        <ellipse cx={lerp(93, 88, progress*0.5)} cy={lerp(hipY*0.6+kneeY*0.4, hipY*0.4+kneeY*0.6, progress)} rx="9" ry="5"
-          fill={SK} opacity={0.1 + progress * 0.3} transform={`rotate(-15,93,${hipY})`}/>
-        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>SQUAT</text>
-      </svg>
-    );
-  }
-
-  if (isTricep) {
-    // Pushdown animation
-    const handleY = lerp(65, 95, progress);
-    const elbowY2 = 70;
-    return (
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-        <rect width={W} height={H} rx="12" fill={BG}/>
-        <circle cx="100" cy="28" r="11" fill={BODY} opacity="0.4"/>
-        <line x1="100" y1="39" x2="100" y2="120" stroke={BODY} strokeWidth="9" strokeLinecap="round" opacity="0.3"/>
-        <line x1="100" y1="120" x2="88" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
-        <line x1="100" y1="120" x2="112" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
-        {/* Cable from top */}
-        <line x1="100" y1="0" x2="100" y2={handleY-8} stroke={SK} strokeWidth="2" opacity="0.4"/>
-        {/* Upper arms (fixed) */}
-        <line x1="100" y1="58" x2="82" y2={elbowY2} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
-        <line x1="100" y1="58" x2="118" y2={elbowY2} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
-        {/* Forearms moving */}
-        <line x1="82" y1={elbowY2} x2="78" y2={handleY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
-        <line x1="118" y1={elbowY2} x2="122" y2={handleY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
-        {/* Handle */}
-        <line x1="72" y1={handleY} x2="128" y2={handleY} stroke={SK} strokeWidth="5" strokeLinecap="round"/>
-        {/* Tricep highlight */}
-        <ellipse cx="82" cy={lerp(elbowY2,handleY,0.4)} rx="7" ry="4" fill={SK} opacity={0.1+progress*0.35} transform={`rotate(-80,82,${lerp(elbowY2,handleY,0.4)})`}/>
-        <ellipse cx="118" cy={lerp(elbowY2,handleY,0.4)} rx="7" ry="4" fill={SK} opacity={0.1+progress*0.35} transform={`rotate(80,118,${lerp(elbowY2,handleY,0.4)})`}/>
-        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>TRICEP PUSHDOWN</text>
-      </svg>
-    );
-  }
-
-  // Default: dumbbell curl (generic)
-  const ang = lerp(150, 60, progress);
-  const r2 = ang * Math.PI / 180;
-  const hx = 100 + Math.cos(r2) * 38;
-  const hy = 95 - Math.abs(Math.sin(r2)) * 38;
+  // Fallback SVG if API fails or no result
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-      <rect width={W} height={H} rx="12" fill={BG}/>
-      <circle cx="100" cy="28" r="11" fill={BODY} opacity="0.4"/>
-      <line x1="100" y1="39" x2="100" y2="95" stroke={BODY} strokeWidth="9" strokeLinecap="round" opacity="0.3"/>
-      <line x1="100" y1="95" x2="87" y2="145" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
-      <line x1="100" y1="95" x2="113" y2="145" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
-      <line x1="100" y1="58" x2="100" y2="95" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
-      <line x1="100" y1="95" x2={hx} y2={hy} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
-      <rect x={hx-10} y={hy-4} width="20" height="8" rx="3" fill={SK}/>
-      <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>{name.toUpperCase().substring(0,22)}</text>
-    </svg>
+    <div style={{ width:W, height:H, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12, flexDirection:"column", gap:8 }}>
+      <MuscleIcon muscle={muscle} size={48} C={C}/>
+      <div style={{ fontSize:11, color:C.sub, textAlign:"center", padding:"0 16px" }}>{name}</div>
+    </div>
   );
 }
 
-// ── Volume history mini chart ─────────────────────────────────────────────────
 function ExerciseVolumeChart({ data, unit, C }) {
   if (!data || data.length === 0) return (
     <div style={{ textAlign:"center", padding:"30px 0", color:C.sub, fontSize:13 }}>
