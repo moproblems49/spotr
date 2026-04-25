@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo, useCallback } from "react";
+import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SUPABASE CLIENT
@@ -106,51 +106,117 @@ function clearSession() {
 // EXERCISE DATABASE
 // ═════════════════════════════════════════════════════════════════════════════
 const EXERCISE_DB = [
-  { name:"Barbell Bench Press", muscle:"Chest", emoji:"🏋️" },
-  { name:"Incline DB Press", muscle:"Chest", emoji:"💪" },
-  { name:"Decline Bench Press", muscle:"Chest", emoji:"💪" },
-  { name:"Cable Fly", muscle:"Chest", emoji:"🔄" },
-  { name:"Push-Ups", muscle:"Chest", emoji:"⬇️" },
-  { name:"Dips", muscle:"Chest/Tris", emoji:"⬇️" },
-  { name:"Barbell Back Squat", muscle:"Quads", emoji:"🦵" },
-  { name:"Front Squat", muscle:"Quads", emoji:"🦵" },
-  { name:"Leg Press", muscle:"Quads", emoji:"🦵" },
-  { name:"Leg Extension", muscle:"Quads", emoji:"🦵" },
-  { name:"Bulgarian Split Squat", muscle:"Quads/Glutes", emoji:"🦵" },
-  { name:"Hack Squat", muscle:"Quads", emoji:"🦵" },
-  { name:"Romanian Deadlift", muscle:"Hamstrings", emoji:"🔙" },
-  { name:"Deadlift", muscle:"Full Body", emoji:"🏋️" },
-  { name:"Sumo Deadlift", muscle:"Full Body", emoji:"🏋️" },
-  { name:"Lying Leg Curl", muscle:"Hamstrings", emoji:"🔙" },
-  { name:"Seated Leg Curl", muscle:"Hamstrings", emoji:"🔙" },
-  { name:"Hip Thrust", muscle:"Glutes", emoji:"🍑" },
-  { name:"Standing Calf Raise", muscle:"Calves", emoji:"🦶" },
-  { name:"Seated Calf Raise", muscle:"Calves", emoji:"🦶" },
-  { name:"Barbell Row", muscle:"Back", emoji:"🔙" },
-  { name:"Seated Cable Row", muscle:"Back", emoji:"🔙" },
-  { name:"T-Bar Row", muscle:"Back", emoji:"🔙" },
-  { name:"Single-Arm DB Row", muscle:"Back", emoji:"🔙" },
-  { name:"Pull-Ups", muscle:"Back/Biceps", emoji:"⬆️" },
-  { name:"Chin-Ups", muscle:"Back/Biceps", emoji:"⬆️" },
-  { name:"Lat Pulldown", muscle:"Back", emoji:"⬇️" },
-  { name:"Face Pulls", muscle:"Rear Delts", emoji:"🎯" },
-  { name:"Overhead Press", muscle:"Shoulders", emoji:"⬆️" },
-  { name:"DB Shoulder Press", muscle:"Shoulders", emoji:"⬆️" },
-  { name:"Arnold Press", muscle:"Shoulders", emoji:"💪" },
-  { name:"Lateral Raises", muscle:"Shoulders", emoji:"↔️" },
-  { name:"Rear Delt Fly", muscle:"Rear Delts", emoji:"🦅" },
-  { name:"Barbell Curl", muscle:"Biceps", emoji:"💪" },
-  { name:"Dumbbell Curl", muscle:"Biceps", emoji:"💪" },
-  { name:"Hammer Curl", muscle:"Biceps", emoji:"🔨" },
-  { name:"Preacher Curl", muscle:"Biceps", emoji:"💪" },
-  { name:"Skull Crushers", muscle:"Triceps", emoji:"💀" },
-  { name:"Tricep Pushdown", muscle:"Triceps", emoji:"⬇️" },
-  { name:"Overhead Tricep Extension", muscle:"Triceps", emoji:"⬆️" },
-  { name:"Close-Grip Bench Press", muscle:"Triceps", emoji:"🏋️" },
-  { name:"Cable Crunch", muscle:"Abs", emoji:"⚡" },
-  { name:"Hanging Leg Raise", muscle:"Abs", emoji:"⬆️" },
-  { name:"Plank", muscle:"Abs", emoji:"⬛" },
-  { name:"Shrugs", muscle:"Traps", emoji:"🤷" },
+  // CHEST
+  { name:"Barbell Bench Press", muscle:"Chest" },
+  { name:"Incline Barbell Press", muscle:"Chest" },
+  { name:"Decline Barbell Press", muscle:"Chest" },
+  { name:"Incline DB Press", muscle:"Chest" },
+  { name:"Flat DB Press", muscle:"Chest" },
+  { name:"Decline DB Press", muscle:"Chest" },
+  { name:"Cable Fly (Low-to-High)", muscle:"Chest" },
+  { name:"Cable Fly (High-to-Low)", muscle:"Chest" },
+  { name:"Pec Deck Machine", muscle:"Chest" },
+  { name:"Dips", muscle:"Chest/Tris" },
+  { name:"Push-Ups", muscle:"Chest" },
+  { name:"Weighted Push-Ups", muscle:"Chest" },
+  { name:"DB Pullover", muscle:"Chest" },
+  // BACK
+  { name:"Barbell Row", muscle:"Back" },
+  { name:"Pendlay Row", muscle:"Back" },
+  { name:"T-Bar Row", muscle:"Back" },
+  { name:"Seated Cable Row (Wide)", muscle:"Back" },
+  { name:"Seated Cable Row (Narrow)", muscle:"Back" },
+  { name:"Single-Arm DB Row", muscle:"Back" },
+  { name:"Chest-Supported Row", muscle:"Back" },
+  { name:"Pull-Ups", muscle:"Back" },
+  { name:"Weighted Pull-Ups", muscle:"Back" },
+  { name:"Chin-Ups", muscle:"Back" },
+  { name:"Lat Pulldown (Wide)", muscle:"Back" },
+  { name:"Lat Pulldown (Underhand)", muscle:"Back" },
+  { name:"Straight-Arm Pulldown", muscle:"Back" },
+  { name:"Face Pulls", muscle:"Rear Delts" },
+  { name:"Rear Delt Fly (Cable)", muscle:"Rear Delts" },
+  { name:"Rear Delt Fly (DB)", muscle:"Rear Delts" },
+  // SHOULDERS
+  { name:"Overhead Press (Barbell)", muscle:"Shoulders" },
+  { name:"Seated DB Shoulder Press", muscle:"Shoulders" },
+  { name:"Arnold Press", muscle:"Shoulders" },
+  { name:"Lateral Raises (DB)", muscle:"Shoulders" },
+  { name:"Lateral Raises (Cable)", muscle:"Shoulders" },
+  { name:"Front Raises (DB)", muscle:"Shoulders" },
+  { name:"Front Raises (Plate)", muscle:"Shoulders" },
+  { name:"Upright Row", muscle:"Shoulders/Traps" },
+  { name:"Machine Shoulder Press", muscle:"Shoulders" },
+  // BICEPS
+  { name:"Barbell Curl", muscle:"Biceps" },
+  { name:"EZ Bar Curl", muscle:"Biceps" },
+  { name:"Dumbbell Curl", muscle:"Biceps" },
+  { name:"Incline DB Curl", muscle:"Biceps" },
+  { name:"Hammer Curl", muscle:"Biceps" },
+  { name:"Preacher Curl (EZ Bar)", muscle:"Biceps" },
+  { name:"Preacher Curl (DB)", muscle:"Biceps" },
+  { name:"Cable Curl (Single Arm)", muscle:"Biceps" },
+  { name:"Concentration Curl", muscle:"Biceps" },
+  { name:"Reverse Curl", muscle:"Biceps/Forearms" },
+  // TRICEPS
+  { name:"Skull Crushers (EZ Bar)", muscle:"Triceps" },
+  { name:"Skull Crushers (DB)", muscle:"Triceps" },
+  { name:"Tricep Rope Pushdown", muscle:"Triceps" },
+  { name:"Tricep Bar Pushdown", muscle:"Triceps" },
+  { name:"Overhead Tricep Extension", muscle:"Triceps" },
+  { name:"Close-Grip Bench Press", muscle:"Triceps" },
+  { name:"Tricep Dips", muscle:"Triceps" },
+  { name:"Diamond Push-Ups", muscle:"Triceps" },
+  // LEGS — QUADS
+  { name:"Barbell Back Squat", muscle:"Quads" },
+  { name:"Front Squat", muscle:"Quads" },
+  { name:"Leg Press", muscle:"Quads" },
+  { name:"Hack Squat", muscle:"Quads" },
+  { name:"Bulgarian Split Squat", muscle:"Quads/Glutes" },
+  { name:"Walking Lunges", muscle:"Quads/Glutes" },
+  { name:"Leg Extension", muscle:"Quads" },
+  { name:"Step-Ups", muscle:"Quads/Glutes" },
+  // LEGS — POSTERIOR
+  { name:"Deadlift", muscle:"Full Body" },
+  { name:"Sumo Deadlift", muscle:"Full Body" },
+  { name:"Romanian Deadlift", muscle:"Hamstrings" },
+  { name:"Stiff-Leg Deadlift", muscle:"Hamstrings" },
+  { name:"Lying Leg Curl", muscle:"Hamstrings" },
+  { name:"Seated Leg Curl", muscle:"Hamstrings" },
+  { name:"Nordic Curl", muscle:"Hamstrings" },
+  { name:"Hip Thrust (Barbell)", muscle:"Glutes" },
+  { name:"Hip Thrust (Machine)", muscle:"Glutes" },
+  { name:"Glute Kickback (Cable)", muscle:"Glutes" },
+  { name:"Abduction Machine", muscle:"Glutes" },
+  // CALVES
+  { name:"Standing Calf Raise", muscle:"Calves" },
+  { name:"Seated Calf Raise", muscle:"Calves" },
+  { name:"Leg Press Calf Raise", muscle:"Calves" },
+  // CORE
+  { name:"Plank", muscle:"Core" },
+  { name:"Cable Crunch", muscle:"Core" },
+  { name:"Hanging Leg Raise", muscle:"Core" },
+  { name:"Ab Wheel Rollout", muscle:"Core" },
+  { name:"Decline Crunch", muscle:"Core" },
+  { name:"Russian Twist", muscle:"Core" },
+  { name:"Landmine Rotation", muscle:"Core" },
+  { name:"Cable Woodchop", muscle:"Core" },
+  // COMPOUND / FULL BODY
+  { name:"Power Clean", muscle:"Full Body" },
+  { name:"Clean and Jerk", muscle:"Full Body" },
+  { name:"Snatch", muscle:"Full Body" },
+  { name:"Kettlebell Swing", muscle:"Full Body" },
+  { name:"Farmers Walk", muscle:"Full Body" },
+  { name:"Sled Push", muscle:"Full Body" },
+  { name:"Battle Ropes", muscle:"Full Body" },
+  // TRAPS / NECK
+  { name:"Barbell Shrugs", muscle:"Traps" },
+  { name:"DB Shrugs", muscle:"Traps" },
+  { name:"Neck Extension", muscle:"Neck" },
+  // FOREARMS
+  { name:"Wrist Curl", muscle:"Forearms" },
+  { name:"Reverse Wrist Curl", muscle:"Forearms" },
+  { name:"Farmers Carry", muscle:"Forearms" },
 ];
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -200,7 +266,128 @@ const THEMES = {
 const F = "-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
 const MONO = "'SF Mono',Menlo,monospace";
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// ─── Muscle group icon (replaces emoji) ──────────────────────────────────────
+function MuscleIcon({ muscle = "", size = 28, C }) {
+  const bg = C?.divider || "#f0f0f0";
+  const stroke = C?.accent || "#2563eb";
+  const s = size;
+  const m = (muscle || "").toLowerCase();
+
+  // Chest
+  if (m.includes("chest")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M6 16 C6 11 10 8 14 8 C18 8 22 11 22 16" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M6 16 C6 19 8 21 10 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M22 16 C22 19 20 21 18 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+  // Back
+  if (m.includes("back") || m.includes("lat") || m.includes("rear delt")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M14 7 L14 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M8 10 C8 10 11 12 14 12 C17 12 20 10 20 10" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M9 15 C9 15 11 17 14 17 C17 17 19 15 19 15" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+  // Shoulders
+  if (m.includes("shoulder") || m.includes("delt")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <circle cx="14" cy="10" r="3" stroke={stroke} strokeWidth="1.8"/>
+      <path d="M6 20 C6 15 10 13 14 13 C18 13 22 15 22 20" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+  // Biceps
+  if (m.includes("bicep")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M9 20 L9 14 C9 10 12 8 14 8 C17 8 19 10 19 12 C19 15 16 16 14 15" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  // Triceps
+  if (m.includes("tricep")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M10 8 C10 8 8 13 8 16 C8 19 10 20 14 20 C18 20 20 19 20 16 C20 13 18 8 18 8" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  // Quads / legs
+  if (m.includes("quad") || m.includes("leg") && !m.includes("curl")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M11 7 L10 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M17 7 L18 21" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M10 14 C10 14 12 16 14 16 C16 16 18 14 18 14" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+  // Hamstrings
+  if (m.includes("hamstring") || m.includes("curl")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M11 7 C11 7 10 14 11 18 C12 21 14 21 14 21 C14 21 16 21 17 18 C18 14 17 7 17 7" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  // Glutes
+  if (m.includes("glute")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M7 20 C7 14 10 9 14 9 C18 9 21 14 21 20" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M14 9 L14 20" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeDasharray="1.5 2"/>
+    </svg>
+  );
+  // Calves
+  if (m.includes("calf") || m.includes("calve")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M12 7 C12 7 10 13 11 17 C12 20 13 21 14 21 C15 21 16 20 17 17 C18 13 16 7 16 7" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  // Core / abs
+  if (m.includes("core") || m.includes("abs") || m.includes("ab")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <rect x="10" y="8" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
+      <rect x="14.5" y="8" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
+      <rect x="10" y="12.5" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
+      <rect x="14.5" y="12.5" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
+      <rect x="10" y="17" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
+      <rect x="14.5" y="17" width="3.5" height="3.5" rx="1" stroke={stroke} strokeWidth="1.5"/>
+    </svg>
+  );
+  // Full body
+  if (m.includes("full")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <circle cx="14" cy="8" r="2.5" stroke={stroke} strokeWidth="1.5"/>
+      <path d="M14 11 L14 18 M10 13 L18 13 M11 18 L13 23 M17 18 L15 23" stroke={stroke} strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+  // Traps
+  if (m.includes("trap")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M8 20 L14 8 L20 20 Z" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  // Forearms
+  if (m.includes("forearm")) return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <path d="M10 8 C10 8 8 14 9 18 C10 21 13 21 14 20 C15 21 18 21 19 18 C20 14 18 8 18 8" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  // Default dumbbell
+  return (
+    <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill={bg}/>
+      <rect x="5" y="12" width="4" height="4" rx="1.5" stroke={stroke} strokeWidth="1.5"/>
+      <rect x="19" y="12" width="4" height="4" rx="1.5" stroke={stroke} strokeWidth="1.5"/>
+      <line x1="9" y1="14" x2="19" y2="14" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+}
 let _setToast = null;
 function toast(msg, type = "info") {
   if (_setToast) _setToast({ msg, type, id: Date.now() });
@@ -786,24 +973,35 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C }) {
 
 // BufferedInput: local state while typing, commits to parent only on blur.
 // This means typing never triggers parent re-renders — zero lag.
-function BufferedInput({ value, onCommit, placeholder, done, C }) {
+function BufferedInput({ value, onCommit, placeholder, done, C, prevValue }) {
   const [local, setLocal] = useState(value || "");
   useEffect(() => { setLocal(value || ""); }, [value]);
+  const isEmpty = local === "" || local === null || local === undefined;
   return (
-    <input
-      type="number" inputMode="decimal"
-      value={local}
-      onChange={e => setLocal(e.target.value)}
-      onBlur={() => onCommit(local)}
-      placeholder={placeholder || "0"}
-      style={{
-        background: done ? `${C.green}22` : C.divider,
-        border:"none", borderRadius:8, padding:"8px 4px",
-        fontSize:15, fontWeight:600, color:C.text,
-        textAlign:"center", outline:"none", width:"100%", boxSizing:"border-box",
-        fontFamily:F
-      }}
-    />
+    <div style={{ position:"relative" }}>
+      {isEmpty && prevValue && (
+        <div style={{
+          position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+          fontSize:15, fontWeight:600, color:C.sub, opacity:0.45, pointerEvents:"none",
+          fontFamily:F
+        }}>{prevValue}</div>
+      )}
+      <input
+        type="number" inputMode="decimal"
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={() => onCommit(local)}
+        placeholder={prevValue ? "" : (placeholder || "0")}
+        style={{
+          background: done ? `${C.green}22` : C.divider,
+          border:"none", borderRadius:8, padding:"8px 4px",
+          fontSize:15, fontWeight:600,
+          color: done ? C.green : C.text,
+          textAlign:"center", outline:"none", width:"100%", boxSizing:"border-box",
+          fontFamily:F
+        }}
+      />
+    </div>
   );
 }
 
@@ -873,11 +1071,13 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
         <BufferedInput
           value={set.weight} onCommit={v => onUpdate({ weight: v })}
           placeholder={prev?.w || "0"}
+          prevValue={prev?.w || null}
           done={set.done} C={C}
         />
         <BufferedInput
           value={set.reps} onCommit={v => onUpdate({ reps: v })}
           placeholder={prev?.r || "0"}
+          prevValue={prev?.r || null}
           done={set.done} C={C}
         />
 
@@ -1159,7 +1359,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
               const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
               return (
                 <div key={ei} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderTop: ei > 0 ? `1px solid ${C.divider}` : "none" }}>
-                  {exInfo && <div style={{ fontSize:16 }}>{exInfo.emoji}</div>}
+                  {exInfo && <MuscleIcon muscle={exInfo.muscle} size={24} C={C}/>}
                   <div style={{ flex:1, fontSize:13, color:C.text }}>{ex.name}</div>
                   <input value={ex.reps} onChange={e => updateReps(di, ei, e.target.value)}
                     style={{ width:70, background:C.divider, border:"none", borderRadius:6, padding:"5px 8px", fontSize:11, color:C.text, outline:"none", textAlign:"center", fontFamily:F }}/>
@@ -1591,7 +1791,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 // ═════════════════════════════════════════════════════════════════════════════
 const SESSION_KEY = "ignite_active_session";
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHit, C }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, C }) {
   // Restore any in-progress session from storage
   const [session, setSession] = useState(() => {
     try {
@@ -1610,6 +1810,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
   const [viewingProgram, setViewingProgram] = useState(null); // program ID
   const [showBuilder, setShowBuilder] = useState(false);
   const [previewDay, setPreviewDay] = useState(null); // {day, programName}
+  const [viewingExercise, setViewingExercise] = useState(null);
   const elRef = useRef(null);
   const rtRef = useRef(null);
 
@@ -1641,29 +1842,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
         }
         // Timer just hit 0 — play ping + fire notification
         try {
-          // Audio ping via Web Audio API (no file needed)
           const Ctx = window.AudioContext || window.webkitAudioContext;
           if (Ctx) {
             const ac = new Ctx();
             const now = ac.currentTime;
-            [880, 1320].forEach((freq, i) => {
+            // 3 ascending beeps — louder than before
+            [660, 880, 1100].forEach((freq, i) => {
               const osc = ac.createOscillator();
               const gain = ac.createGain();
               osc.type = "sine";
               osc.frequency.value = freq;
-              gain.gain.setValueAtTime(0.0001, now + i * 0.2);
-              gain.gain.exponentialRampToValueAtTime(0.35, now + i * 0.2 + 0.02);
-              gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.2 + 0.35);
+              gain.gain.setValueAtTime(0.0001, now + i * 0.18);
+              gain.gain.exponentialRampToValueAtTime(0.7, now + i * 0.18 + 0.01);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.18 + 0.25);
               osc.connect(gain).connect(ac.destination);
-              osc.start(now + i * 0.2);
-              osc.stop(now + i * 0.2 + 0.4);
+              osc.start(now + i * 0.18);
+              osc.stop(now + i * 0.18 + 0.3);
             });
-            setTimeout(() => { try { ac.close(); } catch {} }, 1500);
+            setTimeout(() => { try { ac.close(); } catch {} }, 1200);
           }
         } catch (e) {}
-        // Vibrate if supported (Android / some iOS)
-        try { if (navigator.vibrate) navigator.vibrate([120, 60, 120]); } catch (e) {}
-        // Fire a notification if the app is hidden / backgrounded
+        // Vibrate (Android + some iOS)
+        try { if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]); } catch (e) {}
+        // Visual flash via toast
+        try { toast("Rest time's up — go! 🔥", "success"); } catch (e) {}
+        // Background notification
         try {
           if (document.hidden && "Notification" in window && Notification.permission === "granted") {
             new Notification("Rest time's up 🔥", {
@@ -1731,8 +1934,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
     }));
   }
 
+  const [finishing, setFinishing] = useState(false);
+
   function finishWorkout(share) {
-    if (!session) return;
+    if (!session || finishing) return;
+    setFinishing(true);
     const dk = dKey();
     const sid = uid();
     let hitPR = null;
@@ -1811,6 +2017,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
     setElapsed(0);
     setRest(null);
     setShowFinish(false);
+    setFinishing(false);
     toast(share ? "Workout posted! 🔥" : "Workout saved! 💪", "success");
     if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
   }
@@ -1882,7 +2089,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
             return (
               <div key={ex.id || ei} style={{ marginBottom:16, borderBottom:`1px solid ${C.divider}`, paddingBottom:12 }}>
                 <div style={{ padding:"0 14px 10px", display:"flex", alignItems:"center", gap:10 }}>
-                  {exInfo && <div style={{ fontSize:22 }}>{exInfo.emoji}</div>}
+                  <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0 }}>
+                    <MuscleIcon muscle={exInfo?.muscle || ""} size={32} C={C}/>
+                  </button>
                   <ExerciseInput
                     value={ex.name}
                     onChange={v => setSession(p => ({
@@ -1956,8 +2165,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
             <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"20px 18px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
               <div style={{ fontSize:19, fontWeight:700, color:C.text, marginBottom:4 }}>Finish Workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
-              <button onClick={() => finishWorkout(true)} style={{ width:"100%", background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:"pointer", marginBottom:8, fontFamily:F }}>Save & Share to Feed</button>
-              <button onClick={() => finishWorkout(false)} style={{ width:"100%", background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", fontSize:14, fontWeight:600, cursor:"pointer", marginBottom:8, fontFamily:F }}>Save (Don't Share)</button>
+              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing ? C.sub : C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "Saving..." : "Save & Share to Feed"}</button>
+              <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "..." : "Save (Don't Share)"}</button>
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
             </div>
           </div>
@@ -2134,13 +2343,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
 
             <div style={{ display:"flex", gap:8, marginBottom:18 }}>
               {!isActive && (
-                <button onClick={() => setStore(s => ({ ...s, activeProgramId: prog.id }))} style={{
+                <button onClick={() => onSaveProgram ? onSaveProgram(prog) : setStore(s => ({ ...s, activeProgramId: prog.id }))} style={{
                   flex:1, background:C.accent, color:"#fff", border:"none", borderRadius:8,
                   padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
                 }}>Set as Active</button>
               )}
               {isActive && (
-                <button onClick={() => setStore(s => ({ ...s, activeProgramId: null }))} style={{
+                <button onClick={() => {
+                  setStore(s => ({ ...s, activeProgramId: null }));
+                  if (onSaveProgram) onSaveProgram({ ...prog, _deactivate: true });
+                }} style={{
                   flex:1, background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:8,
                   padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
                 }}>Deactivate</button>
@@ -2175,14 +2387,44 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
                   const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
                   return (
                     <div key={ei} style={{
-                      display:"flex", alignItems:"center", gap:10, padding:"8px 0",
+                      padding:"8px 0",
                       borderTop: ei > 0 ? `1px solid ${C.divider}` : "none"
                     }}>
-                      {exInfo && <div style={{ fontSize:18 }}>{exInfo.emoji}</div>}
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{ex.name}</div>
-                        {ex.reps && <div style={{ fontSize:11, color:C.sub }}>{ex.reps} reps</div>}
+                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: 4 }}>
+                        {exInfo && <MuscleIcon muscle={exInfo.muscle} size={28} C={C}/>}
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{ex.name}</div>
+                          {ex.reps && <div style={{ fontSize:11, color:C.sub }}>{ex.reps}</div>}
+                        </div>
                       </div>
+                      <input
+                        value={ex.note || ""}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setStore(s => {
+                            const updated = {
+                              ...s,
+                              programs: s.programs.map(p => p.id !== prog.id ? p : {
+                                ...p,
+                                days: p.days.map((d, dIdx) => dIdx !== di ? d : {
+                                  ...d,
+                                  exercises: d.exercises.map((x, xIdx) => xIdx !== ei ? x : { ...x, note: val })
+                                })
+                              })
+                            };
+                            // Debounce sync to Supabase
+                            const updatedProg = updated.programs.find(p => p.id === prog.id);
+                            if (updatedProg && onProgramEdited) onProgramEdited(updatedProg);
+                            return updated;
+                          });
+                        }}
+                        placeholder="Add note (e.g. '4×5–7, rest-pause last set')"
+                        style={{
+                          width:"100%", background:C.divider, border:"none", borderRadius:6,
+                          padding:"6px 10px", fontSize:12, color:C.text, outline:"none",
+                          fontFamily:F, boxSizing:"border-box"
+                        }}
+                      />
                     </div>
                   );
                 })}
@@ -2214,30 +2456,49 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
             LOGGED EXERCISES · {allEx.size}
           </div>
           {!allEx.size && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>Complete a workout to see your exercises.</div>
+            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>Complete a workout to see your exercises here, or browse all below.</div>
           )}
           {Array.from(allEx).sort().map(name => {
             const pr = store.prs?.[name];
             const exInfo = EXERCISE_DB.find(e => e.name === name);
             return (
-              <div key={name} style={{
-                background:"none", borderBottom:`1px solid ${C.divider}`,
-                padding:"11px 0", display:"flex", alignItems:"center", gap:12
+              <button key={name} onClick={() => setViewingExercise(name)} style={{
+                width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`,
+                padding:"11px 0", display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
               }}>
-                {exInfo && (
-                  <div style={{
-                    width:40, height:40, borderRadius:10,
-                    background:C.divider,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:20, flexShrink:0
-                  }}>{exInfo.emoji}</div>
-                )}
+                <div style={{ width:40, height:40, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <MuscleIcon muscle={exInfo?.muscle || ""} size={28} C={C}/>
+                </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{name}</div>
-                  {pr && (
-                    <div style={{ fontSize:11, color:C.gold, marginTop:1 }}>🏆 PR · {cvt(pr, "lbs", unit)} {unit}</div>
-                  )}
+                  {pr && <div style={{ fontSize:11, color:C.gold, marginTop:1 }}>🏆 PR · {cvt(pr, "lbs", unit)} {unit}</div>}
                 </div>
+                <span style={{ fontSize:16, color:C.sub }}>›</span>
+              </button>
+            );
+          })}
+
+          {/* Browse all exercises */}
+          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginTop:20, marginBottom:10 }}>
+            BROWSE ALL · {EXERCISE_DB.length}
+          </div>
+          {["Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Full Body","Traps","Forearms"].map(group => {
+            const exercises = EXERCISE_DB.filter(e => (e.muscle||"").toLowerCase().includes(group.toLowerCase()));
+            if (!exercises.length) return null;
+            return (
+              <div key={group} style={{ marginBottom:16 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.5, marginBottom:6 }}>{group.toUpperCase()}</div>
+                {exercises.map(ex => (
+                  <button key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{
+                    width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`,
+                    padding:"9px 0", display:"flex", alignItems:"center", gap:10, cursor:"pointer", textAlign:"left", fontFamily:F
+                  }}>
+                    <MuscleIcon muscle={ex.muscle} size={24} C={C}/>
+                    <div style={{ flex:1, fontSize:13, color:C.text }}>{ex.name}</div>
+                    {store.prs?.[ex.name] && <span style={{ fontSize:11, color:C.gold }}>🏆</span>}
+                    <span style={{ fontSize:14, color:C.sub }}>›</span>
+                  </button>
+                ))}
               </div>
             );
           })}
@@ -2419,7 +2680,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
                         )
                       }))
                     };
-                    setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
+                    if (onSaveProgram) onSaveProgram(prog);
+                    else setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
                     setShowTemplates(false);
                   }} style={{
                     width:"100%", background:C.accent, border:"none", borderRadius:8,
@@ -2430,6 +2692,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
             </div>
           </div>
         </div>
+      )}
+
+      {/* Exercise Detail */}
+      {viewingExercise && (
+        <ExerciseDetail
+          name={viewingExercise}
+          store={store}
+          unit={unit}
+          C={C}
+          onClose={() => setViewingExercise(null)}
+        />
       )}
 
       {/* Day Preview modal — shows exercises before starting */}
@@ -2471,8 +2744,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
                         width:44, height:44, borderRadius:10,
                         background:C.divider,
                         display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:22, flexShrink:0
-                      }}>{exInfo.emoji}</div>
+                        flexShrink:0
+                      }}><MuscleIcon muscle={exInfo.muscle} size={30} C={C}/></div>
                     )}
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
@@ -2508,7 +2781,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onPRHi
           C={C}
           onClose={() => setShowAICoach(false)}
           onImport={(prog) => {
-            setStore(p => ({ ...p, programs: [...(p.programs||[]), prog], activeProgramId: prog.id }));
+            if (onSaveProgram) onSaveProgram(prog);
+            else setStore(p => ({ ...p, programs: [...(p.programs||[]), prog], activeProgramId: prog.id }));
             setShowAICoach(false);
           }}
         />
@@ -2857,6 +3131,530 @@ function AICoachModal({ C, onClose, onImport }) {
   );
 }
 // ═════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// EXERCISE DETAIL — graph + stats + animated SVG how-to
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Technique cues per exercise category
+const EXERCISE_CUES = {
+  "Barbell Bench Press": {
+    cues:["Retract and depress shoulder blades","Slight arch in lower back, both feet flat","Bar path: lower to nipple line, slight diagonal press","Grip just outside shoulder width","Touch chest lightly, drive explosively"],
+    mistakes:["Flaring elbows too wide","Bouncing bar off chest","Losing leg drive","Not keeping wrists stacked over elbows"],
+    breathe:"Inhale on the way down, exhale and brace hard on the press",
+  },
+  "Barbell Back Squat": {
+    cues:["Bar on low or high trap shelf","Hip-width stance, toes 15–30° out","Knees track over toes throughout","Break at hips and knees simultaneously","Drive up through mid-foot, not toes"],
+    mistakes:["Knees caving inward","Heels rising","Forward lean with bar drifting","Half-reps — hit parallel or below"],
+    breathe:"Valsalva — big breath at top, hold through the hole, exhale at lockout",
+  },
+  "Deadlift": {
+    cues:["Bar over mid-foot (1 inch from shins)","Hip-width stance, double overhand or mixed grip","Hinge: push floor away, don't pull bar up","Keep lats tight — 'protect your armpits'","Lock out hips at top — don't hyperextend"],
+    mistakes:["Bar drifting away from body","Jerking the bar off floor","Rounding lower back under load","Squatting the deadlift"],
+    breathe:"Big breath and brace before the pull, hold until past the knee",
+  },
+  "Overhead Press (Barbell)": {
+    cues:["Grip just outside shoulders, full grip","Bar rests on front delts before press","Press the bar — move your head back then through","Stack wrists over elbows","Squeeze glutes and abs — no lumbar hyperextension"],
+    mistakes:["Pressing in front of body instead of over it","Flaring elbows too wide","Losing core tension","Wrist bend"],
+    breathe:"Inhale and brace at the bottom, exhale at lockout",
+  },
+  "Romanian Deadlift": {
+    cues:["Hip-width stance, slight knee bend throughout","Push hips back — not down","Bar stays close to legs the entire time","Feel the hamstring stretch at bottom","Drive hips forward to stand, squeeze glutes at top"],
+    mistakes:["Bending knees too much (becomes squat)","Rounding lower back","Going too deep past stretch point","Rushing the eccentric"],
+    breathe:"Inhale at top, slow exhale on the way down, exhale fully on the way up",
+  },
+  "Pull-Ups": {
+    cues:["Dead hang start — full arm extension","Depress scapula before pulling","Lead with chest toward bar, not chin","Pull elbows toward hips","Control the descent — don't drop"],
+    mistakes:["Kipping momentum","Partial range of motion","Shrugging instead of depressing scapula","Forward head position"],
+    breathe:"Exhale as you pull up, inhale on the way down",
+  },
+  "Hip Thrust (Barbell)": {
+    cues:["Upper back on bench at shoulder blade level","Feet flat, hip-width, shins vertical at top","Bar padded over hip crease","Drive through heels, not toes","Full hip extension at top — squeeze hard, chin tucked"],
+    mistakes:["Hyperextending lower back at top","Feet too far or too close","Not achieving full extension","Head tilting back"],
+    breathe:"Exhale and brace on the drive up, inhale on the way down",
+  },
+  "Lateral Raises (DB)": {
+    cues:["Slight forward torso lean (15°)","Lead with elbows, not hands","Pinkies slightly higher than thumbs at top","Control the descent — 3 sec negative","Stop at shoulder height — no higher"],
+    mistakes:["Using momentum / swinging body","Going above shoulder height","Straight arm with no elbow lead","Too heavy — ruins form"],
+    breathe:"Exhale on the raise, inhale on the lower",
+  },
+  "Barbell Row": {
+    cues:["Hinge to ~45°, back neutral","Bar starts over mid-foot","Pull to lower chest / upper abs","Drive elbows back and up","Lower with control, maintain hinge"],
+    mistakes:["Torso swinging upright","Pulling to belly instead of chest","Rounding lower back","Jerky reps"],
+    breathe:"Exhale as you row, inhale on the way down",
+  },
+  "Bulgarian Split Squat": {
+    cues:["Front foot far enough that shin is vertical at bottom","Rear foot on bench, laces down","Descend straight down — don't lunge forward","Front knee tracks over toes","Keep torso upright or slight lean"],
+    mistakes:["Front foot too close (forward knee drift)","Losing balance (core not tight)","Rushing the descent","Uneven hip height"],
+    breathe:"Inhale on the way down, exhale on the drive up",
+  },
+};
+
+// Generic cues by muscle group
+const MUSCLE_CUES = {
+  chest: { cues:["Full stretch at bottom","Control the eccentric","Squeeze at peak contraction","Keep shoulder blades retracted"], mistakes:["Partial range","Flaring elbows","Losing upper back tightness"] },
+  back: { cues:["Initiate with scapula before arms","Pull elbows toward hips","Full stretch at the bottom","Avoid shrugging"], mistakes:["Bicep-dominant pulling","Partial reps","Losing neutral spine"] },
+  shoulders: { cues:["Keep core braced","Control both phases","Don't shrug","Full range of motion"], mistakes:["Using momentum","Going too heavy","Ignoring rear delts"] },
+  biceps: { cues:["Full extension at bottom","Supinate at top","No swinging","Squeeze at peak"], mistakes:["Elbow flare","Using momentum","Partial reps"] },
+  triceps: { cues:["Lock out fully","Keep elbows fixed","Control the stretch","Squeeze at extension"], mistakes:["Moving elbows","Partial lockout","Too much weight"] },
+  quads: { cues:["Full depth","Knee tracks over toes","Control descent","Drive through whole foot"], mistakes:["Knees caving","Heels rising","Partial reps"] },
+  hamstrings: { cues:["Feel the stretch","Slow eccentric","Hip hinge dominant","Neutral spine"], mistakes:["Rounding back","No stretch","Rushing"] },
+  glutes: { cues:["Full hip extension","Squeeze at top","Posterior pelvic tilt","Drive through heels"], mistakes:["No lockout","Lumbar hyperextension","Rushing"] },
+  calves: { cues:["Full stretch at bottom","Pause at top","Slow and controlled","Full ROM"], mistakes:["Bouncing","Partial range","Too fast"] },
+  core: { cues:["Brace don't suck in","Exhale on effort","Control the movement","Neutral spine"], mistakes:["Holding breath","Hip flexor dominance","Momentum"] },
+};
+
+function getCues(name, muscle) {
+  if (EXERCISE_CUES[name]) return EXERCISE_CUES[name];
+  const m = (muscle||"").toLowerCase();
+  for (const key of Object.keys(MUSCLE_CUES)) {
+    if (m.includes(key)) return { cues: MUSCLE_CUES[key].cues, mistakes: MUSCLE_CUES[key].mistakes, breathe: null };
+  }
+  return { cues:["Full range of motion","Control the eccentric","Mind-muscle connection","Progressive overload"], mistakes:["Partial reps","Using momentum","Too much weight"], breathe:null };
+}
+
+// ── Animated SVG exercise demos ───────────────────────────────────────────────
+function ExerciseAnimation({ name, muscle, C }) {
+  const [frame, setFrame] = useState(0);
+  const m = (muscle||"").toLowerCase();
+
+  useEffect(() => {
+    const id = setInterval(() => setFrame(f => (f + 1) % 60), 33); // ~30fps
+    return () => clearInterval(id);
+  }, []);
+
+  // Shared drawing helpers
+  const t = (frame / 60) * Math.PI * 2; // full cycle
+  const ease = (x) => Math.sin(x * Math.PI); // 0→1→0
+  const lerp = (a, b, x) => a + (b - a) * x;
+
+  // Determine which animation to show
+  const isChest = m.includes("chest") || name.toLowerCase().includes("bench") || name.toLowerCase().includes("fly") || name.toLowerCase().includes("dip") || name.toLowerCase().includes("push-up");
+  const isBack = m.includes("back") || name.toLowerCase().includes("row") || name.toLowerCase().includes("pull-up") || name.toLowerCase().includes("pulldown");
+  const isShoulder = m.includes("shoulder") || m.includes("delt") || name.toLowerCase().includes("press") && m.includes("shoulder") || name.toLowerCase().includes("lateral") || name.toLowerCase().includes("overhead");
+  const isLeg = m.includes("quad") || m.includes("hamstring") || m.includes("glute") || m.includes("calf") || name.toLowerCase().includes("squat") || name.toLowerCase().includes("deadlift") || name.toLowerCase().includes("lunge");
+  const isBicep = m.includes("bicep") || name.toLowerCase().includes("curl");
+  const isTricep = m.includes("tricep") || name.toLowerCase().includes("pushdown") || name.toLowerCase().includes("extension");
+
+  const progress = ease(frame / 60); // 0→1→0 smooth cycle
+  const BG = C.divider;
+  const SK = C.accent;
+  const BODY = C.sub;
+  const W = 200, H = 160;
+
+  if (isChest) {
+    // Bench press animation
+    const elbowY = lerp(90, 110, progress);
+    const barY = lerp(82, 102, progress);
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+        <rect width={W} height={H} rx="12" fill={BG}/>
+        {/* Bench */}
+        <rect x="30" y="115" width="140" height="8" rx="4" fill={BODY} opacity="0.3"/>
+        {/* Body lying */}
+        <ellipse cx="100" cy="113" rx="55" ry="8" fill={BODY} opacity="0.15"/>
+        {/* Head */}
+        <circle cx="148" cy="108" r="9" fill={BODY} opacity="0.5"/>
+        {/* Torso */}
+        <rect x="55" y="104" width="88" height="12" rx="6" fill={BODY} opacity="0.4"/>
+        {/* Left arm */}
+        <line x1="70" y1="108" x2="65" y2={elbowY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.5"/>
+        <line x1="65" y1={elbowY} x2="70" y2={barY} stroke={BODY} strokeWidth="4" strokeLinecap="round" opacity="0.5"/>
+        {/* Right arm */}
+        <line x1="130" y1="108" x2="135" y2={elbowY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.5"/>
+        <line x1="135" y1={elbowY} x2="130" y2={barY} stroke={BODY} strokeWidth="4" strokeLinecap="round" opacity="0.5"/>
+        {/* Bar */}
+        <line x1="45" y1={barY} x2="155" y2={barY} stroke={SK} strokeWidth="5" strokeLinecap="round"/>
+        {/* Plates */}
+        <rect x="38" y={barY - 9} width="7" height="18" rx="2" fill={SK} opacity="0.7"/>
+        <rect x="155" y={barY - 9} width="7" height="18" rx="2" fill={SK} opacity="0.7"/>
+        {/* Muscle highlight */}
+        <ellipse cx="100" cy="107" rx="20" ry="6" fill={SK} opacity={0.15 + progress * 0.2}/>
+        {/* Label */}
+        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>CHEST PRESS</text>
+      </svg>
+    );
+  }
+
+  if (isBicep) {
+    // Curl animation
+    const angle = lerp(160, 50, progress); // degrees
+    const rad = angle * Math.PI / 180;
+    const elbowX = 100, elbowY = 95;
+    const forearmLen = 45;
+    const handX = elbowX + Math.cos(rad) * forearmLen;
+    const handY = elbowY - Math.abs(Math.sin(rad)) * forearmLen;
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+        <rect width={W} height={H} rx="12" fill={BG}/>
+        {/* Standing figure outline */}
+        <circle cx="100" cy="30" r="12" fill={BODY} opacity="0.4"/>
+        <line x1="100" y1="42" x2="100" y2="95" stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.3"/>
+        {/* Legs */}
+        <line x1="100" y1="95" x2="85" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
+        <line x1="100" y1="95" x2="115" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
+        {/* Upper arm fixed */}
+        <line x1="100" y1="58" x2={elbowX} y2={elbowY} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
+        {/* Forearm moving */}
+        <line x1={elbowX} y1={elbowY} x2={handX} y2={handY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
+        {/* Dumbbell */}
+        <rect x={handX-12} y={handY-4} width="24" height="8" rx="4" fill={SK}/>
+        <rect x={handX-16} y={handY-6} width="5" height="12" rx="2" fill={SK} opacity="0.7"/>
+        <rect x={handX+11} y={handY-6} width="5" height="12" rx="2" fill={SK} opacity="0.7"/>
+        {/* Bicep highlight */}
+        <ellipse cx={lerp(100,elbowX,0.4)} cy={lerp(58,elbowY,0.4)} rx="8" ry="5"
+          fill={SK} opacity={0.1 + progress * 0.35}
+          transform={`rotate(-70,${lerp(100,elbowX,0.4)},${lerp(58,elbowY,0.4)})`}/>
+        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>BICEP CURL</text>
+      </svg>
+    );
+  }
+
+  if (isShoulder) {
+    // Lateral raise animation
+    const armAngle = lerp(15, 80, progress);
+    const rad = armAngle * Math.PI / 180;
+    const armLen = 40;
+    const lHandX = 100 - Math.cos(rad) * armLen;
+    const lHandY = 80 - Math.sin(rad) * armLen + 10;
+    const rHandX = 100 + Math.cos(rad) * armLen;
+    const rHandY = 80 - Math.sin(rad) * armLen + 10;
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+        <rect width={W} height={H} rx="12" fill={BG}/>
+        <circle cx="100" cy="28" r="12" fill={BODY} opacity="0.4"/>
+        <line x1="100" y1="40" x2="100" y2="95" stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.3"/>
+        <line x1="100" y1="95" x2="87" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
+        <line x1="100" y1="95" x2="113" y2="140" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.3"/>
+        {/* Arms */}
+        <line x1="100" y1="58" x2={lHandX} y2={lHandY} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.6"/>
+        <line x1="100" y1="58" x2={rHandX} y2={rHandY} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.6"/>
+        {/* Dumbbells */}
+        <circle cx={lHandX} cy={lHandY} r="7" fill={SK} opacity="0.85"/>
+        <circle cx={rHandX} cy={rHandY} r="7" fill={SK} opacity="0.85"/>
+        {/* Shoulder highlights */}
+        <circle cx={lerp(100,lHandX,0.15)} cy={lerp(58,lHandY,0.15)} r="7" fill={SK} opacity={0.12 + progress * 0.25}/>
+        <circle cx={lerp(100,rHandX,0.15)} cy={lerp(58,rHandY,0.15)} r="7" fill={SK} opacity={0.12 + progress * 0.25}/>
+        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>LATERAL RAISE</text>
+      </svg>
+    );
+  }
+
+  if (isBack) {
+    // Row animation
+    const elbowX = lerp(115, 90, progress);
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+        <rect width={W} height={H} rx="12" fill={BG}/>
+        {/* Hinge body */}
+        <circle cx="130" cy="55" r="10" fill={BODY} opacity="0.4"/>
+        <line x1="130" y1="65" x2="100" y2="100" stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.35"/>
+        {/* Legs */}
+        <line x1="100" y1="100" x2="90" y2="140" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
+        <line x1="100" y1="100" x2="110" y2="140" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
+        {/* Upper arm */}
+        <line x1="116" y1="78" x2={elbowX} y2="88" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.6"/>
+        {/* Forearm + bar */}
+        <line x1={elbowX} y1="88" x2={elbowX - 12} y2="108" stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.6"/>
+        {/* Bar */}
+        <line x1={elbowX-26} y1="112" x2={elbowX+4} y2="104" stroke={SK} strokeWidth="5" strokeLinecap="round"/>
+        <rect x={elbowX-32} y="107" width="7" height="13" rx="2" fill={SK} opacity="0.7"/>
+        {/* Back muscle */}
+        <ellipse cx="118" cy="82" rx="16" ry="8" fill={SK} opacity={0.1 + progress * 0.3} transform="rotate(-35,118,82)"/>
+        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>BACK ROW</text>
+      </svg>
+    );
+  }
+
+  if (isLeg) {
+    // Squat animation
+    const hipY = lerp(78, 108, progress);
+    const kneeY = lerp(110, 130, progress);
+    const kneeX_l = lerp(88, 82, progress);
+    const kneeX_r = lerp(112, 118, progress);
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+        <rect width={W} height={H} rx="12" fill={BG}/>
+        {/* Head */}
+        <circle cx="100" cy="28" r="11" fill={BODY} opacity="0.4"/>
+        {/* Torso */}
+        <line x1="100" y1="39" x2="100" y2={hipY} stroke={BODY} strokeWidth="10" strokeLinecap="round" opacity="0.35"/>
+        {/* Hips to knees */}
+        <line x1="100" y1={hipY} x2={kneeX_l} y2={kneeY} stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.45"/>
+        <line x1="100" y1={hipY} x2={kneeX_r} y2={kneeY} stroke={BODY} strokeWidth="8" strokeLinecap="round" opacity="0.45"/>
+        {/* Knees to feet */}
+        <line x1={kneeX_l} y1={kneeY} x2="86" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.4"/>
+        <line x1={kneeX_r} y1={kneeY} x2="114" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.4"/>
+        {/* Bar on back */}
+        <line x1="70" y1="50" x2="130" y2="50" stroke={SK} strokeWidth="5" strokeLinecap="round"/>
+        <rect x="63" y="44" width="7" height="14" rx="2" fill={SK} opacity="0.7"/>
+        <rect x="130" y="44" width="7" height="14" rx="2" fill={SK} opacity="0.7"/>
+        {/* Quad highlight */}
+        <ellipse cx={lerp(93, 88, progress*0.5)} cy={lerp(hipY*0.6+kneeY*0.4, hipY*0.4+kneeY*0.6, progress)} rx="9" ry="5"
+          fill={SK} opacity={0.1 + progress * 0.3} transform={`rotate(-15,93,${hipY})`}/>
+        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>SQUAT</text>
+      </svg>
+    );
+  }
+
+  if (isTricep) {
+    // Pushdown animation
+    const handleY = lerp(65, 95, progress);
+    const elbowY2 = 70;
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+        <rect width={W} height={H} rx="12" fill={BG}/>
+        <circle cx="100" cy="28" r="11" fill={BODY} opacity="0.4"/>
+        <line x1="100" y1="39" x2="100" y2="120" stroke={BODY} strokeWidth="9" strokeLinecap="round" opacity="0.3"/>
+        <line x1="100" y1="120" x2="88" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
+        <line x1="100" y1="120" x2="112" y2="148" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
+        {/* Cable from top */}
+        <line x1="100" y1="0" x2="100" y2={handleY-8} stroke={SK} strokeWidth="2" opacity="0.4"/>
+        {/* Upper arms (fixed) */}
+        <line x1="100" y1="58" x2="82" y2={elbowY2} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
+        <line x1="100" y1="58" x2="118" y2={elbowY2} stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
+        {/* Forearms moving */}
+        <line x1="82" y1={elbowY2} x2="78" y2={handleY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
+        <line x1="118" y1={elbowY2} x2="122" y2={handleY} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
+        {/* Handle */}
+        <line x1="72" y1={handleY} x2="128" y2={handleY} stroke={SK} strokeWidth="5" strokeLinecap="round"/>
+        {/* Tricep highlight */}
+        <ellipse cx="82" cy={lerp(elbowY2,handleY,0.4)} rx="7" ry="4" fill={SK} opacity={0.1+progress*0.35} transform={`rotate(-80,82,${lerp(elbowY2,handleY,0.4)})`}/>
+        <ellipse cx="118" cy={lerp(elbowY2,handleY,0.4)} rx="7" ry="4" fill={SK} opacity={0.1+progress*0.35} transform={`rotate(80,118,${lerp(elbowY2,handleY,0.4)})`}/>
+        <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>TRICEP PUSHDOWN</text>
+      </svg>
+    );
+  }
+
+  // Default: dumbbell curl (generic)
+  const ang = lerp(150, 60, progress);
+  const r2 = ang * Math.PI / 180;
+  const hx = 100 + Math.cos(r2) * 38;
+  const hy = 95 - Math.abs(Math.sin(r2)) * 38;
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+      <rect width={W} height={H} rx="12" fill={BG}/>
+      <circle cx="100" cy="28" r="11" fill={BODY} opacity="0.4"/>
+      <line x1="100" y1="39" x2="100" y2="95" stroke={BODY} strokeWidth="9" strokeLinecap="round" opacity="0.3"/>
+      <line x1="100" y1="95" x2="87" y2="145" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
+      <line x1="100" y1="95" x2="113" y2="145" stroke={BODY} strokeWidth="7" strokeLinecap="round" opacity="0.3"/>
+      <line x1="100" y1="58" x2="100" y2="95" stroke={BODY} strokeWidth="6" strokeLinecap="round" opacity="0.5"/>
+      <line x1="100" y1="95" x2={hx} y2={hy} stroke={BODY} strokeWidth="5" strokeLinecap="round" opacity="0.7"/>
+      <rect x={hx-10} y={hy-4} width="20" height="8" rx="3" fill={SK}/>
+      <text x={W/2} y={H-6} textAnchor="middle" fontSize="10" fill={BODY} opacity="0.6" fontFamily={F}>{name.toUpperCase().substring(0,22)}</text>
+    </svg>
+  );
+}
+
+// ── Volume history mini chart ─────────────────────────────────────────────────
+function ExerciseVolumeChart({ data, unit, C }) {
+  if (!data || data.length === 0) return (
+    <div style={{ textAlign:"center", padding:"30px 0", color:C.sub, fontSize:13 }}>
+      No history yet — log this exercise to see your progress
+    </div>
+  );
+
+  const W = 320, H = 100, PAD = { l:40, r:12, t:10, b:24 };
+  const iW = W - PAD.l - PAD.r;
+  const iH = H - PAD.t - PAD.b;
+
+  const maxV = Math.max(...data.map(d => d.value));
+  const minV = Math.min(...data.map(d => d.value));
+  const range = maxV - minV || 1;
+
+  const px = (i) => PAD.l + (i / (data.length - 1 || 1)) * iW;
+  const py = (v) => PAD.t + iH - ((v - minV) / range) * iH;
+
+  const pathD = data.map((d, i) => `${i===0?"M":"L"}${px(i)},${py(d.value)}`).join(" ");
+  const areaD = `${pathD} L${px(data.length-1)},${PAD.t+iH} L${PAD.l},${PAD.t+iH} Z`;
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+      {/* Grid lines */}
+      {[0,0.5,1].map(f => (
+        <line key={f} x1={PAD.l} y1={PAD.t + iH*(1-f)} x2={W-PAD.r} y2={PAD.t + iH*(1-f)}
+          stroke={C.divider} strokeWidth="1" opacity="0.8"/>
+      ))}
+      {/* Area fill */}
+      <path d={areaD} fill={C.accent} opacity="0.08"/>
+      {/* Line */}
+      <path d={pathD} fill="none" stroke={C.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      {/* Dots */}
+      {data.map((d, i) => (
+        <circle key={i} cx={px(i)} cy={py(d.value)} r="3.5" fill={C.accent}/>
+      ))}
+      {/* Y labels */}
+      <text x={PAD.l-4} y={PAD.t+4} textAnchor="end" fontSize="9" fill={C.sub}>{Math.round(maxV)}</text>
+      <text x={PAD.l-4} y={PAD.t+iH+4} textAnchor="end" fontSize="9" fill={C.sub}>{Math.round(minV)}</text>
+      {/* X labels — first and last */}
+      <text x={PAD.l} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[0]?.label}</text>
+      {data.length > 1 && <text x={px(data.length-1)} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[data.length-1]?.label}</text>}
+    </svg>
+  );
+}
+
+function ExerciseDetail({ name, store, unit, C, onClose }) {
+  const exInfo = EXERCISE_DB.find(e => e.name === name) || { name, muscle:"Full Body" };
+  const cueData = getCues(name, exInfo.muscle);
+  const pr = store.prs?.[name];
+  const [chartMode, setChartMode] = useState("weight"); // "weight" | "volume"
+
+  // Build history data from store
+  const historyData = useMemo(() => {
+    const points = [];
+    const dates = Object.keys(store.history || {}).sort();
+    for (const dk of dates) {
+      const sessions = Object.values(store.history[dk] || {});
+      for (const sess of sessions) {
+        const ex = sess.exercises?.find(e => e.name === name);
+        if (!ex) continue;
+        const doneSets = (ex.sets || []).filter(s => s.done && (s.weight || s.reps));
+        if (!doneSets.length) continue;
+        const maxW = Math.max(...doneSets.map(s => cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit)));
+        const vol = doneSets.reduce((a, s) => a + (cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit)) * (parseFloat(s.reps)||0), 0);
+        const d = new Date(dk);
+        const label = `${d.getMonth()+1}/${d.getDate()}`;
+        points.push({ label, weight: maxW, volume: vol, date: dk, sets: doneSets.length });
+      }
+    }
+    return points;
+  }, [store.history, name, unit]);
+
+  const chartData = historyData.map(p => ({ label: p.label, value: chartMode === "weight" ? p.weight : p.volume }));
+  const totalSets = historyData.reduce((a, p) => a + p.sets, 0);
+  const totalVol = historyData.reduce((a, p) => a + p.volume, 0);
+  const sessions = historyData.length;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+        <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:16, fontWeight:700, color:C.text }}>{name}</div>
+          <div style={{ fontSize:12, color:C.sub }}>{exInfo.muscle}</div>
+        </div>
+        {pr && (
+          <div style={{ background:C.accentSoft, borderRadius:8, padding:"4px 10px", textAlign:"center" }}>
+            <div style={{ fontSize:9, color:C.accent, fontWeight:700, letterSpacing:1 }}>PR</div>
+            <div style={{ fontSize:13, fontWeight:700, color:C.accent, fontFamily:MONO }}>{cvt(pr,"lbs",unit)} {unit}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ overflowY:"auto", flex:1 }}>
+        {/* Animation */}
+        <div style={{ display:"flex", justifyContent:"center", padding:"20px 0 10px", background:C.bg }}>
+          <ExerciseAnimation name={name} muscle={exInfo.muscle} C={C}/>
+        </div>
+
+        {/* Stats strip */}
+        {sessions > 0 && (
+          <div style={{ display:"flex", gap:0, margin:"0 16px 16px", border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+            {[
+              ["Sessions", sessions],
+              ["Total Sets", totalSets],
+              ["Volume", totalVol > 1000 ? `${(totalVol/1000).toFixed(1)}k` : Math.round(totalVol)],
+            ].map(([label, val], i) => (
+              <div key={label} style={{ flex:1, padding:"12px 8px", textAlign:"center", borderRight: i < 2 ? `1px solid ${C.divider}` : "none" }}>
+                <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:MONO }}>{val}</div>
+                <div style={{ fontSize:10, color:C.sub, marginTop:2 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Chart */}
+        <div style={{ margin:"0 16px 20px", border:`1px solid ${C.border}`, borderRadius:12, padding:"14px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:C.text }}>Progress</div>
+            <div style={{ display:"flex", background:C.divider, borderRadius:16, padding:2 }}>
+              {["weight","volume"].map(m => (
+                <button key={m} onClick={() => setChartMode(m)} style={{
+                  padding:"4px 10px", borderRadius:14, border:"none",
+                  background: chartMode===m ? C.accent : "transparent",
+                  color: chartMode===m ? "#fff" : C.sub,
+                  fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
+                }}>{m === "weight" ? "Max Weight" : "Volume"}</button>
+              ))}
+            </div>
+          </div>
+          <ExerciseVolumeChart data={chartData} unit={unit} C={C}/>
+          {chartData.length > 0 && <div style={{ fontSize:10, color:C.sub, textAlign:"right", marginTop:4 }}>{unit}</div>}
+        </div>
+
+        {/* How To */}
+        <div style={{ margin:"0 16px 16px" }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>HOW TO DO IT</div>
+          <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+            {cueData.cues.map((cue, i) => (
+              <div key={i} style={{
+                display:"flex", gap:12, padding:"11px 14px",
+                borderBottom: i < cueData.cues.length - 1 ? `1px solid ${C.divider}` : "none",
+                alignItems:"flex-start"
+              }}>
+                <div style={{
+                  width:20, height:20, borderRadius:"50%", background:C.accent,
+                  color:"#fff", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1
+                }}>{i+1}</div>
+                <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{cue}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Common Mistakes */}
+        <div style={{ margin:"0 16px 16px" }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>COMMON MISTAKES</div>
+          <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+            {cueData.mistakes.map((m, i) => (
+              <div key={i} style={{
+                display:"flex", gap:12, padding:"11px 14px",
+                borderBottom: i < cueData.mistakes.length - 1 ? `1px solid ${C.divider}` : "none",
+                alignItems:"flex-start"
+              }}>
+                <div style={{ color:"#ef4444", fontSize:16, flexShrink:0, lineHeight:1.3 }}>✕</div>
+                <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{m}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Breathing cue */}
+        {cueData.breathe && (
+          <div style={{ margin:"0 16px 24px", background:C.accentSoft, borderRadius:12, padding:"14px 16px" }}>
+            <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>BREATHING</div>
+            <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{cueData.breathe}</div>
+          </div>
+        )}
+
+        {/* Previous sessions */}
+        {historyData.length > 0 && (
+          <div style={{ margin:"0 16px 32px" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>RECENT SESSIONS</div>
+            <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+              {historyData.slice(-5).reverse().map((d, i) => (
+                <div key={i} style={{
+                  display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 14px",
+                  borderBottom: i < Math.min(5, historyData.length) - 1 ? `1px solid ${C.divider}` : "none"
+                }}>
+                  <div>
+                    <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{d.label}</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{d.sets} sets</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.accent, fontFamily:MONO }}>{d.weight} {unit}</div>
+                    <div style={{ fontSize:11, color:C.sub }}>vol {d.volume > 1000 ? `${(d.volume/1000).toFixed(1)}k` : Math.round(d.volume)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function GroupsScreen({ store, setStore, currentUserId, C }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
@@ -4086,14 +4884,33 @@ export default function App() {
   }
 
   async function handleSaveProgram(program) {
-    if (!token) return;
+    if (!token) {
+      // No auth — just save locally
+      setStore(prev => ({
+        ...prev,
+        programs: prev.programs.find(p => p.id === program.id)
+          ? prev.programs.map(p => p.id === program.id ? program : p)
+          : [...prev.programs, program],
+        activeProgramId: program._deactivate ? null : program.id
+      }));
+      return;
+    }
     try {
-      // Deactivate all others first
+      if (program._deactivate) {
+        // Just deactivate all — no new active
+        await sb.query(`programs?user_id=eq.${currentUserId}`, {
+          method:"PATCH", body: JSON.stringify({ is_active: false })
+        }, token);
+        setStore(prev => ({ ...prev, activeProgramId: null }));
+        return;
+      }
+      // Deactivate all others
       await sb.query(`programs?user_id=eq.${currentUserId}`, {
         method:"PATCH", body: JSON.stringify({ is_active: false })
       }, token);
-      // Upsert this program
-      if (program.id && store.programs.find(p => p.id === program.id)) {
+      // Check if existing or new
+      const existing = store.programs.find(p => p.id === program.id);
+      if (existing && program.id) {
         await sb.query(`programs?id=eq.${program.id}`, {
           method:"PATCH", body: JSON.stringify({ name: program.name, days: program.days, is_active: true })
         }, token);
@@ -4112,7 +4929,25 @@ export default function App() {
           : [...prev.programs, program],
         activeProgramId: program.id
       }));
-    } catch (e) { console.error("program save error:", e); }
+      toast("Program activated 💪", "success");
+    } catch (e) {
+      console.error("program save error:", e);
+      toast("Couldn't save program", "error");
+    }
+  }
+
+  // Save program edits (notes, exercise changes) back to Supabase
+  const saveProgramDebounceRef = useRef({});
+  async function handleProgramEdited(prog) {
+    if (!token || !prog.id) return;
+    clearTimeout(saveProgramDebounceRef.current[prog.id]);
+    saveProgramDebounceRef.current[prog.id] = setTimeout(async () => {
+      try {
+        await sb.query(`programs?id=eq.${prog.id}`, {
+          method:"PATCH", body: JSON.stringify({ days: prog.days })
+        }, token);
+      } catch (e) { console.error("program edit sync error:", e); }
+    }, 1500); // debounce 1.5s so we don't spam on every keystroke
   }
 
   async function handleSaveWorkout(workoutData) {
@@ -4385,24 +5220,28 @@ export default function App() {
       {/* CONTENT — sliding tab strip */}
       {(() => {
         const tabIdx = TABS_ORDER.indexOf(tab);
-        // Base offset: each tab is 100vw wide
-        // swipeX adds live finger position (negative = dragging left = going to next tab)
-        const baseOffset = -tabIdx * 100;
-        // Convert swipeX pixels to vw percentage (approximate, good enough for feel)
-        const dragVw = swipeStart.current.type === "horizontal" ? (swipeX / window.innerWidth) * 100 : 0;
-        const totalOffset = baseOffset + dragVw;
-        const isAnimating = swipeX === 0; // animate snap when finger lifted
+        const n = TABS_ORDER.length;
+        // Each panel is (100/n)% of the strip width
+        // Base: show panel at tabIdx → translate strip left by tabIdx panels
+        // dragVw: finger position in vw, clamped to adjacent panels only
+        const isHoriz = swipeStart.current.type === "horizontal";
+        const dragPx = isHoriz ? swipeX : 0;
+        // Convert px drag to % of the full strip width
+        // Strip is n*100vw wide, so 1vw = (1/n)% of strip width
+        const dragPct = (dragPx / window.innerWidth) * (100 / n);
+        const basePct = -(tabIdx * 100) / n;
+        const totalPct = basePct + dragPct;
+        const isAnimating = swipeX === 0;
 
         return (
           <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
             <div style={{
               display:"flex",
               flexDirection:"row",
-              width:`${TABS_ORDER.length * 100}%`,
+              width:`${n * 100}%`,
               height:"100%",
-              transform:`translateX(${totalOffset / TABS_ORDER.length}%)`,
-              transition: isAnimating ? "transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
-              willChange:"transform"
+              transform:`translateX(${totalPct}%)`,
+              transition: isAnimating ? "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
             }}>
               {/* FEED */}
               <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
@@ -4515,7 +5354,7 @@ export default function App() {
               {/* WORKOUT */}
               <div style={{ width:`${100 / TABS_ORDER.length}%`, height:"100%", flexShrink:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
                 {(tab === "tracker" || tabIdx === 1 || Math.abs(tabIdx - 1) <= 1) && (
-                  <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onPRHit={setPrModal} C={C}/>
+                  <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}/>
                 )}
               </div>
 
