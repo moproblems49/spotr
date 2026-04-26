@@ -4547,7 +4547,7 @@ export default function App() {
   // ── All UI state — must be at top level before any returns ──
   const [tab, setTab] = useState("feed");
   const [prevTab, setPrevTab] = useState(null);
-  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
+  const TABS_ORDER = ["feed", "tracker", "discover", "profile", "challenges"];
   function switchTab(t) { setPrevTab(tab); setTab(t); }
   const [showNewPost, setShowNewPost] = useState(false);
   const [profileUserId, setProfileUserId] = useState(null);
@@ -5300,6 +5300,10 @@ export default function App() {
             onUserClick={setProfileUserId}
           />
         )}
+
+        {tab === "challenges" && (
+          <ChallengesScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C}/>
+        )}
             </div>
           </div>
         );
@@ -5351,6 +5355,16 @@ export default function App() {
               <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? C.text : "none"} stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="8" r="4"/>
                 <path d="M3 21 Q3 14 12 14 Q21 14 21 21"/>
+              </svg>
+            )
+          },
+          {
+            id: "challenges", label: "Challenges",
+            icon: (active) => (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={active ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <circle cx="12" cy="12" r="6"/>
+                <circle cx="12" cy="12" r="2"/>
               </svg>
             )
           },
