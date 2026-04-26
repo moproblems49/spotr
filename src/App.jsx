@@ -3153,92 +3153,177 @@ function getCues(name, muscle) {
 }
 
 // ── Animated SVG exercise demos ───────────────────────────────────────────────
-// ExerciseDB name normalizer — maps our names to ExerciseDB search terms
-function toExerciseDBQuery(name) {
-  return name
-    .toLowerCase()
-    .replace(/\(.*?\)/g, "")           // remove parentheses content
-    .replace(/barbell /g, "")
-    .replace(/dumbbell /g, "")
-    .replace(/db /g, "")
-    .replace(/ez bar /g, "")
-    .replace(/cable /g, "")
-    .replace(/machine /g, "")
-    .replace(/weighted /g, "")
-    .replace(/\bpress\b/, "press")
-    .replace(/low-to-high/g, "")
-    .replace(/high-to-low/g, "")
-    .replace(/single-arm /g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// ── Exercise demo fetcher — uses multiple sources with fallback ──────────────
+const EXDB_KEY = "f317d32637mshd756e2856fa6208p16919cjsnf9bff66528f4";
+
+// Map our names to ExerciseDB's exact naming convention
+const EXDB_NAME_MAP = {
+  "Barbell Bench Press": "barbell bench press",
+  "Incline Barbell Press": "barbell incline bench press",
+  "Decline Barbell Press": "barbell decline bench press",
+  "Incline DB Press": "dumbbell incline bench press",
+  "Flat DB Press": "dumbbell bench press",
+  "Decline DB Press": "dumbbell decline bench press",
+  "Cable Fly (Low-to-High)": "cable low fly",
+  "Cable Fly (High-to-Low)": "cable middle fly",
+  "Pec Deck Machine": "lever pec deck fly",
+  "Dips": "triceps dip",
+  "Push-Ups": "push-up",
+  "Weighted Push-Ups": "weighted push-up",
+  "DB Pullover": "dumbbell pullover",
+  "Barbell Row": "barbell bent over row",
+  "Pendlay Row": "barbell pendlay row",
+  "T-Bar Row": "lever t bar row",
+  "Seated Cable Row (Wide)": "cable seated row",
+  "Seated Cable Row (Narrow)": "cable seated row",
+  "Single-Arm DB Row": "dumbbell one arm row",
+  "Chest-Supported Row": "lever bent over row",
+  "Pull-Ups": "pull up",
+  "Weighted Pull-Ups": "weighted pull up",
+  "Chin-Ups": "chin up",
+  "Lat Pulldown (Wide)": "cable lat pulldown",
+  "Lat Pulldown (Underhand)": "cable underhand pulldowns",
+  "Straight-Arm Pulldown": "cable straight back seated row",
+  "Face Pulls": "cable rope face pulls",
+  "Rear Delt Fly (Cable)": "cable rear delt row",
+  "Rear Delt Fly (DB)": "dumbbell rear lateral raise",
+  "Overhead Press (Barbell)": "barbell standing military press",
+  "Seated DB Shoulder Press": "dumbbell seated shoulder press",
+  "Arnold Press": "dumbbell arnold press",
+  "Lateral Raises (DB)": "dumbbell lateral raise",
+  "Lateral Raises (Cable)": "cable lateral raise",
+  "Front Raises (DB)": "dumbbell front raise",
+  "Front Raises (Plate)": "weighted front raise",
+  "Upright Row": "barbell upright row",
+  "Machine Shoulder Press": "lever seated shoulder press",
+  "Barbell Curl": "barbell curl",
+  "EZ Bar Curl": "ez barbell curl",
+  "Dumbbell Curl": "dumbbell biceps curl",
+  "Incline DB Curl": "dumbbell incline biceps curl",
+  "Hammer Curl": "dumbbell alternate hammer curl",
+  "Preacher Curl (EZ Bar)": "ez barbell preacher curl",
+  "Preacher Curl (DB)": "dumbbell preacher curl",
+  "Cable Curl (Single Arm)": "cable one arm curl",
+  "Concentration Curl": "dumbbell concentration curl",
+  "Reverse Curl": "barbell reverse curl",
+  "Skull Crushers (EZ Bar)": "ez barbell skull crusher",
+  "Skull Crushers (DB)": "dumbbell skull crusher",
+  "Tricep Rope Pushdown": "cable rope pushdown",
+  "Tricep Bar Pushdown": "cable pushdown",
+  "Overhead Tricep Extension": "cable overhead triceps extension",
+  "Close-Grip Bench Press": "barbell close-grip bench press",
+  "Tricep Dips": "triceps dip",
+  "Diamond Push-Ups": "diamond push-up",
+  "Barbell Back Squat": "barbell full squat",
+  "Front Squat": "barbell front squat",
+  "Leg Press": "lever leg press",
+  "Hack Squat": "lever hack squat",
+  "Bulgarian Split Squat": "dumbbell bulgarian split squat",
+  "Walking Lunges": "dumbbell lunge",
+  "Leg Extension": "lever leg extension",
+  "Step-Ups": "dumbbell step-up",
+  "Deadlift": "barbell deadlift",
+  "Sumo Deadlift": "barbell sumo deadlift",
+  "Romanian Deadlift": "barbell romanian deadlift",
+  "Stiff-Leg Deadlift": "barbell stiff leg deadlift",
+  "Lying Leg Curl": "lever lying leg curl",
+  "Seated Leg Curl": "lever seated leg curl",
+  "Nordic Curl": "nordic hamstring curl",
+  "Hip Thrust (Barbell)": "barbell glute bridge",
+  "Hip Thrust (Machine)": "lever hip thrust",
+  "Glute Kickback (Cable)": "cable kickback",
+  "Abduction Machine": "lever seated hip abduction",
+  "Standing Calf Raise": "barbell standing calf raise",
+  "Seated Calf Raise": "lever seated calf raise",
+  "Leg Press Calf Raise": "lever leg press calf raise",
+  "Plank": "front plank",
+  "Cable Crunch": "cable crunch",
+  "Hanging Leg Raise": "hanging leg raise",
+  "Ab Wheel Rollout": "wheel rollout",
+  "Decline Crunch": "decline crunch",
+  "Russian Twist": "weighted russian twist",
+  "Landmine Rotation": "landmine twist",
+  "Cable Woodchop": "cable wood chop",
+  "Power Clean": "barbell clean and press",
+  "Clean and Jerk": "barbell clean and jerk",
+  "Snatch": "barbell snatch",
+  "Kettlebell Swing": "kettlebell swing",
+  "Farmers Walk": "farmers walk",
+  "Sled Push": "sled forward push",
+  "Battle Ropes": "battle ropes",
+  "Barbell Shrugs": "barbell shrug",
+  "DB Shrugs": "dumbbell shrug",
+  "Wrist Curl": "barbell wrist curl",
+  "Reverse Wrist Curl": "barbell reverse wrist curl",
+  "Farmers Carry": "farmers walk",
+};
 
 function ExerciseAnimation({ name, muscle, C }) {
   const [gifUrl, setGifUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [muscles, setMuscles] = useState(null);
-  const CACHE_KEY = "ignite_exercise_gifs_v2";
+  const CACHE_KEY = "ignite_exercise_gifs_v3";
 
   useEffect(() => {
     let cancelled = false;
     async function fetchGif() {
       setLoading(true);
-      // Check cache
       try {
         const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
         if (cache[name]) {
-          setGifUrl(cache[name].gif);
-          setMuscles(cache[name].muscles);
-          setLoading(false);
+          if (!cancelled) {
+            setGifUrl(cache[name].gif);
+            setMuscles(cache[name].muscles);
+            setLoading(false);
+          }
           return;
         }
       } catch {}
 
-      try {
-        const q = encodeURIComponent(toExerciseDBQuery(name));
-        const res = await fetch(
-          `https://exercisedb.p.rapidapi.com/exercises/name/${q}?limit=5&offset=0`,
-          { headers: {
-            "x-rapidapi-key": "f317d32637mshd756e2856fa6208p16919cjsnf9bff66528f4",
-            "x-rapidapi-host": "exercisedb.p.rapidapi.com"
-          }}
-        );
-        if (!res.ok) throw new Error("API " + res.status);
-        const data = await res.json();
-        // Pick best match — prefer exact name match, then first result
-        const best = data?.find(e =>
-          e.name?.toLowerCase().includes(toExerciseDBQuery(name).split(" ")[0])
-        ) || data?.[0];
-        const gif = best?.gifUrl || null;
-        const mGroups = best ? {
-          target: best.target,
-          secondary: best.secondaryMuscles || [],
-          bodyPart: best.bodyPart
-        } : null;
-        if (!cancelled) {
-          setGifUrl(gif);
-          setMuscles(mGroups);
-          setLoading(false);
-          if (gif) {
+      const tryQueries = [
+        EXDB_NAME_MAP[name],
+        name.toLowerCase(),
+        name.toLowerCase().replace(/\(.*?\)/g, "").replace(/barbell |dumbbell |db |cable |machine |ez bar |weighted |lever /g, "").trim(),
+      ].filter(Boolean);
+
+      for (const q of tryQueries) {
+        try {
+          const res = await fetch(
+            `https://exercisedb.p.rapidapi.com/exercises/name/${encodeURIComponent(q)}?limit=10&offset=0`,
+            { headers: {
+              "x-rapidapi-key": EXDB_KEY,
+              "x-rapidapi-host": "exercisedb.p.rapidapi.com"
+            }}
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (!data || data.length === 0) continue;
+          const best = data[0];
+          const gif = best.gifUrl;
+          const m = { target: best.target, secondary: best.secondaryMuscles || [], bodyPart: best.bodyPart };
+          if (!cancelled) {
+            setGifUrl(gif);
+            setMuscles(m);
+            setLoading(false);
             try {
               const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-              cache[name] = { gif, muscles: mGroups };
+              cache[name] = { gif, muscles: m };
               const keys = Object.keys(cache);
-              if (keys.length > 150) delete cache[keys[0]];
+              if (keys.length > 200) delete cache[keys[0]];
               localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
             } catch {}
           }
-        }
-      } catch (e) {
-        if (!cancelled) setLoading(false);
+          return;
+        } catch (e) { continue; }
       }
+      if (!cancelled) setLoading(false);
     }
     fetchGif();
     return () => { cancelled = true; };
   }, [name]);
 
   if (loading) return (
-    <div style={{ width:"100%", height:220, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12 }}>
+    <div style={{ width:"100%", height:240, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12 }}>
       <div style={{ textAlign:"center" }}>
         <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${C.divider}`, borderTopColor:C.accent, animation:"spotrSpin 0.8s linear infinite", margin:"0 auto 10px" }}/>
         <div style={{ fontSize:11, color:C.sub }}>Loading demo...</div>
@@ -3249,21 +3334,22 @@ function ExerciseAnimation({ name, muscle, C }) {
   return (
     <div style={{ width:"100%", borderRadius:12, overflow:"hidden", background:C.divider }}>
       {gifUrl ? (
-        <img src={gifUrl} alt={name} style={{ width:"100%", maxHeight:280, objectFit:"contain", display:"block", background:"#000" }}/>
+        <img src={gifUrl} alt={name} style={{ width:"100%", maxHeight:300, objectFit:"contain", display:"block", background:"#fff" }}/>
       ) : (
-        <div style={{ height:160, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10 }}>
-          <div style={{ fontSize:11, color:C.sub }}>No demo available</div>
+        <div style={{ height:200, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:14 }}>
+          <MuscleIcon muscle={muscle} size={60} C={C}/>
+          <div style={{ fontSize:11, color:C.sub, textAlign:"center", padding:"0 16px" }}>{name}</div>
         </div>
       )}
       {muscles && (
-        <div style={{ padding:"10px 14px", display:"flex", gap:8, flexWrap:"wrap" }}>
+        <div style={{ padding:"10px 14px", display:"flex", gap:8, flexWrap:"wrap", background:C.bg }}>
           {muscles.target && (
-            <span style={{ background:C.accent, color:"#fff", borderRadius:12, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
+            <span style={{ background:C.accent, color:"#fff", borderRadius:12, padding:"3px 10px", fontSize:11, fontWeight:600, textTransform:"capitalize" }}>
               🎯 {muscles.target}
             </span>
           )}
           {(muscles.secondary || []).slice(0,3).map(m => (
-            <span key={m} style={{ background:C.divider, color:C.sub, borderRadius:12, padding:"3px 10px", fontSize:11 }}>
+            <span key={m} style={{ background:C.divider, color:C.sub, borderRadius:12, padding:"3px 10px", fontSize:11, textTransform:"capitalize" }}>
               {m}
             </span>
           ))}
@@ -5042,12 +5128,18 @@ export default function App() {
         const prevIdx = TABS_ORDER.indexOf(prevTab);
         const curIdx = TABS_ORDER.indexOf(tab);
         const dir = prevIdx < curIdx ? "left" : "right";
-        const animKey = tab + prevTab;
+        const animKey = tab + "_" + (prevTab || "");
         return (
           <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative" }}>
             <style>{`
-              @keyframes slideInLeft { from { transform:translateX(30px); opacity:0; } to { transform:translateX(0); opacity:1; } }
-              @keyframes slideInRight { from { transform:translateX(-30px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+              @keyframes slideInLeft {
+                from { transform:translateX(100%); }
+                to { transform:translateX(0); }
+              }
+              @keyframes slideInRight {
+                from { transform:translateX(-100%); }
+                to { transform:translateX(0); }
+              }
             `}</style>
             {/* Edge-back drag indicator */}
             {swipeStart.current.type === "edge-back" && swipeX > 0 && (
@@ -5059,7 +5151,7 @@ export default function App() {
             )}
             <div key={animKey} style={{
               flex:1, display:"flex", flexDirection:"column", overflow:"hidden",
-              animation: prevTab ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.22s ease` : "none"
+              animation: prevTab ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.28s cubic-bezier(0.32, 0.72, 0, 1)` : "none"
             }}>
 
         {tab === "feed" && (
