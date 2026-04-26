@@ -2088,20 +2088,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
         </div>
 
-        {/* Workout-level note */}
-        <div style={{ padding:"6px 14px 8px", borderBottom:`1px solid ${C.divider}` }}>
-          <input
-            value={session.workoutNote || ""}
-            onChange={e => setSession(p => ({ ...p, workoutNote: e.target.value }))}
-            placeholder="📝 Workout note (e.g. 'felt strong, increase weight next session')"
-            style={{
-              width:"100%", background:C.divider, border:"none", borderRadius:8,
-              padding:"8px 12px", fontSize:13, color:C.text, outline:"none",
-              fontFamily:F, boxSizing:"border-box"
-            }}
-          />
-        </div>
-
         {/* Rest timer */}
         {rest && (
           <div style={{ background:C.surface, padding:"8px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", borderTop:`1px solid ${C.divider}`, borderBottom:`1px solid ${C.divider}` }}>
@@ -2126,25 +2112,40 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
             return (
               <div key={ex.id || ei} style={{ marginBottom:16, borderBottom:`1px solid ${C.divider}`, paddingBottom:12 }}>
-                <div style={{ padding:"0 14px 10px", display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ padding:"0 14px 6px", display:"flex", alignItems:"center", gap:10 }}>
                   <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0 }}>
                     <MuscleIcon muscle={exInfo?.muscle || ""} size={32} C={C}/>
                   </button>
-                  <div style={{ flex:1, display:"flex", alignItems:"center", gap:6 }}>
-                    <ExerciseInput
-                      value={ex.name}
-                      onChange={v => setSession(p => ({
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <ExerciseInput
+                        value={ex.name}
+                        onChange={v => setSession(p => ({
+                          ...p,
+                          exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, name: v })
+                        }))}
+                        C={C}
+                      />
+                      {ex.name && (
+                        <button onClick={() => setViewingExercise(ex.name)} style={{
+                          background:"none", border:"none", cursor:"pointer", padding:"4px 6px",
+                          fontSize:11, color:C.accent, fontWeight:600, fontFamily:F, flexShrink:0, whiteSpace:"nowrap"
+                        }}>How to ›</button>
+                      )}
+                    </div>
+                    <input
+                      value={ex.note || ""}
+                      onChange={e => setSession(p => ({
                         ...p,
-                        exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, name: v })
+                        exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, note: e.target.value })
                       }))}
-                      C={C}
+                      placeholder={store.exerciseNotes?.[ex.name] ? `💡 ${store.exerciseNotes[ex.name]}` : "Add note..."}
+                      style={{
+                        width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`,
+                        padding:"4px 0", fontSize:12, color:C.sub, outline:"none",
+                        fontFamily:F, boxSizing:"border-box", marginTop:3
+                      }}
                     />
-                    {ex.name && (
-                      <button onClick={() => setViewingExercise(ex.name)} style={{
-                        background:"none", border:"none", cursor:"pointer", padding:"4px 6px",
-                        fontSize:11, color:C.accent, fontWeight:600, fontFamily:F, flexShrink:0, whiteSpace:"nowrap"
-                      }}>How to ›</button>
-                    )}
                   </div>
                   <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_, i) => i !== ei) }))} style={{
                     color:C.sub, background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"4px", flexShrink:0
@@ -2193,30 +2194,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   )}
                 </div>
 
-                {/* Per-exercise note */}
-                <div style={{ padding:"8px 14px 0" }}>
-                  {(() => {
-                    const savedNote = store.exerciseNotes?.[ex.name];
-                    return (savedNote && !ex.note) ? (
-                      <div style={{ fontSize:11, color:C.sub, marginBottom:4, fontStyle:"italic" }}>
-                        💡 Last note: {savedNote}
-                      </div>
-                    ) : null;
-                  })()}
-                  <input
-                    value={ex.note || ""}
-                    onChange={e => setSession(p => ({
-                      ...p,
-                      exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, note: e.target.value })
-                    }))}
-                    placeholder="📝 Note for this exercise (felt heavy, try 185 next time...)"
-                    style={{
-                      width:"100%", background:C.divider, border:"none", borderRadius:8,
-                      padding:"8px 12px", fontSize:12, color:C.text, outline:"none",
-                      fontFamily:F, boxSizing:"border-box"
-                    }}
-                  />
-                </div>
               </div>
             );
           })}
@@ -2310,60 +2287,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
           {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
           {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
-
-          {/* Today's Workouts - show completed workouts with edit/delete */}
-          {(() => {
-            const todayKey = dKey();
-            const todaySessions = store.history?.[todayKey] || {};
-            const todayWorkouts = Object.values(todaySessions);
-            if (todayWorkouts.length === 0) return null;
-            
-            return (
-              <>
-                <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10, marginTop:8 }}>
-                  TODAY'S WORKOUTS
-                </div>
-                {todayWorkouts.map((sess, idx) => {
-                  const done = sess.exercises?.reduce((a, ex) => a + (ex.sets?.filter(s => s.done).length || 0), 0) || 0;
-                  return (
-                    <div key={idx} style={{
-                      background:C.surface, border:`1px solid ${C.border}`,
-                      borderRadius:10, padding:"12px 14px", marginBottom:8
-                    }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{sess.dayName}</div>
-                        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                          <span style={{ fontSize:11, color:C.sub }}>{fmtTime(sess.duration)} · {done} sets</span>
-                          <button 
-                            onClick={() => {
-                              if (confirm(`Delete "${sess.dayName}"?`)) {
-                                setStore(p => {
-                                  const newHistory = { ...p.history };
-                                  const dateSessions = newHistory[todayKey] ? { ...newHistory[todayKey] } : {};
-                                  const sessionKeys = Object.keys(dateSessions);
-                                  if (sessionKeys[idx]) delete dateSessions[sessionKeys[idx]];
-                                  newHistory[todayKey] = dateSessions;
-                                  return { ...p, history: newHistory };
-                                });
-                              }
-                            }}
-                            style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:14, padding:4 }}
-                          >🗑</button>
-                        </div>
-                      </div>
-                      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                        {sess.exercises?.filter(e => e.name).map((ex, j) => (
-                          <span key={j} style={{ fontSize:11, color:C.sub }}>
-                            {ex.name}{j < sess.exercises.length - 1 ? " ·" : ""}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </>
-            );
-          })()}
 
           {prog ? (
             <>
@@ -2845,74 +2768,109 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {/* Day Preview modal — shows exercises before starting */}
-      {previewDay && (
+      {previewDay && (() => {
+        const [editMode, setEditMode] = useState(false);
+        const [editDay, setEditDay] = useState(previewDay.day);
+
+        function saveAndStart() {
+          // Save edits back to the program
+          if (editMode && onSaveProgram) {
+            const prog = store.programs.find(p => p.days.some(d => d.id === editDay.id || d.name === editDay.name));
+            if (prog) {
+              const updatedProg = { ...prog, days: prog.days.map(d => d.name === editDay.name ? editDay : d) };
+              onSaveProgram(updatedProg);
+            }
+          }
+          setPreviewDay(null);
+          startWorkout(editMode ? editDay : previewDay.day);
+        }
+
+        return (
         <div onClick={() => setPreviewDay(null)} style={{
           position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200,
           display:"flex", alignItems:"flex-end", justifyContent:"center"
         }}>
           <div onClick={e => e.stopPropagation()} style={{
             background:C.bg, borderRadius:"16px 16px 0 0",
-            width:"100%", maxWidth:480,
-            height:"85dvh",
+            width:"100%", maxWidth:480, height:"85dvh",
             display:"flex", flexDirection:"column",
             borderTop:`1px solid ${C.border}`,
             paddingBottom:"env(safe-area-inset-bottom)"
           }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
               <button onClick={() => setPreviewDay(null)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"left" }}>Cancel</button>
-              <div style={{ fontSize:15, fontWeight:600, color:C.text, flex:1, textAlign:"center" }}>{previewDay.day.name}</div>
-              <div style={{ minWidth:60 }}/>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text, flex:1, textAlign:"center" }}>{editDay.name}</div>
+              <button onClick={() => setEditMode(m => !m)} style={{
+                fontSize:12, fontWeight:600, color: editMode ? C.accent : C.sub,
+                background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"right"
+              }}>{editMode ? "Done" : "Edit"}</button>
             </div>
+
             <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 6px", WebkitOverflowScrolling:"touch" }}>
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:4 }}>
-                {(previewDay.programName || "").toUpperCase()}
-              </div>
-              <div style={{ fontSize:13, color:C.sub, marginBottom:16 }}>
-                {previewDay.day.exercises.length} exercise{previewDay.day.exercises.length === 1 ? "" : "s"}
-              </div>
-              {previewDay.day.exercises.map((ex, i) => {
-                const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
-                const pr = store.prs?.[ex.name];
-                return (
-                  <div key={i} style={{
-                    display:"flex", alignItems:"center", gap:12,
-                    padding:"12px 0", borderBottom: i < previewDay.day.exercises.length - 1 ? `1px solid ${C.divider}` : "none"
-                  }}>
-                    {exInfo && (
-                      <div style={{
-                        width:44, height:44, borderRadius:10,
-                        background:C.divider,
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        flexShrink:0
-                      }}><MuscleIcon muscle={exInfo.muscle} size={30} C={C}/></div>
-                    )}
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
-                      <div style={{ fontSize:11, color:C.sub, marginTop:2, display:"flex", gap:10, flexWrap:"wrap" }}>
-                        {ex.reps && <span>{ex.reps} reps</span>}
-                        {exInfo?.muscle && <span>· {exInfo.muscle}</span>}
-                        {pr && <span style={{ color:C.gold }}>· PR {cvt(pr, "lbs", unit)} {unit}</span>}
-                      </div>
-                      {ex.note && <div style={{ fontSize:11, color:C.sub, marginTop:4, fontStyle:"italic" }}>💡 {ex.note}</div>}
-                    </div>
+              {!editMode ? (
+                <>
+                  <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:4 }}>
+                    {(previewDay.programName || "").toUpperCase()}
                   </div>
-                );
-              })}
+                  <div style={{ fontSize:13, color:C.sub, marginBottom:16 }}>
+                    {editDay.exercises.length} exercise{editDay.exercises.length === 1 ? "" : "s"}
+                  </div>
+                  {editDay.exercises.map((ex, i) => {
+                    const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+                    const pr = store.prs?.[ex.name];
+                    return (
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom: i < editDay.exercises.length - 1 ? `1px solid ${C.divider}` : "none" }}>
+                        {exInfo && <div style={{ width:44, height:44, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><MuscleIcon muscle={exInfo.muscle} size={30} C={C}/></div>}
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{ex.reps && `${ex.reps} reps`}{exInfo?.muscle && ` · ${exInfo.muscle}`}{pr && <span style={{ color:C.gold }}> · PR {cvt(pr,"lbs",unit)} {unit}</span>}</div>
+                          {ex.note && <div style={{ fontSize:11, color:C.sub, marginTop:3, fontStyle:"italic" }}>💡 {ex.note}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize:11, color:C.sub, marginBottom:12 }}>Tap × to remove · drag to reorder · add exercises below</div>
+                  {editDay.exercises.map((ex, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:`1px solid ${C.divider}` }}>
+                      <div style={{ flex:1 }}>
+                        <input
+                          value={ex.name}
+                          onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, name:e.target.value}) }))}
+                          style={{ width:"100%", background:C.divider, border:"none", borderRadius:6, padding:"6px 10px", fontSize:13, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:4 }}
+                        />
+                        <input
+                          value={ex.note || ""}
+                          onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, note:e.target.value}) }))}
+                          placeholder="Note..."
+                          style={{ width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"3px 0", fontSize:11, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
+                        />
+                      </div>
+                      <button onClick={() => setEditDay(d => ({ ...d, exercises: d.exercises.filter((_,j) => j!==i) }))}
+                        style={{ background:"none", border:"none", fontSize:18, color:"#ef4444", cursor:"pointer", flexShrink:0, padding:"4px" }}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={() => setEditDay(d => ({ ...d, exercises: [...d.exercises, { name:"", reps:"8-12", note:"" }] }))}
+                    style={{ width:"100%", marginTop:12, padding:"10px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
+                    + Add Exercise
+                  </button>
+                </>
+              )}
             </div>
+
             <div style={{ padding:"12px 14px 16px", borderTop:`1px solid ${C.divider}`, flexShrink:0 }}>
-              <button onClick={() => {
-                const day = previewDay.day;
-                setPreviewDay(null);
-                startWorkout(day);
-              }} style={{
+              <button onClick={saveAndStart} style={{
                 width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
                 color:"#fff", border:"none", borderRadius:10, padding:"14px",
                 fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
-              }}>Start Workout</button>
+              }}>{editMode ? "Save & Start Workout" : "Start Workout"}</button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* AI Coach modal */}
       {showAICoach && (
@@ -4465,7 +4423,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo" }) {
 
   function handleShare() {
     if (!canShare()) return;
-    if (postKind === "story") {
+    if (postKind === "photo") {
       onPost({ type: "story", caption, imageData: img });
     } else if (postKind === "photo") {
       onPost({ type: isFC ? "form_check" : "photo", caption, imageData: img, location: loc });
@@ -4794,7 +4752,7 @@ export default function App() {
         sb.query(`profiles?select=*`, {}, token),
         sb.query(`programs?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, token),
         sb.query(`personal_records?user_id=eq.${currentUserId}&select=*`, {}, token),
-        sb.query(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc&limit=100`, {}, token),
+        sb.query(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, token),
       ]);
 
       const me = profiles?.find(p => p.id === currentUserId);
@@ -4811,6 +4769,7 @@ export default function App() {
 
       // Convert history to app format
       const appHistory = {};
+      const appWorkoutDates = {};
       (history || []).forEach(w => {
         const dk = w.workout_date;
         if (!appHistory[dk]) appHistory[dk] = {};
@@ -4818,6 +4777,7 @@ export default function App() {
           dayName: w.day_name, exercises: w.exercises,
           duration: w.duration_secs, unit: w.unit, note: w.note
         };
+        appWorkoutDates[dk] = true;
       });
 
       // Load posts (from people user follows + own)
@@ -4836,6 +4796,7 @@ export default function App() {
         activeProgramId: activeProgram?.id || null,
         prs: appPrs,
         history: appHistory,
+        workoutDates: appWorkoutDates,
         unit: me?.unit || "lbs",
         theme: me?.theme || "light",
         defaultRestTime: me?.default_rest_time || 120,
@@ -5165,8 +5126,12 @@ export default function App() {
 
   // ── me, following, feed computed after dbReady guard ────────────
   const following = me?.following || [];
-  // Include current user in story users so you can see your own stories
-  const storyUsers = (store.users || []).filter(u => u.id === currentUserId || following.includes(u.id));
+  // Story users = people who have story posts in the last 24h
+  const recentStoryPosts = (store.posts || []).filter(p =>
+    p.type === "story" && Date.now() - p.createdAt < 24 * 60 * 60 * 1000
+  );
+  const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))].filter(id => id !== currentUserId);
+  const storyUsers = storyUserIds.map(id => store.users.find(u => u.id === id)).filter(Boolean);
   const streak = calcStreak(store.workoutDates || {});
   const feedPosts = (store.posts || [])
     .filter(p => p.userId === currentUserId || following.includes(p.userId))
@@ -5255,31 +5220,22 @@ export default function App() {
         const canRight = idx < TABS_ORDER.length - 1;
         if ((dx > 0 && !canLeft && !profileUserId) || (dx < 0 && !canRight)) return;
         e.preventDefault();
-        
-        // Finger-tracked: use dx directly for smooth 1:1 tracking
-        // Add resistance effect at edges for iOS feel
-        const maxDrag = window.innerWidth * 0.6;
-        const resistance = Math.min(1, Math.abs(dx) / maxDrag);
-        setSwipeX(dx * (1 - resistance * 0.3));
+        setSwipeX(dx);
       }}
-      onTouchEnd={(e) => {
+      onTouchEnd={() => {
         if (!swipeStart.current.type || swipeStart.current.type === "vertical") {
           swipeStart.current = { x:0, y:0, t:0, type:null };
           setSwipeX(0);
           return;
         }
-        
-        // Track velocity for smooth release
         const dx = swipeX;
         const dt = Date.now() - swipeStart.current.t;
-        const velocity = dt > 0 ? Math.abs(dx) / dt : 0;
-        
-        // Reset immediately for smooth finger lift
+        const velocity = Math.abs(dx) / dt;
         swipeStart.current = { x:0, y:0, t:0, type:null };
         setSwipeX(0);
 
-        // Trigger if fast flick OR dragged past 25% of screen (more sensitive)
-        const threshold = velocity > 0.25 || Math.abs(dx) > window.innerWidth * 0.25;
+        // Trigger if fast flick OR dragged past 35% of screen
+        const threshold = velocity > 0.3 || Math.abs(dx) > window.innerWidth * 0.35;
         if (!threshold) return;
 
         if (dx > 0) {
@@ -5354,8 +5310,8 @@ export default function App() {
         const curIdx = TABS_ORDER.indexOf(tab);
         const dir = prevIdx < curIdx ? "left" : "right";
         const animKey = tab + "_" + (prevTab || "");
-        const isDragging = swipeStart.current.type === "horizontal" && swipeX !== 0;
-        const dragOffset = isDragging ? swipeX : 0;
+        const isDragging = swipeStart.current.type === "horizontal";
+        const dragPct = isDragging ? (swipeX / (window.innerWidth || 390)) * 100 : 0;
         return (
           <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative" }}>
             <style>{`
@@ -5370,10 +5326,10 @@ export default function App() {
             `}</style>
             <div key={animKey} style={{
               flex:1, display:"flex", flexDirection:"column", overflow:"hidden",
-              // Direct finger tracking - no animation during drag for 1:1 feel
-              transform: isDragging ? `translateX(${swipeX}px)` : "none",
-              animation: !isDragging && prevTab ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.28s cubic-bezier(0.32, 0.72, 0, 1)` : "none",
-              transition: isDragging ? "none" : "transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)",
+              transform: dragPct !== 0 ? `translateX(${dragPct}%)` : undefined,
+              transition: dragPct !== 0 ? "none" : "transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)",
+              animation: dragPct === 0 && prevTab && swipeX === 0
+                ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.25,0.46,0.45,0.94)` : "none",
             }}>
 
         {tab === "feed" && (
