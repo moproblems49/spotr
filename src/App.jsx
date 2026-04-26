@@ -3749,6 +3749,9 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   if (subTab === "groups") {
     return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")}/>;
   }
+  if (subTab === "challenges") {
+    return <ChallengesScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")}/>;
+  }
 
   return (
     <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
@@ -3765,7 +3768,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
       </div>
       <div style={{ padding:"6px 14px" }}>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-          <button onClick={() => setTab("challenges")} style={{
+          <button onClick={() => setSubTab("challenges")} style={{
             background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
             border:"none", borderRadius:12, padding:"16px",
             color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F
@@ -3835,7 +3838,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
 // ═════════════════════════════════════════════════════════════════════════════
 // CHALLENGES
 // ═════════════════════════════════════════════════════════════════════════════
-function ChallengesScreen({ store, setStore, currentUserId, C }) {
+function ChallengesScreen({ store, setStore, currentUserId, C, onBack }) {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
@@ -3863,14 +3866,16 @@ function ChallengesScreen({ store, setStore, currentUserId, C }) {
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, padding:"16px 14px 20px" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-        <div style={{ fontSize:22, fontWeight:700, color:C.text }}>Challenges</div>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+        {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
+        <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Challenges</div>
         <button onClick={() => setShowCreate(true)} style={{
           background:C.accent, color:"#fff", border:"none", borderRadius:6,
           padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
         }}>+ New</button>
       </div>
+      <div style={{ padding:"16px 14px" }}>
       {(store.challenges || []).map(ch => {
         const joined = ch.participants.includes(currentUserId);
         const daysLeft = Math.ceil((ch.endDate - Date.now()) / (1000*60*60*24));
@@ -3922,12 +3927,10 @@ function ChallengesScreen({ store, setStore, currentUserId, C }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
-
-// ═════════════════════════════════════════════════════════════════════════════
-// PROFILE
 // ═════════════════════════════════════════════════════════════════════════════
 function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick }) {
   const user = store.users.find(u => u.id === userId);
@@ -4230,20 +4233,18 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 // ═════════════════════════════════════════════════════════════════════════════
 // NEW POST MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function NewPostModal({ C, onClose, onPost }) {
-  const [postKind, setPostKind] = useState("photo"); // "photo" | "run" | "yoga"
+function NewPostModal({ C, onClose, onPost, initialKind = "photo" }) {
+  const [postKind, setPostKind] = useState(initialKind);
   const [caption, setCaption] = useState("");
   const [img, setImg] = useState(null);
   const [isFC, setIsFC] = useState(false);
   const [loc, setLoc] = useState("");
-  // Run fields
   const [runDist, setRunDist] = useState("");
   const [runDistUnit, setRunDistUnit] = useState("mi");
   const [runHrs, setRunHrs] = useState("");
   const [runMins, setRunMins] = useState("");
   const [runSecs, setRunSecs] = useState("");
   const [runRoute, setRunRoute] = useState("");
-  // Yoga fields
   const [yogaMins, setYogaMins] = useState("");
   const [yogaType, setYogaType] = useState("vinyasa");
   const fileRef = useRef(null);
@@ -4265,6 +4266,7 @@ function NewPostModal({ C, onClose, onPost }) {
   }
 
   function canShare() {
+    if (postKind === "story") return !!(caption || img);
     if (postKind === "photo") return !!(caption || img);
     if (postKind === "run") return !!(runDist && (runMins || runHrs));
     if (postKind === "yoga") return !!yogaMins;
@@ -4274,6 +4276,8 @@ function NewPostModal({ C, onClose, onPost }) {
   function handleShare() {
     if (!canShare()) return;
     if (postKind === "photo") {
+      onPost({ type: "story", caption, imageData: img });
+    } else if (postKind === "photo") {
       onPost({ type: isFC ? "form_check" : "photo", caption, imageData: img, location: loc });
     } else if (postKind === "run") {
       const totalMins = (parseInt(runHrs)||0)*60 + (parseInt(runMins)||0) + (parseInt(runSecs)||0)/60;
@@ -4288,6 +4292,7 @@ function NewPostModal({ C, onClose, onPost }) {
   }
 
   const kinds = [
+    { id:"story", label:"⚡ Story" },
     { id:"photo", label:"📸 Photo" },
     { id:"run", label:"🏃 Run" },
     { id:"yoga", label:"🧘 Yoga" },
@@ -4315,7 +4320,7 @@ function NewPostModal({ C, onClose, onPost }) {
         </div>
 
         <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
-          {postKind === "photo" && (<>
+          {(postKind === "story" || postKind === "photo") && (<>
             <div onClick={() => fileRef.current?.click()} style={{
               border:`1.5px dashed ${C.border}`, borderRadius:10, minHeight:150,
               display:"flex", alignItems:"center", justifyContent:"center",
@@ -4323,18 +4328,22 @@ function NewPostModal({ C, onClose, onPost }) {
             }}>
               {img
                 ? <img src={img} alt="" style={{ width:"100%", maxHeight:270, objectFit:"cover" }}/>
-                : <><span style={{ fontSize:28 }}>📸</span><span style={{ fontSize:13, color:C.sub }}>Tap to add photo or video</span></>
+                : <><span style={{ fontSize:28 }}>{postKind === "story" ? "⚡" : "📸"}</span><span style={{ fontSize:13, color:C.sub }}>{postKind === "story" ? "Tap to add story photo" : "Tap to add photo or video"}</span></>
               }
             </div>
             <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display:"none" }} onChange={e => handleFile(e.target.files[0])}/>
-            <button onClick={() => setIsFC(!isFC)} style={{
-              marginBottom:10, padding:"6px 12px",
-              background:isFC?C.accent:"transparent", color:isFC?"#fff":C.sub,
-              border:`1px solid ${isFC?C.accent:C.border}`, borderRadius:20,
-              fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-            }}>🎥 Form Check</button>
-            <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Add location"
-              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
+            {postKind === "photo" && (
+              <button onClick={() => setIsFC(!isFC)} style={{
+                marginBottom:10, padding:"6px 12px",
+                background:isFC?C.accent:"transparent", color:isFC?"#fff":C.sub,
+                border:`1px solid ${isFC?C.accent:C.border}`, borderRadius:20,
+                fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
+              }}>🎥 Form Check</button>
+            )}
+            {postKind === "photo" && (
+              <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Add location"
+                style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
+            )}
             <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="Write a caption..." rows={3}
               style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
           </>)}
@@ -4547,9 +4556,10 @@ export default function App() {
   // ── All UI state — must be at top level before any returns ──
   const [tab, setTab] = useState("feed");
   const [prevTab, setPrevTab] = useState(null);
-  const TABS_ORDER = ["feed", "tracker", "discover", "profile", "challenges"];
+  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
   function switchTab(t) { setPrevTab(tab); setTab(t); }
   const [showNewPost, setShowNewPost] = useState(false);
+  const [newPostKind, setNewPostKind] = useState("photo");
   const [profileUserId, setProfileUserId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
   const [prModal, setPrModal] = useState(null);
@@ -5100,7 +5110,7 @@ export default function App() {
           {streak > 0 && <div style={{ marginRight:4 }}><StreakBadge streak={streak} size="sm"/></div>}
           {tab === "feed" && (
             <button
-              onClick={() => setShowNewPost(true)}
+              onClick={() => { setNewPostKind("photo"); setShowNewPost(true); }}
               aria-label="New post"
               style={{ background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
             >
@@ -5220,7 +5230,7 @@ export default function App() {
               {/* Stories */}
               <div style={{ display:"flex", gap:14, padding:"12px 14px", overflowX:"auto", overflowY:"hidden", borderBottom:`1px solid ${C.divider}` }}>
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
-                  <div onClick={() => setShowNewPost(true)} style={{
+                  <div onClick={() => { setNewPostKind("story"); setShowNewPost(true); }} style={{
                     width:60, height:60, borderRadius:"50%",
                     background:C.divider,
                     display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, cursor:"pointer", position:"relative"
@@ -5300,10 +5310,6 @@ export default function App() {
             onUserClick={setProfileUserId}
           />
         )}
-
-        {tab === "challenges" && (
-          <ChallengesScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C}/>
-        )}
             </div>
           </div>
         );
@@ -5358,16 +5364,6 @@ export default function App() {
               </svg>
             )
           },
-          {
-            id: "challenges", label: "Challenges",
-            icon: (active) => (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={active ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <circle cx="12" cy="12" r="6"/>
-                <circle cx="12" cy="12" r="2"/>
-              </svg>
-            )
-          },
         ].map(({ id, label, icon }) => {
           const active = tab === id;
           return (
@@ -5388,7 +5384,7 @@ export default function App() {
         })}
       </div>
 
-      {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost}/>}
+      {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}/>}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
       {storyIndex !== null && (() => {
         const currentStoryUser = storyUsers[storyIndex];
