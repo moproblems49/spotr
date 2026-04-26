@@ -4468,7 +4468,6 @@ export default function App() {
   const pullScrollRef = useRef(null);
   const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
   const [swipeX, setSwipeX] = useState(0);
-  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
   useEffect(() => {
     async function init() {
       const saved = loadSession();
