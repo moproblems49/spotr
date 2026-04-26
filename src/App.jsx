@@ -2311,6 +2311,60 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
           {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
 
+          {/* Today's Workouts - show completed workouts with edit/delete */}
+          {(() => {
+            const todayKey = dKey();
+            const todaySessions = store.history?.[todayKey] || {};
+            const todayWorkouts = Object.values(todaySessions);
+            if (todayWorkouts.length === 0) return null;
+            
+            return (
+              <>
+                <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10, marginTop:8 }}>
+                  TODAY'S WORKOUTS
+                </div>
+                {todayWorkouts.map((sess, idx) => {
+                  const done = sess.exercises?.reduce((a, ex) => a + (ex.sets?.filter(s => s.done).length || 0), 0) || 0;
+                  return (
+                    <div key={idx} style={{
+                      background:C.surface, border:`1px solid ${C.border}`,
+                      borderRadius:10, padding:"12px 14px", marginBottom:8
+                    }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{sess.dayName}</div>
+                        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                          <span style={{ fontSize:11, color:C.sub }}>{fmtTime(sess.duration)} · {done} sets</span>
+                          <button 
+                            onClick={() => {
+                              if (confirm(`Delete "${sess.dayName}"?`)) {
+                                setStore(p => {
+                                  const newHistory = { ...p.history };
+                                  const dateSessions = newHistory[todayKey] ? { ...newHistory[todayKey] } : {};
+                                  const sessionKeys = Object.keys(dateSessions);
+                                  if (sessionKeys[idx]) delete dateSessions[sessionKeys[idx]];
+                                  newHistory[todayKey] = dateSessions;
+                                  return { ...p, history: newHistory };
+                                });
+                              }
+                            }}
+                            style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:14, padding:4 }}
+                          >🗑</button>
+                        </div>
+                      </div>
+                      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                        {sess.exercises?.filter(e => e.name).map((ex, j) => (
+                          <span key={j} style={{ fontSize:11, color:C.sub }}>
+                            {ex.name}{j < sess.exercises.length - 1 ? " ·" : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            );
+          })()}
+
           {prog ? (
             <>
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
@@ -4411,7 +4465,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo" }) {
 
   function handleShare() {
     if (!canShare()) return;
-    if (postKind === "photo") {
+    if (postKind === "story") {
       onPost({ type: "story", caption, imageData: img });
     } else if (postKind === "photo") {
       onPost({ type: isFC ? "form_check" : "photo", caption, imageData: img, location: loc });
@@ -5111,7 +5165,8 @@ export default function App() {
 
   // ── me, following, feed computed after dbReady guard ────────────
   const following = me?.following || [];
-  const storyUsers = (store.users || []).filter(u => u.id !== currentUserId && following.includes(u.id));
+  // Include current user in story users so you can see your own stories
+  const storyUsers = (store.users || []).filter(u => u.id === currentUserId || following.includes(u.id));
   const streak = calcStreak(store.workoutDates || {});
   const feedPosts = (store.posts || [])
     .filter(p => p.userId === currentUserId || following.includes(p.userId))
@@ -5200,22 +5255,31 @@ export default function App() {
         const canRight = idx < TABS_ORDER.length - 1;
         if ((dx > 0 && !canLeft && !profileUserId) || (dx < 0 && !canRight)) return;
         e.preventDefault();
-        setSwipeX(dx);
+        
+        // Finger-tracked: use dx directly for smooth 1:1 tracking
+        // Add resistance effect at edges for iOS feel
+        const maxDrag = window.innerWidth * 0.6;
+        const resistance = Math.min(1, Math.abs(dx) / maxDrag);
+        setSwipeX(dx * (1 - resistance * 0.3));
       }}
-      onTouchEnd={() => {
+      onTouchEnd={(e) => {
         if (!swipeStart.current.type || swipeStart.current.type === "vertical") {
           swipeStart.current = { x:0, y:0, t:0, type:null };
           setSwipeX(0);
           return;
         }
+        
+        // Track velocity for smooth release
         const dx = swipeX;
         const dt = Date.now() - swipeStart.current.t;
-        const velocity = Math.abs(dx) / dt;
+        const velocity = dt > 0 ? Math.abs(dx) / dt : 0;
+        
+        // Reset immediately for smooth finger lift
         swipeStart.current = { x:0, y:0, t:0, type:null };
         setSwipeX(0);
 
-        // Trigger if fast flick OR dragged past 35% of screen
-        const threshold = velocity > 0.3 || Math.abs(dx) > window.innerWidth * 0.35;
+        // Trigger if fast flick OR dragged past 25% of screen (more sensitive)
+        const threshold = velocity > 0.25 || Math.abs(dx) > window.innerWidth * 0.25;
         if (!threshold) return;
 
         if (dx > 0) {
@@ -5306,9 +5370,10 @@ export default function App() {
             `}</style>
             <div key={animKey} style={{
               flex:1, display:"flex", flexDirection:"column", overflow:"hidden",
-              transform: isDragging ? `translateX(${dragOffset}px)` : "none",
+              // Direct finger tracking - no animation during drag for 1:1 feel
+              transform: isDragging ? `translateX(${swipeX}px)` : "none",
               animation: !isDragging && prevTab ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.28s cubic-bezier(0.32, 0.72, 0, 1)` : "none",
-              transition: isDragging ? "none" : undefined,
+              transition: isDragging ? "none" : "transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)",
             }}>
 
         {tab === "feed" && (
