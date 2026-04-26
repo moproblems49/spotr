@@ -2768,109 +2768,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {/* Day Preview modal — shows exercises before starting */}
-      {previewDay && (() => {
-        const [editMode, setEditMode] = useState(false);
-        const [editDay, setEditDay] = useState(previewDay.day);
-
-        function saveAndStart() {
-          // Save edits back to the program
-          if (editMode && onSaveProgram) {
-            const prog = store.programs.find(p => p.days.some(d => d.id === editDay.id || d.name === editDay.name));
-            if (prog) {
-              const updatedProg = { ...prog, days: prog.days.map(d => d.name === editDay.name ? editDay : d) };
-              onSaveProgram(updatedProg);
-            }
-          }
-          setPreviewDay(null);
-          startWorkout(editMode ? editDay : previewDay.day);
-        }
-
-        return (
-        <div onClick={() => setPreviewDay(null)} style={{
-          position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200,
-          display:"flex", alignItems:"flex-end", justifyContent:"center"
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background:C.bg, borderRadius:"16px 16px 0 0",
-            width:"100%", maxWidth:480, height:"85dvh",
-            display:"flex", flexDirection:"column",
-            borderTop:`1px solid ${C.border}`,
-            paddingBottom:"env(safe-area-inset-bottom)"
-          }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-              <button onClick={() => setPreviewDay(null)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"left" }}>Cancel</button>
-              <div style={{ fontSize:15, fontWeight:600, color:C.text, flex:1, textAlign:"center" }}>{editDay.name}</div>
-              <button onClick={() => setEditMode(m => !m)} style={{
-                fontSize:12, fontWeight:600, color: editMode ? C.accent : C.sub,
-                background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"right"
-              }}>{editMode ? "Done" : "Edit"}</button>
-            </div>
-
-            <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 6px", WebkitOverflowScrolling:"touch" }}>
-              {!editMode ? (
-                <>
-                  <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:4 }}>
-                    {(previewDay.programName || "").toUpperCase()}
-                  </div>
-                  <div style={{ fontSize:13, color:C.sub, marginBottom:16 }}>
-                    {editDay.exercises.length} exercise{editDay.exercises.length === 1 ? "" : "s"}
-                  </div>
-                  {editDay.exercises.map((ex, i) => {
-                    const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
-                    const pr = store.prs?.[ex.name];
-                    return (
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom: i < editDay.exercises.length - 1 ? `1px solid ${C.divider}` : "none" }}>
-                        {exInfo && <div style={{ width:44, height:44, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><MuscleIcon muscle={exInfo.muscle} size={30} C={C}/></div>}
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{ex.reps && `${ex.reps} reps`}{exInfo?.muscle && ` · ${exInfo.muscle}`}{pr && <span style={{ color:C.gold }}> · PR {cvt(pr,"lbs",unit)} {unit}</span>}</div>
-                          {ex.note && <div style={{ fontSize:11, color:C.sub, marginTop:3, fontStyle:"italic" }}>💡 {ex.note}</div>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize:11, color:C.sub, marginBottom:12 }}>Tap × to remove · drag to reorder · add exercises below</div>
-                  {editDay.exercises.map((ex, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:`1px solid ${C.divider}` }}>
-                      <div style={{ flex:1 }}>
-                        <input
-                          value={ex.name}
-                          onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, name:e.target.value}) }))}
-                          style={{ width:"100%", background:C.divider, border:"none", borderRadius:6, padding:"6px 10px", fontSize:13, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:4 }}
-                        />
-                        <input
-                          value={ex.note || ""}
-                          onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, note:e.target.value}) }))}
-                          placeholder="Note..."
-                          style={{ width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"3px 0", fontSize:11, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
-                        />
-                      </div>
-                      <button onClick={() => setEditDay(d => ({ ...d, exercises: d.exercises.filter((_,j) => j!==i) }))}
-                        style={{ background:"none", border:"none", fontSize:18, color:"#ef4444", cursor:"pointer", flexShrink:0, padding:"4px" }}>×</button>
-                    </div>
-                  ))}
-                  <button onClick={() => setEditDay(d => ({ ...d, exercises: [...d.exercises, { name:"", reps:"8-12", note:"" }] }))}
-                    style={{ width:"100%", marginTop:12, padding:"10px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
-                    + Add Exercise
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div style={{ padding:"12px 14px 16px", borderTop:`1px solid ${C.divider}`, flexShrink:0 }}>
-              <button onClick={saveAndStart} style={{
-                width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-                color:"#fff", border:"none", borderRadius:10, padding:"14px",
-                fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
-              }}>{editMode ? "Save & Start Workout" : "Start Workout"}</button>
-            </div>
-          </div>
-        </div>
-        );
-      })()}
+      {previewDay && (
+        <DayPreviewModal
+          previewDay={previewDay}
+          store={store}
+          unit={unit}
+          C={C}
+          onClose={() => setPreviewDay(null)}
+          onStart={day => { setPreviewDay(null); startWorkout(day); }}
+          onSaveProgram={onSaveProgram}
+        />
+      )}
 
       {/* AI Coach modal */}
       {showAICoach && (
@@ -2891,6 +2799,89 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 // ═════════════════════════════════════════════════════════════════════════════
 // AI COACH MODAL
 // ═════════════════════════════════════════════════════════════════════════════
+function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveProgram }) {
+  const [editMode, setEditMode] = useState(false);
+  const [editDay, setEditDay] = useState(previewDay.day);
+
+  function saveAndStart() {
+    if (editMode && onSaveProgram) {
+      const prog = store.programs.find(p => p.days?.some(d => d.name === editDay.name));
+      if (prog) {
+        const updatedProg = { ...prog, days: prog.days.map(d => d.name === editDay.name ? editDay : d) };
+        onSaveProgram(updatedProg);
+      }
+    }
+    onStart(editMode ? editDay : previewDay.day);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, height:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, paddingBottom:"env(safe-area-inset-bottom)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+          <button onClick={onClose} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"left" }}>Cancel</button>
+          <div style={{ fontSize:15, fontWeight:600, color:C.text, flex:1, textAlign:"center" }}>{editDay.name}</div>
+          <button onClick={() => setEditMode(m => !m)} style={{ fontSize:12, fontWeight:600, color: editMode ? C.accent : C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"right" }}>
+            {editMode ? "Done" : "Edit"}
+          </button>
+        </div>
+
+        <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 6px", WebkitOverflowScrolling:"touch" }}>
+          {!editMode ? (
+            <>
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:4 }}>{(previewDay.programName||"").toUpperCase()}</div>
+              <div style={{ fontSize:13, color:C.sub, marginBottom:16 }}>{editDay.exercises.length} exercises</div>
+              {editDay.exercises.map((ex, i) => {
+                const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+                const pr = store.prs?.[ex.name];
+                return (
+                  <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"12px 0", borderBottom: i < editDay.exercises.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    {exInfo && <div style={{ width:40, height:40, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><MuscleIcon muscle={exInfo.muscle} size={28} C={C}/></div>}
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{ex.name}</div>
+                      <div style={{ fontSize:12, color:C.sub, marginTop:1 }}>{ex.reps && `${ex.reps} reps`}{pr && <span style={{ color:C.gold }}> · PR {cvt(pr,"lbs",unit)} {unit}</span>}</div>
+                      {ex.note && <div style={{ fontSize:12, color:C.accent, marginTop:3 }}>💡 {ex.note}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:12 }}>Tap × to remove · add below</div>
+              {editDay.exercises.map((ex, i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ flex:1 }}>
+                    <input value={ex.name}
+                      onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, name:e.target.value}) }))}
+                      style={{ width:"100%", background:C.divider, border:"none", borderRadius:6, padding:"7px 10px", fontSize:13, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:4 }}
+                    />
+                    <input value={ex.note||""} placeholder="Note..."
+                      onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, note:e.target.value}) }))}
+                      style={{ width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"3px 0", fontSize:12, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
+                    />
+                  </div>
+                  <button onClick={() => setEditDay(d => ({ ...d, exercises: d.exercises.filter((_,j) => j!==i) }))}
+                    style={{ background:"none", border:"none", fontSize:20, color:"#ef4444", cursor:"pointer", padding:"4px", flexShrink:0 }}>×</button>
+                </div>
+              ))}
+              <button onClick={() => setEditDay(d => ({ ...d, exercises: [...d.exercises, { name:"", reps:"8-12", note:"" }] }))}
+                style={{ width:"100%", marginTop:12, padding:"10px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
+                + Add Exercise
+              </button>
+            </>
+          )}
+        </div>
+
+        <div style={{ padding:"12px 14px 16px", borderTop:`1px solid ${C.divider}`, flexShrink:0 }}>
+          <button onClick={saveAndStart} style={{ width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none", borderRadius:10, padding:"14px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+            {editMode ? "Save & Start Workout" : "Start Workout"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AICoachModal({ C, onClose, onImport }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -5130,6 +5121,7 @@ export default function App() {
   const recentStoryPosts = (store.posts || []).filter(p =>
     p.type === "story" && Date.now() - p.createdAt < 24 * 60 * 60 * 1000
   );
+  const myStoryPost = recentStoryPosts.find(p => p.userId === currentUserId);
   const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))].filter(id => id !== currentUserId);
   const storyUsers = storyUserIds.map(id => store.users.find(u => u.id === id)).filter(Boolean);
   const streak = calcStreak(store.workoutDates || {});
@@ -5386,22 +5378,32 @@ export default function App() {
             <div style={{ paddingTop: pullDist }}>
               {/* Stories */}
               <div style={{ display:"flex", gap:14, padding:"12px 14px", overflowX:"auto", overflowY:"hidden", borderBottom:`1px solid ${C.divider}` }}>
+                {/* My story */}
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
-                  <div onClick={() => { setNewPostKind("story"); setShowNewPost(true); }} style={{
-                    width:60, height:60, borderRadius:"50%",
-                    background:C.divider,
-                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, cursor:"pointer", position:"relative"
-                  }}>
-                    {me?.avatar || "💪"}
-                    <div style={{ position:"absolute", bottom:-2, right:-2, width:22, height:22, borderRadius:"50%", background:C.accent, color:"#fff", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
+                  <div style={{ position:"relative", cursor:"pointer" }} onClick={() => { setNewPostKind("story"); setShowNewPost(true); }}>
+                    <div style={{
+                      width:60, height:60, borderRadius:"50%", overflow:"hidden",
+                      border: myStoryPost ? "2.5px solid #f97316" : `2.5px solid ${C.divider}`,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      background: C.divider
+                    }}>
+                      {myStoryPost?.imageData
+                        ? <img src={myStoryPost.imageData} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                        : <span style={{ fontSize:26 }}>{me?.avatar || "💪"}</span>
+                      }
+                    </div>
+                    {!myStoryPost && (
+                      <div style={{ position:"absolute", bottom:-2, right:-2, width:20, height:20, borderRadius:"50%", background:C.accent, color:"#fff", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
+                    )}
                   </div>
                   <div style={{ fontSize:11, color:C.text }}>Your story</div>
                 </div>
+                {/* Others' stories */}
                 {storyUsers.map((u, i) => (
                   <div key={u.id} onClick={() => setStoryIndex(i)} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
-                    <div style={{ padding:2, borderRadius:"50%", background:"linear-gradient(135deg,#f97316,#ea580c,#be123c)", cursor:"pointer" }}>
+                    <div style={{ padding:2.5, borderRadius:"50%", background:"linear-gradient(135deg,#f97316,#ea580c,#be123c)", cursor:"pointer" }}>
                       <div style={{ background:C.bg, padding:2, borderRadius:"50%" }}>
-                        <Avatar user={u} size={56} C={C}/>
+                        <Avatar user={u} size={54} C={C}/>
                       </div>
                     </div>
                     <div style={{ fontSize:11, color:C.text, maxWidth:60, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.username}</div>
