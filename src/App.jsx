@@ -3568,7 +3568,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   );
 }
 
-function GroupsScreen({ store, setStore, currentUserId, C }) {
+function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
@@ -3651,14 +3651,16 @@ function GroupsScreen({ store, setStore, currentUserId, C }) {
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, padding:"16px 14px 20px" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-        <div style={{ fontSize:22, fontWeight:700, color:C.text }}>Groups</div>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+        {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
+        <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Groups</div>
         <button onClick={() => setShowCreate(true)} style={{
           background:C.accent, color:"#fff", border:"none", borderRadius:6,
           padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
         }}>+ New</button>
       </div>
+      <div style={{ padding:"16px 14px" }}>
       <div style={{ fontSize:12, color:C.sub, marginBottom:16, lineHeight:1.5 }}>
         Private groups for your gym crew or teammates. Only members see activity inside.
       </div>
@@ -3715,6 +3717,7 @@ function GroupsScreen({ store, setStore, currentUserId, C }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -3724,6 +3727,7 @@ function GroupsScreen({ store, setStore, currentUserId, C }) {
 // ═════════════════════════════════════════════════════════════════════════════
 function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C }) {
   const [q, setQ] = useState("");
+  const [subTab, setSubTab] = useState("discover"); // "discover" | "groups" | "challenges"
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
   const others = store.users.filter(u =>
@@ -3740,6 +3744,10 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
         return u;
       })
     }));
+  }
+
+  if (subTab === "groups") {
+    return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")}/>;
   }
 
   return (
@@ -3766,7 +3774,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             <div style={{ fontSize:13, fontWeight:700, marginTop:6 }}>Challenges</div>
             <div style={{ fontSize:10, opacity:0.85 }}>Join or create</div>
           </button>
-          <button onClick={() => setTab("groups")} style={{
+          <button onClick={() => setSubTab("groups")} style={{
             background:"linear-gradient(135deg,#059669,#047857)",
             border:"none", borderRadius:12, padding:"16px",
             color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F
@@ -5023,49 +5031,56 @@ export default function App() {
   return (
     <div
       onTouchStart={(e) => {
-        // Block swipes only when modals that capture input are open
-        if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null || showOnboarding) {
-          swipeStart.current = { x: 0, y: 0, t: 0, type: null };
-          return;
-        }
+        if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null) return;
         const t = e.touches[0];
-        const isEdge = t.clientX < 28;
-        if (!isEdge) {
-          swipeStart.current = { x: 0, y: 0, t: 0, type: null };
-          return;
-        }
-        swipeStart.current = {
-          x: t.clientX,
-          y: t.clientY,
-          t: Date.now(),
-          type: "edge-back"
-        };
+        swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now(), type: null };
+        setSwipeX(0);
       }}
       onTouchMove={(e) => {
-        if (!swipeStart.current.type) return;
+        if (!swipeStart.current.t) return;
         const t = e.touches[0];
         const dx = t.clientX - swipeStart.current.x;
         const dy = t.clientY - swipeStart.current.y;
-        if (Math.abs(dy) > Math.abs(dx) * 1.5 && Math.abs(dx) < 15) {
-          swipeStart.current.type = null;
+
+        // Classify gesture type once enough movement
+        if (!swipeStart.current.type) {
+          if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+          swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.7 ? "horizontal" : "vertical";
+        }
+        if (swipeStart.current.type === "vertical") return;
+
+        const idx = TABS_ORDER.indexOf(tab);
+        const canLeft = idx > 0;
+        const canRight = idx < TABS_ORDER.length - 1;
+        if ((dx > 0 && !canLeft && !profileUserId) || (dx < 0 && !canRight)) return;
+        e.preventDefault();
+        setSwipeX(dx);
+      }}
+      onTouchEnd={() => {
+        if (!swipeStart.current.type || swipeStart.current.type === "vertical") {
+          swipeStart.current = { x:0, y:0, t:0, type:null };
           setSwipeX(0);
           return;
         }
-        if (swipeStart.current.type === "edge-back" && dx > 0) {
-          setSwipeX(Math.min(dx, 300));
-        }
-      }}
-      onTouchEnd={() => {
-        const { type } = swipeStart.current;
         const dx = swipeX;
-        swipeStart.current = { x: 0, y: 0, t: 0, type: null };
+        const dt = Date.now() - swipeStart.current.t;
+        const velocity = Math.abs(dx) / dt;
+        swipeStart.current = { x:0, y:0, t:0, type:null };
         setSwipeX(0);
-        if (!type) return;
 
-        if (type === "edge-back" && dx > 60) {
+        // Trigger if fast flick OR dragged past 35% of screen
+        const threshold = velocity > 0.3 || Math.abs(dx) > window.innerWidth * 0.35;
+        if (!threshold) return;
+
+        if (dx > 0) {
+          // Swipe right → go back / previous tab
           if (profileUserId) { setProfileUserId(null); return; }
           const idx = TABS_ORDER.indexOf(tab);
           if (idx > 0) switchTab(TABS_ORDER[idx - 1]);
+        } else {
+          // Swipe left → next tab
+          const idx = TABS_ORDER.indexOf(tab);
+          if (idx < TABS_ORDER.length - 1) switchTab(TABS_ORDER[idx + 1]);
         }
       }}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
@@ -5129,6 +5144,8 @@ export default function App() {
         const curIdx = TABS_ORDER.indexOf(tab);
         const dir = prevIdx < curIdx ? "left" : "right";
         const animKey = tab + "_" + (prevTab || "");
+        const isDragging = swipeStart.current.type === "horizontal" && swipeX !== 0;
+        const dragOffset = isDragging ? swipeX : 0;
         return (
           <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative" }}>
             <style>{`
@@ -5141,17 +5158,11 @@ export default function App() {
                 to { transform:translateX(0); }
               }
             `}</style>
-            {/* Edge-back drag indicator */}
-            {swipeStart.current.type === "edge-back" && swipeX > 0 && (
-              <div style={{
-                position:"absolute", left:0, top:0, bottom:0, width:Math.min(swipeX, 200),
-                background:"linear-gradient(to right, rgba(0,0,0,0.08), transparent)",
-                zIndex:50, pointerEvents:"none"
-              }}/>
-            )}
             <div key={animKey} style={{
               flex:1, display:"flex", flexDirection:"column", overflow:"hidden",
-              animation: prevTab ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.28s cubic-bezier(0.32, 0.72, 0, 1)` : "none"
+              transform: isDragging ? `translateX(${dragOffset}px)` : "none",
+              animation: !isDragging && prevTab ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.28s cubic-bezier(0.32, 0.72, 0, 1)` : "none",
+              transition: isDragging ? "none" : undefined,
             }}>
 
         {tab === "feed" && (
