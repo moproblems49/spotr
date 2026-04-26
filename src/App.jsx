@@ -1092,6 +1092,132 @@ function OneRMModal({ onClose, unit, C }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// PLATE CALCULATOR MODAL
+// ═════════════════════════════════════════════════════════════════════════════
+function PlateCalcModal({ onClose, unit, C }) {
+  const [target, setTarget] = useState("");
+  const BAR_WEIGHT = unit === "kg" ? 20 : 45;
+  const PLATES_LBS = [45, 35, 25, 10, 5, 2.5];
+  const PLATES_KG  = [25, 20, 15, 10, 5, 2.5, 1.25];
+  const plates = unit === "kg" ? PLATES_KG : PLATES_LBS;
+
+  function calcPlates(total) {
+    const t = parseFloat(total);
+    if (!t || t <= BAR_WEIGHT) return null;
+    let remaining = (t - BAR_WEIGHT) / 2;
+    const result = [];
+    for (const p of plates) {
+      const count = Math.floor(remaining / p);
+      if (count > 0) { result.push({ p, count }); remaining = Math.round((remaining - p * count) * 1000) / 1000; }
+    }
+    if (remaining > 0.01) return null; // not achievable with standard plates
+    return result;
+  }
+
+  const result = calcPlates(target);
+  const achievable = target && parseFloat(target) > BAR_WEIGHT && result !== null;
+  const notAchievable = target && parseFloat(target) > BAR_WEIGHT && result === null;
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.border}` }}>
+          <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Close</button>
+          <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Plate Calculator</div>
+          <div style={{ width:50 }}/>
+        </div>
+        <div style={{ overflowY:"auto", flex:1, padding:16 }}>
+          <div style={{ fontSize:12, color:C.sub, marginBottom:16 }}>
+            Bar weight: <strong style={{ color:C.text }}>{BAR_WEIGHT} {unit}</strong> · Enter total target weight
+          </div>
+
+          <input
+            type="number" inputMode="decimal"
+            value={target} onChange={e => setTarget(e.target.value)}
+            placeholder={`e.g. ${unit === "kg" ? "100" : "225"}`}
+            style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"14px", fontSize:24, fontWeight:800, color:C.accent, outline:"none", boxSizing:"border-box", textAlign:"center", fontFamily:MONO, marginBottom:16 }}
+          />
+
+          {target && parseFloat(target) <= BAR_WEIGHT && (
+            <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:"20px 0" }}>
+              Weight must be more than bar weight ({BAR_WEIGHT} {unit})
+            </div>
+          )}
+
+          {notAchievable && (
+            <div style={{ textAlign:"center", color:"#ef4444", fontSize:13, padding:"20px 0" }}>
+              Not achievable with standard plates — try a nearby weight
+            </div>
+          )}
+
+          {achievable && result && (
+            <>
+              {/* Visual bar */}
+              <div style={{ background:C.divider, borderRadius:12, padding:"16px 12px", marginBottom:16, display:"flex", alignItems:"center", justifyContent:"center", gap:2, flexWrap:"nowrap", overflowX:"auto" }}>
+                {/* Left side plates (reversed) */}
+                {[...result].reverse().map(({ p, count }) =>
+                  Array(count).fill(0).map((_, i) => {
+                    const h = Math.max(28, Math.min(72, p * 1.4));
+                    const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 25.0:"#ef4444", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
+                    const color = PLATE_COLORS[p] || C.accent;
+                    return (
+                      <div key={`L${p}-${i}`} style={{
+                        width:14, height:h, borderRadius:3, background:color, flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center"
+                      }}>
+                        <span style={{ fontSize:7, color:"#fff", fontWeight:800, writingMode:"vertical-rl", transform:"rotate(180deg)" }}>{p}</span>
+                      </div>
+                    );
+                  })
+                )}
+                {/* Bar */}
+                <div style={{ width:32, height:10, background:C.sub, borderRadius:5, opacity:0.6, flexShrink:0 }}/>
+                {/* Right side plates */}
+                {result.map(({ p, count }) =>
+                  Array(count).fill(0).map((_, i) => {
+                    const h = Math.max(28, Math.min(72, p * 1.4));
+                    const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 25.0:"#ef4444", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
+                    const color = PLATE_COLORS[p] || C.accent;
+                    return (
+                      <div key={`R${p}-${i}`} style={{
+                        width:14, height:h, borderRadius:3, background:color, flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center"
+                      }}>
+                        <span style={{ fontSize:7, color:"#fff", fontWeight:800, writingMode:"vertical-rl" }}>{p}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Plate list */}
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:8 }}>PLATES PER SIDE</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                {result.map(({ p, count }, i) => {
+                  const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899" };
+                  const color = PLATE_COLORS[p] || C.accent;
+                  return (
+                    <div key={p} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderBottom: i < result.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                      <div style={{ width:10, height:28, borderRadius:2, background:color, flexShrink:0 }}/>
+                      <div style={{ flex:1, fontSize:14, fontWeight:600, color:C.text }}>{p} {unit}</div>
+                      <div style={{ fontSize:15, fontWeight:800, color:C.accent, fontFamily:MONO }}>× {count}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop:12, padding:"10px 14px", background:C.divider, borderRadius:10, display:"flex", justifyContent:"space-between" }}>
+                <span style={{ fontSize:12, color:C.sub }}>Total weight</span>
+                <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>{target} {unit}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // WRAPPED MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 function WrappedModal({ store, C, onClose }) {
@@ -1711,6 +1837,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [rest, setRest] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
   const [show1RM, setShow1RM] = useState(false);
+  const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [subTab, setSubTab] = useState("today");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAICoach, setShowAICoach] = useState(false);
@@ -1937,6 +2064,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     return (
       <div style={{ background:C.bg, flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
+        {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
 
         {/* Header */}
         <div style={{ background:C.bg, padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -1954,7 +2082,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </div>
         <div style={{ padding:"5px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div style={{ fontSize:11, color:C.sub }}>{done}/{total} sets · {unit.toUpperCase()}</div>
-          <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM Calc</button>
+          <div style={{ display:"flex", gap:12 }}>
+            <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM Calc</button>
+            <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>🏋️ Plates</button>
+          </div>
         </div>
 
         {/* Workout-level note */}
@@ -2153,7 +2284,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
           <button onClick={() => setShow1RM(true)} style={{
             width:"100%", background:"none", border:`1px solid ${C.border}`,
-            borderRadius:10, padding:"14px 16px", marginBottom:16,
+            borderRadius:10, padding:"14px 16px", marginBottom:8,
             display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
           }}>
             <div style={{ fontSize:20 }}>🧮</div>
@@ -2164,7 +2295,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <span style={{ fontSize:16, color:C.sub }}>›</span>
           </button>
 
+          <button onClick={() => setShowPlateCalc(true)} style={{
+            width:"100%", background:"none", border:`1px solid ${C.border}`,
+            borderRadius:10, padding:"14px 16px", marginBottom:16,
+            display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
+          }}>
+            <div style={{ fontSize:20 }}>🏋️</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:C.text }}>Plate Calculator</div>
+              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>Figure out what to load</div>
+            </div>
+            <span style={{ fontSize:16, color:C.sub }}>›</span>
+          </button>
+
           {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
+          {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
 
           {prog ? (
             <>
@@ -3262,12 +3407,14 @@ function ExerciseAnimation({ name, muscle, C }) {
   const [gifUrl, setGifUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [muscles, setMuscles] = useState(null);
+  const [fetchError, setFetchError] = useState(null);
   const CACHE_KEY = "ignite_exercise_gifs_v3";
 
   useEffect(() => {
     let cancelled = false;
     async function fetchGif() {
       setLoading(true);
+      setFetchError(null);
       try {
         const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
         if (cache[name]) {
@@ -3286,18 +3433,23 @@ function ExerciseAnimation({ name, muscle, C }) {
         name.toLowerCase().replace(/\(.*?\)/g, "").replace(/barbell |dumbbell |db |cable |machine |ez bar |weighted |lever /g, "").trim(),
       ].filter(Boolean);
 
+      let lastError = null;
       for (const q of tryQueries) {
         try {
           const res = await fetch(
             `https://exercisedb.p.rapidapi.com/exercises/name/${encodeURIComponent(q)}?limit=10&offset=0`,
-            { headers: {
-              "x-rapidapi-key": EXDB_KEY,
-              "x-rapidapi-host": "exercisedb.p.rapidapi.com"
-            }}
+            {
+              method: "GET",
+              mode: "cors",
+              headers: {
+                "x-rapidapi-key": EXDB_KEY,
+                "x-rapidapi-host": "exercisedb.p.rapidapi.com"
+              }
+            }
           );
-          if (!res.ok) continue;
+          if (!res.ok) { lastError = `HTTP ${res.status}`; continue; }
           const data = await res.json();
-          if (!data || data.length === 0) continue;
+          if (!data || data.length === 0) { lastError = "no results"; continue; }
           const best = data[0];
           const gif = best.gifUrl;
           const m = { target: best.target, secondary: best.secondaryMuscles || [], bodyPart: best.bodyPart };
@@ -3314,9 +3466,9 @@ function ExerciseAnimation({ name, muscle, C }) {
             } catch {}
           }
           return;
-        } catch (e) { continue; }
+        } catch (e) { lastError = e.message; continue; }
       }
-      if (!cancelled) setLoading(false);
+      if (!cancelled) { setLoading(false); setFetchError(lastError); }
     }
     fetchGif();
     return () => { cancelled = true; };
@@ -3336,9 +3488,10 @@ function ExerciseAnimation({ name, muscle, C }) {
       {gifUrl ? (
         <img src={gifUrl} alt={name} style={{ width:"100%", maxHeight:300, objectFit:"contain", display:"block", background:"#fff" }}/>
       ) : (
-        <div style={{ height:200, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:14 }}>
-          <MuscleIcon muscle={muscle} size={60} C={C}/>
-          <div style={{ fontSize:11, color:C.sub, textAlign:"center", padding:"0 16px" }}>{name}</div>
+        <div style={{ height:200, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10, padding:"0 20px" }}>
+          <MuscleIcon muscle={muscle} size={52} C={C}/>
+          <div style={{ fontSize:11, color:C.sub, textAlign:"center" }}>{name}</div>
+          {fetchError && <div style={{ fontSize:10, color:"#ef4444", textAlign:"center", marginTop:4 }}>API error: {fetchError}</div>}
         </div>
       )}
       {muscles && (
@@ -3750,7 +3903,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
     return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")}/>;
   }
   if (subTab === "challenges") {
-    return <ChallengesScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")}/>;
+    return <FriendsActivityScreen store={store} currentUserId={currentUserId} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick}/>;
   }
 
   return (
@@ -3769,13 +3922,13 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
       <div style={{ padding:"6px 14px" }}>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
           <button onClick={() => setSubTab("challenges")} style={{
-            background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+            background:"linear-gradient(135deg,#059669,#047857)",
             border:"none", borderRadius:12, padding:"16px",
             color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F
           }}>
-            <div style={{ fontSize:22 }}>🎯</div>
-            <div style={{ fontSize:13, fontWeight:700, marginTop:6 }}>Challenges</div>
-            <div style={{ fontSize:10, opacity:0.85 }}>Join or create</div>
+            <div style={{ fontSize:22 }}>🏅</div>
+            <div style={{ fontSize:13, fontWeight:700, marginTop:6 }}>Friends Activity</div>
+            <div style={{ fontSize:10, opacity:0.85 }}>Weekly stats</div>
           </button>
           <button onClick={() => setSubTab("groups")} style={{
             background:"linear-gradient(135deg,#059669,#047857)",
@@ -3836,102 +3989,85 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// CHALLENGES
 // ═════════════════════════════════════════════════════════════════════════════
-function ChallengesScreen({ store, setStore, currentUserId, C, onBack }) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
+// FRIENDS ACTIVITY
+// ═════════════════════════════════════════════════════════════════════════════
+function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserClick }) {
+  const me = store.users.find(u => u.id === currentUserId);
+  const following = me?.following || [];
+  const friends = [currentUserId, ...following].map(id => store.users.find(u => u.id === id)).filter(Boolean);
 
-  function create() {
-    if (!name) return;
-    const ch = {
-      id: uid(), name, description: desc, createdBy: currentUserId,
-      participants: [currentUserId], startDate: Date.now(),
-      endDate: Date.now() + 30*24*60*60*1000, icon: "💪"
-    };
-    setStore(p => ({ ...p, challenges: [...(p.challenges || []), ch] }));
-    setShowCreate(false); setName(""); setDesc("");
+  function getMyStats() {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    let sessions = 0, volume = 0;
+    const history = store.history || {};
+    for (const dk of Object.keys(history)) {
+      const dayMs = new Date(dk).getTime();
+      if (dayMs < weekAgo) continue;
+      const daySessions = Object.values(history[dk] || {});
+      sessions += daySessions.length;
+      volume += daySessions.reduce((a, s) => a + (s.exercises||[]).reduce((b, ex) =>
+        b + (ex.sets||[]).filter(st=>st.done).reduce((c,st) => c + (parseFloat(st.weight)||0)*(parseFloat(st.reps)||0), 0), 0), 0);
+    }
+    // streak
+    let streak = 0;
+    let check = new Date().toISOString().split("T")[0];
+    while (history[check] && Object.values(history[check]).length > 0) {
+      streak++;
+      const d = new Date(check); d.setDate(d.getDate()-1);
+      check = d.toISOString().split("T")[0];
+    }
+    return { sessions, volume: Math.round(volume), streak, prs: Object.keys(store.prs||{}).length };
   }
-  function toggle(cid) {
-    setStore(p => ({
-      ...p,
-      challenges: p.challenges.map(c => c.id !== cid ? c : {
-        ...c,
-        participants: c.participants.includes(currentUserId)
-          ? c.participants.filter(x => x !== currentUserId)
-          : [...c.participants, currentUserId]
-      })
-    }));
-  }
+
+  const myStats = getMyStats();
 
   return (
     <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-        {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
-        <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Challenges</div>
-        <button onClick={() => setShowCreate(true)} style={{
-          background:C.accent, color:"#fff", border:"none", borderRadius:6,
-          padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-        }}>+ New</button>
+        {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>&#8249;</button>}
+        <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Friends Activity</div>
       </div>
-      <div style={{ padding:"16px 14px" }}>
-      {(store.challenges || []).map(ch => {
-        const joined = ch.participants.includes(currentUserId);
-        const daysLeft = Math.ceil((ch.endDate - Date.now()) / (1000*60*60*24));
-        return (
-          <div key={ch.id} style={{
-            border:`1px solid ${C.border}`, borderRadius:12,
-            padding:"14px", marginBottom:10
-          }}>
-            <div style={{ display:"flex", alignItems:"center", gap:11, marginBottom:8 }}>
-              <div style={{ fontSize:26 }}>{ch.icon}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:15, fontWeight:700, color:C.text }}>{ch.name}</div>
-                <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
-                  {ch.participants.length} joined · {daysLeft > 0 ? `${daysLeft}d left` : "Ended"}
+      <div style={{ padding:"14px" }}>
+        <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>THIS WEEK</div>
+        {friends.map((u) => {
+          const isMe = u.id === currentUserId;
+          const stats = isMe ? myStats : { sessions:"—", volume:"—", streak:0, prs:"—" };
+          return (
+            <div key={u.id} style={{ border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:10, background: isMe ? C.accentSoft : C.bg }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                <button onClick={() => onUserClick && onUserClick(u.id)} style={{ background:"none", border:"none", padding:0, cursor:"pointer" }}>
+                  <Avatar user={u} size={40} C={C}/>
+                </button>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{isMe ? "You" : u.name}</div>
+                  <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                 </div>
+                {isMe && stats.streak > 0 && (
+                  <div style={{ background:"#f97316", borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:700, color:"#fff" }}>🔥 {stats.streak}</div>
+                )}
               </div>
+              <div style={{ display:"flex", gap:0, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
+                {[["Sessions", stats.sessions], ["Volume", isMe && stats.volume > 1000 ? (stats.volume/1000).toFixed(1)+"k" : stats.volume], ["PRs", stats.prs]].map(([label, val], j) => (
+                  <div key={label} style={{ flex:1, padding:"10px 6px", textAlign:"center", borderRight: j<2 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ fontSize:17, fontWeight:800, color: isMe ? C.accent : C.text, fontFamily:MONO }}>{val}</div>
+                    <div style={{ fontSize:10, color:C.sub, marginTop:2 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              {!isMe && <div style={{ fontSize:11, color:C.sub, textAlign:"center", marginTop:8 }}>Stats sync when {u.name} logs workouts</div>}
             </div>
-            {ch.description && (
-              <div style={{ fontSize:13, color:C.textDim, marginBottom:10, lineHeight:1.5 }}>{ch.description}</div>
-            )}
-            <button onClick={() => toggle(ch.id)} style={{
-              width:"100%", background:joined?"transparent":C.accent,
-              color:joined?C.text:"#fff", border:`1px solid ${joined?C.border:C.accent}`,
-              borderRadius:8, padding:"9px", fontSize:13, fontWeight:600,
-              cursor:"pointer", fontFamily:F
-            }}>{joined ? "Leave Challenge" : "Join Challenge"}</button>
-          </div>
-        );
-      })}
-      {showCreate && (
-        <div onClick={() => setShowCreate(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
-            <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:14 }}>New Challenge</div>
-            <input
-              value={name} onChange={e => setName(e.target.value)}
-              placeholder="Challenge name"
-              style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}
-            />
-            <textarea
-              value={desc} onChange={e => setDesc(e.target.value)}
-              placeholder="Description..."
-              rows={2}
-              style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 14px", fontSize:13, color:C.text, outline:"none", marginBottom:14, boxSizing:"border-box", resize:"none", fontFamily:F }}
-            />
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={() => setShowCreate(false)} style={{ flex:1, padding:"11px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={create} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
+          );
+        })}
+        {friends.length <= 1 && (
+          <div style={{ textAlign:"center", padding:"20px 0", color:C.sub, fontSize:13 }}>Follow friends in Discover to see their activity here</div>
+        )}
       </div>
     </div>
   );
 }
-// ═════════════════════════════════════════════════════════════════════════════
+
 function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
