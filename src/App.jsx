@@ -806,7 +806,7 @@ function Heatmap({ workoutDates, C }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // EXERCISE SEARCH INPUT
 // ═════════════════════════════════════════════════════════════════════════════
-const ExerciseInput = memo(function ExerciseInput({ value, onChange, C }) {
+const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentExercises }) {
   const [q, setQ] = useState(value || "");
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -819,9 +819,27 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C }) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Get recent exercises from history
+  const getRecentExercises = () => {
+    const recents = new Set();
+    const history = recentExercises || [];
+    // Go through last 10 workouts
+    history.slice(0, 10).forEach(day => {
+      (day.exercises || []).forEach(ex => {
+        if (ex.name) recents.add(ex.name);
+      });
+    });
+    return Array.from(recents).slice(0, 5);
+  };
+
+  const recent = getRecentExercises();
+  
+  // Show recent exercises when query is empty
   const results = q.length > 0
     ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 7)
-    : EXERCISE_DB.slice(0, 7);
+    : recent.length > 0
+      ? recent.map(name => EXERCISE_DB.find(e => e.name === name) || { name, muscle: "" }).filter(e => e.name)
+      : EXERCISE_DB.slice(0, 7);
 
   function select(ex) {
     setQ(ex.name);
@@ -847,9 +865,12 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C }) {
         <div style={{
           position:"absolute", top:"calc(100% + 8px)", left:-8, right:-8,
           background:C.surface, border:`1px solid ${C.border}`,
-          borderRadius:12, zIndex:200, maxHeight:240, overflowY:"auto",
+          borderRadius:12, zIndex:200, maxHeight:280, overflowY:"auto",
           boxShadow:"0 8px 32px rgba(0,0,0,0.3)"
         }}>
+          {q.length === 0 && recent.length > 0 && (
+            <div style={{ padding:"8px 14px 6px", fontSize:10, fontWeight:600, color:C.accent, letterSpacing:1 }}>RECENT</div>
+          )}
           {results.length === 0 && (
             <div style={{ padding:"12px 14px", fontSize:13, color:C.sub }}>No exercises found</div>
           )}
@@ -865,13 +886,21 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C }) {
               onMouseEnter={e => e.currentTarget.style.background = C.divider}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}
             >
-              <div style={{ fontSize:18 }}>{ex.emoji}</div>
+              <MuscleIcon muscle={ex.muscle || ""} size={24} C={C}/>
               <div>
                 <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
                 <div style={{ fontSize:11, color:C.sub }}>{ex.muscle}</div>
               </div>
             </div>
           ))}
+          {q.length > 0 && (
+            <div style={{ padding:"8px 14px", borderTop:`1px solid ${C.divider}` }}>
+              <button onClick={() => { onChange(q); setOpen(false); }} style={{
+                width:"100%", background:C.accent, border:"none", borderRadius:8,
+                padding:"8px", fontSize:12, fontWeight:600, color:"#fff", cursor:"pointer", fontFamily:F
+              }}>Add "{q}"</button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1977,6 +2006,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   });
   const [rest, setRest] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
+  const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
+  const [workoutSummary, setWorkoutSummary] = useState(null);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [subTab, setSubTab] = useState("today");
@@ -1986,6 +2017,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showBuilder, setShowBuilder] = useState(false);
   const [previewDay, setPreviewDay] = useState(null); // {day, programName}
   const [viewingExercise, setViewingExercise] = useState(null);
+  const [exerciseSearch, setExerciseSearch] = useState("");
+  const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
   const rtRef = useRef(null);
 
@@ -2222,6 +2255,29 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       prs: newPRs,
     });
 
+    // Calculate workout summary
+    const totalVolume = session.exercises.reduce((a, ex) => {
+      return a + ex.sets.filter(s => s.done && s.weight && s.type !== "warmup")
+        .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0);
+    }, 0);
+    const workingSets = session.exercises.reduce((a, ex) => 
+      a + ex.sets.filter(s => s.done && s.type !== "warmup").length, 0);
+    const prevPRs = store.prs || {};
+    const prsHit = Object.entries(newPRs).filter(([k, v]) => (prevPRs[k] || 0) < v).map(([name, weight]) => ({ name, weight: cvt(weight, "lbs", unit) }));
+    
+    const summary = {
+      duration: fmtTime(elapsed),
+      sets: done,
+      volume: fmtVol(Math.round(totalVolume), unit),
+      exercises: session.exercises.filter(e => e.name).length,
+      exSets: workingSets,
+      prs: prsHit,
+    };
+
+    // Show summary before clearing
+    setWorkoutSummary(summary);
+    setShowWorkoutSummary(true);
+
     clearInterval(elRef.current);
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
@@ -2303,6 +2359,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, name: v })
                         }))}
                         C={C}
+                        recentExercises={Object.values(store.history || {}).flatMap(Object.values).slice(0, 20)}
                       />
                       {ex.name && (
                         <button onClick={() => setViewingExercise(ex.name)} style={{
@@ -2426,6 +2483,51 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing ? C.sub : C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "Saving..." : "Save & Share to Feed"}</button>
               <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "..." : "Save (Don't Share)"}</button>
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
+            </div>
+          </div>
+        )}
+
+        {/* Workout Summary Modal */}
+        {showWorkoutSummary && workoutSummary && (
+          <div onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"20px 18px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+              <div style={{ textAlign:"center", marginBottom:16 }}>
+                <div style={{ fontSize:40, marginBottom:8 }}>🎉</div>
+                <div style={{ fontSize:20, fontWeight:700, color:C.text }}>Workout Complete!</div>
+              </div>
+              
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:20 }}>
+                <div style={{ background:C.divider, borderRadius:12, padding:"14px 8px", textAlign:"center" }}>
+                  <div style={{ fontSize:22, fontWeight:700, color:C.accent }}>{workoutSummary.duration}</div>
+                  <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Duration</div>
+                </div>
+                <div style={{ background:C.divider, borderRadius:12, padding:"14px 8px", textAlign:"center" }}>
+                  <div style={{ fontSize:22, fontWeight:700, color:C.accent }}>{workoutSummary.sets}</div>
+                  <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Sets</div>
+                </div>
+                <div style={{ background:C.divider, borderRadius:12, padding:"14px 8px", textAlign:"center" }}>
+                  <div style={{ fontSize:22, fontWeight:700, color:C.accent }}>{workoutSummary.volume}</div>
+                  <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Volume</div>
+                </div>
+              </div>
+
+              {workoutSummary.prs && workoutSummary.prs.length > 0 && (
+                <div style={{ background:C.accentSoft, borderRadius:12, padding:"14px", marginBottom:16 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.accent, marginBottom:8 }}>🏆 NEW PRs!</div>
+                  {workoutSummary.prs.map(pr => (
+                    <div key={pr.name} style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:C.text }}>
+                      <span>{pr.name}</span>
+                      <span style={{ fontWeight:600 }}>{pr.weight} {unit}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ fontSize:12, color:C.sub, textAlign:"center", marginBottom:16 }}>
+                {workoutSummary.exercises} exercises · {workoutSummary.exSets} working sets
+              </div>
+
+              <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Done</button>
             </div>
           </div>
         )}
@@ -2649,13 +2751,47 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {subTab === "exercises" && (
         <div style={{ padding:"16px 14px" }}>
+          {/* Search Bar */}
+          <div style={{ position:"relative", marginBottom:12 }}>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:14, color:C.sub }}>🔍</span>
+            <input 
+              value={exerciseSearch} 
+              onChange={e => setExerciseSearch(e.target.value)}
+              placeholder="Search exercises..." 
+              style={{
+                width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"10px 10px 10px 38px", 
+                fontSize:14, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box"
+              }}
+            />
+            {exerciseSearch && (
+              <button onClick={() => setExerciseSearch("")} style={{
+                position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
+                background:"none", border:"none", color:C.sub, fontSize:16, cursor:"pointer"
+              }}>×</button>
+            )}
+          </div>
+          
+          {/* Filter Buttons */}
+          <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+            {["All","Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Core"].slice(0, exerciseSearch ? 1 : 10).map(f => (
+              <button key={f} onClick={() => setExerciseFilter(f)} style={{
+                padding:"5px 12px", background: exerciseFilter === f ? C.accent : C.divider,
+                border:"none", borderRadius:20, fontSize:11, fontWeight:600, color: exerciseFilter === f ? "#fff" : C.sub, cursor:"pointer", fontFamily:F
+              }}>{f}</button>
+            ))}
+          </div>
+
           <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
             LOGGED EXERCISES · {allEx.size}
           </div>
           {!allEx.size && (
             <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>Complete a workout to see your exercises here, or browse all below.</div>
           )}
-          {Array.from(allEx).sort().map(name => {
+          {Array.from(allEx).sort().filter(name => {
+            const matchesSearch = !exerciseSearch || name.toLowerCase().includes(exerciseSearch.toLowerCase());
+            const matchesFilter = exerciseFilter === "All" || (EXERCISE_DB.find(e => e.name === name)?.muscle || "").toLowerCase().includes(exerciseFilter.toLowerCase());
+            return matchesSearch && matchesFilter;
+          }).map(name => {
             const pr = store.prs?.[name];
             const exInfo = EXERCISE_DB.find(e => e.name === name);
             return (
@@ -2680,7 +2816,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             BROWSE ALL · {EXERCISE_DB.length}
           </div>
           {["Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Full Body","Traps","Forearms"].map(group => {
-            const exercises = EXERCISE_DB.filter(e => (e.muscle||"").toLowerCase().includes(group.toLowerCase()));
+            const exercises = EXERCISE_DB.filter(e => {
+              const matchesSearch = !exerciseSearch || e.name.toLowerCase().includes(exerciseSearch.toLowerCase());
+              const matchesFilter = exerciseFilter === "All" || (e.muscle || "").toLowerCase().includes(exerciseFilter.toLowerCase());
+              return matchesSearch && matchesFilter;
+            });
             if (!exercises.length) return null;
             return (
               <div key={group} style={{ marginBottom:16 }}>
