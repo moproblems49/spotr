@@ -1419,7 +1419,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STORY VIEWER — Instagram-style full-screen with auto-advance
 // ═════════════════════════════════════════════════════════════════════════════
-function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, C }) {
+function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, C }) {
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
@@ -1549,10 +1549,21 @@ function StoryViewer({ user, onClose, onNext, onPrev, hasNext, hasPrev, onViewPr
         <div onClick={(e) => { e.stopPropagation(); if (hasPrev) onPrev(); }} style={{ position:"absolute", left:0, top:0, bottom:0, width:"33%", cursor: hasPrev ? "pointer" : "default", zIndex:2 }}/>
         <div onClick={(e) => { e.stopPropagation(); hasNext ? onNext() : onClose(); }} style={{ position:"absolute", right:0, top:0, bottom:0, width:"67%", cursor:"pointer", zIndex:2 }}/>
 
-        <div style={{ width:"100%", aspectRatio:"9/16", maxHeight:"100%", background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
-          <div style={{ fontSize:60, marginBottom:16 }}>{user.avatar}</div>
-          <div style={{ fontSize:24, fontWeight:700, color:"#fff", marginBottom:8 }}>{user.name}</div>
-          <div style={{ fontSize:14, color:"rgba(255,255,255,0.9)", lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
+        <div style={{ width:"100%", aspectRatio:"9/16", maxHeight:"100%", borderRadius:12, overflow:"hidden", position:"relative", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          {post?.imageData ? (
+            <img src={post.imageData} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+          ) : (
+            <div style={{ width:"100%", height:"100%", background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
+              <div style={{ fontSize:60, marginBottom:16 }}>{user.avatar || "💪"}</div>
+              <div style={{ fontSize:24, fontWeight:700, color:"#fff", marginBottom:8 }}>{user.name}</div>
+              <div style={{ fontSize:14, color:"rgba(255,255,255,0.9)", lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
+            </div>
+          )}
+          {post?.caption && (
+            <div style={{ position:"absolute", bottom:16, left:12, right:12, background:"rgba(0,0,0,0.5)", borderRadius:10, padding:"8px 12px", color:"#fff", fontSize:14, lineHeight:1.4 }}>
+              {post.caption}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1820,20 +1831,150 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// PROGRAM DETAIL VIEW
+// ═════════════════════════════════════════════════════════════════════════════
+function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, startWorkout, onProgramEdited }) {
+  const [editingDayIdx, setEditingDayIdx] = useState(null);
+  const [localProg, setLocalProg] = useState(prog);
+
+  useEffect(() => { setLocalProg(prog); }, [prog.id]);
+
+  const isActive = store.activeProgramId === prog.id;
+
+  function updateExercise(di, ei, patch) {
+    setLocalProg(p => {
+      const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== di ? d : {
+        ...d, exercises: d.exercises.map((ex, exIdx) => exIdx !== ei ? ex : { ...ex, ...patch })
+      })};
+      if (onProgramEdited) onProgramEdited(updated);
+      return updated;
+    });
+  }
+
+  function addExercise(di) {
+    setLocalProg(p => {
+      const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== di ? d : {
+        ...d, exercises: [...(d.exercises||[]), { name:"", reps:"8-12", note:"" }]
+      })};
+      if (onProgramEdited) onProgramEdited(updated);
+      return updated;
+    });
+  }
+
+  function removeExercise(di, ei) {
+    setLocalProg(p => {
+      const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== di ? d : {
+        ...d, exercises: d.exercises.filter((_, exIdx) => exIdx !== ei)
+      })};
+      if (onProgramEdited) onProgramEdited(updated);
+      return updated;
+    });
+  }
+
+  return (
+    <div style={{ padding:"14px" }}>
+      <button onClick={onBack} style={{ background:"none", border:"none", color:C.text, fontSize:14, cursor:"pointer", padding:"4px 0 12px", fontFamily:F }}>‹ Back to Programs</button>
+
+      <div style={{ marginBottom:18 }}>
+        <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>{localProg.name}</div>
+        <div style={{ fontSize:13, color:C.sub }}>{localProg.days?.length || 0} days · {localProg.days?.reduce((a,d) => a+(d.exercises?.length||0),0)} exercises</div>
+      </div>
+
+      <div style={{ display:"flex", gap:8, marginBottom:18 }}>
+        {!isActive && (
+          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ flex:1, background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Set as Active</button>
+        )}
+        {isActive && (
+          <button onClick={() => onSaveProgram && onSaveProgram({ ...localProg, _deactivate: true })} style={{ flex:1, background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Deactivate</button>
+        )}
+        <button onClick={() => {
+          if (window.confirm(`Delete "${localProg.name}"?`)) {
+            onSaveStore(s => ({ ...s, programs: s.programs.filter(p => p.id !== localProg.id), activeProgramId: s.activeProgramId === localProg.id ? null : s.activeProgramId }));
+            onBack();
+          }
+        }} style={{ padding:"10px 16px", background:"none", border:`1px solid #ef4444`, borderRadius:8, color:"#ef4444", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
+      </div>
+
+      {(localProg.days || []).map((day, di) => (
+        <div key={day.id || di} style={{ border:`1px solid ${C.border}`, borderRadius:12, padding:"14px", marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{day.name}</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={() => setEditingDayIdx(editingDayIdx === di ? null : di)} style={{
+                background: editingDayIdx === di ? C.accent : C.divider,
+                color: editingDayIdx === di ? "#fff" : C.sub,
+                border:"none", borderRadius:6, padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
+              }}>{editingDayIdx === di ? "Done" : "Edit"}</button>
+              <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:6, padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Start</button>
+            </div>
+          </div>
+
+          {(day.exercises || []).map((ex, ei) => {
+            const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
+            return (
+              <div key={ei} style={{ padding:"8px 0", borderTop: ei > 0 ? `1px solid ${C.divider}` : "none" }}>
+                {editingDayIdx === di ? (
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ flex:1 }}>
+                      <input value={ex.name} onChange={e => updateExercise(di, ei, { name: e.target.value })}
+                        style={{ width:"100%", background:C.divider, border:"none", borderRadius:6, padding:"6px 10px", fontSize:13, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:4 }}
+                      />
+                      <input value={ex.note||""} placeholder="Note..." onChange={e => updateExercise(di, ei, { note: e.target.value })}
+                        style={{ width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"3px 0", fontSize:12, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
+                      />
+                    </div>
+                    <button onClick={() => removeExercise(di, ei)} style={{ background:"none", border:"none", fontSize:20, color:"#ef4444", cursor:"pointer", flexShrink:0 }}>×</button>
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                    {exInfo && <div style={{ width:32, height:32, borderRadius:8, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><MuscleIcon muscle={exInfo.muscle} size={22} C={C}/></div>}
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{ex.name}</div>
+                      {ex.reps && <div style={{ fontSize:11, color:C.sub }}>{ex.reps}</div>}
+                      {ex.note && <div style={{ fontSize:11, color:C.accent, marginTop:2 }}>💡 {ex.note}</div>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {editingDayIdx === di && (
+            <button onClick={() => addExercise(di)} style={{ width:"100%", marginTop:10, padding:"8px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>
+              + Add Exercise
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // WORKOUT TRACKER
 // ═════════════════════════════════════════════════════════════════════════════
 const SESSION_KEY = "ignite_active_session";
+const WSTART_KEY = "ignite_wstart";
 
 function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, C }) {
-  // Restore any in-progress session from storage
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
-  const [elapsed, setElapsed] = useState(0);
-  const [wStart, setWStart] = useState(null);
+  const [elapsed, setElapsed] = useState(() => {
+    try {
+      const ws = localStorage.getItem(WSTART_KEY);
+      return ws ? Math.floor((Date.now() - parseInt(ws)) / 1000) : 0;
+    } catch { return 0; }
+  });
+  const [wStart, setWStart] = useState(() => {
+    try {
+      const ws = localStorage.getItem(WSTART_KEY);
+      return ws ? parseInt(ws) : null;
+    } catch { return null; }
+  });
   const [rest, setRest] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
   const [show1RM, setShow1RM] = useState(false);
@@ -1848,7 +1989,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const elRef = useRef(null);
   const rtRef = useRef(null);
 
-  // Auto-save active session every 5 seconds
+  // Resync elapsed when app comes back to foreground
+  useEffect(() => {
+    function onVisible() {
+      if (!document.hidden && wStart) {
+        setElapsed(Math.floor((Date.now() - wStart) / 1000));
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [wStart]);
   useEffect(() => {
     if (!session) { localStorage.removeItem(SESSION_KEY); return; }
     const id = setInterval(() => {
@@ -1862,7 +2012,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
   useEffect(() => {
     clearInterval(elRef.current);
-    if (wStart) elRef.current = setInterval(() => setElapsed(Math.floor((Date.now()-wStart)/1000)), 1000);
+    if (wStart) {
+      localStorage.setItem(WSTART_KEY, String(wStart));
+      elRef.current = setInterval(() => setElapsed(Math.floor((Date.now()-wStart)/1000)), 1000);
+    } else {
+      localStorage.removeItem(WSTART_KEY);
+    }
     return () => clearInterval(elRef.current);
   }, [wStart]);
 
@@ -1925,7 +2080,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     } catch (e) {}
   }, []);
 
-  function startWorkout(day) {
+  function startWorkout(day, progId) {
     const exs = day
       ? day.exercises.map(ex => ({
           ...ex, id: uid(),
@@ -1933,8 +2088,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }))
       : [{ id: uid(), name: "", reps: "", note: "", sets: [{ id: uid(), weight: "", reps: "", done: false, type: "normal" }] }];
     setSession({
-      dayId: day?.id || "quick_" + uid(),
+      dayId: day?.id || null,
       dayName: day?.name || "Quick Workout",
+      programId: progId || store.activeProgramId || null,
       exercises: exs
     });
     setWStart(Date.now());
@@ -1949,7 +2105,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         sets: ex.sets.map((s, j) => j !== si ? s : { ...s, done: !s.done })
       })
     }));
-    setRest({ secs: store.defaultRestTime || 120, total: store.defaultRestTime || 120, running: true });
+    // Use per-set restTime if set, else exercise default, else global default
+    setSession(p => {
+      const ex = p.exercises[ei];
+      const set = ex?.sets[si];
+      const restSecs = set?.restTime || store.defaultRestTime || 120;
+      setRest({ secs: restSecs, total: restSecs, running: true });
+      return p;
+    });
     // Request notification permission on first rest timer (user gesture required)
     try {
       if ("Notification" in window && Notification.permission === "default") {
@@ -2016,6 +2179,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }
       };
     });
+
+    // Save exercise changes back to program day
+    if (session.programId && session.dayName && onSaveProgram) {
+      const prog = store.programs.find(p => p.id === session.programId);
+      if (prog) {
+        const updatedDays = prog.days.map(d => d.name === session.dayName ? {
+          ...d,
+          exercises: session.exercises.filter(e => e.name).map(ex => ({
+            name: ex.name, reps: ex.reps || d.exercises.find(x=>x.name===ex.name)?.reps || "8-12",
+            note: ex.note || ""
+          }))
+        } : d);
+        onSaveProgram({ ...prog, days: updatedDays });
+      }
+    }
 
     if (share) {
       const postEx = session.exercises
@@ -2160,17 +2338,49 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 </div>
 
                 {ex.sets.map((set, si) => (
-                  <SetRow
-                    key={set.id || si}
-                    set={set}
-                    si={si}
-                    exName={ex.name}
-                    store={store}
-                    unit={unit}
-                    C={C}
-                    onUpdate={patch => updateSet(ei, si, patch)}
-                    onToggleDone={() => toggleDone(ei, si)}
-                  />
+                  <div key={set.id || si}>
+                    <SetRow
+                      set={set} si={si} exName={ex.name}
+                      store={store} unit={unit} C={C}
+                      onUpdate={patch => updateSet(ei, si, patch)}
+                      onToggleDone={() => toggleDone(ei, si)}
+                    />
+                    {/* Rest timer row between sets — Hevy style */}
+                    <div style={{ display:"flex", alignItems:"center", margin:"0 14px", gap:0 }}>
+                      <div style={{ flex:1, height:1, background:`${C.accent}30` }}/>
+                      <button
+                        onClick={() => {
+                          const secs = set.restTime || store.defaultRestTime || 120;
+                          setRest({ secs, total: secs, running: true });
+                        }}
+                        style={{
+                          background:"none", border:"none", cursor:"pointer",
+                          padding:"4px 10px", fontSize:12, fontWeight:700,
+                          color:C.accent, fontFamily:MONO, letterSpacing:0.5
+                        }}
+                      >
+                        {fmtTime(set.restTime || store.defaultRestTime || 120)}
+                      </button>
+                      {/* Cycle through rest times */}
+                      {[60,90,120,150,180,240,300].map(s => {
+                        const cur = set.restTime || store.defaultRestTime || 120;
+                        return s === cur ? null : null; // just show change button
+                      })}
+                      <button
+                        onClick={() => {
+                          const opts = [30,60,90,120,150,180,240,300];
+                          const cur = set.restTime || store.defaultRestTime || 120;
+                          const next = opts[(opts.indexOf(cur) + 1) % opts.length];
+                          updateSet(ei, si, { restTime: next });
+                        }}
+                        style={{
+                          background:C.divider, border:"none", borderRadius:8, cursor:"pointer",
+                          padding:"2px 8px", fontSize:10, color:C.sub, fontFamily:F
+                        }}
+                      >edit</button>
+                      <div style={{ flex:1, height:1, background:`${C.accent}30` }}/>
+                    </div>
+                  </div>
                 ))}
 
                 <div style={{ display:"flex", marginTop:4, padding:"0 14px" }}>
@@ -2259,31 +2469,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <span style={{ fontSize:20, color:"rgba(255,255,255,0.7)" }}>›</span>
           </button>
 
-          <button onClick={() => setShow1RM(true)} style={{
-            width:"100%", background:"none", border:`1px solid ${C.border}`,
-            borderRadius:10, padding:"14px 16px", marginBottom:8,
-            display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
-          }}>
-            <div style={{ fontSize:20 }}>🧮</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:C.text }}>1RM Calculator</div>
-              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>Estimate your one-rep max</div>
-            </div>
-            <span style={{ fontSize:16, color:C.sub }}>›</span>
-          </button>
-
-          <button onClick={() => setShowPlateCalc(true)} style={{
-            width:"100%", background:"none", border:`1px solid ${C.border}`,
-            borderRadius:10, padding:"14px 16px", marginBottom:16,
-            display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
-          }}>
-            <div style={{ fontSize:20 }}>🏋️</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:C.text }}>Plate Calculator</div>
-              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>Figure out what to load</div>
-            </div>
-            <span style={{ fontSize:16, color:C.sub }}>›</span>
-          </button>
+          <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+            <button onClick={() => setShow1RM(true)} style={{
+              flex:1, background:"none", border:`1px solid ${C.border}`,
+              borderRadius:10, padding:"14px 10px",
+              display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F
+            }}>
+              <div style={{ fontSize:22 }}>🧮</div>
+              <div style={{ fontSize:12, fontWeight:600, color:C.text, textAlign:"center" }}>1RM Calc</div>
+              <div style={{ fontSize:10, color:C.sub, textAlign:"center" }}>Estimate max</div>
+            </button>
+            <button onClick={() => setShowPlateCalc(true)} style={{
+              flex:1, background:"none", border:`1px solid ${C.border}`,
+              borderRadius:10, padding:"14px 10px",
+              display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F
+            }}>
+              <div style={{ fontSize:22 }}>🏋️</div>
+              <div style={{ fontSize:12, fontWeight:600, color:C.text, textAlign:"center" }}>Plate Calc</div>
+              <div style={{ fontSize:10, color:C.sub, textAlign:"center" }}>What to load</div>
+            </button>
+          </div>
 
           {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
           {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
@@ -2390,112 +2595,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       {subTab === "programs" && viewingProgram && (() => {
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
-        const isActive = store.activeProgramId === prog.id;
         return (
-          <div style={{ padding:"14px" }}>
-            <button onClick={() => setViewingProgram(null)} style={{
-              background:"none", border:"none", color:C.text, fontSize:14, cursor:"pointer",
-              padding:"4px 0 12px", fontFamily:F
-            }}>‹ Back to Programs</button>
-
-            <div style={{ marginBottom:18 }}>
-              <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>{prog.name}</div>
-              <div style={{ fontSize:13, color:C.sub }}>{prog.days?.length || 0} days · {prog.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises</div>
-            </div>
-
-            <div style={{ display:"flex", gap:8, marginBottom:18 }}>
-              {!isActive && (
-                <button onClick={() => onSaveProgram ? onSaveProgram(prog) : setStore(s => ({ ...s, activeProgramId: prog.id }))} style={{
-                  flex:1, background:C.accent, color:"#fff", border:"none", borderRadius:8,
-                  padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
-                }}>Set as Active</button>
-              )}
-              {isActive && (
-                <button onClick={() => {
-                  setStore(s => ({ ...s, activeProgramId: null }));
-                  if (onSaveProgram) onSaveProgram({ ...prog, _deactivate: true });
-                }} style={{
-                  flex:1, background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:8,
-                  padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
-                }}>Deactivate</button>
-              )}
-              <button onClick={() => {
-                if (window.confirm(`Delete "${prog.name}"?`)) {
-                  setStore(s => ({
-                    ...s,
-                    programs: s.programs.filter(x => x.id !== prog.id),
-                    activeProgramId: s.activeProgramId === prog.id ? null : s.activeProgramId
-                  }));
-                  setViewingProgram(null);
-                }
-              }} style={{
-                background:"none", color:C.red, border:`1px solid ${C.border}`, borderRadius:8,
-                padding:"10px 16px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
-              }}>Delete</button>
-            </div>
-
-            {(prog.days || []).map((day, di) => (
-              <div key={day.id || di} style={{
-                border:`1px solid ${C.border}`, borderRadius:12, padding:"14px", marginBottom:10
-              }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{day.name}</div>
-                  <button onClick={() => { startWorkout(day); }} style={{
-                    background:C.accent, color:"#fff", border:"none", borderRadius:6,
-                    padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-                  }}>Start</button>
-                </div>
-                {(day.exercises || []).map((ex, ei) => {
-                  const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
-                  return (
-                    <div key={ei} style={{
-                      padding:"8px 0",
-                      borderTop: ei > 0 ? `1px solid ${C.divider}` : "none"
-                    }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: 4 }}>
-                        {exInfo && <MuscleIcon muscle={exInfo.muscle} size={28} C={C}/>}
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{ex.name}</div>
-                          {ex.reps && <div style={{ fontSize:11, color:C.sub }}>{ex.reps}</div>}
-                        </div>
-                      </div>
-                      <input
-                        value={ex.note || ""}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setStore(s => {
-                            const updated = {
-                              ...s,
-                              programs: s.programs.map(p => p.id !== prog.id ? p : {
-                                ...p,
-                                days: p.days.map((d, dIdx) => dIdx !== di ? d : {
-                                  ...d,
-                                  exercises: d.exercises.map((x, xIdx) => xIdx !== ei ? x : { ...x, note: val })
-                                })
-                              })
-                            };
-                            // Debounce sync to Supabase
-                            const updatedProg = updated.programs.find(p => p.id === prog.id);
-                            if (updatedProg && onProgramEdited) onProgramEdited(updatedProg);
-                            return updated;
-                          });
-                        }}
-                        placeholder="Add note (e.g. '4×5–7, rest-pause last set')"
-                        style={{
-                          width:"100%", background:C.divider, border:"none", borderRadius:6,
-                          padding:"6px 10px", fontSize:12, color:C.text, outline:"none",
-                          fontFamily:F, boxSizing:"border-box"
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-                {(!day.exercises || day.exercises.length === 0) && (
-                  <div style={{ fontSize:12, color:C.sub, textAlign:"center", padding:"8px 0" }}>No exercises</div>
-                )}
-              </div>
-            ))}
-          </div>
+          <ProgramDetailView
+            prog={prog}
+            store={store}
+            unit={unit}
+            C={C}
+            F={F}
+            MONO={MONO}
+            onBack={() => setViewingProgram(null)}
+            onSaveProgram={onSaveProgram}
+            onSaveStore={setStore}
+            onProgramEdited={onProgramEdited}
+            startWorkout={(day, progId) => {
+              setPreviewDay({ day, programName: prog.name, progId });
+            }}
+          />
         );
       })()}
 
@@ -4071,7 +4186,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
   );
 }
 
-function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick }) {
+function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
@@ -4315,9 +4430,9 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
                   <div style={{ fontSize:14, color:C.text }}>Signed in as</div>
-                  <div style={{ fontSize:12, color:C.sub }}>{session?.user?.email || ""}</div>
+                  <div style={{ fontSize:12, color:C.sub }}>{email || ""}</div>
                 </div>
-                <button onClick={() => { setShowSettings(false); setTimeout(handleSignOutFromSettings, 200); }} style={{
+                <button onClick={() => { setShowSettings(false); setTimeout(() => onSignOut && onSignOut(), 200); }} style={{
                   width:"100%", background:"none", border:"none", padding:"14px",
                   display:"flex", alignItems:"center", justifyContent:"space-between",
                   cursor:"pointer", fontFamily:F
@@ -5380,7 +5495,13 @@ export default function App() {
               <div style={{ display:"flex", gap:14, padding:"12px 14px", overflowX:"auto", overflowY:"hidden", borderBottom:`1px solid ${C.divider}` }}>
                 {/* My story */}
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
-                  <div style={{ position:"relative", cursor:"pointer" }} onClick={() => { setNewPostKind("story"); setShowNewPost(true); }}>
+                  <div style={{ position:"relative", cursor:"pointer" }} onClick={() => {
+                    if (myStoryPost) {
+                      setStoryIndex("self");
+                    } else {
+                      setNewPostKind("story"); setShowNewPost(true);
+                    }
+                  }}>
                     <div style={{
                       width:60, height:60, borderRadius:"50%", overflow:"hidden",
                       border: myStoryPost ? "2.5px solid #f97316" : `2.5px solid ${C.divider}`,
@@ -5467,6 +5588,8 @@ export default function App() {
             C={C}
             onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
             onUserClick={setProfileUserId}
+            email={session?.user?.email || ""}
+            onSignOut={handleSignOut}
           />
         )}
             </div>
@@ -5546,15 +5669,34 @@ export default function App() {
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}/>}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
       {storyIndex !== null && (() => {
-        const currentStoryUser = storyUsers[storyIndex];
-        if (!currentStoryUser) { setStoryIndex(null); return null; }
+        if (storyIndex === "self") {
+          return (
+            <StoryViewer
+              user={me}
+              post={myStoryPost}
+              onClose={() => setStoryIndex(null)}
+              onNext={storyUsers.length > 0 ? () => setStoryIndex(0) : null}
+              onPrev={null}
+              hasNext={storyUsers.length > 0}
+              hasPrev={false}
+              C={C}
+            />
+          );
+        }
+        const allStoryEntries = storyUsers.map(u => ({
+          user: u,
+          post: recentStoryPosts.find(p => p.userId === u.id)
+        }));
+        const entry = allStoryEntries[storyIndex];
+        if (!entry) { setStoryIndex(null); return null; }
         return (
           <StoryViewer
-            user={currentStoryUser}
+            user={entry.user}
+            post={entry.post}
             onClose={() => setStoryIndex(null)}
             onNext={() => setStoryIndex(i => i + 1)}
             onPrev={() => setStoryIndex(i => Math.max(0, i - 1))}
-            hasNext={storyIndex < storyUsers.length - 1}
+            hasNext={storyIndex < allStoryEntries.length - 1}
             hasPrev={storyIndex > 0}
             onViewProfile={() => { const uid = currentStoryUser.id; setStoryIndex(null); setProfileUserId(uid); }}
             C={C}
