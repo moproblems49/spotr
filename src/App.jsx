@@ -2568,26 +2568,46 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {(!store.programs || !store.programs.length) && (
             <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
           )}
-          {(store.programs || []).map(p => (
-            <div key={p.id} onClick={() => setViewingProgram(p.id)} style={{
-              background:"none", border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-              borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
-              display:"flex", alignItems:"center", gap:12
-            }}>
-              <div style={{ flex:1 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-                  {store.activeProgramId === p.id && (
-                    <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
-                  )}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            {(store.programs || []).map((p, idx) => (
+              <div 
+                key={p.id} 
+                draggable
+                onDragStart={e => { e.dataTransfer.setData("text/plain", idx); e.target.style.opacity = "0.5"; }}
+                onDragEnd={e => { e.target.style.opacity = "1"; }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault();
+                  const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+                  if (fromIdx === idx) return;
+                  const newPrograms = [...store.programs];
+                  const [moved] = newPrograms.splice(fromIdx, 1);
+                  newPrograms.splice(idx, 0, moved);
+                  setStore(prev => ({ ...prev, programs: newPrograms }));
+                  if (onSaveProgram) onSaveProgram(moved);
+                }}
+                onClick={() => setViewingProgram(p.id)} style={{
+                  background: store.activeProgramId === p.id ? C.accentSoft : "none",
+                  border:`1.5px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
+                  borderRadius:12, padding:"14px 12px", cursor:"pointer",
+                  display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center",
+                  transition:"transform 0.15s ease, box-shadow 0.15s ease",
+                }}
+                onMouseDown={e => e.target.closest('[draggable]') && (e.target.style.transform = "scale(0.97)")}
+                onMouseUp={e => e.target.closest('[draggable]') && (e.target.style.transform = "")}
+                onMouseLeave={e => e.target.closest('[draggable]') && (e.target.style.transform = "")}
+              >
+                <div style={{ fontSize:22, marginBottom:6 }}>📋</div>
+                <div style={{ fontSize:13, fontWeight:600, color:C.text, marginBottom:4, lineHeight:1.3 }}>{p.name}</div>
+                <div style={{ fontSize:10, color:C.sub }}>
+                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} ex
                 </div>
-                <div style={{ fontSize:11, color:C.sub }}>
-                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
-                </div>
+                {store.activeProgramId === p.id && (
+                  <div style={{ marginTop:8, fontSize:9, background:C.accent, color:"#fff", padding:"3px 10px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</div>
+                )}
               </div>
-              <span style={{ fontSize:18, color:C.sub }}>›</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -2747,6 +2767,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
 
             <div style={{ overflowY:"auto", flex:1, padding:"0 14px 14px" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
               {[
                 { id:"mypp6", name:"No Mercy PPL · 6 Day", icon:"⭐", desc:"Built for you · detailed notes · daily laterals", featured:true, days:[
                   { name:"Push A · Heavy Chest", exercises:[
@@ -2837,13 +2858,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <div key={t.id} style={{
                   background: t.featured ? `linear-gradient(135deg, ${C.accentSoft}, transparent)` : "none",
                   border:`1px solid ${t.featured ? C.accent : C.border}`,
-                  borderRadius:12, padding:"14px", marginBottom:10
+                  borderRadius:12, padding:"14px", display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center"
                 }}>
                   {t.featured && (
-                    <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>FEATURED · YOUR PROGRAM</div>
+                    <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>FEATURED</div>
                   )}
-                  <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:2 }}>{t.icon} {t.name}</div>
-                  <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>{t.desc} · {t.days.length} days</div>
+                  <div style={{ fontSize:26, marginBottom:6 }}>{t.icon}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.name}</div>
+                  <div style={{ fontSize:11, color:C.sub, marginBottom:12 }}>{t.desc} · {t.days.length} days</div>
                   <button onClick={() => {
                     const prog = {
                       id: uid(),
@@ -2866,6 +2888,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   }}>Import & Set Active</button>
                 </div>
               ))}
+              </div>
             </div>
           </div>
         </div>
@@ -5132,7 +5155,24 @@ export default function App() {
   // Save program edits (notes, exercise changes) back to Supabase
   const saveProgramDebounceRef = useRef({});
   async function handleProgramEdited(prog) {
-    if (!token || !prog.id) return;
+    // Always save to local state first
+    setStore(prev => ({
+      ...prev,
+      programs: prev.programs?.map(p => p.id === prog.id ? prog : p) || []
+    }));
+    
+    if (!token) {
+      // No auth — save to localStorage immediately
+      const currentStore = loadStore();
+      const updated = {
+        ...currentStore,
+        programs: currentStore.programs?.map(p => p.id === prog.id ? prog : p) || []
+      };
+      saveStore(updated);
+      return;
+    }
+    
+    // Authenticated — debounce Supabase sync
     clearTimeout(saveProgramDebounceRef.current[prog.id]);
     saveProgramDebounceRef.current[prog.id] = setTimeout(async () => {
       try {
