@@ -2600,36 +2600,34 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
                 ACTIVE · {prog.name.toUpperCase()}
               </div>
-              {prog.days.map(day => (
-                <div key={day.id} style={{ marginBottom:6, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
-                  <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
-                    width:"100%", background:"none", border:"none",
-                    padding:"12px 14px",
-                    display:"flex", alignItems:"center", gap:11, cursor:"pointer", textAlign:"left", fontFamily:F
-                  }}>
-                    <div style={{ width:3, height:32, borderRadius:2, background:C.accent, flexShrink:0 }}/>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
-                      <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{day.exercises.length} exercises</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                {prog.days.map(day => (
+                  <div key={day.id} style={{ border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
+                    <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
+                      width:"100%", background:"none", border:"none",
+                      padding:"12px 10px",
+                      display:"flex", flexDirection:"column", alignItems:"center", gap:6, cursor:"pointer", textAlign:"center", fontFamily:F
+                    }}>
+                      <div style={{ fontSize:20, marginBottom:2 }}>📋</div>
+                      <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{day.name}</div>
+                      <div style={{ fontSize:10, color:C.sub }}>{day.exercises.length} ex</div>
+                    </button>
+                    <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
+                      <button onClick={() => {
+                        setSubTab("programs");
+                        setViewingProgram(prog.id);
+                      }} style={{
+                        flex:1, padding:"6px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
+                        fontSize:10, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+                      }}>Edit</button>
+                      <button onClick={() => startWorkout(day)} style={{
+                        flex:1, padding:"6px", background:"none", border:"none",
+                        fontSize:10, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+                      }}>Start</button>
                     </div>
-                    <span style={{ fontSize:16, color:C.sub }}>›</span>
-                  </button>
-                  <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                    <button onClick={() => {
-                      // Edit day — navigate to Programs tab and open this program
-                      setSubTab("programs");
-                      setViewingProgram(prog.id);
-                    }} style={{
-                      flex:1, padding:"8px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
-                      fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
-                    }}>✏️ Edit</button>
-                    <button onClick={() => startWorkout(day)} style={{
-                      flex:1, padding:"8px", background:"none", border:"none",
-                      fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
-                    }}>▶ Start</button>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </>
           ) : (
             <div style={{ background:"none", border:`1px dashed ${C.border}`, borderRadius:12, padding:"22px 16px", textAlign:"center" }}>
@@ -2668,7 +2666,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             MY PROGRAMS · {store.programs?.length || 0}
           </div>
           {(!store.programs || !store.programs.length) && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
+            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+              <div style={{ fontWeight:600, color:C.text, marginBottom:4 }}>No programs yet</div>
+              <div style={{ fontSize:12, marginBottom:12 }}>Build your own or import a template to get started</div>
+              <button onClick={() => setShowTemplates(true)} style={{
+                background:C.accent, color:"#fff", border:"none", borderRadius:8,
+                padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+              }}>Browse Templates</button>
+            </div>
           )}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
             {(store.programs || []).map((p, idx) => (
@@ -2785,7 +2791,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             LOGGED EXERCISES · {allEx.size}
           </div>
           {!allEx.size && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>Complete a workout to see your exercises here, or browse all below.</div>
+            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>💪</div>
+              <div style={{ fontWeight:600, color:C.text, marginBottom:4 }}>No logged exercises yet</div>
+              <div style={{ fontSize:12 }}>Complete a workout to see your exercises here</div>
+            </div>
           )}
           {Array.from(allEx).sort().filter(name => {
             const matchesSearch = !exerciseSearch || name.toLowerCase().includes(exerciseSearch.toLowerCase());
@@ -2849,7 +2859,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             WORKOUT HISTORY
           </div>
           {!Object.keys(store.history || {}).length && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No workouts yet.</div>
+            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>🏋️</div>
+              <div style={{ fontWeight:600, color:C.text, marginBottom:4 }}>No workouts yet</div>
+              <div style={{ fontSize:12 }}>Start your first workout to see your history here</div>
+            </div>
           )}
           {Object.entries(store.history || {}).sort(([a], [b]) => b.localeCompare(a)).map(([date, sessions]) => (
             <div key={date} style={{ marginBottom:14 }}>
@@ -4692,7 +4706,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo" }) {
 
   function handleShare() {
     if (!canShare()) return;
-    if (postKind === "photo") {
+    if (postKind === "story") {
       onPost({ type: "story", caption, imageData: img });
     } else if (postKind === "photo") {
       onPost({ type: isFC ? "form_check" : "photo", caption, imageData: img, location: loc });
@@ -5358,7 +5372,15 @@ export default function App() {
   }
 
   // Persist non-Supabase store changes to localStorage as fallback
-  useEffect(() => { saveStore(store); }, [store]);
+  useEffect(() => { 
+    // Always ensure workoutDates is synced with history
+    const computedWorkoutDates = {};
+    Object.keys(store.history || {}).forEach(date => {
+      computedWorkoutDates[date] = true;
+    });
+    const updatedStore = { ...store, workoutDates: { ...store.workoutDates, ...computedWorkoutDates } };
+    saveStore(updatedStore); 
+  }, [store]);
 
   // ── Lock document scroll ──────────────────────────────────────
   useEffect(() => {
