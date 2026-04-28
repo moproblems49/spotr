@@ -1448,7 +1448,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STORY VIEWER — Instagram-style full-screen with auto-advance
 // ═════════════════════════════════════════════════════════════════════════════
-function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, C }) {
+function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, onEdit, onDelete, isOwnStory, C }) {
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
@@ -1569,6 +1569,27 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
           <div style={{ fontSize:13, fontWeight:600, color:"#fff" }}>{user.username}</div>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>now</div>
         </div>
+        {/* Edit/Delete buttons for own story */}
+        {isOwnStory && (onEdit || onDelete) && (
+          <div style={{ display:"flex", gap:8, marginRight:8 }}>
+            {onEdit && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit(post); }}
+                style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}
+              >
+                Edit
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (confirm("Delete this story?")) { onDelete(post.id); onClose(); } }}
+                style={{ background:"rgba(255,59,48,0.3)", border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        )}
         <button onClick={onClose} style={{ background:"none", border:"none", color:"#fff", fontSize:24, cursor:"pointer", padding:4, lineHeight:1 }}>✕</button>
       </div>
 
@@ -1730,7 +1751,12 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           </div>
           {(expanded ? post.workout.exercises : post.workout.exercises.slice(0,3)).map((ex,i) => (
             <div key={i} style={{ paddingTop: i>0 ? 10 : 0, borderTop: i>0 ? `1px solid ${C.border}` : "none", marginTop: i>0 ? 10 : 0 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:C.text, marginBottom:5 }}>{ex.name}</div>
+              <div style={{ fontSize:13, fontWeight:600, color:C.text, marginBottom:5, display:"flex", alignItems:"center", gap:6 }}>
+                {ex.name}
+                {ex.isPR && (
+                  <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", padding:"1px 5px", borderRadius:8, fontWeight:700 }}>🏆 PR</span>
+                )}
+              </div>
               <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                 {ex.sets.map((s,j) => (
                   <span key={j} style={{ fontSize:11, background:C.bg, borderRadius:5, padding:"2px 8px", color:C.textDim, fontFamily:MONO }}>
@@ -2231,10 +2257,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     if (share) {
       const postEx = session.exercises
         .filter(ex => ex.name && ex.sets.some(s => s.done))
-        .map(ex => ({
-          name: ex.name,
-          sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 }))
-        }));
+        .map(ex => {
+          const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
+          const isPR = store.prs?.[ex.name] && maxW > 0 && (newPRs[ex.name] || 0) >= maxW;
+          return {
+            name: ex.name,
+            sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+            isPR: isPR
+          };
+        });
       const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
       onShareWorkout({
         type: "workout",
@@ -2571,33 +2602,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <span style={{ fontSize:20, color:"rgba(255,255,255,0.7)" }}>›</span>
           </button>
 
-          <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-            <button onClick={() => setShow1RM(true)} style={{
-              flex:1, background:"none", border:`1px solid ${C.border}`,
-              borderRadius:10, padding:"14px 10px",
-              display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:22 }}>🧮</div>
-              <div style={{ fontSize:12, fontWeight:600, color:C.text, textAlign:"center" }}>1RM Calc</div>
-              <div style={{ fontSize:10, color:C.sub, textAlign:"center" }}>Estimate max</div>
-            </button>
-            <button onClick={() => setShowPlateCalc(true)} style={{
-              flex:1, background:"none", border:`1px solid ${C.border}`,
-              borderRadius:10, padding:"14px 10px",
-              display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:22 }}>🏋️</div>
-              <div style={{ fontSize:12, fontWeight:600, color:C.text, textAlign:"center" }}>Plate Calc</div>
-              <div style={{ fontSize:10, color:C.sub, textAlign:"center" }}>What to load</div>
-            </button>
-          </div>
-
-          {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
-          {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
-
-          {prog ? (
-            <>
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
+          {/* Quick Start button only - calculators moved to workouts section */}
+          <button onClick={() => startWorkout(null)} style={{
                 ACTIVE · {prog.name.toUpperCase()}
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -4072,9 +4078,13 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
                     <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{u.name}</div>
                     <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                   </div>
-                  <button onClick={() => setStore(p => ({
-                    ...p,
-                    groups: p.groups.map(gr => gr.id !== g.id ? gr : { ...gr, members: [...gr.members, u.id] })
+                  <button onClick={() => setStore(p => {
+                    const updated = {
+                      ...p,
+                      groups: p.groups.map(gr => gr.id !== g.id ? gr : { ...gr, members: [...gr.members, u.id] })
+                    };
+                    saveStore(updated);
+                    return updated;
                   }))} style={{
                     background:C.accent, color:"#fff", border:"none", borderRadius:6,
                     padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
@@ -4084,10 +4094,14 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
             </>
           )}
           <button onClick={() => {
-            setStore(p => ({
-              ...p,
-              groups: p.groups.map(gr => gr.id !== g.id ? gr : { ...gr, members: gr.members.filter(m => m !== currentUserId) })
-            }));
+            setStore(p => {
+              const updated = {
+                ...p,
+                groups: p.groups.map(gr => gr.id !== g.id ? gr : { ...gr, members: gr.members.filter(m => m !== currentUserId) })
+              };
+              saveStore(updated);
+              return updated;
+            });
             setActiveGroup(null);
           }} style={{
             width:"100%", background:"none", color:C.red, border:"none",
@@ -4987,7 +5001,7 @@ export default function App() {
   // ── All UI state — must be at top level before any returns ──
   const [tab, setTab] = useState("feed");
   const [prevTab, setPrevTab] = useState(null);
-  const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
+  const TABS_ORDER = ["feed", "tracker", "activity", "discover", "profile"];
   function switchTab(t) { setPrevTab(tab); setTab(t); }
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostKind, setNewPostKind] = useState("photo");
@@ -5192,18 +5206,24 @@ export default function App() {
   }
 
   async function handleKudos(postId) {
-    if (!token) return;
     const post = store.posts.find(p => p.id === postId);
     if (!post) return;
     const hasKudos = post.kudos.includes(currentUserId);
     // Optimistic update
-    setStore(prev => ({
-      ...prev,
-      posts: prev.posts.map(p => p.id !== postId ? p : {
-        ...p,
-        kudos: hasKudos ? p.kudos.filter(id => id !== currentUserId) : [...p.kudos, currentUserId]
-      })
-    }));
+    setStore(prev => {
+      const updated = {
+        ...prev,
+        posts: prev.posts.map(p => p.id !== postId ? p : {
+          ...p,
+          kudos: hasKudos ? p.kudos.filter(id => id !== currentUserId) : [...p.kudos, currentUserId]
+        })
+      };
+      // Always persist to localStorage
+      saveStore(updated);
+      return updated;
+    });
+    
+    if (!token) return; // Skip Supabase if not authenticated
     try {
       if (hasKudos) {
         await sb.query(`kudos?post_id=eq.${postId}&user_id=eq.${currentUserId}`, { method:"DELETE" }, token);
@@ -5212,13 +5232,17 @@ export default function App() {
       }
     } catch (e) {
       // Revert on failure
-      setStore(prev => ({
-        ...prev,
-        posts: prev.posts.map(p => p.id !== postId ? p : {
-          ...p,
-          kudos: hasKudos ? [...p.kudos, currentUserId] : p.kudos.filter(id => id !== currentUserId)
-        })
-      }));
+      setStore(prev => {
+        const reverted = {
+          ...prev,
+          posts: prev.posts.map(p => p.id !== postId ? p : {
+            ...p,
+            kudos: hasKudos ? [...p.kudos, currentUserId] : p.kudos.filter(id => id !== currentUserId)
+          })
+        };
+        saveStore(reverted);
+        return reverted;
+      });
     }
   }
 
@@ -5310,19 +5334,18 @@ export default function App() {
   const saveProgramDebounceRef = useRef({});
   async function handleProgramEdited(prog) {
     // Always save to local state first
-    setStore(prev => ({
-      ...prev,
-      programs: prev.programs?.map(p => p.id === prog.id ? prog : p) || []
-    }));
+    setStore(prev => {
+      const updated = {
+        ...prev,
+        programs: prev.programs?.map(p => p.id === prog.id ? prog : p) || []
+      };
+      // Always persist to localStorage immediately
+      saveStore(updated);
+      return updated;
+    });
     
     if (!token) {
-      // No auth — save to localStorage immediately
-      const currentStore = loadStore();
-      const updated = {
-        ...currentStore,
-        programs: currentStore.programs?.map(p => p.id === prog.id ? prog : p) || []
-      };
-      saveStore(updated);
+      // No auth — already saved to localStorage above
       return;
     }
     
@@ -5434,12 +5457,15 @@ export default function App() {
 
   // ── me, following, feed computed after dbReady guard ────────────
   const following = me?.following || [];
-  // Story users = people who have story posts in the last 24h
+  // Story users = people who have story posts in the last 24h (only from people you follow)
   const recentStoryPosts = (store.posts || []).filter(p =>
     p.type === "story" && Date.now() - p.createdAt < 24 * 60 * 60 * 1000
   );
   const myStoryPost = recentStoryPosts.find(p => p.userId === currentUserId);
-  const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))].filter(id => id !== currentUserId);
+  // Only show stories from people you follow (plus your own story)
+  const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))].filter(id => 
+    id !== currentUserId && following.includes(id)
+  );
   const storyUsers = storyUserIds.map(id => store.users.find(u => u.id === id)).filter(Boolean);
   const streak = calcStreak(store.workoutDates || {});
   const feedPosts = (store.posts || [])
@@ -5458,13 +5484,18 @@ export default function App() {
 
   async function handleFollow(userId) {
     const isFollowing = me?.following?.includes(userId);
-    setStore(prev => ({
-      ...prev,
-      users: prev.users.map(u => u.id !== currentUserId ? u : {
-        ...u,
-        following: isFollowing ? u.following.filter(id => id !== userId) : [...(u.following||[]), userId]
-      })
-    }));
+    setStore(prev => {
+      const updated = {
+        ...prev,
+        users: prev.users.map(u => u.id !== currentUserId ? u : {
+          ...u,
+          following: isFollowing ? u.following.filter(id => id !== userId) : [...(u.following||[]), userId]
+        })
+      };
+      // Persist to localStorage
+      saveStore(updated);
+      return updated;
+    });
     try {
       if (isFollowing) {
         await sb.query(`follows?follower_id=eq.${currentUserId}&following_id=eq.${userId}`, { method:"DELETE" }, token);
@@ -5776,6 +5807,10 @@ export default function App() {
           <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}/>
         )}
 
+        {tab === "activity" && (
+          <FriendsActivityScreen store={store} currentUserId={currentUserId} C={C} unit={store.unit||"lbs"} onBack={() => setTab("feed")} onUserClick={setProfileUserId}/>
+        )}
+
         {tab === "discover" && (
           <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C}/>
         )}
@@ -5881,6 +5916,9 @@ export default function App() {
               onPrev={null}
               hasNext={storyUsers.length > 0}
               hasPrev={false}
+              onEdit={setEditingPost}
+              onDelete={handleDelete}
+              isOwnStory={true}
               C={C}
             />
           );
