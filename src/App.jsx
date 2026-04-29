@@ -2602,8 +2602,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <span style={{ fontSize:20, color:"rgba(255,255,255,0.7)" }}>›</span>
           </button>
 
-          {/* Quick Start button only - calculators moved to workouts section */}
-          <button onClick={() => startWorkout(null)} style={{
+          {prog ? (
+            <>
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
                 ACTIVE · {prog.name.toUpperCase()}
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -4085,7 +4086,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
                     };
                     saveStore(updated);
                     return updated;
-                  }))} style={{
+                  })} style={{
                     background:C.accent, color:"#fff", border:"none", borderRadius:6,
                     padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
                   }}>Invite</button>
