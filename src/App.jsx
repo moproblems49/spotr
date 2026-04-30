@@ -1766,7 +1766,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           </div>
           {(expanded ? post.workout.exercises : post.workout.exercises.slice(0,3)).map((ex,i) => (
             <div key={i} style={{ paddingTop: i>0 ? 10 : 0, borderTop: i>0 ? `1px solid ${C.border}` : "none", marginTop: i>0 ? 10 : 0 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:C.text, marginBottom:5 }}>{ex.name}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:5 }}>
+                <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{ex.name}</span>
+                {ex.isPR && <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", padding:"1px 6px", borderRadius:8, fontWeight:700, flexShrink:0 }}>🏆 PR</span>}
+              </div>
               <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                 {ex.sets.map((s,j) => (
                   <span key={j} style={{ fontSize:11, background:C.bg, borderRadius:5, padding:"2px 8px", color:C.textDim, fontFamily:MONO }}>
@@ -2267,10 +2270,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     if (share) {
       const postEx = session.exercises
         .filter(ex => ex.name && ex.sets.some(s => s.done))
-        .map(ex => ({
-          name: ex.name,
-          sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 }))
-        }));
+        .map(ex => {
+          const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight)||0));
+          const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
+          const prevPR = store.prs?.[ex.name] || 0;
+          return {
+            name: ex.name,
+            sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 })),
+            isPR: maxLbs > 0 && maxLbs > prevPR
+          };
+        });
       const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
       onShareWorkout({
         type: "workout",
@@ -3924,18 +3933,40 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   );
 }
 
-function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
+function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [activeGroup, setActiveGroup] = useState(null);
-  const myGroups = (store.groups || []).filter(g => g.members.includes(currentUserId));
+  const myGroups = (store.groups || []).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
 
-  function createGroup() {
+  async function createGroup() {
     if (!newName) return;
-    const g = { id:uid(), name:newName, description:newDesc, createdBy:currentUserId, members:[currentUserId], icon:"🏋️" };
-    setStore(p => ({ ...p, groups:[...(p.groups || []), g] }));
+    const g = { id: uid(), name: newName, description: newDesc, createdBy: currentUserId, members: [currentUserId], icon: "🏋️" };
+    setStore(p => ({ ...p, groups: [...(p.groups || []), g] }));
     setShowCreate(false); setNewName(""); setNewDesc("");
+    if (token) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/groups`, {
+          method: "POST",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+          body: JSON.stringify({ name: newName, description: newDesc, created_by: currentUserId, member_ids: [currentUserId], icon: "🏋️" })
+        });
+      } catch {}
+    }
+  }
+
+  async function updateGroupMembers(groupId, newMembers) {
+    setStore(p => ({ ...p, groups: p.groups.map(gr => gr.id !== groupId ? gr : { ...gr, members: newMembers, member_ids: newMembers }) }));
+    if (token) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/groups?id=eq.${groupId}`, {
+          method: "PATCH",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ member_ids: newMembers })
+        });
+      } catch {}
+    }
   }
 
   if (activeGroup) {
@@ -3980,10 +4011,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
                     <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{u.name}</div>
                     <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                   </div>
-                  <button onClick={() => setStore(p => ({
-                    ...p,
-                    groups: p.groups.map(gr => gr.id !== g.id ? gr : { ...gr, members: [...gr.members, u.id] })
-                  }))} style={{
+                  <button onClick={() => updateGroupMembers(g.id, [...(g.members||[]), u.id])} style={{
                     background:C.accent, color:"#fff", border:"none", borderRadius:6,
                     padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
                   }}>Invite</button>
@@ -3992,10 +4020,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
             </>
           )}
           <button onClick={() => {
-            setStore(p => ({
-              ...p,
-              groups: p.groups.map(gr => gr.id !== g.id ? gr : { ...gr, members: gr.members.filter(m => m !== currentUserId) })
-            }));
+            updateGroupMembers(g.id, (g.members||[]).filter(m => m !== currentUserId));
             setActiveGroup(null);
           }} style={{
             width:"100%", background:"none", color:C.red, border:"none",
@@ -4081,7 +4106,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // DISCOVER
 // ═════════════════════════════════════════════════════════════════════════════
-function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C }) {
+function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token }) {
   const [q, setQ] = useState("");
   const [subTab, setSubTab] = useState("discover"); // "discover" | "groups" | "challenges"
   const me = store.users.find(u => u.id === currentUserId);
@@ -4103,7 +4128,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   }
 
   if (subTab === "groups") {
-    return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")}/>;
+    return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")} token={token}/>;
   }
   if (subTab === "challenges") {
     return <FriendsActivityScreen store={store} currentUserId={currentUserId} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick}/>;
@@ -4890,6 +4915,8 @@ export default function App() {
   const [dbReady, setDbReady] = useState(false);
 
   const token = session?.access_token || null;
+  const tokenRef = useRef(token);
+  useEffect(() => { tokenRef.current = session?.access_token || null; }, [session]);
   const currentUserId = session?.user?.id || null;
 
   // ── All UI state — must be at top level before any returns ──
@@ -4928,6 +4955,21 @@ export default function App() {
       }
     }
     init();
+
+    // Proactively refresh token every 45 min (tokens expire after 1hr)
+    const refreshInterval = setInterval(async () => {
+      const saved = loadSession();
+      if (!saved?.refresh_token) return;
+      try {
+        const fresh = await sb.refreshToken(saved.refresh_token);
+        const merged = { ...saved, ...fresh };
+        saveSession(merged);
+        setSession(merged);
+      } catch (e) {
+        console.warn("Token refresh failed:", e.message);
+      }
+    }, 45 * 60 * 1000);
+    return () => clearInterval(refreshInterval);
   }, []);
 
   // ── Load user data from Supabase once authenticated ─────────────
@@ -4939,11 +4981,13 @@ export default function App() {
   async function loadUserData() {
     try {
       // Load profile
-      const [profiles, programs, prs, history] = await Promise.all([
-        sb.query(`profiles?select=*`, {}, token),
-        sb.query(`programs?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, token),
-        sb.query(`personal_records?user_id=eq.${currentUserId}&select=*`, {}, token),
-        sb.query(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, token),
+      const tok = tokenRef.current || token;
+      const [profiles, programs, prs, history, groupsData] = await Promise.all([
+        sb.query(`profiles?select=*`, {}, tok),
+        sb.query(`programs?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, tok),
+        sb.query(`personal_records?user_id=eq.${currentUserId}&select=*`, {}, tok),
+        sb.query(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, tok),
+        sb.query(`groups?select=*`, {}, tok).catch(() => []),
       ]);
 
       const me = profiles?.find(p => p.id === currentUserId);
@@ -4972,7 +5016,7 @@ export default function App() {
       });
 
       // Load posts (from people user follows + own)
-      await loadFeed(token, currentUserId, profiles || []);
+      await loadFeed(tok, currentUserId, profiles || []);
 
       setStore(prev => ({
         ...prev,
@@ -4992,10 +5036,11 @@ export default function App() {
         theme: me?.theme || "light",
         defaultRestTime: me?.default_rest_time || 120,
         seenOnboarding: true,
+        groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
       // Load follows
-      const follows = await sb.query(`follows?select=follower_id,following_id`, {}, token);
+      const follows = await sb.query(`follows?select=follower_id,following_id`, {}, tok);
       setStore(prev => ({
         ...prev,
         users: prev.users.map(u => ({
@@ -5064,12 +5109,13 @@ export default function App() {
 
   // ── Supabase-backed action handlers ──────────────────────────
   async function handleNewPost(postData) {
-    if (!token) return;
+    const tok = tokenRef.current || loadSession()?.access_token;
+    if (!tok) return;
     try {
       // Upload image to Storage if present
       let imageUrl = postData.imageData || null;
       if (imageUrl && imageUrl.startsWith("data:")) {
-        imageUrl = await uploadImage(imageUrl, token, currentUserId);
+        imageUrl = await uploadImage(imageUrl, tok, currentUserId);
       }
       const row = {
         user_id: currentUserId,
@@ -5086,7 +5132,7 @@ export default function App() {
       };
       const result = await sb.query("posts", {
         method: "POST", body: JSON.stringify(row)
-      }, token);
+      }, tok);
       const newPost = Array.isArray(result) ? result[0] : result;
       if (newPost) {
         const appPost = {
@@ -5105,7 +5151,8 @@ export default function App() {
   }
 
   async function handleKudos(postId) {
-    if (!token) return;
+    const tok = tokenRef.current || loadSession()?.access_token;
+    if (!tok) return;
     const post = store.posts.find(p => p.id === postId);
     if (!post) return;
     const hasKudos = post.kudos.includes(currentUserId);
@@ -5119,9 +5166,9 @@ export default function App() {
     }));
     try {
       if (hasKudos) {
-        await sb.query(`kudos?post_id=eq.${postId}&user_id=eq.${currentUserId}`, { method:"DELETE" }, token);
+        await sb.query(`kudos?post_id=eq.${postId}&user_id=eq.${currentUserId}`, { method:"DELETE" }, tok);
       } else {
-        await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, token);
+        await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, tok);
       }
     } catch (e) {
       // Revert on failure
@@ -5136,12 +5183,13 @@ export default function App() {
   }
 
   async function handleComment(postId, text) {
-    if (!token || !text.trim()) return;
+    const tok = tokenRef.current || loadSession()?.access_token;
+    if (!tok || !text.trim()) return;
     try {
       const result = await sb.query("comments", {
         method: "POST",
         body: JSON.stringify({ post_id: postId, user_id: currentUserId, text: text.trim() })
-      }, token);
+      }, tok);
       const newComment = Array.isArray(result) ? result[0] : result;
       if (newComment) {
         setStore(prev => ({
@@ -5159,15 +5207,17 @@ export default function App() {
   }
 
   async function handleDelete(postId) {
-    if (!token) return;
+    const tok = tokenRef.current || loadSession()?.access_token;
+    if (!tok) return;
     setStore(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== postId) }));
     try {
-      await sb.query(`posts?id=eq.${postId}`, { method:"DELETE" }, token);
+      await sb.query(`posts?id=eq.${postId}`, { method:"DELETE" }, tok);
     } catch (e) { console.error("delete error:", e); }
   }
 
   async function handleSaveProgram(program) {
-    if (!token) {
+    const tok = tokenRef.current || loadSession()?.access_token;
+    if (!tok) {
       // No auth — just save locally
       setStore(prev => ({
         ...prev,
@@ -5183,25 +5233,25 @@ export default function App() {
         // Just deactivate all — no new active
         await sb.query(`programs?user_id=eq.${currentUserId}`, {
           method:"PATCH", body: JSON.stringify({ is_active: false })
-        }, token);
+        }, tok);
         setStore(prev => ({ ...prev, activeProgramId: null }));
         return;
       }
       // Deactivate all others
       await sb.query(`programs?user_id=eq.${currentUserId}`, {
         method:"PATCH", body: JSON.stringify({ is_active: false })
-      }, token);
+      }, tok);
       // Check if existing or new
       const existing = store.programs.find(p => p.id === program.id);
       if (existing && program.id) {
         await sb.query(`programs?id=eq.${program.id}`, {
           method:"PATCH", body: JSON.stringify({ name: program.name, days: program.days, is_active: true })
-        }, token);
+        }, tok);
       } else {
         const result = await sb.query("programs", {
           method:"POST",
           body: JSON.stringify({ user_id: currentUserId, name: program.name, days: program.days, is_active: true })
-        }, token);
+        }, tok);
         const newProg = Array.isArray(result) ? result[0] : result;
         if (newProg) program = { ...program, id: newProg.id };
       }
@@ -5228,13 +5278,14 @@ export default function App() {
       try {
         await sb.query(`programs?id=eq.${prog.id}`, {
           method:"PATCH", body: JSON.stringify({ days: prog.days })
-        }, token);
+        }, tok);
       } catch (e) { console.error("program edit sync error:", e); }
     }, 1500); // debounce 1.5s so we don't spam on every keystroke
   }
 
   async function handleSaveWorkout(workoutData) {
-    if (!token) return;
+    const tok = tokenRef.current || loadSession()?.access_token;
+    if (!tok) return;
     try {
       const row = {
         user_id: currentUserId,
@@ -5245,7 +5296,7 @@ export default function App() {
         note: workoutData.note || "",
         workout_date: new Date().toISOString().split("T")[0],
       };
-      await sb.query("workout_history", { method:"POST", body: JSON.stringify(row) }, token);
+      await sb.query("workout_history", { method:"POST", body: JSON.stringify(row) }, tok);
 
       // Save PRs
       if (workoutData.prs) {
@@ -5254,7 +5305,7 @@ export default function App() {
             method:"POST",
             headers_extra: { "Prefer": "resolution=merge-duplicates" },
             body: JSON.stringify({ user_id: currentUserId, exercise_name: exName, weight_lbs: weight })
-          }, token);
+          }, tok);
         }
       }
     } catch (e) { console.error("workout save error:", e); }
@@ -5264,7 +5315,7 @@ export default function App() {
   async function handleRefresh() {
     if (!token) return;
     const profiles = store.users;
-    await loadFeed(token, currentUserId, profiles);
+    await loadFeed(tokenRef.current || loadSession()?.access_token, currentUserId, profiles);
   }
 
   // Persist non-Supabase store changes to localStorage as fallback
@@ -5355,16 +5406,18 @@ export default function App() {
     .sort((a, b) => b.createdAt - a.createdAt);
 
   async function handleEditSave(id, cap) {
+    const tok = tokenRef.current || loadSession()?.access_token;
     setStore(p => ({ ...p, posts: p.posts.map(pt => pt.id !== id ? pt : { ...pt, caption: cap }) }));
     setEditingPost(null);
     try {
       await sb.query(`posts?id=eq.${id}`, {
         method:"PATCH", body: JSON.stringify({ caption: cap })
-      }, token);
+      }, tok);
     } catch (e) { console.error("edit error:", e); }
   }
 
   async function handleFollow(userId) {
+    const tok = tokenRef.current || loadSession()?.access_token;
     const isFollowing = me?.following?.includes(userId);
     setStore(prev => ({
       ...prev,
@@ -5375,9 +5428,9 @@ export default function App() {
     }));
     try {
       if (isFollowing) {
-        await sb.query(`follows?follower_id=eq.${currentUserId}&following_id=eq.${userId}`, { method:"DELETE" }, token);
+        await sb.query(`follows?follower_id=eq.${currentUserId}&following_id=eq.${userId}`, { method:"DELETE" }, tok);
       } else {
-        await sb.query("follows", { method:"POST", body: JSON.stringify({ follower_id: currentUserId, following_id: userId }) }, token);
+        await sb.query("follows", { method:"POST", body: JSON.stringify({ follower_id: currentUserId, following_id: userId }) }, tok);
       }
     } catch (e) { console.error("follow error:", e); }
   }
@@ -5684,8 +5737,51 @@ export default function App() {
           <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}/>
         )}
 
+        {tab === "activity" && (
+          <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+            <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}` }}>
+              <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
+            </div>
+            {(() => {
+              const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
+              const events = [];
+              myPosts.forEach(post => {
+                (post.kudos||[]).filter(uid => uid !== currentUserId).forEach(uid => {
+                  const u = store.users.find(x => x.id === uid);
+                  if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
+                });
+                (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
+                  const u = store.users.find(x => x.id === c.userId);
+                  if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt });
+                });
+              });
+              events.sort((a,b) => b.ts - a.ts);
+              if (!events.length) return (
+                <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>🔔</div>
+                  <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No activity yet</div>
+                  <div style={{ fontSize:13 }}>Kudos and comments on your posts will show here</div>
+                </div>
+              );
+              return events.slice(0, 50).map((ev, i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                  <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
+                  <div style={{ flex:1 }}>
+                    <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{ev.user.username} </span>
+                    <span style={{ fontSize:13, color:C.text }}>
+                      {ev.type === "kudos" ? "liked your post 🔥" : `commented: "${ev.comment.text}"`}
+                    </span>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
+                  </div>
+                  {ev.post.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
+                </div>
+              ));
+            })()}
+          </div>
+        )}
+
         {tab === "discover" && (
-          <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C}/>
+          <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token}/>
         )}
 
         {tab === "profile" && (
