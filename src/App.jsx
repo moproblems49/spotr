@@ -1968,11 +1968,18 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{day.name}</div>
             <div style={{ display:"flex", gap:8 }}>
-              <button onClick={() => setEditingDayIdx(editingDayIdx === di ? null : di)} style={{
+              <button onClick={() => {
+                if (editingDayIdx === di) {
+                  // Closing edit — trigger explicit save
+                  if (onSaveProgram) onSaveProgram(localProg);
+                  else if (onProgramEdited) onProgramEdited(localProg);
+                }
+                setEditingDayIdx(editingDayIdx === di ? null : di);
+              }} style={{
                 background: editingDayIdx === di ? C.accent : C.divider,
                 color: editingDayIdx === di ? "#fff" : C.sub,
                 border:"none", borderRadius:6, padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-              }}>{editingDayIdx === di ? "Done" : "Edit"}</button>
+              }}>{editingDayIdx === di ? "Save" : "Edit"}</button>
               <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:6, padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Start</button>
             </div>
           </div>
@@ -3938,7 +3945,11 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [caption, setCaption] = useState("");
+  const [img, setImg] = useState(null);
   const [posting, setPosting] = useState(false);
+  const [showPostKinds, setShowPostKinds] = useState(false);
+  const fileRef = useRef(null);
+  const me = store.users.find(u => u.id === currentUserId);
 
   useEffect(() => {
     async function load() {
@@ -3948,31 +3959,42 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
           `${SUPABASE_URL}/rest/v1/group_posts?group_id=eq.${g.id}&select=*&order=created_at.desc`,
           { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` } }
         );
-        if (res.ok) {
-          const data = await res.json();
-          setPosts(data || []);
-        }
+        if (res.ok) setPosts((await res.json()) || []);
       } catch {}
       setLoading(false);
     }
-    if (token) load();
-    else setLoading(false);
+    if (token) load(); else setLoading(false);
   }, [g.id, token]);
 
   async function sendPost() {
-    if (!caption.trim() || !token) return;
+    if ((!caption.trim() && !img) || !token) return;
     setPosting(true);
     try {
+      let imageUrl = null;
+      if (img) {
+        // Upload image
+        const [header, data] = img.split(",");
+        const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+        const ext = mime.split("/")[1] || "jpg";
+        const filename = `${currentUserId}/group_${Date.now()}.${ext}`;
+        const bytes = atob(data); const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        const upRes = await fetch(`${SUPABASE_URL}/storage/v1/object/post-images/${filename}`, {
+          method:"POST", headers:{ "Authorization":`Bearer ${token}`, "Content-Type":mime, "x-upsert":"true" },
+          body: new Blob([arr], { type: mime })
+        });
+        if (upRes.ok) imageUrl = `${SUPABASE_URL}/storage/v1/object/public/post-images/${filename}`;
+      }
       const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
-        method: "POST",
-        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Prefer": "return=representation" },
-        body: JSON.stringify({ group_id: g.id, user_id: currentUserId, type: "text", caption: caption.trim() })
+        method:"POST",
+        headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
+        body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:img?"photo":"text", caption:caption.trim(), image_url:imageUrl })
       });
       if (res.ok) {
         const data = await res.json();
         const newPost = Array.isArray(data) ? data[0] : data;
-        if (newPost) setPosts(p => [newPost, ...p]);
-        setCaption("");
+        if (newPost) setPosts(p => [{ ...newPost, _localImage: img }, ...p]);
+        setCaption(""); setImg(null);
       }
     } catch {}
     setPosting(false);
@@ -4001,20 +4023,54 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
       {tab === "feed" && (
         <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
           {/* Post composer */}
-          <div style={{ padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
-            <Avatar user={store.users.find(u => u.id === currentUserId)} size={32} C={C}/>
-            <input
-              value={caption}
-              onChange={e => setCaption(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendPost()}
-              placeholder={`Post to ${g.name}...`}
-              style={{ flex:1, background:C.divider, border:"none", borderRadius:20, padding:"8px 14px", fontSize:14, color:C.text, outline:"none", fontFamily:F }}
-            />
-            <button onClick={sendPost} disabled={!caption.trim() || posting} style={{
-              background:caption.trim()?C.accent:C.divider, color:caption.trim()?"#fff":C.sub,
-              border:"none", borderRadius:20, padding:"8px 14px", fontSize:12, fontWeight:700,
-              cursor:caption.trim()?"pointer":"default", fontFamily:F
-            }}>{posting?"...":"Post"}</button>
+          <div style={{ padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e => {
+              const f = e.target.files[0]; if (!f) return;
+              const r = new FileReader(); r.onload = ev => setImg(ev.target.result); r.readAsDataURL(f);
+            }}/>
+            {img && (
+              <div style={{ position:"relative", marginBottom:8 }}>
+                <img src={img} style={{ width:"100%", maxHeight:180, objectFit:"cover", borderRadius:10 }}/>
+                <button onClick={() => setImg(null)} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:24, height:24, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+              </div>
+            )}
+            <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
+              <Avatar user={me} size={32} C={C}/>
+              <textarea
+                value={caption}
+                onChange={e => setCaption(e.target.value)}
+                placeholder={`Post to ${g.name}...`}
+                rows={1}
+                style={{ flex:1, background:C.divider, border:"none", borderRadius:16, padding:"8px 12px", fontSize:14, color:C.text, outline:"none", fontFamily:F, resize:"none", minHeight:36 }}
+              />
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:8 }}>
+              <div style={{ display:"flex", gap:12 }}>
+                <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600 }}>📷 Photo</button>
+                {/* Share recent workout */}
+                {Object.entries(store.history||{}).slice(0,1).map(([date, sessions]) =>
+                  Object.values(sessions).slice(0,1).map((sess, i) => (
+                    <button key={i} onClick={async () => {
+                      if (!token) return; setPosting(true);
+                      try {
+                        const workoutData = { name: sess.dayName, duration: sess.duration, exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) };
+                        const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
+                          method:"POST",
+                          headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
+                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:`${sess.dayName} 💪`, workout:workoutData })
+                        });
+                        if (res.ok) { const d = await res.json(); const p = Array.isArray(d)?d[0]:d; if(p) setPosts(prev=>[p,...prev]); toast("Workout shared to group!", "success"); }
+                      } catch {} setPosting(false);
+                    }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600 }}>💪 Share Workout</button>
+                  ))
+                )}
+              </div>
+              <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
+                background:(caption.trim()||img)?C.accent:C.divider, color:(caption.trim()||img)?"#fff":C.sub,
+                border:"none", borderRadius:16, padding:"6px 16px", fontSize:12, fontWeight:700,
+                cursor:(caption.trim()||img)?"pointer":"default", fontFamily:F
+              }}>{posting?"...":"Post"}</button>
+            </div>
           </div>
           {/* Feed */}
           <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
@@ -4038,11 +4094,14 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
                         <span style={{ fontSize:11, color:C.sub }}>{timeAgo(new Date(post.created_at).getTime())}</span>
                       </div>
                       <div style={{ fontSize:14, color:C.text, lineHeight:1.45 }}>{post.caption}</div>
-                      {post.image_url && <img src={post.image_url} alt="" style={{ width:"100%", borderRadius:10, marginTop:8, maxHeight:300, objectFit:"cover" }}/>}
+                      {(post.image_url || post._localImage) && <img src={post._localImage || post.image_url} alt="" style={{ width:"100%", borderRadius:10, marginTop:8, maxHeight:300, objectFit:"cover" }}/>}
                       {post.workout && (
                         <div style={{ marginTop:8, background:C.divider, borderRadius:10, padding:"10px 12px" }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{post.workout.name}</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{Math.floor((post.workout.duration||0)/60)}m · {post.workout.exercises?.length || 0} exercises</div>
+                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{post.workout.name} 💪</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{Math.floor((post.workout.duration||0)/60)}m · {(post.workout.exercises||[]).length} exercises</div>
+                          {(post.workout.exercises||[]).slice(0,3).map((ex,i) => (
+                            <div key={i} style={{ fontSize:12, color:C.sub, marginTop:4 }}>• {ex.name} {ex.sets?.length ? `${ex.sets.length} sets` : ""}</div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -5232,8 +5291,8 @@ export default function App() {
 
   // ── Supabase-backed action handlers ──────────────────────────
   async function handleNewPost(postData) {
-    const tok = tokenRef.current || loadSession()?.access_token;
-    if (!tok) return;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    if (!tok) { toast("Not signed in", "error"); return; }
     try {
       // Upload image to Storage if present - don't fall back to base64 (too large for DB)
       let imageUrl = null;
@@ -5279,7 +5338,7 @@ export default function App() {
   }
 
   async function handleKudos(postId) {
-    const tok = tokenRef.current || loadSession()?.access_token;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
     const post = store.posts.find(p => p.id === postId);
     if (!post) return;
@@ -5311,7 +5370,7 @@ export default function App() {
   }
 
   async function handleComment(postId, text) {
-    const tok = tokenRef.current || loadSession()?.access_token;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok || !text.trim()) return;
     try {
       const result = await sb.query("comments", {
@@ -5335,7 +5394,7 @@ export default function App() {
   }
 
   async function handleDelete(postId) {
-    const tok = tokenRef.current || loadSession()?.access_token;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
     setStore(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== postId) }));
     try {
@@ -5344,7 +5403,7 @@ export default function App() {
   }
 
   async function handleSaveProgram(program) {
-    const tok = tokenRef.current || loadSession()?.access_token;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) {
       // No auth — just save locally
       setStore(prev => ({
@@ -5400,7 +5459,13 @@ export default function App() {
   // Save program edits (notes, exercise changes) back to Supabase
   const saveProgramDebounceRef = useRef({});
   async function handleProgramEdited(prog) {
-    if (!token || !prog.id) return;
+    // Always save to local state first
+    setStore(prev => ({
+      ...prev,
+      programs: prev.programs.map(p => p.id === prog.id ? prog : p)
+    }));
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    if (!tok || !prog.id) return;
     clearTimeout(saveProgramDebounceRef.current[prog.id]);
     saveProgramDebounceRef.current[prog.id] = setTimeout(async () => {
       try {
@@ -5408,11 +5473,11 @@ export default function App() {
           method:"PATCH", body: JSON.stringify({ days: prog.days })
         }, tok);
       } catch (e) { console.error("program edit sync error:", e); }
-    }, 1500); // debounce 1.5s so we don't spam on every keystroke
+    }, 1500);
   }
 
   async function handleSaveWorkout(workoutData) {
-    const tok = tokenRef.current || loadSession()?.access_token;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
     try {
       const row = {
@@ -5534,7 +5599,7 @@ export default function App() {
     .sort((a, b) => b.createdAt - a.createdAt);
 
   async function handleEditSave(id, cap) {
-    const tok = tokenRef.current || loadSession()?.access_token;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     setStore(p => ({ ...p, posts: p.posts.map(pt => pt.id !== id ? pt : { ...pt, caption: cap }) }));
     setEditingPost(null);
     try {
@@ -5545,7 +5610,7 @@ export default function App() {
   }
 
   async function handleFollow(userId) {
-    const tok = tokenRef.current || loadSession()?.access_token;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     const isFollowing = me?.following?.includes(userId);
     setStore(prev => ({
       ...prev,
