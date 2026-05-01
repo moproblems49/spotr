@@ -2347,183 +2347,119 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
 
         {/* Header */}
-        <div style={{ background:C.bg, padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <button onClick={() => { clearInterval(elRef.current); localStorage.removeItem(SESSION_KEY); setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+        <div style={{ background:C.bg, padding:"10px 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <button onClick={() => { clearInterval(elRef.current); localStorage.removeItem(SESSION_KEY); setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1 }}>{session.dayName.toUpperCase()}</div>
-            <div style={{ fontSize:22, fontWeight:700, color:C.text, fontFamily:MONO }}>{fmtTime(elapsed)}</div>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
+            <div style={{ fontSize:28, fontWeight:800, color:C.accent, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
           </div>
-          <button onClick={() => setShowFinish(true)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Finish</button>
+          <button onClick={() => setShowFinish(true)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
         </div>
 
-        {/* Progress */}
-        <div style={{ height:2, background:C.divider }}>
-          <div style={{ height:"100%", background:C.accent, width:`${(done/Math.max(total,1))*100}%`, transition:"width 0.3s" }}/>
-        </div>
-        <div style={{ padding:"5px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div style={{ fontSize:11, color:C.sub }}>{done}/{total} sets · {unit.toUpperCase()}</div>
-          <div style={{ display:"flex", gap:12 }}>
-            <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM Calc</button>
-            <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>🏋️ Plates</button>
+        {/* Progress + tools */}
+        <div style={{ background:C.surface, padding:"8px 14px 10px", borderBottom:`1px solid ${C.divider}` }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontSize:11, color:C.sub, fontWeight:600 }}>{done} / {total} sets · {unit.toUpperCase()}</span>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM</button>
+              <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>Plates</button>
+            </div>
+          </div>
+          <div style={{ height:4, background:C.divider, borderRadius:4, overflow:"hidden" }}>
+            <div style={{ height:"100%", background:C.accent, width:`${(done/Math.max(total,1))*100}%`, transition:"width 0.4s", borderRadius:4 }}/>
           </div>
         </div>
 
         {/* Rest timer */}
         {rest && (
-          <div style={{ background:C.surface, borderTop:`1px solid ${C.divider}`, borderBottom:`1px solid ${C.divider}` }}>
-            {/* Progress bar */}
+          <div style={{ background:C.surface, borderBottom:`1px solid ${C.divider}` }}>
             <div style={{ height:3, background:C.divider }}>
-              <div style={{ height:"100%", background:rest.secs <= 10 ? C.red : C.accent, width:`${(rest.secs / (rest.total||120))*100}%`, transition:"width 1s linear", borderRadius:2 }}/>
+              <div style={{ height:"100%", background:rest.secs<=10?"#ef4444":C.accent, width:`${(rest.secs/(rest.total||120))*100}%`, transition:"width 1s linear", borderRadius:2 }}/>
             </div>
-            <div style={{ padding:"8px 14px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-              <div style={{ display:"flex", gap:5 }}>
+            <div style={{ padding:"10px 14px", display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ display:"flex", gap:4, flex:1, flexWrap:"nowrap", overflow:"hidden" }}>
                 {[30,60,90,120,180,240].map(s => (
-                  <button key={s} onClick={() => setRest({ secs:s, total:s, running:true })} style={{
-                    fontSize:10, padding:"4px 9px", background: rest.total === s ? C.accentSoft : "transparent",
-                    border:`1px solid ${rest.total === s ? C.accent : C.border}`, color: rest.total === s ? C.accent : C.sub,
-                    borderRadius:20, cursor:"pointer", fontFamily:F, fontWeight:600
-                  }}>{s >= 60 ? `${s/60}m` : `${s}s`}</button>
+                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true})} style={{
+                    fontSize:10, padding:"4px 7px",
+                    background:rest.total===s?C.accent:"transparent",
+                    border:`1px solid ${rest.total===s?C.accent:C.border}`,
+                    color:rest.total===s?"#fff":C.sub,
+                    borderRadius:16, cursor:"pointer", fontFamily:F, fontWeight:600, flexShrink:0
+                  }}>{s>=60?`${s/60}m`:`${s}s`}</button>
                 ))}
               </div>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:26, fontWeight:800, color:rest.secs<=10?C.red:C.text, fontFamily:MONO, minWidth:56, textAlign:"center" }}>{fmtTime(rest.secs)}</span>
-                <button onClick={() => { clearInterval(rtRef.current); setRest(null); }} style={{ color:C.sub, background:"none", border:"none", cursor:"pointer", fontSize:18, padding:4 }}>✕</button>
-              </div>
+              <span style={{ fontSize:28, fontWeight:800, color:rest.secs<=10?"#ef4444":C.text, fontFamily:MONO, flexShrink:0 }}>{fmtTime(rest.secs)}</span>
+              <button onClick={() => { clearInterval(rtRef.current); setRest(null); }} style={{ color:C.sub, background:"none", border:"none", cursor:"pointer", fontSize:18, padding:"2px", flexShrink:0 }}>✕</button>
             </div>
           </div>
         )}
 
         {/* Exercises */}
-        <div style={{ overflowY:"auto", flex:1, padding:"12px 0 20px" }}>
+        <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
             return (
-              <div key={ex.id || ei} style={{ marginBottom:16, borderBottom:`1px solid ${C.divider}`, paddingBottom:12 }}>
-                <div style={{ padding:"0 14px 6px", display:"flex", alignItems:"center", gap:10 }}>
-                  <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0 }}>
-                    <MuscleIcon muscle={exInfo?.muscle || ""} size={32} C={C}/>
+              <div key={ex.id || ei}>
+                {/* Exercise header */}
+                <div style={{ padding:"14px 14px 6px", display:"flex", alignItems:"flex-start", gap:10 }}>
+                  <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor:ex.name?"pointer":"default", flexShrink:0, marginTop:2 }}>
+                    <MuscleIcon muscle={exInfo?.muscle||""} size={36} C={C}/>
                   </button>
-                  <div style={{ flex:1 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <ExerciseInput
-                        value={ex.name}
-                        onChange={v => setSession(p => ({
-                          ...p,
-                          exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, name: v })
-                        }))}
-                        C={C}
-                        recentExercises={Object.values(store.history || {}).flatMap(Object.values).slice(0, 20)}
-                      />
-                      {ex.name && (
-                        <button onClick={() => setViewingExercise(ex.name)} style={{
-                          background:"none", border:"none", cursor:"pointer", padding:"4px 6px",
-                          fontSize:11, color:C.accent, fontWeight:600, fontFamily:F, flexShrink:0, whiteSpace:"nowrap"
-                        }}>How to ›</button>
-                      )}
+                      <ExerciseInput value={ex.name}
+                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v}) }))}
+                        C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
                     </div>
-                    <input
-                      value={ex.note || ""}
-                      onChange={e => setSession(p => ({
-                        ...p,
-                        exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, note: e.target.value })
-                      }))}
-                      placeholder={store.exerciseNotes?.[ex.name] ? `💡 ${store.exerciseNotes[ex.name]}` : "Add note..."}
-                      style={{
-                        width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`,
-                        padding:"4px 0", fontSize:12, color:C.sub, outline:"none",
-                        fontFamily:F, boxSizing:"border-box", marginTop:3
-                      }}
+                    {exInfo?.muscle && <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{exInfo.muscle}</div>}
+                    <input value={ex.note||""}
+                      onChange={e => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,note:e.target.value}) }))}
+                      placeholder="Add note..."
+                      style={{ width:"100%", background:"none", border:"none", padding:"3px 0", fontSize:11, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box", marginTop:4 }}
                     />
                   </div>
-                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_, i) => i !== ei) }))} style={{
-                    color:C.sub, background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"4px", flexShrink:0
-                  }}>🗑</button>
+                  <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                    {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
+                    <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) }))} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
+                  </div>
                 </div>
 
                 {/* Column headers */}
-                <div style={{ display:"grid", gridTemplateColumns:"24px 32px 1fr 68px 68px 32px", gap:6, padding:"0 14px 4px" }}>
-                  {["#","TYPE","PREV", unit.toUpperCase(), "REPS",""].map(h => (
-                    <div key={h} style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.5, textAlign:"center" }}>{h}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"32px 36px 1fr 76px 76px 36px", gap:4, padding:"0 14px 4px" }}>
+                  {["Set","Type","Previous",unit.toUpperCase(),"Reps",""].map((h,i) => (
+                    <div key={i} style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:0.5, textAlign:"center" }}>{h}</div>
                   ))}
                 </div>
 
                 {ex.sets.map((set, si) => (
-                  <div key={set.id || si}>
-                    <SetRow
-                      set={set} si={si} exName={ex.name}
-                      store={store} unit={unit} C={C}
-                      onUpdate={patch => updateSet(ei, si, patch)}
-                      onToggleDone={() => toggleDone(ei, si)}
+                  <div key={set.id||si}>
+                    <SetRow set={set} si={si} exName={ex.name} store={store} unit={unit} C={C}
+                      onUpdate={patch => updateSet(ei,si,patch)}
+                      onToggleDone={() => toggleDone(ei,si)}
                     />
-                    {/* Rest timer row between sets — Hevy style */}
-                    <div style={{ display:"flex", alignItems:"center", margin:"0 14px", gap:0 }}>
-                      <div style={{ flex:1, height:1, background:`${C.accent}30` }}/>
-                      <button
-                        onClick={() => {
-                          const secs = set.restTime || store.defaultRestTime || 120;
-                          setRest({ secs, total: secs, running: true });
-                        }}
-                        style={{
-                          background:"none", border:"none", cursor:"pointer",
-                          padding:"4px 10px", fontSize:12, fontWeight:700,
-                          color:C.accent, fontFamily:MONO, letterSpacing:0.5
-                        }}
-                      >
-                        {fmtTime(set.restTime || store.defaultRestTime || 120)}
+                    <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
+                      <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
+                      <button onClick={() => { const s=set.restTime||store.defaultRestTime||120; setRest({secs:s,total:s,running:true}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
+                        {fmtTime(set.restTime||store.defaultRestTime||120)}
                       </button>
-                      {/* Cycle through rest times */}
-                      {[60,90,120,150,180,240,300].map(s => {
-                        const cur = set.restTime || store.defaultRestTime || 120;
-                        return s === cur ? null : null; // just show change button
-                      })}
-                      <button
-                        onClick={() => {
-                          const opts = [30,60,90,120,150,180,240,300];
-                          const cur = set.restTime || store.defaultRestTime || 120;
-                          const next = opts[(opts.indexOf(cur) + 1) % opts.length];
-                          updateSet(ei, si, { restTime: next });
-                        }}
-                        style={{
-                          background:C.divider, border:"none", borderRadius:8, cursor:"pointer",
-                          padding:"2px 8px", fontSize:10, color:C.sub, fontFamily:F
-                        }}
-                      >edit</button>
-                      <div style={{ flex:1, height:1, background:`${C.accent}30` }}/>
+                      <button onClick={() => { const opts=[30,60,90,120,150,180,240,300]; const cur=set.restTime||store.defaultRestTime||120; updateSet(ei,si,{restTime:opts[(opts.indexOf(cur)+1)%opts.length]}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 4px", fontSize:10, color:C.muted, fontFamily:F }}>edit</button>
+                      <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
                     </div>
                   </div>
                 ))}
 
-                <div style={{ display:"flex", marginTop:4, padding:"0 14px" }}>
-                  <button onClick={() => setSession(p => ({
-                    ...p,
-                    exercises: p.exercises.map((x, i) => i !== ei ? x : {
-                      ...x, sets: [...x.sets, { id:uid(), weight:"", reps:"", done:false, type:"normal" }]
-                    })
-                  }))} style={{
-                    flex:1, padding:"8px", background:"none", border:"none", color:C.accent,
-                    fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-                  }}>+ Add Set</button>
-                  {ex.sets.length > 1 && (
-                    <button onClick={() => setSession(p => ({
-                      ...p,
-                      exercises: p.exercises.map((x, i) => i !== ei ? x : { ...x, sets: x.sets.slice(0, -1) })
-                    }))} style={{
-                      flex:1, padding:"8px", background:"none", border:"none",
-                      color:C.red, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-                    }}>− Remove</button>
-                  )}
+                <div style={{ display:"flex", padding:"4px 14px 12px", borderBottom:`1px solid ${C.divider}` }}>
+                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, padding:"8px", background:"none", border:"none", color:C.accent, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
+                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, padding:"8px", background:"none", border:"none", color:C.sub, fontSize:12, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
                 </div>
-
               </div>
             );
           })}
-          <button onClick={() => setSession(p => ({
-            ...p,
-            exercises: [...p.exercises, { id:uid(), name:"", reps:"", sets:[{ id:uid(), weight:"", reps:"", done:false, type:"normal" }] }]
-          }))} style={{
-            width:"calc(100% - 28px)", margin:"0 14px", padding:"12px",
+
+          <button onClick={() => setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name:"",reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }))} style={{
+            width:"calc(100% - 28px)", margin:"14px 14px 0", padding:"13px",
             background:"none", border:`1.5px dashed ${C.border}`,
-            borderRadius:10, fontSize:13, color:C.accent, fontWeight:600, cursor:"pointer", fontFamily:F
+            borderRadius:12, fontSize:13, color:C.accent, fontWeight:600, cursor:"pointer", fontFamily:F
           }}>+ Add Exercise</button>
         </div>
 
@@ -2611,46 +2547,41 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         <div style={{ padding:"16px 14px" }}>
           {/* Streak banner */}
           {(() => { const s = calcStreak(store.workoutDates || {}); return s > 0 ? (
-            <div style={{ background:"linear-gradient(135deg,#ea580c,#f59e0b)", borderRadius:12, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
-              <span style={{ fontSize:32 }}>🔥</span>
+            <div style={{ background:"linear-gradient(135deg,#ea580c,#f59e0b)", borderRadius:14, padding:"14px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ fontSize:36, lineHeight:1 }}>🔥</div>
               <div>
-                <div style={{ fontSize:22, fontWeight:800, color:"#fff", fontFamily:MONO, lineHeight:1 }}>{s} day streak</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", marginTop:2 }}>Keep it going — don't break the chain</div>
+                <div style={{ fontSize:26, fontWeight:800, color:"#fff", fontFamily:MONO, lineHeight:1 }}>{s}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", marginTop:1 }}>day streak · keep it going</div>
               </div>
             </div>
           ) : null; })()}
+
+          {/* Quick Start */}
           <button onClick={() => startWorkout(null)} style={{
             width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-            border:"none", borderRadius:12, padding:"18px 16px", marginBottom:14,
-            cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F
+            border:"none", borderRadius:14, padding:"16px 18px", marginBottom:10,
+            cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F,
+            boxShadow:`0 4px 16px ${C.accent}44`
           }}>
-            <div style={{ fontSize:28 }}>⚡</div>
+            <div style={{ width:40, height:40, borderRadius:10, background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>⚡</div>
             <div style={{ textAlign:"left", flex:1 }}>
               <div style={{ fontSize:15, fontWeight:700, color:"#fff" }}>Quick Start</div>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.85)", marginTop:2 }}>Empty workout</div>
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", marginTop:1 }}>Start an empty workout</div>
             </div>
-            <span style={{ fontSize:20, color:"rgba(255,255,255,0.7)" }}>›</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
           </button>
 
-          <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-            <button onClick={() => setShow1RM(true)} style={{
-              flex:1, background:"none", border:`1px solid ${C.border}`,
-              borderRadius:10, padding:"14px 10px",
-              display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:22 }}>🧮</div>
-              <div style={{ fontSize:12, fontWeight:600, color:C.text, textAlign:"center" }}>1RM Calc</div>
-              <div style={{ fontSize:10, color:C.sub, textAlign:"center" }}>Estimate max</div>
-            </button>
-            <button onClick={() => setShowPlateCalc(true)} style={{
-              flex:1, background:"none", border:`1px solid ${C.border}`,
-              borderRadius:10, padding:"14px 10px",
-              display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:22 }}>🏋️</div>
-              <div style={{ fontSize:12, fontWeight:600, color:C.text, textAlign:"center" }}>Plate Calc</div>
-              <div style={{ fontSize:10, color:C.sub, textAlign:"center" }}>What to load</div>
-            </button>
+          {/* Calculators */}
+          <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+            {[["🧮","1RM Calc",() => setShow1RM(true)],["🏋️","Plates",() => setShowPlateCalc(true)]].map(([icon,label,fn]) => (
+              <button key={label} onClick={fn} style={{
+                flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
+                padding:"11px 8px", display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontFamily:F
+              }}>
+                <span style={{ fontSize:18 }}>{icon}</span>
+                <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{label}</span>
+              </button>
+            ))}
           </div>
 
           {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
@@ -2658,48 +2589,50 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
           {prog ? (
             <>
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
-                ACTIVE · {prog.name.toUpperCase()}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>ACTIVE PROGRAM</div>
+                <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>{prog.name}</div>
               </div>
-              {prog.days.map(day => (
-                <div key={day.id} style={{ marginBottom:6, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
-                  <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
-                    width:"100%", background:"none", border:"none",
-                    padding:"12px 14px",
-                    display:"flex", alignItems:"center", gap:11, cursor:"pointer", textAlign:"left", fontFamily:F
-                  }}>
-                    <div style={{ width:3, height:32, borderRadius:2, background:C.accent, flexShrink:0 }}/>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
-                      <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{day.exercises.length} exercises</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {prog.days.map((day, di) => (
+                  <div key={day.id || di} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                    <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
+                      width:"100%", background:"none", border:"none", padding:"13px 14px",
+                      display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
+                    }}>
+                      <div style={{ width:36, height:36, borderRadius:9, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <span style={{ fontSize:11, fontWeight:800, color:C.accent }}>{di+1}</span>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
+                        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
+                          {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
+                        </div>
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+                    </button>
+                    <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
+                      <button onClick={() => { setSubTab("programs"); setViewingProgram(prog.id); }} style={{
+                        flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
+                        fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+                      }}>Edit</button>
+                      <button onClick={() => startWorkout(day)} style={{
+                        flex:1, padding:"9px", background:"none", border:"none",
+                        fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+                      }}>Start ›</button>
                     </div>
-                    <span style={{ fontSize:16, color:C.sub }}>›</span>
-                  </button>
-                  <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                    <button onClick={() => {
-                      // Edit day — navigate to Programs tab and open this program
-                      setSubTab("programs");
-                      setViewingProgram(prog.id);
-                    }} style={{
-                      flex:1, padding:"8px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
-                      fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
-                    }}>✏️ Edit</button>
-                    <button onClick={() => startWorkout(day)} style={{
-                      flex:1, padding:"8px", background:"none", border:"none",
-                      fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
-                    }}>▶ Start</button>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </>
           ) : (
-            <div style={{ background:"none", border:`1px dashed ${C.border}`, borderRadius:12, padding:"22px 16px", textAlign:"center" }}>
-              <div style={{ fontSize:28, marginBottom:8 }}>📋</div>
-              <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>No active program</div>
-              <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Import a starter template or just start logging</div>
+            <div style={{ background:C.surface, border:`1px dashed ${C.border}`, borderRadius:14, padding:"28px 20px", textAlign:"center", marginTop:4 }}>
+              <div style={{ fontSize:32, marginBottom:10 }}>📋</div>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:4 }}>No active program</div>
+              <div style={{ fontSize:12, color:C.sub, marginBottom:16 }}>Import a template to get started</div>
               <button onClick={() => setShowTemplates(true)} style={{
-                background:C.accent, color:"#fff", border:"none", borderRadius:8,
-                padding:"9px 18px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+                background:C.accent, color:"#fff", border:"none", borderRadius:10,
+                padding:"10px 22px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
               }}>Browse Templates</button>
             </div>
           )}
@@ -5747,14 +5680,21 @@ export default function App() {
     } catch (e) { console.error("follow error:", e); }
   }
 
+  // Track when activity tab was last viewed
+  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("ignite_last_activity") || "0"));
+  function markActivitySeen() {
+    const now = Date.now();
+    lastSeenActivityRef.current = now;
+    localStorage.setItem("ignite_last_activity", String(now));
+  }
+
   const notifCount = (store.posts || [])
     .filter(p => p.userId === currentUserId)
-    .reduce((a, pt) => a + (pt.kudos||[]).filter(x => x !== currentUserId).length + (pt.comments||[]).filter(c => c.userId !== currentUserId).length, 0);
-
-  // Add sign out to settings
-  function handleSignOutFromSettings() {
-    handleSignOut();
-  }
+    .reduce((a, pt) => {
+      const newKudos = (pt.kudos||[]).filter(x => x !== currentUserId && pt.createdAt > lastSeenActivityRef.current).length;
+      const newComments = (pt.comments||[]).filter(c => c.userId !== currentUserId && c.createdAt > lastSeenActivityRef.current).length;
+      return a + newKudos + newComments;
+    }, 0);
 
   if (prModal) return <PRModal pr={prModal} unit={unit} onClose={() => setPrModal(null)}/>;
 
@@ -6050,46 +5990,48 @@ export default function App() {
           <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}/>
         )}
 
-        {tab === "activity" && (
-          <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
-            <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}` }}>
-              <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
-            </div>
-            {(() => {
-              const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
-              const events = [];
-              myPosts.forEach(post => {
-                (post.kudos||[]).filter(uid => uid !== currentUserId).forEach(uid => {
-                  const u = store.users.find(x => x.id === uid);
-                  if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
-                });
-                (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
-                  const u = store.users.find(x => x.id === c.userId);
-                  if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt });
-                });
-              });
-              events.sort((a,b) => b.ts - a.ts);
-              if (!events.length) return (
+        {tab === "activity" && (() => {
+          markActivitySeen();
+          const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
+          const events = [];
+          myPosts.forEach(post => {
+            (post.kudos||[]).filter(uid => uid !== currentUserId).forEach(uid => {
+              const u = store.users.find(x => x.id === uid);
+              if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
+            });
+            (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
+              const u = store.users.find(x => x.id === c.userId);
+              if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt });
+            });
+          });
+          events.sort((a,b) => b.ts - a.ts);
+          return (
+            <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+              <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
+              </div>
+              {events.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
                   <div style={{ fontSize:40, marginBottom:12 }}>🔔</div>
                   <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No activity yet</div>
                   <div style={{ fontSize:13 }}>Kudos and comments on your posts will show here</div>
                 </div>
-              );
-              return events.slice(0, 50).map((ev, i) => (
+              ) : events.slice(0,50).map((ev, i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
                   <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
                   <div style={{ flex:1 }}>
                     <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{ev.user.username} </span>
                     <span style={{ fontSize:13, color:C.text }}>
-                      {ev.type === "kudos" ? "liked your post 🔥" : `commented: "${ev.comment.text}"`}
+                      {ev.type === "kudos" ? "liked your post 🔥" : `commented: "${ev.comment?.text}"`}
                     </span>
                     <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
                   </div>
                   {ev.post.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
                 </div>
-              ));
-            })()}
+              ))}
+            </div>
+          );
+        })()}
           </div>
         )}
 
