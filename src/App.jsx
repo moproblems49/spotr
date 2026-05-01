@@ -1180,122 +1180,6 @@ function PlateCalcModal({ onClose, unit, C }) {
   );
 }
 
-  function calcPlates(total) {
-    const t = parseFloat(total);
-    if (!t || t <= BAR_WEIGHT) return null;
-    let remaining = (t - BAR_WEIGHT) / 2;
-    const result = [];
-    for (const p of plates) {
-      const count = Math.floor(remaining / p);
-      if (count > 0) { result.push({ p, count }); remaining = Math.round((remaining - p * count) * 1000) / 1000; }
-    }
-    if (remaining > 0.01) return null; // not achievable with standard plates
-    return result;
-  }
-
-  const result = calcPlates(target);
-  const achievable = target && parseFloat(target) > BAR_WEIGHT && result !== null;
-  const notAchievable = target && parseFloat(target) > BAR_WEIGHT && result === null;
-
-  return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.border}` }}>
-          <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Close</button>
-          <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Plate Calculator</div>
-          <div style={{ width:50 }}/>
-        </div>
-        <div style={{ overflowY:"auto", flex:1, padding:16 }}>
-          <div style={{ fontSize:12, color:C.sub, marginBottom:16 }}>
-            Bar weight: <strong style={{ color:C.text }}>{BAR_WEIGHT} {unit}</strong> · Enter total target weight
-          </div>
-
-          <input
-            type="number" inputMode="decimal"
-            value={target} onChange={e => setTarget(e.target.value)}
-            placeholder={`e.g. ${unit === "kg" ? "100" : "225"}`}
-            style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"14px", fontSize:24, fontWeight:800, color:C.accent, outline:"none", boxSizing:"border-box", textAlign:"center", fontFamily:MONO, marginBottom:16 }}
-          />
-
-          {target && parseFloat(target) <= BAR_WEIGHT && (
-            <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:"20px 0" }}>
-              Weight must be more than bar weight ({BAR_WEIGHT} {unit})
-            </div>
-          )}
-
-          {notAchievable && (
-            <div style={{ textAlign:"center", color:"#ef4444", fontSize:13, padding:"20px 0" }}>
-              Not achievable with standard plates — try a nearby weight
-            </div>
-          )}
-
-          {achievable && result && (
-            <>
-              {/* Visual bar */}
-              <div style={{ background:C.divider, borderRadius:12, padding:"16px 12px", marginBottom:16, display:"flex", alignItems:"center", justifyContent:"center", gap:2, flexWrap:"nowrap", overflowX:"auto" }}>
-                {/* Left side plates (reversed) */}
-                {[...result].reverse().map(({ p, count }) =>
-                  Array(count).fill(0).map((_, i) => {
-                    const h = Math.max(28, Math.min(72, p * 1.4));
-                    const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 25.0:"#ef4444", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
-                    const color = PLATE_COLORS[p] || C.accent;
-                    return (
-                      <div key={`L${p}-${i}`} style={{
-                        width:14, height:h, borderRadius:3, background:color, flexShrink:0,
-                        display:"flex", alignItems:"center", justifyContent:"center"
-                      }}>
-                        <span style={{ fontSize:7, color:"#fff", fontWeight:800, writingMode:"vertical-rl", transform:"rotate(180deg)" }}>{p}</span>
-                      </div>
-                    );
-                  })
-                )}
-                {/* Bar */}
-                <div style={{ width:32, height:10, background:C.sub, borderRadius:5, opacity:0.6, flexShrink:0 }}/>
-                {/* Right side plates */}
-                {result.map(({ p, count }) =>
-                  Array(count).fill(0).map((_, i) => {
-                    const h = Math.max(28, Math.min(72, p * 1.4));
-                    const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 25.0:"#ef4444", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
-                    const color = PLATE_COLORS[p] || C.accent;
-                    return (
-                      <div key={`R${p}-${i}`} style={{
-                        width:14, height:h, borderRadius:3, background:color, flexShrink:0,
-                        display:"flex", alignItems:"center", justifyContent:"center"
-                      }}>
-                        <span style={{ fontSize:7, color:"#fff", fontWeight:800, writingMode:"vertical-rl" }}>{p}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Plate list */}
-              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:8 }}>PLATES PER SIDE</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-                {result.map(({ p, count }, i) => {
-                  const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899" };
-                  const color = PLATE_COLORS[p] || C.accent;
-                  return (
-                    <div key={p} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderBottom: i < result.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                      <div style={{ width:10, height:28, borderRadius:2, background:color, flexShrink:0 }}/>
-                      <div style={{ flex:1, fontSize:14, fontWeight:600, color:C.text }}>{p} {unit}</div>
-                      <div style={{ fontSize:15, fontWeight:800, color:C.accent, fontFamily:MONO }}>× {count}</div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop:12, padding:"10px 14px", background:C.divider, borderRadius:10, display:"flex", justifyContent:"space-between" }}>
-                <span style={{ fontSize:12, color:C.sub }}>Total weight</span>
-                <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>{target} {unit}</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ═════════════════════════════════════════════════════════════════════════════
 // WRAPPED MODAL
 // ═════════════════════════════════════════════════════════════════════════════
@@ -6049,8 +5933,6 @@ export default function App() {
             </div>
           );
         })()}
-          </div>
-        )}
 
         {tab === "discover" && (
           <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}/>
