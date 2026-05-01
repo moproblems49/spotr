@@ -117,7 +117,7 @@ async function uploadImage(base64DataUrl, token, userId) {
 }
 
 // Session storage
-const SESSION_STORAGE_KEY = "ignite_session";
+const SESSION_STORAGE_KEY = "seshd_session";
 function loadSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)); } catch { return null; }
 }
@@ -255,9 +255,9 @@ const THEMES = {
     card: "#0a0a0a",
     border: "#1c1c1e",
     divider: "#141414",
-    accent: "#2f80ff",
-    accentSoft: "rgba(47,128,255,0.12)",
-    accent2: "#1d4ed8",
+    accent: "#7c3aed",
+    accentSoft: "rgba(124,58,237,0.12)",
+    accent2: "#6d28d9",
     orange: "#f97316",
     green: "#30d158",
     gold: "#eab308",
@@ -274,9 +274,9 @@ const THEMES = {
     card: "#ffffff",
     border: "#efefef",
     divider: "#f5f5f5",
-    accent: "#0095f6",
-    accentSoft: "rgba(0,149,246,0.08)",
-    accent2: "#006dbf",
+    accent: "#7c3aed",
+    accentSoft: "rgba(124,58,237,0.08)",
+    accent2: "#6d28d9",
     orange: "#ea580c",
     green: "#16a34a",
     gold: "#ca8a04",
@@ -334,7 +334,7 @@ function ToastHost() {
     return () => clearTimeout(id);
   }, [t?.id]);
   if (!t) return null;
-  const bg = t.type === "error" ? "#ef4444" : t.type === "success" ? "#22c55e" : "#1d4ed8";
+  const bg = t.type === "error" ? "#ef4444" : t.type === "success" ? "#22c55e" : "#6d28d9";
   return (
     <div style={{
       position:"fixed", bottom:90, left:"50%", transform:"translateX(-50%)",
@@ -602,7 +602,7 @@ const SEED_GROUPS = [
 // ═════════════════════════════════════════════════════════════════════════════
 // STORAGE
 // ═════════════════════════════════════════════════════════════════════════════
-const SK = "ignite_v3";
+const SK = "seshd_v1";
 function loadStore() {
   try {
     const r = localStorage.getItem(SK);
@@ -630,104 +630,39 @@ function saveStore(d) { try { localStorage.setItem(SK, JSON.stringify(d)); } cat
 // ═════════════════════════════════════════════════════════════════════════════
 // LOGO — Fyra flame icon + Spotr wordmark
 // ═════════════════════════════════════════════════════════════════════════════
-function IgniteLogo({ C, big = false }) {
-  const size = big ? 52 : 32;
-  const id = big ? "flame-big" : "flame-sm";
+function SeshdLogo({ C, big = false }) {
+  const size = big ? 52 : 34;
+  const id = big ? "seshd-big" : "seshd-sm";
   return (
-    <div style={{ display:"flex", alignItems:"center", gap: big ? 10 : 7 }}>
-      {/* Flame icon — two intertwining feather-flame forms, chrome/silver */}
+    <div style={{ display:"flex", alignItems:"center", gap: big ? 10 : 8 }}>
       <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
         <defs>
-          {/* Chrome silver gradient for left flame */}
-          <linearGradient id={`${id}-lg`} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.95"/>
-            <stop offset="25%"  stopColor="#d0d0d0"/>
-            <stop offset="50%"  stopColor="#888888"/>
-            <stop offset="75%"  stopColor="#c8c8c8"/>
-            <stop offset="100%" stopColor="#505050"/>
+          <linearGradient id={`${id}-g`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#7c3aed"/>
+            <stop offset="100%" stopColor="#a855f7"/>
           </linearGradient>
-          {/* Slightly darker gradient for right flame */}
-          <linearGradient id={`${id}-rg`} x1="100%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%"   stopColor="#e0e0e0" stopOpacity="0.9"/>
-            <stop offset="30%"  stopColor="#b0b0b0"/>
-            <stop offset="60%"  stopColor="#686868"/>
-            <stop offset="100%" stopColor="#3a3a3a"/>
-          </linearGradient>
-          {/* Inner highlight */}
-          <linearGradient id={`${id}-hi`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.7"/>
-            <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
-          </linearGradient>
-          <filter id={`${id}-sh`}>
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.4"/>
-          </filter>
         </defs>
-
-        {/* Left flame — sweeps up-right, curves inward at top */}
+        {/* S-shaped speech bubble — matches the logo */}
+        {/* Upper curve of S */}
         <path
-          d="M 38 88
-             C 28 75, 22 58, 30 42
-             C 35 30, 44 20, 48 10
-             C 52 20, 54 32, 50 46
-             C 47 56, 44 66, 46 78
-             C 44 82, 41 86, 38 88 Z"
-          fill={`url(#${id}-lg)`}
-          filter={`url(#${id}-sh)`}
+          d="M 62 12 C 80 12, 88 22, 88 34 C 88 46, 78 54, 62 54 L 38 54 C 28 54, 22 58, 22 66 C 22 74, 30 80, 42 80 L 72 80 L 72 88 L 38 88 C 20 88, 10 78, 10 66 C 10 54, 20 44, 38 44 L 62 44 C 72 44, 76 38, 76 34 C 76 28, 70 22, 62 22 L 28 22 L 28 12 Z"
+          fill={`url(#${id}-g)`}
         />
-        {/* Left flame inner highlight */}
+        {/* Speech bubble tail */}
         <path
-          d="M 38 88
-             C 30 74, 25 57, 33 42
-             C 37 33, 43 24, 47 14
-             C 48 20, 49 28, 47 38
-             C 44 50, 42 62, 43 74
-             C 42 79, 40 84, 38 88 Z"
-          fill={`url(#${id}-hi)`}
-          opacity="0.5"
-        />
-
-        {/* Right flame — sweeps up-left, crosses over left flame */}
-        <path
-          d="M 62 88
-             C 72 75, 78 58, 70 42
-             C 65 30, 56 20, 52 10
-             C 48 20, 46 32, 50 46
-             C 53 56, 56 66, 54 78
-             C 56 82, 59 86, 62 88 Z"
-          fill={`url(#${id}-rg)`}
-          filter={`url(#${id}-sh)`}
-          opacity="0.88"
-        />
-        {/* Right flame inner highlight */}
-        <path
-          d="M 62 88
-             C 70 74, 75 57, 67 42
-             C 63 33, 57 24, 53 14
-             C 52 20, 51 28, 53 38
-             C 56 50, 58 62, 57 74
-             C 58 79, 60 84, 62 88 Z"
-          fill={`url(#${id}-hi)`}
-          opacity="0.35"
-        />
-
-        {/* Crossing overlap shimmer at mid-point */}
-        <ellipse
-          cx="50" cy="50" rx="6" ry="18"
-          fill="white"
-          opacity="0.08"
+          d="M 30 80 L 22 96 L 50 80 Z"
+          fill={`url(#${id}-g)`}
         />
       </svg>
-
-      {/* Wordmark */}
       <span style={{
-        fontSize: big ? 32 : 20,
-        fontWeight: 700,
+        fontSize: big ? 30 : 19,
+        fontWeight: 800,
         letterSpacing: -0.5,
         color: C.text,
         lineHeight: 1,
         fontFamily: F,
       }}>
-        Ignite
+        Seshd
       </span>
     </div>
   );
@@ -1067,7 +1002,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
 // CONFETTI (for PR modal)
 // ═════════════════════════════════════════════════════════════════════════════
 function Confetti() {
-  const colors = ["#2f80ff","#f97316","#eab308","#30d158","#a855f7"];
+  const colors = ["#7c3aed","#f97316","#eab308","#30d158","#a855f7"];
   return (
     <>
       <style>{`@keyframes cfp{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(520px) rotate(720deg);opacity:0}}`}</style>
@@ -1095,50 +1030,46 @@ function OneRMModal({ onClose, unit, C }) {
   const [reps, setReps] = useState("");
   const oneRM = calc1RM(weight, reps);
   const percentages = oneRM
-    ? [100,95,90,85,80,75,70,65,60,55,50].map(p => ({ p, w: Math.round(oneRM * p / 100) }))
+    ? [100,95,90,85,80,75,70,65,60].map(p => ({ p, w: Math.round(oneRM * p / 100) }))
     : [];
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.border}` }}>
-          <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Close</button>
-          <div style={{ fontSize:15, fontWeight:600, color:C.text }}>1RM Calculator</div>
-          <div style={{ width:50 }}/>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
+          <div style={{ fontSize:16, fontWeight:700, color:C.text }}>1RM Calculator</div>
+          <button onClick={onClose} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
         </div>
-        <div style={{ overflowY:"auto", flex:1, padding:16 }}>
-          <div style={{ fontSize:13, color:C.sub, marginBottom:16, lineHeight:1.5 }}>
-            Enter your best set to estimate your one-rep max. Uses the Epley formula.
-          </div>
+        <div style={{ overflowY:"auto", flex:1, padding:"16px 18px" }}>
+          <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Enter your best set to estimate one-rep max (Epley formula)</div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            <div>
-              <div style={{ fontSize:10, color:C.sub, marginBottom:6, letterSpacing:1 }}>WEIGHT ({unit.toUpperCase()})</div>
-              <input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} placeholder="0"
-                style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:20, fontWeight:700, color:C.accent, outline:"none", boxSizing:"border-box", textAlign:"center", fontFamily:F }}/>
-            </div>
-            <div>
-              <div style={{ fontSize:10, color:C.sub, marginBottom:6, letterSpacing:1 }}>REPS</div>
-              <input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} placeholder="0"
-                style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:20, fontWeight:700, color:C.accent, outline:"none", boxSizing:"border-box", textAlign:"center", fontFamily:F }}/>
-            </div>
+            {[["Weight", weight, setWeight, unit.toUpperCase()], ["Reps", reps, setReps, "REPS"]].map(([label, val, setter, unit2]) => (
+              <div key={label} style={{ background:C.divider, borderRadius:12, padding:"12px 14px" }}>
+                <div style={{ fontSize:10, color:C.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>{unit2}</div>
+                <input type="number" inputMode="decimal" value={val} onChange={e => setter(e.target.value)} placeholder="0"
+                  style={{ width:"100%", background:"none", border:"none", fontSize:28, fontWeight:800, color:C.accent, outline:"none", boxSizing:"border-box", fontFamily:MONO }}/>
+              </div>
+            ))}
           </div>
           {oneRM && (
             <>
-              <div style={{ background:`linear-gradient(135deg,${C.accent},${C.accent2})`, borderRadius:14, padding:"20px", textAlign:"center", marginBottom:14, color:"#fff" }}>
-                <div style={{ fontSize:11, opacity:0.85, letterSpacing:1, marginBottom:4 }}>ESTIMATED 1RM</div>
-                <div style={{ fontSize:48, fontWeight:800, fontFamily:MONO }}>{oneRM}</div>
-                <div style={{ fontSize:12, opacity:0.85 }}>{unit}</div>
+              <div style={{ background:`linear-gradient(135deg,${C.accent},${C.accent2})`, borderRadius:14, padding:"18px", textAlign:"center", marginBottom:14 }}>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.8)", fontWeight:700, letterSpacing:2, marginBottom:4 }}>ESTIMATED 1RM</div>
+                <div style={{ fontSize:52, fontWeight:800, color:"#fff", fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", marginTop:4 }}>{unit}</div>
               </div>
-              <div style={{ fontSize:10, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>TRAINING PERCENTAGES</div>
-              {percentages.map(({ p, w }) => (
-                <div key={p} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
-                  <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                    <div style={{ width:36, height:4, borderRadius:2, background:C.accent, opacity:p/100 }}/>
-                    <span style={{ fontSize:13, color:C.sub }}>{p}%</span>
+              <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:8 }}>TRAINING PERCENTAGES</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                {percentages.map(({ p, w }, i) => (
+                  <div key={p} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderBottom: i < percentages.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <div style={{ width:32, height:3, borderRadius:2, background:C.accent, opacity:p/100 }}/>
+                      <span style={{ fontSize:13, color:C.sub }}>{p}%</span>
+                    </div>
+                    <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>{w} {unit}</span>
                   </div>
-                  <span style={{ fontSize:14, fontWeight:600, color:C.text, fontFamily:MONO }}>{w} {unit}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </>
           )}
         </div>
@@ -1156,6 +1087,98 @@ function PlateCalcModal({ onClose, unit, C }) {
   const PLATES_LBS = [45, 35, 25, 10, 5, 2.5];
   const PLATES_KG  = [25, 20, 15, 10, 5, 2.5, 1.25];
   const plates = unit === "kg" ? PLATES_KG : PLATES_LBS;
+  const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
+
+  function calcPlates(total) {
+    const t = parseFloat(total);
+    if (!t || t <= BAR_WEIGHT) return null;
+    let remaining = (t - BAR_WEIGHT) / 2;
+    const result = [];
+    for (const p of plates) {
+      const count = Math.floor(remaining / p);
+      if (count > 0) { result.push({ p, count }); remaining = Math.round((remaining - p * count) * 1000) / 1000; }
+    }
+    if (remaining > 0.01) return null;
+    return result;
+  }
+
+  const result = calcPlates(target);
+  const achievable = target && parseFloat(target) > BAR_WEIGHT && result !== null;
+  const notAchievable = target && parseFloat(target) > BAR_WEIGHT && result === null;
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
+          <div style={{ fontSize:16, fontWeight:700, color:C.text }}>Plate Calculator</div>
+          <button onClick={onClose} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+        </div>
+        <div style={{ overflowY:"auto", flex:1, padding:"16px 18px" }}>
+          <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>Bar: <strong style={{ color:C.text }}>{BAR_WEIGHT} {unit}</strong> · Enter total target weight</div>
+
+          <div style={{ background:C.divider, borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+            <div style={{ fontSize:10, color:C.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>TARGET ({unit.toUpperCase()})</div>
+            <input type="number" inputMode="decimal" value={target} onChange={e => setTarget(e.target.value)}
+              placeholder={unit === "kg" ? "100" : "225"}
+              style={{ width:"100%", background:"none", border:"none", fontSize:36, fontWeight:800, color:C.accent, outline:"none", boxSizing:"border-box", fontFamily:MONO }}/>
+          </div>
+
+          {target && parseFloat(target) <= BAR_WEIGHT && (
+            <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:"16px 0" }}>Enter more than bar weight ({BAR_WEIGHT} {unit})</div>
+          )}
+          {notAchievable && (
+            <div style={{ textAlign:"center", color:"#ef4444", fontSize:13, padding:"16px 0" }}>Not achievable with standard plates</div>
+          )}
+
+          {achievable && result && (
+            <>
+              {/* Visual bar */}
+              <div style={{ background:C.divider, borderRadius:12, padding:"14px 10px", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:2, overflowX:"auto" }}>
+                {[...result].reverse().map(({ p, count }) =>
+                  Array(count).fill(0).map((_, i) => {
+                    const h = Math.max(28, Math.min(68, p * 1.4));
+                    return (
+                      <div key={`L${p}-${i}`} style={{ width:13, height:h, borderRadius:3, background:PLATE_COLORS[p]||C.accent, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <span style={{ fontSize:6, color:"#fff", fontWeight:800, writingMode:"vertical-rl", transform:"rotate(180deg)" }}>{p}</span>
+                      </div>
+                    );
+                  })
+                )}
+                <div style={{ width:28, height:8, background:C.sub, borderRadius:4, opacity:0.5, flexShrink:0 }}/>
+                {result.map(({ p, count }) =>
+                  Array(count).fill(0).map((_, i) => {
+                    const h = Math.max(28, Math.min(68, p * 1.4));
+                    return (
+                      <div key={`R${p}-${i}`} style={{ width:13, height:h, borderRadius:3, background:PLATE_COLORS[p]||C.accent, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <span style={{ fontSize:6, color:"#fff", fontWeight:800, writingMode:"vertical-rl" }}>{p}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Plate list */}
+              <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:8 }}>PER SIDE</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                {result.map(({ p, count }, i) => (
+                  <div key={p} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderBottom: i < result.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ width:8, height:26, borderRadius:2, background:PLATE_COLORS[p]||C.accent, flexShrink:0 }}/>
+                    <div style={{ flex:1, fontSize:14, fontWeight:600, color:C.text }}>{p} {unit}</div>
+                    <div style={{ fontSize:16, fontWeight:800, color:C.accent, fontFamily:MONO }}>× {count}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop:10, padding:"10px 14px", background:C.divider, borderRadius:10, display:"flex", justifyContent:"space-between" }}>
+                <span style={{ fontSize:12, color:C.sub }}>Total</span>
+                <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>{target} {unit}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
   function calcPlates(total) {
     const t = parseFloat(total);
@@ -1306,7 +1329,7 @@ function WrappedModal({ store, C, onClose }) {
             </div>
           ))}
         </div>
-        <button style={{ width:"100%", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:10, padding:"12px", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8 }}>📸 Share to Instagram</button>
+        <button style={{ width:"100%", background:"#fff", color:"#6d28d9", border:"none", borderRadius:10, padding:"12px", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8 }}>📸 Share to Instagram</button>
         <button onClick={onClose} style={{ width:"100%", background:"rgba(255,255,255,0.15)", color:"#fff", border:"none", borderRadius:10, padding:"10px", fontSize:12, cursor:"pointer" }}>Close</button>
       </div>
     </div>
@@ -1357,7 +1380,7 @@ function Onboarding({ C, onComplete }) {
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
         <div style={{ marginBottom:40 }}>
-          <IgniteLogo C={C} big/>
+          <SeshdLogo C={C} big/>
         </div>
         <div style={{ fontSize:64, marginBottom:20 }}>{s.icon}</div>
         <div style={{ fontSize:24, fontWeight:700, color:C.text, marginBottom:10 }}>{s.title}</div>
@@ -1820,11 +1843,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         <button
           onClick={() => {
             const shareText = post.caption
-              ? `${user?.username} on Ignite: ${post.caption}`
-              : `Check out ${user?.username}'s workout on Ignite`;
+              ? `${user?.username} on Seshd: ${post.caption}`
+              : `Check out ${user?.username}'s workout on Seshd`;
             const shareUrl = typeof window !== "undefined" ? window.location.href : "";
             if (navigator.share) {
-              navigator.share({ title: "Ignite", text: shareText, url: shareUrl }).catch(() => {});
+              navigator.share({ title: "Seshd", text: shareText, url: shareUrl }).catch(() => {});
             } else if (navigator.clipboard) {
               navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => {
                 toast("Link copied! 🔗", "success");
@@ -2028,8 +2051,8 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 // ═════════════════════════════════════════════════════════════════════════════
 // WORKOUT TRACKER
 // ═════════════════════════════════════════════════════════════════════════════
-const SESSION_KEY = "ignite_active_session";
-const WSTART_KEY = "ignite_wstart";
+const SESSION_KEY = "seshd_active_session";
+const WSTART_KEY = "seshd_wstart";
 
 function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, C }) {
   const [session, setSession] = useState(() => {
@@ -2212,20 +2235,23 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
   const [workoutSummary, setWorkoutSummary] = useState(null);
 
-  function finishWorkout(share) {
+  async function finishWorkout(share) {
     if (!session || finishing) return;
     setFinishing(true);
-    const dk = dKey();
-    const sid = uid();
-    let hitPR = null;
+    setShowFinish(false);
 
-    const cleanEx = session.exercises.filter(e => e.name).map(ex => ({
-      name: ex.name,
-      sets: ex.sets.map(s => ({ weight: s.weight, reps: s.reps, done: s.done, type: s.type }))
-    }));
+    try {
+      const dk = dKey();
+      const sid = uid();
+      let hitPR = null;
+      const newPRs = { ...store.prs };
 
-    setStore(p => {
-      const newPRs = { ...p.prs };
+      const cleanEx = session.exercises.filter(e => e.name).map(ex => ({
+        name: ex.name,
+        sets: ex.sets.map(s => ({ weight: s.weight, reps: s.reps, done: s.done, type: s.type }))
+      }));
+
+      // Compute PRs
       session.exercises.forEach(ex => {
         if (!ex.name) return;
         const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
@@ -2236,18 +2262,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           hitPR = { name: ex.name, weight: maxW, increase: Math.round((maxLbs - prev) * 10) / 10 };
         }
       });
-      return {
+
+      // Save to local store
+      setStore(p => ({
         ...p,
         history: {
           ...p.history,
           [dk]: {
             ...(p.history[dk] || {}),
-            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: elapsed, unit, note: session.workoutNote || "" }
+            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: elapsed, unit, note: "" }
           }
         },
         prs: newPRs,
         workoutDates: { ...p.workoutDates, [dk]: true },
-        // Save per-exercise notes so they show next session
         exerciseNotes: {
           ...(p.exerciseNotes || {}),
           ...Object.fromEntries(
@@ -2256,84 +2283,76 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               .map(ex => [ex.name, ex.note.trim()])
           )
         }
-      };
-    });
+      }));
 
-    // Save exercise changes back to program day
-    if (session.programId && session.dayName && onSaveProgram) {
-      const prog = store.programs.find(p => p.id === session.programId);
-      if (prog) {
-        const updatedDays = prog.days.map(d => d.name === session.dayName ? {
-          ...d,
-          exercises: session.exercises.filter(e => e.name).map(ex => ({
-            name: ex.name, reps: ex.reps || d.exercises.find(x=>x.name===ex.name)?.reps || "8-12",
-            note: ex.note || ""
-          }))
-        } : d);
-        onSaveProgram({ ...prog, days: updatedDays });
+      // Save program changes
+      if (session.programId && session.dayName && onSaveProgram) {
+        const prog = store.programs.find(p => p.id === session.programId);
+        if (prog) {
+          const updatedDays = prog.days.map(d => d.name === session.dayName ? {
+            ...d,
+            exercises: session.exercises.filter(e => e.name).map(ex => ({
+              name: ex.name, reps: ex.reps || d.exercises.find(x => x.name === ex.name)?.reps || "8-12",
+              note: ex.note || ""
+            }))
+          } : d);
+          onSaveProgram({ ...prog, days: updatedDays });
+        }
       }
-    }
 
-    if (share) {
-      const postEx = session.exercises
-        .filter(ex => ex.name && ex.sets.some(s => s.done))
-        .map(ex => {
-          const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight)||0));
-          const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
-          const prevPR = store.prs?.[ex.name] || 0;
-          return {
-            name: ex.name,
-            sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 })),
-            isPR: maxLbs > 0 && maxLbs > prevPR
-          };
-        });
-      const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
-      onShareWorkout({
-        type: "workout",
-        caption: `Just crushed ${session.dayName} 💪`,
-        unit,
-        workout: { name: session.dayName, duration: elapsed, volume: Math.round(vol), exercises: postEx },
-        isPR: !!hitPR
+      // Build summary
+      const newPRsList = Object.entries(newPRs)
+        .filter(([k, v]) => (store.prs?.[k] || 0) < v)
+        .map(([name, weight]) => ({ name, weight: unit === "lbs" ? weight : cvt(weight, "lbs", "kg") }));
+      const totalSets = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").length, 0);
+      const totalVol = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+
+      // Clear session first so workout screen dismisses
+      clearInterval(elRef.current);
+      localStorage.removeItem(SESSION_KEY);
+      setSession(null);
+      setWStart(null);
+      setElapsed(0);
+      setRest(null);
+
+      // Show summary
+      setWorkoutSummary({
+        dayName: session.dayName,
+        duration: fmtTime(elapsed),
+        sets: totalSets,
+        volume: fmtVol(Math.round(totalVol), unit),
+        exercises: session.exercises.filter(e => e.name).length,
+        prs: newPRsList,
+        share,
+        shareData: share ? (() => {
+          const postEx = session.exercises
+            .filter(ex => ex.name && ex.sets.some(s => s.done))
+            .map(ex => {
+              const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
+              const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
+              return {
+                name: ex.name,
+                sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+                isPR: maxLbs > 0 && maxLbs > (store.prs?.[ex.name] || 0)
+              };
+            });
+          const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
+          return { type:"workout", caption:`Just crushed ${session.dayName} 💪`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR:!!hitPR };
+        })() : null,
       });
+      setShowWorkoutSummary(true);
+
+      // Fire-and-forget saves (don't block UI)
+      if (share) {
+        onShareWorkout(null); // will be called from summary modal "Share" button
+      }
+      onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name), duration: elapsed, unit, note: "", prs: newPRs });
+
+      toast(share ? "Workout posted! 🔥" : "Workout saved! 💪", "success");
+      if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
+    } finally {
+      setFinishing(false);
     }
-
-    // Save to Supabase
-    onSaveWorkout({
-      dayName: session.dayName,
-      exercises: session.exercises.filter(ex => ex.name),
-      duration: elapsed,
-      unit,
-      note: session.workoutNote || "",
-      prs: newPRs,
-    });
-
-    clearInterval(elRef.current);
-    localStorage.removeItem(SESSION_KEY);
-
-    // Build summary before clearing session
-    const newPRsList = Object.entries(newPRs)
-      .filter(([k, v]) => (store.prs?.[k] || 0) < v)
-      .map(([name, weight]) => ({ name, weight: unit === "lbs" ? weight : cvt(weight, "lbs", "kg") }));
-    const totalSets = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").length, 0);
-    const totalVol = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").reduce((b, s) => b + (parseFloat(s.weight)||0)*(parseFloat(s.reps)||0), 0), 0);
-    setWorkoutSummary({
-      dayName: session.dayName,
-      duration: fmtTime(elapsed),
-      sets: totalSets,
-      volume: fmtVol(Math.round(totalVol), unit),
-      exercises: session.exercises.filter(e => e.name).length,
-      prs: newPRsList,
-    });
-    setShowWorkoutSummary(true);
-
-    setSession(null);
-    setWStart(null);
-    setElapsed(0);
-    setRest(null);
-    setShowFinish(false);
-    setFinishing(false);
-    toast(share ? "Workout posted! 🔥" : "Workout saved! 💪", "success");
-    if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
   }
 
   // ── ACTIVE WORKOUT ──────────────────────────────────────────────────────────
@@ -2495,9 +2514,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               </div>
               <div style={{ padding:"12px 18px 32px", display:"flex", flexDirection:"column", gap:8 }}>
                 <button onClick={() => {
-                  const text = `Just crushed ${workoutSummary.dayName} on Ignite 🔥\n${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}${workoutSummary.prs?.length ? `\n🏆 ${workoutSummary.prs.map(p=>p.name).join(", ")}` : ""}`;
-                  if (navigator.share) navigator.share({ title:"Ignite Workout", text }).catch(()=>{});
-                  else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard!", "success"); }
+                  if (workoutSummary.shareData) {
+                    onShareWorkout(workoutSummary.shareData);
+                  }
+                  const text = `Just crushed ${workoutSummary.dayName} on Seshd 🔥\n${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}${workoutSummary.prs?.length ? `\n🏆 ${workoutSummary.prs.map(p=>p.name).join(", ")}` : ""}`;
+                  if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
+                  else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied!", "success"); }
+                  setShowWorkoutSummary(false); setWorkoutSummary(null);
                 }} style={{ width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none", borderRadius:10, padding:"14px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                   📸 Share Workout
                 </button>
@@ -2512,8 +2535,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"20px 18px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
               <div style={{ fontSize:19, fontWeight:700, color:C.text, marginBottom:4 }}>Finish Workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
-              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing ? C.sub : C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "Saving..." : "Save & Share to Feed"}</button>
-              <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "..." : "Save (Don't Share)"}</button>
+              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "Saving..." : "Finish & Share"}</button>
+              <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "..." : "Save Only"}</button>
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
             </div>
           </div>
@@ -3055,58 +3078,63 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 // ═════════════════════════════════════════════════════════════════════════════
 function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveProgram }) {
   const [editMode, setEditMode] = useState(false);
-  const [editDay, setEditDay] = useState(previewDay.day);
+  const [editDay, setEditDay] = useState(() => JSON.parse(JSON.stringify(previewDay.day)));
+  const [viewingExercise, setViewingExercise] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
 
   function saveAndStart() {
     if (editMode && onSaveProgram) {
       const prog = store.programs.find(p => p.days?.some(d => d.name === editDay.name));
-      if (prog) {
-        const updatedProg = { ...prog, days: prog.days.map(d => d.name === editDay.name ? editDay : d) };
-        onSaveProgram(updatedProg);
-      }
+      if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === editDay.name ? editDay : d) });
     }
     onStart(editMode ? editDay : previewDay.day);
   }
 
-  // Find last time this day was done
+  // Last performed
   const lastPerformed = (() => {
     const dates = Object.keys(store.history||{}).sort().reverse();
     for (const dk of dates) {
-      const sessions = Object.values(store.history[dk]||{});
-      if (sessions.some(s => s.dayName === editDay.name)) {
-        const dayMs = new Date(dk).getTime();
-        const daysAgo = Math.floor((Date.now() - dayMs) / 86400000);
-        if (daysAgo === 0) return "Today";
-        if (daysAgo === 1) return "Yesterday";
-        return `${daysAgo} days ago`;
+      if (Object.values(store.history[dk]||{}).some(s => s.dayName === editDay.name)) {
+        const d = Math.floor((Date.now() - new Date(dk).getTime()) / 86400000);
+        return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d} days ago`;
       }
     }
     return null;
   })();
 
+  if (viewingExercise) {
+    return (
+      <ExerciseDetail name={viewingExercise} store={store} unit={unit} C={C} onClose={() => setViewingExercise(null)}/>
+    );
+  }
+
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
       <div onClick={e => e.stopPropagation()} style={{
         background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480,
-        maxHeight:"90dvh", display:"flex", flexDirection:"column",
-        paddingBottom:"env(safe-area-inset-bottom)",
-        boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"
+        maxHeight:"92dvh", display:"flex", flexDirection:"column",
+        paddingBottom:"env(safe-area-inset-bottom)", boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"
       }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 10px", flexShrink:0 }}>
-          <button onClick={onClose} style={{
-            width:32, height:32, borderRadius:"50%", background:C.divider,
-            border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:16, color:C.text, fontWeight:700
-          }}>×</button>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.text }}>×</button>
           <div style={{ flex:1, textAlign:"center" }}>
-            <div style={{ fontSize:16, fontWeight:700, color:C.text }}>{editDay.name}</div>
-            {lastPerformed && <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>Last Performed: {lastPerformed}</div>}
+            {editMode
+              ? <input value={editDay.name} onChange={e => setEditDay(d => ({...d, name:e.target.value}))}
+                  style={{ fontSize:16, fontWeight:700, color:C.text, background:"none", border:"none", outline:"none", textAlign:"center", fontFamily:F, width:"100%" }}/>
+              : <div style={{ fontSize:16, fontWeight:700, color:C.text }}>{editDay.name}</div>
+            }
+            {lastPerformed && !editMode && <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>Last Performed: {lastPerformed}</div>}
           </div>
-          <button onClick={() => setEditMode(m => !m)} style={{
-            fontSize:13, fontWeight:600, color: editMode ? C.accent : C.accent,
-            background:"none", border:"none", cursor:"pointer", fontFamily:F
-          }}>{editMode ? "Done" : "Edit"}</button>
+          <button onClick={() => {
+            if (editMode && onSaveProgram) {
+              const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
+              if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === previewDay.day.name ? editDay : d) });
+            }
+            setEditMode(m => !m);
+          }} style={{ fontSize:14, fontWeight:600, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
+            {editMode ? "Save" : "Edit"}
+          </button>
         </div>
 
         <div style={{ overflowY:"auto", flex:1, paddingBottom:8 }}>
@@ -3115,74 +3143,66 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
               {editDay.exercises.map((ex, i) => {
                 const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
                 const pr = store.prs?.[ex.name];
-                const prevSets = (() => {
-                  const dates = Object.keys(store.history||{}).sort().reverse();
-                  for (const dk of dates) {
-                    for (const sess of Object.values(store.history[dk]||{})) {
-                      const found = sess.exercises?.find(e => e.name === ex.name);
-                      if (found) return found.sets?.filter(s=>s.done).length || 0;
-                    }
-                  }
-                  return 0;
-                })();
-
                 return (
-                  <div key={i} style={{
-                    display:"flex", alignItems:"center", gap:12,
-                    padding:"12px 0",
-                    borderBottom: i < editDay.exercises.length-1 ? `1px solid ${C.divider}` : "none"
-                  }}>
-                    {/* Exercise image/icon */}
-                    <div style={{
-                      width:52, height:52, borderRadius:12,
-                      background:C.divider, overflow:"hidden",
-                      display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0
-                    }}>
-                      <MuscleIcon muscle={exInfo?.muscle || ""} size={36} C={C}/>
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom: i < editDay.exercises.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ width:52, height:52, borderRadius:12, background:C.divider, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      <MuscleIcon muscle={exInfo?.muscle||""} size={36} C={C}/>
                     </div>
-                    {/* Info */}
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:2 }}>
-                        {ex.reps ? `${ex.reps.split("–")[0] || ex.reps.split("-")[0] || "3"} × ` : ""}{ex.name}
+                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>
+                        {ex.reps ? `${ex.reps.split("–")[0]||ex.reps.split("-")[0]||"3"} × ` : ""}{ex.name}
                       </div>
-                      <div style={{ fontSize:12, color:C.sub }}>
-                        {exInfo?.muscle || ""}
-                        {pr && <span style={{ color:C.gold, marginLeft:6 }}>· PR {cvt(pr,"lbs",unit)}{unit}</span>}
-                      </div>
+                      <div style={{ fontSize:12, color:C.sub }}>{exInfo?.muscle||""}{pr && <span style={{ color:C.gold, marginLeft:6 }}>· PR {cvt(pr,"lbs",unit)}{unit}</span>}</div>
                       {ex.note && <div style={{ fontSize:11, color:C.accent, marginTop:2 }}>💡 {ex.note}</div>}
                     </div>
-                    {/* ? button */}
-                    <div style={{
-                      width:32, height:32, borderRadius:8,
-                      background:C.accentSoft, display:"flex", alignItems:"center",
-                      justifyContent:"center", flexShrink:0, fontSize:15,
-                      color:C.accent, fontWeight:700, cursor:"pointer"
-                    }}>?</div>
+                    <button onClick={() => setViewingExercise(ex.name)} style={{
+                      width:32, height:32, borderRadius:8, background:C.accentSoft,
+                      border:"none", cursor:"pointer", fontSize:15, color:C.accent, fontWeight:700, flexShrink:0
+                    }}>?</button>
                   </div>
                 );
               })}
             </div>
           ) : (
             <div style={{ padding:"0 14px" }}>
-              <div style={{ fontSize:11, color:C.sub, marginBottom:12, marginTop:4 }}>Tap × to remove · add below</div>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:12, marginTop:4 }}>Drag ⠿ to reorder · tap × to remove</div>
               {editDay.exercises.map((ex, i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderBottom:`1px solid ${C.divider}` }}>
+                <div key={i}
+                  draggable
+                  onDragStart={() => setDragIdx(i)}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => {
+                    if (dragIdx === null || dragIdx === i) return;
+                    const arr = [...editDay.exercises];
+                    const [moved] = arr.splice(dragIdx, 1);
+                    arr.splice(i, 0, moved);
+                    setEditDay(d => ({...d, exercises: arr}));
+                    setDragIdx(null);
+                  }}
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 0", borderBottom:`1px solid ${C.divider}`, cursor:"grab" }}>
+                  <span style={{ color:C.muted, fontSize:16, flexShrink:0 }}>⠿</span>
                   <div style={{ flex:1 }}>
                     <input value={ex.name}
-                      onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, name:e.target.value}) }))}
+                      onChange={e => setEditDay(d => ({...d, exercises:d.exercises.map((x,j)=>j!==i?x:{...x,name:e.target.value})}))}
                       style={{ width:"100%", background:C.divider, border:"none", borderRadius:6, padding:"7px 10px", fontSize:13, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:4 }}
                     />
-                    <input value={ex.note||""} placeholder="Note..."
-                      onChange={e => setEditDay(d => ({ ...d, exercises: d.exercises.map((x,j) => j!==i ? x : {...x, note:e.target.value}) }))}
-                      style={{ width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"3px 0", fontSize:12, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
-                    />
+                    <div style={{ display:"flex", gap:6 }}>
+                      <input value={ex.reps||""} placeholder="Reps/Sets"
+                        onChange={e => setEditDay(d => ({...d, exercises:d.exercises.map((x,j)=>j!==i?x:{...x,reps:e.target.value})}))}
+                        style={{ width:90, background:C.divider, border:"none", borderRadius:6, padding:"5px 8px", fontSize:12, color:C.text, outline:"none", fontFamily:F }}
+                      />
+                      <input value={ex.note||""} placeholder="Note..."
+                        onChange={e => setEditDay(d => ({...d, exercises:d.exercises.map((x,j)=>j!==i?x:{...x,note:e.target.value})}))}
+                        style={{ flex:1, background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"5px 0", fontSize:12, color:C.sub, outline:"none", fontFamily:F }}
+                      />
+                    </div>
                   </div>
-                  <button onClick={() => setEditDay(d => ({ ...d, exercises: d.exercises.filter((_,j) => j!==i) }))}
-                    style={{ background:"none", border:"none", fontSize:20, color:"#ef4444", cursor:"pointer", padding:"4px", flexShrink:0 }}>×</button>
+                  <button onClick={() => setEditDay(d => ({...d, exercises:d.exercises.filter((_,j)=>j!==i)}))}
+                    style={{ background:"none", border:"none", fontSize:20, color:"#ef4444", cursor:"pointer", flexShrink:0 }}>×</button>
                 </div>
               ))}
-              <button onClick={() => setEditDay(d => ({ ...d, exercises: [...d.exercises, { name:"", reps:"8-12", note:"" }] }))}
-                style={{ width:"100%", marginTop:12, padding:"10px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
+              <button onClick={() => setEditDay(d => ({...d, exercises:[...d.exercises,{name:"",reps:"8-12",note:""}]}))}
+                style={{ width:"100%", marginTop:12, padding:"11px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
                 + Add Exercise
               </button>
             </div>
@@ -3191,13 +3211,10 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
 
         <div style={{ padding:"12px 14px 16px", flexShrink:0 }}>
           <button onClick={saveAndStart} style={{
-            width:"100%", background:C.accent,
-            color:"#fff", border:"none", borderRadius:14, padding:"16px",
-            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F,
-            boxShadow:`0 4px 16px ${C.accent}55`
-          }}>
-            {editMode ? "Save & Start Workout" : "Start Workout"}
-          </button>
+            width:"100%", background:C.accent, color:"#fff", border:"none",
+            borderRadius:14, padding:"16px", fontSize:15, fontWeight:700,
+            cursor:"pointer", fontFamily:F, boxShadow:`0 4px 16px ${C.accent}55`
+          }}>Start Workout</button>
         </div>
       </div>
     </div>
@@ -3662,7 +3679,7 @@ function ExerciseAnimation({ name, muscle, C }) {
   const [loading, setLoading] = useState(true);
   const [muscles, setMuscles] = useState(null);
   const [fetchError, setFetchError] = useState(null);
-  const CACHE_KEY = "ignite_exercise_gifs_v4";
+  const CACHE_KEY = "seshd_exercise_gifs_v1";
 
   useEffect(() => {
     let cancelled = false;
@@ -5087,9 +5104,9 @@ function AuthScreen({ onAuth, C }) {
     }}>
       {/* Logo */}
       <div style={{ marginBottom:32, textAlign:"center" }}>
-        <IgniteLogo C={C} big/>
+        <SeshdLogo C={C} big/>
         <div style={{ fontSize:13, color:C.sub, marginTop:8 }}>
-          {mode === "signin" ? "Welcome back 🔥" : "Join Ignite — start your journey 🔥"}
+          {mode === "signin" ? "Welcome back 🔥" : "Join Seshd — start your journey 🔥"}
         </div>
       </div>
 
@@ -5584,7 +5601,7 @@ export default function App() {
   if (authLoading) {
     return (
       <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
-        <IgniteLogo C={C} big/>
+        <SeshdLogo C={C} big/>
         <div style={{ fontSize:13, color:C.sub }}>Loading...</div>
       </div>
     );
@@ -5599,7 +5616,7 @@ export default function App() {
   if (!dbReady) {
     return (
       <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
-        <IgniteLogo C={C} big/>
+        <SeshdLogo C={C} big/>
         <div style={{ fontSize:13, color:C.sub }}>Setting up your account...</div>
       </div>
     );
@@ -5681,11 +5698,11 @@ export default function App() {
   }
 
   // Track when activity tab was last viewed
-  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("ignite_last_activity") || "0"));
+  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("seshd_last_activity") || "0"));
   function markActivitySeen() {
     const now = Date.now();
     lastSeenActivityRef.current = now;
-    localStorage.setItem("ignite_last_activity", String(now));
+    localStorage.setItem("seshd_last_activity", String(now));
   }
 
   const notifCount = (store.posts || [])
@@ -5784,7 +5801,7 @@ export default function App() {
         padding:"calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)",
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
-        <IgniteLogo C={C}/>
+        <SeshdLogo C={C}/>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {streak > 0 && <div style={{ marginRight:4 }}><StreakBadge streak={streak} size="sm"/></div>}
           {tab === "feed" && (
