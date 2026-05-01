@@ -3933,6 +3933,166 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   );
 }
 
+function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, onBack, onUpdateMembers, onLeave }) {
+  const [tab, setTab] = useState("feed");
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [caption, setCaption] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/group_posts?group_id=eq.${g.id}&select=*&order=created_at.desc`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setPosts(data || []);
+        }
+      } catch {}
+      setLoading(false);
+    }
+    if (token) load();
+    else setLoading(false);
+  }, [g.id, token]);
+
+  async function sendPost() {
+    if (!caption.trim() || !token) return;
+    setPosting(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
+        method: "POST",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+        body: JSON.stringify({ group_id: g.id, user_id: currentUserId, type: "text", caption: caption.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newPost = Array.isArray(data) ? data[0] : data;
+        if (newPost) setPosts(p => [newPost, ...p]);
+        setCaption("");
+      }
+    } catch {}
+    setPosting(false);
+  }
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
+      {/* Header */}
+      <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+        <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer" }}>‹</button>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{g.icon} {g.name}</div>
+          <div style={{ fontSize:11, color:C.sub }}>🔒 {(g.members||[]).length} members</div>
+        </div>
+        <div style={{ display:"flex", gap:0, background:C.divider, borderRadius:8, padding:2 }}>
+          {["feed","members"].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              padding:"5px 12px", background:tab===t?C.bg:"transparent", color:tab===t?C.text:C.sub,
+              border:"none", borderRadius:6, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F,
+              boxShadow:tab===t?"0 1px 3px rgba(0,0,0,0.1)":"none"
+            }}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "feed" && (
+        <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
+          {/* Post composer */}
+          <div style={{ padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
+            <Avatar user={store.users.find(u => u.id === currentUserId)} size={32} C={C}/>
+            <input
+              value={caption}
+              onChange={e => setCaption(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendPost()}
+              placeholder={`Post to ${g.name}...`}
+              style={{ flex:1, background:C.divider, border:"none", borderRadius:20, padding:"8px 14px", fontSize:14, color:C.text, outline:"none", fontFamily:F }}
+            />
+            <button onClick={sendPost} disabled={!caption.trim() || posting} style={{
+              background:caption.trim()?C.accent:C.divider, color:caption.trim()?"#fff":C.sub,
+              border:"none", borderRadius:20, padding:"8px 14px", fontSize:12, fontWeight:700,
+              cursor:caption.trim()?"pointer":"default", fontFamily:F
+            }}>{posting?"...":"Post"}</button>
+          </div>
+          {/* Feed */}
+          <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+            {loading && <div style={{ textAlign:"center", padding:40, color:C.sub }}>Loading...</div>}
+            {!loading && posts.length === 0 && (
+              <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
+                <div style={{ fontSize:36, marginBottom:12 }}>💬</div>
+                <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No posts yet</div>
+                <div style={{ fontSize:13 }}>Be the first to post something to the group</div>
+              </div>
+            )}
+            {posts.map(post => {
+              const author = store.users.find(u => u.id === post.user_id);
+              return (
+                <div key={post.id} style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:8 }}>
+                    <Avatar user={author} size={32} C={C}/>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                        <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{author?.username || "Unknown"}</span>
+                        <span style={{ fontSize:11, color:C.sub }}>{timeAgo(new Date(post.created_at).getTime())}</span>
+                      </div>
+                      <div style={{ fontSize:14, color:C.text, lineHeight:1.45 }}>{post.caption}</div>
+                      {post.image_url && <img src={post.image_url} alt="" style={{ width:"100%", borderRadius:10, marginTop:8, maxHeight:300, objectFit:"cover" }}/>}
+                      {post.workout && (
+                        <div style={{ marginTop:8, background:C.divider, borderRadius:10, padding:"10px 12px" }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{post.workout.name}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{Math.floor((post.workout.duration||0)/60)}m · {post.workout.exercises?.length || 0} exercises</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === "members" && (
+        <div style={{ overflowY:"auto", flex:1, padding:"14px", paddingBottom:20 }}>
+          {g.description && <div style={{ fontSize:13, color:C.sub, marginBottom:16, lineHeight:1.5 }}>{g.description}</div>}
+          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>MEMBERS · {members.length}</div>
+          {members.map(u => (
+            <div key={u.id} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
+              <Avatar user={u} size={38} C={C}/>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{u.name}{u.id===currentUserId?" (You)":""}</div>
+                <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
+              </div>
+              {u.id === g.createdBy && <span style={{ fontSize:9, color:C.gold, fontWeight:600 }}>ADMIN</span>}
+            </div>
+          ))}
+          {notMembers.length > 0 && (
+            <>
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, margin:"16px 0 10px" }}>INVITE</div>
+              {notMembers.map(u => (
+                <div key={u.id} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
+                  <Avatar user={u} size={36} C={C}/>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{u.name}</div>
+                    <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
+                  </div>
+                  <button onClick={() => onUpdateMembers(g.id, [...(g.members||[]), u.id])} style={{
+                    background:C.accent, color:"#fff", border:"none", borderRadius:6,
+                    padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
+                  }}>Invite</button>
+                </div>
+              ))}
+            </>
+          )}
+          <button onClick={onLeave} style={{ width:"100%", background:"none", color:C.red, border:"none", padding:"14px", fontSize:13, cursor:"pointer", marginTop:16, fontFamily:F }}>Leave Group</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
@@ -3942,16 +4102,25 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
 
   async function createGroup() {
     if (!newName) return;
-    const g = { id: uid(), name: newName, description: newDesc, createdBy: currentUserId, members: [currentUserId], icon: "🏋️" };
-    setStore(p => ({ ...p, groups: [...(p.groups || []), g] }));
+    const tempId = uid();
+    const localGroup = { id: tempId, name: newName, description: newDesc, createdBy: currentUserId, members: [currentUserId], icon: "🏋️" };
+    setStore(p => ({ ...p, groups: [...(p.groups || []), localGroup] }));
     setShowCreate(false); setNewName(""); setNewDesc("");
     if (token) {
       try {
-        await fetch(`${SUPABASE_URL}/rest/v1/groups`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/groups`, {
           method: "POST",
           headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Prefer": "return=representation" },
           body: JSON.stringify({ name: newName, description: newDesc, created_by: currentUserId, member_ids: [currentUserId], icon: "🏋️" })
         });
+        if (res.ok) {
+          const data = await res.json();
+          const dbGroup = Array.isArray(data) ? data[0] : data;
+          if (dbGroup?.id) {
+            // Replace temp id with real UUID from DB
+            setStore(p => ({ ...p, groups: p.groups.map(g => g.id === tempId ? { ...g, id: dbGroup.id } : g) }));
+          }
+        }
       } catch {}
     }
   }
@@ -3972,63 +4141,15 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   if (activeGroup) {
     const g = (store.groups || []).find(x => x.id === activeGroup);
     if (!g) { setActiveGroup(null); return null; }
-    const members = g.members.map(mid => store.users.find(u => u.id === mid)).filter(Boolean);
-    const notMembers = store.users.filter(u => !g.members.includes(u.id) && u.id !== currentUserId);
-
-    return (
-      <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
-        <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:12 }}>
-          <button onClick={() => setActiveGroup(null)} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer" }}>‹</button>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{g.icon} {g.name}</div>
-            <div style={{ fontSize:11, color:C.sub }}>🔒 {g.members.length} members</div>
-          </div>
-        </div>
-        <div style={{ padding:"14px" }}>
-          {g.description && (
-            <div style={{ fontSize:13, color:C.textDim, marginBottom:16, lineHeight:1.5 }}>{g.description}</div>
-          )}
-          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>MEMBERS</div>
-          {members.map(u => (
-            <div key={u.id} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
-              <Avatar user={u} size={38} C={C}/>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{u.name}{u.id===currentUserId?" (You)":""}</div>
-                <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
-              </div>
-              {u.id === g.createdBy && (
-                <span style={{ fontSize:9, color:C.gold, fontWeight:600, letterSpacing:0.5 }}>ADMIN</span>
-              )}
-            </div>
-          ))}
-          {notMembers.length > 0 && (
-            <>
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, margin:"16px 0 10px" }}>INVITE</div>
-              {notMembers.map(u => (
-                <div key={u.id} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
-                  <Avatar user={u} size={36} C={C}/>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{u.name}</div>
-                    <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
-                  </div>
-                  <button onClick={() => updateGroupMembers(g.id, [...(g.members||[]), u.id])} style={{
-                    background:C.accent, color:"#fff", border:"none", borderRadius:6,
-                    padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-                  }}>Invite</button>
-                </div>
-              ))}
-            </>
-          )}
-          <button onClick={() => {
-            updateGroupMembers(g.id, (g.members||[]).filter(m => m !== currentUserId));
-            setActiveGroup(null);
-          }} style={{
-            width:"100%", background:"none", color:C.red, border:"none",
-            padding:"14px", fontSize:13, cursor:"pointer", marginTop:16, fontFamily:F
-          }}>Leave Group</button>
-        </div>
-      </div>
-    );
+    const members = (g.members||[]).map(mid => store.users.find(u => u.id === mid)).filter(Boolean);
+    const notMembers = store.users.filter(u => !(g.members||[]).includes(u.id) && u.id !== currentUserId);
+    return <GroupDetail
+      g={g} members={members} notMembers={notMembers}
+      currentUserId={currentUserId} store={store} C={C} token={token}
+      onBack={() => setActiveGroup(null)}
+      onUpdateMembers={updateGroupMembers}
+      onLeave={() => { updateGroupMembers(g.id, (g.members||[]).filter(m => m !== currentUserId)); setActiveGroup(null); }}
+    />;
   }
 
   return (
@@ -4106,7 +4227,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // DISCOVER
 // ═════════════════════════════════════════════════════════════════════════════
-function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token }) {
+function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow }) {
   const [q, setQ] = useState("");
   const [subTab, setSubTab] = useState("discover"); // "discover" | "groups" | "challenges"
   const me = store.users.find(u => u.id === currentUserId);
@@ -4116,6 +4237,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   );
 
   function toggleFollow(uid2) {
+    if (onFollow) { onFollow(uid2); return; }
     const isF = me?.following?.includes(uid2);
     setStore(p => ({
       ...p,
@@ -4296,7 +4418,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
   );
 }
 
-function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut }) {
+function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
@@ -4335,6 +4457,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   }
 
   function toggleFollow() {
+    if (onFollow) { onFollow(userId); return; }
     setStore(p => ({
       ...p,
       users: p.users.map(u => {
@@ -5112,10 +5235,15 @@ export default function App() {
     const tok = tokenRef.current || loadSession()?.access_token;
     if (!tok) return;
     try {
-      // Upload image to Storage if present
-      let imageUrl = postData.imageData || null;
-      if (imageUrl && imageUrl.startsWith("data:")) {
-        imageUrl = await uploadImage(imageUrl, tok, currentUserId);
+      // Upload image to Storage if present - don't fall back to base64 (too large for DB)
+      let imageUrl = null;
+      if (postData.imageData && postData.imageData.startsWith("data:")) {
+        const uploaded = await uploadImage(postData.imageData, tok, currentUserId);
+        // Only use if it's a real URL (upload succeeded), not base64
+        imageUrl = uploaded && !uploaded.startsWith("data:") ? uploaded : null;
+        if (!imageUrl) toast("Image upload failed — posting without photo", "error");
+      } else {
+        imageUrl = postData.imageData || null;
       }
       const row = {
         user_id: currentUserId,
@@ -5138,7 +5266,7 @@ export default function App() {
         const appPost = {
           id: newPost.id, userId: newPost.user_id, type: newPost.type,
           caption: newPost.caption || "",
-          imageData: newPost.image_url || postData.imageData || null,
+          imageData: imageUrl || postData.imageData || null,
           location: newPost.location, workout: newPost.workout,
           run: newPost.run, yoga: newPost.yoga, achievement: newPost.achievement,
           unit: newPost.unit, isPR: newPost.is_pr,
@@ -5459,6 +5587,7 @@ export default function App() {
           C={C}
           onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
           onUserClick={setProfileUserId}
+          onFollow={handleFollow}
         />
       </div>
     );
@@ -5781,7 +5910,7 @@ export default function App() {
         )}
 
         {tab === "discover" && (
-          <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token}/>
+          <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}/>
         )}
 
         {tab === "profile" && (
@@ -5796,6 +5925,7 @@ export default function App() {
             onUserClick={setProfileUserId}
             email={session?.user?.email || ""}
             onSignOut={handleSignOut}
+            onFollow={handleFollow}
           />
         )}
             </div>
