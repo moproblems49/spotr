@@ -3135,40 +3135,103 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
     onStart(editMode ? editDay : previewDay.day);
   }
 
+  // Find last time this day was done
+  const lastPerformed = (() => {
+    const dates = Object.keys(store.history||{}).sort().reverse();
+    for (const dk of dates) {
+      const sessions = Object.values(store.history[dk]||{});
+      if (sessions.some(s => s.dayName === editDay.name)) {
+        const dayMs = new Date(dk).getTime();
+        const daysAgo = Math.floor((Date.now() - dayMs) / 86400000);
+        if (daysAgo === 0) return "Today";
+        if (daysAgo === 1) return "Yesterday";
+        return `${daysAgo} days ago`;
+      }
+    }
+    return null;
+  })();
+
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, height:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, paddingBottom:"env(safe-area-inset-bottom)" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-          <button onClick={onClose} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"left" }}>Cancel</button>
-          <div style={{ fontSize:15, fontWeight:600, color:C.text, flex:1, textAlign:"center" }}>{editDay.name}</div>
-          <button onClick={() => setEditMode(m => !m)} style={{ fontSize:12, fontWeight:600, color: editMode ? C.accent : C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, minWidth:60, textAlign:"right" }}>
-            {editMode ? "Done" : "Edit"}
-          </button>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480,
+        maxHeight:"90dvh", display:"flex", flexDirection:"column",
+        paddingBottom:"env(safe-area-inset-bottom)",
+        boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"
+      }}>
+        {/* Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 10px", flexShrink:0 }}>
+          <button onClick={onClose} style={{
+            width:32, height:32, borderRadius:"50%", background:C.divider,
+            border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize:16, color:C.text, fontWeight:700
+          }}>×</button>
+          <div style={{ flex:1, textAlign:"center" }}>
+            <div style={{ fontSize:16, fontWeight:700, color:C.text }}>{editDay.name}</div>
+            {lastPerformed && <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>Last Performed: {lastPerformed}</div>}
+          </div>
+          <button onClick={() => setEditMode(m => !m)} style={{
+            fontSize:13, fontWeight:600, color: editMode ? C.accent : C.accent,
+            background:"none", border:"none", cursor:"pointer", fontFamily:F
+          }}>{editMode ? "Done" : "Edit"}</button>
         </div>
 
-        <div style={{ overflowY:"auto", flex:1, padding:"14px 14px 6px", WebkitOverflowScrolling:"touch" }}>
+        <div style={{ overflowY:"auto", flex:1, paddingBottom:8 }}>
           {!editMode ? (
-            <>
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:4 }}>{(previewDay.programName||"").toUpperCase()}</div>
-              <div style={{ fontSize:13, color:C.sub, marginBottom:16 }}>{editDay.exercises.length} exercises</div>
+            <div style={{ padding:"0 14px" }}>
               {editDay.exercises.map((ex, i) => {
                 const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
                 const pr = store.prs?.[ex.name];
+                const prevSets = (() => {
+                  const dates = Object.keys(store.history||{}).sort().reverse();
+                  for (const dk of dates) {
+                    for (const sess of Object.values(store.history[dk]||{})) {
+                      const found = sess.exercises?.find(e => e.name === ex.name);
+                      if (found) return found.sets?.filter(s=>s.done).length || 0;
+                    }
+                  }
+                  return 0;
+                })();
+
                 return (
-                  <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"12px 0", borderBottom: i < editDay.exercises.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                    {exInfo && <div style={{ width:40, height:40, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><MuscleIcon muscle={exInfo.muscle} size={28} C={C}/></div>}
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{ex.name}</div>
-                      <div style={{ fontSize:12, color:C.sub, marginTop:1 }}>{ex.reps && `${ex.reps} reps`}{pr && <span style={{ color:C.gold }}> · PR {cvt(pr,"lbs",unit)} {unit}</span>}</div>
-                      {ex.note && <div style={{ fontSize:12, color:C.accent, marginTop:3 }}>💡 {ex.note}</div>}
+                  <div key={i} style={{
+                    display:"flex", alignItems:"center", gap:12,
+                    padding:"12px 0",
+                    borderBottom: i < editDay.exercises.length-1 ? `1px solid ${C.divider}` : "none"
+                  }}>
+                    {/* Exercise image/icon */}
+                    <div style={{
+                      width:52, height:52, borderRadius:12,
+                      background:C.divider, overflow:"hidden",
+                      display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0
+                    }}>
+                      <MuscleIcon muscle={exInfo?.muscle || ""} size={36} C={C}/>
                     </div>
+                    {/* Info */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:2 }}>
+                        {ex.reps ? `${ex.reps.split("–")[0] || ex.reps.split("-")[0] || "3"} × ` : ""}{ex.name}
+                      </div>
+                      <div style={{ fontSize:12, color:C.sub }}>
+                        {exInfo?.muscle || ""}
+                        {pr && <span style={{ color:C.gold, marginLeft:6 }}>· PR {cvt(pr,"lbs",unit)}{unit}</span>}
+                      </div>
+                      {ex.note && <div style={{ fontSize:11, color:C.accent, marginTop:2 }}>💡 {ex.note}</div>}
+                    </div>
+                    {/* ? button */}
+                    <div style={{
+                      width:32, height:32, borderRadius:8,
+                      background:C.accentSoft, display:"flex", alignItems:"center",
+                      justifyContent:"center", flexShrink:0, fontSize:15,
+                      color:C.accent, fontWeight:700, cursor:"pointer"
+                    }}>?</div>
                   </div>
                 );
               })}
-            </>
+            </div>
           ) : (
-            <>
-              <div style={{ fontSize:11, color:C.sub, marginBottom:12 }}>Tap × to remove · add below</div>
+            <div style={{ padding:"0 14px" }}>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:12, marginTop:4 }}>Tap × to remove · add below</div>
               {editDay.exercises.map((ex, i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderBottom:`1px solid ${C.divider}` }}>
                   <div style={{ flex:1 }}>
@@ -3189,12 +3252,17 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                 style={{ width:"100%", marginTop:12, padding:"10px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
                 + Add Exercise
               </button>
-            </>
+            </div>
           )}
         </div>
 
-        <div style={{ padding:"12px 14px 16px", borderTop:`1px solid ${C.divider}`, flexShrink:0 }}>
-          <button onClick={saveAndStart} style={{ width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none", borderRadius:10, padding:"14px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+        <div style={{ padding:"12px 14px 16px", flexShrink:0 }}>
+          <button onClick={saveAndStart} style={{
+            width:"100%", background:C.accent,
+            color:"#fff", border:"none", borderRadius:14, padding:"16px",
+            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F,
+            boxShadow:`0 4px 16px ${C.accent}55`
+          }}>
             {editMode ? "Save & Start Workout" : "Start Workout"}
           </button>
         </div>
@@ -3623,6 +3691,39 @@ function getCues(name, muscle) {
 
 // ── Animated SVG exercise demos ───────────────────────────────────────────────
 // ── Exercise demo fetcher — uses multiple sources with fallback ──────────────
+
+// Strip prefixes to normalize search queries
+function toWgerQuery(name) {
+  return name.toLowerCase()
+    .replace(/\(.*?\)/g,"")
+    .replace(/barbell |dumbbell |db |ez bar |cable |machine |weighted |lever |single-arm |chest-supported /g,"")
+    .replace(/\s+/g," ").trim();
+}
+
+// Direct wger base IDs for common exercises — faster and more reliable than search
+const WGER_IDS = {
+  "Barbell Bench Press":192,"Incline Barbell Press":314,"Incline DB Press":206,"Flat DB Press":207,
+  "Cable Fly (Low-to-High)":253,"Dips":37,"Weighted Dips":37,"Push-Ups":35,
+  "Barbell Row":72,"Pendlay Row":72,"T-Bar Row":73,"Single-Arm DB Row":74,
+  "Pull-Ups":31,"Weighted Pull-Ups":31,"Chin-Ups":32,
+  "Lat Pulldown (Wide)":102,"Lat Pulldown (Underhand)":102,
+  "Seated Cable Row (Wide)":110,"Seated Cable Row (Narrow)":110,
+  "Face Pulls":126,"Rear Delt Fly (DB)":127,
+  "Overhead Press (Barbell)":64,"Seated DB Shoulder Press":65,"Arnold Press":66,
+  "Lateral Raises (DB)":68,"Lateral Raises (Cable)":68,"Lateral Raises":68,"Front Raises (DB)":70,
+  "Barbell Curl":3,"EZ Bar Curl":4,"Dumbbell Curl":5,"Hammer Curl":8,
+  "Incline DB Curl":7,"Preacher Curl (EZ Bar)":6,"Concentration Curl":10,
+  "Skull Crushers (EZ Bar)":22,"Skull Crushers (DB)":22,"Tricep Rope Pushdown":26,
+  "Tricep Bar Pushdown":26,"Overhead Tricep Extension":25,"Close-Grip Bench Press":193,
+  "Barbell Back Squat":111,"Front Squat":112,"Leg Press":116,"Hack Squat":113,
+  "Bulgarian Split Squat":119,"Walking Lunges":120,"Leg Extension":115,
+  "Deadlift":29,"Sumo Deadlift":30,"Romanian Deadlift":91,"Stiff-Leg Deadlift":92,
+  "Lying Leg Curl":117,"Seated Leg Curl":118,"Hip Thrust (Barbell)":228,
+  "Standing Calf Raise":125,"Seated Calf Raise":124,
+  "Plank":160,"Hanging Leg Raise":163,"Cable Crunch":162,"Ab Wheel Rollout":165,
+  "Barbell Shrugs":133,"DB Shrugs":134,
+};
+
 function ExerciseAnimation({ name, muscle, C }) {
   const [gifUrl, setGifUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -3632,9 +3733,13 @@ function ExerciseAnimation({ name, muscle, C }) {
 
   useEffect(() => {
     let cancelled = false;
+    let timeoutId = null;
+
     async function fetchGif() {
       setLoading(true);
       setFetchError(null);
+
+      // Cache check
       try {
         const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
         if (cache[name]) {
@@ -3643,54 +3748,68 @@ function ExerciseAnimation({ name, muscle, C }) {
         }
       } catch {}
 
-      const queries = [name.toLowerCase(), toWgerQuery(name)].filter((q, i, a) => q && a.indexOf(q) === i);
+      // Hard timeout — show muscle icon after 6s if nothing loads
+      timeoutId = setTimeout(() => {
+        if (!cancelled) { setLoading(false); }
+      }, 6000);
 
+      async function tryFetch(url) {
+        const res = await fetch(url, { headers: { "Accept":"application/json" } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      }
+
+      // 1. Try direct ID if we have it
+      const baseId = WGER_IDS[name];
+      if (baseId) {
+        try {
+          const imgData = await tryFetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${baseId}&format=json`);
+          const img = imgData?.results?.[0]?.image;
+          if (img && !cancelled) {
+            clearTimeout(timeoutId);
+            const m = { target: muscle, secondary: [], bodyPart: muscle };
+            setGifUrl(img); setMuscles(m); setLoading(false);
+            try {
+              const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+              cache[name] = { gif: img, muscles: m };
+              if (Object.keys(cache).length > 200) delete cache[Object.keys(cache)[0]];
+              localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+            } catch {}
+            return;
+          }
+        } catch {}
+      }
+
+      // 2. Search fallback
+      const queries = [name.toLowerCase(), toWgerQuery(name)].filter((q,i,a) => q && a.indexOf(q)===i);
       for (const q of queries) {
         try {
-          const searchRes = await fetch(
-            `https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(q)}&language=english&format=json`,
-            { headers: { "Accept": "application/json" } }
-          );
-          if (!searchRes.ok) continue;
-          const searchData = await searchRes.json();
-          const suggestion = searchData?.suggestions?.[0];
-          if (!suggestion?.data?.id) { setFetchError("no results"); continue; }
-
-          const baseId = suggestion.data.id;
-          const category = suggestion.data.category?.name || muscle;
-          const muscles2 = suggestion.data.muscles?.map(m => m.name_en || m.name) || [];
-
-          const imgRes = await fetch(
-            `https://wger.de/api/v2/exerciseimage/?exercise_base=${baseId}&format=json`,
-            { headers: { "Accept": "application/json" } }
-          );
-          if (!imgRes.ok) { setFetchError(`image HTTP ${imgRes.status}`); continue; }
-          const imgData = await imgRes.json();
-          const img = imgData?.results?.[0]?.image || null;
-
-          if (!cancelled) {
-            const m = { target: category, secondary: muscles2.slice(1), bodyPart: muscle };
-            setGifUrl(img);
-            setMuscles(m);
-            setLoading(false);
-            if (img) {
-              try {
-                const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-                cache[name] = { gif: img, muscles: m };
-                if (Object.keys(cache).length > 200) delete cache[Object.keys(cache)[0]];
-                localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-              } catch {}
-            } else {
-              setFetchError("no image");
-            }
+          const searchData = await tryFetch(`https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(q)}&language=english&format=json`);
+          const s = searchData?.suggestions?.[0];
+          const bid = s?.data?.base_id || s?.data?.id;
+          if (!bid) continue;
+          const imgData = await tryFetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${bid}&format=json`);
+          const img = imgData?.results?.[0]?.image;
+          if (img && !cancelled) {
+            clearTimeout(timeoutId);
+            const m = { target: muscle, secondary: [], bodyPart: muscle };
+            setGifUrl(img); setMuscles(m); setLoading(false);
+            try {
+              const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+              cache[name] = { gif: img, muscles: m };
+              if (Object.keys(cache).length > 200) delete cache[Object.keys(cache)[0]];
+              localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+            } catch {}
+            return;
           }
-          return;
-        } catch (e) { setFetchError(e.message); continue; }
+        } catch {}
       }
-      if (!cancelled) setLoading(false);
+
+      if (!cancelled) { clearTimeout(timeoutId); setLoading(false); }
     }
+
     fetchGif();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
   }, [name]);
 
   if (loading) return (
