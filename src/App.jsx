@@ -12,7 +12,6 @@ const sb = (() => {
     "apikey": SUPABASE_KEY,
     "Authorization": `Bearer ${SUPABASE_KEY}`,
     "Content-Type": "application/json",
-    "Accept": "application/json",
     "Prefer": "return=representation",
   };
 
@@ -21,52 +20,31 @@ const sb = (() => {
     return { ...headers, "Authorization": `Bearer ${token}` };
   }
 
-  function ensureSupabaseConfig() {
-    if (!SUPABASE_URL || !SUPABASE_KEY) {
-      throw new Error("Missing Supabase configuration. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
-    }
-  }
-
-  async function parseJson(res) {
-    const text = await res.text();
-    if (!text) return null;
-    try {
-      return JSON.parse(text);
-    } catch (e) {
-      throw new Error(`Invalid JSON response from ${res.url}: ${text.slice(0, 200)}`);
-    }
-  }
-
   async function query(path, opts = {}, token = null) {
-    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       headers: authHeaders(token),
       ...opts,
     });
     if (!res.ok) {
-      const err = await parseJson(res).catch(() => ({}));
-      throw new Error(err?.message || err?.error_description || res.statusText || `Request failed: ${res.status}`);
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || res.statusText);
     }
-    return parseJson(res);
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
   }
 
   async function rpc(fn, params = {}, token = null) {
-    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: authHeaders(token),
       body: JSON.stringify(params),
     });
-    if (!res.ok) {
-      const err = await parseJson(res).catch(() => ({}));
-      throw new Error(err?.message || err?.error_description || res.statusText || `RPC failed: ${res.status}`);
-    }
-    return parseJson(res);
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
   }
 
   // Auth helpers
   async function signUp(email, password, username, name) {
-    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
       method: "POST",
       headers,
@@ -75,27 +53,23 @@ const sb = (() => {
         data: { username, name }
       }),
     });
-    const data = await parseJson(res);
-    if (data?.error) throw new Error(data.error.message || data.msg || "Signup failed");
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || data.msg || "Signup failed");
     return data;
   }
 
   async function signIn(email, password) {
-    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers,
       body: JSON.stringify({ email, password }),
     });
-    const data = await parseJson(res);
-    if (!res.ok) {
-      throw new Error(data?.error_description || data?.error || data?.message || "Sign in failed");
-    }
-    return data;
+    const data = await res.json();
+    if (data.error || data.error_description) throw new Error(data.error_description || data.error || "Sign in failed");
+    return data; // { access_token, refresh_token, user }
   }
 
   async function signOut(token) {
-    ensureSupabaseConfig();
     await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
       method: "POST",
       headers: authHeaders(token),
@@ -103,16 +77,13 @@ const sb = (() => {
   }
 
   async function refreshToken(refresh_token) {
-    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
       headers,
       body: JSON.stringify({ refresh_token }),
     });
-    const data = await parseJson(res);
-    if (!res.ok) {
-      throw new Error(data?.error_description || data?.error || "Session expired");
-    }
+    const data = await res.json();
+    if (data.error) throw new Error(data.error_description || "Session expired");
     return data;
   }
 
@@ -660,42 +631,15 @@ function saveStore(d) { try { localStorage.setItem(SK, JSON.stringify(d)); } cat
 // LOGO — Fyra flame icon + Spotr wordmark
 // ═════════════════════════════════════════════════════════════════════════════
 function SeshdLogo({ C, big = false }) {
-  const size = big ? 52 : 34;
-  const id = big ? "seshd-big" : "seshd-sm";
+  const sz = big ? 44 : 30;
   return (
-    <div style={{ display:"flex", alignItems:"center", gap: big ? 10 : 8 }}>
-      <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
-        <defs>
-          <linearGradient id={`${id}-g`} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#7c3aed"/>
-            <stop offset="100%" stopColor="#a855f7"/>
-          </linearGradient>
-        </defs>
-        {/* S-shaped speech bubble — matches the logo */}
-        {/* Upper curve of S */}
-        <path
-          d="M 62 12 C 80 12, 88 22, 88 34 C 88 46, 78 54, 62 54 L 38 54 C 28 54, 22 58, 22 66 C 22 74, 30 80, 42 80 L 72 80 L 72 88 L 38 88 C 20 88, 10 78, 10 66 C 10 54, 20 44, 38 44 L 62 44 C 72 44, 76 38, 76 34 C 76 28, 70 22, 62 22 L 28 22 L 28 12 Z"
-          fill={`url(#${id}-g)`}
-        />
-        {/* Speech bubble tail */}
-        <path
-          d="M 30 80 L 22 96 L 50 80 Z"
-          fill={`url(#${id}-g)`}
-        />
-      </svg>
-      <span style={{
-        fontSize: big ? 30 : 19,
-        fontWeight: 800,
-        letterSpacing: -0.5,
-        color: C.text,
-        lineHeight: 1,
-        fontFamily: F,
-      }}>
-        Seshd
-      </span>
+    <div style={{ display:"flex", alignItems:"center", gap: big ? 10 : 7 }}>
+      <img src="/icon-192.png" width={sz} height={sz} style={{ borderRadius: sz * 0.22, objectFit:"cover" }} alt="Seshd"/>
+      <span style={{ fontSize:big?26:17, fontWeight:800, letterSpacing:-0.5, color:C.text, lineHeight:1, fontFamily:F }}>Seshd</span>
     </div>
   );
 }
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // AVATAR
@@ -1208,7 +1152,6 @@ function PlateCalcModal({ onClose, unit, C }) {
     </div>
   );
 }
-
 // ═════════════════════════════════════════════════════════════════════════════
 // WRAPPED MODAL
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2002,16 +1945,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const elRef = useRef(null);
   const rtRef = useRef(null);
 
-  // Resync elapsed when app comes back to foreground
+  // Resync both timers when app comes back to foreground
   useEffect(() => {
     function onVisible() {
-      if (!document.hidden && wStart) {
+      if (document.hidden) return;
+      // Resync workout elapsed time
+      if (wStart) {
         setElapsed(Math.floor((Date.now() - wStart) / 1000));
       }
+      // Resync rest timer from its start timestamp
+      setRest(prev => {
+        if (!prev?.startedAt) return prev;
+        const elapsed = Math.floor((Date.now() - prev.startedAt) / 1000);
+        const remaining = Math.max(0, prev.total - elapsed);
+        if (remaining <= 0) {
+          try { toast("Rest time's up — go! 🔥", "success"); } catch {}
+          try { if (navigator.vibrate) navigator.vibrate([200,100,200,100,400]); } catch {}
+          return null;
+        }
+        return { ...prev, secs: remaining };
+      });
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [wStart]);
+
   useEffect(() => {
     if (!session) { localStorage.removeItem(SESSION_KEY); return; }
     const id = setInterval(() => {
@@ -2039,59 +1997,47 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     if (rest?.running && rest.secs > 0) {
       rtRef.current = setInterval(() => setRest(p => {
         if (!p) return null;
-        if (p.secs > 1) {
-          return { ...p, secs: p.secs - 1 };
+        // Always recalculate from startedAt if available (handles backgrounding)
+        if (p.startedAt) {
+          const elapsed = Math.floor((Date.now() - p.startedAt) / 1000);
+          const remaining = Math.max(0, p.total - elapsed);
+          if (remaining <= 0) {
+            clearInterval(rtRef.current);
+            try {
+              const Ctx = window.AudioContext || window.webkitAudioContext;
+              if (Ctx) {
+                const ac = new Ctx();
+                const now = ac.currentTime;
+                [660,880,1100].forEach((freq,i) => {
+                  const osc = ac.createOscillator(); const gain = ac.createGain();
+                  osc.type = "sine"; osc.frequency.value = freq;
+                  gain.gain.setValueAtTime(0.0001, now+i*0.18);
+                  gain.gain.exponentialRampToValueAtTime(0.7, now+i*0.18+0.01);
+                  gain.gain.exponentialRampToValueAtTime(0.0001, now+i*0.18+0.25);
+                  osc.connect(gain).connect(ac.destination);
+                  osc.start(now+i*0.18); osc.stop(now+i*0.18+0.3);
+                });
+                setTimeout(() => { try { ac.close(); } catch {} }, 1200);
+              }
+            } catch {}
+            try { if (navigator.vibrate) navigator.vibrate([200,100,200,100,400]); } catch {}
+            try { toast("Rest time's up — go! 🔥", "success"); } catch {}
+            try {
+              if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("Rest time's up 🔥", { body:"Get back to it.", icon:"/icon-192.png", tag:"rest-timer" });
+              }
+            } catch {}
+            return null;
+          }
+          return { ...p, secs: remaining };
         }
-        // Timer just hit 0 — play ping + fire notification
-        try {
-          const Ctx = window.AudioContext || window.webkitAudioContext;
-          if (Ctx) {
-            const ac = new Ctx();
-            const now = ac.currentTime;
-            // 3 ascending beeps — louder than before
-            [660, 880, 1100].forEach((freq, i) => {
-              const osc = ac.createOscillator();
-              const gain = ac.createGain();
-              osc.type = "sine";
-              osc.frequency.value = freq;
-              gain.gain.setValueAtTime(0.0001, now + i * 0.18);
-              gain.gain.exponentialRampToValueAtTime(0.7, now + i * 0.18 + 0.01);
-              gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.18 + 0.25);
-              osc.connect(gain).connect(ac.destination);
-              osc.start(now + i * 0.18);
-              osc.stop(now + i * 0.18 + 0.3);
-            });
-            setTimeout(() => { try { ac.close(); } catch {} }, 1200);
-          }
-        } catch (e) {}
-        // Vibrate (Android + some iOS)
-        try { if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]); } catch (e) {}
-        // Visual flash via toast
-        try { toast("Rest time's up — go! 🔥", "success"); } catch (e) {}
-        // Background notification
-        try {
-          if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-            new Notification("Rest time's up 🔥", {
-              body: "Get back to it.",
-              icon: "/icon-192.png",
-              tag: "rest-timer",
-            });
-          }
-        } catch (e) {}
-        return null;
+        // Fallback: count down
+        if (p.secs <= 1) return null;
+        return { ...p, secs: p.secs - 1 };
       }), 1000);
     }
     return () => clearInterval(rtRef.current);
-  }, [rest?.running]);
-
-  // Request notification permission once on mount (so it's ready when rest timer ends)
-  useEffect(() => {
-    try {
-      if ("Notification" in window && Notification.permission === "default") {
-        // Don't auto-prompt on load — we'll request when user first starts a rest timer
-      }
-    } catch (e) {}
-  }, []);
+  }, [rest?.running, rest?.startedAt]);
 
   function startWorkout(day, progId) {
     const exs = day
@@ -2123,7 +2069,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       const ex = p.exercises[ei];
       const set = ex?.sets[si];
       const restSecs = set?.restTime || store.defaultRestTime || 120;
-      setRest({ secs: restSecs, total: restSecs, running: true });
+      setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now() });
       return p;
     });
     // Request notification permission on first rest timer (user gesture required)
@@ -2311,7 +2257,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <div style={{ padding:"10px 14px", display:"flex", alignItems:"center", gap:8 }}>
               <div style={{ display:"flex", gap:4, flex:1, flexWrap:"nowrap", overflow:"hidden" }}>
                 {[30,60,90,120,180,240].map(s => (
-                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true})} style={{
+                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true,startedAt:Date.now()})} style={{
                     fontSize:10, padding:"4px 7px",
                     background:rest.total===s?C.accent:"transparent",
                     border:`1px solid ${rest.total===s?C.accent:C.border}`,
@@ -2371,7 +2317,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     />
                     <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
-                      <button onClick={() => { const s=set.restTime||store.defaultRestTime||120; setRest({secs:s,total:s,running:true}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
+                      <button onClick={() => { const s=set.restTime||store.defaultRestTime||120; setRest({secs:s,total:s,running:true,startedAt:Date.now()}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
                         {fmtTime(set.restTime||store.defaultRestTime||120)}
                       </button>
                       <button onClick={() => { const opts=[30,60,90,120,150,180,240,300]; const cur=set.restTime||store.defaultRestTime||120; updateSet(ei,si,{restTime:opts[(opts.indexOf(cur)+1)%opts.length]}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 4px", fontSize:10, color:C.muted, fontFamily:F }}>edit</button>
@@ -5510,22 +5456,6 @@ export default function App() {
   const C = THEMES[(store.theme || "light")];
   const unit = store.unit || "lbs";
 
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    return (
-      <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, padding: 24, textAlign: "center" }}>
-        <div>
-          <SeshdLogo C={C} big />
-          <div style={{ marginTop: 20, color: C.sub, maxWidth: 520, fontSize: 13, lineHeight: 1.6 }}>
-            Missing Supabase configuration.
-            <div style={{ marginTop: 10 }}>
-              Set <code style={{ background: C.divider, padding: "2px 6px", borderRadius: 6 }}>VITE_SUPABASE_URL</code> and <code style={{ background: C.divider, padding: "2px 6px", borderRadius: 6 }}>VITE_SUPABASE_ANON_KEY</code> in your environment and restart the app.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
     return (
@@ -5978,6 +5908,8 @@ export default function App() {
             </div>
           );
         })()}
+          </div>
+        )}
 
         {tab === "discover" && (
           <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}/>
