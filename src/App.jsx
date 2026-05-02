@@ -5472,6 +5472,14 @@ export default function App() {
   }
 
   // ── Show loading while fetching data ─────────────────────────
+  // Track when activity tab was last viewed — MUST be before any early returns (hooks rule)
+  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("seshd_last_activity") || "0"));
+  function markActivitySeen() {
+    const now = Date.now();
+    lastSeenActivityRef.current = now;
+    localStorage.setItem("seshd_last_activity", String(now));
+  }
+
   if (!dbReady) {
     return (
       <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
@@ -5554,14 +5562,6 @@ export default function App() {
         await sb.query("follows", { method:"POST", body: JSON.stringify({ follower_id: currentUserId, following_id: userId }) }, tok);
       }
     } catch (e) { console.error("follow error:", e); }
-  }
-
-  // Track when activity tab was last viewed
-  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("seshd_last_activity") || "0"));
-  function markActivitySeen() {
-    const now = Date.now();
-    lastSeenActivityRef.current = now;
-    localStorage.setItem("seshd_last_activity", String(now));
   }
 
   const notifCount = (store.posts || [])
