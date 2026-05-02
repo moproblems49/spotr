@@ -2201,10 +2201,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       });
       setShowWorkoutSummary(true);
 
-      // Fire-and-forget saves (don't block UI)
-      if (share) {
-        onShareWorkout(null); // will be called from summary modal "Share" button
-      }
+      // Fire-and-forget DB save (don't block UI)
       onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name), duration: elapsed, unit, note: "", prs: newPRs });
 
       toast(share ? "Workout posted! 🔥" : "Workout saved! 💪", "success");
@@ -5456,6 +5453,14 @@ export default function App() {
   const C = THEMES[(store.theme || "light")];
   const unit = store.unit || "lbs";
 
+  // HOOKS — must be before any early returns (React rules of hooks)
+  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("seshd_last_activity") || "0"));
+  function markActivitySeen() {
+    const now = Date.now();
+    lastSeenActivityRef.current = now;
+    localStorage.setItem("seshd_last_activity", String(now));
+  }
+
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
     return (
@@ -5469,15 +5474,6 @@ export default function App() {
   // ── Show auth screen if not logged in ─────────────────────────
   if (!session || !currentUserId) {
     return <AuthScreen onAuth={handleAuth} C={C}/>;
-  }
-
-  // ── Show loading while fetching data ─────────────────────────
-  // Track when activity tab was last viewed — MUST be before any early returns (hooks rule)
-  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("seshd_last_activity") || "0"));
-  function markActivitySeen() {
-    const now = Date.now();
-    lastSeenActivityRef.current = now;
-    localStorage.setItem("seshd_last_activity", String(now));
   }
 
   if (!dbReady) {
