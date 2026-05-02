@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 // ═════════════════════════════════════════════════════════════════════════════
 // SUPABASE CLIENT
 // ═════════════════════════════════════════════════════════════════════════════
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL=https://your-project.supabase.co
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Lightweight Supabase client — no npm package needed
