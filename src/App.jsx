@@ -12,6 +12,7 @@ const sb = (() => {
     "apikey": SUPABASE_KEY,
     "Authorization": `Bearer ${SUPABASE_KEY}`,
     "Content-Type": "application/json",
+    "Accept": "application/json",
     "Prefer": "return=representation",
   };
 
@@ -20,31 +21,52 @@ const sb = (() => {
     return { ...headers, "Authorization": `Bearer ${token}` };
   }
 
+  function ensureSupabaseConfig() {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      throw new Error("Missing Supabase configuration. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+    }
+  }
+
+  async function parseJson(res) {
+    const text = await res.text();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error(`Invalid JSON response from ${res.url}: ${text.slice(0, 200)}`);
+    }
+  }
+
   async function query(path, opts = {}, token = null) {
+    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       headers: authHeaders(token),
       ...opts,
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || res.statusText);
+      const err = await parseJson(res).catch(() => ({}));
+      throw new Error(err?.message || err?.error_description || res.statusText || `Request failed: ${res.status}`);
     }
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
+    return parseJson(res);
   }
 
   async function rpc(fn, params = {}, token = null) {
+    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: authHeaders(token),
       body: JSON.stringify(params),
     });
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
+    if (!res.ok) {
+      const err = await parseJson(res).catch(() => ({}));
+      throw new Error(err?.message || err?.error_description || res.statusText || `RPC failed: ${res.status}`);
+    }
+    return parseJson(res);
   }
 
   // Auth helpers
   async function signUp(email, password, username, name) {
+    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
       method: "POST",
       headers,
@@ -53,23 +75,27 @@ const sb = (() => {
         data: { username, name }
       }),
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message || data.msg || "Signup failed");
+    const data = await parseJson(res);
+    if (data?.error) throw new Error(data.error.message || data.msg || "Signup failed");
     return data;
   }
 
   async function signIn(email, password) {
+    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers,
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
-    if (data.error || data.error_description) throw new Error(data.error_description || data.error || "Sign in failed");
-    return data; // { access_token, refresh_token, user }
+    const data = await parseJson(res);
+    if (!res.ok) {
+      throw new Error(data?.error_description || data?.error || data?.message || "Sign in failed");
+    }
+    return data;
   }
 
   async function signOut(token) {
+    ensureSupabaseConfig();
     await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
       method: "POST",
       headers: authHeaders(token),
@@ -77,13 +103,16 @@ const sb = (() => {
   }
 
   async function refreshToken(refresh_token) {
+    ensureSupabaseConfig();
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
       headers,
       body: JSON.stringify({ refresh_token }),
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error_description || "Session expired");
+    const data = await parseJson(res);
+    if (!res.ok) {
+      throw new Error(data?.error_description || data?.error || "Session expired");
+    }
     return data;
   }
 
@@ -5480,6 +5509,22 @@ export default function App() {
   // C needs to be available for loading screens
   const C = THEMES[(store.theme || "light")];
   const unit = store.unit || "lbs";
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    return (
+      <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, padding: 24, textAlign: "center" }}>
+        <div>
+          <SeshdLogo C={C} big />
+          <div style={{ marginTop: 20, color: C.sub, maxWidth: 520, fontSize: 13, lineHeight: 1.6 }}>
+            Missing Supabase configuration.
+            <div style={{ marginTop: 10 }}>
+              Set <code style={{ background: C.divider, padding: "2px 6px", borderRadius: 6 }}>VITE_SUPABASE_URL</code> and <code style={{ background: C.divider, padding: "2px 6px", borderRadius: 6 }}>VITE_SUPABASE_ANON_KEY</code> in your environment and restart the app.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
