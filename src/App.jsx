@@ -5904,8 +5904,6 @@ export default function App() {
             </div>
           );
         })()}
-          </div>
-        )}
 
         {tab === "discover" && (
           <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}/>
