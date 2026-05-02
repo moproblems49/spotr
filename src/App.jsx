@@ -703,35 +703,89 @@ function StreakBadge({ streak, size = "sm" }) {
 // HEATMAP
 // ═════════════════════════════════════════════════════════════════════════════
 function Heatmap({ workoutDates, C }) {
-  const weeks = 16;
+  const weeks = 26; // 6 months
   const today = new Date(); today.setHours(0,0,0,0);
   const allDays = [];
   for (let i = weeks*7 - 1; i >= 0; i--) {
     const d = new Date(today); d.setDate(d.getDate()-i);
-    allDays.push({ k: dKey(d), active: !!(workoutDates||{})[dKey(d)] });
+    allDays.push({ k: dKey(d), date: d, active: !!(workoutDates||{})[dKey(d)] });
   }
   const cols = []; let col = [];
   allDays.forEach(d => { col.push(d); if (col.length === 7) { cols.push(col); col = []; } });
   if (col.length) cols.push(col);
 
+  const totalWorkouts = Object.keys(workoutDates||{}).length;
+  const thisMonth = allDays.filter(d => {
+    const now = new Date();
+    return d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear() && d.active;
+  }).length;
+  const streak = calcStreak(workoutDates||{});
+
+  // Month labels
+  const monthLabels = [];
+  cols.forEach((col, ci) => {
+    const firstDay = col[0]?.date;
+    if (firstDay && firstDay.getDate() <= 7) {
+      monthLabels.push({ ci, label: firstDay.toLocaleDateString("en",{month:"short"}) });
+    }
+  });
+
   return (
-    <div style={{ padding:"16px 0" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
-        <div style={{ fontSize:13, fontWeight:600, color:C.text }}>Consistency</div>
-        <div style={{ fontSize:12, color:C.sub }}>{Object.keys(workoutDates||{}).length} workouts</div>
-      </div>
-      <div style={{ display:"flex", gap:3, overflowX:"auto", paddingBottom:4 }}>
-        {cols.map((col, ci) => (
-          <div key={ci} style={{ display:"flex", flexDirection:"column", gap:3 }}>
-            {col.map((d, di) => (
-              <div key={di} style={{
-                width:12, height:12, borderRadius:2,
-                background: d.active ? C.accent : C.border,
-                opacity: d.active ? 1 : 0.4
-              }}/>
-            ))}
+    <div style={{ padding:"16px 0 8px" }}>
+      {/* Stats strip */}
+      <div style={{ display:"flex", gap:0, marginBottom:14 }}>
+        {[
+          ["Total", totalWorkouts, "sessions"],
+          ["This Month", thisMonth, "sessions"],
+          ["Streak", streak, "days"],
+        ].map(([label, val, unit2], i) => (
+          <div key={label} style={{
+            flex:1, textAlign:"center",
+            borderRight: i < 2 ? `1px solid ${C.divider}` : "none"
+          }}>
+            <div style={{ fontSize:22, fontWeight:800, color:C.accent, fontFamily:MONO }}>{val}</div>
+            <div style={{ fontSize:10, color:C.sub, fontWeight:600, letterSpacing:0.5 }}>{label.toUpperCase()}</div>
           </div>
         ))}
+      </div>
+
+      {/* Heatmap grid */}
+      <div style={{ overflowX:"auto", paddingBottom:4 }}>
+        {/* Month labels */}
+        <div style={{ display:"flex", gap:3, marginBottom:2, paddingLeft:0 }}>
+          {cols.map((col, ci) => {
+            const ml = monthLabels.find(m => m.ci === ci);
+            return (
+              <div key={ci} style={{ width:12, fontSize:8, color:C.muted, textAlign:"center", flexShrink:0 }}>
+                {ml ? ml.label : ""}
+              </div>
+            );
+          })}
+        </div>
+        {/* Day rows (Mon/Wed/Fri labels) */}
+        <div style={{ display:"flex", gap:3 }}>
+          {cols.map((col, ci) => (
+            <div key={ci} style={{ display:"flex", flexDirection:"column", gap:3, flexShrink:0 }}>
+              {col.map((d, di) => (
+                <div key={di} title={d.k} style={{
+                  width:12, height:12, borderRadius:3,
+                  background: d.active
+                    ? C.accent
+                    : C.divider,
+                  opacity: d.active ? 1 : 0.5,
+                  transition:"opacity 0.2s",
+                }}/>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display:"flex", justifyContent:"flex-end", alignItems:"center", gap:4, marginTop:6 }}>
+        <span style={{ fontSize:9, color:C.muted }}>Less</span>
+        {[0.2, 0.45, 0.7, 1].map(op => (
+          <div key={op} style={{ width:10, height:10, borderRadius:2, background:C.accent, opacity:op }}/>
+        ))}
+        <span style={{ fontSize:9, color:C.muted }}>More</span>
       </div>
     </div>
   );
@@ -2701,40 +2755,118 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {subTab === "history" && (
-        <div style={{ padding:"6px 14px" }}>
-          <Heatmap workoutDates={store.workoutDates} C={C}/>
-          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
-            WORKOUT HISTORY
+        <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
+          <div style={{ padding:"12px 14px 0" }}>
+            <Heatmap workoutDates={store.workoutDates} C={C}/>
           </div>
-          {!Object.keys(store.history || {}).length && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No workouts yet.</div>
-          )}
-          {Object.entries(store.history || {}).sort(([a], [b]) => b.localeCompare(a)).map(([date, sessions]) => (
-            <div key={date} style={{ marginBottom:14 }}>
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, marginBottom:6 }}>{date}</div>
-              {Object.values(sessions).map((sess, i) => {
-                const done = sess.exercises?.reduce((a, ex) => a + (ex.sets?.filter(s => s.done).length || 0), 0) || 0;
-                return (
-                  <div key={i} style={{
-                    background:"none", border:`1px solid ${C.border}`,
-                    borderRadius:10, padding:"11px 14px", marginBottom:6
-                  }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                      <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{sess.dayName}</div>
-                      <div style={{ fontSize:11, color:C.sub }}>{fmtTime(sess.duration)} · {done} sets</div>
+
+          {/* Volume chart - last 8 weeks */}
+          {(() => {
+            const weeks = 8;
+            const today = new Date(); today.setHours(0,0,0,0);
+            const weekData = [];
+            for (let w = weeks-1; w >= 0; w--) {
+              const wStart = new Date(today); wStart.setDate(wStart.getDate() - w*7 - today.getDay());
+              const wEnd = new Date(wStart); wEnd.setDate(wEnd.getDate() + 6);
+              let vol = 0; let sessions = 0;
+              Object.entries(store.history||{}).forEach(([date, sess]) => {
+                const d = new Date(date);
+                if (d >= wStart && d <= wEnd) {
+                  Object.values(sess).forEach(s => {
+                    sessions++;
+                    (s.exercises||[]).forEach(ex => {
+                      (ex.sets||[]).filter(set => set.done).forEach(set => {
+                        vol += (parseFloat(set.weight)||0) * (parseFloat(set.reps)||0);
+                      });
+                    });
+                  });
+                }
+              });
+              weekData.push({ label: wStart.toLocaleDateString("en",{month:"short",day:"numeric"}), vol: Math.round(vol), sessions });
+            }
+            const maxVol = Math.max(...weekData.map(w => w.vol), 1);
+            return weekData.some(w => w.vol > 0) ? (
+              <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})</div>
+                <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80 }}>
+                  {weekData.map((w, i) => (
+                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+                      <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
+                      <div style={{
+                        width:"100%", borderRadius:"3px 3px 0 0",
+                        background: i === weeks-1 ? C.accent : `${C.accent}66`,
+                        height: Math.max(4, (w.vol/maxVol)*64),
+                        transition:"height 0.3s"
+                      }}/>
+                      <div style={{ fontSize:7, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
                     </div>
-                    <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                      {sess.exercises?.filter(e => e.name).map((ex, j) => (
-                        <span key={j} style={{ fontSize:11, color:C.sub }}>
-                          {ex.name}{j < sess.exercises.length - 1 ? " ·" : ""}
-                        </span>
-                      ))}
+                  ))}
+                </div>
+              </div>
+            ) : null;
+          })()}
+
+          {/* PRs strip */}
+          {Object.keys(store.prs||{}).length > 0 && (
+            <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
+              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>PERSONAL RECORDS</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:0, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i, arr) => (
+                  <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", borderBottom:i<arr.length-1?`1px solid ${C.divider}`:"none" }}>
+                    <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{name}</div>
+                    <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>
+                      {cvt(weight,"lbs",store.unit||"lbs")} {store.unit||"lbs"}
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* Workout list */}
+          <div style={{ padding:"14px 14px 0" }}>
+            <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
+            {!Object.keys(store.history || {}).length && (
+              <div style={{ textAlign:"center", color:C.sub, padding:"40px 0", fontSize:13 }}>
+                <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+                No workouts logged yet
+              </div>
+            )}
+            {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => (
+              <div key={date} style={{ marginBottom:16 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
+                  {new Date(date).toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
+                </div>
+                {Object.values(sessions).map((sess, i) => {
+                  const done = sess.exercises?.reduce((a,ex) => a+(ex.sets?.filter(s=>s.done).length||0),0)||0;
+                  const vol = sess.exercises?.reduce((a,ex) => a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0)||0;
+                  const prExercises = sess.exercises?.filter(ex => {
+                    if (!ex.name) return false;
+                    const maxW = Math.max(0,...(ex.sets||[]).filter(s=>s.done&&s.weight).map(s=>parseFloat(s.weight)||0));
+                    return maxW > 0 && (store.prs||{})[ex.name] && maxW >= (store.prs[ex.name] * (sess.unit==="kg"?2.205:1) * 0.98);
+                  }) || [];
+                  return (
+                    <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
+                        </div>
+                        {prExercises.length > 0 && (
+                          <div style={{ background:"linear-gradient(135deg,#ca8a04,#dc2626)", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700, color:"#fff" }}>🏆 PR</div>
+                        )}
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                        {sess.exercises?.filter(e=>e.name).map((ex,j) => (
+                          <span key={j} style={{ fontSize:11, background:C.divider, color:C.sub, borderRadius:6, padding:"3px 8px" }}>{ex.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -4213,12 +4345,23 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
 // ═════════════════════════════════════════════════════════════════════════════
 function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow }) {
   const [q, setQ] = useState("");
-  const [subTab, setSubTab] = useState("discover"); // "discover" | "groups" | "challenges"
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [subTab, setSubTab] = useState("discover");
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
-  const others = store.users.filter(u =>
-    u.id !== currentUserId && (!q || u.name.toLowerCase().includes(q.toLowerCase()) || u.username.toLowerCase().includes(q.toLowerCase()))
-  );
+
+  const userResults = q.length >= 1
+    ? store.users.filter(u => u.id !== currentUserId && (
+        u.name?.toLowerCase().includes(q.toLowerCase()) ||
+        u.username?.toLowerCase().includes(q.toLowerCase())
+      )).slice(0, 8)
+    : [];
+
+  const exerciseResults = q.length >= 2
+    ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 6)
+    : [];
+
+  const showResults = q.length >= 1 && (userResults.length > 0 || exerciseResults.length > 0);
 
   function toggleFollow(uid2) {
     if (onFollow) { onFollow(uid2); return; }
@@ -4242,18 +4385,76 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
 
   return (
     <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
-      <div style={{ padding:"10px 14px 6px", position:"relative" }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:26, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
-          <circle cx="11" cy="11" r="7"/>
-          <line x1="21" y1="21" x2="16.5" y2="16.5"/>
+      {/* Search bar */}
+      <div style={{ padding:"10px 14px", position:"relative" }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:26, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
+          <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
         </svg>
         <input
-          value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Search"
-          style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"10px 14px 10px 36px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+          placeholder="Search people, exercises..."
+          style={{ width:"100%", background:C.divider, border:"none", borderRadius:12, padding:"11px 14px 11px 36px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}
         />
+        {q.length > 0 && (
+          <button onClick={() => setQ("")} style={{ position:"absolute", right:26, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:4 }}>×</button>
+        )}
       </div>
-      <div style={{ padding:"6px 14px" }}>
+
+      {/* Search results */}
+      {showResults && (
+        <div style={{ marginBottom:8 }}>
+          {userResults.length > 0 && (
+            <>
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"4px 14px 8px" }}>PEOPLE</div>
+              {userResults.map(u => {
+                const amFollowing = following.includes(u.id);
+                return (
+                  <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                    <div onClick={() => onUserClick && onUserClick(u.id)} style={{ display:"flex", alignItems:"center", gap:12, flex:1, cursor:"pointer" }}>
+                      <Avatar user={u} size={42} C={C}/>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+                        <div style={{ fontSize:12, color:C.sub }}>{u.name} · {u.followers?.length||0} followers</div>
+                      </div>
+                    </div>
+                    <button onClick={() => onFollow && onFollow(u.id)} style={{
+                      padding:"6px 14px", borderRadius:8, fontSize:12, fontWeight:600, flexShrink:0,
+                      background: amFollowing ? "transparent" : C.accent,
+                      color: amFollowing ? C.text : "#fff",
+                      border: `1px solid ${amFollowing ? C.border : C.accent}`,
+                      cursor:"pointer", fontFamily:F
+                    }}>{amFollowing ? "Following" : "Follow"}</button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+          {exerciseResults.length > 0 && (
+            <>
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"12px 14px 8px" }}>EXERCISES</div>
+              {exerciseResults.map(ex => (
+                <div key={ex.name} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, cursor:"pointer" }}
+                  onClick={() => { /* Could open ExerciseDetail here */ }}>
+                  <MuscleIcon muscle={ex.muscle||""} size={36} C={C}/>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
+                    <div style={{ fontSize:12, color:C.sub }}>{ex.muscle}</div>
+                  </div>
+                  {(store.prs||{})[ex.name] && (
+                    <div style={{ marginLeft:"auto", fontSize:11, color:C.gold, fontWeight:600, fontFamily:MONO }}>PR {store.prs[ex.name]} {store.unit||"lbs"}</div>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Default discover view */}
+      {!showResults && (
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
           <button onClick={() => setSubTab("challenges")} style={{
             background:"linear-gradient(135deg,#059669,#047857)",
@@ -4298,19 +4499,19 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           </div>
         )}
 
-        <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>SUGGESTED</div>
-        {others.map(u => {
+        <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>SUGGESTED PEOPLE</div>
+        {store.users.filter(u => u.id !== currentUserId && (!q || u.name?.toLowerCase().includes(q.toLowerCase()) || u.username?.toLowerCase().includes(q.toLowerCase()))).map(u => {
           const isF = following.includes(u.id);
           return (
-            <div key={u.id} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0" }}>
+            <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
               <Avatar user={u} size={44} C={C} onClick={() => onUserClick(u.id)}/>
               <div style={{ flex:1, cursor:"pointer" }} onClick={() => onUserClick(u.id)}>
                 <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
-                <div style={{ fontSize:12, color:C.sub }}>{u.name} · {u.bio}</div>
+                <div style={{ fontSize:12, color:C.sub }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
               </div>
               <button onClick={() => toggleFollow(u.id)} style={{
                 padding:"6px 16px", background:isF?"transparent":C.accent,
-                border:`1px solid ${isF?C.border:C.accent}`, borderRadius:6,
+                border:`1px solid ${isF?C.border:C.accent}`, borderRadius:8,
                 fontSize:12, fontWeight:600, color:isF?C.text:"#fff",
                 cursor:"pointer", flexShrink:0, fontFamily:F
               }}>{isF?"Following":"Follow"}</button>
@@ -4318,6 +4519,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -4668,30 +4870,46 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
         const targetUser = store.users.find(u => u.id === userId);
         const idList = listModal === "followers" ? (targetUser?.followers || []) : (targetUser?.following || []);
         const listUsers = idList.map(id => store.users.find(u => u.id === id)).filter(Boolean);
+        const myFollowing = me?.following || [];
         return (
           <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"80vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-                <div style={{ width:60 }}/>
-                <div style={{ fontSize:15, fontWeight:600, color:C.text, textTransform:"capitalize" }}>{listModal}</div>
-                <button onClick={() => setListModal(null)} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, width:60 }}>Close</button>
+            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", boxShadow:"0 -8px 40px rgba(0,0,0,0.2)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ width:44 }}/>
+                <div style={{ fontSize:16, fontWeight:700, color:C.text, textTransform:"capitalize" }}>{listModal} · {listUsers.length}</div>
+                <button onClick={() => setListModal(null)} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
               </div>
-              <div style={{ overflowY:"auto", flex:1, padding:"6px 14px 14px" }}>
+              <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
                 {listUsers.length === 0 && (
-                  <div style={{ textAlign:"center", color:C.sub, padding:"40px 0", fontSize:13 }}>No {listModal} yet.</div>
-                )}
-                {listUsers.map(u => (
-                  <div key={u.id} onClick={() => {
-                    setListModal(null);
-                    if (onUserClick) onUserClick(u.id);
-                  }} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0", borderBottom:`1px solid ${C.divider}`, cursor:"pointer" }}>
-                    <Avatar user={u} size={42} C={C}/>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
-                      <div style={{ fontSize:12, color:C.sub }}>{u.name}</div>
-                    </div>
+                  <div style={{ textAlign:"center", color:C.sub, padding:"50px 20px", fontSize:13 }}>
+                    <div style={{ fontSize:36, marginBottom:10 }}>👤</div>
+                    No {listModal} yet
                   </div>
-                ))}
+                )}
+                {listUsers.map(u => {
+                  const amFollowing = myFollowing.includes(u.id);
+                  const isMyself = u.id === currentUserId;
+                  return (
+                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}` }}>
+                      <div onClick={() => { setListModal(null); if (onUserClick) onUserClick(u.id); }} style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
+                        <Avatar user={u} size={44} C={C}/>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+                          <div style={{ fontSize:12, color:C.sub }}>{u.name}</div>
+                        </div>
+                      </div>
+                      {!isMyself && (
+                        <button onClick={() => onFollow && onFollow(u.id)} style={{
+                          padding:"7px 16px", borderRadius:8, fontSize:12, fontWeight:600,
+                          background: amFollowing ? "transparent" : C.accent,
+                          color: amFollowing ? C.text : "#fff",
+                          border: `1px solid ${amFollowing ? C.border : C.accent}`,
+                          cursor:"pointer", fontFamily:F, flexShrink:0
+                        }}>{amFollowing ? "Following" : "Follow"}</button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -4704,21 +4922,19 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 // ═════════════════════════════════════════════════════════════════════════════
 // NEW POST MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function NewPostModal({ C, onClose, onPost, initialKind = "photo" }) {
+function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkouts = [] }) {
   const [postKind, setPostKind] = useState(initialKind);
   const [caption, setCaption] = useState("");
   const [img, setImg] = useState(null);
-  const [isFC, setIsFC] = useState(false);
   const [loc, setLoc] = useState("");
   const [runDist, setRunDist] = useState("");
   const [runDistUnit, setRunDistUnit] = useState("mi");
   const [runHrs, setRunHrs] = useState("");
   const [runMins, setRunMins] = useState("");
   const [runSecs, setRunSecs] = useState("");
-  const [runRoute, setRunRoute] = useState("");
-  const [yogaMins, setYogaMins] = useState("");
-  const [yogaType, setYogaType] = useState("vinyasa");
+  const [selectedWorkout, setSelectedWorkout] = useState(null);
   const fileRef = useRef(null);
+  const MAX_CAPTION = 280;
 
   function handleFile(f) {
     if (!f) return;
@@ -4739,151 +4955,186 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo" }) {
   function canShare() {
     if (postKind === "story") return !!(caption || img);
     if (postKind === "photo") return !!(caption || img);
+    if (postKind === "workout") return !!selectedWorkout;
     if (postKind === "run") return !!(runDist && (runMins || runHrs));
-    if (postKind === "yoga") return !!yogaMins;
     return false;
   }
 
   function handleShare() {
     if (!canShare()) return;
-    if (postKind === "photo") {
-      onPost({ type: "story", caption, imageData: img });
+    if (postKind === "story") {
+      onPost({ type:"story", caption, imageData:img });
     } else if (postKind === "photo") {
-      onPost({ type: isFC ? "form_check" : "photo", caption, imageData: img, location: loc });
+      onPost({ type:"photo", caption, imageData:img, location:loc });
+    } else if (postKind === "workout") {
+      onPost({ type:"workout", caption: caption || `Just crushed ${selectedWorkout.dayName} 💪`,
+        unit: selectedWorkout.unit || "lbs",
+        workout: {
+          name: selectedWorkout.dayName,
+          duration: selectedWorkout.duration,
+          volume: Math.round(selectedWorkout.exercises?.reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0)||0),
+          exercises: (selectedWorkout.exercises||[]).filter(e=>e.name).map(ex=>({
+            name:ex.name,
+            sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0}))
+          }))
+        }
+      });
     } else if (postKind === "run") {
       const totalMins = (parseInt(runHrs)||0)*60 + (parseInt(runMins)||0) + (parseInt(runSecs)||0)/60;
-      onPost({ type: "run", caption, location: loc || runRoute, run: {
-        distance: parseFloat(runDist), distUnit: runDistUnit,
-        durationMins: Math.round(totalMins), pace: calcPace(), route: runRoute
+      onPost({ type:"run", caption, location:loc, run:{
+        distance:parseFloat(runDist), distUnit:runDistUnit,
+        durationMins:Math.round(totalMins), pace:calcPace()
       }});
-    } else if (postKind === "yoga") {
-      onPost({ type: "yoga", caption, yoga: { durationMins: parseInt(yogaMins), style: yogaType }});
     }
     onClose();
   }
 
   const kinds = [
-    { id:"story", label:"⚡ Story" },
-    { id:"photo", label:"📸 Photo" },
-    { id:"run", label:"🏃 Run" },
-    { id:"yoga", label:"🧘 Yoga" },
+    { id:"photo", label:"📸", full:"Photo" },
+    { id:"story", label:"⚡", full:"Story" },
+    { id:"workout", label:"💪", full:"Workout" },
+    { id:"run", label:"🏃", full:"Run" },
   ];
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"92dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-          <button onClick={onClose} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
-          <div style={{ fontSize:15, fontWeight:600, color:C.text }}>New Post</div>
-          <button onClick={handleShare} style={{ fontSize:14, fontWeight:600, color: canShare() ? C.accent : C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Share</button>
+      <div style={{ background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"92dvh", display:"flex", flexDirection:"column" }}>
+        {/* Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px" }}>
+          <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+          <div style={{ fontSize:16, fontWeight:700, color:C.text }}>New Post</div>
+          <button onClick={handleShare} style={{
+            fontSize:14, fontWeight:700, color:"#fff",
+            background: canShare() ? C.accent : C.divider,
+            border:"none", borderRadius:20, padding:"6px 16px", cursor:canShare()?"pointer":"default", fontFamily:F
+          }}>Share</button>
         </div>
 
-        {/* Kind selector tabs */}
-        <div style={{ display:"flex", gap:6, padding:"10px 14px", borderBottom:`1px solid ${C.divider}` }}>
+        {/* Kind tabs */}
+        <div style={{ display:"flex", padding:"0 14px 12px", gap:6 }}>
           {kinds.map(k => (
             <button key={k.id} onClick={() => setPostKind(k.id)} style={{
-              padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600,
+              flex:1, padding:"8px 4px", borderRadius:10, fontSize:11, fontWeight:700,
               background: postKind === k.id ? C.accent : C.divider,
               color: postKind === k.id ? "#fff" : C.sub,
-              border:"none", cursor:"pointer", fontFamily:F
-            }}>{k.label}</button>
+              border:"none", cursor:"pointer", fontFamily:F,
+              display:"flex", flexDirection:"column", alignItems:"center", gap:2
+            }}>
+              <span style={{ fontSize:18 }}>{k.label}</span>
+              <span>{k.full}</span>
+            </button>
           ))}
         </div>
 
-        <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
-          {(postKind === "story" || postKind === "photo") && (<>
-            <div onClick={() => fileRef.current?.click()} style={{
-              border:`1.5px dashed ${C.border}`, borderRadius:10, minHeight:150,
-              display:"flex", alignItems:"center", justifyContent:"center",
-              flexDirection:"column", gap:8, cursor:"pointer", marginBottom:12, overflow:"hidden"
-            }}>
-              {img
-                ? <img src={img} alt="" style={{ width:"100%", maxHeight:270, objectFit:"cover" }}/>
-                : <><span style={{ fontSize:28 }}>{postKind === "story" ? "⚡" : "📸"}</span><span style={{ fontSize:13, color:C.sub }}>{postKind === "story" ? "Tap to add story photo" : "Tap to add photo or video"}</span></>
-              }
-            </div>
-            <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display:"none" }} onChange={e => handleFile(e.target.files[0])}/>
-            {postKind === "photo" && (
-              <button onClick={() => setIsFC(!isFC)} style={{
-                marginBottom:10, padding:"6px 12px",
-                background:isFC?C.accent:"transparent", color:isFC?"#fff":C.sub,
-                border:`1px solid ${isFC?C.accent:C.border}`, borderRadius:20,
-                fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-              }}>🎥 Form Check</button>
-            )}
-            {postKind === "photo" && (
-              <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Add location"
-                style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
-            )}
-            <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="Write a caption..." rows={3}
-              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
-          </>)}
+        <div style={{ overflowY:"auto", flex:1, padding:"0 14px 20px" }}>
+          {/* Photo / Story */}
+          {(postKind === "photo" || postKind === "story") && (
+            <>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e => handleFile(e.target.files[0])}/>
+              <div onClick={() => fileRef.current?.click()} style={{
+                border:`1.5px dashed ${C.border}`, borderRadius:14, minHeight:160,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                flexDirection:"column", gap:8, cursor:"pointer", marginBottom:12, overflow:"hidden", position:"relative"
+              }}>
+                {img
+                  ? <>
+                      <img src={img} alt="" style={{ width:"100%", maxHeight:260, objectFit:"cover" }}/>
+                      <button onClick={e => { e.stopPropagation(); setImg(null); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:26, height:26, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+                    </>
+                  : <>
+                      <span style={{ fontSize:32 }}>{postKind==="story"?"⚡":"📸"}</span>
+                      <span style={{ fontSize:13, color:C.sub }}>Tap to add {postKind==="story"?"story photo":"photo"}</span>
+                    </>
+                }
+              </div>
+              {postKind === "photo" && (
+                <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Location (optional)"
+                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"11px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
+              )}
+              <div style={{ position:"relative" }}>
+                <textarea value={caption} onChange={e => setCaption(e.target.value.slice(0,MAX_CAPTION))} placeholder="Write a caption..." rows={3}
+                  style={{ width:"100%", background:C.divider, border:`1px solid ${caption.length > MAX_CAPTION * 0.9 ? C.gold : "transparent"}`, borderRadius:12, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+                <div style={{ textAlign:"right", fontSize:10, color:caption.length > MAX_CAPTION * 0.9 ? C.gold : C.muted, marginTop:4 }}>{caption.length}/{MAX_CAPTION}</div>
+              </div>
+            </>
+          )}
 
-          {postKind === "run" && (<>
-            <div style={{ fontSize:13, fontWeight:600, color:C.sub, letterSpacing:0.5, marginBottom:12 }}>RUN DETAILS</div>
-            {/* Distance */}
-            <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, color:C.sub, marginBottom:4 }}>Distance</div>
-                <input value={runDist} onChange={e => setRunDist(e.target.value)} placeholder="0.0" type="number" inputMode="decimal"
-                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 12px", fontSize:16, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+          {/* Workout share */}
+          {postKind === "workout" && (
+            <>
+              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>SELECT WORKOUT TO SHARE</div>
+              {recentWorkouts.length === 0 ? (
+                <div style={{ textAlign:"center", color:C.sub, padding:"30px 0", fontSize:13 }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>💪</div>
+                  Complete a workout first
+                </div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+                  {recentWorkouts.map((w, i) => {
+                    const vol = (w.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+                    const done = (w.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);
+                    const isSelected = selectedWorkout === w;
+                    return (
+                      <div key={i} onClick={() => setSelectedWorkout(isSelected ? null : w)} style={{
+                        border:`2px solid ${isSelected ? C.accent : C.border}`,
+                        borderRadius:12, padding:"12px 14px", cursor:"pointer",
+                        background: isSelected ? `${C.accent}12` : C.surface
+                      }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{w.dayName}</div>
+                          {isSelected && <div style={{ color:C.accent, fontSize:18 }}>✓</div>}
+                        </div>
+                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ position:"relative" }}>
+                <textarea value={caption} onChange={e => setCaption(e.target.value.slice(0,MAX_CAPTION))} placeholder="Add a caption... (optional)" rows={2}
+                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:12, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+                <div style={{ textAlign:"right", fontSize:10, color:C.muted, marginTop:4 }}>{caption.length}/{MAX_CAPTION}</div>
               </div>
-              <div style={{ flexShrink:0, marginTop:18 }}>
-                <button onClick={() => setRunDistUnit(u => u === "mi" ? "km" : "mi")} style={{
-                  background:C.divider, border:"none", borderRadius:8, padding:"11px 14px",
-                  fontSize:13, fontWeight:700, color:C.accent, cursor:"pointer", fontFamily:F
-                }}>{runDistUnit}</button>
-              </div>
-            </div>
-            {/* Time */}
-            <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, color:C.sub, marginBottom:4 }}>Time (h : m : s)</div>
-              <div style={{ display:"flex", gap:6 }}>
-                {[["Hours", runHrs, setRunHrs], ["Mins", runMins, setRunMins], ["Secs", runSecs, setRunSecs]].map(([label, val, set]) => (
-                  <div key={label} style={{ flex:1 }}>
-                    <input value={val} onChange={e => set(e.target.value)} placeholder="0" type="number" inputMode="numeric"
-                      style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 8px", fontSize:16, color:C.text, outline:"none", textAlign:"center", boxSizing:"border-box", fontFamily:F }}/>
-                    <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginTop:3 }}>{label}</div>
+            </>
+          )}
+
+          {/* Run */}
+          {postKind === "run" && (
+            <>
+              <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                <div style={{ flex:1, background:C.divider, borderRadius:12, padding:"12px 14px" }}>
+                  <div style={{ fontSize:10, color:C.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>DISTANCE</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <input value={runDist} onChange={e => setRunDist(e.target.value)} placeholder="0.0" type="number" inputMode="decimal"
+                      style={{ flex:1, background:"none", border:"none", fontSize:28, fontWeight:800, color:C.accent, outline:"none", fontFamily:MONO }}/>
+                    <button onClick={() => setRunDistUnit(u => u==="mi"?"km":"mi")} style={{ background:C.border, border:"none", borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:700, color:C.accent, cursor:"pointer", fontFamily:F }}>{runDistUnit}</button>
                   </div>
-                ))}
+                </div>
+                <div style={{ flex:1, background:C.divider, borderRadius:12, padding:"12px 14px" }}>
+                  <div style={{ fontSize:10, color:C.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>TIME (h:m:s)</div>
+                  <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+                    {[["h",runHrs,setRunHrs],["m",runMins,setRunMins],["s",runSecs,setRunSecs]].map(([lbl,val,setter]) => (
+                      <div key={lbl} style={{ display:"flex", alignItems:"center", gap:2 }}>
+                        <input value={val} onChange={e => setter(e.target.value)} placeholder="0" type="number" inputMode="numeric"
+                          style={{ width:32, background:"none", border:"none", fontSize:18, fontWeight:700, color:C.text, outline:"none", textAlign:"center", fontFamily:MONO }}/>
+                        <span style={{ fontSize:11, color:C.sub }}>{lbl}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-            {/* Auto pace */}
-            {calcPace() && (
-              <div style={{ background:C.accentSoft, borderRadius:8, padding:"10px 14px", marginBottom:12, display:"flex", justifyContent:"space-between" }}>
-                <span style={{ fontSize:13, color:C.sub }}>Avg Pace</span>
-                <span style={{ fontSize:13, fontWeight:700, color:C.accent }}>{calcPace()}</span>
-              </div>
-            )}
-            <input value={runRoute} onChange={e => setRunRoute(e.target.value)} placeholder="📍 Route name (e.g. 'Around the park')"
-              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
-            <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="How did it feel?" rows={3}
-              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
-          </>)}
-
-          {postKind === "yoga" && (<>
-            <div style={{ fontSize:13, fontWeight:600, color:C.sub, letterSpacing:0.5, marginBottom:12 }}>YOGA SESSION</div>
-            <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, color:C.sub, marginBottom:4 }}>Duration (minutes)</div>
-              <input value={yogaMins} onChange={e => setYogaMins(e.target.value)} placeholder="45" type="number" inputMode="numeric"
-                style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"11px 12px", fontSize:16, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}/>
-            </div>
-            <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, color:C.sub, marginBottom:8 }}>Style</div>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                {["Vinyasa","Yin","Power","Hatha","Restorative","Hot","Ashtanga"].map(s => (
-                  <button key={s} onClick={() => setYogaType(s.toLowerCase())} style={{
-                    padding:"6px 14px", borderRadius:20, fontSize:12, fontWeight:600,
-                    background: yogaType === s.toLowerCase() ? C.accent : C.divider,
-                    color: yogaType === s.toLowerCase() ? "#fff" : C.text,
-                    border:"none", cursor:"pointer", fontFamily:F
-                  }}>{s}</button>
-                ))}
-              </div>
-            </div>
-            <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="How was the session?" rows={3}
-              style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 13px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
-          </>)}
+              {calcPace() && (
+                <div style={{ background:C.divider, borderRadius:10, padding:"10px 14px", marginBottom:12, textAlign:"center" }}>
+                  <span style={{ fontSize:11, color:C.sub }}>Pace  </span>
+                  <span style={{ fontSize:18, fontWeight:800, color:C.accent, fontFamily:MONO }}>{calcPace()}</span>
+                </div>
+              )}
+              <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Route or location"
+                style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"11px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
+              <textarea value={caption} onChange={e => setCaption(e.target.value.slice(0,MAX_CAPTION))} placeholder="How did it go?" rows={2}
+                style={{ width:"100%", background:C.divider, border:"none", borderRadius:12, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -5998,7 +6249,9 @@ export default function App() {
         })}
       </div>
 
-      {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}/>}
+      {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
+        recentWorkouts={Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([,sessions])=>Object.values(sessions)).slice(0,5)}
+      />}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
       {storyIndex !== null && (() => {
         if (storyIndex === "self") {
