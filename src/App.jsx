@@ -4882,54 +4882,54 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             <div style={{ fontSize:10, opacity:0.85 }}>Private crews</div>
           </button>
         </div>
-
-        {following.length > 0 && (
-          <div style={{ marginBottom:16 }}>
-            <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>🏅 FRIENDS LEADERBOARD</div>
-            <div style={{ border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px" }}>
-              {["Barbell Bench Press","Barbell Back Squat","Deadlift"].map((ex, i) => (
-                <div key={ex} style={{ borderBottom:i<2?`1px solid ${C.divider}`:"none", paddingBottom:i<2?10:0, marginBottom:i<2?10:0 }}>
-                  <div style={{ fontSize:11, fontWeight:600, color:C.text, marginBottom:6 }}>{ex}</div>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    {[...store.users.filter(u => following.includes(u.id)), store.users.find(u => u.id === currentUserId)].filter(Boolean).map((u, j) => (
-                      <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"3px 10px" }}>
-                        <Avatar user={u} size={16} C={C}/>
-                        <span style={{ fontSize:10, color:C.text, fontWeight:500 }}>{u.name.split(" ")[0]}</span>
-                        <span style={{ fontSize:10, color:C.sub, fontFamily:MONO }}>{[225,185,205][j%3] || "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              <div style={{ fontSize:10, color:C.muted, marginTop:10 }}>Friends only · no strangers, no faking</div>
-            </div>
-          </div>
-        )}
-
-        <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>SUGGESTED PEOPLE</div>
-        {store.users.filter(u => u.id !== currentUserId && (!q || u.name?.toLowerCase().includes(q.toLowerCase()) || u.username?.toLowerCase().includes(q.toLowerCase()))).map(u => {
-          const isF = following.includes(u.id);
-          return (
-            <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
-              <Avatar user={u} size={44} C={C} onClick={() => onUserClick(u.id)}/>
-              <div style={{ flex:1, cursor:"pointer" }} onClick={() => onUserClick(u.id)}>
-                <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
-                <div style={{ fontSize:12, color:C.sub }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
-              </div>
-              <button onClick={() => toggleFollow(u.id)} style={{
-                padding:"6px 16px", background:isF?"transparent":C.accent,
-                border:`1px solid ${isF?C.border:C.accent}`, borderRadius:8,
-                fontSize:12, fontWeight:600, color:isF?C.text:"#fff",
-                cursor:"pointer", flexShrink:0, fontFamily:F
-              }}>{isF?"Following":"Follow"}</button>
-            </div>
-          );
-        })}
-      </div>
       )}
+
+      {following.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>🏅 FRIENDS LEADERBOARD</div>
+          <div style={{ border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px" }}>
+            {["Barbell Bench Press","Barbell Back Squat","Deadlift"].map((ex, i) => (
+              <div key={ex} style={{ borderBottom:i<2?`1px solid ${C.divider}`:"none", paddingBottom:i<2?10:0, marginBottom:i<2?10:0 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:C.text, marginBottom:6 }}>{ex}</div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {[...store.users.filter(u => following.includes(u.id)), store.users.find(u => u.id === currentUserId)].filter(Boolean).map((u, j) => (
+                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"3px 10px" }}>
+                      <Avatar user={u} size={16} C={C}/>
+                      <span style={{ fontSize:10, color:C.text, fontWeight:500 }}>{u.name.split(" ")[0]}</span>
+                      <span style={{ fontSize:10, color:C.sub, fontFamily:MONO }}>{[225,185,205][j%3] || "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div style={{ fontSize:10, color:C.muted, marginTop:10 }}>Friends only · no strangers, no faking</div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>SUGGESTED PEOPLE</div>
+      {store.users.filter(u => u.id !== currentUserId && (!q || u.name?.toLowerCase().includes(q.toLowerCase()) || u.username?.toLowerCase().includes(q.toLowerCase()))).map(u => {
+        const isF = following.includes(u.id);
+        return (
+          <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
+            <Avatar user={u} size={44} C={C} onClick={() => onUserClick(u.id)}/>
+            <div style={{ flex:1, cursor:"pointer" }} onClick={() => onUserClick(u.id)}>
+              <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+              <div style={{ fontSize:12, color:C.sub }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
+            </div>
+            <button onClick={() => toggleFollow(u.id)} style={{
+              padding:"6px 16px", background:isF?"transparent":C.accent,
+              border:`1px solid ${isF?C.border:C.accent}`, borderRadius:8,
+              fontSize:12, fontWeight:600, color:isF?C.text:"#fff",
+              cursor:"pointer", flexShrink:0, fontFamily:F
+            }}>{isF?"Following":"Follow"}</button>
+          </div>
+        );
+      })}
     </div>
   );
 }
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ═════════════════════════════════════════════════════════════════════════════
