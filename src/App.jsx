@@ -1993,8 +1993,8 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 // PROGRAM DETAIL VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, startWorkout, onProgramEdited }) {
-  const [editingDayIdx, setEditingDayIdx] = useState(null);
   const [localProg, setLocalProg] = useState(prog);
+  const [expandedDay, setExpandedDay] = useState(0);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragDay, setDragDay] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
@@ -2018,7 +2018,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   function addExercise(di) {
     setLocalProg(p => {
       const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== di ? d : {
-        ...d, exercises: [...(d.exercises||[]), { name:"", sets:3, reps:"8-12", note:"" }]
+        ...d, exercises: [...(d.exercises||[]), { name:"", sets:3, reps:"8-12", note:"", rest:"" }]
       })};
       if (onProgramEdited) onProgramEdited(updated);
       return updated;
@@ -2035,192 +2035,190 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
     });
   }
 
-  function saveDayEdit(di) {
-    if (onSaveProgram) onSaveProgram(localProg);
-    else if (onProgramEdited) onProgramEdited(localProg);
-    setEditingDayIdx(null);
-  }
-
   return (
-    <div style={{ flex:1, overflowY:"auto", paddingBottom:30 }}>
-      {/* Header */}
-      <div style={{ position:"sticky", top:0, background:C.bg, zIndex:10, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px" }}>
-        <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:14, cursor:"pointer", padding:"4px 0", fontFamily:F, display:"flex", alignItems:"center", gap:4 }}>
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
+      {/* ── Sticky header ── */}
+      <div style={{ background:C.bg, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px 12px", flexShrink:0 }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:14, cursor:"pointer", padding:"0 0 8px", fontFamily:F, display:"flex", alignItems:"center", gap:4 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>
           Programs
         </button>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginTop:8 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div>
-            <div style={{ fontSize:20, fontWeight:800, color:C.text }}>{localProg.name}</div>
-            <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{localProg.days?.length || 0} days · {localProg.days?.reduce((a,d) => a+(d.exercises?.length||0),0)} exercises</div>
+            <div style={{ fontSize:19, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>{localProg.name}</div>
+            <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
+              {localProg.days?.length || 0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)} exercises
+              {isActive && <span style={{ marginLeft:8, color:C.accent, fontWeight:700 }}>· ACTIVE</span>}
+            </div>
           </div>
-          {isActive && (
-            <div style={{ background:`${C.accent}18`, border:`1px solid ${C.accent}44`, borderRadius:20, padding:"4px 10px", fontSize:11, fontWeight:700, color:C.accent }}>ACTIVE</div>
-          )}
-        </div>
-        {/* Action buttons */}
-        <div style={{ display:"flex", gap:6, marginTop:10 }}>
-          {!isActive && (
-            <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ flex:1, background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Set Active</button>
-          )}
-          {isActive && (
-            <button onClick={() => onSaveProgram && onSaveProgram({ ...localProg, _deactivate: true })} style={{ flex:1, background:C.divider, color:C.sub, border:"none", borderRadius:10, padding:"9px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>Deactivate</button>
-          )}
-          <button onClick={() => {
-            if (window.confirm(`Delete "${localProg.name}"?`)) {
-              onSaveStore(s => ({ ...s, programs: s.programs.filter(p => p.id !== localProg.id), activeProgramId: s.activeProgramId === localProg.id ? null : s.activeProgramId }));
-              onBack();
-            }
-          }} style={{ padding:"9px 14px", background:"none", border:`1px solid #ef4444`, borderRadius:10, color:"#ef4444", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
+          <div style={{ display:"flex", gap:6 }}>
+            {!isActive && (
+              <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                Set Active
+              </button>
+            )}
+            <button onClick={() => {
+              if (window.confirm(`Delete "${localProg.name}"?`)) {
+                onSaveStore(s => ({ ...s, programs: s.programs.filter(p => p.id !== localProg.id), activeProgramId: s.activeProgramId === localProg.id ? null : s.activeProgramId }));
+                onBack();
+              }
+            }} style={{ background:"none", border:"none", color:"#ef4444", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"8px 4px" }}>Delete</button>
+          </div>
         </div>
       </div>
 
-      {/* Days */}
-      <div style={{ padding:"12px 14px 0" }}>
-        {(localProg.days || []).map((day, di) => {
-          const isEditing = editingDayIdx === di;
+      {/* ── Day tabs ── */}
+      <div style={{ display:"flex", gap:0, overflowX:"auto", borderBottom:`1px solid ${C.divider}`, background:C.bg, flexShrink:0 }}>
+        {(localProg.days||[]).map((day, di) => (
+          <button key={di} onClick={() => setExpandedDay(di)} style={{
+            padding:"10px 16px", background:"none", border:"none",
+            borderBottom:`2px solid ${expandedDay===di ? C.accent : "transparent"}`,
+            color: expandedDay===di ? C.accent : C.sub,
+            fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F,
+            whiteSpace:"nowrap", flexShrink:0
+          }}>{day.name}</button>
+        ))}
+      </div>
+
+      {/* ── Exercise list — always editable ── */}
+      <div style={{ overflowY:"auto", flex:1, paddingBottom:100 }}>
+        {(localProg.days||[]).map((day, di) => {
+          if (di !== expandedDay) return null;
           return (
-            <div key={day.id || di} style={{ marginBottom:10, background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
-              {/* Day header */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  {isEditing
-                    ? <input value={day.name} onChange={e => setLocalProg(p => ({ ...p, days: p.days.map((d,i) => i!==di?d:{...d,name:e.target.value}) }))}
-                        style={{ fontSize:15, fontWeight:700, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, width:"100%" }}/>
-                    : <div style={{ fontSize:15, fontWeight:700, color:C.text }}>{day.name}</div>
-                  }
-                  <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(day.exercises||[]).length} exercises</div>
-                </div>
-                <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                  {isEditing ? (
-                    <button onClick={() => saveDayEdit(di)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Save</button>
-                  ) : (
-                    <>
-                      <button onClick={() => setEditingDayIdx(di)} style={{ background:C.divider, color:C.sub, border:"none", borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>Edit</button>
-                      <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Start</button>
-                    </>
-                  )}
-                </div>
+            <div key={di}>
+              {/* Day name + start */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 14px 6px" }}>
+                <input value={day.name}
+                  onChange={e => {
+                    setLocalProg(p => ({ ...p, days: p.days.map((d,i) => i!==di?d:{...d,name:e.target.value}) }));
+                  }}
+                  style={{ fontSize:16, fontWeight:800, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, flex:1 }}
+                />
+                <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{
+                  background:C.accent, color:"#fff", border:"none", borderRadius:10,
+                  padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F,
+                  boxShadow:`0 2px 8px ${C.accent}44`
+                }}>Start ›</button>
               </div>
 
-              {/* Exercises */}
-              <div>
-                {(day.exercises || []).map((ex, ei) => {
-                  const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
-                  const sets = ex.sets || 3;
-                  const reps = ex.reps || "8-12";
-                  return (
-                    <div key={ei}
-                      data-drag-item="true"
-                      onTouchMove={e => {
-                        if (dragIdx === null || dragDay !== di) return;
-                        e.preventDefault();
-                        const dy = e.touches[0].clientY - dragStartY.current;
-                        const steps = Math.round(dy / dragNodeH.current);
-                        setDragOverIdx(Math.max(0, Math.min((day.exercises.length - 1), dragIdx + steps)));
-                      }}
-                      onTouchEnd={() => {
-                        if (dragIdx !== null && dragOverIdx !== null && dragOverIdx !== dragIdx && dragDay === di) {
-                          const arr = [...day.exercises];
-                          const [moved] = arr.splice(dragIdx, 1);
-                          arr.splice(dragOverIdx, 0, moved);
-                          setLocalProg(p => ({ ...p, days: p.days.map((d, i) => i !== di ? d : { ...d, exercises: arr }) }));
-                        }
-                        setDragIdx(null); setDragDay(null); setDragOverIdx(null);
-                      }}
-                      style={{
-                        borderTop: ei > 0 ? `1px solid ${C.divider}` : "none",
-                        opacity: dragDay === di && dragIdx === ei ? 0.4 : 1,
-                        background: dragDay === di && dragOverIdx === ei && dragIdx !== ei ? `${C.accent}12` : "transparent",
-                        transition: "background 0.15s",
-                      }}>
-                      {isEditing ? (
-                        /* Edit mode — full row with all fields */
-                        <div style={{ padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
-                          <div
-                            onTouchStart={e => {
-                              const node = e.currentTarget.closest('[data-drag-item]');
-                              dragNodeH.current = node?.getBoundingClientRect().height || 60;
-                              dragStartY.current = e.touches[0].clientY;
-                              setDragIdx(ei);
-                              setDragDay(di);
-                              setDragOverIdx(ei);
-                              try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
-                            }}
-                            style={{ color:C.muted, fontSize:18, cursor:"grab", paddingTop:2, userSelect:"none", touchAction:"none" }}>⠿</div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            {/* Exercise name */}
-                            <input value={ex.name} onChange={e => updateExercise(di, ei, { name: e.target.value })}
-                              placeholder="Exercise name..."
-                              style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"8px 12px", fontSize:13, fontWeight:600, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:8 }}
-                            />
-                            {/* Sets × Reps row */}
-                            <div style={{ display:"flex", gap:8, marginBottom:6 }}>
-                              <div style={{ flex:1 }}>
-                                <div style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:1, marginBottom:4 }}>SETS</div>
-                                <div style={{ display:"flex", alignItems:"center", background:C.divider, borderRadius:8, overflow:"hidden" }}>
-                                  <button onClick={() => updateExercise(di, ei, { sets: Math.max(1, (parseInt(sets)||3) - 1) })}
-                                    style={{ padding:"7px 12px", background:"none", border:"none", color:C.accent, fontSize:16, fontWeight:700, cursor:"pointer" }}>−</button>
-                                  <div style={{ flex:1, textAlign:"center", fontSize:15, fontWeight:700, color:C.text, fontFamily:MONO }}>{sets}</div>
-                                  <button onClick={() => updateExercise(di, ei, { sets: (parseInt(sets)||3) + 1 })}
-                                    style={{ padding:"7px 12px", background:"none", border:"none", color:C.accent, fontSize:16, fontWeight:700, cursor:"pointer" }}>+</button>
-                                </div>
-                              </div>
-                              <div style={{ flex:2 }}>
-                                <div style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:1, marginBottom:4 }}>REPS / TARGET</div>
-                                <input value={reps} onChange={e => updateExercise(di, ei, { reps: e.target.value })}
-                                  placeholder="8-12"
-                                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"7px 12px", fontSize:14, fontWeight:600, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", textAlign:"center" }}
-                                />
-                              </div>
-                              <div style={{ flex:2 }}>
-                                <div style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:1, marginBottom:4 }}>REST (s)</div>
-                                <input value={ex.rest||""} onChange={e => updateExercise(di, ei, { rest: e.target.value })}
-                                  placeholder="90"
-                                  type="number" inputMode="numeric"
-                                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"7px 12px", fontSize:14, fontWeight:600, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", textAlign:"center" }}
-                                />
-                              </div>
-                            </div>
-                            {/* Note */}
-                            <input value={ex.note||""} placeholder="Coach note (optional)..."
-                              onChange={e => updateExercise(di, ei, { note: e.target.value })}
-                              style={{ width:"100%", background:"none", border:`1px solid ${C.divider}`, borderRadius:8, padding:"6px 10px", fontSize:12, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
-                            />
-                          </div>
-                          <button onClick={() => removeExercise(di, ei)} style={{ background:"none", border:"none", color:"#ef4444", fontSize:20, cursor:"pointer", paddingTop:2, flexShrink:0 }}>×</button>
-                        </div>
-                      ) : (
-                        /* View mode — clean row */
-                        <div style={{ padding:"11px 14px", display:"flex", alignItems:"center", gap:12 }}>
-                          <div style={{ width:40, height:40, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                            <MuscleIcon muscle={exInfo?.muscle||""} size={26} C={C}/>
-                          </div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{ex.name || <span style={{ color:C.muted }}>Unnamed</span>}</div>
-                            <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
-                              {sets} × {reps}{exInfo?.muscle ? ` · ${exInfo.muscle}` : ""}
-                            </div>
-                            {ex.note && <div style={{ fontSize:11, color:C.accent, marginTop:2 }}>💡 {ex.note}</div>}
-                          </div>
-                          {ex.rest && <div style={{ fontSize:11, color:C.muted, flexShrink:0 }}>{ex.rest}s</div>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              {/* Column headers */}
+              <div style={{ display:"grid", gridTemplateColumns:"32px 1fr 72px 72px 56px 32px", gap:6, padding:"4px 14px 6px", alignItems:"center" }}>
+                {["","Exercise","Sets","Reps","Rest",""].map((h,i) => (
+                  <div key={i} style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, textAlign:"center" }}>{h}</div>
+                ))}
+              </div>
 
-                {/* Add exercise button in edit mode */}
-                {isEditing && (
-                  <button onClick={() => addExercise(di)} style={{
-                    width:"100%", padding:"12px", background:"none",
-                    border:"none", borderTop:`1px solid ${C.divider}`,
-                    color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F,
-                    display:"flex", alignItems:"center", justifyContent:"center", gap:6
-                  }}>
-                    <span style={{ fontSize:18 }}>+</span> Add Exercise
-                  </button>
-                )}
+              {/* Exercise rows */}
+              {(day.exercises||[]).map((ex, ei) => {
+                const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
+                const sets = parseInt(ex.sets)||3;
+                const reps = ex.reps || "8-12";
+                return (
+                  <div key={ei}
+                    data-drag-item="true"
+                    onTouchMove={e => {
+                      if (dragIdx === null || dragDay !== di) return;
+                      e.preventDefault();
+                      const dy = e.touches[0].clientY - dragStartY.current;
+                      setDragOverIdx(Math.max(0, Math.min(day.exercises.length-1, dragIdx+Math.round(dy/dragNodeH.current))));
+                    }}
+                    onTouchEnd={() => {
+                      if (dragIdx!==null && dragOverIdx!==null && dragOverIdx!==dragIdx && dragDay===di) {
+                        const arr = [...day.exercises];
+                        const [moved] = arr.splice(dragIdx,1);
+                        arr.splice(dragOverIdx,0,moved);
+                        setLocalProg(p => ({...p, days:p.days.map((d,i)=>i!==di?d:{...d,exercises:arr})}));
+                      }
+                      setDragIdx(null); setDragDay(null); setDragOverIdx(null);
+                    }}
+                    style={{
+                      borderTop:`1px solid ${C.divider}`,
+                      opacity: dragDay===di && dragIdx===ei ? 0.35 : 1,
+                      background: dragDay===di && dragOverIdx===ei && dragIdx!==ei ? `${C.accent}10` : "transparent",
+                    }}>
+
+                    {/* Main row */}
+                    <div style={{ display:"grid", gridTemplateColumns:"32px 1fr 72px 72px 56px 32px", gap:6, padding:"10px 14px", alignItems:"center" }}>
+                      {/* Drag handle */}
+                      <div onTouchStart={e => {
+                        const node = e.currentTarget.closest('[data-drag-item]');
+                        dragNodeH.current = node?.getBoundingClientRect().height || 60;
+                        dragStartY.current = e.touches[0].clientY;
+                        setDragIdx(ei); setDragDay(di); setDragOverIdx(ei);
+                        try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+                      }} style={{ display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:16, touchAction:"none", userSelect:"none", cursor:"grab" }}>⠿</div>
+
+                      {/* Exercise name */}
+                      <div>
+                        <input value={ex.name}
+                          onChange={e => updateExercise(di,ei,{name:e.target.value})}
+                          placeholder="Exercise..."
+                          style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:13, fontWeight:600, color:C.text, fontFamily:F, boxSizing:"border-box" }}
+                        />
+                        {exInfo?.muscle && <div style={{ fontSize:10, color:C.muted }}>{exInfo.muscle}</div>}
+                        {ex.note && <div style={{ fontSize:10, color:C.accent }}>💡 {ex.note}</div>}
+                      </div>
+
+                      {/* Sets — tap +/− */}
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:8, overflow:"hidden", height:36 }}>
+                        <button onClick={() => updateExercise(di,ei,{sets:Math.max(1,sets-1)})}
+                          style={{ padding:"0 8px", height:"100%", background:"none", border:"none", color:C.accent, fontSize:16, fontWeight:700, cursor:"pointer" }}>−</button>
+                        <span style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO, minWidth:18, textAlign:"center" }}>{sets}</span>
+                        <button onClick={() => updateExercise(di,ei,{sets:sets+1})}
+                          style={{ padding:"0 8px", height:"100%", background:"none", border:"none", color:C.accent, fontSize:16, fontWeight:700, cursor:"pointer" }}>+</button>
+                      </div>
+
+                      {/* Reps */}
+                      <input value={reps}
+                        onChange={e => updateExercise(di,ei,{reps:e.target.value})}
+                        placeholder="8-12"
+                        style={{ height:36, background:C.divider, border:"none", borderRadius:8, padding:"0 8px", fontSize:13, fontWeight:700, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center", width:"100%", boxSizing:"border-box" }}
+                      />
+
+                      {/* Rest */}
+                      <input value={ex.rest||""}
+                        onChange={e => updateExercise(di,ei,{rest:e.target.value})}
+                        placeholder="90s"
+                        style={{ height:36, background:C.divider, border:"none", borderRadius:8, padding:"0 6px", fontSize:12, fontWeight:600, color:C.sub, outline:"none", fontFamily:MONO, textAlign:"center", width:"100%", boxSizing:"border-box" }}
+                      />
+
+                      {/* Delete */}
+                      <button onClick={() => removeExercise(di,ei)}
+                        style={{ background:"none", border:"none", color:C.muted, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>×</button>
+                    </div>
+
+                    {/* Note row — only shown if tapped, subtle */}
+                    {!ex.note && (
+                      <div style={{ padding:"0 14px 8px 52px" }}>
+                        <input value="" onChange={e => updateExercise(di,ei,{note:e.target.value})}
+                          placeholder="+ Add note..."
+                          style={{ background:"none", border:"none", outline:"none", fontSize:11, color:C.muted, fontFamily:F, cursor:"text", width:"100%" }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Add exercise */}
+              <button onClick={() => addExercise(di)} style={{
+                display:"flex", alignItems:"center", gap:10,
+                width:"100%", padding:"14px 14px", background:"none",
+                border:"none", borderTop:`1px solid ${C.divider}`,
+                color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
+              }}>
+                <div style={{ width:32, height:32, borderRadius:8, background:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>+</div>
+                Add Exercise
+              </button>
+
+              {/* Save button */}
+              <div style={{ padding:"14px" }}>
+                <button onClick={() => { if (onSaveProgram) onSaveProgram(localProg); }} style={{
+                  width:"100%", background:C.accent, color:"#fff", border:"none",
+                  borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
+                  cursor:"pointer", fontFamily:F, boxShadow:`0 4px 12px ${C.accent}44`
+                }}>Save Changes</button>
               </div>
             </div>
           );
@@ -2229,7 +2227,6 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
     </div>
   );
 }
-
 // ═════════════════════════════════════════════════════════════════════════════
 // WORKOUT TRACKER
 // ═════════════════════════════════════════════════════════════════════════════
@@ -6185,7 +6182,7 @@ export default function App() {
     }).filter(Boolean)
   );
 
-  const feedPosts = [...(store.posts || []).filter(p => p.userId === currentUserId || following.includes(p.userId)), ...historyFeedItems.filter(i => !((store.posts||[]).some(p=>p.type==="workout"&&p.userId===currentUserId&&p.workout?.name===i.workout?.name&&Math.abs(p.createdAt-i.createdAt)<86400000)))]
+  const feedPosts = [...(store.posts || []).filter(p => (p.userId === currentUserId || following.includes(p.userId)) && p.type !== "story"), ...historyFeedItems.filter(i => !((store.posts||[]).some(p=>p.type==="workout"&&p.userId===currentUserId&&p.workout?.name===i.workout?.name&&Math.abs(p.createdAt-i.createdAt)<86400000)))]
     .sort((a, b) => b.createdAt - a.createdAt);
 
   async function handleEditSave(id, cap) {
