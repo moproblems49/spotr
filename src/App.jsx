@@ -91,29 +91,30 @@ const sb = (() => {
 })();
 
 // Upload image to Supabase Storage, return public URL
+// Upload image via Edge Function proxy — bypasses iOS Safari CORS/Storage issues
 async function uploadImage(base64DataUrl, token, userId) {
-  if (!base64DataUrl || !token) return base64DataUrl;
+  if (!base64DataUrl || !token) return null;
   try {
-    const [header, data] = base64DataUrl.split(",");
-    const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
-    const ext = mime.split("/")[1] || "jpg";
-    const filename = `${userId}/${Date.now()}.${ext}`;
-    const bytes = atob(data);
-    const arr = new Uint8Array(bytes.length);
-    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-    const blob = new Blob([arr], { type: mime });
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/post-images/${filename}`, {
+    const mime = base64DataUrl.match(/data:(.*?);/)?.[1] || "image/jpeg";
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-image`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
-        "Content-Type": mime,
-        "x-upsert": "true",
+        "Content-Type": "application/json",
       },
-      body: blob,
+      body: JSON.stringify({ base64: base64DataUrl, mimeType: mime }),
     });
-    if (!res.ok) return base64DataUrl; // fallback to base64
-    return `${SUPABASE_URL}/storage/v1/object/public/post-images/${filename}`;
-  } catch { return base64DataUrl; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn("uploadImage edge fn error:", err);
+      return null;
+    }
+    const { url } = await res.json();
+    return url || null;
+  } catch (e) {
+    console.warn("uploadImage failed:", e);
+    return null;
+  }
 }
 
 // Session storage
@@ -132,7 +133,7 @@ function clearSession() {
 // EXERCISE DATABASE
 // ═════════════════════════════════════════════════════════════════════════════
 const EXERCISE_DB = [
-  // CHEST
+  // ── CHEST ──────────────────────────────────────────────────────────────────
   { name:"Barbell Bench Press", muscle:"Chest" },
   { name:"Incline Barbell Press", muscle:"Chest" },
   { name:"Decline Barbell Press", muscle:"Chest" },
@@ -141,109 +142,231 @@ const EXERCISE_DB = [
   { name:"Decline DB Press", muscle:"Chest" },
   { name:"Cable Fly (Low-to-High)", muscle:"Chest" },
   { name:"Cable Fly (High-to-Low)", muscle:"Chest" },
+  { name:"Cable Fly (Neutral)", muscle:"Chest" },
   { name:"Pec Deck Machine", muscle:"Chest" },
-  { name:"Dips", muscle:"Chest/Tris" },
+  { name:"DB Fly", muscle:"Chest" },
+  { name:"Incline DB Fly", muscle:"Chest" },
+  { name:"Dips", muscle:"Chest" },
+  { name:"Weighted Dips", muscle:"Chest" },
   { name:"Push-Ups", muscle:"Chest" },
   { name:"Weighted Push-Ups", muscle:"Chest" },
+  { name:"Wide-Grip Push-Ups", muscle:"Chest" },
+  { name:"Archer Push-Ups", muscle:"Chest" },
   { name:"DB Pullover", muscle:"Chest" },
-  // BACK
+  { name:"Machine Chest Press", muscle:"Chest" },
+  { name:"Smith Machine Bench Press", muscle:"Chest" },
+  { name:"Smith Machine Incline Press", muscle:"Chest" },
+  { name:"Landmine Press", muscle:"Chest" },
+  { name:"Svend Press", muscle:"Chest" },
+  // ── BACK ───────────────────────────────────────────────────────────────────
   { name:"Barbell Row", muscle:"Back" },
   { name:"Pendlay Row", muscle:"Back" },
   { name:"T-Bar Row", muscle:"Back" },
+  { name:"T-Bar Row (Landmine)", muscle:"Back" },
   { name:"Seated Cable Row (Wide)", muscle:"Back" },
   { name:"Seated Cable Row (Narrow)", muscle:"Back" },
   { name:"Single-Arm DB Row", muscle:"Back" },
+  { name:"Single-Arm Cable Row", muscle:"Back" },
   { name:"Chest-Supported Row", muscle:"Back" },
+  { name:"Chest-Supported DB Row", muscle:"Back" },
+  { name:"Incline DB Row", muscle:"Back" },
   { name:"Pull-Ups", muscle:"Back" },
   { name:"Weighted Pull-Ups", muscle:"Back" },
   { name:"Chin-Ups", muscle:"Back" },
+  { name:"Neutral-Grip Pull-Ups", muscle:"Back" },
   { name:"Lat Pulldown (Wide)", muscle:"Back" },
   { name:"Lat Pulldown (Underhand)", muscle:"Back" },
+  { name:"Lat Pulldown (Neutral)", muscle:"Back" },
+  { name:"Single-Arm Lat Pulldown", muscle:"Back" },
   { name:"Straight-Arm Pulldown", muscle:"Back" },
+  { name:"Iso-Lateral Row (Machine)", muscle:"Back" },
+  { name:"Hammer Strength Row", muscle:"Back" },
+  { name:"Meadows Row", muscle:"Back" },
+  { name:"Rack Pull", muscle:"Back" },
+  { name:"Inverted Row", muscle:"Back" },
+  { name:"Cable Pullover", muscle:"Back" },
+  // ── REAR DELTS ─────────────────────────────────────────────────────────────
   { name:"Face Pulls", muscle:"Rear Delts" },
   { name:"Rear Delt Fly (Cable)", muscle:"Rear Delts" },
   { name:"Rear Delt Fly (DB)", muscle:"Rear Delts" },
-  // SHOULDERS
+  { name:"Rear Delt Fly (Machine)", muscle:"Rear Delts" },
+  { name:"Band Pull-Apart", muscle:"Rear Delts" },
+  { name:"Prone Y-Raise", muscle:"Rear Delts" },
+  // ── SHOULDERS ──────────────────────────────────────────────────────────────
   { name:"Overhead Press (Barbell)", muscle:"Shoulders" },
+  { name:"Seated OHP (Barbell)", muscle:"Shoulders" },
   { name:"Seated DB Shoulder Press", muscle:"Shoulders" },
+  { name:"Standing DB Shoulder Press", muscle:"Shoulders" },
   { name:"Arnold Press", muscle:"Shoulders" },
   { name:"Lateral Raises (DB)", muscle:"Shoulders" },
   { name:"Lateral Raises (Cable)", muscle:"Shoulders" },
+  { name:"Lateral Raises (Machine)", muscle:"Shoulders" },
+  { name:"Seated Lateral Raises", muscle:"Shoulders" },
   { name:"Front Raises (DB)", muscle:"Shoulders" },
   { name:"Front Raises (Plate)", muscle:"Shoulders" },
-  { name:"Upright Row", muscle:"Shoulders/Traps" },
+  { name:"Front Raises (Cable)", muscle:"Shoulders" },
+  { name:"Upright Row", muscle:"Shoulders" },
   { name:"Machine Shoulder Press", muscle:"Shoulders" },
-  // BICEPS
+  { name:"Smith Machine OHP", muscle:"Shoulders" },
+  { name:"Push Press", muscle:"Shoulders" },
+  { name:"Bradford Press", muscle:"Shoulders" },
+  { name:"Lu Raises", muscle:"Shoulders" },
+  // ── TRAPS ──────────────────────────────────────────────────────────────────
+  { name:"Barbell Shrugs", muscle:"Traps" },
+  { name:"DB Shrugs", muscle:"Traps" },
+  { name:"Cable Shrugs", muscle:"Traps" },
+  { name:"Behind-the-Back Shrugs", muscle:"Traps" },
+  { name:"Rack Pull (Traps focus)", muscle:"Traps" },
+  { name:"Farmer's Walk", muscle:"Traps" },
+  // ── BICEPS ─────────────────────────────────────────────────────────────────
   { name:"Barbell Curl", muscle:"Biceps" },
   { name:"EZ Bar Curl", muscle:"Biceps" },
   { name:"Dumbbell Curl", muscle:"Biceps" },
+  { name:"Alternating DB Curl", muscle:"Biceps" },
   { name:"Incline DB Curl", muscle:"Biceps" },
   { name:"Hammer Curl", muscle:"Biceps" },
+  { name:"Cross-Body Hammer Curl", muscle:"Biceps" },
   { name:"Preacher Curl (EZ Bar)", muscle:"Biceps" },
   { name:"Preacher Curl (DB)", muscle:"Biceps" },
   { name:"Cable Curl (Single Arm)", muscle:"Biceps" },
+  { name:"Cable Curl (Both Arms)", muscle:"Biceps" },
   { name:"Concentration Curl", muscle:"Biceps" },
-  { name:"Reverse Curl", muscle:"Biceps/Forearms" },
-  // TRICEPS
+  { name:"Reverse Curl", muscle:"Biceps" },
+  { name:"Spider Curl", muscle:"Biceps" },
+  { name:"Drag Curl", muscle:"Biceps" },
+  { name:"21s (Barbell Curl)", muscle:"Biceps" },
+  { name:"Machine Curl", muscle:"Biceps" },
+  // ── TRICEPS ────────────────────────────────────────────────────────────────
   { name:"Skull Crushers (EZ Bar)", muscle:"Triceps" },
   { name:"Skull Crushers (DB)", muscle:"Triceps" },
+  { name:"Skull Crushers (Cable)", muscle:"Triceps" },
   { name:"Tricep Rope Pushdown", muscle:"Triceps" },
   { name:"Tricep Bar Pushdown", muscle:"Triceps" },
-  { name:"Overhead Tricep Extension", muscle:"Triceps" },
+  { name:"Tricep Straight Bar Pushdown", muscle:"Triceps" },
+  { name:"Single-Arm Tricep Pushdown", muscle:"Triceps" },
+  { name:"Overhead Tricep Extension (DB)", muscle:"Triceps" },
+  { name:"Overhead Tricep Extension (Cable)", muscle:"Triceps" },
+  { name:"Overhead Tricep Extension (EZ Bar)", muscle:"Triceps" },
   { name:"Close-Grip Bench Press", muscle:"Triceps" },
   { name:"Tricep Dips", muscle:"Triceps" },
   { name:"Diamond Push-Ups", muscle:"Triceps" },
-  // LEGS — QUADS
+  { name:"JM Press", muscle:"Triceps" },
+  { name:"Tate Press", muscle:"Triceps" },
+  { name:"Machine Tricep Extension", muscle:"Triceps" },
+  // ── QUADS ──────────────────────────────────────────────────────────────────
   { name:"Barbell Back Squat", muscle:"Quads" },
+  { name:"Low Bar Squat", muscle:"Quads" },
+  { name:"High Bar Squat", muscle:"Quads" },
   { name:"Front Squat", muscle:"Quads" },
   { name:"Leg Press", muscle:"Quads" },
+  { name:"Leg Press (Single Leg)", muscle:"Quads" },
   { name:"Hack Squat", muscle:"Quads" },
-  { name:"Bulgarian Split Squat", muscle:"Quads/Glutes" },
-  { name:"Walking Lunges", muscle:"Quads/Glutes" },
+  { name:"Bulgarian Split Squat", muscle:"Quads" },
+  { name:"Walking Lunges", muscle:"Quads" },
+  { name:"Reverse Lunges", muscle:"Quads" },
+  { name:"Lateral Lunges", muscle:"Quads" },
   { name:"Leg Extension", muscle:"Quads" },
-  { name:"Step-Ups", muscle:"Quads/Glutes" },
-  // LEGS — POSTERIOR
-  { name:"Deadlift", muscle:"Full Body" },
-  { name:"Sumo Deadlift", muscle:"Full Body" },
+  { name:"Leg Extension (Single)", muscle:"Quads" },
+  { name:"Step-Ups", muscle:"Quads" },
+  { name:"Goblet Squat", muscle:"Quads" },
+  { name:"Smith Machine Squat", muscle:"Quads" },
+  { name:"Sissy Squat", muscle:"Quads" },
+  { name:"Cyclist Squat", muscle:"Quads" },
+  // ── HAMSTRINGS ─────────────────────────────────────────────────────────────
+  { name:"Deadlift", muscle:"Hamstrings" },
+  { name:"Sumo Deadlift", muscle:"Hamstrings" },
   { name:"Romanian Deadlift", muscle:"Hamstrings" },
   { name:"Stiff-Leg Deadlift", muscle:"Hamstrings" },
+  { name:"Single-Leg RDL", muscle:"Hamstrings" },
   { name:"Lying Leg Curl", muscle:"Hamstrings" },
   { name:"Seated Leg Curl", muscle:"Hamstrings" },
+  { name:"Standing Leg Curl", muscle:"Hamstrings" },
   { name:"Nordic Curl", muscle:"Hamstrings" },
+  { name:"Good Morning", muscle:"Hamstrings" },
+  { name:"Glute Ham Raise", muscle:"Hamstrings" },
+  // ── GLUTES ─────────────────────────────────────────────────────────────────
   { name:"Hip Thrust (Barbell)", muscle:"Glutes" },
   { name:"Hip Thrust (Machine)", muscle:"Glutes" },
+  { name:"Hip Thrust (DB)", muscle:"Glutes" },
+  { name:"Single-Leg Hip Thrust", muscle:"Glutes" },
   { name:"Glute Kickback (Cable)", muscle:"Glutes" },
+  { name:"Glute Kickback (Machine)", muscle:"Glutes" },
   { name:"Abduction Machine", muscle:"Glutes" },
-  // CALVES
+  { name:"Cable Abduction", muscle:"Glutes" },
+  { name:"Donkey Kicks", muscle:"Glutes" },
+  { name:"Frog Pumps", muscle:"Glutes" },
+  { name:"Clamshells", muscle:"Glutes" },
+  { name:"45° Back Extension", muscle:"Glutes" },
+  // ── CALVES ─────────────────────────────────────────────────────────────────
   { name:"Standing Calf Raise", muscle:"Calves" },
   { name:"Seated Calf Raise", muscle:"Calves" },
   { name:"Leg Press Calf Raise", muscle:"Calves" },
-  // CORE
+  { name:"Single-Leg Calf Raise", muscle:"Calves" },
+  { name:"Smith Machine Calf Raise", muscle:"Calves" },
+  { name:"Donkey Calf Raise", muscle:"Calves" },
+  { name:"Tibialis Raise", muscle:"Calves" },
+  // ── CORE ───────────────────────────────────────────────────────────────────
   { name:"Plank", muscle:"Core" },
+  { name:"Side Plank", muscle:"Core" },
   { name:"Cable Crunch", muscle:"Core" },
   { name:"Hanging Leg Raise", muscle:"Core" },
+  { name:"Hanging Knee Raise", muscle:"Core" },
   { name:"Ab Wheel Rollout", muscle:"Core" },
   { name:"Decline Crunch", muscle:"Core" },
+  { name:"Decline Sit-Up", muscle:"Core" },
   { name:"Russian Twist", muscle:"Core" },
   { name:"Landmine Rotation", muscle:"Core" },
   { name:"Cable Woodchop", muscle:"Core" },
-  // COMPOUND / FULL BODY
-  { name:"Power Clean", muscle:"Full Body" },
-  { name:"Clean and Jerk", muscle:"Full Body" },
-  { name:"Snatch", muscle:"Full Body" },
-  { name:"Kettlebell Swing", muscle:"Full Body" },
-  { name:"Farmers Walk", muscle:"Full Body" },
-  { name:"Sled Push", muscle:"Full Body" },
-  { name:"Battle Ropes", muscle:"Full Body" },
-  // TRAPS / NECK
-  { name:"Barbell Shrugs", muscle:"Traps" },
-  { name:"DB Shrugs", muscle:"Traps" },
-  { name:"Neck Extension", muscle:"Neck" },
-  // FOREARMS
+  { name:"Pallof Press", muscle:"Core" },
+  { name:"Dragon Flag", muscle:"Core" },
+  { name:"Toes-to-Bar", muscle:"Core" },
+  { name:"Reverse Crunch", muscle:"Core" },
+  { name:"V-Up", muscle:"Core" },
+  { name:"Hollow Body Hold", muscle:"Core" },
+  { name:"Dead Bug", muscle:"Core" },
+  // ── FOREARMS ───────────────────────────────────────────────────────────────
   { name:"Wrist Curl", muscle:"Forearms" },
   { name:"Reverse Wrist Curl", muscle:"Forearms" },
+  { name:"Wrist Roller", muscle:"Forearms" },
+  { name:"Plate Pinch", muscle:"Forearms" },
   { name:"Farmers Carry", muscle:"Forearms" },
+  { name:"Gripper", muscle:"Forearms" },
+  // ── NECK ───────────────────────────────────────────────────────────────────
+  { name:"Neck Extension", muscle:"Neck" },
+  { name:"Neck Flexion", muscle:"Neck" },
+  { name:"Neck Lateral Flexion", muscle:"Neck" },
+  { name:"Neck Harness", muscle:"Neck" },
+  // ── FULL BODY / COMPOUND ───────────────────────────────────────────────────
+  { name:"Power Clean", muscle:"Full Body" },
+  { name:"Hang Clean", muscle:"Full Body" },
+  { name:"Clean and Jerk", muscle:"Full Body" },
+  { name:"Snatch", muscle:"Full Body" },
+  { name:"Hang Snatch", muscle:"Full Body" },
+  { name:"Kettlebell Swing", muscle:"Full Body" },
+  { name:"Kettlebell Clean", muscle:"Full Body" },
+  { name:"Kettlebell Snatch", muscle:"Full Body" },
+  { name:"Trap Bar Deadlift", muscle:"Full Body" },
+  { name:"Sled Push", muscle:"Full Body" },
+  { name:"Sled Pull", muscle:"Full Body" },
+  { name:"Battle Ropes", muscle:"Full Body" },
+  { name:"Tire Flip", muscle:"Full Body" },
+  { name:"Box Jump", muscle:"Full Body" },
+  { name:"Broad Jump", muscle:"Full Body" },
+  { name:"Thruster", muscle:"Full Body" },
+  { name:"Wall Ball", muscle:"Full Body" },
+  { name:"Bear Complex", muscle:"Full Body" },
+  // ── CARDIO / CONDITIONING ──────────────────────────────────────────────────
+  { name:"Treadmill Run", muscle:"Cardio" },
+  { name:"Stationary Bike", muscle:"Cardio" },
+  { name:"Rowing Machine", muscle:"Cardio" },
+  { name:"Stair Master", muscle:"Cardio" },
+  { name:"Elliptical", muscle:"Cardio" },
+  { name:"Jump Rope", muscle:"Cardio" },
+  { name:"Assault Bike", muscle:"Cardio" },
+  { name:"Ski Erg", muscle:"Cardio" },
+  { name:"Incline Walk", muscle:"Cardio" },
 ];
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS — Instagram-inspired: minimal, whitespace-forward
@@ -916,8 +1039,11 @@ function BufferedInput({ value, onCommit, placeholder, done, C, prevValue }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (extracted to fix hooks bug)
 // ═════════════════════════════════════════════════════════════════════════════
-const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, C }) {
+const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, onDelete, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [swipeX, setSwipeX] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const touchStartX = useRef(0);
   const typeMenuRef = useRef(null);
 
   useEffect(() => {
@@ -933,7 +1059,23 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
   const estimated1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
 
   return (
-    <div>
+    <div style={{ position:"relative", overflow:"hidden" }}>
+      {/* Swipe delete background */}
+      <div style={{ position:"absolute", right:0, top:0, bottom:0, width:70, background:"#ef4444", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:13, fontWeight:700 }}>Delete</div>
+      <div
+        onTouchStart={e => { touchStartX.current = e.touches[0].clientX; setSwiping(false); }}
+        onTouchMove={e => {
+          const dx = e.touches[0].clientX - touchStartX.current;
+          if (dx < -10) { setSwiping(true); setSwipeX(Math.max(-80, dx)); }
+          else if (dx > 5) { setSwipeX(0); }
+        }}
+        onTouchEnd={() => {
+          if (swipeX < -50 && onDelete) onDelete();
+          else setSwipeX(0);
+          setSwiping(false);
+        }}
+        style={{ transform:`translateX(${swipeX}px)`, transition:swiping?"none":"transform 0.2s", background:C.bg }}
+      >
       <div style={{
         display:"grid", gridTemplateColumns:"24px 32px 1fr 68px 68px 32px",
         gap:6, padding:"6px 14px", alignItems:"center",
@@ -1021,6 +1163,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           est 1RM: {estimated1RM} {unit}
         </div>
       )}
+      </div>
     </div>
   );
 });
@@ -1791,9 +1934,23 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           </div>
         )}
         {post.comments.length > 0 && !showCmts && (
-          <button onClick={() => setShowCmts(true)} style={{ fontSize:12, color:C.sub, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>
-            View {post.comments.length === 1 ? "comment" : `all ${post.comments.length} comments`}
-          </button>
+          <div>
+            {/* Show first comment inline */}
+            {(() => {
+              const c = post.comments[0];
+              const cu = store.users.find(u => u.id === c.userId);
+              return (
+                <div style={{ fontSize:13, color:C.text, lineHeight:1.4, marginBottom:3 }}>
+                  <span style={{ fontWeight:600, marginRight:5 }}>{cu?.username}</span>{c.text}
+                </div>
+              );
+            })()}
+            {post.comments.length > 1 && (
+              <button onClick={() => setShowCmts(true)} style={{ fontSize:12, color:C.muted, background:"none", border:"none", cursor:"pointer", padding:"0 0 2px", fontFamily:F }}>
+                View all {post.comments.length} comments
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1837,6 +1994,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, startWorkout, onProgramEdited }) {
   const [editingDayIdx, setEditingDayIdx] = useState(null);
   const [localProg, setLocalProg] = useState(prog);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [dragDay, setDragDay] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+  const dragStartY = useRef(0);
+  const dragNodeH = useRef(60);
 
   useEffect(() => { setLocalProg(prog); }, [prog.id]);
 
@@ -1855,7 +2017,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   function addExercise(di) {
     setLocalProg(p => {
       const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== di ? d : {
-        ...d, exercises: [...(d.exercises||[]), { name:"", reps:"8-12", note:"" }]
+        ...d, exercises: [...(d.exercises||[]), { name:"", sets:3, reps:"8-12", note:"" }]
       })};
       if (onProgramEdited) onProgramEdited(updated);
       return updated;
@@ -1872,88 +2034,197 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
     });
   }
 
+  function saveDayEdit(di) {
+    if (onSaveProgram) onSaveProgram(localProg);
+    else if (onProgramEdited) onProgramEdited(localProg);
+    setEditingDayIdx(null);
+  }
+
   return (
-    <div style={{ padding:"14px" }}>
-      <button onClick={onBack} style={{ background:"none", border:"none", color:C.text, fontSize:14, cursor:"pointer", padding:"4px 0 12px", fontFamily:F }}>‹ Back to Programs</button>
-
-      <div style={{ marginBottom:18 }}>
-        <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>{localProg.name}</div>
-        <div style={{ fontSize:13, color:C.sub }}>{localProg.days?.length || 0} days · {localProg.days?.reduce((a,d) => a+(d.exercises?.length||0),0)} exercises</div>
-      </div>
-
-      <div style={{ display:"flex", gap:8, marginBottom:18 }}>
-        {!isActive && (
-          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ flex:1, background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Set as Active</button>
-        )}
-        {isActive && (
-          <button onClick={() => onSaveProgram && onSaveProgram({ ...localProg, _deactivate: true })} style={{ flex:1, background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Deactivate</button>
-        )}
-        <button onClick={() => {
-          if (window.confirm(`Delete "${localProg.name}"?`)) {
-            onSaveStore(s => ({ ...s, programs: s.programs.filter(p => p.id !== localProg.id), activeProgramId: s.activeProgramId === localProg.id ? null : s.activeProgramId }));
-            onBack();
-          }
-        }} style={{ padding:"10px 16px", background:"none", border:`1px solid #ef4444`, borderRadius:8, color:"#ef4444", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
-      </div>
-
-      {(localProg.days || []).map((day, di) => (
-        <div key={day.id || di} style={{ border:`1px solid ${C.border}`, borderRadius:12, padding:"14px", marginBottom:10 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-            <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{day.name}</div>
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={() => {
-                if (editingDayIdx === di) {
-                  // Closing edit — trigger explicit save
-                  if (onSaveProgram) onSaveProgram(localProg);
-                  else if (onProgramEdited) onProgramEdited(localProg);
-                }
-                setEditingDayIdx(editingDayIdx === di ? null : di);
-              }} style={{
-                background: editingDayIdx === di ? C.accent : C.divider,
-                color: editingDayIdx === di ? "#fff" : C.sub,
-                border:"none", borderRadius:6, padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-              }}>{editingDayIdx === di ? "Save" : "Edit"}</button>
-              <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:6, padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Start</button>
-            </div>
+    <div style={{ flex:1, overflowY:"auto", paddingBottom:30 }}>
+      {/* Header */}
+      <div style={{ position:"sticky", top:0, background:C.bg, zIndex:10, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px" }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:14, cursor:"pointer", padding:"4px 0", fontFamily:F, display:"flex", alignItems:"center", gap:4 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>
+          Programs
+        </button>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginTop:8 }}>
+          <div>
+            <div style={{ fontSize:20, fontWeight:800, color:C.text }}>{localProg.name}</div>
+            <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{localProg.days?.length || 0} days · {localProg.days?.reduce((a,d) => a+(d.exercises?.length||0),0)} exercises</div>
           </div>
-
-          {(day.exercises || []).map((ex, ei) => {
-            const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
-            return (
-              <div key={ei} style={{ padding:"8px 0", borderTop: ei > 0 ? `1px solid ${C.divider}` : "none" }}>
-                {editingDayIdx === di ? (
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <div style={{ flex:1 }}>
-                      <input value={ex.name} onChange={e => updateExercise(di, ei, { name: e.target.value })}
-                        style={{ width:"100%", background:C.divider, border:"none", borderRadius:6, padding:"6px 10px", fontSize:13, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:4 }}
-                      />
-                      <input value={ex.note||""} placeholder="Note..." onChange={e => updateExercise(di, ei, { note: e.target.value })}
-                        style={{ width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"3px 0", fontSize:12, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
-                      />
-                    </div>
-                    <button onClick={() => removeExercise(di, ei)} style={{ background:"none", border:"none", fontSize:20, color:"#ef4444", cursor:"pointer", flexShrink:0 }}>×</button>
-                  </div>
-                ) : (
-                  <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-                    {exInfo && <div style={{ width:32, height:32, borderRadius:8, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><MuscleIcon muscle={exInfo.muscle} size={22} C={C}/></div>}
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{ex.name}</div>
-                      {ex.reps && <div style={{ fontSize:11, color:C.sub }}>{ex.reps}</div>}
-                      {ex.note && <div style={{ fontSize:11, color:C.accent, marginTop:2 }}>💡 {ex.note}</div>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {editingDayIdx === di && (
-            <button onClick={() => addExercise(di)} style={{ width:"100%", marginTop:10, padding:"8px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>
-              + Add Exercise
-            </button>
+          {isActive && (
+            <div style={{ background:`${C.accent}18`, border:`1px solid ${C.accent}44`, borderRadius:20, padding:"4px 10px", fontSize:11, fontWeight:700, color:C.accent }}>ACTIVE</div>
           )}
         </div>
-      ))}
+        {/* Action buttons */}
+        <div style={{ display:"flex", gap:6, marginTop:10 }}>
+          {!isActive && (
+            <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ flex:1, background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Set Active</button>
+          )}
+          {isActive && (
+            <button onClick={() => onSaveProgram && onSaveProgram({ ...localProg, _deactivate: true })} style={{ flex:1, background:C.divider, color:C.sub, border:"none", borderRadius:10, padding:"9px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>Deactivate</button>
+          )}
+          <button onClick={() => {
+            if (window.confirm(`Delete "${localProg.name}"?`)) {
+              onSaveStore(s => ({ ...s, programs: s.programs.filter(p => p.id !== localProg.id), activeProgramId: s.activeProgramId === localProg.id ? null : s.activeProgramId }));
+              onBack();
+            }
+          }} style={{ padding:"9px 14px", background:"none", border:`1px solid #ef4444`, borderRadius:10, color:"#ef4444", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
+        </div>
+      </div>
+
+      {/* Days */}
+      <div style={{ padding:"12px 14px 0" }}>
+        {(localProg.days || []).map((day, di) => {
+          const isEditing = editingDayIdx === di;
+          return (
+            <div key={day.id || di} style={{ marginBottom:10, background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
+              {/* Day header */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  {isEditing
+                    ? <input value={day.name} onChange={e => setLocalProg(p => ({ ...p, days: p.days.map((d,i) => i!==di?d:{...d,name:e.target.value}) }))}
+                        style={{ fontSize:15, fontWeight:700, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, width:"100%" }}/>
+                    : <div style={{ fontSize:15, fontWeight:700, color:C.text }}>{day.name}</div>
+                  }
+                  <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(day.exercises||[]).length} exercises</div>
+                </div>
+                <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                  {isEditing ? (
+                    <button onClick={() => saveDayEdit(di)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Save</button>
+                  ) : (
+                    <>
+                      <button onClick={() => setEditingDayIdx(di)} style={{ background:C.divider, color:C.sub, border:"none", borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F }}>Edit</button>
+                      <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Start</button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Exercises */}
+              <div>
+                {(day.exercises || []).map((ex, ei) => {
+                  const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
+                  const sets = ex.sets || 3;
+                  const reps = ex.reps || "8-12";
+                  return (
+                    <div key={ei}
+                      data-drag-item="true"
+                      onTouchMove={e => {
+                        if (dragIdx === null || dragDay !== di) return;
+                        e.preventDefault();
+                        const dy = e.touches[0].clientY - dragStartY.current;
+                        const steps = Math.round(dy / dragNodeH.current);
+                        setDragOverIdx(Math.max(0, Math.min((day.exercises.length - 1), dragIdx + steps)));
+                      }}
+                      onTouchEnd={() => {
+                        if (dragIdx !== null && dragOverIdx !== null && dragOverIdx !== dragIdx && dragDay === di) {
+                          const arr = [...day.exercises];
+                          const [moved] = arr.splice(dragIdx, 1);
+                          arr.splice(dragOverIdx, 0, moved);
+                          setLocalProg(p => ({ ...p, days: p.days.map((d, i) => i !== di ? d : { ...d, exercises: arr }) }));
+                        }
+                        setDragIdx(null); setDragDay(null); setDragOverIdx(null);
+                      }}
+                      style={{
+                        borderTop: ei > 0 ? `1px solid ${C.divider}` : "none",
+                        opacity: dragDay === di && dragIdx === ei ? 0.4 : 1,
+                        background: dragDay === di && dragOverIdx === ei && dragIdx !== ei ? `${C.accent}12` : "transparent",
+                        transition: "background 0.15s",
+                      }}>
+                      {isEditing ? (
+                        /* Edit mode — full row with all fields */
+                        <div style={{ padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
+                          <div
+                            onTouchStart={e => {
+                              const node = e.currentTarget.closest('[data-drag-item]');
+                              dragNodeH.current = node?.getBoundingClientRect().height || 60;
+                              dragStartY.current = e.touches[0].clientY;
+                              setDragIdx(ei);
+                              setDragDay(di);
+                              setDragOverIdx(ei);
+                              try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+                            }}
+                            style={{ color:C.muted, fontSize:18, cursor:"grab", paddingTop:2, userSelect:"none", touchAction:"none" }}>⠿</div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            {/* Exercise name */}
+                            <input value={ex.name} onChange={e => updateExercise(di, ei, { name: e.target.value })}
+                              placeholder="Exercise name..."
+                              style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"8px 12px", fontSize:13, fontWeight:600, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:8 }}
+                            />
+                            {/* Sets × Reps row */}
+                            <div style={{ display:"flex", gap:8, marginBottom:6 }}>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:1, marginBottom:4 }}>SETS</div>
+                                <div style={{ display:"flex", alignItems:"center", background:C.divider, borderRadius:8, overflow:"hidden" }}>
+                                  <button onClick={() => updateExercise(di, ei, { sets: Math.max(1, (parseInt(sets)||3) - 1) })}
+                                    style={{ padding:"7px 12px", background:"none", border:"none", color:C.accent, fontSize:16, fontWeight:700, cursor:"pointer" }}>−</button>
+                                  <div style={{ flex:1, textAlign:"center", fontSize:15, fontWeight:700, color:C.text, fontFamily:MONO }}>{sets}</div>
+                                  <button onClick={() => updateExercise(di, ei, { sets: (parseInt(sets)||3) + 1 })}
+                                    style={{ padding:"7px 12px", background:"none", border:"none", color:C.accent, fontSize:16, fontWeight:700, cursor:"pointer" }}>+</button>
+                                </div>
+                              </div>
+                              <div style={{ flex:2 }}>
+                                <div style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:1, marginBottom:4 }}>REPS / TARGET</div>
+                                <input value={reps} onChange={e => updateExercise(di, ei, { reps: e.target.value })}
+                                  placeholder="8-12"
+                                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"7px 12px", fontSize:14, fontWeight:600, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", textAlign:"center" }}
+                                />
+                              </div>
+                              <div style={{ flex:2 }}>
+                                <div style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:1, marginBottom:4 }}>REST (s)</div>
+                                <input value={ex.rest||""} onChange={e => updateExercise(di, ei, { rest: e.target.value })}
+                                  placeholder="90"
+                                  type="number" inputMode="numeric"
+                                  style={{ width:"100%", background:C.divider, border:"none", borderRadius:8, padding:"7px 12px", fontSize:14, fontWeight:600, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", textAlign:"center" }}
+                                />
+                              </div>
+                            </div>
+                            {/* Note */}
+                            <input value={ex.note||""} placeholder="Coach note (optional)..."
+                              onChange={e => updateExercise(di, ei, { note: e.target.value })}
+                              style={{ width:"100%", background:"none", border:`1px solid ${C.divider}`, borderRadius:8, padding:"6px 10px", fontSize:12, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
+                            />
+                          </div>
+                          <button onClick={() => removeExercise(di, ei)} style={{ background:"none", border:"none", color:"#ef4444", fontSize:20, cursor:"pointer", paddingTop:2, flexShrink:0 }}>×</button>
+                        </div>
+                      ) : (
+                        /* View mode — clean row */
+                        <div style={{ padding:"11px 14px", display:"flex", alignItems:"center", gap:12 }}>
+                          <div style={{ width:40, height:40, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                            <MuscleIcon muscle={exInfo?.muscle||""} size={26} C={C}/>
+                          </div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{ex.name || <span style={{ color:C.muted }}>Unnamed</span>}</div>
+                            <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
+                              {sets} × {reps}{exInfo?.muscle ? ` · ${exInfo.muscle}` : ""}
+                            </div>
+                            {ex.note && <div style={{ fontSize:11, color:C.accent, marginTop:2 }}>💡 {ex.note}</div>}
+                          </div>
+                          {ex.rest && <div style={{ fontSize:11, color:C.muted, flexShrink:0 }}>{ex.rest}s</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Add exercise button in edit mode */}
+                {isEditing && (
+                  <button onClick={() => addExercise(di)} style={{
+                    width:"100%", padding:"12px", background:"none",
+                    border:"none", borderTop:`1px solid ${C.divider}`,
+                    color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F,
+                    display:"flex", alignItems:"center", justifyContent:"center", gap:6
+                  }}>
+                    <span style={{ fontSize:18 }}>+</span> Add Exercise
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -2111,19 +2382,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   }
 
   function toggleDone(ei, si) {
-    setSession(p => ({
-      ...p,
-      exercises: p.exercises.map((ex, i) => i !== ei ? ex : {
-        ...ex,
-        sets: ex.sets.map((s, j) => j !== si ? s : { ...s, done: !s.done })
-      })
-    }));
-    // Use per-set restTime if set, else exercise default, else global default
+    let completing = false;
+    setSession(p => {
+      const nowDone = !p.exercises[ei]?.sets[si]?.done;
+      completing = nowDone;
+      return {
+        ...p,
+        exercises: p.exercises.map((ex, i) => i !== ei ? ex : {
+          ...ex,
+          sets: ex.sets.map((s, j) => j !== si ? s : { ...s, done: nowDone })
+        })
+      };
+    });
+    // Haptic on completion
+    try { if (navigator.vibrate) navigator.vibrate(completing ? 30 : 10); } catch {}
+    // Auto-start rest timer on set completion
     setSession(p => {
       const ex = p.exercises[ei];
       const set = ex?.sets[si];
       const restSecs = set?.restTime || store.defaultRestTime || 120;
-      setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now() });
+      if (!set?.done) setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now() });
       return p;
     });
     // Request notification permission on first rest timer (user gesture required)
@@ -2365,6 +2643,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <SetRow set={set} si={si} exName={ex.name} store={store} unit={unit} C={C}
                       onUpdate={patch => updateSet(ei,si,patch)}
                       onToggleDone={() => toggleDone(ei,si)}
+                      onDelete={ex.sets.length > 1 ? () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.filter((_,j)=>j!==si)}) })) : undefined}
                     />
                     <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
@@ -2527,7 +2806,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>{prog.name}</div>
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                {prog.days.map((day, di) => (
+                {prog.days.map((day, di) => {
+                  const lastDone = (() => {
+                    const dates = Object.keys(store.history||{}).sort().reverse();
+                    for (const dk of dates) {
+                      if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
+                        const d = Math.floor((Date.now() - new Date(dk).getTime()) / 86400000);
+                        return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
+                      }
+                    }
+                    return null;
+                  })();
+                  return (
                   <div key={day.id || di} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
                     <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
                       width:"100%", background:"none", border:"none", padding:"13px 14px",
@@ -2542,7 +2832,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
                         </div>
                       </div>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+                      <div style={{ textAlign:"right", flexShrink:0 }}>
+                        {lastDone && <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>{lastDone}</div>}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+                      </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
                       <button onClick={() => { setSubTab("programs"); setViewingProgram(prog.id); }} style={{
@@ -2555,7 +2848,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       }}>Start ›</button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           ) : (
@@ -2597,27 +2891,41 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {(!store.programs || !store.programs.length) && (
             <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
           )}
-          {(store.programs || []).map((p, idx) => (
+          {(() => {
+            const progDragRef = { dragging: false, startY: 0, origIdx: 0, overIdx: 0 };
+            return (store.programs || []).map((p, idx) => (
             <div key={p.id}
-              draggable
-              onDragStart={e => { e.dataTransfer.setData("text/plain", String(idx)); e.currentTarget.style.opacity="0.5"; }}
-              onDragEnd={e => { e.currentTarget.style.opacity="1"; }}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => {
-                e.preventDefault();
-                const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
-                if (fromIdx === idx) return;
-                const arr = [...store.programs];
-                const [moved] = arr.splice(fromIdx, 1);
-                arr.splice(idx, 0, moved);
-                setStore(prev => ({ ...prev, programs: arr }));
+              data-drag-item="true"
+              onTouchStart={e => {
+                progDragRef.dragging = true;
+                progDragRef.startY = e.touches[0].clientY;
+                progDragRef.origIdx = idx;
+                progDragRef.overIdx = idx;
+                try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
               }}
-              onClick={() => setViewingProgram(p.id)} style={{
-              background: store.activeProgramId === p.id ? C.accentSoft : "none",
-              border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-              borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
-              display:"flex", alignItems:"center", gap:12
-            }}>
+              onTouchMove={e => {
+                if (!progDragRef.dragging) return;
+                e.preventDefault();
+                const dy = e.touches[0].clientY - progDragRef.startY;
+                progDragRef.overIdx = Math.max(0, Math.min((store.programs.length - 1), idx + Math.round(dy / 72)));
+              }}
+              onTouchEnd={() => {
+                if (!progDragRef.dragging) return;
+                progDragRef.dragging = false;
+                if (progDragRef.overIdx !== progDragRef.origIdx) {
+                  const arr = [...store.programs];
+                  const [moved] = arr.splice(progDragRef.origIdx, 1);
+                  arr.splice(progDragRef.overIdx, 0, moved);
+                  setStore(prev => ({ ...prev, programs: arr }));
+                }
+              }}
+              onClick={() => setViewingProgram(p.id)}
+              style={{
+                background: store.activeProgramId === p.id ? C.accentSoft : "none",
+                border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
+                borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
+                display:"flex", alignItems:"center", gap:12
+              }}>
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
                   <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
@@ -2629,9 +2937,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
                 </div>
               </div>
-              <span style={{ fontSize:18, color:C.sub }}>⠿</span>
+              <span style={{ fontSize:18, color:C.muted, touchAction:"none" }}>⠿</span>
             </div>
-          ))}
+            ));
+          })()}
         </div>
       )}
 
@@ -2684,7 +2993,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
           {/* Filter Pills */}
           <div style={{ display:"flex", gap:6, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
-            {["All","Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Core"].map(f => (
+            {["All","Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Traps","Forearms","Full Body","Cardio"].map(f => (
               <button key={f} onClick={() => setExerciseFilter(f)} style={{
                 padding:"5px 12px", background: exerciseFilter===f ? C.accent : C.divider,
                 border:"none", borderRadius:20, fontSize:11, fontWeight:600,
@@ -3153,22 +3462,39 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             </div>
           ) : (
             <div style={{ padding:"0 14px" }}>
-              <div style={{ fontSize:11, color:C.sub, marginBottom:12, marginTop:4 }}>Drag ⠿ to reorder · tap × to remove</div>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:12, marginTop:4 }}>Hold ⠿ and drag to reorder · tap × to remove</div>
               {editDay.exercises.map((ex, i) => (
                 <div key={i}
-                  draggable
-                  onDragStart={() => setDragIdx(i)}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={() => {
-                    if (dragIdx === null || dragIdx === i) return;
-                    const arr = [...editDay.exercises];
-                    const [moved] = arr.splice(dragIdx, 1);
-                    arr.splice(i, 0, moved);
-                    setEditDay(d => ({...d, exercises: arr}));
+                  data-drag-item="true"
+                  onTouchMove={e => {
+                    if (dragIdx === null) return;
+                    e.preventDefault();
+                    const dy = e.touches[0].clientY - (dragIdx._startY || 0);
+                    const steps = Math.round(dy / 64);
+                    const newOver = Math.max(0, Math.min(editDay.exercises.length - 1, dragIdx._origIdx + steps));
+                    if (newOver !== dragIdx._over) setDragIdx(d => ({ ...d, _over: newOver }));
+                  }}
+                  onTouchEnd={() => {
+                    if (dragIdx && dragIdx._over !== undefined && dragIdx._over !== dragIdx._origIdx) {
+                      const arr = [...editDay.exercises];
+                      const [moved] = arr.splice(dragIdx._origIdx, 1);
+                      arr.splice(dragIdx._over, 0, moved);
+                      setEditDay(d => ({ ...d, exercises: arr }));
+                    }
                     setDragIdx(null);
                   }}
-                  style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 0", borderBottom:`1px solid ${C.divider}`, cursor:"grab" }}>
-                  <span style={{ color:C.muted, fontSize:16, flexShrink:0 }}>⠿</span>
+                  style={{
+                    display:"flex", alignItems:"center", gap:8, padding:"10px 0",
+                    borderBottom:`1px solid ${C.divider}`,
+                    opacity: dragIdx?._origIdx === i ? 0.4 : 1,
+                    background: dragIdx?._over === i && dragIdx?._origIdx !== i ? `${C.accent}10` : "transparent",
+                  }}>
+                  <span
+                    onTouchStart={e => {
+                      setDragIdx({ _origIdx: i, _over: i, _startY: e.touches[0].clientY });
+                      try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+                    }}
+                    style={{ color:C.muted, fontSize:18, flexShrink:0, touchAction:"none", userSelect:"none" }}>⠿</span>
                   <div style={{ flex:1 }}>
                     <input value={ex.name}
                       onChange={e => setEditDay(d => ({...d, exercises:d.exercises.map((x,j)=>j!==i?x:{...x,name:e.target.value})}))}
@@ -3631,6 +3957,52 @@ function getCues(name, muscle) {
 // ── Exercise demo fetcher — uses multiple sources with fallback ──────────────
 
 // Strip prefixes to normalize search queries
+// ─── Touch-based drag-to-reorder (works on iOS Safari) ───────────────────────
+function useTouchDrag(items, onReorder) {
+  const dragRef = useRef(null); // { idx, startY, currentY, nodeHeight }
+  const [dragging, setDragging] = useState(null); // index being dragged
+  const [overIdx, setOverIdx] = useState(null);
+  const containerRef = useRef(null);
+
+  function onHandleTouchStart(idx, e) {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const node = e.currentTarget.closest('[data-drag-item]');
+    dragRef.current = {
+      idx,
+      startY: touch.clientY,
+      nodeHeight: node?.getBoundingClientRect().height || 60,
+    };
+    setDragging(idx);
+    setOverIdx(idx);
+    try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+  }
+
+  function onContainerTouchMove(e) {
+    if (dragRef.current === null || dragging === null) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const dy = touch.clientY - dragRef.current.startY;
+    const steps = Math.round(dy / dragRef.current.nodeHeight);
+    const newOver = Math.max(0, Math.min(items.length - 1, dragRef.current.idx + steps));
+    setOverIdx(newOver);
+  }
+
+  function onContainerTouchEnd() {
+    if (dragRef.current !== null && overIdx !== null && overIdx !== dragging) {
+      const arr = [...items];
+      const [moved] = arr.splice(dragging, 1);
+      arr.splice(overIdx, 0, moved);
+      onReorder(arr);
+    }
+    dragRef.current = null;
+    setDragging(null);
+    setOverIdx(null);
+  }
+
+  return { dragging, overIdx, containerRef, onHandleTouchStart, onContainerTouchMove, onContainerTouchEnd };
+}
+
 function toWgerQuery(name) {
   return name.toLowerCase()
     .replace(/\(.*?\)/g,"")
@@ -4029,18 +4401,16 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
     try {
       let imageUrl = null;
       if (img) {
-        // Upload image
-        const [header, data] = img.split(",");
-        const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
-        const ext = mime.split("/")[1] || "jpg";
-        const filename = `${currentUserId}/group_${Date.now()}.${ext}`;
-        const bytes = atob(data); const arr = new Uint8Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-        const upRes = await fetch(`${SUPABASE_URL}/storage/v1/object/post-images/${filename}`, {
-          method:"POST", headers:{ "Authorization":`Bearer ${token}`, "Content-Type":mime, "x-upsert":"true" },
-          body: new Blob([arr], { type: mime })
+        const mime = img.match(/data:(.*?);/)?.[1] || "image/jpeg";
+        const upRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-image`, {
+          method:"POST",
+          headers:{ "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
+          body: JSON.stringify({ base64: img, mimeType: mime })
         });
-        if (upRes.ok) imageUrl = `${SUPABASE_URL}/storage/v1/object/public/post-images/${filename}`;
+        if (upRes.ok) {
+          const { url } = await upRes.json();
+          imageUrl = url || null;
+        }
       }
       const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
         method:"POST",
@@ -4105,22 +4475,19 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
               <div style={{ display:"flex", gap:12 }}>
                 <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600 }}>📷 Photo</button>
                 {/* Share recent workout */}
-                {Object.entries(store.history||{}).slice(0,1).map(([date, sessions]) =>
-                  Object.values(sessions).slice(0,1).map((sess, i) => (
-                    <button key={i} onClick={async () => {
-                      if (!token) return; setPosting(true);
-                      try {
-                        const workoutData = { name: sess.dayName, duration: sess.duration, exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) };
-                        const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
-                          method:"POST",
-                          headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
-                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:`${sess.dayName} 💪`, workout:workoutData })
-                        });
-                        if (res.ok) { const d = await res.json(); const p = Array.isArray(d)?d[0]:d; if(p) setPosts(prev=>[p,...prev]); toast("Workout shared to group!", "success"); }
-                      } catch {} setPosting(false);
-                    }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600 }}>💪 Share Workout</button>
-                  ))
-                )}
+                <button onClick={() => {
+                  const recent = Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([,s])=>Object.values(s)).slice(0,1)[0];
+                  if (!recent || !token) return;
+                  setPosting(true);
+                  const workoutData = { name:recent.dayName, duration:recent.duration, exercises:(recent.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) };
+                  fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
+                    method:"POST",
+                    headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
+                    body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:`${recent.dayName} 💪`, workout:workoutData })
+                  }).then(async r => {
+                    if (r.ok) { const d = await r.json(); const p = Array.isArray(d)?d[0]:d; if(p) setPosts(prev=>[p,...prev]); toast("Workout shared to group 💪", "success"); }
+                  }).finally(() => setPosting(false));
+                }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600 }}>💪 Share Workout</button>
               </div>
               <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
                 background:(caption.trim()||img)?C.accent:C.divider, color:(caption.trim()||img)?"#fff":C.sub,
@@ -4141,26 +4508,65 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
             )}
             {posts.map(post => {
               const author = store.users.find(u => u.id === post.user_id);
+              const isMyPost = post.user_id === currentUserId;
+              const myReaction = (post._reactions||{})[currentUserId];
               return (
-                <div key={post.id} style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                  <div style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:8 }}>
-                    <Avatar user={author} size={32} C={C}/>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                        <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{author?.username || "Unknown"}</span>
-                        <span style={{ fontSize:11, color:C.sub }}>{timeAgo(new Date(post.created_at).getTime())}</span>
+                <div key={post.id} style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                    <Avatar user={author} size={36} C={C}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{author?.username || "Unknown"}</span>
+                          <span style={{ fontSize:11, color:C.muted }}>{timeAgo(new Date(post.created_at).getTime())}</span>
+                        </div>
+                        {isMyPost && (
+                          <button onClick={async () => {
+                            if (!token) return;
+                            await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
+                              method:"DELETE", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}` }
+                            });
+                            setPosts(p => p.filter(x => x.id !== post.id));
+                          }} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:"0 2px" }}>×</button>
+                        )}
                       </div>
-                      <div style={{ fontSize:14, color:C.text, lineHeight:1.45 }}>{post.caption}</div>
-                      {(post.image_url || post._localImage) && <img src={post._localImage || post.image_url} alt="" style={{ width:"100%", borderRadius:10, marginTop:8, maxHeight:300, objectFit:"cover" }}/>}
+                      {post.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.5, marginBottom:6 }}>{post.caption}</div>}
+                      {(post.image_url || post._localImage) && (
+                        <img src={post._localImage || post.image_url} alt="" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>
+                      )}
                       {post.workout && (
-                        <div style={{ marginTop:8, background:C.divider, borderRadius:10, padding:"10px 12px" }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{post.workout.name} 💪</div>
+                        <div style={{ marginBottom:8, background:C.divider, borderRadius:10, padding:"10px 12px" }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{post.workout.name} 💪</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{Math.floor((post.workout.duration||0)/60)}m · {(post.workout.exercises||[]).length} exercises</div>
                           {(post.workout.exercises||[]).slice(0,3).map((ex,i) => (
-                            <div key={i} style={{ fontSize:12, color:C.sub, marginTop:4 }}>• {ex.name} {ex.sets?.length ? `${ex.sets.length} sets` : ""}</div>
+                            <div key={i} style={{ fontSize:12, color:C.sub, marginTop:3 }}>• {ex.name}{ex.sets?.length ? ` ${ex.sets.length}×` : ""}</div>
                           ))}
                         </div>
                       )}
+                      {/* Reactions */}
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                        {["🔥","💪","👏","🏆"].map(emoji => {
+                          const count = Object.values(post._reactions||{}).filter(r=>r===emoji).length;
+                          const active = myReaction === emoji;
+                          return (
+                            <button key={emoji} onClick={() => {
+                              const prev = post._reactions||{};
+                              const next = { ...prev };
+                              if (active) delete next[currentUserId];
+                              else next[currentUserId] = emoji;
+                              setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:next} : x));
+                            }} style={{
+                              background: active ? `${C.accent}20` : C.divider,
+                              border: `1px solid ${active ? C.accent : "transparent"}`,
+                              borderRadius:20, padding:"3px 10px", fontSize:12, cursor:"pointer",
+                              display:"flex", alignItems:"center", gap:4, fontFamily:F,
+                              color: active ? C.accent : C.sub
+                            }}>
+                              {emoji}{count > 0 && <span style={{ fontSize:11, fontWeight:600 }}>{count}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -4872,8 +5278,8 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
         const listUsers = idList.map(id => store.users.find(u => u.id === id)).filter(Boolean);
         const myFollowing = me?.following || [];
         return (
-          <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", boxShadow:"0 -8px 40px rgba(0,0,0,0.2)" }}>
+          <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", margin:"0 16px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px", borderBottom:`1px solid ${C.divider}` }}>
                 <div style={{ width:44 }}/>
                 <div style={{ fontSize:16, fontWeight:700, color:C.text, textTransform:"capitalize" }}>{listModal} · {listUsers.length}</div>
@@ -6015,16 +6421,21 @@ export default function App() {
               position:"absolute", top:0, left:0, right:0,
               height:pullDist, display:"flex", alignItems:"center", justifyContent:"center",
               transition: pullDist === 0 ? "height 0.2s" : "none",
-              pointerEvents:"none"
+              pointerEvents:"none", overflow:"hidden"
             }}>
-              {pullDist > 0 && (
-                <div style={{
-                  width:32, height:32, borderRadius:"50%",
-                  border:`2.5px solid ${C.divider}`,
-                  borderTopColor: C.accent,
-                  animation: isRefreshing ? "spotrSpin 0.8s linear infinite" : "none",
-                  transform: `rotate(${pullDist * 3}deg)`
-                }}/>
+              {pullDist > 20 && (
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                  <div style={{
+                    width:28, height:28, borderRadius:"50%",
+                    border:`2.5px solid ${C.divider}`,
+                    borderTopColor: C.accent,
+                    animation: isRefreshing ? "spotrSpin 0.7s linear infinite" : "none",
+                    transform: isRefreshing ? undefined : `rotate(${Math.min(pullDist * 4, 360)}deg)`
+                  }}/>
+                  {!isRefreshing && pullDist > 55 && (
+                    <div style={{ fontSize:10, color:C.accent, fontWeight:600 }}>Release to refresh</div>
+                  )}
+                </div>
               )}
             </div>
             <style>{`@keyframes spotrSpin { to { transform: rotate(360deg); } }`}</style>
@@ -6071,9 +6482,8 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Posts */}
               <div style={{ paddingTop:4 }}>
-                {feedPosts.length === 0 && (
+                {feedPosts.length === 0 && !isRefreshing && (
                   <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
                     <div style={{ fontSize:48, marginBottom:12 }}>🔥</div>
                     <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Your feed is empty</div>
@@ -6086,6 +6496,25 @@ export default function App() {
                       padding:"11px 22px", fontSize:13, fontWeight:700,
                       cursor:"pointer", fontFamily:F
                     }}>Start a Workout</button>
+                  </div>
+                )}
+                {feedPosts.length === 0 && isRefreshing && (
+                  // Skeleton loader
+                  <div style={{ padding:"0 14px" }}>
+                    {[1,2,3].map(i => (
+                      <div key={i} style={{ marginBottom:16, borderBottom:`1px solid ${C.divider}`, paddingBottom:16 }}>
+                        <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:12 }}>
+                          <div style={{ width:40, height:40, borderRadius:"50%", background:C.divider, animation:"shimmer 1.2s ease-in-out infinite alternate" }}/>
+                          <div>
+                            <div style={{ width:100, height:12, borderRadius:6, background:C.divider, marginBottom:6 }}/>
+                            <div style={{ width:60, height:10, borderRadius:6, background:C.divider }}/>
+                          </div>
+                        </div>
+                        <div style={{ width:"100%", height:180, borderRadius:12, background:C.divider, marginBottom:10 }}/>
+                        <div style={{ width:"70%", height:10, borderRadius:6, background:C.divider }}/>
+                      </div>
+                    ))}
+                    <style>{`@keyframes shimmer{from{opacity:0.5}to{opacity:1}}`}</style>
                   </div>
                 )}
                 {feedPosts.map((post, i) => (
