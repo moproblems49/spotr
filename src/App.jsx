@@ -921,6 +921,7 @@ function Heatmap({ workoutDates, C }) {
 const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentExercises }) {
   const [q, setQ] = useState(value || "");
   const [open, setOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const ref = useRef(null);
 
   useEffect(() => {
@@ -931,6 +932,8 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const categories = ["All", "Chest", "Back", "Shoulders", "Biceps", "Triceps", "Quads", "Hamstrings", "Glutes", "Calves", "Core"];
+
   const recent = (() => {
     const seen = new Set();
     (recentExercises || []).slice(0, 10).forEach(sess => {
@@ -939,11 +942,14 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
     return Array.from(seen).slice(0, 5);
   })();
 
-  const results = q.length > 0
-    ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 7)
-    : recent.length > 0
+  const filteredResults = q.length > 0
+    ? EXERCISE_DB.filter(e =>
+        e.name.toLowerCase().includes(q.toLowerCase()) &&
+        (selectedCategory === "All" || e.muscle === selectedCategory)
+      ).slice(0, 10)
+    : selectedCategory === "All" && recent.length > 0
       ? recent.map(name => EXERCISE_DB.find(e => e.name === name) || { name, muscle: "" }).filter(Boolean)
-      : EXERCISE_DB.slice(0, 7);
+      : EXERCISE_DB.filter(e => selectedCategory === "All" || e.muscle === selectedCategory).slice(0, 10);
 
   function select(ex) {
     setQ(ex.name);
@@ -957,10 +963,10 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
         value={q}
         onChange={e => { setQ(e.target.value); onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
-        placeholder="Search exercise..."
+        placeholder="Search exercises..."
         style={{
           width:"100%", background:"transparent", border:"none",
-          padding:"4px 0", fontSize:15, fontWeight:600,
+          padding:"8px 0", fontSize:16, fontWeight:600,
           color:C.text, outline:"none", boxSizing:"border-box",
           fontFamily:F
         }}
@@ -969,78 +975,76 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
         <div style={{
           position:"absolute", top:"calc(100% + 8px)", left:-8, right:-8,
           background:C.surface, border:`1px solid ${C.border}`,
-          borderRadius:12, zIndex:200, maxHeight:240, overflowY:"auto",
-          boxShadow:"0 8px 32px rgba(0,0,0,0.3)"
+          borderRadius:16, zIndex:200, maxHeight:320, overflow:"hidden",
+          boxShadow:"0 12px 40px rgba(0,0,0,0.15)"
         }}>
-          {q.length === 0 && recent.length > 0 && (
-            <div style={{ padding:"8px 14px 4px", fontSize:10, fontWeight:600, color:C.accent, letterSpacing:1 }}>RECENT</div>
-          )}
-          {results.length === 0 && (
-            <div style={{ padding:"12px 14px", fontSize:13, color:C.sub }}>No exercises found</div>
-          )}
-          {results.map((ex, i) => (
-            <div
-              key={ex.name}
-              onClick={() => select(ex)}
-              style={{
-                display:"flex", alignItems:"center", gap:10,
-                padding:"10px 14px", cursor:"pointer",
-                borderBottom: i < results.length-1 ? `1px solid ${C.divider}` : "none"
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = C.divider}
-              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-            >
-              <MuscleIcon muscle={ex.muscle || ""} size={24} C={C}/>
-              <div>
-                <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
-                <div style={{ fontSize:11, color:C.sub }}>{ex.muscle}</div>
+          {/* Category filters */}
+          <div style={{
+            padding: "12px 16px 8px",
+            borderBottom: `1px solid ${C.divider}`,
+            display: "flex",
+            gap: 6,
+            overflowX: "auto"
+          }}>
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                style={{
+                  padding: "6px 12px",
+                  background: selectedCategory === cat ? C.accent : "transparent",
+                  color: selectedCategory === cat ? "#fff" : C.sub,
+                  border: `1px solid ${selectedCategory === cat ? C.accent : C.border}`,
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0
+                }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            {q.length === 0 && selectedCategory === "All" && recent.length > 0 && (
+              <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1 }}>RECENT</div>
+            )}
+            {filteredResults.length === 0 && (
+              <div style={{ padding:"16px", fontSize:14, color:C.sub, textAlign:"center" }}>No exercises found</div>
+            )}
+            {filteredResults.map((ex, i) => (
+              <div
+                key={ex.name}
+                onClick={() => select(ex)}
+                style={{
+                  display:"flex", alignItems:"center", gap:12,
+                  padding:"12px 16px", cursor:"pointer",
+                  borderBottom: i < filteredResults.length-1 ? `1px solid ${C.divider}` : "none"
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = C.divider}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                <MuscleIcon muscle={ex.muscle || ""} size={28} C={C}/>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{ex.name}</div>
+                  <div style={{ fontSize:12, color:C.sub, marginTop: 2 }}>{ex.muscle}</div>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 });
 
-// BufferedInput: local state while typing, commits to parent only on blur.
-// This means typing never triggers parent re-renders — zero lag.
-function BufferedInput({ value, onCommit, placeholder, done, C, prevValue }) {
-  const [local, setLocal] = useState(value || "");
-  useEffect(() => { setLocal(value || ""); }, [value]);
-  const isEmpty = local === "" || local === null || local === undefined;
-  return (
-    <div style={{ position:"relative" }}>
-      {isEmpty && prevValue && (
-        <div style={{
-          position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
-          fontSize:15, fontWeight:600, color:C.sub, opacity:0.45, pointerEvents:"none",
-          fontFamily:F
-        }}>{prevValue}</div>
-      )}
-      <input
-        type="number" inputMode="decimal"
-        value={local}
-        onChange={e => setLocal(e.target.value)}
-        onBlur={() => onCommit(local)}
-        placeholder={prevValue ? "" : (placeholder || "0")}
-        style={{
-          background: done ? `${C.green}22` : C.divider,
-          border:"none", borderRadius:8, padding:"8px 4px",
-          fontSize:15, fontWeight:600,
-          color: done ? C.green : C.text,
-          textAlign:"center", outline:"none", width:"100%", boxSizing:"border-box",
-          fontFamily:F
-        }}
-      />
-    </div>
-  );
-}
-
 // ═════════════════════════════════════════════════════════════════════════════
-// SET ROW (extracted to fix hooks bug)
+// SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
-const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, onDelete, C }) {
+const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, onDelete, C, selected, onSelect, bulkMode }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
@@ -1060,7 +1064,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
   const estimated1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
 
   return (
-    <div style={{ position:"relative", overflow:"hidden" }}>
+    <div style={{ position:"relative", overflow:"hidden", marginBottom: 8 }}>
       {/* Swipe delete background */}
       <div style={{ position:"absolute", right:0, top:0, bottom:0, width:70, background:"#ef4444", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:13, fontWeight:700 }}>Delete</div>
       <div
@@ -1075,95 +1079,267 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           else setSwipeX(0);
           setSwiping(false);
         }}
-        style={{ transform:`translateX(${swipeX}px)`, transition:swiping?"none":"transform 0.2s", background:C.bg }}
+        style={{
+          transform:`translateX(${swipeX}px)`,
+          transition:swiping?"none":"transform 0.2s",
+          background:C.bg,
+          border: selected ? `2px solid ${C.accent}` : set.done ? `1px solid ${C.green}40` : `1px solid ${C.divider}`,
+          borderRadius: 12,
+          padding: "12px 16px",
+          margin: "0 14px"
+        }}
       >
-      <div style={{
-        display:"grid", gridTemplateColumns:"24px 32px 1fr 68px 68px 32px",
-        gap:6, padding:"6px 14px", alignItems:"center",
-        background: set.done ? `${C.green}14` : "transparent"
-      }}>
-        <div style={{ textAlign:"center", fontSize:12, color:set.done?C.green:C.muted, fontWeight:600 }}>{si+1}</div>
+        <div style={{
+          display:"flex", alignItems:"center", gap: 12
+        }}>
+          {/* Bulk select checkbox */}
+          {bulkMode && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onSelect}
+              style={{
+                width: 20,
+                height: 20,
+                accentColor: C.accent
+              }}
+            />
+          )}
 
-        {/* Set type pill */}
-        <div ref={typeMenuRef} style={{ position:"relative" }}>
-          <button onClick={() => setShowTypeMenu(!showTypeMenu)} style={{
-            width:"100%", padding:"3px 0",
-            background: `${setType.color}1a`,
-            border: `1px solid ${setType.color}40`,
-            borderRadius:6, color:setType.color,
-            fontSize:10, fontWeight:700, cursor:"pointer"
-          }}>{setType.short}</button>
-          {showTypeMenu && (
+          {/* Set number */}
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: set.done ? C.green : C.divider,
+            color: set.done ? "#fff" : C.muted,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 14, fontWeight: 700, fontFamily: MONO
+          }}>
+            {si+1}
+          </div>
+
+          {/* Set type selector */}
+          <div ref={typeMenuRef} style={{ position:"relative" }}>
+            <button
+              onClick={() => setShowTypeMenu(!showTypeMenu)}
+              style={{
+                padding: "6px 12px",
+                background: `${setType.color}20`,
+                border: `1px solid ${setType.color}40`,
+                borderRadius: 8,
+                color: setType.color,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                minWidth: 50,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              {setType.short}
+            </button>
+            {showTypeMenu && (
+              <div style={{
+                position:"absolute", top:"calc(100% + 8px)", left:0,
+                background:C.surface, border:`1px solid ${C.border}`,
+                borderRadius:12, zIndex:100, minWidth:120,
+                boxShadow:"0 8px 24px rgba(0,0,0,0.15)", overflow:"hidden"
+              }}>
+                {SET_TYPES.map((t, i) => (
+                  <div
+                    key={t.id}
+                    onClick={() => { onUpdate({ type: t.id }); setShowTypeMenu(false); }}
+                    style={{
+                      padding:"10px 14px", fontSize:13,
+                      color: t.id === set.type ? C.accent : C.text,
+                      fontWeight: t.id === set.type ? 700 : 500,
+                      cursor:"pointer",
+                      background: t.id === set.type ? `${C.accent}10` : "transparent",
+                      borderBottom: i < SET_TYPES.length-1 ? `1px solid ${C.divider}` : "none"
+                    }}
+                  >
+                    {t.label}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Previous set info */}
+          <div style={{
+            flex: 1,
+            textAlign: "center",
+            fontSize: 13,
+            color: C.sub,
+            fontFamily: MONO,
+            opacity: prev ? 1 : 0.5
+          }}>
+            {prev ? `${prev.w} × ${prev.r}` : "No previous"}
+          </div>
+
+          {/* Weight input */}
+          <div style={{ position:"relative", minWidth: 80 }}>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={set.weight || ""}
+              onChange={e => onUpdate({ weight: e.target.value })}
+              placeholder={prev?.w || "0"}
+              style={{
+                width: "100%",
+                background: set.done ? `${C.green}15` : C.surface,
+                border: `1px solid ${set.done ? C.green + '40' : C.border}`,
+                borderRadius: 8,
+                padding: "8px 12px",
+                fontSize: 16,
+                fontWeight: 600,
+                color: set.done ? C.green : C.text,
+                textAlign: "center",
+                outline: "none",
+                fontFamily: MONO,
+                boxSizing: "border-box"
+              }}
+            />
             <div style={{
-              position:"absolute", top:"calc(100% + 4px)", left:0,
-              background:C.surface, border:`1px solid ${C.border}`,
-              borderRadius:10, zIndex:100, minWidth:110,
-              boxShadow:"0 8px 24px rgba(0,0,0,0.3)", overflow:"hidden"
+              position: "absolute",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: 11,
+              color: C.muted,
+              fontWeight: 500
             }}>
-              {SET_TYPES.map((t, i) => (
-                <div
-                  key={t.id}
-                  onClick={() => { onUpdate({ type: t.id }); setShowTypeMenu(false); }}
-                  style={{
-                    padding:"9px 12px", fontSize:12,
-                    color:t.color, fontWeight:600, cursor:"pointer",
-                    borderBottom: i < SET_TYPES.length-1 ? `1px solid ${C.divider}` : "none"
-                  }}
-                >{t.label}</div>
-              ))}
+              {unit}
             </div>
-          )}
+          </div>
+
+          {/* Reps input */}
+          <div style={{ position:"relative", minWidth: 70 }}>
+            <input
+              type="number"
+              value={set.reps || ""}
+              onChange={e => onUpdate({ reps: e.target.value })}
+              placeholder={prev?.r || "0"}
+              style={{
+                width: "100%",
+                background: set.done ? `${C.green}15` : C.surface,
+                border: `1px solid ${set.done ? C.green + '40' : C.border}`,
+                borderRadius: 8,
+                padding: "8px 12px",
+                fontSize: 16,
+                fontWeight: 600,
+                color: set.done ? C.green : C.text,
+                textAlign: "center",
+                outline: "none",
+                fontFamily: MONO,
+                boxSizing: "border-box"
+              }}
+            />
+            <div style={{
+              position: "absolute",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: 11,
+              color: C.muted,
+              fontWeight: 500
+            }}>
+              reps
+            </div>
+          </div>
+
+          {/* Complete button */}
+          <button
+            onClick={onToggleDone}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              border: `2px solid ${set.done ? C.green : C.border}`,
+              background: set.done ? C.green : "transparent",
+              color: set.done ? "#fff" : C.muted,
+              cursor: "pointer",
+              fontSize: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: "bold"
+            }}
+          >
+            ✓
+          </button>
         </div>
 
-        <div style={{ fontSize:11, color:C.sub, textAlign:"center", fontWeight: prev ? 500 : 400 }}>
-          {prev ? (
-            <span style={{ color:C.accent, fontFamily:MONO }}>{prev.w}×{prev.r}</span>
-          ) : "—"}
-        </div>
-
-        <div style={{ position:"relative" }}>
-          <BufferedInput
-            value={set.weight} onCommit={v => onUpdate({ weight: v })}
-            placeholder={prev?.w || "0"}
-            prevValue={prev?.w || null}
-            done={set.done} C={C}
-          />
+        {/* Quick actions row */}
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: 8,
+          paddingTop: 8,
+          borderTop: `1px solid ${C.divider}40`
+        }}>
+          {/* Weight quick adjust */}
           {(set.weight || prev?.w) && (
-            <div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>
-              {[-5, 2.5].map(d => (
-                <button key={d} onMouseDown={e => { e.preventDefault(); const cur = parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({ weight: String(Math.max(0, Math.round((cur+d)*10)/10)) }); }} style={{
-                  background:"none", border:`1px solid ${d<0?C.red+"55":C.green+"55"}`,
-                  color:d<0?C.red:C.green, borderRadius:4, padding:"1px 5px",
-                  fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:MONO, lineHeight:1.4
-                }}>{d>0?"+":""}{d}</button>
+            <div style={{ display: "flex", gap: 4 }}>
+              {[-10, -5, -2.5, 2.5, 5, 10].map(d => (
+                <button
+                  key={d}
+                  onClick={() => {
+                    const cur = parseFloat(set.weight) || parseFloat(prev?.w) || 0;
+                    onUpdate({ weight: String(Math.max(0, Math.round((cur + d) * 10) / 10)) });
+                  }}
+                  style={{
+                    background: "none",
+                    border: `1px solid ${d < 0 ? C.red + '40' : C.green + '40'}`,
+                    color: d < 0 ? C.red : C.green,
+                    borderRadius: 6,
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: MONO
+                  }}
+                >
+                  {d > 0 ? "+" : ""}{d}
+                </button>
               ))}
             </div>
           )}
-        </div>
-        <div style={{ position:"relative" }}>
-          <BufferedInput
-            value={set.reps} onCommit={v => onUpdate({ reps: v })}
-            placeholder={prev?.r || "0"}
-            prevValue={prev?.r || null}
-            done={set.done} C={C}
-          />
-        </div>
 
-        <button onClick={onToggleDone} style={{
-          width:28, height:28, borderRadius:8,
-          border:`1.5px solid ${set.done?C.green:C.border}`,
-          background:set.done?C.green:"transparent",
-          color:set.done?"#fff":C.muted,
-          cursor:"pointer", fontSize:14,
-          display:"flex", alignItems:"center", justifyContent:"center"
-        }}>✓</button>
-      </div>
+          {/* Estimated 1RM */}
+          {estimated1RM && (
+            <div style={{
+              fontSize: 12,
+              color: C.muted,
+              fontFamily: MONO,
+              background: C.divider,
+              padding: "4px 8px",
+              borderRadius: 6
+            }}>
+              est 1RM: {estimated1RM} {unit}
+            </div>
+          )}
 
-      {set.weight && set.reps && estimated1RM && (
-        <div style={{ padding:"0 14px 4px", textAlign:"right", fontSize:10, color:C.muted, fontFamily:MONO }}>
-          est 1RM: {estimated1RM} {unit}
+          {/* Copy previous button */}
+          {prev && (!set.weight || !set.reps) && (
+            <button
+              onClick={() => onUpdate({ weight: prev.w, reps: prev.r })}
+              style={{
+                background: C.accent + '20',
+                border: `1px solid ${C.accent}40`,
+                color: C.accent,
+                borderRadius: 6,
+                padding: "4px 8px",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer"
+              }}
+            >
+              Copy prev
+            </button>
+          )}
         </div>
-      )}
       </div>
     </div>
   );
@@ -2271,33 +2447,83 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
+  const [selectedSets, setSelectedSets] = useState(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
   const elRef = useRef(null);
   const rtRef = useRef(null);
 
-  // Resync both timers when app comes back to foreground
+  // Keyboard navigation and bulk operations
   useEffect(() => {
-    function onVisible() {
-      if (document.hidden) return;
-      // Resync workout elapsed time
-      if (wStart) {
-        setElapsed(Math.floor((Date.now() - wStart) / 1000));
+    function handleKeyDown(e) {
+      if (e.target.tagName === 'INPUT') return; // Don't interfere with input typing
+
+      if (e.key === 'b' && e.ctrlKey) {
+        e.preventDefault();
+        setBulkMode(!bulkMode);
+        setSelectedSets(new Set());
       }
-      // Resync rest timer from its start timestamp
-      setRest(prev => {
-        if (!prev?.startedAt) return prev;
-        const elapsed = Math.floor((Date.now() - prev.startedAt) / 1000);
-        const remaining = Math.max(0, prev.total - elapsed);
-        if (remaining <= 0) {
-          try { toast("Rest time's up — go! 🔥", "success"); } catch {}
-          try { if (navigator.vibrate) navigator.vibrate([200,100,200,100,400]); } catch {}
-          return null;
-        }
-        return { ...prev, secs: remaining };
-      });
+
+      if (bulkMode && e.key === 'a' && e.ctrlKey) {
+        e.preventDefault();
+        // Select all sets
+        const allSetIds = new Set();
+        session?.exercises?.forEach((ex, ei) => {
+          ex.sets.forEach((_, si) => {
+            allSetIds.add(`${ex.id}-${si}`);
+          });
+        });
+        setSelectedSets(allSetIds);
+      }
+
+      if (bulkMode && e.key === 'Escape') {
+        setSelectedSets(new Set());
+        setBulkMode(false);
+      }
     }
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [wStart]);
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [bulkMode, session]);
+
+  function toggleSetSelection(exId, setIndex) {
+    const setId = `${exId}-${setIndex}`;
+    setSelectedSets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(setId)) {
+        newSet.delete(setId);
+      } else {
+        newSet.add(setId);
+      }
+      return newSet;
+    });
+  }
+
+  function bulkCompleteSelected() {
+    setSession(p => ({
+      ...p,
+      exercises: p.exercises.map(ex => ({
+        ...ex,
+        sets: ex.sets.map((s, si) => {
+          const setId = `${ex.id}-${si}`;
+          return selectedSets.has(setId) ? { ...s, done: true } : s;
+        })
+      }))
+    }));
+    setSelectedSets(new Set());
+    setBulkMode(false);
+  }
+
+  function bulkDeleteSelected() {
+    setSession(p => ({
+      ...p,
+      exercises: p.exercises.map(ex => ({
+        ...ex,
+        sets: ex.sets.filter((_, si) => !selectedSets.has(`${ex.id}-${si}`))
+      })).filter(ex => ex.sets.length > 0)
+    }));
+    setSelectedSets(new Set());
+    setBulkMode(false);
+  }
 
   useEffect(() => {
     if (!session) { localStorage.removeItem(SESSION_KEY); return; }
@@ -2574,6 +2800,20 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM</button>
               <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>Plates</button>
+              <button 
+                onClick={() => setBulkMode(!bulkMode)} 
+                style={{ 
+                  fontSize:11, 
+                  color: bulkMode ? C.accent : C.sub, 
+                  background:"none", 
+                  border:"none", 
+                  cursor:"pointer", 
+                  fontFamily:F, 
+                  fontWeight:600 
+                }}
+              >
+                Bulk {bulkMode ? "Off" : "On"}
+              </button>
             </div>
           </div>
           <div style={{ height:4, background:C.divider, borderRadius:4, overflow:"hidden" }}>
@@ -2581,26 +2821,137 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
         </div>
 
+        {/* Bulk mode controls */}
+        {bulkMode && (
+          <div style={{ 
+            padding: "8px 14px", 
+            background: C.accent + '10', 
+            borderBottom: `1px solid ${C.accent}30`,
+            margin: "0 14px",
+            borderRadius: 8,
+            marginBottom: 8,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
+          }}>
+            <span style={{ fontSize: 13, color: C.accent, fontWeight: 600 }}>
+              {selectedSets.size} sets selected
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button 
+                onClick={bulkCompleteSelected}
+                disabled={selectedSets.size === 0}
+                style={{
+                  padding: "6px 12px",
+                  background: selectedSets.size > 0 ? C.green : C.sub,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: selectedSets.size > 0 ? "pointer" : "not-allowed"
+                }}
+              >
+                Complete Selected
+              </button>
+              <button 
+                onClick={bulkDeleteSelected}
+                disabled={selectedSets.size === 0}
+                style={{
+                  padding: "6px 12px",
+                  background: "none",
+                  color: selectedSets.size > 0 ? C.red : C.sub,
+                  border: `1px solid ${selectedSets.size > 0 ? C.red : C.border}`,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  cursor: selectedSets.size > 0 ? "pointer" : "not-allowed"
+                }}
+              >
+                Delete Selected
+              </button>
+              <button 
+                onClick={() => { setSelectedSets(new Set()); setBulkMode(false); }}
+                style={{
+                  padding: "6px 12px",
+                  background: "none",
+                  color: C.sub,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Rest timer */}
         {rest && (
-          <div style={{ background:C.surface, borderBottom:`1px solid ${C.divider}` }}>
-            <div style={{ height:3, background:C.divider }}>
-              <div style={{ height:"100%", background:rest.secs<=10?"#ef4444":C.accent, width:`${(rest.secs/(rest.total||120))*100}%`, transition:"width 1s linear", borderRadius:2 }}/>
-            </div>
-            <div style={{ padding:"10px 14px", display:"flex", alignItems:"center", gap:8 }}>
-              <div style={{ display:"flex", gap:4, flex:1, flexWrap:"nowrap", overflow:"hidden" }}>
-                {[30,60,90,120,180,240].map(s => (
-                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true,startedAt:Date.now()})} style={{
-                    fontSize:10, padding:"4px 7px",
-                    background:rest.total===s?C.accent:"transparent",
-                    border:`1px solid ${rest.total===s?C.accent:C.border}`,
-                    color:rest.total===s?"#fff":C.sub,
-                    borderRadius:16, cursor:"pointer", fontFamily:F, fontWeight:600, flexShrink:0
-                  }}>{s>=60?`${s/60}m`:`${s}s`}</button>
-                ))}
+          <div style={{ 
+            background:C.surface, 
+            borderBottom:`1px solid ${C.divider}`, 
+            padding: "12px 16px",
+            margin: "0 14px",
+            borderRadius: 12,
+            marginBottom: 8
+          }}>
+            <div style={{ 
+              display:"flex", 
+              alignItems:"center", 
+              gap: 12,
+              justifyContent: "space-between"
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 4 }}>Rest Timer</div>
+                <div style={{ display:"flex", gap:6, flexWrap: "wrap" }}>
+                  {[30, 60, 90, 120, 180, 240].map(s => (
+                    <button 
+                      key={s} 
+                      onClick={() => setRest({secs:s, total:s, running:true, startedAt:Date.now()})}
+                      style={{
+                        padding:"6px 12px",
+                        background: rest.total === s ? C.accent : "transparent",
+                        border: `1px solid ${rest.total === s ? C.accent : C.border}`,
+                        color: rest.total === s ? "#fff" : C.text,
+                        borderRadius: 8, 
+                        cursor: "pointer", 
+                        fontSize: 13, 
+                        fontWeight: 600,
+                        fontFamily: MONO
+                      }}
+                    >
+                      {s >= 60 ? `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` : `${s}s`}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <span style={{ fontSize:28, fontWeight:800, color:rest.secs<=10?"#ef4444":C.text, fontFamily:MONO, flexShrink:0 }}>{fmtTime(rest.secs)}</span>
-              <button onClick={() => { clearInterval(rtRef.current); setRest(null); }} style={{ color:C.sub, background:"none", border:"none", cursor:"pointer", fontSize:18, padding:"2px", flexShrink:0 }}>✕</button>
+              
+              <div style={{ textAlign: "center" }}>
+                <div style={{ 
+                  fontSize: 28, 
+                  fontWeight: 800, 
+                  color: rest.secs <= 10 ? C.red : C.accent, 
+                  fontFamily: MONO,
+                  marginBottom: 4
+                }}>
+                  {fmtTime(rest.secs)}
+                </div>
+                <button 
+                  onClick={() => { clearInterval(rtRef.current); setRest(null); }}
+                  style={{ 
+                    background: "none", 
+                    border: "none", 
+                    color: C.sub, 
+                    fontSize: 14, 
+                    cursor: "pointer",
+                    padding: "4px"
+                  }}
+                >
+                  ✕ Cancel
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2645,6 +2996,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 {ex.sets.map((set, si) => (
                   <div key={set.id||si}>
                     <SetRow set={set} si={si} exName={ex.name} store={store} unit={unit} C={C}
+                      selected={selectedSets.has(`${ex.id}-${si}`)}
+                      onSelect={() => toggleSetSelection(ex.id, si)}
+                      bulkMode={bulkMode}
                       onUpdate={patch => updateSet(ei,si,patch)}
                       onToggleDone={() => toggleDone(ei,si)}
                       onDelete={ex.sets.length > 1 ? () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.filter((_,j)=>j!==si)}) })) : undefined}
