@@ -2443,6 +2443,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
+  const progDragRef = useRef({ dragging:false, startY:0, origIdx:0, overIdx:0, rowHeight:168 });
   const rtRef = useRef(null);
 
   useEffect(() => {
@@ -2941,7 +2942,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     <div style={{ overflowY:"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:20 }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
-        {[["today","Today"],["programs","Programs"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
+        {[["today","Today"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
           <button key={t} onClick={() => setSubTab(t)} style={{
             flex:1, padding:"12px 4px", background:"none", border:"none",
             color:subTab===t?C.text:C.sub, fontSize:12, fontWeight:subTab===t?700:500, cursor:"pointer",
@@ -3033,7 +3034,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={() => { setSubTab("programs"); setViewingProgram(prog.id); }} style={{
+                      <button onClick={() => { setViewingProgram(prog.id); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
                         fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
@@ -3045,6 +3046,153 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </div>
                   );
                 })}
+              </div>
+
+              <div style={{ marginTop:20 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>MY PROGRAMS · {store.programs?.length || 0}</div>
+                  <button onClick={() => setShowTemplates(true)} style={{ background:"none", border:"none", color:C.accent, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Browse Templates</button>
+                </div>
+                {(!store.programs || !store.programs.length) ? (
+                  <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"18px", textAlign:"center", color:C.sub, fontSize:12 }}>No programs yet. Use a template to add one.</div>
+                ) : (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                    {(store.programs || []).map((p, idx) => (
+                      <div key={p.id}
+                        onTouchStart={e => {
+                          progDragRef.current.dragging = true;
+                          progDragRef.current.startY = e.touches[0].clientY;
+                          progDragRef.current.origIdx = idx;
+                          progDragRef.current.overIdx = idx;
+                          progDragRef.current.rowHeight = e.currentTarget.offsetHeight + 10;
+                          try { if (navigator.vibrate) navigator.vibrate(10); } catch {}
+                        }}
+                        onTouchMove={e => {
+                          if (!progDragRef.current.dragging) return;
+                          e.preventDefault();
+                          const dy = e.touches[0].clientY - progDragRef.current.startY;
+                          progDragRef.current.overIdx = Math.max(0, Math.min((store.programs.length - 1), idx + Math.round(dy / progDragRef.current.rowHeight)));
+                        }}
+                        onTouchEnd={() => {
+                          if (!progDragRef.current.dragging) return;
+                          progDragRef.current.dragging = false;
+                          if (progDragRef.current.overIdx !== progDragRef.current.origIdx) {
+                            const arr = [...store.programs];
+                            const [moved] = arr.splice(progDragRef.current.origIdx, 1);
+                            arr.splice(progDragRef.current.overIdx, 0, moved);
+                            setStore(prev => ({ ...prev, programs: arr }));
+                          }
+                        }}
+                        onClick={() => setViewingProgram(p.id)}
+                        style={{
+                          minHeight:160,
+                          borderRadius:18,
+                          background: store.activeProgramId === p.id
+                            ? `linear-gradient(135deg, ${C.accent}08, ${C.accent}12)`
+                            : C.surface,
+                          border: store.activeProgramId === p.id
+                            ? `2px solid ${C.accent}`
+                            : `1px solid ${C.divider}`,
+                          boxShadow: store.activeProgramId === p.id
+                            ? `0 12px 32px ${C.accent}20`
+                            : "0 8px 20px rgba(0,0,0,0.04)",
+                          padding:"16px",
+                          display:"flex",
+                          flexDirection:"column",
+                          justifyContent:"space-between",
+                          cursor:"pointer",
+                          transition:"all 0.2s ease",
+                          position:"relative",
+                          transform: progDragRef.current.dragging && progDragRef.current.origIdx === idx ? "scale(1.02)" : "scale(1)"
+                        }}>
+                        {store.activeProgramId === p.id && (
+                          <>
+                            <span style={{
+                              position:"absolute",
+                              top:12,
+                              right:12,
+                              fontSize:10,
+                              background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`,
+                              color:"#fff",
+                              padding:"4px 10px",
+                              borderRadius:999,
+                              fontWeight:700,
+                              boxShadow:`0 4px 12px ${C.accent}40`
+                            }}>ACTIVE</span>
+                            <div style={{
+                              position:"absolute",
+                              top:0,
+                              left:0,
+                              right:0,
+                              height:4,
+                              background:`linear-gradient(90deg, ${C.accent}, ${C.accent2})`,
+                              borderRadius:"18px 18px 0 0"
+                            }}/>
+                          </>
+                        )}
+                        <div>
+                          <div style={{
+                            fontSize:14,
+                            fontWeight:700,
+                            color:C.text,
+                            marginBottom:6,
+                            display:"flex",
+                            alignItems:"center",
+                            gap:8
+                          }}>
+                            <span>{p.name}</span>
+                            {store.activeProgramId !== p.id && (
+                              <div style={{
+                                width:8,
+                                height:8,
+                                borderRadius:"50%",
+                                background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`,
+                                opacity:0.6
+                              }}/>
+                            )}
+                          </div>
+                          <div style={{
+                            fontSize:11,
+                            color:C.sub,
+                            lineHeight:1.4,
+                            marginBottom:12
+                          }}>
+                            {(p.days?.length || 0)} days · {(p.days?.reduce((a,d) => a + (d.exercises?.length||0),0))} exercises
+                          </div>
+                          {p.days?.length > 0 && (
+                            <div style={{
+                              fontSize:10,
+                              color:C.muted,
+                              opacity:0.7,
+                              marginTop:4
+                            }}>
+                              {p.days.slice(0,2).map(d => d.name).join(" · ")}{p.days.length > 2 ? " · ..." : ""}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{
+                          display:"flex",
+                          justifyContent:"space-between",
+                          alignItems:"center",
+                          marginTop:16
+                        }}>
+                          <div style={{
+                            fontSize:12,
+                            color: store.activeProgramId === p.id ? C.accent : C.accent,
+                            fontWeight:700
+                          }}>
+                            {store.activeProgramId === p.id ? "Active" : "Open"}
+                          </div>
+                          <div style={{
+                            fontSize:18,
+                            color: store.activeProgramId === p.id ? C.accent : C.sub,
+                            opacity:0.8
+                          }}>›</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           ) : (
@@ -3061,86 +3209,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </div>
       )}
 
-      {subTab === "programs" && !viewingProgram && !showBuilder && (
-        <div style={{ padding:"16px 14px" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-            <button onClick={() => setShowBuilder(true)} style={{
-              background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none",
-              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:18, marginBottom:3 }}>✨</div>
-              Build Your Own
-            </button>
-            <button onClick={() => setShowTemplates(true)} style={{
-              background:"none", color:C.text, border:`1px solid ${C.border}`,
-              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:18, marginBottom:3 }}>📋</div>
-              Use Template
-            </button>
-          </div>
-
-          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
-            MY PROGRAMS · {store.programs?.length || 0}
-          </div>
-          {(!store.programs || !store.programs.length) && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
-          )}
-          {(() => {
-            const progDragRef = { dragging: false, startY: 0, origIdx: 0, overIdx: 0 };
-            return (store.programs || []).map((p, idx) => (
-            <div key={p.id}
-              data-drag-item="true"
-              onTouchStart={e => {
-                progDragRef.dragging = true;
-                progDragRef.startY = e.touches[0].clientY;
-                progDragRef.origIdx = idx;
-                progDragRef.overIdx = idx;
-                try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
-              }}
-              onTouchMove={e => {
-                if (!progDragRef.dragging) return;
-                e.preventDefault();
-                const dy = e.touches[0].clientY - progDragRef.startY;
-                progDragRef.overIdx = Math.max(0, Math.min((store.programs.length - 1), idx + Math.round(dy / 72)));
-              }}
-              onTouchEnd={() => {
-                if (!progDragRef.dragging) return;
-                progDragRef.dragging = false;
-                if (progDragRef.overIdx !== progDragRef.origIdx) {
-                  const arr = [...store.programs];
-                  const [moved] = arr.splice(progDragRef.origIdx, 1);
-                  arr.splice(progDragRef.overIdx, 0, moved);
-                  setStore(prev => ({ ...prev, programs: arr }));
-                }
-              }}
-              onClick={() => setViewingProgram(p.id)}
-              style={{
-                background: store.activeProgramId === p.id ? C.accentSoft : "none",
-                border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-                borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
-                display:"flex", alignItems:"center", gap:12
-              }}>
-              <div style={{ flex:1 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-                  {store.activeProgramId === p.id && (
-                    <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
-                  )}
-                </div>
-                <div style={{ fontSize:11, color:C.sub }}>
-                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
-                </div>
-              </div>
-              <span style={{ fontSize:18, color:C.muted, touchAction:"none" }}>⠿</span>
-            </div>
-            ));
-          })()}
-        </div>
-      )}
 
       {/* Program Detail View */}
-      {subTab === "programs" && viewingProgram && (() => {
+      {viewingProgram && (() => {
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
@@ -3163,7 +3234,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       })()}
 
       {/* Custom Program Builder */}
-      {subTab === "programs" && showBuilder && (
+      {showBuilder && (
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
@@ -3396,6 +3467,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)" }}>Answer 5 questions, get a custom plan</div>
                 </div>
                 <span style={{ marginLeft:"auto", color:"rgba(255,255,255,0.7)", fontSize:18 }}>›</span>
+              </button>
+              <button onClick={() => { setShowTemplates(false); setShowBuilder(true); }} style={{
+                width:"100%", background:C.surface, border:`1px solid ${C.border}`,
+                borderRadius:12, padding:"14px", cursor:"pointer", fontFamily:F,
+                display:"flex", alignItems:"center", gap:12, marginBottom:8
+              }}>
+                <span style={{ fontSize:22 }}>🎨</span>
+                <div style={{ textAlign:"left" }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Build Your Own Program</div>
+                  <div style={{ fontSize:11, color:C.sub }}>Start from scratch with an empty plan</div>
+                </div>
+                <span style={{ marginLeft:"auto", color:C.sub, fontSize:18 }}>›</span>
               </button>
               <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginBottom:10, marginTop:6 }}>— or pick from templates below —</div>
             </div>
