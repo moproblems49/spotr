@@ -1066,7 +1066,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
   return (
     <div style={{ position:"relative", overflow:"hidden", marginBottom: 8 }}>
       {/* Swipe delete background */}
-      <div style={{ position:"absolute", right:0, top:0, bottom:0, width:70, background:"#ef4444", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:13, fontWeight:700 }}>Delete</div>
+      <div style={{ position:"absolute", right:16, top:8, bottom:8, width:70, background:"#ef4444", borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700, opacity: swipeX < -8 ? 1 : 0, transition: "opacity 0.2s ease", pointerEvents: "none" }}>Delete</div>
       <div
         onTouchStart={e => { touchStartX.current = e.touches[0].clientX; setSwiping(false); }}
         onTouchMove={e => {
@@ -1089,11 +1089,12 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
         style={{
           transform:`translateX(${swipeX}px)`,
           transition:swiping?"none":"transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)",
-          background:C.bg,
-          border: set.done ? `1px solid ${C.green}40` : `1px solid ${C.divider}`,
-          borderRadius: 12,
-          padding: "12px 16px",
-          margin: "0 14px",
+          background:C.surface,
+          border: `1px solid ${C.divider}`,
+          borderRadius: 18,
+          padding: "10px 14px",
+          margin: "0 16px",
+          boxShadow: "0 15px 35px rgba(0,0,0,0.05)",
           willChange: swiping ? "transform" : "auto"
         }}
       >
@@ -1102,11 +1103,11 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
         }}>
           {/* Set number */}
           <div style={{
-            width: 32, height: 32, borderRadius: 8,
+            width: 28, height: 28, borderRadius: 10,
             background: set.done ? C.green : C.divider,
             color: set.done ? "#fff" : C.muted,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 14, fontWeight: 700, fontFamily: MONO
+            fontSize: 12, fontWeight: 700, fontFamily: MONO
           }}>
             {si+1}
           </div>
@@ -1163,7 +1164,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           <div style={{
             flex: 1,
             textAlign: "center",
-            fontSize: 13,
+            fontSize: 12,
             color: C.sub,
             fontFamily: MONO,
             opacity: prev ? 1 : 0.5
@@ -1181,12 +1182,12 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
               placeholder={prev?.w || "0"}
               style={{
                 width: "100%",
-                background: set.done ? `${C.green}15` : C.surface,
-                border: `1px solid ${set.done ? C.green + '40' : C.border}`,
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 16,
-                fontWeight: 600,
+                background: set.done ? `${C.green}15` : C.bg,
+                border: `1px solid ${set.done ? C.green + '25' : C.divider}`,
+                borderRadius: 12,
+                padding: "7px 10px",
+                fontSize: 14,
+                fontWeight: 700,
                 color: set.done ? C.green : C.text,
                 textAlign: "center",
                 outline: "none",
@@ -1216,12 +1217,12 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
               placeholder={prev?.r || "0"}
               style={{
                 width: "100%",
-                background: set.done ? `${C.green}15` : C.surface,
-                border: `1px solid ${set.done ? C.green + '40' : C.border}`,
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 16,
-                fontWeight: 600,
+                background: set.done ? `${C.green}15` : C.bg,
+                border: `1px solid ${set.done ? C.green + '25' : C.divider}`,
+                borderRadius: 12,
+                padding: "7px 10px",
+                fontSize: 14,
+                fontWeight: 700,
                 color: set.done ? C.green : C.text,
                 textAlign: "center",
                 outline: "none",
@@ -1246,14 +1247,14 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           <button
             onClick={onToggleDone}
             style={{
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               borderRadius: 8,
               border: `2px solid ${set.done ? C.green : C.border}`,
               background: set.done ? C.green : "transparent",
               color: set.done ? "#fff" : C.muted,
               cursor: "pointer",
-              fontSize: 16,
+              fontSize: 14,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -2850,9 +2851,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </div>
                 ))}
 
-                <div style={{ display:"flex", padding:"4px 14px 12px", borderBottom:`1px solid ${C.divider}` }}>
-                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, padding:"8px", background:"none", border:"none", color:C.accent, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
-                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, padding:"8px", background:"none", border:"none", color:C.sub, fontSize:12, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
+                <div style={{ display:"flex", padding:"8px 14px 12px", borderBottom:`1px solid ${C.divider}` }}>
+                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
+                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
                 </div>
               </div>
             );
@@ -2860,8 +2861,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
           <button onClick={() => setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name:"",reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }))} style={{
             width:"calc(100% - 28px)", margin:"14px 14px 0", padding:"13px",
-            background:"none", border:`1.5px dashed ${C.border}`,
-            borderRadius:12, fontSize:13, color:C.accent, fontWeight:600, cursor:"pointer", fontFamily:F
+            background:C.bg, border:`1px solid ${C.divider}`,
+            borderRadius:16, fontSize:13, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F
           }}>+ Add Exercise</button>
         </div>
 
