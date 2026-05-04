@@ -2433,7 +2433,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showFinish, setShowFinish] = useState(false);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
-  const [subTab, setSubTab] = useState("today");
+  const [subTab, setSubTab] = useState("workout");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAICoach, setShowAICoach] = useState(false);
   const [viewingProgram, setViewingProgram] = useState(null); // program ID
@@ -2941,7 +2941,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     <div style={{ overflowY:"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:20 }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
-        {[["today","Today"],["programs","Programs"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
+        {[["workout","Workout"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
           <button key={t} onClick={() => setSubTab(t)} style={{
             flex:1, padding:"12px 4px", background:"none", border:"none",
             color:subTab===t?C.text:C.sub, fontSize:12, fontWeight:subTab===t?700:500, cursor:"pointer",
@@ -2950,7 +2950,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         ))}
       </div>
 
-      {subTab === "today" && (
+      {subTab === "workout" && (
         <div style={{ padding:"16px 14px" }}>
           {/* Streak banner */}
           {(() => { const s = calcStreak(store.workoutDates || {}); return s > 0 ? (
@@ -3033,7 +3033,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={() => { setSubTab("programs"); setViewingProgram(prog.id); }} style={{
+                      <button onClick={() => { setSubTab("workout"); setViewingProgram(prog.id); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
                         fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
@@ -3058,89 +3058,71 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               }}>Browse Templates</button>
             </div>
           )}
-        </div>
-      )}
 
-      {subTab === "programs" && !viewingProgram && !showBuilder && (
-        <div style={{ padding:"16px 14px" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-            <button onClick={() => setShowBuilder(true)} style={{
-              background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none",
-              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:18, marginBottom:3 }}>✨</div>
-              Build Your Own
-            </button>
-            <button onClick={() => setShowTemplates(true)} style={{
-              background:"none", color:C.text, border:`1px solid ${C.border}`,
-              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ fontSize:18, marginBottom:3 }}>📋</div>
-              Use Template
-            </button>
-          </div>
-
-          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
-            MY PROGRAMS · {store.programs?.length || 0}
-          </div>
-          {(!store.programs || !store.programs.length) && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
-          )}
-          {(() => {
-            const progDragRef = { dragging: false, startY: 0, origIdx: 0, overIdx: 0 };
-            return (store.programs || []).map((p, idx) => (
-            <div key={p.id}
-              data-drag-item="true"
-              onTouchStart={e => {
-                progDragRef.dragging = true;
-                progDragRef.startY = e.touches[0].clientY;
-                progDragRef.origIdx = idx;
-                progDragRef.overIdx = idx;
-                try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
-              }}
-              onTouchMove={e => {
-                if (!progDragRef.dragging) return;
-                e.preventDefault();
-                const dy = e.touches[0].clientY - progDragRef.startY;
-                progDragRef.overIdx = Math.max(0, Math.min((store.programs.length - 1), idx + Math.round(dy / 72)));
-              }}
-              onTouchEnd={() => {
-                if (!progDragRef.dragging) return;
-                progDragRef.dragging = false;
-                if (progDragRef.overIdx !== progDragRef.origIdx) {
-                  const arr = [...store.programs];
-                  const [moved] = arr.splice(progDragRef.origIdx, 1);
-                  arr.splice(progDragRef.overIdx, 0, moved);
-                  setStore(prev => ({ ...prev, programs: arr }));
-                }
-              }}
-              onClick={() => setViewingProgram(p.id)}
-              style={{
-                background: store.activeProgramId === p.id ? C.accentSoft : "none",
-                border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-                borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
-                display:"flex", alignItems:"center", gap:12
-              }}>
-              <div style={{ flex:1 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-                  {store.activeProgramId === p.id && (
-                    <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
-                  )}
-                </div>
-                <div style={{ fontSize:11, color:C.sub }}>
-                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
-                </div>
+          {/* ── My Programs ── */}
+          <div style={{ marginTop:20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>MY PROGRAMS · {store.programs?.length || 0}</div>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={() => setShowTemplates(true)} style={{ fontSize:11, fontWeight:600, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Templates</button>
+                <button onClick={() => setShowBuilder(true)} style={{ fontSize:11, fontWeight:700, color:"#fff", background:C.accent, border:"none", borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:F }}>+ New</button>
               </div>
-              <span style={{ fontSize:18, color:C.muted, touchAction:"none" }}>⠿</span>
             </div>
-            ));
-          })()}
+            {(!store.programs || !store.programs.length) && (
+              <div style={{ textAlign:"center", color:C.sub, padding:"20px 0", fontSize:13 }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+                No programs yet. Build one or use a template.
+              </div>
+            )}
+            {(() => {
+              const progDragRef = { dragging: false, startY: 0, origIdx: 0, overIdx: 0 };
+              return (store.programs || []).map((p, idx) => (
+                <div key={p.id}
+                  data-drag-item="true"
+                  onTouchStart={e => {
+                    progDragRef.dragging = true; progDragRef.startY = e.touches[0].clientY;
+                    progDragRef.origIdx = idx; progDragRef.overIdx = idx;
+                    try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+                  }}
+                  onTouchMove={e => {
+                    if (!progDragRef.dragging) return; e.preventDefault();
+                    progDragRef.overIdx = Math.max(0, Math.min(store.programs.length-1, idx + Math.round((e.touches[0].clientY - progDragRef.startY) / 72)));
+                  }}
+                  onTouchEnd={() => {
+                    if (!progDragRef.dragging) return; progDragRef.dragging = false;
+                    if (progDragRef.overIdx !== progDragRef.origIdx) {
+                      const arr = [...store.programs];
+                      const [moved] = arr.splice(progDragRef.origIdx, 1);
+                      arr.splice(progDragRef.overIdx, 0, moved);
+                      setStore(prev => ({ ...prev, programs: arr }));
+                    }
+                  }}
+                  onClick={() => setViewingProgram(p.id)}
+                  style={{
+                    background: store.activeProgramId === p.id ? C.accentSoft : C.surface,
+                    border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
+                    borderRadius:12, padding:"13px 14px", marginBottom:8, cursor:"pointer",
+                    display:"flex", alignItems:"center", gap:12
+                  }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
+                      {store.activeProgramId === p.id && (
+                        <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize:11, color:C.sub }}>{p.days?.length||0} days · {p.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round"><polyline points="9,18 15,12 9,6"/></svg>
+                </div>
+              ));
+            })()}
+          </div>
         </div>
       )}
 
       {/* Program Detail View */}
-      {subTab === "programs" && viewingProgram && (() => {
+      {subTab === "workout" && viewingProgram && (() => {
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
@@ -3163,7 +3145,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       })()}
 
       {/* Custom Program Builder */}
-      {subTab === "programs" && showBuilder && (
+      {subTab === "workout" && showBuilder && (
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
@@ -5452,12 +5434,11 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 
       {/* Settings modal */}
       {showSettings && (
-        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-              <div style={{ width:50 }}/>
-              <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
-              <button onClick={() => setShowSettings(false)} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, width:50 }}>Done</button>
+        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
+              <div style={{ fontSize:16, fontWeight:700, color:C.text }}>Settings</div>
+              <button onClick={() => setShowSettings(false)} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
             </div>
             <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PREFERENCES</div>
