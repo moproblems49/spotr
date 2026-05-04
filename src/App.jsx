@@ -1044,7 +1044,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
-const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, onDelete, C, selected, onSelect, bulkMode }) {
+const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, onDelete, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
@@ -1071,41 +1071,35 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
         onTouchStart={e => { touchStartX.current = e.touches[0].clientX; setSwiping(false); }}
         onTouchMove={e => {
           const dx = e.touches[0].clientX - touchStartX.current;
-          if (dx < -10) { setSwiping(true); setSwipeX(Math.max(-80, dx)); }
-          else if (dx > 5) { setSwipeX(0); }
+          // More sensitive threshold for better feel
+          if (Math.abs(dx) > 5) {
+            setSwiping(true);
+            // Smooth clamp between -80 and 0
+            setSwipeX(Math.max(-80, Math.min(0, dx)));
+          }
         }}
         onTouchEnd={() => {
-          if (swipeX < -50 && onDelete) onDelete();
-          else setSwipeX(0);
+          // Lower threshold (-40 instead of -50) for easier deletion
+          if (swipeX < -40 && onDelete) onDelete();
+          else {
+            setSwipeX(0);
+          }
           setSwiping(false);
         }}
         style={{
           transform:`translateX(${swipeX}px)`,
-          transition:swiping?"none":"transform 0.2s",
+          transition:swiping?"none":"transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)",
           background:C.bg,
-          border: selected ? `2px solid ${C.accent}` : set.done ? `1px solid ${C.green}40` : `1px solid ${C.divider}`,
+          border: set.done ? `1px solid ${C.green}40` : `1px solid ${C.divider}`,
           borderRadius: 12,
           padding: "12px 16px",
-          margin: "0 14px"
+          margin: "0 14px",
+          willChange: swiping ? "transform" : "auto"
         }}
       >
         <div style={{
           display:"flex", alignItems:"center", gap: 12
         }}>
-          {/* Bulk select checkbox */}
-          {bulkMode && (
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={onSelect}
-              style={{
-                width: 20,
-                height: 20,
-                accentColor: C.accent
-              }}
-            />
-          )}
-
           {/* Set number */}
           <div style={{
             width: 32, height: 32, borderRadius: 8,
@@ -2447,83 +2441,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
-  const [selectedSets, setSelectedSets] = useState(new Set());
-  const [bulkMode, setBulkMode] = useState(false);
   const elRef = useRef(null);
   const rtRef = useRef(null);
-
-  // Keyboard navigation and bulk operations
-  useEffect(() => {
-    function handleKeyDown(e) {
-      if (e.target.tagName === 'INPUT') return; // Don't interfere with input typing
-
-      if (e.key === 'b' && e.ctrlKey) {
-        e.preventDefault();
-        setBulkMode(!bulkMode);
-        setSelectedSets(new Set());
-      }
-
-      if (bulkMode && e.key === 'a' && e.ctrlKey) {
-        e.preventDefault();
-        // Select all sets
-        const allSetIds = new Set();
-        session?.exercises?.forEach((ex, ei) => {
-          ex.sets.forEach((_, si) => {
-            allSetIds.add(`${ex.id}-${si}`);
-          });
-        });
-        setSelectedSets(allSetIds);
-      }
-
-      if (bulkMode && e.key === 'Escape') {
-        setSelectedSets(new Set());
-        setBulkMode(false);
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [bulkMode, session]);
-
-  function toggleSetSelection(exId, setIndex) {
-    const setId = `${exId}-${setIndex}`;
-    setSelectedSets(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(setId)) {
-        newSet.delete(setId);
-      } else {
-        newSet.add(setId);
-      }
-      return newSet;
-    });
-  }
-
-  function bulkCompleteSelected() {
-    setSession(p => ({
-      ...p,
-      exercises: p.exercises.map(ex => ({
-        ...ex,
-        sets: ex.sets.map((s, si) => {
-          const setId = `${ex.id}-${si}`;
-          return selectedSets.has(setId) ? { ...s, done: true } : s;
-        })
-      }))
-    }));
-    setSelectedSets(new Set());
-    setBulkMode(false);
-  }
-
-  function bulkDeleteSelected() {
-    setSession(p => ({
-      ...p,
-      exercises: p.exercises.map(ex => ({
-        ...ex,
-        sets: ex.sets.filter((_, si) => !selectedSets.has(`${ex.id}-${si}`))
-      })).filter(ex => ex.sets.length > 0)
-    }));
-    setSelectedSets(new Set());
-    setBulkMode(false);
-  }
 
   useEffect(() => {
     if (!session) { localStorage.removeItem(SESSION_KEY); return; }
@@ -2800,92 +2719,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM</button>
               <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>Plates</button>
-              <button 
-                onClick={() => setBulkMode(!bulkMode)} 
-                style={{ 
-                  fontSize:11, 
-                  color: bulkMode ? C.accent : C.sub, 
-                  background:"none", 
-                  border:"none", 
-                  cursor:"pointer", 
-                  fontFamily:F, 
-                  fontWeight:600 
-                }}
-              >
-                Bulk {bulkMode ? "Off" : "On"}
-              </button>
             </div>
           </div>
           <div style={{ height:4, background:C.divider, borderRadius:4, overflow:"hidden" }}>
             <div style={{ height:"100%", background:C.accent, width:`${(done/Math.max(total,1))*100}%`, transition:"width 0.4s", borderRadius:4 }}/>
           </div>
         </div>
-
-        {/* Bulk mode controls */}
-        {bulkMode && (
-          <div style={{ 
-            padding: "8px 14px", 
-            background: C.accent + '10', 
-            borderBottom: `1px solid ${C.accent}30`,
-            margin: "0 14px",
-            borderRadius: 8,
-            marginBottom: 8,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center"
-          }}>
-            <span style={{ fontSize: 13, color: C.accent, fontWeight: 600 }}>
-              {selectedSets.size} sets selected
-            </span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button 
-                onClick={bulkCompleteSelected}
-                disabled={selectedSets.size === 0}
-                style={{
-                  padding: "6px 12px",
-                  background: selectedSets.size > 0 ? C.green : C.sub,
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: selectedSets.size > 0 ? "pointer" : "not-allowed"
-                }}
-              >
-                Complete Selected
-              </button>
-              <button 
-                onClick={bulkDeleteSelected}
-                disabled={selectedSets.size === 0}
-                style={{
-                  padding: "6px 12px",
-                  background: "none",
-                  color: selectedSets.size > 0 ? C.red : C.sub,
-                  border: `1px solid ${selectedSets.size > 0 ? C.red : C.border}`,
-                  borderRadius: 6,
-                  fontSize: 12,
-                  cursor: selectedSets.size > 0 ? "pointer" : "not-allowed"
-                }}
-              >
-                Delete Selected
-              </button>
-              <button 
-                onClick={() => { setSelectedSets(new Set()); setBulkMode(false); }}
-                style={{
-                  padding: "6px 12px",
-                  background: "none",
-                  color: C.sub,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 6,
-                  fontSize: 12,
-                  cursor: "pointer"
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Rest timer */}
         {rest && (
@@ -2996,9 +2835,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 {ex.sets.map((set, si) => (
                   <div key={set.id||si}>
                     <SetRow set={set} si={si} exName={ex.name} store={store} unit={unit} C={C}
-                      selected={selectedSets.has(`${ex.id}-${si}`)}
-                      onSelect={() => toggleSetSelection(ex.id, si)}
-                      bulkMode={bulkMode}
                       onUpdate={patch => updateSet(ei,si,patch)}
                       onToggleDone={() => toggleDone(ei,si)}
                       onDelete={ex.sets.length > 1 ? () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.filter((_,j)=>j!==si)}) })) : undefined}
