@@ -2399,6 +2399,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
+  const [customRest, setCustomRest] = useState(store.defaultRestTime || 120);
   const elRef = useRef(null);
   const rtRef = useRef(null);
 
@@ -2722,6 +2723,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       {s >= 60 ? `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` : `${s}s`}
                     </button>
                   ))}
+                </div>
+                <div style={{ marginTop:10, display:"flex", flexWrap:"wrap", gap:10, alignItems:"center" }}>
+                  <span style={{ fontSize:12, color:C.sub }}>Default: {fmtTime(store.defaultRestTime || 120)}</span>
+                  <button onClick={() => setStore(p => ({ ...p, defaultRestTime: rest.total }))} style={{
+                    padding:"6px 12px", background:C.accent, color:"#fff", border:"none", borderRadius:10,
+                    fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
+                  }}>Save current as default</button>
+                </div>
+                <div style={{ marginTop:10, display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
+                  <input type="number" min="5" max="600" value={customRest} onChange={e => setCustomRest(Math.max(5, Math.min(600, Number(e.target.value) || 0)))} style={{
+                    width:80, padding:"9px 10px", borderRadius:12, border:`1px solid ${C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:F, outline:"none"
+                  }}/>
+                  <button onClick={() => {
+                    const secs = Math.max(5, Math.min(600, Number(customRest) || 120));
+                    setRest({ secs, total: secs, running: true, startedAt: Date.now() });
+                  }} style={{
+                    padding:"8px 12px", background:C.accent, color:"#fff", border:"none", borderRadius:12,
+                    cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:F
+                  }}>Start custom rest</button>
+                  <div style={{ fontSize:12, color:C.sub }}>5–600 sec</div>
                 </div>
               </div>
               
@@ -3199,8 +3221,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <Heatmap workoutDates={store.workoutDates} C={C}/>
           </div>
 
-          {/* Volume chart - last 8 weeks */}
           {(() => {
+            const historySessions = Object.values(store.history||{}).flatMap(Object.values);
+            const totalWorkouts = historySessions.length;
+            const totalVolume = historySessions.reduce((sum, sess) => sum + (sess.exercises||[]).reduce((acc, ex) => acc + (ex.sets||[]).filter(set => set.done).reduce((a, s) => a + (parseFloat(s.weight)||0) * (parseFloat(s.reps)||0), 0), 0), 0);
+            const totalSets = historySessions.reduce((sum, sess) => sum + (sess.exercises||[]).reduce((acc, ex) => acc + (ex.sets||[]).filter(set => set.done).length, 0), 0);
+            const avgVolume = totalWorkouts ? Math.round(totalVolume / totalWorkouts) : 0;
+            const avgSets = totalWorkouts ? Math.round(totalSets / totalWorkouts) : 0;
+            const exerciseVolumes = {};
+            const muscleVolumes = {};
+            historySessions.forEach(sess => {
+              (sess.exercises||[]).forEach(ex => {
+                const vol = (ex.sets||[]).filter(set => set.done).reduce((acc, set) => acc + (parseFloat(set.weight)||0) * (parseFloat(set.reps)||0), 0);
+                if (!vol) return;
+                exerciseVolumes[ex.name] = (exerciseVolumes[ex.name] || 0) + vol;
+                const muscle = (EXERCISE_DB.find(d => d.name === ex.name)?.muscle || "Unknown");
+                muscleVolumes[muscle] = (muscleVolumes[muscle] || 0) + vol;
+              });
+            });
+            const topExercises = Object.entries(exerciseVolumes).sort((a, b) => b[1] - a[1]).slice(0, 3);
+            const topMuscle = Object.entries(muscleVolumes).sort((a, b) => b[1] - a[1])[0];
             const weeks = 8;
             const today = new Date(); today.setHours(0,0,0,0);
             const weekData = [];
@@ -3224,26 +3264,64 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               weekData.push({ label: wStart.toLocaleDateString("en",{month:"short",day:"numeric"}), vol: Math.round(vol), sessions });
             }
             const maxVol = Math.max(...weekData.map(w => w.vol), 1);
-            return weekData.some(w => w.vol > 0) ? (
-              <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})</div>
-                <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80 }}>
-                  {weekData.map((w, i) => (
-                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
-                      <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
-                      <div style={{
-                        width:"100%", borderRadius:"3px 3px 0 0",
-                        background: i === weeks-1 ? C.accent : `${C.accent}66`,
-                        height: Math.max(4, (w.vol/maxVol)*64),
-                        transition:"height 0.3s"
-                      }}/>
-                      <div style={{ fontSize:7, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
+            return (
+              <>
+                <div style={{ padding:"14px 14px 0", display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:10 }}>
+                  {[
+                    ["Workouts", totalWorkouts],
+                    ["Total Volume", totalVolume >= 1000 ? `${(totalVolume/1000).toFixed(1)}k` : totalVolume],
+                    ["Avg Volume", avgVolume >= 1000 ? `${(avgVolume/1000).toFixed(1)}k` : avgVolume],
+                    ["Avg Sets", avgSets]
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"14px" }}>
+                      <div style={{ fontSize:11, color:C.sub, marginBottom:6 }}>{label}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO }}>{value}</div>
                     </div>
                   ))}
                 </div>
-              </div>
-            ) : null;
+                <div style={{ padding:"14px 14px 0", display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                  {topExercises.length > 0 && (
+                    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"14px" }}>
+                      <div style={{ fontSize:11, color:C.sub, marginBottom:8 }}>TOP EXERCISES</div>
+                      {topExercises.map(([name, vol], idx) => (
+                        <div key={name} style={{ display:"flex", justifyContent:"space-between", gap:12, marginBottom:idx < topExercises.length - 1 ? 8 : 0 }}>
+                          <div style={{ fontSize:13, color:C.text }}>{name}</div>
+                          <div style={{ fontSize:13, fontWeight:700, color:C.accent, fontFamily:MONO }}>{vol >= 1000 ? `${(vol/1000).toFixed(1)}k` : Math.round(vol)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {topMuscle && (
+                    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"14px" }}>
+                      <div style={{ fontSize:11, color:C.sub, marginBottom:8 }}>TOP MUSCLE GROUP</div>
+                      <div style={{ fontSize:16, fontWeight:800, color:C.text }}>{topMuscle[0]}</div>
+                      <div style={{ fontSize:12, color:C.sub, marginTop:6 }}>{topMuscle[1] >= 1000 ? `${(topMuscle[1]/1000).toFixed(1)}k` : Math.round(topMuscle[1])} total volume</div>
+                    </div>
+                  )}
+                </div>
+                {weekData.some(w => w.vol > 0) ? (
+                  <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})</div>
+                    <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:88 }}>
+                      {weekData.map((w, i) => (
+                        <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                          <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.sessions ? w.sessions+" sessions" : ""}</div>
+                          <div style={{
+                            width:"100%", borderRadius:"6px 6px 0 0",
+                            background: i === weeks-1 ? C.accent : `${C.accent}66`,
+                            height: Math.max(4, (w.vol/maxVol)*68),
+                            transition:"height 0.3s"
+                          }}/>
+                          <div style={{ fontSize:8, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            );
           })()}
+
 
           {/* PRs strip */}
           {Object.keys(store.prs||{}).length > 0 && (
@@ -5419,6 +5497,22 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                       }}>{u.toUpperCase()}</button>
                     ))}
                   </div>
+                </div>
+                <div style={{ borderTop:`1px solid ${C.divider}`, paddingTop:14, display:"flex", flexDirection:"column", gap:10 }}>
+                  <div style={{ fontSize:14, color:C.text }}>Default Rest Time</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                    {[30,60,90,120,150,180].map(s => {
+                      const selected = (store.defaultRestTime||120)===s;
+                      return (
+                        <button key={s} onClick={() => setStore(p => ({ ...p, defaultRestTime: s }))} style={{
+                          padding:"7px 12px", background:selected?C.accent:"transparent",
+                          color:selected?"#fff":C.sub, border:`1px solid ${selected?C.accent:C.border}`,
+                          borderRadius:14, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+                        }}>{fmtTime(s)}</button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize:12, color:C.sub }}>This value is used when a set does not have a custom rest timer.</div>
                 </div>
               </div>
 
