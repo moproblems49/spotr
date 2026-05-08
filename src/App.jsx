@@ -4757,7 +4757,6 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             <div style={{ fontSize:10, opacity:0.85 }}>Private crews</div>
           </button>
         </div>
-      </div>
       )}
 
       {following.length > 0 && (
