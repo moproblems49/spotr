@@ -2177,73 +2177,52 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 
   const day = localProg.days?.[activeDay] || { name:"", exercises:[] };
 
-  function patch(updated) {
-    setLocalProg(updated);
-    if (onProgramEdited) onProgramEdited(updated);
-  }
-
-  function updateEx(ei, changes) {
-    patch({ ...localProg, days: localProg.days.map((d,di) => di!==activeDay ? d : {
-      ...d, exercises: d.exercises.map((ex,xi) => xi!==ei ? ex : {...ex,...changes})
-    })});
-  }
-
-  function addEx() {
-    patch({ ...localProg, days: localProg.days.map((d,di) => di!==activeDay ? d : {
-      ...d, exercises: [...(d.exercises||[]), { name:"", sets:3, reps:"8-12", rest:"90", note:"" }]
-    })});
-  }
-
-  function removeEx(ei) {
-    patch({ ...localProg, days: localProg.days.map((d,di) => di!==activeDay ? d : {
-      ...d, exercises: d.exercises.filter((_,xi) => xi!==ei)
-    })});
-  }
+  function patch(updated) { setLocalProg(updated); if (onProgramEdited) onProgramEdited(updated); }
+  function updateEx(ei, ch) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,exercises:d.exercises.map((ex,xi)=>xi!==ei?ex:{...ex,...ch})})}); }
+  function addEx() { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,exercises:[...(d.exercises||[]),{name:"",sets:3,reps:"8-12",rest:"90",note:""}]})}); }
+  function removeEx(ei) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,exercises:d.exercises.filter((_,xi)=>xi!==ei)})}); }
 
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", background:C.bg }}>
-
       {/* Header */}
       <div style={{ background:C.bg, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px 0", flexShrink:0 }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-          <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", gap:4, padding:"4px 0" }}>
+          <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", gap:4 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>
             Back
           </button>
-          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:8 }}>
             {!isActive && <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:"none", border:`1px solid ${C.accent}`, borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F }}>Set Active</button>}
             <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Save</button>
           </div>
         </div>
-        <input value={localProg.name} onChange={e => patch({...localProg, name:e.target.value})}
+        <input value={localProg.name} onChange={e => patch({...localProg,name:e.target.value})}
           style={{ fontSize:18, fontWeight:800, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, width:"100%", marginBottom:2, letterSpacing:-0.3 }}
         />
         <div style={{ fontSize:11, color:C.sub, marginBottom:10 }}>
           {localProg.days?.length||0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises
           {isActive && <span style={{ color:C.accent, fontWeight:700, marginLeft:8 }}>· ACTIVE</span>}
         </div>
-        {/* Day tabs */}
         <div style={{ display:"flex", overflowX:"auto", margin:"0 -14px", padding:"0 14px" }}>
           {(localProg.days||[]).map((d,di) => (
             <button key={di} onClick={() => setActiveDay(di)} style={{
               padding:"10px 16px", background:"none", border:"none",
-              borderBottom:`2.5px solid ${activeDay===di ? C.accent : "transparent"}`,
-              color: activeDay===di ? C.accent : C.sub,
+              borderBottom:`2.5px solid ${activeDay===di?C.accent:"transparent"}`,
+              color:activeDay===di?C.accent:C.sub,
               fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, whiteSpace:"nowrap", flexShrink:0
             }}>{d.name||`Day ${di+1}`}</button>
           ))}
           <button onClick={() => {
-            const nd = { id:Date.now().toString(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
-            const updated = {...localProg, days:[...(localProg.days||[]), nd]};
-            patch(updated); setActiveDay((localProg.days||[]).length);
+            const nd={id:Date.now().toString(),name:`Day ${(localProg.days||[]).length+1}`,exercises:[]};
+            const u={...localProg,days:[...(localProg.days||[]),nd]};
+            patch(u); setActiveDay((localProg.days||[]).length);
           }} style={{ padding:"10px 12px", background:"none", border:"none", color:C.muted, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>+ Day</button>
         </div>
       </div>
 
-      {/* Day name + Start */}
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px 8px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <input value={day.name}
-          onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,name:e.target.value})})}
+          onChange={e => patch({...localProg,days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,name:e.target.value})})}
           placeholder="Day name..."
           style={{ flex:1, fontSize:16, fontWeight:700, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F }}
         />
@@ -2253,56 +2232,35 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
         }}>Start ›</button>
       </div>
 
-      {/* Exercise list */}
       <div style={{ overflowY:"auto", flex:1, paddingBottom:20, WebkitOverflowScrolling:"touch" }}>
-        {(day.exercises||[]).length === 0 && (
+        {(day.exercises||[]).length===0 && (
           <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
             <div style={{ fontSize:36, marginBottom:10 }}>🏋️</div>
             <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>No exercises yet</div>
             <div style={{ fontSize:12 }}>Tap below to add your first exercise</div>
           </div>
         )}
-        {(day.exercises||[]).map((ex, ei) => {
-          const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
+        {(day.exercises||[]).map((ex,ei) => {
+          const exInfo = EXERCISE_DB?.find(e=>e.name===ex.name);
           const sets = parseInt(ex.sets)||3;
           return (
             <div key={ei} data-drag-item="true"
-              onTouchMove={e => {
-                if (dragIdx===null) return; e.preventDefault();
-                const dy = e.touches[0].clientY - dragStartY.current;
-                setDragOverIdx(Math.max(0, Math.min(day.exercises.length-1, dragIdx+Math.round(dy/dragNodeH.current))));
-              }}
-              onTouchEnd={() => {
-                if (dragIdx!==null && dragOverIdx!==null && dragOverIdx!==dragIdx) {
-                  const arr=[...day.exercises]; const [mv]=arr.splice(dragIdx,1); arr.splice(dragOverIdx,0,mv);
-                  patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,exercises:arr})});
-                }
-                setDragIdx(null); setDragOverIdx(null);
-              }}
+              onTouchMove={e=>{if(dragIdx===null)return;e.preventDefault();const dy=e.touches[0].clientY-dragStartY.current;setDragOverIdx(Math.max(0,Math.min(day.exercises.length-1,dragIdx+Math.round(dy/dragNodeH.current))));}}
+              onTouchEnd={()=>{if(dragIdx!==null&&dragOverIdx!==null&&dragOverIdx!==dragIdx){const arr=[...day.exercises];const[mv]=arr.splice(dragIdx,1);arr.splice(dragOverIdx,0,mv);patch({...localProg,days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,exercises:arr})});}setDragIdx(null);setDragOverIdx(null);}}
               style={{ borderBottom:`1px solid ${C.divider}`, background:dragOverIdx===ei&&dragIdx!==ei?`${C.accent}08`:"transparent", opacity:dragIdx===ei?0.35:1 }}>
-
-              {/* Exercise name row */}
               <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px 8px" }}>
-                <div onTouchStart={e => {
-                  const node=e.currentTarget.closest('[data-drag-item]');
-                  dragNodeH.current=node?.getBoundingClientRect().height||80;
-                  dragStartY.current=e.touches[0].clientY;
-                  setDragIdx(ei); setDragOverIdx(ei);
-                  try{if(navigator.vibrate)navigator.vibrate(15);}catch{}
-                }} style={{ fontSize:18, color:C.muted, touchAction:"none", userSelect:"none", cursor:"grab", padding:"4px", flexShrink:0 }}>⠿</div>
+                <div onTouchStart={e=>{const node=e.currentTarget.closest('[data-drag-item]');dragNodeH.current=node?.getBoundingClientRect().height||80;dragStartY.current=e.touches[0].clientY;setDragIdx(ei);setDragOverIdx(ei);try{if(navigator.vibrate)navigator.vibrate(15);}catch{}}} style={{ fontSize:18, color:C.muted, touchAction:"none", userSelect:"none", cursor:"grab", padding:"4px", flexShrink:0 }}>⠿</div>
                 <div style={{ width:34, height:34, borderRadius:9, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                   <MuscleIcon muscle={exInfo?.muscle||""} size={22} C={C}/>
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise name..."
+                  <input value={ex.name} onChange={e=>updateEx(ei,{name:e.target.value})} placeholder="Exercise name..."
                     style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:15, fontWeight:700, color:C.text, fontFamily:F, padding:0, boxSizing:"border-box" }}
                   />
                   {exInfo?.muscle && <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{exInfo.muscle}</div>}
                 </div>
-                <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:22, lineHeight:1, cursor:"pointer", padding:"4px", flexShrink:0 }}>×</button>
+                <button onClick={()=>removeEx(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:22, lineHeight:1, cursor:"pointer", padding:"4px", flexShrink:0 }}>×</button>
               </div>
-
-              {/* Sets / Reps / Rest */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, padding:"0 14px 10px" }}>
                 <div style={{ background:C.divider, borderRadius:10, overflow:"hidden" }}>
                   <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, textAlign:"center", paddingTop:6 }}>SETS</div>
@@ -2328,8 +2286,6 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                   </div>
                 </div>
               </div>
-
-              {/* Note */}
               <div style={{ padding:"0 14px 12px" }}>
                 <input value={ex.note||""} onChange={e=>updateEx(ei,{note:e.target.value})} placeholder="Add note..."
                   style={{ width:"100%", background:"none", border:`1px solid ${C.divider}`, borderRadius:8, padding:"7px 10px", fontSize:13, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
@@ -2338,28 +2294,18 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
             </div>
           );
         })}
-
-        {/* Add Exercise */}
-        <button onClick={addEx} style={{
-          display:"flex", alignItems:"center", gap:12, width:"100%", padding:"16px 18px",
-          background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:700,
-          cursor:"pointer", fontFamily:F, borderTop:(day.exercises||[]).length>0?`1px solid ${C.divider}`:"none"
-        }}>
+        <button onClick={addEx} style={{ display:"flex", alignItems:"center", gap:12, width:"100%", padding:"16px 18px", background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, borderTop:(day.exercises||[]).length>0?`1px solid ${C.divider}`:"none" }}>
           <div style={{ width:34, height:34, borderRadius:10, background:`${C.accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>+</div>
           Add Exercise
         </button>
-
         <div style={{ padding:"8px 14px 20px" }}>
-          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{
-            width:"100%", background:C.accent, color:"#fff", border:"none",
-            borderRadius:14, padding:"15px", fontSize:15, fontWeight:700,
-            cursor:"pointer", fontFamily:F, boxShadow:`0 4px 14px ${C.accent}44`
-          }}>Save Changes</button>
+          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ width:"100%", background:C.accent, color:"#fff", border:"none", borderRadius:14, padding:"15px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, boxShadow:`0 4px 14px ${C.accent}44` }}>Save Changes</button>
         </div>
       </div>
     </div>
   );
 }
+
 // ═════════════════════════════════════════════════════════════════════════════
 // WORKOUT TRACKER
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2686,46 +2632,77 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Rest timer */}
         {rest && (
-          <div style={{ background:C.surface, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px" }}>
-            <div style={{ height:3, background:C.divider, borderRadius:2, marginBottom:10, overflow:"hidden" }}>
-              <div style={{ height:"100%", background:rest.secs<=10?"#ef4444":C.accent, width:`${(rest.secs/(rest.total||120))*100}%`, transition:"width 1s linear", borderRadius:2 }}/>
-            </div>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              {/* Preset pills */}
-              <div style={{ display:"flex", gap:4, flex:1, flexWrap:"nowrap", overflow:"hidden" }}>
-                {[30,60,90,120,180,240].map(s => (
-                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true,startedAt:Date.now()})} style={{
-                    fontSize:10, padding:"4px 7px",
-                    background:rest.total===s?C.accent:"transparent",
-                    border:`1px solid ${rest.total===s?C.accent:C.border}`,
-                    color:rest.total===s?"#fff":C.sub,
-                    borderRadius:16, cursor:"pointer", fontFamily:F, fontWeight:600, flexShrink:0
-                  }}>{s>=60?`${s/60}m`:`${s}s`}</button>
-                ))}
+          <div style={{ 
+            background:C.surface, 
+            borderBottom:`1px solid ${C.divider}`, 
+            padding: "12px 16px",
+            margin: "0 14px",
+            borderRadius: 12,
+            marginBottom: 8
+          }}>
+            <div style={{ 
+              display:"flex", 
+              alignItems:"center", 
+              gap: 12,
+              justifyContent: "space-between"
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 4 }}>Rest Timer</div>
+                <div style={{ display:"flex", gap:6, flexWrap: "wrap" }}>
+                  {[30, 60, 90, 120, 180, 240].map(s => (
+                    <button 
+                      key={s} 
+                      onClick={() => setRest({secs:s, total:s, running:true, startedAt:Date.now()})}
+                      style={{
+                        padding:"6px 12px",
+                        background: rest.total === s ? C.accent : "transparent",
+                        border: `1px solid ${rest.total === s ? C.accent : C.border}`,
+                        color: rest.total === s ? "#fff" : C.text,
+                        borderRadius: 8, 
+                        cursor: "pointer", 
+                        fontSize: 13, 
+                        fontWeight: 600,
+                        fontFamily: MONO
+                      }}
+                    >
+                      {s >= 60 ? `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` : `${s}s`}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", background:C.divider, borderRadius:8, overflow:"hidden" }}>
+                  <input type="number" inputMode="numeric" placeholder="custom"
+                    onBlur={e => { const v=parseInt(e.target.value); if(v>0){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";} }}
+                    onKeyDown={e => { if(e.key==="Enter"){const v=parseInt(e.target.value);if(v>0){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}} }}
+                    style={{ width:52, background:"none", border:"none", padding:"4px 6px", fontSize:13, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center" }}
+                  />
+                  <span style={{ fontSize:10, color:C.muted, paddingRight:6 }}>s</span>
+                </div>
               </div>
-              {/* Custom input */}
-              <div style={{ display:"flex", alignItems:"center", background:C.divider, borderRadius:8, overflow:"hidden", flexShrink:0 }}>
-                <input
-                  type="number" inputMode="numeric"
-                  placeholder="custom"
-                  defaultValue=""
-                  onBlur={e => {
-                    const v = parseInt(e.target.value);
-                    if (v > 0) { setRest({secs:v,total:v,running:true,startedAt:Date.now()}); e.target.value=""; }
+              
+              <div style={{ textAlign: "center" }}>
+                <div style={{ 
+                  fontSize: 28, 
+                  fontWeight: 800, 
+                  color: rest.secs <= 10 ? C.red : C.accent, 
+                  fontFamily: MONO,
+                  marginBottom: 4
+                }}>
+                  {fmtTime(rest.secs)}
+                </div>
+                <button 
+                  onClick={() => { clearInterval(rtRef.current); setRest(null); }}
+                  style={{ 
+                    background: "none", 
+                    border: "none", 
+                    color: C.sub, 
+                    fontSize: 14, 
+                    cursor: "pointer",
+                    padding: "4px"
                   }}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") {
-                      const v = parseInt(e.target.value);
-                      if (v > 0) { setRest({secs:v,total:v,running:true,startedAt:Date.now()}); e.target.value=""; }
-                    }
-                  }}
-                  style={{ width:52, background:"none", border:"none", padding:"4px 6px", fontSize:12, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center" }}
-                />
-                <span style={{ fontSize:10, color:C.muted, paddingRight:6 }}>s</span>
+                >
+                  ✕ Cancel
+                </button>
               </div>
-              {/* Timer display */}
-              <span style={{ fontSize:26, fontWeight:800, color:rest.secs<=10?"#ef4444":C.text, fontFamily:MONO, flexShrink:0, minWidth:52, textAlign:"right" }}>{fmtTime(rest.secs)}</span>
-              <button onClick={() => { clearInterval(rtRef.current); setRest(null); }} style={{ color:C.muted, background:"none", border:"none", cursor:"pointer", fontSize:18, padding:"2px", flexShrink:0 }}>✕</button>
             </div>
           </div>
         )}
@@ -2934,7 +2911,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>ACTIVE PROGRAM</div>
                 <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>{prog.name}</div>
               </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                 {prog.days.map((day, di) => {
                   const lastDone = (() => {
                     const dates = Object.keys(store.history||{}).sort().reverse();
@@ -2946,48 +2923,37 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     }
                     return null;
                   })();
-                  const accentColors = ["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed"];
-                  const col = accentColors[di % accentColors.length];
                   return (
-                    <div key={day.id || di} style={{
-                      background:C.surface, border:`1px solid ${C.border}`,
-                      borderRadius:14, overflow:"hidden",
-                      borderLeft:`4px solid ${col}`
+                  <div key={day.id || di} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", borderLeft:`3px solid ${["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed"][di%6]}` }}>
+                    <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
+                      width:"100%", background:"none", border:"none", padding:"13px 14px",
+                      display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
                     }}>
-                      <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
-                        width:"100%", background:"none", border:"none", padding:"12px 14px",
-                        display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
-                      }}>
-                        <div style={{
-                          width:38, height:38, borderRadius:10,
-                          background:`${col}18`,
-                          display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0
-                        }}>
-                          <span style={{ fontSize:14, fontWeight:800, color:col }}>{di+1}</span>
-                        </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{day.name}</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
-                            {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
-                          </div>
-                        </div>
-                        <div style={{ textAlign:"right", flexShrink:0 }}>
-                          {lastDone && <div style={{ fontSize:10, color:col, fontWeight:600, marginBottom:2 }}>{lastDone}</div>}
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round"><polyline points="9,18 15,12 9,6"/></svg>
-                        </div>
-                      </button>
-                      <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                        <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
-                          flex:1, padding:"8px", background:"none", border:"none",
-                          borderRight:`1px solid ${C.divider}`,
-                          fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
-                        }}>Edit</button>
-                        <button onClick={() => startWorkout(day)} style={{
-                          flex:1, padding:"8px", background:"none", border:"none",
-                          fontSize:12, fontWeight:700, color:col, cursor:"pointer", fontFamily:F
-                        }}>Start ›</button>
+                      <div style={{ width:36, height:36, borderRadius:9, background:`${['#7c3aed','#0891b2','#059669','#d97706','#dc2626','#7c3aed'][di%6]}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <span style={{ fontSize:14, fontWeight:800, color:['#7c3aed','#0891b2','#059669','#d97706','#dc2626','#7c3aed'][di%6] }}>{di+1}</span>
                       </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
+                        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
+                          {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ textAlign:"right", flexShrink:0 }}>
+                        {lastDone && <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>{lastDone}</div>}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+                      </div>
+                    </button>
+                    <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
+                      <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
+                        flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
+                        fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+                      }}>Edit</button>
+                      <button onClick={() => startWorkout(day)} style={{
+                        flex:1, padding:"9px", background:"none", border:"none",
+                        fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+                      }}>Start ›</button>
                     </div>
+                  </div>
                   );
                 })}
               </div>
@@ -3004,9 +2970,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
           )}
         </div>
+      )}
 
-          {/* ── Programs Section ── */}
-
+      {subTab === "workout" && !viewingProgram && !showBuilder && (
+        <div style={{ padding:"16px 14px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
             <button onClick={() => setShowBuilder(true)} style={{
               background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none",
@@ -3030,34 +2997,56 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {(!store.programs || !store.programs.length) && (
             <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
           )}
-          {(store.programs || []).length === 0 ? (
-              <div style={{ textAlign:"center", color:C.sub, padding:"20px 0" }}>
-                <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
-                <div style={{ fontSize:13 }}>No programs yet</div>
+          {(() => {
+            const progDragRef = { dragging: false, startY: 0, origIdx: 0, overIdx: 0 };
+            return (store.programs || []).map((p, idx) => (
+            <div key={p.id}
+              data-drag-item="true"
+              onTouchStart={e => {
+                progDragRef.dragging = true;
+                progDragRef.startY = e.touches[0].clientY;
+                progDragRef.origIdx = idx;
+                progDragRef.overIdx = idx;
+                try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+              }}
+              onTouchMove={e => {
+                if (!progDragRef.dragging) return;
+                e.preventDefault();
+                const dy = e.touches[0].clientY - progDragRef.startY;
+                progDragRef.overIdx = Math.max(0, Math.min((store.programs.length - 1), idx + Math.round(dy / 72)));
+              }}
+              onTouchEnd={() => {
+                if (!progDragRef.dragging) return;
+                progDragRef.dragging = false;
+                if (progDragRef.overIdx !== progDragRef.origIdx) {
+                  const arr = [...store.programs];
+                  const [moved] = arr.splice(progDragRef.origIdx, 1);
+                  arr.splice(progDragRef.overIdx, 0, moved);
+                  setStore(prev => ({ ...prev, programs: arr }));
+                }
+              }}
+              onClick={() => setViewingProgram(p.id)}
+              style={{
+                background: store.activeProgramId === p.id ? C.accentSoft : "none",
+                border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
+                borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
+                display:"flex", alignItems:"center", gap:12
+              }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
+                  {store.activeProgramId === p.id && (
+                    <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
+                  )}
+                </div>
+                <div style={{ fontSize:11, color:C.sub }}>
+                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
+                </div>
               </div>
-            ) : (
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                {(store.programs || []).map(p => (
-                  <div key={p.id}
-                    onClick={() => { setViewingProgram(p.id); setInitialDayIdx(0); }}
-                    style={{
-                      background: store.activeProgramId === p.id ? C.accentSoft : C.surface,
-                      border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-                      borderRadius:12, padding:"14px 12px", cursor:"pointer",
-                    }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:C.text, flex:1, lineHeight:1.3 }}>{p.name}</div>
-                      {store.activeProgramId === p.id && (
-                        <span style={{ fontSize:8, background:C.accent, color:"#fff", padding:"2px 6px", borderRadius:20, fontWeight:700, flexShrink:0, marginLeft:4 }}>ACTIVE</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize:11, color:C.sub }}>{p.days?.length||0} days</div>
-                    <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>{p.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+              <span style={{ fontSize:18, color:C.muted, touchAction:"none" }}>⠿</span>
+            </div>
+            ));
+          })()}
         </div>
       )}
 
@@ -3183,58 +3172,32 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {subTab === "history" && (
         <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
-
-          {/* ── Heatmap ── */}
-          <div style={{ padding:"14px 14px 0" }}>
+          <div style={{ padding:"12px 14px 0" }}>
             <Heatmap workoutDates={store.workoutDates} C={C}/>
           </div>
 
+          {/* Volume chart - last 8 weeks */}
           {/* ── Analytics summary ── */}
           {(() => {
-            const allSessions = Object.entries(store.history||{}).flatMap(([date, sessions]) =>
-              Object.values(sessions).map(s => ({ ...s, date }))
-            );
+            const allSessions = Object.entries(store.history||{}).flatMap(([date,sessions])=>Object.values(sessions).map(s=>({...s,date})));
             if (!allSessions.length) return null;
-
             const totalWorkouts = allSessions.length;
-            const totalVol = allSessions.reduce((a, s) =>
-              a + (s.exercises||[]).reduce((b, ex) =>
-                b + (ex.sets||[]).filter(s=>s.done).reduce((c, set) =>
-                  c + (parseFloat(set.weight)||0) * (parseFloat(set.reps)||0), 0), 0), 0);
-            const avgVol = Math.round(totalVol / totalWorkouts);
-            const totalSets = allSessions.reduce((a, s) =>
-              a + (s.exercises||[]).reduce((b, ex) => b + (ex.sets||[]).filter(s=>s.done).length, 0), 0);
-            const avgSets = Math.round(totalSets / totalWorkouts);
-
-            // Top exercises by volume
+            const totalVol = allSessions.reduce((a,s)=>a+(s.exercises||[]).reduce((b,ex)=>b+(ex.sets||[]).filter(s=>s.done).reduce((c,set)=>c+(parseFloat(set.weight)||0)*(parseFloat(set.reps)||0),0),0),0);
+            const avgVol = Math.round(totalVol/totalWorkouts);
+            const totalSets = allSessions.reduce((a,s)=>a+(s.exercises||[]).reduce((b,ex)=>b+(ex.sets||[]).filter(s=>s.done).length,0),0);
+            const avgSets = Math.round(totalSets/totalWorkouts);
             const exVols = {};
-            allSessions.forEach(s => (s.exercises||[]).forEach(ex => {
-              if (!ex.name) return;
-              const v = (ex.sets||[]).filter(s=>s.done).reduce((a,set)=>a+(parseFloat(set.weight)||0)*(parseFloat(set.reps)||0),0);
-              exVols[ex.name] = (exVols[ex.name]||0) + v;
-            }));
+            allSessions.forEach(s=>(s.exercises||[]).forEach(ex=>{if(!ex.name)return;const v=(ex.sets||[]).filter(s=>s.done).reduce((a,set)=>a+(parseFloat(set.weight)||0)*(parseFloat(set.reps)||0),0);exVols[ex.name]=(exVols[ex.name]||0)+v;}));
             const topEx = Object.entries(exVols).sort(([,a],[,b])=>b-a).slice(0,3);
-
-            // Top muscle group
             const muscleVols = {};
-            topEx.forEach(([name]) => {
-              const info = EXERCISE_DB.find(e => e.name === name);
-              if (info?.muscle) muscleVols[info.muscle] = (muscleVols[info.muscle]||0) + exVols[name];
-            });
+            topEx.forEach(([name])=>{const info=EXERCISE_DB.find(e=>e.name===name);if(info?.muscle)muscleVols[info.muscle]=(muscleVols[info.muscle]||0)+exVols[name];});
             const topMuscle = Object.entries(muscleVols).sort(([,a],[,b])=>b-a)[0]?.[0];
-
+            const fmt = v => v>=1000?`${(v/1000).toFixed(1)}k`:Math.round(v);
             return (
               <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
                 <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>ANALYTICS</div>
-
-                {/* Stats grid */}
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
-                  {[
-                    ["Total Workouts", totalWorkouts, "sessions"],
-                    ["Total Volume", totalVol >= 1000 ? `${(totalVol/1000).toFixed(1)}k` : Math.round(totalVol), store.unit||"lbs"],
-                    ["Avg Volume", avgVol >= 1000 ? `${(avgVol/1000).toFixed(1)}k` : avgVol, "per session"],
-                    ["Avg Sets", avgSets, "per session"],
-                  ].map(([label, val, sub]) => (
+                  {[["Total Workouts",totalWorkouts,"sessions"],["Total Volume",fmt(totalVol),store.unit||"lbs"],["Avg Volume",fmt(avgVol),"per session"],["Avg Sets",avgSets,"per session"]].map(([label,val,sub])=>(
                     <div key={label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px" }}>
                       <div style={{ fontSize:22, fontWeight:800, color:C.accent, fontFamily:MONO, lineHeight:1 }}>{val}</div>
                       <div style={{ fontSize:10, color:C.text, fontWeight:600, marginTop:4 }}>{label}</div>
@@ -3242,31 +3205,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     </div>
                   ))}
                 </div>
-
-                {/* Top exercises */}
-                {topEx.length > 0 && (
+                {topEx.length>0 && (
                   <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", marginBottom:8 }}>
                     <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>TOP EXERCISES BY VOLUME</div>
-                    {topEx.map(([name, vol], i) => {
-                      const pct = vol / topEx[0][1];
-                      return (
-                        <div key={name} style={{ marginBottom: i < topEx.length-1 ? 10 : 0 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                            <div style={{ fontSize:12, fontWeight:600, color:C.text }}>{name}</div>
-                            <div style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>
-                              {vol >= 1000 ? `${(vol/1000).toFixed(1)}k` : Math.round(vol)} {store.unit||"lbs"}
-                            </div>
-                          </div>
-                          <div style={{ height:5, background:C.divider, borderRadius:3, overflow:"hidden" }}>
-                            <div style={{ height:"100%", background:C.accent, width:`${pct*100}%`, borderRadius:3, opacity:0.7+i*0.1 }}/>
-                          </div>
+                    {topEx.map(([name,vol],i)=>(
+                      <div key={name} style={{ marginBottom:i<topEx.length-1?10:0 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                          <div style={{ fontSize:12, fontWeight:600, color:C.text }}>{name}</div>
+                          <div style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>{fmt(vol)} {store.unit||"lbs"}</div>
                         </div>
-                      );
-                    })}
+                        <div style={{ height:5, background:C.divider, borderRadius:3, overflow:"hidden" }}>
+                          <div style={{ height:"100%", background:C.accent, width:`${(vol/topEx[0][1])*100}%`, borderRadius:3 }}/>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
-
-                {/* Top muscle */}
                 {topMuscle && (
                   <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}30`, borderRadius:12, padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
                     <MuscleIcon muscle={topMuscle} size={32} C={C}/>
@@ -3280,7 +3234,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })()}
 
-          {/* ── Volume by week chart ── */}
+          
           {(() => {
             const weeks = 8;
             const today = new Date(); today.setHours(0,0,0,0);
@@ -3295,34 +3249,30 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   Object.values(sess).forEach(s => {
                     sessions++;
                     (s.exercises||[]).forEach(ex => {
-                      (ex.sets||[]).filter(s=>s.done).forEach(set => {
+                      (ex.sets||[]).filter(set => set.done).forEach(set => {
                         vol += (parseFloat(set.weight)||0) * (parseFloat(set.reps)||0);
                       });
                     });
                   });
                 }
               });
-              weekData.push({ label: wStart.toLocaleDateString("en",{month:"short",day:"numeric"}), vol:Math.round(vol), sessions });
+              weekData.push({ label: wStart.toLocaleDateString("en",{month:"short",day:"numeric"}), vol: Math.round(vol), sessions });
             }
-            const maxVol = Math.max(...weekData.map(w=>w.vol), 1);
+            const maxVol = Math.max(...weekData.map(w => w.vol), 1);
             return weekData.some(w => w.vol > 0) ? (
-              <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>
-                  VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})
-                </div>
-                <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80, marginBottom:6 }}>
-                  {weekData.map((w,i) => (
-                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
-                      <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol>0?(w.vol>=1000?`${(w.vol/1000).toFixed(1)}k`:w.vol):""}</div>
-                      <div style={{ width:"100%", borderRadius:"3px 3px 0 0", background:i===weeks-1?C.accent:`${C.accent}55`, height:Math.max(4,(w.vol/maxVol)*64), transition:"height 0.3s" }}/>
-                      {w.sessions > 0 && <div style={{ fontSize:8, color:C.sub }}>{w.sessions}x</div>}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display:"flex", gap:4 }}>
-                  {weekData.map((w,i) => (
-                    <div key={i} style={{ flex:1, fontSize:7, color:C.muted, textAlign:"center", overflow:"hidden" }}>
-                      {w.label.split(" ")[0]}
+              <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})</div>
+                <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80 }}>
+                  {weekData.map((w, i) => (
+                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+                      <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
+                      <div style={{
+                        width:"100%", borderRadius:"3px 3px 0 0",
+                        background: i === weeks-1 ? C.accent : `${C.accent}66`,
+                        height: Math.max(4, (w.vol/maxVol)*64),
+                        transition:"height 0.3s"
+                      }}/>
+                      <div style={{ fontSize:7, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
                     </div>
                   ))}
                 </div>
@@ -3330,14 +3280,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             ) : null;
           })()}
 
-          {/* ── PRs ── */}
+          {/* PRs strip */}
           {Object.keys(store.prs||{}).length > 0 && (
             <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
               <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>PERSONAL RECORDS</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-                {Object.entries(store.prs||{}).sort(([,a],[,b])=>b-a).map(([name,weight],i,arr) => (
+              <div style={{ display:"flex", flexDirection:"column", gap:0, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i, arr) => (
                   <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", borderBottom:i<arr.length-1?`1px solid ${C.divider}`:"none" }}>
-                    <div style={{ fontSize:13, color:C.text }}>{name}</div>
+                    <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{name}</div>
                     <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>
                       {cvt(weight,"lbs",store.unit||"lbs")} {store.unit||"lbs"}
                     </div>
@@ -3347,23 +3297,28 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
           )}
 
-          {/* ── Workout log ── */}
+          {/* Workout list */}
           <div style={{ padding:"14px 14px 0" }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
-            {!Object.keys(store.history||{}).length && (
-              <div style={{ textAlign:"center", color:C.sub, padding:"40px 0" }}>
+            {!Object.keys(store.history || {}).length && (
+              <div style={{ textAlign:"center", color:C.sub, padding:"40px 0", fontSize:13 }}>
                 <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
                 No workouts logged yet
               </div>
             )}
-            {Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).map(([date,sessions]) => (
+            {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => (
               <div key={date} style={{ marginBottom:16 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
                   {new Date(date).toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
                 </div>
-                {Object.values(sessions).map((sess,i) => {
-                  const done = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);
-                  const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+                {Object.values(sessions).map((sess, i) => {
+                  const done = sess.exercises?.reduce((a,ex) => a+(ex.sets?.filter(s=>s.done).length||0),0)||0;
+                  const vol = sess.exercises?.reduce((a,ex) => a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0)||0;
+                  const prExercises = sess.exercises?.filter(ex => {
+                    if (!ex.name) return false;
+                    const maxW = Math.max(0,...(ex.sets||[]).filter(s=>s.done&&s.weight).map(s=>parseFloat(s.weight)||0));
+                    return maxW > 0 && (store.prs||{})[ex.name] && maxW >= (store.prs[ex.name] * (sess.unit==="kg"?2.205:1) * 0.98);
+                  }) || [];
                   return (
                     <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
@@ -3371,9 +3326,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
                         </div>
+                        {prExercises.length > 0 && (
+                          <div style={{ background:"linear-gradient(135deg,#ca8a04,#dc2626)", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700, color:"#fff" }}>🏆 PR</div>
+                        )}
                       </div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
-                        {(sess.exercises||[]).filter(e=>e.name).map((ex,j) => (
+                        {sess.exercises?.filter(e=>e.name).map((ex,j) => (
                           <span key={j} style={{ fontSize:11, background:C.divider, color:C.sub, borderRadius:6, padding:"3px 8px" }}>{ex.name}</span>
                         ))}
                       </div>
@@ -5464,11 +5422,12 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 
       {/* Settings modal */}
       {showSettings && (
-        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden", borderTop:`1px solid ${C.border}` }}>
+        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-              <div style={{ fontSize:16, fontWeight:700, color:C.text }}>Settings</div>
-              <button onClick={() => setShowSettings(false)} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+              <div style={{ width:50 }}/>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
+              <button onClick={() => setShowSettings(false)} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, width:50 }}>Done</button>
             </div>
             <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PREFERENCES</div>
@@ -5937,6 +5896,9 @@ export default function App() {
   // ── App data state ──────────────────────────────────────────────
   const [store, setStore] = useState(loadStore);
   const [dbReady, setDbReady] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const token = session?.access_token || null;
   const tokenRef = useRef(token);
@@ -5996,32 +5958,23 @@ export default function App() {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [loadError, setLoadError] = useState(null);
-  const [retryCount, setRetryCount] = useState(0);
+  // ── Load user data from Supabase once authenticated ─────────────
   useEffect(() => {
-    const goOnline = () => { setIsOnline(true); if (dbReady) loadUserData(); };
+    if (!token || !currentUserId) return;
+    loadUserData();
+  }, [token, currentUserId, retryCount]);
+
+  useEffect(() => {
+    const goOnline = () => { setIsOnline(true); };
     const goOffline = () => setIsOnline(false);
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
     return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
-  }, [dbReady]);
-
-  // ── Load user data from Supabase once authenticated ─────────────
-  useEffect(() => {
-    if (!token || !currentUserId) return;
-    setLoadError(null);
-    loadUserData();
-  }, [token, currentUserId, retryCount]);
+  }, []);
 
   async function loadUserData() {
-    // If offline, use local store and proceed
-    if (!navigator.onLine) {
-      toast("You're offline — showing cached data", "error");
-      setDbReady(true);
-      return;
-    }
     try {
+      // Load profile
       const tok = tokenRef.current || token;
       const [profiles, programs, prs, history, groupsData] = await Promise.all([
         sb.query(`profiles?select=*`, {}, tok),
@@ -6034,13 +5987,16 @@ export default function App() {
       const me = profiles?.find(p => p.id === currentUserId);
       const activeProgram = programs?.find(p => p.is_active) || programs?.[0];
 
+      // Convert DB programs to app format
       const appPrograms = (programs || []).map(p => ({
         id: p.id, name: p.name, days: p.days || []
       }));
 
+      // Convert PRs to app format { exerciseName: weightLbs }
       const appPrs = {};
       (prs || []).forEach(pr => { appPrs[pr.exercise_name] = pr.weight_lbs; });
 
+      // Convert history to app format
       const appHistory = {};
       const appWorkoutDates = {};
       (history || []).forEach(w => {
@@ -6053,6 +6009,7 @@ export default function App() {
         appWorkoutDates[dk] = true;
       });
 
+      // Load posts (from people user follows + own)
       await loadFeed(tok, currentUserId, profiles || []);
 
       setStore(prev => ({
@@ -6061,7 +6018,7 @@ export default function App() {
           id: p.id, username: p.username, name: p.name,
           bio: p.bio, avatar: p.avatar_emoji, avatarUrl: p.avatar_url,
           unit: p.unit, theme: p.theme,
-          followers: [], following: []
+          followers: [], following: [] // loaded separately
         })),
         currentUserId,
         programs: appPrograms,
@@ -6076,6 +6033,7 @@ export default function App() {
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
+      // Load follows
       const follows = await sb.query(`follows?select=follower_id,following_id`, {}, tok);
       setStore(prev => ({
         ...prev,
@@ -6086,19 +6044,11 @@ export default function App() {
         }))
       }));
 
-      setLoadError(null);
       setDbReady(true);
     } catch (e) {
       console.error("loadUserData error:", e);
-      const isOffline = !navigator.onLine || e.message?.includes("fetch") || e.message?.includes("network");
-      if (isOffline) {
-        setLoadError("offline");
-        toast("No connection — showing cached data", "error");
-        setDbReady(true); // let them use cached local data
-      } else {
-        setLoadError("error");
-        // Don't setDbReady(true) yet — show retry screen
-      }
+      toast("Couldn't load your data — check connection", "error");
+      setDbReady(true);
     }
   }
 
@@ -6436,29 +6386,6 @@ export default function App() {
   }
 
   if (!dbReady) {
-    // Error state — show retry
-    if (loadError === "error") {
-      return (
-        <div style={{ height:"100dvh", background:C.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 30px", textAlign:"center" }}>
-          <SeshdLogo C={C} big/>
-          <div style={{ fontSize:40, margin:"24px 0 12px" }}>⚠️</div>
-          <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:8 }}>Couldn't load your data</div>
-          <div style={{ fontSize:13, color:C.sub, marginBottom:28, lineHeight:1.5 }}>
-            Check your connection and try again.{"\n"}Your local data is safe.
-          </div>
-          <button onClick={() => setRetryCount(c => c + 1)} style={{
-            background:C.accent, color:"#fff", border:"none", borderRadius:12,
-            padding:"13px 32px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F,
-            marginBottom:12
-          }}>Try Again</button>
-          <button onClick={() => setDbReady(true)} style={{
-            background:"none", color:C.sub, border:"none", fontSize:13,
-            cursor:"pointer", fontFamily:F, padding:"8px"
-          }}>Continue with cached data</button>
-        </div>
-      );
-    }
-    // Normal loading
     return (
       <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
         <SeshdLogo C={C} big/>
@@ -6630,12 +6557,9 @@ export default function App() {
     >
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
       <ToastHost/>
-
-      {/* Offline banner */}
       {!isOnline && (
         <div style={{ background:"#ef4444", padding:"6px 14px", display:"flex", alignItems:"center", justifyContent:"center", gap:6, flexShrink:0 }}>
-          <span style={{ fontSize:14 }}>📵</span>
-          <span style={{ fontSize:12, fontWeight:600, color:"#fff" }}>No internet — changes will sync when you're back online</span>
+          <span style={{ fontSize:12, fontWeight:600, color:"#fff" }}>📵 No internet — changes will sync when back online</span>
         </div>
       )}
 
