@@ -2206,8 +2206,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     setSession(p => {
       const ex = p.exercises[ei];
       const set = ex?.sets[si];
-      const restSecs = set?.restTime || store.defaultRestTime || 120;
-      if (!set?.done) setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now() });
+      const restSecs = parseInt(p.exercises[ei].rest) || 90;
+      if (completing) setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
       return p;
     });
     // Request notification permission on first rest timer (user gesture required)
@@ -6589,3 +6589,4 @@ export default function App() {
     </div>
   );
 }
+
