@@ -2127,7 +2127,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     clearInterval(rtRef.current);
     if (rest?.running && rest.secs > 0) {
       rtRef.current = setInterval(() => setRest(p => {
-        if (!p) return null;
+        if (!p || !p.running) return p;
         // Always recalculate from startedAt if available (handles backgrounding)
         if (p.startedAt) {
           const elapsed = Math.floor((Date.now() - p.startedAt) / 1000);
@@ -2169,6 +2169,29 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     }
     return () => clearInterval(rtRef.current);
   }, [rest?.running, rest?.startedAt]);
+
+  useEffect(() => {
+    if (!rest) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        clearInterval(rtRef.current);
+        setRest(null);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        try { navigator.vibrate(10); } catch {}
+        setRest(p => {
+          if (!p) return null;
+          const newRunning = !p.running;
+          if (newRunning) {
+            return { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) };
+          }
+          return { ...p, running: newRunning };
+        });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [rest]);
 
   function startWorkout(day, progId) {
     const exs = day
@@ -2390,32 +2413,116 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
         </div>
 
-        {/* Rest timer */}
+        {/* Rest timer - Full screen modal */}
         {rest && (
-          <div style={{ background:C.surface, borderBottom:`1px solid ${C.divider}` }}>
-            <div style={{ height:2, background:C.divider }}>
-              <div style={{ height:"100%", background:rest.secs<=10?"#ef4444":C.accent, width:`${(rest.secs/(rest.total||120))*100}%`, transition:"width 1s linear" }}/>
-            </div>
-            <div style={{ display:"flex", alignItems:"center", padding:"6px 14px", gap:6 }}>
-              <div style={{ display:"flex", gap:3, flex:1, flexWrap:"wrap" }}>
-                {[30,60,90,120,180,240].map(s => (
-                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true,startedAt:Date.now()})} style={{
-                    fontSize:10, padding:"3px 7px", flexShrink:0,
-                    background: rest.total===s ? C.accent : C.divider,
-                    border:"none", borderRadius:16,
-                    color: rest.total===s ? "#fff" : C.sub,
-                    cursor:"pointer", fontFamily:MONO, fontWeight:600
-                  }}>{s>=60?`${s/60}m`:`${s}s`}</button>
-                ))}
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:500, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:0 }}>
+            {/* Animated background gradient */}
+            <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.1)" : `rgba(${C.accent},0.05)`} 0%, transparent 70%)`, pointerEvents:"none" }}/>
+            
+            {/* Circular progress */}
+            <div style={{ position:"relative", width:260, height:260, marginBottom:40, zIndex:1 }}>
+              {/* Pulsing background when low time */}
+              {rest.secs<=10 && rest.running && (
+                <div style={{ position:"absolute", inset:-10, borderRadius:"50%", background:`rgba(239,68,68,0.2)`, animation:"pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}/>
+              )}
+              
+              {/* Background circle */}
+              <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", transform:"rotate(-90deg)" }}>
+                <defs>
+                  <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor={rest.secs<=10 ? "#ef4444" : C.accent} stopOpacity="0.3"/>
+                    <stop offset="100%" stopColor={rest.secs<=10 ? "#dc2626" : C.accent} stopOpacity="0.1"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="130" cy="130" r="125" fill="none" stroke={`${C.divider}40`} strokeWidth="8"/>
+                {/* Progress circle */}
+                <circle cx="130" cy="130" r="125" fill="none" 
+                  stroke={rest.secs<=10 ? "#ef4444" : C.accent} 
+                  strokeWidth="8"
+                  strokeDasharray={`${(rest.secs/rest.total)*2*Math.PI*125} ${2*Math.PI*125}`}
+                  style={{ transition:"stroke-dasharray 1s linear, stroke 0.3s ease", strokeLinecap:"round", filter:"drop-shadow(0 0 8px rgba(251,146,60,0.5))" }}
+                />
+              </svg>
+              
+              {/* Timer display - tap to pause/resume */}
+              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", cursor:"pointer", userSelect:"none" }}
+                onClick={() => {
+                  try { navigator.vibrate(10); } catch {}
+                  setRest(p => {
+                    if (!p) return null;
+                    const newRunning = !p.running;
+                    if (newRunning) {
+                      return { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) };
+                    }
+                    return { ...p, running: newRunning };
+                  });
+                }}
+              >
+                <div style={{ fontSize:13, color:C.sub, fontWeight:700, letterSpacing:2, marginBottom:12, textTransform:"uppercase", opacity:0.8 }}>
+                  {rest.running ? "Tap to Pause" : "Tap to Resume"}
+                </div>
+                <div style={{ fontSize:72, fontWeight:900, color:rest.secs<=10?"#ef4444":C.accent, fontFamily:MONO, lineHeight:1, letterSpacing:-2, textShadow:rest.running ? `0 0 20px ${rest.secs<=10 ? "rgba(239,68,68,0.6)" : `rgba(${C.accent},0.4)`}` : "none" }}>
+                  {fmtTime(rest.secs)}
+                </div>
+                <div style={{ fontSize:12, color:C.sub, fontWeight:600, marginTop:12, opacity:0.6 }}>
+                  {Math.round((rest.secs/rest.total)*100)}% complete
+                </div>
               </div>
-              <input type="number" inputMode="numeric" placeholder="ΓÇö"
-                onBlur={e=>{const v=parseInt(e.target.value);if(v>0){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}}}
-                onKeyDown={e=>{if(e.key==="Enter"){const v=parseInt(e.target.value);if(v>0){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}e.target.blur();}}}
-                style={{ width:32, background:C.divider, border:"none", borderRadius:6, padding:"2px 4px", fontSize:11, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center", flexShrink:0 }}
-              />
-              <div style={{ fontSize:20, fontWeight:800, color:rest.secs<=10?"#ef4444":C.text, fontFamily:MONO, flexShrink:0, minWidth:48, textAlign:"right" }}>{fmtTime(rest.secs)}</div>
-              <button onClick={() => { clearInterval(rtRef.current); setRest(null); }} style={{ color:C.muted, background:"none", border:"none", cursor:"pointer", fontSize:16, padding:0, flexShrink:0, marginLeft:2 }}>×</button>
             </div>
+
+            {/* Preset buttons grid */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, width:"100%", maxWidth:320, paddingBottom:20, zIndex:1 }}>
+              {[30,60,90,120,180,240].map(s => (
+                <button key={s} 
+                  onClick={() => { setRest({secs:s,total:s,running:true,startedAt:Date.now()}); try{navigator.vibrate(10);} catch{} }}
+                  style={{
+                    padding:"13px", fontSize:14, fontWeight:700, fontFamily:MONO,
+                    background: rest.total===s ? C.accent : C.surface,
+                    border:`2px solid ${rest.total===s ? C.accent : C.divider}`,
+                    borderRadius:14,
+                    color: rest.total===s ? "#fff" : C.text,
+                    cursor:"pointer", 
+                    transition:"all 0.2s ease",
+                    boxShadow: rest.total===s ? `0 0 12px ${C.accent}40` : "none"
+                  }}
+                  onMouseEnter={e => { e.target.style.transform = "scale(1.05)"; }}
+                  onMouseLeave={e => { e.target.style.transform = "scale(1)"; }}
+                >
+                  {s>=60?`${s/60}m`:`${s}s`}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom input + action buttons */}
+            <div style={{ display:"flex", gap:10, width:"100%", maxWidth:320, paddingBottom:24, zIndex:1 }}>
+              <input type="number" inputMode="numeric" placeholder="Custom (sec)"
+                onBlur={e=>{const v=parseInt(e.target.value);if(v>0&&v<=3600){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}}}
+                onKeyDown={e=>{if(e.key==="Enter"){const v=parseInt(e.target.value);if(v>0&&v<=3600){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}e.target.blur();}}}
+                style={{ flex:1, padding:"12px 14px", background:C.surface, border:`2px solid ${C.divider}`, borderRadius:12, fontSize:14, color:C.text, outline:"none", fontFamily:F, textAlign:"center", transition:"all 0.2s ease" }}
+                onFocus={e => e.target.style.borderColor = C.accent}
+                onBlur={e => e.target.style.borderColor = C.divider}
+              />
+              <button onClick={() => { clearInterval(rtRef.current); setRest(null); try{navigator.vibrate(20);} catch{} }}
+                style={{ padding:"12px 20px", fontSize:14, fontWeight:700, background:"#8B5CF6", border:"2px solid #8B5CF6", borderRadius:12, color:"#fff", cursor:"pointer", fontFamily:F, transition:"all 0.2s ease", boxShadow:"0 0 12px rgba(139,92,246,0.4)" }}
+                onMouseEnter={e => { e.target.style.transform = "scale(1.05)"; }}
+                onMouseLeave={e => { e.target.style.transform = "scale(1)"; }}
+              >
+                Skip
+              </button>
+            </div>
+
+            {/* Keyboard hint */}
+            <div style={{ fontSize:11, color:C.sub, textAlign:"center", opacity:0.5, zIndex:1 }}>
+              Space to pause • ESC to close
+            </div>
+
+            {/* CSS animations */}
+            <style>{`
+              @keyframes pulse {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.7; transform: scale(1.1); }
+              }
+            `}</style>
           </div>
         )}
 
