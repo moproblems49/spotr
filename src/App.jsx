@@ -2940,7 +2940,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   );
 
   return (
-    <div style={{ overflowY:"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:20 }}>
+    <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:viewingProgram||showBuilder?0:20 }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
         {[["workout","Workout"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
@@ -3035,9 +3035,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={e => { e.stopPropagation(); e.preventDefault(); alert("EDIT TAPPED day "+di); setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
+                      <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
-                        fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+                        fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
                       <button onClick={() => startWorkout(day)} style={{
                         flex:1, padding:"9px", background:"none", border:"none",
