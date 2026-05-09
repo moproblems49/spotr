@@ -2194,11 +2194,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Haptic
       try { if (navigator.vibrate) navigator.vibrate(nowDone ? 30 : 10); } catch {}
       
-      // Auto-start rest on completion
+      // Auto-start rest on completion (only when marking done, and only if not the last set)
       if (nowDone) {
         const ex = p.exercises[ei];
         const restSecs = parseInt(ex.rest) || 90;
-        setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
+        // Count remaining sets after this one
+        const remainingAfterThis = ex.sets.filter((s, j) => j > si && !s.done).length;
+        // Only start timer if there are more sets to do after this
+        if (remainingAfterThis > 0 || si < ex.sets.length - 1) {
+          setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
+        }
+      } else {
+        // When unmarking a set, stop the rest timer if it's active
+        setRest(null);
       }
       
       return {
@@ -2383,7 +2391,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </div>
 
         {/* Rest timer */}
-        
+        {rest && (
+          <div style={{ background:C.surface, borderBottom:`1px solid ${C.divider}` }}>
+            <div style={{ height:2, background:C.divider }}>
+              <div style={{ height:"100%", background:rest.secs<=10?"#ef4444":C.accent, width:`${(rest.secs/(rest.total||120))*100}%`, transition:"width 1s linear" }}/>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", padding:"6px 14px", gap:6 }}>
+              <div style={{ display:"flex", gap:3, flex:1, flexWrap:"wrap" }}>
+                {[30,60,90,120,180,240].map(s => (
+                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true,startedAt:Date.now()})} style={{
+                    fontSize:10, padding:"3px 7px", flexShrink:0,
+                    background: rest.total===s ? C.accent : C.divider,
+                    border:"none", borderRadius:16,
+                    color: rest.total===s ? "#fff" : C.sub,
+                    cursor:"pointer", fontFamily:MONO, fontWeight:600
+                  }}>{s>=60?`${s/60}m`:`${s}s`}</button>
+                ))}
+              </div>
+              <input type="number" inputMode="numeric" placeholder="ΓÇö"
+                onBlur={e=>{const v=parseInt(e.target.value);if(v>0){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}}}
+                onKeyDown={e=>{if(e.key==="Enter"){const v=parseInt(e.target.value);if(v>0){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}e.target.blur();}}}
+                style={{ width:32, background:C.divider, border:"none", borderRadius:6, padding:"2px 4px", fontSize:11, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center", flexShrink:0 }}
+              />
+              <div style={{ fontSize:20, fontWeight:800, color:rest.secs<=10?"#ef4444":C.text, fontFamily:MONO, flexShrink:0, minWidth:48, textAlign:"right" }}>{fmtTime(rest.secs)}</div>
+              <button onClick={() => { clearInterval(rtRef.current); setRest(null); }} style={{ color:C.muted, background:"none", border:"none", cursor:"pointer", fontSize:16, padding:0, flexShrink:0, marginLeft:2 }}>×</button>
+            </div>
+          </div>
+        )}
 
         {/* Exercises */}
         <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
