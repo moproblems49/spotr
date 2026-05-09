@@ -2103,6 +2103,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [viewingProgram, setViewingProgram] = useState(null); // program ID
   const [showBuilder, setShowBuilder] = useState(false);
   const [initialDayIdx, setInitialDayIdx] = useState(0);
+  const [initialDayIdx, setInitialDayIdx] = useState(0);
   const [previewDay, setPreviewDay] = useState(null); // {day, programName}
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
