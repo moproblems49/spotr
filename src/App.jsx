@@ -1,5 +1,5 @@
 // v1778305358100
-// SESHD v9.1 - BUILD 2026-05-09 - 216 exercises, touch drag, history charts
+// SESHD v9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -3035,11 +3035,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={e => { e.stopPropagation(); setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
+                      <button onClick={e => { e.stopPropagation(); e.preventDefault(); alert("EDIT TAPPED day "+di); setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
-                        fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+                        fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
-                      <button onClick={e => { e.stopPropagation(); startWorkout(day); }} style={{
+                      <button onClick={() => startWorkout(day)} style={{
                         flex:1, padding:"9px", background:"none", border:"none",
                         fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
                       }}>Start ›</button>
