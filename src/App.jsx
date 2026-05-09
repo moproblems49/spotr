@@ -3035,11 +3035,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
+                      <button onClick={e => { e.stopPropagation(); setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
                         fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
-                      <button onClick={() => startWorkout(day)} style={{
+                      <button onClick={e => { e.stopPropagation(); startWorkout(day); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none",
                         fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
                       }}>Start ›</button>
