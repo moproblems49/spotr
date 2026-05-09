@@ -1,0 +1,129 @@
+function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, onProgramEdited, startWorkout, initialDayIdx = 0 }) {
+  const [localProg, setLocalProg] = useState(() => JSON.parse(JSON.stringify(prog)));
+  const [activeDay, setActiveDay] = useState(initialDayIdx);
+  const isActive = store.activeProgramId === prog.id;
+
+  useEffect(() => { setLocalProg(JSON.parse(JSON.stringify(prog))); }, [prog.id]);
+  useEffect(() => { setActiveDay(Math.min(initialDayIdx, (prog.days?.length||1)-1)); }, [initialDayIdx]);
+
+  const day = localProg.days?.[activeDay] || { name:"", exercises:[] };
+  function patch(u) { setLocalProg(u); if (onProgramEdited) onProgramEdited(u); }
+  function updateEx(ei, ch) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.map((ex,xi)=>xi!==ei?ex:{...ex,...ch})})}); }
+  function addEx() { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:[...(d.exercises||[]),{name:"",sets:3,reps:"8-12",rest:"90",note:""}]})}); }
+  function removeEx(ei) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.filter((_,xi)=>xi!==ei)})}); }
+
+  return (
+    <div style={{ position:"absolute", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      <div style={{ background:C.bg, borderBottom:`1px solid ${C.divider}`, padding:"8px 14px 0", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+          <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", gap:3, padding:"4px 0" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>Back
+          </button>
+          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, border:"none", borderRadius:8, padding:"5px 12px", fontSize:12, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Save</button>
+        </div>
+        <input value={localProg.name} onChange={e => patch({...localProg, name:e.target.value})}
+          style={{ fontSize:15, fontWeight:800, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, width:"100%", marginBottom:1 }}
+        />
+        <div style={{ fontSize:10, color:C.sub, marginBottom:8 }}>
+          {localProg.days?.length||0} days -+ {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises
+          {isActive && <span style={{ color:C.accent, fontWeight:700, marginLeft:6 }}>-+ ACTIVE</span>}
+        </div>
+        <div style={{ display:"flex", overflowX:"auto", margin:"0 -14px", padding:"0 14px", scrollbarWidth:"none" }}>
+          {(localProg.days||[]).map((d,di) => (
+            <button key={di} onClick={() => setActiveDay(di)} style={{
+              padding:"8px 14px", background:"none", border:"none",
+              borderBottom:`2px solid ${activeDay===di ? C.accent : "transparent"}`,
+              color: activeDay===di ? C.accent : C.sub,
+              fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, whiteSpace:"nowrap", flexShrink:0
+            }}>{d.name||`Day ${di+1}`}</button>
+          ))}
+          <button onClick={() => {
+            const nd = { id:Date.now().toString(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
+            patch({...localProg, days:[...(localProg.days||[]), nd]});
+            setActiveDay((localProg.days||[]).length);
+          }} style={{ padding:"8px 10px", background:"none", border:"none", color:C.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>+ Day</button>
+        </div>
+      </div>
+
+      <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+        <input value={day.name}
+          onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, name:e.target.value})})}
+          placeholder="Day name..."
+          style={{ flex:1, fontSize:14, fontWeight:700, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F }}
+        />
+        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{
+          background:C.accent, color:"#fff", border:"none", borderRadius:9,
+          padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0
+        }}>Start G«¶</button>
+      </div>
+
+      <div style={{ overflowY:"auto", flex:1, WebkitOverflowScrolling:"touch" }}>
+        {(day.exercises||[]).length === 0 && (
+          <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>=É≈Ôn+≈</div>
+            <div style={{ fontSize:13, fontWeight:600, color:C.text, marginBottom:3 }}>No exercises yet</div>
+            <div style={{ fontSize:11 }}>Tap below to add</div>
+          </div>
+        )}
+        {(day.exercises||[]).map((ex, ei) => {
+          const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
+          const sets = parseInt(ex.sets) || 3;
+          return (
+            <div key={ei} style={{ borderBottom:`1px solid ${C.divider}` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px" }}>
+                <div style={{ width:30, height:30, borderRadius:8, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <MuscleIcon muscle={exInfo?.muscle||""} size={18} C={C}/>
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise..."
+                    style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:13, fontWeight:700, color:C.text, fontFamily:F, padding:0 }}
+                  />
+                  {exInfo?.muscle && <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{exInfo.muscle}</div>}
+                </div>
+                <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:20, lineHeight:1, cursor:"pointer", padding:"2px", flexShrink:0 }}>+˘</button>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, padding:"0 14px 8px" }}>
+                <div style={{ background:C.divider, borderRadius:8, overflow:"hidden" }}>
+                  <div style={{ fontSize:8, fontWeight:700, color:C.muted, letterSpacing:0.5, textAlign:"center", paddingTop:4 }}>SETS</div>
+                  <div style={{ display:"flex", alignItems:"center", height:36 }}>
+                    <button onClick={() => updateEx(ei,{sets:Math.max(1,sets-1)})} style={{ flex:1, height:"100%", background:"none", border:"none", color:C.accent, fontSize:20, fontWeight:800, cursor:"pointer" }}>GÍ∆</button>
+                    <span style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:MONO, minWidth:22, textAlign:"center" }}>{sets}</span>
+                    <button onClick={() => updateEx(ei,{sets:sets+1})} style={{ flex:1, height:"100%", background:"none", border:"none", color:C.accent, fontSize:20, fontWeight:800, cursor:"pointer" }}>+</button>
+                  </div>
+                </div>
+                <div style={{ background:C.divider, borderRadius:8 }}>
+                  <div style={{ fontSize:8, fontWeight:700, color:C.muted, letterSpacing:0.5, textAlign:"center", paddingTop:4 }}>REPS</div>
+                  <input value={ex.reps||""} onChange={e => updateEx(ei,{reps:e.target.value})} placeholder="8-12"
+                    style={{ width:"100%", height:36, background:"none", border:"none", outline:"none", fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center" }}
+                  />
+                </div>
+                <div style={{ background:C.divider, borderRadius:8 }}>
+                  <div style={{ fontSize:8, fontWeight:700, color:C.muted, letterSpacing:0.5, textAlign:"center", paddingTop:4 }}>REST</div>
+                  <div style={{ display:"flex", alignItems:"center", height:36 }}>
+                    <input value={ex.rest||""} onChange={e => updateEx(ei,{rest:e.target.value})} placeholder="90" type="number" inputMode="numeric"
+                      style={{ flex:1, height:"100%", background:"none", border:"none", outline:"none", fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center", padding:0, minWidth:0 }}
+                    />
+                    <span style={{ fontSize:9, color:C.muted, paddingRight:4 }}>s</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={addEx} style={{
+          display:"flex", alignItems:"center", gap:10, width:"100%", padding:"14px 16px",
+          background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:700,
+          cursor:"pointer", fontFamily:F, borderTop:(day.exercises||[]).length>0?`1px solid ${C.divider}`:"none"
+        }}>
+          <div style={{ width:30, height:30, borderRadius:9, background:`${C.accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>+</div>
+          Add Exercise
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…
+// WORKOUT TRACKER
+// GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…GÚ…
+const SESSION_KEY = "seshd_active_session";

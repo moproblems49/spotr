@@ -1950,81 +1950,67 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 
   return (
     <div style={{ position:"absolute", inset:0, background:C.bg, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-      <div style={{ background:C.bg, borderBottom:`1px solid ${C.divider}`, padding:"16px 16px 12px", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+      <div style={{ padding:"16px 16px 14px", borderBottom:`1px solid ${C.divider}`, background:C.bg, flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
           <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", gap:6, padding:"6px 0" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>
             Back
           </button>
-          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, border:"none", borderRadius:14, padding:"10px 18px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, boxShadow:`0 12px 30px ${C.accent}22` }}>
-            Save
-          </button>
+          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, border:"none", borderRadius:14, padding:"10px 18px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Save</button>
         </div>
-        <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:14, flexWrap:"wrap" }}>
-          <div style={{ minWidth:0, flex:1 }}>
-            <input value={localProg.name} onChange={e => patch({...localProg, name:e.target.value})}
-              placeholder="Program name"
-              style={{ width:"100%", fontSize:24, fontWeight:900, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, marginBottom:8 }}
-            />
-            <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:8, fontSize:12, color:C.sub }}>
-              <span>{localProg.days?.length||0} days</span>
-              <span>·</span>
-              <span>{localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</span>
-              {isActive && <span style={{ background:C.accent, color:"#fff", borderRadius:999, padding:"4px 10px", fontWeight:700 }}>ACTIVE</span>}
-            </div>
-          </div>
-          <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ flexShrink:0, background:C.accent, color:"#fff", border:"none", borderRadius:16, padding:"14px 20px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, boxShadow:`0 14px 32px ${C.accent}22` }}>
-            Start Workout
-          </button>
+        <input value={localProg.name} onChange={e => patch({...localProg, name:e.target.value})} placeholder="Program name"
+          style={{ width:"100%", marginTop:14, background:"none", border:"none", outline:"none", color:C.text, fontSize:24, fontWeight:800, fontFamily:F }} />
+        <div style={{ marginTop:8, display:"flex", flexWrap:"wrap", gap:10, fontSize:12, color:C.sub }}>
+          <span>{localProg.days?.length||0} days</span>
+          <span>·</span>
+          <span>{localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</span>
+          {isActive && <span style={{ background:C.accent, color:"#fff", borderRadius:999, padding:"4px 10px", fontWeight:700 }}>ACTIVE</span>}
         </div>
       </div>
 
-      <div style={{ overflowY:"auto", flex:1, WebkitOverflowScrolling:"touch", padding:"12px 16px 20px" }}>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:18 }}>
+      <div style={{ padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", background:C.surface, flexShrink:0 }}>
+        <input value={day.name} onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, name:e.target.value})})} placeholder="Day name..."
+          style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"none", color:C.text, fontSize:14, fontWeight:700, fontFamily:F }} />
+        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.accent, border:"none", borderRadius:14, padding:"11px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Start Workout</button>
+      </div>
+
+      <div style={{ flex:1, overflowY:"auto", WebkitOverflowScrolling:"touch", padding:"14px 16px" }}>
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:18 }}>
           {(localProg.days||[]).map((d,di) => (
-            <button key={di} onClick={() => setActiveDay(di)} style={{
-              padding:"10px 16px", background: activeDay===di ? C.accent : C.surface,
-              color: activeDay===di ? "#fff" : C.text,
-              border:`1px solid ${activeDay===di ? C.accent : C.divider}`,
-              borderRadius:999, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, whiteSpace:"nowrap"
-            }}>{d.name||`Day ${di+1}`}</button>
+            <button key={di} onClick={() => setActiveDay(di)} style={{ background: activeDay===di ? C.accent : C.surface, color: activeDay===di ? "#fff" : C.text, border:`1px solid ${activeDay===di ? C.accent : C.divider}`, borderRadius:999, padding:"10px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>{d.name||`Day ${di+1}`}</button>
           ))}
           <button onClick={() => {
             const nd = { id:Date.now().toString(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
             patch({...localProg, days:[...(localProg.days||[]), nd]});
             setActiveDay((localProg.days||[]).length);
-          }} style={{ padding:"10px 16px", background:C.surface, color:C.accent, border:`1px solid ${C.accent}`, borderRadius:999, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, whiteSpace:"nowrap" }}>
-            + Add Day
-          </button>
+          }} style={{ background:C.surface, color:C.accent, border:`1px solid ${C.accent}`, borderRadius:999, padding:"10px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Day</button>
         </div>
 
         {(day.exercises||[]).length === 0 ? (
-          <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub, background:C.surface, borderRadius:24 }}>
-            <div style={{ fontSize:32, marginBottom:12 }}>🏋️</div>
+          <div style={{ padding:"32px 20px", borderRadius:24, background:C.surface, color:C.sub, textAlign:"center" }}>
+            <div style={{ fontSize:26, marginBottom:12 }}>🏋️</div>
             <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:6 }}>No exercises yet</div>
-            <div style={{ fontSize:12 }}>Build your routine with sets, reps and rest times.</div>
+            <div style={{ fontSize:12 }}>Add sets, reps and rest to build your routine.</div>
           </div>
         ) : (
           day.exercises.map((ex, ei) => {
             const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
             const sets = Math.max(1, parseInt(ex.sets) || 3);
             return (
-              <div key={ei} style={{ marginBottom:16, background:C.surface, borderRadius:24, padding:18, boxShadow:`0 16px 30px ${C.divider}10` }}>
+              <div key={ei} style={{ marginBottom:16, background:C.surface, borderRadius:20, padding:16, boxShadow:`0 12px 30px ${C.divider}10` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
                   <div style={{ width:42, height:42, borderRadius:16, background:C.divider, display:"grid", placeItems:"center", flexShrink:0 }}>
                     <MuscleIcon muscle={exInfo?.muscle||""} size={20} C={C}/>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise name"
-                      style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:800, color:C.text, fontFamily:F }}
-                    />
+                    <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise name" style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:800, color:C.text, fontFamily:F }} />
                     {exInfo?.muscle && <div style={{ fontSize:11, color:C.sub, marginTop:4 }}>{exInfo.muscle}</div>}
                   </div>
                   <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:20, lineHeight:1, cursor:"pointer", padding:"4px" }}>×</button>
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
                   <div style={{ border:`1px solid ${C.divider}`, borderRadius:18, padding:14, background:C.bg }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, textTransform:"uppercase", marginBottom:10 }}>Sets</div>
+                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>Sets</div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:6 }}>
                       <button onClick={() => updateEx(ei,{sets:Math.max(1,sets-1)})} style={{ background:"none", border:"none", color:C.accent, fontSize:22, fontWeight:900, cursor:"pointer" }}>−</button>
                       <span style={{ fontSize:18, fontWeight:900, color:C.text, fontFamily:MONO }}>{sets}</span>
@@ -2032,35 +2018,26 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                     </div>
                   </div>
                   <div style={{ border:`1px solid ${C.divider}`, borderRadius:18, padding:14, background:C.bg }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, textTransform:"uppercase", marginBottom:10 }}>Reps</div>
-                    <input value={ex.reps||""} onChange={e => updateEx(ei,{reps:e.target.value})} placeholder="8-12"
-                      style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center" }}
-                    />
+                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>Reps</div>
+                    <input value={ex.reps||""} onChange={e => updateEx(ei,{reps:e.target.value})} placeholder="8-12" style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center" }} />
                   </div>
                   <div style={{ border:`1px solid ${C.divider}`, borderRadius:18, padding:14, background:C.bg }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, textTransform:"uppercase", marginBottom:10 }}>Rest</div>
+                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>Rest</div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:4 }}>
-                      <input value={ex.rest||""} onChange={e => updateEx(ei,{rest:e.target.value})} placeholder="90" type="number" inputMode="numeric"
-                        style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center" }}
-                      />
+                      <input value={ex.rest||""} onChange={e => updateEx(ei,{rest:e.target.value})} placeholder="90" type="number" inputMode="numeric" style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center" }} />
                       <span style={{ fontSize:11, color:C.sub }}>s</span>
                     </div>
                   </div>
                 </div>
-                <div style={{ marginTop:14, display:"flex", flexDirection:"column", gap:10 }}>
-                  <input value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note..."
-                    style={{ width:"100%", minHeight:42, background:`${C.divider}20`, border:`1px solid ${C.divider}`, borderRadius:14, padding:"12px 14px", fontSize:13, color:C.text, outline:"none", fontFamily:F }}
-                  />
+                <div style={{ marginTop:14 }}>
+                  <input value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note..." style={{ width:"100%", background:`${C.divider}20`, border:`1px solid ${C.divider}`, borderRadius:14, padding:"12px 14px", fontSize:13, color:C.text, outline:"none", fontFamily:F }} />
                 </div>
               </div>
             );
           })
         )}
 
-        <button onClick={addEx} style={{ width:"100%", marginTop:8, padding:"16px 18px", background:C.surface, border:`1px solid ${C.divider}`, borderRadius:20, color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-          <span style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", width:32, height:32, borderRadius:12, background:`${C.accent}18`, color:C.accent, fontSize:18 }}>+</span>
-          Add Exercise
-        </button>
+        <button onClick={addEx} style={{ width:"100%", marginTop:8, padding:"16px 18px", background:C.surface, border:`1px solid ${C.divider}`, borderRadius:20, color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
       </div>
     </div>
   );
@@ -2091,7 +2068,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       return ws ? parseInt(ws) : null;
     } catch { return null; }
   });
-  const [rest, setRest] = useState(null); // {secs, total, running, startedAt, exerciseIdx}
+  const [rest, setRest] = useState(null); // {secs, total, running, startedAt, exerciseIdx, minimized}
+  const [restEditor, setRestEditor] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
@@ -2177,29 +2155,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     return () => clearInterval(rtRef.current);
   }, [rest?.running, rest?.startedAt]);
 
-  useEffect(() => {
-    if (!rest) return;
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape") {
-        clearInterval(rtRef.current);
-        setRest(null);
-      } else if (e.key === " ") {
-        e.preventDefault();
-        try { navigator.vibrate(10); } catch {}
-        setRest(p => {
-          if (!p) return null;
-          const newRunning = !p.running;
-          if (newRunning) {
-            return { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) };
-          }
-          return { ...p, running: newRunning };
-        });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [rest]);
-
   function startWorkout(day, progId) {
     const exs = day
       ? day.exercises.map(ex => ({
@@ -2226,10 +2181,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       
       // Auto-start rest on completion (only when marking done, and only if not the last set)
       if (nowDone) {
-        const ex = p.exercises[ei];
-        const restSecs = parseInt(ex.rest) || 90;
+        const currentSet = p.exercises[ei]?.sets[si];
+        const restSecs = parseInt(currentSet?.restTime || p.exercises[ei]?.rest || 90) || 90;
         // Count remaining sets after this one
-        const remainingAfterThis = ex.sets.filter((s, j) => j > si && !s.done).length;
+        const remainingAfterThis = p.exercises[ei]?.sets.filter((s, j) => j > si && !s.done).length;
         // Only start timer if there are more sets to do after this
         if (remainingAfterThis > 0 || si < ex.sets.length - 1) {
           setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
@@ -2421,135 +2376,146 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </div>
 
         {/* Rest timer - Full screen modal */}
-        {rest && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:500, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:0 }}>
-            {/* Animated background gradient */}
-            <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.1)" : `rgba(${C.accent},0.05)`} 0%, transparent 70%)`, pointerEvents:"none" }}/>
-            
-            {/* Circular progress */}
-            <div style={{ position:"relative", width:260, height:260, marginBottom:40, zIndex:1 }}>
-              {/* Pulsing background when low time */}
-              {rest.secs<=10 && rest.running && (
-                <div style={{ position:"absolute", inset:-10, borderRadius:"50%", background:`rgba(239,68,68,0.2)`, animation:"pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}/>
-              )}
-              
-              {/* Background circle */}
-              <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", transform:"rotate(-90deg)" }}>
-                <defs>
-                  <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor={rest.secs<=10 ? "#ef4444" : C.accent} stopOpacity="0.3"/>
-                    <stop offset="100%" stopColor={rest.secs<=10 ? "#dc2626" : C.accent} stopOpacity="0.1"/>
-                  </linearGradient>
-                </defs>
-                <circle cx="130" cy="130" r="125" fill="none" stroke={`${C.divider}40`} strokeWidth="8"/>
-                {/* Progress circle */}
-                <circle cx="130" cy="130" r="125" fill="none" 
-                  stroke={rest.secs<=10 ? "#ef4444" : C.accent} 
-                  strokeWidth="8"
-                  strokeDasharray={`${(rest.secs/rest.total)*2*Math.PI*125} ${2*Math.PI*125}`}
-                  style={{ transition:"stroke-dasharray 1s linear, stroke 0.3s ease", strokeLinecap:"round", filter:"drop-shadow(0 0 8px rgba(251,146,60,0.5))" }}
-                />
-              </svg>
-              
-              {/* Timer display - tap to pause/resume */}
-              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", cursor:"pointer", userSelect:"none" }}
-                onClick={() => {
-                  try { navigator.vibrate(10); } catch {}
-                  setRest(p => {
+        {rest && !rest.minimized && (
+          <div onClick={() => setRest(p => p ? ({ ...p, minimized: true }) : p)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+            <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.12)" : "rgba(56,189,248,0.12)"} 0%, transparent 70%)`, pointerEvents:"none" }}/>
+            <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:380, borderRadius:28, padding:24, background:"rgba(15,23,42,0.95)", boxShadow:"0 32px 100px rgba(0,0,0,0.35)", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
+              <div style={{ position:"absolute", top:16, right:16 }}>
+                <button onClick={() => setRest(p => p ? ({ ...p, minimized:true }) : p)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:999, padding:"10px 14px", fontSize:12, cursor:"pointer", fontFamily:F }}>Minimize</button>
+              </div>
+              <div style={{ width:260, height:260, position:"relative" }}>
+                {rest.secs<=10 && rest.running && (
+                  <div style={{ position:"absolute", inset:-10, borderRadius:"50%", background:"rgba(239,68,68,0.2)", animation:"pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}/>
+                )}
+                <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", transform:"rotate(-90deg)" }}>
+                  <defs>
+                    <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor={rest.secs<=10 ? "#ef4444" : C.accent} stopOpacity="0.35"/>
+                      <stop offset="100%" stopColor={rest.secs<=10 ? "#dc2626" : C.accent} stopOpacity="0.1"/>
+                    </linearGradient>
+                  </defs>
+                  <circle cx="130" cy="130" r="125" fill="none" stroke={`${C.divider}40`} strokeWidth="10"/>
+                  <circle cx="130" cy="130" r="125" fill="none"
+                    stroke={rest.secs<=10 ? "#ef4444" : C.accent}
+                    strokeWidth="10"
+                    strokeDasharray={`${(rest.secs/rest.total)*2*Math.PI*125} ${2*Math.PI*125}`}
+                    style={{ transition:"stroke-dasharray 1s linear, stroke 0.3s ease", strokeLinecap:"round", filter:"drop-shadow(0 0 18px rgba(56,189,248,0.35))" }}
+                  />
+                </svg>
+                <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", cursor:"pointer", userSelect:"none" }}
+                  onClick={() => {
+                    try { navigator.vibrate(10); } catch {}
+                    setRest(p => {
+                      if (!p) return null;
+                      const newRunning = !p.running;
+                      if (newRunning) {
+                        return { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) };
+                      }
+                      return { ...p, running: newRunning };
+                    });
+                  }}
+                >
+                  <div style={{ fontSize:12, color:"#93c5fd", fontWeight:700, letterSpacing:1.2, marginBottom:10, textTransform:"uppercase" }}>
+                    {rest.running ? "Tap to pause" : "Tap to resume"}
+                  </div>
+                  <div style={{ fontSize:72, fontWeight:900, color:rest.secs<=10 ? "#f87171" : "#38bdf8", fontFamily:MONO, lineHeight:1, letterSpacing:-1.5, textShadow:rest.running ? `0 0 18px rgba(56,189,248,0.4)` : "none" }}>
+                    {fmtTime(rest.secs)}
+                  </div>
+                  <div style={{ fontSize:12, color:"#cbd5e1", marginTop:10 }}>
+                    {Math.round((rest.secs/rest.total)*100)}% complete
+                  </div>
+                </div>
+              </div>
+              <div style={{ width:"100%", display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:10 }}>
+                {[30,60,90,120,150,180,240,300].map(s => (
+                  <button key={s}
+                    onClick={() => { setRest({ secs:s, total:s, running:true, startedAt:Date.now() }); try{navigator.vibrate(10);} catch{} }}
+                    style={{
+                      padding:"12px 0", borderRadius:14, fontSize:12, fontWeight:700, fontFamily:MONO,
+                      background: rest.total===s ? C.accent : C.surface,
+                      border: `2px solid ${rest.total===s ? C.accent : C.divider}`,
+                      color: rest.total===s ? "#fff" : C.text,
+                      cursor:"pointer"
+                    }}
+                  >
+                    {s>=60?`${s/60}m`:`${s}s`}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display:"flex", gap:10, width:"100%", justifyContent:"space-between", flexWrap:"wrap" }}>
+                <button onClick={() => setRest(p => {
                     if (!p) return null;
-                    const newRunning = !p.running;
-                    if (newRunning) {
-                      return { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) };
-                    }
-                    return { ...p, running: newRunning };
-                  });
-                }}
-              >
-                <div style={{ fontSize:13, color:C.sub, fontWeight:700, letterSpacing:2, marginBottom:12, textTransform:"uppercase", opacity:0.8 }}>
-                  {rest.running ? "Tap to Pause" : "Tap to Resume"}
-                </div>
-                <div style={{ fontSize:72, fontWeight:900, color:rest.secs<=10?"#ef4444":C.accent, fontFamily:MONO, lineHeight:1, letterSpacing:-2, textShadow:rest.running ? `0 0 20px ${rest.secs<=10 ? "rgba(239,68,68,0.6)" : `rgba(${C.accent},0.4)`}` : "none" }}>
-                  {fmtTime(rest.secs)}
-                </div>
-                <div style={{ fontSize:12, color:C.sub, fontWeight:600, marginTop:12, opacity:0.6 }}>
-                  {Math.round((rest.secs/rest.total)*100)}% complete
+                    const newSecs = Math.max(0, p.secs - 10);
+                    if (newSecs <= 0) return null;
+                    return p.running ? { ...p, secs:newSecs, startedAt:Date.now() - ((p.total - newSecs) * 1000) } : { ...p, secs:newSecs };
+                  })}
+                  style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:C.surface, border:`2px solid ${C.divider}`, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                  −10s
+                </button>
+                <button onClick={() => setRest(p => {
+                    if (!p) return null;
+                    const newSecs = p.secs + 10;
+                    return p.running ? { ...p, secs:newSecs, startedAt: Date.now() - ((p.total - newSecs) * 1000) } : { ...p, secs:newSecs };
+                  })}
+                  style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:C.surface, border:`2px solid ${C.divider}`, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                  +10s
+                </button>
+              </div>
+              <div style={{ display:"flex", gap:10, width:"100%", flexWrap:"wrap", justifyContent:"space-between" }}>
+                <input type="number" inputMode="numeric" placeholder="Custom seconds"
+                  onBlur={e => { const v = parseInt(e.target.value); if (v > 0 && v <= 3600) { setRest({ secs:v, total:v, running:true, startedAt: Date.now() }); e.target.value = ""; } }}
+                  onKeyDown={e => { if (e.key === "Enter") { const v = parseInt(e.target.value); if (v > 0 && v <= 3600) { setRest({ secs:v, total:v, running:true, startedAt: Date.now() }); e.target.value = ""; } e.target.blur(); } }}
+                  style={{ flex:1, minWidth:120, padding:"14px 16px", borderRadius:14, border:`2px solid ${C.divider}`, background:C.surface, color:C.text, fontSize:14, outline:"none", fontFamily:F, textAlign:"center" }}
+                />
+                <button onClick={() => { clearInterval(rtRef.current); setRest(null); try{navigator.vibrate(20);} catch{} }}
+                  style={{ minWidth:120, padding:"14px 16px", borderRadius:14, background:"#8B5CF6", border:"2px solid #8B5CF6", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                  Skip
+                </button>
+              </div>
+              <style>{`
+                @keyframes pulse {
+                  0%, 100% { opacity: 1; transform: scale(1); }
+                  50% { opacity: 0.7; transform: scale(1.1); }
+                }
+              `}</style>
+            </div>
+          </div>
+        )}
+
+        {rest && rest.minimized && (
+          <div style={{ position:"fixed", left:12, right:12, bottom:14, zIndex:490, padding:"14px 16px", borderRadius:22, background:C.surface, border:`1px solid ${C.divider}`, boxShadow:"0 20px 40px rgba(0,0,0,0.14)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0, flex:1 }}>
+              <div style={{ width:56, height:56, borderRadius:18, background:C.divider, display:"grid", placeItems:"center", fontSize:18, fontWeight:700, color:C.text, fontFamily:MONO }}>
+                {fmtTime(rest.secs)}
+              </div>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:12, color:C.sub, marginBottom:4 }}>{rest.running ? "Rest in progress" : "Paused rest"}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div style={{ flex:1, height:6, background:C.divider, borderRadius:999, overflow:"hidden" }}>
+                    <div style={{ width:`${Math.round((rest.secs/rest.total)*100)}%`, height:"100%", background:C.accent }}/>
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.text }}>{Math.round((rest.secs/rest.total)*100)}%</div>
                 </div>
               </div>
             </div>
-
-            {/* Preset buttons grid */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, minmax(0, 1fr))", gap:10, width:"100%", maxWidth:320, paddingBottom:16, zIndex:1 }}>
-              {[90,120,180,240].map(s => (
-                <button key={s} 
-                  onClick={() => { setRest({secs:s,total:s,running:true,startedAt:Date.now()}); try{navigator.vibrate(10);} catch{} }}
-                  style={{
-                    padding:"13px", fontSize:14, fontWeight:700, fontFamily:MONO,
-                    background: rest.total===s ? C.accent : C.surface,
-                    border:`2px solid ${rest.total===s ? C.accent : C.divider}`,
-                    borderRadius:14,
-                    color: rest.total===s ? "#fff" : C.text,
-                    cursor:"pointer", 
-                    transition:"all 0.2s ease",
-                    boxShadow: rest.total===s ? `0 0 12px ${C.divider}40` : "none"
-                  }}
-                  onMouseEnter={e => { e.target.style.transform = "scale(1.03)"; }}
-                  onMouseLeave={e => { e.target.style.transform = "scale(1)"; }}
-                >
-                  {s>=60?`${s/60}m`:`${s}s`}
-                </button>
-              ))}
-            </div>
-
-            {/* Adjust timer + custom input */}
-            <div style={{ display:"flex", gap:10, width:"100%", maxWidth:320, paddingBottom:18, zIndex:1, justifyContent:"center", alignItems:"center" }}>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} style={{ padding:"10px 14px", borderRadius:14, background:C.surface, border:`1px solid ${C.divider}`, color:C.accent, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Expand</button>
               <button onClick={() => setRest(p => {
-                  if (!p) return null;
-                  const newSecs = Math.max(0, p.secs - 10);
-                  const newTotal = p.total;
-                  if (newSecs <= 0) return null;
-                  return p.running ? { ...p, secs:newSecs, total:newTotal, startedAt:Date.now() - ((newTotal - newSecs) * 1000) } : { ...p, secs:newSecs, total:newTotal };
-                })}
-                style={{ flex:1, padding:"12px", background:C.surface, border:`2px solid ${C.divider}`, borderRadius:14, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
-                −10s
-              </button>
-              <button onClick={() => setRest(p => {
-                  if (!p) return null;
-                  const newSecs = p.secs + 10;
-                  const newTotal = p.total + 10;
-                  return p.running ? { ...p, secs:newSecs, total:newTotal, startedAt:Date.now() - ((newTotal - newSecs) * 1000) } : { ...p, secs:newSecs, total:newTotal };
-                })}
-                style={{ flex:1, padding:"12px", background:C.surface, border:`2px solid ${C.divider}`, borderRadius:14, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
-                +10s
+                if (!p) return null;
+                const newRunning = !p.running;
+                if (newRunning) {
+                  return { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) };
+                }
+                return { ...p, running: newRunning };
+              })} style={{ padding:"10px 14px", borderRadius:14, background:C.accent, border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                {rest.running ? "Pause" : "Resume"}
               </button>
             </div>
-            <div style={{ display:"flex", gap:10, width:"100%", maxWidth:320, paddingBottom:16, zIndex:1 }}>
-              <input type="number" inputMode="numeric" placeholder="Custom (sec)"
-                onBlur={e=>{const v=parseInt(e.target.value);if(v>0&&v<=3600){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}}}
-                onKeyDown={e=>{if(e.key==="Enter"){const v=parseInt(e.target.value);if(v>0&&v<=3600){setRest({secs:v,total:v,running:true,startedAt:Date.now()});e.target.value="";}e.target.blur();}}}
-                style={{ flex:1, padding:"14px 16px", background:C.surface, border:`2px solid ${C.divider}`, borderRadius:14, fontSize:14, color:C.text, outline:"none", fontFamily:F, textAlign:"center", transition:"all 0.2s ease" }}
-              />
-              <button onClick={() => { clearInterval(rtRef.current); setRest(null); try{navigator.vibrate(20);} catch{} }}
-                style={{ padding:"14px 18px", fontSize:14, fontWeight:700, background:"#8B5CF6", border:"2px solid #8B5CF6", borderRadius:14, color:"#fff", cursor:"pointer", fontFamily:F, transition:"all 0.2s ease", boxShadow:"0 0 12px rgba(139,92,246,0.4)" }}>
-                Skip
-              </button>
-            </div>
-
-            {/* Keyboard hint */}
-            <div style={{ fontSize:11, color:C.sub, textAlign:"center", opacity:0.5, zIndex:1 }}>
-              Space to pause • ESC to close
-            </div>
-
-            {/* CSS animations */}
-            <style>{`
-              @keyframes pulse {
-                0%, 100% { opacity: 1; transform: scale(1); }
-                50% { opacity: 0.7; transform: scale(1.1); }
-              }
-            `}</style>
           </div>
         )}
 
         {/* Exercises */}
+
         <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
@@ -2598,9 +2564,36 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       <button onClick={() => { const s=set.restTime||store.defaultRestTime||120; setRest({secs:s,total:s,running:true,startedAt:Date.now()}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
                         {fmtTime(set.restTime||store.defaultRestTime||120)}
                       </button>
-                      <button onClick={() => { const opts=[30,60,90,120,150,180,240,300]; const cur=set.restTime||store.defaultRestTime||120; updateSet(ei,si,{restTime:opts[(opts.indexOf(cur)+1)%opts.length]}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 4px", fontSize:10, color:C.muted, fontFamily:F }}>edit</button>
+                      <button onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 4px", fontSize:10, color:C.muted, fontFamily:F }}>edit</button>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
                     </div>
+                    {restEditor?.ei === ei && restEditor?.si === si && (
+                      <div style={{ margin:"10px 14px 0", padding:"12px", border:`1px solid ${C.divider}`, borderRadius:18, background:C.surface, display:"grid", gap:10 }}>
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:8 }}>
+                          {[30,60,90,120,150,180,240,300].map(s => (
+                            <button key={s} onClick={() => { updateSet(ei, si, { restTime: s }); setRestEditor(null); }} style={{ padding:"10px 0", borderRadius:14, border:`1px solid ${Number(set.restTime)===s ? C.accent : C.divider}`, background:Number(set.restTime)===s ? C.accent : C.bg, color:Number(set.restTime)===s ? "#fff" : C.text, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                              {fmtTime(s)}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                          <input type="number" inputMode="numeric" placeholder="Custom sec"
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                const v = parseInt(e.target.value);
+                                if (v > 0) {
+                                  updateSet(ei, si, { restTime: v });
+                                  setRestEditor(null);
+                                  e.target.value = "";
+                                }
+                              }
+                            }}
+                            style={{ flex:1, minWidth:0, padding:"10px 12px", border:`1px solid ${C.divider}`, borderRadius:14, background:C.bg, color:C.text, fontSize:12, outline:"none", fontFamily:F }}
+                          />
+                          <button onClick={() => setRestEditor(null)} style={{ padding:"10px 14px", borderRadius:14, border:"1px solid transparent", background:C.divider, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Close</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
 
