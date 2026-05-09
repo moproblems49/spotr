@@ -1,5 +1,5 @@
 // v1778305358100
-// SESHD v10.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
+// SESHD vFINAL-9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2940,7 +2940,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   );
 
   return (
-    <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:viewingProgram||showBuilder?0:20 }}>
+    <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:viewingProgram||showBuilder?0:20, position:"relative" }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
         {[["workout","Workout"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
@@ -2953,7 +2953,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       </div>
 
       {subTab === "workout" && (
-        <div style={{ padding: viewingProgram||showBuilder ? "0" : "16px 14px", display:"flex", flexDirection:"column", flex: viewingProgram||showBuilder ? 1 : "none" }}>
+        <div style={{ padding:"16px 14px" }}>
           {/* Streak banner */}
           {(() => { const s = calcStreak(store.workoutDates || {}); return s > 0 ? (
             <div style={{ background:"linear-gradient(135deg,#ea580c,#f59e0b)", borderRadius:14, padding:"14px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
@@ -3035,11 +3035,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={e => { e.stopPropagation(); setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
+                      <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
                         fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
-                      <button onClick={e => { e.stopPropagation(); startWorkout(day); }} style={{
+                      <button onClick={() => startWorkout(day)} style={{
                         flex:1, padding:"9px", background:"none", border:"none",
                         fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
                       }}>Start ›</button>
@@ -3146,6 +3146,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"absolute", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:10 }}>
           <ProgramDetailView
             prog={prog}
             store={store}
@@ -3162,6 +3163,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               setPreviewDay({ day, programName: prog.name, progId });
             }}
           />
+          </div>
         );
       })()}
 
