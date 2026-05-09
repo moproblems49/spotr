@@ -1,5 +1,5 @@
 // v1778305358100
-// SESHD v9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
+// SESHD v9.1 - BUILD 2026-05-09 - 216 exercises, touch drag, history charts
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
