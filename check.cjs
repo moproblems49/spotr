@@ -1,0 +1,1 @@
+const fs=require("fs");const c=fs.readFileSync("src/App.jsx","utf8");console.log("EditBtn:"+c.indexOf("setInitialDayIdx(di)"));console.log("BuildOwn:"+c.indexOf("showBuilder && ("));console.log("Programs:"+c.indexOf("subTab === \"programs\""));console.log("Today:"+c.indexOf("subTab === \"today\""));console.log("Size:"+c.length);
