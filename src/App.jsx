@@ -1,5 +1,5 @@
 // v1778305358100
-// TILES-APPLIED v12 vFINAL-9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
+// REST-AUTO v12 vFINAL-9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
