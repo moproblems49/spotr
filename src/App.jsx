@@ -2163,9 +2163,9 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 // ═════════════════════════════════════════════════════════════════════════════
 // PROGRAM DETAIL VIEW
 // ═════════════════════════════════════════════════════════════════════════════
-function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, startWorkout, onProgramEdited }) {
+function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, startWorkout, onProgramEdited, initialDayIdx = 0 }) {
   const [localProg, setLocalProg] = useState(prog);
-  const [expandedDay, setExpandedDay] = useState(0);
+  const [expandedDay, setExpandedDay] = useState(initialDayIdx);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const dragStartY = useRef(0);
@@ -2433,11 +2433,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showFinish, setShowFinish] = useState(false);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
-  const [subTab, setSubTab] = useState("today");
+  const [subTab, setSubTab] = useState("workout");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAICoach, setShowAICoach] = useState(false);
   const [viewingProgram, setViewingProgram] = useState(null); // program ID
   const [showBuilder, setShowBuilder] = useState(false);
+  const [initialDayIdx, setInitialDayIdx] = useState(0);
   const [previewDay, setPreviewDay] = useState(null); // {day, programName}
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
@@ -2941,7 +2942,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     <div style={{ overflowY:"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:20 }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
-        {[["today","Today"],["programs","Programs"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
+        {[["workout","Workout"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
           <button key={t} onClick={() => setSubTab(t)} style={{
             flex:1, padding:"12px 4px", background:"none", border:"none",
             color:subTab===t?C.text:C.sub, fontSize:12, fontWeight:subTab===t?700:500, cursor:"pointer",
@@ -2950,7 +2951,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         ))}
       </div>
 
-      {subTab === "today" && (
+      {subTab === "workout" && (
         <div style={{ padding:"16px 14px" }}>
           {/* Streak banner */}
           {(() => { const s = calcStreak(store.workoutDates || {}); return s > 0 ? (
@@ -3033,7 +3034,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     </button>
                     <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={() => { setSubTab("programs"); setViewingProgram(prog.id); }} style={{
+                      <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
                         fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
@@ -3061,7 +3062,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </div>
       )}
 
-      {subTab === "programs" && !viewingProgram && !showBuilder && (
+      {subTab === "workout" && !viewingProgram && !showBuilder && (
         <div style={{ padding:"16px 14px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
             <button onClick={() => setShowBuilder(true)} style={{
@@ -3140,7 +3141,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {/* Program Detail View */}
-      {subTab === "programs" && viewingProgram && (() => {
+      {subTab === "workout" && viewingProgram && (() => {
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
@@ -3151,7 +3152,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             C={C}
             F={F}
             MONO={MONO}
-            onBack={() => setViewingProgram(null)}
+            onBack={() => { setViewingProgram(null); setInitialDayIdx(0); }}
+            initialDayIdx={initialDayIdx}
             onSaveProgram={onSaveProgram}
             onSaveStore={setStore}
             onProgramEdited={onProgramEdited}
@@ -3163,7 +3165,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       })()}
 
       {/* Custom Program Builder */}
-      {subTab === "programs" && showBuilder && (
+      {subTab === "workout" && showBuilder && (
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
