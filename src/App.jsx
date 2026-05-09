@@ -1,5 +1,5 @@
 // v1778305358100
-// TILES v12 vFINAL-9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
+// TILES-APPLIED v12 vFINAL-9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2603,13 +2603,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     return null;
                   })();
                   return (
-                  <div key={day.id || di} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                  <div key={day.id || di} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, overflow:"hidden", borderLeft:`4px solid ${["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"][di%7]}` }}>
                     <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
                       width:"100%", background:"none", border:"none", padding:"13px 14px",
                       display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
                     }}>
-                      <div style={{ width:36, height:36, borderRadius:9, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                        <span style={{ fontSize:11, fontWeight:800, color:C.accent }}>{di+1}</span>
+                      <div style={{ width:38, height:38, borderRadius:10, background:`${["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"][di%7]}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <span style={{ fontSize:14, fontWeight:800, color:["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"][di%7] }}>{di+1}</span>
                       </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
