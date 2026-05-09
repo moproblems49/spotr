@@ -2192,13 +2192,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     setSession(p => {
       const nowDone = !p.exercises[ei]?.sets[si]?.done;
       completing = nowDone;
-      
-      if (nowDone) {
-        const ex = p.exercises[ei];
-        const restSecs = parseInt(ex.rest) || 90;
-        setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
-      }
-      
       return {
         ...p,
         exercises: p.exercises.map((ex, i) => i !== ei ? ex : {
@@ -2209,7 +2202,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     });
     // Haptic on completion
     try { if (navigator.vibrate) navigator.vibrate(completing ? 30 : 10); } catch {}
-  }
+    // Auto-start rest timer on set completion
+    setSession(p => {
+      const ex = p.exercises[ei];
       const set = ex?.sets[si];
       const restSecs = set?.restTime || store.defaultRestTime || 120;
       if (!set?.done) setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now() });
