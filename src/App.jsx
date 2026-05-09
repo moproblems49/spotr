@@ -2163,197 +2163,241 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 // ═════════════════════════════════════════════════════════════════════════════
 // PROGRAM DETAIL VIEW
 // ═════════════════════════════════════════════════════════════════════════════
-function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, onProgramEdited, startWorkout, initialDayIdx = 0 }) {
-  const [localProg, setLocalProg] = useState(() => JSON.parse(JSON.stringify(prog)));
-  const [activeDay, setActiveDay] = useState(initialDayIdx);
+function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, startWorkout, onProgramEdited }) {
+  const [localProg, setLocalProg] = useState(prog);
+  const [expandedDay, setExpandedDay] = useState(0);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const dragStartY = useRef(0);
   const dragNodeH = useRef(80);
+
+  useEffect(() => { setLocalProg(prog); }, [prog.id]);
+
   const isActive = store.activeProgramId === prog.id;
+  const day = (localProg.days || [])[expandedDay] || { name:"", exercises:[] };
 
-  useEffect(() => { setLocalProg(JSON.parse(JSON.stringify(prog))); }, [prog.id]);
-  useEffect(() => { setActiveDay(Math.min(initialDayIdx, (prog.days?.length||1)-1)); }, [initialDayIdx]);
-
-  const day = localProg.days?.[activeDay] || { name:"", exercises:[] };
-
-  function patch(updated) {
-    setLocalProg(updated);
-    if (onProgramEdited) onProgramEdited(updated);
+  function updateExercise(ei, patch) {
+    setLocalProg(p => {
+      const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== expandedDay ? d : {
+        ...d, exercises: d.exercises.map((ex, exIdx) => exIdx !== ei ? ex : { ...ex, ...patch })
+      })};
+      if (onProgramEdited) onProgramEdited(updated);
+      return updated;
+    });
   }
 
-  function updateEx(ei, changes) {
-    patch({ ...localProg, days: localProg.days.map((d,di) => di!==activeDay ? d : {
-      ...d, exercises: d.exercises.map((ex,xi) => xi!==ei ? ex : {...ex,...changes})
-    })});
+  function addExercise() {
+    setLocalProg(p => {
+      const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== expandedDay ? d : {
+        ...d, exercises: [...(d.exercises||[]), { name:"", sets:3, reps:"8-12", note:"", rest:"" }]
+      })};
+      if (onProgramEdited) onProgramEdited(updated);
+      return updated;
+    });
   }
 
-  function addEx() {
-    patch({ ...localProg, days: localProg.days.map((d,di) => di!==activeDay ? d : {
-      ...d, exercises: [...(d.exercises||[]), { name:"", sets:3, reps:"8-12", rest:"90", note:"" }]
-    })});
-  }
-
-  function removeEx(ei) {
-    patch({ ...localProg, days: localProg.days.map((d,di) => di!==activeDay ? d : {
-      ...d, exercises: d.exercises.filter((_,xi) => xi!==ei)
-    })});
+  function removeExercise(ei) {
+    setLocalProg(p => {
+      const updated = { ...p, days: p.days.map((d, dIdx) => dIdx !== expandedDay ? d : {
+        ...d, exercises: d.exercises.filter((_, exIdx) => exIdx !== ei)
+      })};
+      if (onProgramEdited) onProgramEdited(updated);
+      return updated;
+    });
   }
 
   return (
-    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", background:C.bg }}>
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", height:"100%" }}>
 
-      {/* Header */}
-      <div style={{ background:C.bg, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px 0", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-          <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", gap:4, padding:"4px 0" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>
-            Back
-          </button>
-          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-            {!isActive && <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:"none", border:`1px solid ${C.accent}`, borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F }}>Set Active</button>}
-            <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Save</button>
+      {/* ── Sticky header ── */}
+      <div style={{ background:C.bg, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px 12px", flexShrink:0 }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:14, cursor:"pointer", padding:"0 0 8px", fontFamily:F, display:"flex", alignItems:"center", gap:4 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>
+          Programs
+        </button>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <input value={localProg.name}
+              onChange={e => {
+                const updated = { ...localProg, name: e.target.value };
+                setLocalProg(updated);
+                if (onProgramEdited) onProgramEdited(updated);
+              }}
+              style={{ fontSize:20, fontWeight:800, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, width:"100%", letterSpacing:-0.3 }}
+            />
+            <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
+              {localProg.days?.length || 0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)} exercises
+              {isActive && <span style={{ marginLeft:8, color:C.accent, fontWeight:700 }}>· ACTIVE</span>}
+            </div>
           </div>
-        </div>
-        <input value={localProg.name} onChange={e => patch({...localProg, name:e.target.value})}
-          style={{ fontSize:18, fontWeight:800, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, width:"100%", marginBottom:2, letterSpacing:-0.3 }}
-        />
-        <div style={{ fontSize:11, color:C.sub, marginBottom:10 }}>
-          {localProg.days?.length||0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises
-          {isActive && <span style={{ color:C.accent, fontWeight:700, marginLeft:8 }}>· ACTIVE</span>}
-        </div>
-        {/* Day tabs */}
-        <div style={{ display:"flex", overflowX:"auto", margin:"0 -14px", padding:"0 14px" }}>
-          {(localProg.days||[]).map((d,di) => (
-            <button key={di} onClick={() => setActiveDay(di)} style={{
-              padding:"10px 16px", background:"none", border:"none",
-              borderBottom:`2.5px solid ${activeDay===di ? C.accent : "transparent"}`,
-              color: activeDay===di ? C.accent : C.sub,
-              fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, whiteSpace:"nowrap", flexShrink:0
-            }}>{d.name||`Day ${di+1}`}</button>
-          ))}
-          <button onClick={() => {
-            const nd = { id:Date.now().toString(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
-            const updated = {...localProg, days:[...(localProg.days||[]), nd]};
-            patch(updated); setActiveDay((localProg.days||[]).length);
-          }} style={{ padding:"10px 12px", background:"none", border:"none", color:C.muted, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>+ Day</button>
+          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+            {!isActive && (
+              <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                Set Active
+              </button>
+            )}
+            <button onClick={() => {
+              if (window.confirm(`Delete "${localProg.name}"?`)) {
+                onSaveStore(s => ({ ...s, programs: s.programs.filter(p => p.id !== localProg.id), activeProgramId: s.activeProgramId === localProg.id ? null : s.activeProgramId }));
+                onBack();
+              }
+            }} style={{ background:"none", border:"none", color:"#ef4444", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"8px 4px" }}>Delete</button>
+          </div>
         </div>
       </div>
 
-      {/* Day name + Start */}
-      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px 8px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+      {/* ── Day tabs ── */}
+      <div style={{ display:"flex", overflowX:"auto", borderBottom:`1px solid ${C.divider}`, background:C.bg, flexShrink:0, padding:"0 6px" }}>
+        {(localProg.days||[]).map((d, di) => (
+          <button key={di} onClick={() => setExpandedDay(di)} style={{
+            padding:"12px 14px", background:"none", border:"none",
+            borderBottom:`2px solid ${expandedDay===di ? C.accent : "transparent"}`,
+            color: expandedDay===di ? C.accent : C.sub,
+            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F,
+            whiteSpace:"nowrap", flexShrink:0
+          }}>{d.name || `Day ${di+1}`}</button>
+        ))}
+      </div>
+
+      {/* ── Day name + start workout ── */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 14px 8px", flexShrink:0, gap:10 }}>
         <input value={day.name}
-          onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,name:e.target.value})})}
+          onChange={e => {
+            const updated = { ...localProg, days: localProg.days.map((d,i)=>i!==expandedDay?d:{...d,name:e.target.value}) };
+            setLocalProg(updated);
+            if (onProgramEdited) onProgramEdited(updated);
+          }}
           placeholder="Day name..."
-          style={{ flex:1, fontSize:16, fontWeight:700, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F }}
+          style={{ flex:1, fontSize:17, fontWeight:800, color:C.text, background:"none", border:"none", outline:"none", fontFamily:F, minWidth:0 }}
         />
         <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{
-          background:C.accent, color:"#fff", border:"none", borderRadius:10,
-          padding:"9px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0
+          background:C.accent, color:"#fff", border:"none", borderRadius:12,
+          padding:"10px 20px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
+          boxShadow:`0 2px 8px ${C.accent}55`, flexShrink:0
         }}>Start ›</button>
       </div>
 
-      {/* Exercise list */}
-      <div style={{ overflowY:"auto", flex:1, paddingBottom:20, WebkitOverflowScrolling:"touch" }}>
-        {(day.exercises||[]).length === 0 && (
-          <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>🏋️</div>
-            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>No exercises yet</div>
-            <div style={{ fontSize:12 }}>Tap below to add your first exercise</div>
-          </div>
-        )}
+      {/* ── Scrollable exercise list ── */}
+      <div style={{ overflowY:"auto", flex:1, paddingBottom:120, WebkitOverflowScrolling:"touch" }}>
         {(day.exercises||[]).map((ex, ei) => {
           const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
           const sets = parseInt(ex.sets)||3;
+          const reps = ex.reps || "8-12";
           return (
-            <div key={ei} data-drag-item="true"
+            <div key={ei}
+              data-drag-item="true"
               onTouchMove={e => {
-                if (dragIdx===null) return; e.preventDefault();
+                if (dragIdx === null) return;
+                e.preventDefault();
                 const dy = e.touches[0].clientY - dragStartY.current;
                 setDragOverIdx(Math.max(0, Math.min(day.exercises.length-1, dragIdx+Math.round(dy/dragNodeH.current))));
               }}
               onTouchEnd={() => {
                 if (dragIdx!==null && dragOverIdx!==null && dragOverIdx!==dragIdx) {
-                  const arr=[...day.exercises]; const [mv]=arr.splice(dragIdx,1); arr.splice(dragOverIdx,0,mv);
-                  patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d,exercises:arr})});
+                  const arr = [...day.exercises];
+                  const [moved] = arr.splice(dragIdx,1);
+                  arr.splice(dragOverIdx,0,moved);
+                  const updated = {...localProg, days:localProg.days.map((d,i)=>i!==expandedDay?d:{...d,exercises:arr})};
+                  setLocalProg(updated);
+                  if (onProgramEdited) onProgramEdited(updated);
                 }
                 setDragIdx(null); setDragOverIdx(null);
               }}
-              style={{ borderBottom:`1px solid ${C.divider}`, background:dragOverIdx===ei&&dragIdx!==ei?`${C.accent}08`:"transparent", opacity:dragIdx===ei?0.35:1 }}>
+              style={{
+                margin:"0 14px 10px",
+                background:C.surface,
+                border:`1px solid ${dragOverIdx===ei && dragIdx!==ei ? C.accent : C.border}`,
+                borderRadius:14,
+                padding:"14px",
+                opacity: dragIdx===ei ? 0.4 : 1,
+                transition: "border 0.15s",
+              }}>
 
-              {/* Exercise name row */}
-              <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px 8px" }}>
+              {/* Top: drag handle + exercise name + delete */}
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
                 <div onTouchStart={e => {
-                  const node=e.currentTarget.closest('[data-drag-item]');
-                  dragNodeH.current=node?.getBoundingClientRect().height||80;
-                  dragStartY.current=e.touches[0].clientY;
+                  const node = e.currentTarget.closest('[data-drag-item]');
+                  dragNodeH.current = node?.getBoundingClientRect().height || 80;
+                  dragStartY.current = e.touches[0].clientY;
                   setDragIdx(ei); setDragOverIdx(ei);
-                  try{if(navigator.vibrate)navigator.vibrate(15);}catch{}
-                }} style={{ fontSize:18, color:C.muted, touchAction:"none", userSelect:"none", cursor:"grab", padding:"4px", flexShrink:0 }}>⠿</div>
-                <div style={{ width:34, height:34, borderRadius:9, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <MuscleIcon muscle={exInfo?.muscle||""} size={22} C={C}/>
-                </div>
+                  try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+                }} style={{ color:C.muted, fontSize:20, touchAction:"none", userSelect:"none", cursor:"grab", padding:"4px 6px", flexShrink:0 }}>⠿</div>
+
                 <div style={{ flex:1, minWidth:0 }}>
-                  <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise name..."
-                    style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:15, fontWeight:700, color:C.text, fontFamily:F, padding:0, boxSizing:"border-box" }}
+                  <input value={ex.name}
+                    onChange={e => updateExercise(ei,{name:e.target.value})}
+                    placeholder="Exercise name..."
+                    style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:F, padding:0, boxSizing:"border-box" }}
                   />
-                  {exInfo?.muscle && <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{exInfo.muscle}</div>}
+                  {exInfo?.muscle && <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{exInfo.muscle}</div>}
                 </div>
-                <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:22, lineHeight:1, cursor:"pointer", padding:"4px", flexShrink:0 }}>×</button>
+
+                <button onClick={() => removeExercise(ei)}
+                  style={{ background:"none", border:"none", color:C.muted, fontSize:22, cursor:"pointer", padding:"4px 6px", flexShrink:0, lineHeight:1 }}>×</button>
               </div>
 
-              {/* Sets / Reps / Rest */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, padding:"0 14px 10px" }}>
-                <div style={{ background:C.divider, borderRadius:10, overflow:"hidden" }}>
-                  <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, textAlign:"center", paddingTop:6 }}>SETS</div>
-                  <div style={{ display:"flex", alignItems:"center", height:40 }}>
-                    <button onClick={()=>updateEx(ei,{sets:Math.max(1,sets-1)})} style={{ flex:1, height:"100%", background:"none", border:"none", color:C.accent, fontSize:22, fontWeight:800, cursor:"pointer" }}>−</button>
-                    <span style={{ fontSize:18, fontWeight:800, color:C.text, fontFamily:MONO, minWidth:26, textAlign:"center" }}>{sets}</span>
-                    <button onClick={()=>updateEx(ei,{sets:sets+1})} style={{ flex:1, height:"100%", background:"none", border:"none", color:C.accent, fontSize:22, fontWeight:800, cursor:"pointer" }}>+</button>
+              {/* Sets / Reps / Rest grid */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                {/* Sets */}
+                <div>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:5 }}>SETS</div>
+                  <div style={{ display:"flex", alignItems:"center", background:C.divider, borderRadius:10, height:44, overflow:"hidden" }}>
+                    <button onClick={() => updateExercise(ei,{sets:Math.max(1,sets-1)})}
+                      style={{ flex:1, height:"100%", background:"none", border:"none", color:C.accent, fontSize:20, fontWeight:700, cursor:"pointer" }}>−</button>
+                    <span style={{ fontSize:18, fontWeight:800, color:C.text, fontFamily:MONO, minWidth:24, textAlign:"center" }}>{sets}</span>
+                    <button onClick={() => updateExercise(ei,{sets:sets+1})}
+                      style={{ flex:1, height:"100%", background:"none", border:"none", color:C.accent, fontSize:20, fontWeight:700, cursor:"pointer" }}>+</button>
                   </div>
                 </div>
-                <div style={{ background:C.divider, borderRadius:10 }}>
-                  <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, textAlign:"center", paddingTop:6 }}>REPS</div>
-                  <input value={ex.reps||""} onChange={e=>updateEx(ei,{reps:e.target.value})} placeholder="8-12"
-                    style={{ width:"100%", height:40, background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center", boxSizing:"border-box", padding:"0 4px" }}
+
+                {/* Reps */}
+                <div>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:5 }}>REPS</div>
+                  <input value={reps}
+                    onChange={e => updateExercise(ei,{reps:e.target.value})}
+                    placeholder="8-12"
+                    style={{ height:44, background:C.divider, border:"none", borderRadius:10, padding:"0 10px", fontSize:16, fontWeight:700, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center", width:"100%", boxSizing:"border-box" }}
                   />
                 </div>
-                <div style={{ background:C.divider, borderRadius:10 }}>
-                  <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, textAlign:"center", paddingTop:6 }}>REST</div>
-                  <div style={{ display:"flex", alignItems:"center", height:40 }}>
-                    <input value={ex.rest||""} onChange={e=>updateEx(ei,{rest:e.target.value})} placeholder="90" type="number" inputMode="numeric"
-                      style={{ flex:1, height:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center", padding:0, minWidth:0 }}
-                    />
-                    <span style={{ fontSize:10, color:C.muted, paddingRight:6, flexShrink:0 }}>s</span>
-                  </div>
+
+                {/* Rest */}
+                <div>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:5 }}>REST (s)</div>
+                  <input value={ex.rest||""}
+                    onChange={e => updateExercise(ei,{rest:e.target.value})}
+                    placeholder="90"
+                    type="number" inputMode="numeric"
+                    style={{ height:44, background:C.divider, border:"none", borderRadius:10, padding:"0 10px", fontSize:16, fontWeight:700, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center", width:"100%", boxSizing:"border-box" }}
+                  />
                 </div>
               </div>
 
               {/* Note */}
-              <div style={{ padding:"0 14px 12px" }}>
-                <input value={ex.note||""} onChange={e=>updateEx(ei,{note:e.target.value})} placeholder="Add note..."
-                  style={{ width:"100%", background:"none", border:`1px solid ${C.divider}`, borderRadius:8, padding:"7px 10px", fontSize:13, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box" }}
-                />
-              </div>
+              <input value={ex.note||""}
+                onChange={e => updateExercise(ei,{note:e.target.value})}
+                placeholder="+ Add note (optional)"
+                style={{ width:"100%", background:"none", border:`1px solid ${C.divider}`, borderRadius:10, padding:"9px 12px", fontSize:13, color:C.sub, outline:"none", fontFamily:F, marginTop:10, boxSizing:"border-box" }}
+              />
             </div>
           );
         })}
 
-        {/* Add Exercise */}
-        <button onClick={addEx} style={{
-          display:"flex", alignItems:"center", gap:12, width:"100%", padding:"16px 18px",
-          background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:700,
-          cursor:"pointer", fontFamily:F, borderTop:(day.exercises||[]).length>0?`1px solid ${C.divider}`:"none"
+        {/* Add exercise */}
+        <button onClick={addExercise} style={{
+          display:"flex", alignItems:"center", justifyContent:"center", gap:10,
+          width:"calc(100% - 28px)", margin:"4px 14px 14px", padding:"16px",
+          background:"none", border:`1.5px dashed ${C.border}`, borderRadius:14,
+          color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
         }}>
-          <div style={{ width:34, height:34, borderRadius:10, background:`${C.accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>+</div>
-          Add Exercise
+          <span style={{ fontSize:20 }}>+</span> Add Exercise
         </button>
 
-        <div style={{ padding:"8px 14px 20px" }}>
-          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{
+        {/* Save button */}
+        <div style={{ padding:"0 14px 20px" }}>
+          <button onClick={() => { if (onSaveProgram) onSaveProgram(localProg); }} style={{
             width:"100%", background:C.accent, color:"#fff", border:"none",
             borderRadius:14, padding:"15px", fontSize:15, fontWeight:700,
-            cursor:"pointer", fontFamily:F, boxShadow:`0 4px 14px ${C.accent}44`
+            cursor:"pointer", fontFamily:F, boxShadow:`0 4px 12px ${C.accent}55`
           }}>Save Changes</button>
         </div>
       </div>
@@ -2389,12 +2433,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showFinish, setShowFinish] = useState(false);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
-  const [subTab, setSubTab] = useState("workout");
+  const [subTab, setSubTab] = useState("today");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAICoach, setShowAICoach] = useState(false);
   const [viewingProgram, setViewingProgram] = useState(null); // program ID
   const [showBuilder, setShowBuilder] = useState(false);
-  const [initialDayIdx, setInitialDayIdx] = useState(0);
   const [previewDay, setPreviewDay] = useState(null); // {day, programName}
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
@@ -2686,46 +2729,69 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Rest timer */}
         {rest && (
-          <div style={{ background:C.surface, borderBottom:`1px solid ${C.divider}`, padding:"10px 14px" }}>
-            <div style={{ height:3, background:C.divider, borderRadius:2, marginBottom:10, overflow:"hidden" }}>
-              <div style={{ height:"100%", background:rest.secs<=10?"#ef4444":C.accent, width:`${(rest.secs/(rest.total||120))*100}%`, transition:"width 1s linear", borderRadius:2 }}/>
-            </div>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              {/* Preset pills */}
-              <div style={{ display:"flex", gap:4, flex:1, flexWrap:"nowrap", overflow:"hidden" }}>
-                {[30,60,90,120,180,240].map(s => (
-                  <button key={s} onClick={() => setRest({secs:s,total:s,running:true,startedAt:Date.now()})} style={{
-                    fontSize:10, padding:"4px 7px",
-                    background:rest.total===s?C.accent:"transparent",
-                    border:`1px solid ${rest.total===s?C.accent:C.border}`,
-                    color:rest.total===s?"#fff":C.sub,
-                    borderRadius:16, cursor:"pointer", fontFamily:F, fontWeight:600, flexShrink:0
-                  }}>{s>=60?`${s/60}m`:`${s}s`}</button>
-                ))}
+          <div style={{ 
+            background:C.surface, 
+            borderBottom:`1px solid ${C.divider}`, 
+            padding: "12px 16px",
+            margin: "0 14px",
+            borderRadius: 12,
+            marginBottom: 8
+          }}>
+            <div style={{ 
+              display:"flex", 
+              alignItems:"center", 
+              gap: 12,
+              justifyContent: "space-between"
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 4 }}>Rest Timer</div>
+                <div style={{ display:"flex", gap:6, flexWrap: "wrap" }}>
+                  {[30, 60, 90, 120, 180, 240].map(s => (
+                    <button 
+                      key={s} 
+                      onClick={() => setRest({secs:s, total:s, running:true, startedAt:Date.now()})}
+                      style={{
+                        padding:"6px 12px",
+                        background: rest.total === s ? C.accent : "transparent",
+                        border: `1px solid ${rest.total === s ? C.accent : C.border}`,
+                        color: rest.total === s ? "#fff" : C.text,
+                        borderRadius: 8, 
+                        cursor: "pointer", 
+                        fontSize: 13, 
+                        fontWeight: 600,
+                        fontFamily: MONO
+                      }}
+                    >
+                      {s >= 60 ? `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` : `${s}s`}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {/* Custom input */}
-              <div style={{ display:"flex", alignItems:"center", background:C.divider, borderRadius:8, overflow:"hidden", flexShrink:0 }}>
-                <input
-                  type="number" inputMode="numeric"
-                  placeholder="custom"
-                  defaultValue=""
-                  onBlur={e => {
-                    const v = parseInt(e.target.value);
-                    if (v > 0) { setRest({secs:v,total:v,running:true,startedAt:Date.now()}); e.target.value=""; }
+              
+              <div style={{ textAlign: "center" }}>
+                <div style={{ 
+                  fontSize: 28, 
+                  fontWeight: 800, 
+                  color: rest.secs <= 10 ? C.red : C.accent, 
+                  fontFamily: MONO,
+                  marginBottom: 4
+                }}>
+                  {fmtTime(rest.secs)}
+                </div>
+                <button 
+                  onClick={() => { clearInterval(rtRef.current); setRest(null); }}
+                  style={{ 
+                    background: "none", 
+                    border: "none", 
+                    color: C.sub, 
+                    fontSize: 14, 
+                    cursor: "pointer",
+                    padding: "4px"
                   }}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") {
-                      const v = parseInt(e.target.value);
-                      if (v > 0) { setRest({secs:v,total:v,running:true,startedAt:Date.now()}); e.target.value=""; }
-                    }
-                  }}
-                  style={{ width:52, background:"none", border:"none", padding:"4px 6px", fontSize:12, color:C.text, outline:"none", fontFamily:MONO, textAlign:"center" }}
-                />
-                <span style={{ fontSize:10, color:C.muted, paddingRight:6 }}>s</span>
+                >
+                  ✕ Cancel
+                </button>
               </div>
-              {/* Timer display */}
-              <span style={{ fontSize:26, fontWeight:800, color:rest.secs<=10?"#ef4444":C.text, fontFamily:MONO, flexShrink:0, minWidth:52, textAlign:"right" }}>{fmtTime(rest.secs)}</span>
-              <button onClick={() => { clearInterval(rtRef.current); setRest(null); }} style={{ color:C.muted, background:"none", border:"none", cursor:"pointer", fontSize:18, padding:"2px", flexShrink:0 }}>✕</button>
             </div>
           </div>
         )}
@@ -2875,7 +2941,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     <div style={{ overflowY:"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:20 }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
-        {[["workout","Workout"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
+        {[["today","Today"],["programs","Programs"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
           <button key={t} onClick={() => setSubTab(t)} style={{
             flex:1, padding:"12px 4px", background:"none", border:"none",
             color:subTab===t?C.text:C.sub, fontSize:12, fontWeight:subTab===t?700:500, cursor:"pointer",
@@ -2884,7 +2950,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         ))}
       </div>
 
-      {subTab === "workout" && (
+      {subTab === "today" && (
         <div style={{ padding:"16px 14px" }}>
           {/* Streak banner */}
           {(() => { const s = calcStreak(store.workoutDates || {}); return s > 0 ? (
@@ -2934,7 +3000,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>ACTIVE PROGRAM</div>
                 <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>{prog.name}</div>
               </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                 {prog.days.map((day, di) => {
                   const lastDone = (() => {
                     const dates = Object.keys(store.history||{}).sort().reverse();
@@ -2946,48 +3012,37 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     }
                     return null;
                   })();
-                  const accentColors = ["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed"];
-                  const col = accentColors[di % accentColors.length];
                   return (
-                    <div key={day.id || di} style={{
-                      background:C.surface, border:`1px solid ${C.border}`,
-                      borderRadius:14, overflow:"hidden",
-                      borderLeft:`4px solid ${col}`
+                  <div key={day.id || di} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                    <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
+                      width:"100%", background:"none", border:"none", padding:"13px 14px",
+                      display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
                     }}>
-                      <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
-                        width:"100%", background:"none", border:"none", padding:"12px 14px",
-                        display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
-                      }}>
-                        <div style={{
-                          width:38, height:38, borderRadius:10,
-                          background:`${col}18`,
-                          display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0
-                        }}>
-                          <span style={{ fontSize:14, fontWeight:800, color:col }}>{di+1}</span>
-                        </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{day.name}</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
-                            {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
-                          </div>
-                        </div>
-                        <div style={{ textAlign:"right", flexShrink:0 }}>
-                          {lastDone && <div style={{ fontSize:10, color:col, fontWeight:600, marginBottom:2 }}>{lastDone}</div>}
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round"><polyline points="9,18 15,12 9,6"/></svg>
-                        </div>
-                      </button>
-                      <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                        <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
-                          flex:1, padding:"8px", background:"none", border:"none",
-                          borderRight:`1px solid ${C.divider}`,
-                          fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
-                        }}>Edit</button>
-                        <button onClick={() => startWorkout(day)} style={{
-                          flex:1, padding:"8px", background:"none", border:"none",
-                          fontSize:12, fontWeight:700, color:col, cursor:"pointer", fontFamily:F
-                        }}>Start ›</button>
+                      <div style={{ width:36, height:36, borderRadius:9, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <span style={{ fontSize:11, fontWeight:800, color:C.accent }}>{di+1}</span>
                       </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
+                        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
+                          {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ textAlign:"right", flexShrink:0 }}>
+                        {lastDone && <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>{lastDone}</div>}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+                      </div>
+                    </button>
+                    <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
+                      <button onClick={() => { setSubTab("programs"); setViewingProgram(prog.id); }} style={{
+                        flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
+                        fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+                      }}>Edit</button>
+                      <button onClick={() => startWorkout(day)} style={{
+                        flex:1, padding:"9px", background:"none", border:"none",
+                        fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+                      }}>Start ›</button>
                     </div>
+                  </div>
                   );
                 })}
               </div>
@@ -3004,9 +3059,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
           )}
         </div>
+      )}
 
-          {/* ── Programs Section ── */}
-
+      {subTab === "programs" && !viewingProgram && !showBuilder && (
+        <div style={{ padding:"16px 14px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
             <button onClick={() => setShowBuilder(true)} style={{
               background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none",
@@ -3030,39 +3086,61 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {(!store.programs || !store.programs.length) && (
             <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
           )}
-          {(store.programs || []).length === 0 ? (
-              <div style={{ textAlign:"center", color:C.sub, padding:"20px 0" }}>
-                <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
-                <div style={{ fontSize:13 }}>No programs yet</div>
+          {(() => {
+            const progDragRef = { dragging: false, startY: 0, origIdx: 0, overIdx: 0 };
+            return (store.programs || []).map((p, idx) => (
+            <div key={p.id}
+              data-drag-item="true"
+              onTouchStart={e => {
+                progDragRef.dragging = true;
+                progDragRef.startY = e.touches[0].clientY;
+                progDragRef.origIdx = idx;
+                progDragRef.overIdx = idx;
+                try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
+              }}
+              onTouchMove={e => {
+                if (!progDragRef.dragging) return;
+                e.preventDefault();
+                const dy = e.touches[0].clientY - progDragRef.startY;
+                progDragRef.overIdx = Math.max(0, Math.min((store.programs.length - 1), idx + Math.round(dy / 72)));
+              }}
+              onTouchEnd={() => {
+                if (!progDragRef.dragging) return;
+                progDragRef.dragging = false;
+                if (progDragRef.overIdx !== progDragRef.origIdx) {
+                  const arr = [...store.programs];
+                  const [moved] = arr.splice(progDragRef.origIdx, 1);
+                  arr.splice(progDragRef.overIdx, 0, moved);
+                  setStore(prev => ({ ...prev, programs: arr }));
+                }
+              }}
+              onClick={() => setViewingProgram(p.id)}
+              style={{
+                background: store.activeProgramId === p.id ? C.accentSoft : "none",
+                border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
+                borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
+                display:"flex", alignItems:"center", gap:12
+              }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
+                  {store.activeProgramId === p.id && (
+                    <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
+                  )}
+                </div>
+                <div style={{ fontSize:11, color:C.sub }}>
+                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
+                </div>
               </div>
-            ) : (
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                {(store.programs || []).map(p => (
-                  <div key={p.id}
-                    onClick={() => { setViewingProgram(p.id); setInitialDayIdx(0); }}
-                    style={{
-                      background: store.activeProgramId === p.id ? C.accentSoft : C.surface,
-                      border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-                      borderRadius:12, padding:"14px 12px", cursor:"pointer",
-                    }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:C.text, flex:1, lineHeight:1.3 }}>{p.name}</div>
-                      {store.activeProgramId === p.id && (
-                        <span style={{ fontSize:8, background:C.accent, color:"#fff", padding:"2px 6px", borderRadius:20, fontWeight:700, flexShrink:0, marginLeft:4 }}>ACTIVE</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize:11, color:C.sub }}>{p.days?.length||0} days</div>
-                    <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>{p.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+              <span style={{ fontSize:18, color:C.muted, touchAction:"none" }}>⠿</span>
+            </div>
+            ));
+          })()}
         </div>
       )}
 
       {/* Program Detail View */}
-      {subTab === "workout" && viewingProgram && (() => {
+      {subTab === "programs" && viewingProgram && (() => {
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
@@ -3073,8 +3151,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             C={C}
             F={F}
             MONO={MONO}
-            onBack={() => { setViewingProgram(null); setInitialDayIdx(0); }}
-            initialDayIdx={initialDayIdx}
+            onBack={() => setViewingProgram(null)}
             onSaveProgram={onSaveProgram}
             onSaveStore={setStore}
             onProgramEdited={onProgramEdited}
@@ -3086,7 +3163,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       })()}
 
       {/* Custom Program Builder */}
-      {subTab === "workout" && showBuilder && (
+      {subTab === "programs" && showBuilder && (
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
@@ -3183,104 +3260,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {subTab === "history" && (
         <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
-
-          {/* ── Heatmap ── */}
-          <div style={{ padding:"14px 14px 0" }}>
+          <div style={{ padding:"12px 14px 0" }}>
             <Heatmap workoutDates={store.workoutDates} C={C}/>
           </div>
 
-          {/* ── Analytics summary ── */}
-          {(() => {
-            const allSessions = Object.entries(store.history||{}).flatMap(([date, sessions]) =>
-              Object.values(sessions).map(s => ({ ...s, date }))
-            );
-            if (!allSessions.length) return null;
-
-            const totalWorkouts = allSessions.length;
-            const totalVol = allSessions.reduce((a, s) =>
-              a + (s.exercises||[]).reduce((b, ex) =>
-                b + (ex.sets||[]).filter(s=>s.done).reduce((c, set) =>
-                  c + (parseFloat(set.weight)||0) * (parseFloat(set.reps)||0), 0), 0), 0);
-            const avgVol = Math.round(totalVol / totalWorkouts);
-            const totalSets = allSessions.reduce((a, s) =>
-              a + (s.exercises||[]).reduce((b, ex) => b + (ex.sets||[]).filter(s=>s.done).length, 0), 0);
-            const avgSets = Math.round(totalSets / totalWorkouts);
-
-            // Top exercises by volume
-            const exVols = {};
-            allSessions.forEach(s => (s.exercises||[]).forEach(ex => {
-              if (!ex.name) return;
-              const v = (ex.sets||[]).filter(s=>s.done).reduce((a,set)=>a+(parseFloat(set.weight)||0)*(parseFloat(set.reps)||0),0);
-              exVols[ex.name] = (exVols[ex.name]||0) + v;
-            }));
-            const topEx = Object.entries(exVols).sort(([,a],[,b])=>b-a).slice(0,3);
-
-            // Top muscle group
-            const muscleVols = {};
-            topEx.forEach(([name]) => {
-              const info = EXERCISE_DB.find(e => e.name === name);
-              if (info?.muscle) muscleVols[info.muscle] = (muscleVols[info.muscle]||0) + exVols[name];
-            });
-            const topMuscle = Object.entries(muscleVols).sort(([,a],[,b])=>b-a)[0]?.[0];
-
-            return (
-              <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>ANALYTICS</div>
-
-                {/* Stats grid */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
-                  {[
-                    ["Total Workouts", totalWorkouts, "sessions"],
-                    ["Total Volume", totalVol >= 1000 ? `${(totalVol/1000).toFixed(1)}k` : Math.round(totalVol), store.unit||"lbs"],
-                    ["Avg Volume", avgVol >= 1000 ? `${(avgVol/1000).toFixed(1)}k` : avgVol, "per session"],
-                    ["Avg Sets", avgSets, "per session"],
-                  ].map(([label, val, sub]) => (
-                    <div key={label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px" }}>
-                      <div style={{ fontSize:22, fontWeight:800, color:C.accent, fontFamily:MONO, lineHeight:1 }}>{val}</div>
-                      <div style={{ fontSize:10, color:C.text, fontWeight:600, marginTop:4 }}>{label}</div>
-                      <div style={{ fontSize:10, color:C.muted }}>{sub}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Top exercises */}
-                {topEx.length > 0 && (
-                  <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", marginBottom:8 }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>TOP EXERCISES BY VOLUME</div>
-                    {topEx.map(([name, vol], i) => {
-                      const pct = vol / topEx[0][1];
-                      return (
-                        <div key={name} style={{ marginBottom: i < topEx.length-1 ? 10 : 0 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                            <div style={{ fontSize:12, fontWeight:600, color:C.text }}>{name}</div>
-                            <div style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>
-                              {vol >= 1000 ? `${(vol/1000).toFixed(1)}k` : Math.round(vol)} {store.unit||"lbs"}
-                            </div>
-                          </div>
-                          <div style={{ height:5, background:C.divider, borderRadius:3, overflow:"hidden" }}>
-                            <div style={{ height:"100%", background:C.accent, width:`${pct*100}%`, borderRadius:3, opacity:0.7+i*0.1 }}/>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Top muscle */}
-                {topMuscle && (
-                  <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}30`, borderRadius:12, padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
-                    <MuscleIcon muscle={topMuscle} size={32} C={C}/>
-                    <div>
-                      <div style={{ fontSize:10, color:C.sub, fontWeight:600 }}>TOP MUSCLE GROUP</div>
-                      <div style={{ fontSize:14, fontWeight:700, color:C.accent }}>{topMuscle}</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* ── Volume by week chart ── */}
+          {/* Volume chart - last 8 weeks */}
           {(() => {
             const weeks = 8;
             const today = new Date(); today.setHours(0,0,0,0);
@@ -3295,34 +3279,30 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   Object.values(sess).forEach(s => {
                     sessions++;
                     (s.exercises||[]).forEach(ex => {
-                      (ex.sets||[]).filter(s=>s.done).forEach(set => {
+                      (ex.sets||[]).filter(set => set.done).forEach(set => {
                         vol += (parseFloat(set.weight)||0) * (parseFloat(set.reps)||0);
                       });
                     });
                   });
                 }
               });
-              weekData.push({ label: wStart.toLocaleDateString("en",{month:"short",day:"numeric"}), vol:Math.round(vol), sessions });
+              weekData.push({ label: wStart.toLocaleDateString("en",{month:"short",day:"numeric"}), vol: Math.round(vol), sessions });
             }
-            const maxVol = Math.max(...weekData.map(w=>w.vol), 1);
+            const maxVol = Math.max(...weekData.map(w => w.vol), 1);
             return weekData.some(w => w.vol > 0) ? (
-              <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>
-                  VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})
-                </div>
-                <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80, marginBottom:6 }}>
-                  {weekData.map((w,i) => (
-                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
-                      <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol>0?(w.vol>=1000?`${(w.vol/1000).toFixed(1)}k`:w.vol):""}</div>
-                      <div style={{ width:"100%", borderRadius:"3px 3px 0 0", background:i===weeks-1?C.accent:`${C.accent}55`, height:Math.max(4,(w.vol/maxVol)*64), transition:"height 0.3s" }}/>
-                      {w.sessions > 0 && <div style={{ fontSize:8, color:C.sub }}>{w.sessions}x</div>}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display:"flex", gap:4 }}>
-                  {weekData.map((w,i) => (
-                    <div key={i} style={{ flex:1, fontSize:7, color:C.muted, textAlign:"center", overflow:"hidden" }}>
-                      {w.label.split(" ")[0]}
+              <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})</div>
+                <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80 }}>
+                  {weekData.map((w, i) => (
+                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+                      <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
+                      <div style={{
+                        width:"100%", borderRadius:"3px 3px 0 0",
+                        background: i === weeks-1 ? C.accent : `${C.accent}66`,
+                        height: Math.max(4, (w.vol/maxVol)*64),
+                        transition:"height 0.3s"
+                      }}/>
+                      <div style={{ fontSize:7, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
                     </div>
                   ))}
                 </div>
@@ -3330,14 +3310,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             ) : null;
           })()}
 
-          {/* ── PRs ── */}
+          {/* PRs strip */}
           {Object.keys(store.prs||{}).length > 0 && (
             <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
               <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>PERSONAL RECORDS</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-                {Object.entries(store.prs||{}).sort(([,a],[,b])=>b-a).map(([name,weight],i,arr) => (
+              <div style={{ display:"flex", flexDirection:"column", gap:0, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+                {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i, arr) => (
                   <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", borderBottom:i<arr.length-1?`1px solid ${C.divider}`:"none" }}>
-                    <div style={{ fontSize:13, color:C.text }}>{name}</div>
+                    <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{name}</div>
                     <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>
                       {cvt(weight,"lbs",store.unit||"lbs")} {store.unit||"lbs"}
                     </div>
@@ -3347,23 +3327,28 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
           )}
 
-          {/* ── Workout log ── */}
+          {/* Workout list */}
           <div style={{ padding:"14px 14px 0" }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
-            {!Object.keys(store.history||{}).length && (
-              <div style={{ textAlign:"center", color:C.sub, padding:"40px 0" }}>
+            {!Object.keys(store.history || {}).length && (
+              <div style={{ textAlign:"center", color:C.sub, padding:"40px 0", fontSize:13 }}>
                 <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
                 No workouts logged yet
               </div>
             )}
-            {Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).map(([date,sessions]) => (
+            {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => (
               <div key={date} style={{ marginBottom:16 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
                   {new Date(date).toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
                 </div>
-                {Object.values(sessions).map((sess,i) => {
-                  const done = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);
-                  const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+                {Object.values(sessions).map((sess, i) => {
+                  const done = sess.exercises?.reduce((a,ex) => a+(ex.sets?.filter(s=>s.done).length||0),0)||0;
+                  const vol = sess.exercises?.reduce((a,ex) => a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0)||0;
+                  const prExercises = sess.exercises?.filter(ex => {
+                    if (!ex.name) return false;
+                    const maxW = Math.max(0,...(ex.sets||[]).filter(s=>s.done&&s.weight).map(s=>parseFloat(s.weight)||0));
+                    return maxW > 0 && (store.prs||{})[ex.name] && maxW >= (store.prs[ex.name] * (sess.unit==="kg"?2.205:1) * 0.98);
+                  }) || [];
                   return (
                     <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
@@ -3371,9 +3356,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
                         </div>
+                        {prExercises.length > 0 && (
+                          <div style={{ background:"linear-gradient(135deg,#ca8a04,#dc2626)", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700, color:"#fff" }}>🏆 PR</div>
+                        )}
                       </div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
-                        {(sess.exercises||[]).filter(e=>e.name).map((ex,j) => (
+                        {sess.exercises?.filter(e=>e.name).map((ex,j) => (
                           <span key={j} style={{ fontSize:11, background:C.divider, color:C.sub, borderRadius:6, padding:"3px 8px" }}>{ex.name}</span>
                         ))}
                       </div>
@@ -5464,11 +5452,12 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 
       {/* Settings modal */}
       {showSettings && (
-        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden", borderTop:`1px solid ${C.border}` }}>
+        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-              <div style={{ fontSize:16, fontWeight:700, color:C.text }}>Settings</div>
-              <button onClick={() => setShowSettings(false)} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+              <div style={{ width:50 }}/>
+              <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
+              <button onClick={() => setShowSettings(false)} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, width:50 }}>Done</button>
             </div>
             <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PREFERENCES</div>
@@ -5996,32 +5985,15 @@ export default function App() {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [loadError, setLoadError] = useState(null);
-  const [retryCount, setRetryCount] = useState(0);
-  useEffect(() => {
-    const goOnline = () => { setIsOnline(true); if (dbReady) loadUserData(); };
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
-  }, [dbReady]);
-
   // ── Load user data from Supabase once authenticated ─────────────
   useEffect(() => {
     if (!token || !currentUserId) return;
-    setLoadError(null);
     loadUserData();
-  }, [token, currentUserId, retryCount]);
+  }, [token, currentUserId]);
 
   async function loadUserData() {
-    // If offline, use local store and proceed
-    if (!navigator.onLine) {
-      toast("You're offline — showing cached data", "error");
-      setDbReady(true);
-      return;
-    }
     try {
+      // Load profile
       const tok = tokenRef.current || token;
       const [profiles, programs, prs, history, groupsData] = await Promise.all([
         sb.query(`profiles?select=*`, {}, tok),
@@ -6034,13 +6006,16 @@ export default function App() {
       const me = profiles?.find(p => p.id === currentUserId);
       const activeProgram = programs?.find(p => p.is_active) || programs?.[0];
 
+      // Convert DB programs to app format
       const appPrograms = (programs || []).map(p => ({
         id: p.id, name: p.name, days: p.days || []
       }));
 
+      // Convert PRs to app format { exerciseName: weightLbs }
       const appPrs = {};
       (prs || []).forEach(pr => { appPrs[pr.exercise_name] = pr.weight_lbs; });
 
+      // Convert history to app format
       const appHistory = {};
       const appWorkoutDates = {};
       (history || []).forEach(w => {
@@ -6053,6 +6028,7 @@ export default function App() {
         appWorkoutDates[dk] = true;
       });
 
+      // Load posts (from people user follows + own)
       await loadFeed(tok, currentUserId, profiles || []);
 
       setStore(prev => ({
@@ -6061,7 +6037,7 @@ export default function App() {
           id: p.id, username: p.username, name: p.name,
           bio: p.bio, avatar: p.avatar_emoji, avatarUrl: p.avatar_url,
           unit: p.unit, theme: p.theme,
-          followers: [], following: []
+          followers: [], following: [] // loaded separately
         })),
         currentUserId,
         programs: appPrograms,
@@ -6076,6 +6052,7 @@ export default function App() {
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
+      // Load follows
       const follows = await sb.query(`follows?select=follower_id,following_id`, {}, tok);
       setStore(prev => ({
         ...prev,
@@ -6086,19 +6063,11 @@ export default function App() {
         }))
       }));
 
-      setLoadError(null);
       setDbReady(true);
     } catch (e) {
       console.error("loadUserData error:", e);
-      const isOffline = !navigator.onLine || e.message?.includes("fetch") || e.message?.includes("network");
-      if (isOffline) {
-        setLoadError("offline");
-        toast("No connection — showing cached data", "error");
-        setDbReady(true); // let them use cached local data
-      } else {
-        setLoadError("error");
-        // Don't setDbReady(true) yet — show retry screen
-      }
+      toast("Couldn't load your data — check connection", "error");
+      setDbReady(true);
     }
   }
 
@@ -6436,29 +6405,6 @@ export default function App() {
   }
 
   if (!dbReady) {
-    // Error state — show retry
-    if (loadError === "error") {
-      return (
-        <div style={{ height:"100dvh", background:C.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 30px", textAlign:"center" }}>
-          <SeshdLogo C={C} big/>
-          <div style={{ fontSize:40, margin:"24px 0 12px" }}>⚠️</div>
-          <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:8 }}>Couldn't load your data</div>
-          <div style={{ fontSize:13, color:C.sub, marginBottom:28, lineHeight:1.5 }}>
-            Check your connection and try again.{"\n"}Your local data is safe.
-          </div>
-          <button onClick={() => setRetryCount(c => c + 1)} style={{
-            background:C.accent, color:"#fff", border:"none", borderRadius:12,
-            padding:"13px 32px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F,
-            marginBottom:12
-          }}>Try Again</button>
-          <button onClick={() => setDbReady(true)} style={{
-            background:"none", color:C.sub, border:"none", fontSize:13,
-            cursor:"pointer", fontFamily:F, padding:"8px"
-          }}>Continue with cached data</button>
-        </div>
-      );
-    }
-    // Normal loading
     return (
       <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
         <SeshdLogo C={C} big/>
@@ -6630,14 +6576,6 @@ export default function App() {
     >
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
       <ToastHost/>
-
-      {/* Offline banner */}
-      {!isOnline && (
-        <div style={{ background:"#ef4444", padding:"6px 14px", display:"flex", alignItems:"center", justifyContent:"center", gap:6, flexShrink:0 }}>
-          <span style={{ fontSize:14 }}>📵</span>
-          <span style={{ fontSize:12, fontWeight:600, color:"#fff" }}>No internet — changes will sync when you're back online</span>
-        </div>
-      )}
 
       {/* TOP BAR — Instagram thin, minimal, SVG icons */}
       <div style={{
