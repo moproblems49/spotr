@@ -1335,7 +1335,7 @@ function WrappedModal({ store, C, onClose }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // PR MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function PRModal({ pr, unit, onClose }) {
+function PRModal({ pr, unit, onClose, onShare }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <Confetti/>
@@ -1350,7 +1350,12 @@ function PRModal({ pr, unit, onClose }) {
             ↑ {pr.increase} {unit} from previous best
           </div>
         )}
-        <button onClick={onClose} style={{ display:"block", width:"100%", background:"#fff", color:"#dc2626", border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:800, cursor:"pointer", marginBottom:10, fontFamily:F }}>
+        <button onClick={() => {
+          const text = `🏆 New PR on ${pr.name}! ${pr.weight} ${unit}${pr.increase > 0 ? ` (+${pr.increase} ${unit})` : ""} via Seshd 💪`;
+          if (navigator.share) navigator.share({ title:"New PR!", text }).catch(()=>{});
+          else if (navigator.clipboard) { navigator.clipboard.writeText(text); }
+          onClose();
+        }} style={{ display:"block", width:"100%", background:"#fff", color:"#dc2626", border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:800, cursor:"pointer", marginBottom:10, fontFamily:F }}>
           📸 Share this PR
         </button>
         <button onClick={onClose} style={{ display:"block", width:"100%", background:"rgba(255,255,255,0.15)", color:"#fff", border:"none", borderRadius:12, padding:"12px", fontSize:13, cursor:"pointer", fontFamily:F }}>
@@ -1708,7 +1713,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 
       {/* Reply footer + swipe hints */}
       <div style={{ padding:"10px 14px 14px", flexShrink:0 }}>
-        <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:24, padding:"10px 16px", color:"rgba(255,255,255,0.7)", fontSize:13 }}>
+        <div onClick={() => { onClose(); }} style={{ background:"rgba(255,255,255,0.12)", borderRadius:24, padding:"10px 16px", color:"rgba(255,255,255,0.7)", fontSize:13, cursor:"pointer" }}>
           Reply to {user.username}...
         </div>
         <div style={{ textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.4)", marginTop:8 }}>
@@ -2003,96 +2008,134 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   function addEx() { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:[...(d.exercises||[]),{name:"",sets:3,reps:"8-12",rest:"90",note:""}]})}); }
   function removeEx(ei) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.filter((_,xi)=>xi!==ei)})}); }
 
+  const isDark = C.bg === "#000000" || C.bg === "#000";
+  const CARD = isDark ? "#141414" : "#FFFFFF";
+  const BG   = isDark ? "#0a0a0a" : "#F4F6FA";
+  const BORD = isDark ? "#222"    : "#E8ECF0";
+  const SUB  = isDark ? "#666"    : "#94A3B8";
+  const TXT  = isDark ? "#F0F0F0" : "#0F172A";
+  const BLUE = "#2563EB";
+
+  const DAY_COLORS = ["#7C3AED","#2563EB","#059669","#D97706","#DC2626","#0891B2","#7C3AED"];
+
   return (
-    <div style={{ position:"absolute", inset:0, background:C.bg, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-      <div style={{ padding:"16px 16px 14px", borderBottom:`1px solid ${C.divider}`, background:C.bg, flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
-          <button onClick={onBack} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", gap:6, padding:"6px 0" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15,18 9,12 15,6"/></svg>
-            Back
+    <div style={{ position:"absolute", inset:0, background:BG, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
+      {/* Top bar */}
+      <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"14px 18px", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <button onClick={onBack} style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
           </button>
-          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:C.accent, border:"none", borderRadius:14, padding:"10px 18px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Save</button>
-        </div>
-        <input value={localProg.name} onChange={e => patch({...localProg, name:e.target.value})} placeholder="Program name"
-          style={{ width:"100%", marginTop:14, background:"none", border:"none", outline:"none", color:C.text, fontSize:24, fontWeight:800, fontFamily:F }} />
-        <div style={{ marginTop:8, display:"flex", flexWrap:"wrap", gap:10, fontSize:12, color:C.sub }}>
-          <span>{localProg.days?.length||0} days</span>
-          <span>·</span>
-          <span>{localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</span>
-          {isActive && <span style={{ background:C.accent, color:"#fff", borderRadius:999, padding:"4px 10px", fontWeight:700 }}>ACTIVE</span>}
+          <div style={{ flex:1, minWidth:0 }}>
+            <input value={localProg.name} onChange={e => patch({...localProg, name:e.target.value})}
+              style={{ width:"100%", background:"transparent", border:"none", outline:"none", fontSize:18, fontWeight:800, color:TXT, fontFamily:F }} />
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:2 }}>
+              <span style={{ fontSize:11, color:SUB }}>{localProg.days?.length||0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</span>
+              {isActive && <span style={{ fontSize:9, background:C.accent, color:"#fff", borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
+            </div>
+          </div>
+          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:BLUE, border:"none", borderRadius:10, padding:"10px 18px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
         </div>
       </div>
 
-      <div style={{ padding:"14px 16px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", background:C.surface, flexShrink:0 }}>
-        <input value={day.name} onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, name:e.target.value})})} placeholder="Day name..."
-          style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"none", color:C.text, fontSize:14, fontWeight:700, fontFamily:F }} />
-        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.accent, border:"none", borderRadius:14, padding:"11px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Start Workout</button>
+      {/* Day selector tabs */}
+      <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"10px 16px", display:"flex", gap:6, overflowX:"auto", flexShrink:0 }}>
+        {(localProg.days||[]).map((d,di) => {
+          const col = DAY_COLORS[di%7];
+          const active = activeDay === di;
+          return (
+            <button key={di} onClick={() => setActiveDay(di)} style={{
+              padding:"8px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:F,
+              fontSize:12, fontWeight:700, whiteSpace:"nowrap", flexShrink:0,
+              background: active ? col : (isDark?"#1e1e1e":"#EEF2F7"),
+              color: active ? "#fff" : SUB,
+              boxShadow: active ? `0 4px 12px ${col}55` : "none",
+            }}>{d.name||`Day ${di+1}`}</button>
+          );
+        })}
+        <button onClick={() => {
+          const nd = { id:Date.now().toString(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
+          patch({...localProg, days:[...(localProg.days||[]), nd]});
+          setActiveDay((localProg.days||[]).length);
+        }} style={{ padding:"8px 14px", borderRadius:20, border:`1.5px dashed ${isDark?"#333":"#CBD5E1"}`, background:"none", cursor:"pointer", fontFamily:F, fontSize:12, fontWeight:700, color:BLUE, whiteSpace:"nowrap", flexShrink:0 }}>+ Day</button>
       </div>
 
-      <div style={{ flex:1, overflowY:"auto", WebkitOverflowScrolling:"touch", padding:"14px 16px" }}>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:18 }}>
-          {(localProg.days||[]).map((d,di) => (
-            <button key={di} onClick={() => setActiveDay(di)} style={{ background: activeDay===di ? C.accent : C.surface, color: activeDay===di ? "#fff" : C.text, border:`1px solid ${activeDay===di ? C.accent : C.divider}`, borderRadius:999, padding:"10px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>{d.name||`Day ${di+1}`}</button>
-          ))}
-          <button onClick={() => {
-            const nd = { id:Date.now().toString(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
-            patch({...localProg, days:[...(localProg.days||[]), nd]});
-            setActiveDay((localProg.days||[]).length);
-          }} style={{ background:C.surface, color:C.accent, border:`1px solid ${C.accent}`, borderRadius:999, padding:"10px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Day</button>
-        </div>
+      {/* Day name + Start */}
+      <div style={{ background:isDark?"#111":"#fff", borderBottom:`1px solid ${BORD}`, padding:"12px 18px", display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+        <input value={day.name} onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, name:e.target.value})})}
+          placeholder="Day name..." style={{ flex:1, border:"none", outline:"none", background:"none", color:TXT, fontSize:15, fontWeight:700, fontFamily:F }} />
+        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:DAY_COLORS[activeDay%7], border:"none", borderRadius:10, padding:"10px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0, boxShadow:`0 4px 12px ${DAY_COLORS[activeDay%7]}55` }}>Start ›</button>
+      </div>
 
+      {/* Exercise list */}
+      <div style={{ flex:1, overflowY:"auto", padding:"12px 16px 100px" }}>
         {(day.exercises||[]).length === 0 ? (
-          <div style={{ padding:"32px 20px", borderRadius:24, background:C.surface, color:C.sub, textAlign:"center" }}>
-            <div style={{ fontSize:26, marginBottom:12 }}>🏋️</div>
-            <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:6 }}>No exercises yet</div>
-            <div style={{ fontSize:12 }}>Add sets, reps and rest to build your routine.</div>
+          <div style={{ padding:"40px 20px", borderRadius:20, background:CARD, color:SUB, textAlign:"center", marginTop:8, border:`1px solid ${BORD}` }}>
+            <div style={{ fontSize:32, marginBottom:12 }}>🏋️</div>
+            <div style={{ fontSize:15, fontWeight:700, color:TXT, marginBottom:6 }}>No exercises yet</div>
+            <div style={{ fontSize:12 }}>Tap below to add your first exercise</div>
           </div>
         ) : (
           day.exercises.map((ex, ei) => {
             const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
             const sets = Math.max(1, parseInt(ex.sets) || 3);
+            const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#8B5CF6",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
+            const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
             return (
-              <div key={ei} style={{ marginBottom:16, background:C.surface, borderRadius:20, padding:16, boxShadow:`0 12px 30px ${C.divider}10` }}>
-                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-                  <div style={{ width:42, height:42, borderRadius:16, background:C.divider, display:"grid", placeItems:"center", flexShrink:0 }}>
-                    <MuscleIcon muscle={exInfo?.muscle||""} size={20} C={C}/>
+              <div key={ei} style={{ marginBottom:12, background:CARD, borderRadius:16, overflow:"hidden", border:`1px solid ${BORD}`, boxShadow:isDark?"none":"0 1px 4px rgba(0,0,0,0.05)" }}>
+                {/* Exercise header */}
+                <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderLeft:`4px solid ${mColor}` }}>
+                  <div style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <MuscleIcon muscle={exInfo?.muscle||""} size={22} C={C}/>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise name" style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:800, color:C.text, fontFamily:F }} />
-                    {exInfo?.muscle && <div style={{ fontSize:11, color:C.sub, marginTop:4 }}>{exInfo.muscle}</div>}
+                    <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise name"
+                      style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:14, fontWeight:700, color:TXT, fontFamily:F }} />
+                    {exInfo?.muscle && <div style={{ fontSize:11, color:SUB, marginTop:1 }}>{exInfo.muscle}</div>}
                   </div>
-                  <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:20, lineHeight:1, cursor:"pointer", padding:"4px" }}>×</button>
+                  <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"4px 6px", lineHeight:1 }}>×</button>
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
-                  <div style={{ border:`1px solid ${C.divider}`, borderRadius:18, padding:14, background:C.bg }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>Sets</div>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:6 }}>
-                      <button onClick={() => updateEx(ei,{sets:Math.max(1,sets-1)})} style={{ background:"none", border:"none", color:C.accent, fontSize:22, fontWeight:900, cursor:"pointer" }}>−</button>
-                      <span style={{ fontSize:18, fontWeight:900, color:C.text, fontFamily:MONO }}>{sets}</span>
-                      <button onClick={() => updateEx(ei,{sets:sets+1})} style={{ background:"none", border:"none", color:C.accent, fontSize:22, fontWeight:900, cursor:"pointer" }}>+</button>
+
+                {/* Sets / Reps / Rest */}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderTop:`1px solid ${BORD}` }}>
+                  {/* Sets */}
+                  <div style={{ padding:"12px 14px", borderRight:`1px solid ${BORD}` }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:SUB, letterSpacing:0.8, marginBottom:8 }}>SETS</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                      <button onClick={() => updateEx(ei,{sets:Math.max(1,sets-1)})} style={{ width:28, height:28, borderRadius:8, background:isDark?"#222":"#F1F5F9", border:"none", color:BLUE, fontSize:18, fontWeight:900, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+                      <span style={{ fontSize:20, fontWeight:800, color:TXT, fontFamily:MONO }}>{sets}</span>
+                      <button onClick={() => updateEx(ei,{sets:sets+1})} style={{ width:28, height:28, borderRadius:8, background:isDark?"#222":"#F1F5F9", border:"none", color:BLUE, fontSize:18, fontWeight:900, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
                     </div>
                   </div>
-                  <div style={{ border:`1px solid ${C.divider}`, borderRadius:18, padding:14, background:C.bg }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>Reps</div>
-                    <input value={ex.reps||""} onChange={e => updateEx(ei,{reps:e.target.value})} placeholder="8-12" style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center" }} />
+                  {/* Reps */}
+                  <div style={{ padding:"12px 14px", borderRight:`1px solid ${BORD}` }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:SUB, letterSpacing:0.8, marginBottom:8 }}>REPS</div>
+                    <input value={ex.reps||""} onChange={e => updateEx(ei,{reps:e.target.value})} placeholder="8–12"
+                      style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:TXT, fontFamily:MONO, textAlign:"center" }} />
                   </div>
-                  <div style={{ border:`1px solid ${C.divider}`, borderRadius:18, padding:14, background:C.bg }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>Rest</div>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:4 }}>
-                      <input value={ex.rest||""} onChange={e => updateEx(ei,{rest:e.target.value})} placeholder="90" type="number" inputMode="numeric" style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:C.text, fontFamily:MONO, textAlign:"center" }} />
-                      <span style={{ fontSize:11, color:C.sub }}>s</span>
+                  {/* Rest */}
+                  <div style={{ padding:"12px 14px" }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:SUB, letterSpacing:0.8, marginBottom:8 }}>REST</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:3 }}>
+                      <input value={ex.rest||""} onChange={e => updateEx(ei,{rest:e.target.value})} placeholder="90" type="number" inputMode="numeric"
+                        style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:16, fontWeight:700, color:TXT, fontFamily:MONO, textAlign:"center" }} />
+                      <span style={{ fontSize:11, color:SUB, flexShrink:0 }}>s</span>
                     </div>
                   </div>
                 </div>
-                <div style={{ marginTop:14 }}>
-                  <input value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note..." style={{ width:"100%", background:`${C.divider}20`, border:`1px solid ${C.divider}`, borderRadius:14, padding:"12px 14px", fontSize:13, color:C.text, outline:"none", fontFamily:F }} />
+
+                {/* Note */}
+                <div style={{ borderTop:`1px solid ${BORD}`, padding:"10px 16px" }}>
+                  <input value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note (optional)..."
+                    style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:12, color:SUB, fontFamily:F }} />
                 </div>
               </div>
             );
           })
         )}
 
-        <button onClick={addEx} style={{ width:"100%", marginTop:8, padding:"16px 18px", background:C.surface, border:`1px solid ${C.divider}`, borderRadius:20, color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
+        <button onClick={addEx} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${isDark?"#2563eb44":"#BFDBFE"}`, borderRadius:16, color:BLUE, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
       </div>
     </div>
   );
@@ -2707,7 +2750,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   }
                   const text = `Just crushed ${workoutSummary.dayName} on Seshd 🔥\n${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}${workoutSummary.prs?.length ? `\n🏆 ${workoutSummary.prs.map(p=>p.name).join(", ")}` : ""}`;
                   if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
-                  else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied!", "success"); }
+                  else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied! 📋", "success"); }
                   setShowWorkoutSummary(false); setWorkoutSummary(null);
                 }} style={{ width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none", borderRadius:10, padding:"14px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                   📸 Share Workout
@@ -5186,14 +5229,14 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
             <div><div style={{ fontSize:17, fontWeight:700, color:C.text }}>{posts.length}</div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
-            <div onClick={() => followers > 0 && setListModal("followers")} style={{ cursor: followers > 0 ? "pointer" : "default" }}>
+            <button onClick={() => setListModal("followers")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{followers}</div>
               <div style={{ fontSize:12, color:C.sub }}>Followers</div>
-            </div>
-            <div onClick={() => following2 > 0 && setListModal("following")} style={{ cursor: following2 > 0 ? "pointer" : "default" }}>
+            </button>
+            <button onClick={() => setListModal("following")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{following2}</div>
               <div style={{ fontSize:12, color:C.sub }}>Following</div>
-            </div>
+            </button>
           </div>
         </div>
         <div style={{ marginBottom:12 }}>
@@ -5470,16 +5513,21 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
     } else if (postKind === "photo") {
       onPost({ type:"photo", caption, imageData:img, location:loc });
     } else if (postKind === "workout") {
+      const doneExercises = (selectedWorkout.exercises||[])
+        .filter(e => e.name && (e.sets||[]).some(s => s.done))
+        .map(ex => ({
+          name: ex.name,
+          sets: (ex.sets||[]).filter(s => s.done).map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 }))
+        }))
+        .filter(ex => ex.sets.length > 0);
+      const vol = doneExercises.reduce((a,ex)=>a+ex.sets.reduce((b,s)=>b+s.w*s.r,0),0);
       onPost({ type:"workout", caption: caption || `Just crushed ${selectedWorkout.dayName} 💪`,
         unit: selectedWorkout.unit || "lbs",
         workout: {
           name: selectedWorkout.dayName,
           duration: selectedWorkout.duration,
-          volume: Math.round(selectedWorkout.exercises?.reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0)||0),
-          exercises: (selectedWorkout.exercises||[]).filter(e=>e.name).map(ex=>({
-            name:ex.name,
-            sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0}))
-          }))
+          volume: Math.round(vol),
+          exercises: doneExercises
         }
       });
     } else if (postKind === "run") {
@@ -6019,6 +6067,13 @@ export default function App() {
   async function handleKudos(postId) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
+
+    // _isHistory posts are local-only — toggle kudos locally without DB
+    if (postId.startsWith("hist_")) {
+      // not persisted, just ignore silently (no DB row to like)
+      return;
+    }
+
     const post = store.posts.find(p => p.id === postId);
     if (!post) return;
     const hasKudos = post.kudos.includes(currentUserId);
@@ -6051,6 +6106,8 @@ export default function App() {
   async function handleComment(postId, text) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok || !text.trim()) return;
+    // _isHistory posts have no DB row — can't comment
+    if (postId.startsWith("hist_")) return;
     try {
       const result = await sb.query("comments", {
         method: "POST",
