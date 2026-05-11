@@ -1,5 +1,5 @@
 // v1778305358100
-// QUICK-FIX v12 vFINAL-9.0 - BUILD 2026-05-03 - 216 exercises, touch drag, history charts
+// PATCHED v13 - BUILD 2026-05-11 - share filter, edit workout redesign, builder sets/rest/notes
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 
 // ═════════════════════════════════════════════════════════════════════════════
