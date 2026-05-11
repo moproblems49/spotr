@@ -2147,7 +2147,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 const SESSION_KEY = "seshd_active_session";
 const WSTART_KEY = "seshd_wstart";
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, C }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, C }) {
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -3193,7 +3193,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
                   {new Date(date).toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
                 </div>
-                {Object.values(sessions).map((sess, i) => {
+                {Object.entries(sessions).map(([sid, sess], i) => {
                   const done = sess.exercises?.reduce((a,ex) => a+(ex.sets?.filter(s=>s.done).length||0),0)||0;
                   const vol = sess.exercises?.reduce((a,ex) => a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0)||0;
                   const prExercises = sess.exercises?.filter(ex => {
@@ -3204,13 +3204,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   return (
                     <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-                        <div>
+                        <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
                         </div>
-                        {prExercises.length > 0 && (
-                          <div style={{ background:"linear-gradient(135deg,#ca8a04,#dc2626)", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700, color:"#fff" }}>🏆 PR</div>
-                        )}
+                        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                          {prExercises.length > 0 && (
+                            <div style={{ background:"linear-gradient(135deg,#ca8a04,#dc2626)", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700, color:"#fff" }}>🏆 PR</div>
+                          )}
+                          <button onClick={() => onDeleteHistory && onDeleteHistory(date, sid)} style={{
+                            background:"none", border:`1px solid ${C.border}`, borderRadius:8,
+                            color:"#EF4444", fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
+                          }}>Delete</button>
+                        </div>
                       </div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
                         {sess.exercises?.filter(e=>e.name).map((ex,j) => (
@@ -5513,11 +5519,13 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
     } else if (postKind === "photo") {
       onPost({ type:"photo", caption, imageData:img, location:loc });
     } else if (postKind === "workout") {
+      // A set is considered "done" if s.done===true OR if it has reps (older history records may lack done flag)
+      const isDoneSet = s => s.done === true || (s.done !== false && ((s.reps && parseFloat(s.reps) > 0) || (s.r && parseFloat(s.r) > 0)));
       const doneExercises = (selectedWorkout.exercises||[])
-        .filter(e => e.name && (e.sets||[]).some(s => s.done))
+        .filter(e => e.name && (e.sets||[]).some(isDoneSet))
         .map(ex => ({
           name: ex.name,
-          sets: (ex.sets||[]).filter(s => s.done).map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 }))
+          sets: (ex.sets||[]).filter(isDoneSet).map(s => ({ w: parseFloat(s.weight||s.w)||0, r: parseFloat(s.reps||s.r)||0 }))
         }))
         .filter(ex => ex.sets.length > 0);
       const vol = doneExercises.reduce((a,ex)=>a+ex.sets.reduce((b,s)=>b+s.w*s.r,0),0);
@@ -5924,6 +5932,9 @@ export default function App() {
         appWorkoutDates[dk] = true;
       });
 
+      // Clear stale posts immediately so deleted ones don't flash
+      setStore(prev => ({ ...prev, posts: [] }));
+
       // Load posts (from people user follows + own)
       await loadFeed(tok, currentUserId, profiles || []);
 
@@ -6068,23 +6079,28 @@ export default function App() {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
 
-    // _isHistory posts are local-only — toggle kudos locally without DB
-    if (postId.startsWith("hist_")) {
-      // not persisted, just ignore silently (no DB row to like)
-      return;
-    }
+    // _isHistory posts are local-only — no DB row to like
+    if (postId.startsWith("hist_")) return;
 
     const post = store.posts.find(p => p.id === postId);
     if (!post) return;
-    const hasKudos = post.kudos.includes(currentUserId);
-    // Optimistic update
+    const hasKudos = (post.kudos||[]).includes(currentUserId);
+    const isOwnPost = post.userId === currentUserId;
+
+    // Optimistic update immediately
     setStore(prev => ({
       ...prev,
       posts: prev.posts.map(p => p.id !== postId ? p : {
         ...p,
-        kudos: hasKudos ? p.kudos.filter(id => id !== currentUserId) : [...p.kudos, currentUserId]
+        kudos: hasKudos
+          ? (p.kudos||[]).filter(id => id !== currentUserId)
+          : [...(p.kudos||[]), currentUserId]
       })
     }));
+
+    // For own posts, skip the DB call (RLS may block self-kudos) — keep optimistic state
+    if (isOwnPost) return;
+
     try {
       if (hasKudos) {
         await sb.query(`kudos?post_id=eq.${postId}&user_id=eq.${currentUserId}`, { method:"DELETE" }, tok);
@@ -6092,12 +6108,14 @@ export default function App() {
         await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, tok);
       }
     } catch (e) {
-      // Revert on failure
+      // Revert on failure for other people's posts
       setStore(prev => ({
         ...prev,
         posts: prev.posts.map(p => p.id !== postId ? p : {
           ...p,
-          kudos: hasKudos ? [...p.kudos, currentUserId] : p.kudos.filter(id => id !== currentUserId)
+          kudos: hasKudos
+            ? [...(p.kudos||[]), currentUserId]
+            : (p.kudos||[]).filter(id => id !== currentUserId)
         })
       }));
     }
@@ -6106,8 +6124,30 @@ export default function App() {
   async function handleComment(postId, text) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok || !text.trim()) return;
-    // _isHistory posts have no DB row — can't comment
+    // _isHistory posts have no DB row
     if (postId.startsWith("hist_")) return;
+
+    const post = store.posts.find(p => p.id === postId);
+    const isOwnPost = post?.userId === currentUserId;
+
+    // Optimistic local comment immediately
+    const localComment = {
+      id: "local_" + uid(),
+      userId: currentUserId,
+      text: text.trim(),
+      createdAt: Date.now()
+    };
+    setStore(prev => ({
+      ...prev,
+      posts: prev.posts.map(p => p.id !== postId ? p : {
+        ...p,
+        comments: [...(p.comments||[]), localComment]
+      })
+    }));
+
+    // For own posts skip DB (RLS may block self-comment) — keep optimistic
+    if (isOwnPost) return;
+
     try {
       const result = await sb.query("comments", {
         method: "POST",
@@ -6115,18 +6155,29 @@ export default function App() {
       }, tok);
       const newComment = Array.isArray(result) ? result[0] : result;
       if (newComment) {
+        // Replace local comment with real DB comment
         setStore(prev => ({
           ...prev,
           posts: prev.posts.map(p => p.id !== postId ? p : {
             ...p,
-            comments: [...p.comments, {
+            comments: p.comments.map(c => c.id === localComment.id ? {
               id: newComment.id, userId: newComment.user_id,
               text: newComment.text, createdAt: new Date(newComment.created_at).getTime()
-            }]
+            } : c)
           })
         }));
       }
-    } catch (e) { console.error("comment error:", e); }
+    } catch (e) {
+      console.error("comment error:", e);
+      // Remove optimistic comment on failure (for other people's posts only)
+      setStore(prev => ({
+        ...prev,
+        posts: prev.posts.map(p => p.id !== postId ? p : {
+          ...p,
+          comments: (p.comments||[]).filter(c => c.id !== localComment.id)
+        })
+      }));
+    }
   }
 
   async function handleDelete(postId) {
@@ -6262,9 +6313,11 @@ export default function App() {
 
   // Pull to refresh
   async function handleRefresh() {
-    if (!token) return;
-    const profiles = store.users;
-    await loadFeed(tokenRef.current || loadSession()?.access_token, currentUserId, profiles);
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    if (!tok) return;
+    try {
+      await loadFeed(tok, currentUserId, store.users);
+    } catch (e) { console.error("refresh error:", e); }
   }
 
   // Persist non-Supabase store changes to localStorage as fallback
@@ -6584,7 +6637,8 @@ export default function App() {
           <div
             ref={pullScrollRef}
             onTouchStart={(e) => {
-              if (pullScrollRef.current?.scrollTop === 0) {
+              const scrollTop = pullScrollRef.current?.scrollTop || 0;
+              if (scrollTop <= 5) {
                 touchStartY.current = e.touches[0].clientY;
               } else {
                 touchStartY.current = 0;
@@ -6593,7 +6647,8 @@ export default function App() {
             onTouchMove={(e) => {
               if (touchStartY.current === 0 || isRefreshing) return;
               const dist = e.touches[0].clientY - touchStartY.current;
-              if (dist > 0 && pullScrollRef.current?.scrollTop === 0) {
+              const scrollTop = pullScrollRef.current?.scrollTop || 0;
+              if (dist > 0 && scrollTop <= 5) {
                 setPullDist(Math.min(dist * 0.5, 100));
               }
             }}
@@ -6735,7 +6790,22 @@ export default function App() {
         )}
 
         {tab === "tracker" && (
-          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}/>
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}
+            onDeleteHistory={async (date, sid) => {
+              setStore(prev => {
+                const dayHistory = { ...(prev.history[date] || {}) };
+                delete dayHistory[sid];
+                const newHistory = { ...prev.history };
+                if (Object.keys(dayHistory).length === 0) delete newHistory[date];
+                else newHistory[date] = dayHistory;
+                return { ...prev, history: newHistory };
+              });
+              try {
+                const tok = tokenRef.current || loadSession()?.access_token;
+                if (tok) await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
+              } catch(e) { console.error("history delete:", e); }
+            }}
+          />
         )}
 
         {tab === "activity" && (() => {
