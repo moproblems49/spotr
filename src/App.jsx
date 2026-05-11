@@ -2179,14 +2179,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Haptic
       try { if (navigator.vibrate) navigator.vibrate(nowDone ? 30 : 10); } catch {}
       
-      // Auto-start rest on completion (only when marking done, and only if not the last set)
+      // Auto-start rest on completion
       if (nowDone) {
-        const currentSet = p.exercises[ei]?.sets[si];
-        const restSecs = parseInt(currentSet?.restTime || p.exercises[ei]?.rest || 90) || 90;
+        const currentExercise = p.exercises[ei];
+        const currentSet = currentExercise?.sets[si];
+        const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || 90) || 90;
         // Count remaining sets after this one
-        const remainingAfterThis = p.exercises[ei]?.sets.filter((s, j) => j > si && !s.done).length;
+        const remainingAfterThis = currentExercise?.sets.filter((s, j) => j > si && !s.done).length || 0;
         // Only start timer if there are more sets to do after this
-        if (remainingAfterThis > 0 || si < ex.sets.length - 1) {
+        if (remainingAfterThis > 0) {
           setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
         }
       } else {
@@ -2315,7 +2316,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         share,
         shareData: share ? (() => {
           const postEx = session.exercises
-            .filter(ex => ex.name && ex.sets.some(s => s.done))
+            .filter(ex => ex.name && ex.sets.some(s => s.done && s.type !== "warmup"))
             .map(ex => {
               const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
               const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
@@ -2324,9 +2325,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
                 isPR: maxLbs > 0 && maxLbs > (store.prs?.[ex.name] || 0)
               };
-            });
+            })
+            .filter(ex => ex.sets.length > 0);
           const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
-          return { type:"workout", caption:`Just crushed ${session.dayName} 💪`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR:!!hitPR };
+          const hasPR = postEx.some(ex => ex.isPR);
+          return { type:"workout", caption:`Just crushed ${session.dayName} 💪`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
         })() : null,
       });
       setShowWorkoutSummary(true);
@@ -2427,7 +2430,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 </div>
               </div>
               <div style={{ width:"100%", display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:10 }}>
-                {[30,60,90,120,150,180,240,300].map(s => (
+                {[{s:90,label:"1.5m"},{s:120,label:"2m"},{s:180,label:"3m"},{s:300,label:"5m"}].map(({s,label}) => (
                   <button key={s}
                     onClick={() => { setRest({ secs:s, total:s, running:true, startedAt:Date.now() }); try{navigator.vibrate(10);} catch{} }}
                     style={{
@@ -2438,7 +2441,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       cursor:"pointer"
                     }}
                   >
-                    {s>=60?`${s/60}m`:`${s}s`}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -2570,9 +2573,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     {restEditor?.ei === ei && restEditor?.si === si && (
                       <div style={{ margin:"10px 14px 0", padding:"12px", border:`1px solid ${C.divider}`, borderRadius:18, background:C.surface, display:"grid", gap:10 }}>
                         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:8 }}>
-                          {[30,60,90,120,150,180,240,300].map(s => (
+                          {[{s:90,label:"1.5m"},{s:120,label:"2m"},{s:180,label:"3m"},{s:300,label:"5m"}].map(({s,label}) => (
                             <button key={s} onClick={() => { updateSet(ei, si, { restTime: s }); setRestEditor(null); }} style={{ padding:"10px 0", borderRadius:14, border:`1px solid ${Number(set.restTime)===s ? C.accent : C.divider}`, background:Number(set.restTime)===s ? C.accent : C.bg, color:Number(set.restTime)===s ? "#fff" : C.text, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
-                              {fmtTime(s)}
+                              {label}
                             </button>
                           ))}
                         </div>
@@ -2913,6 +2916,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {/* Custom Program Builder */}
       {subTab === "workout" && showBuilder && (
+        <div style={{ position:"absolute", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
@@ -2922,6 +2926,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             setViewingProgram(prog.id);
           }}
         />
+        </div>
       )}
 
       {subTab === "exercises" && (
@@ -3331,7 +3336,6 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
     onStart(editMode ? editDay : previewDay.day);
   }
 
-  // Last performed
   const lastPerformed = (() => {
     const dates = Object.keys(store.history||{}).sort().reverse();
     for (const dk of dates) {
@@ -3344,69 +3348,145 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   })();
 
   if (viewingExercise) {
-    return (
-      <ExerciseDetail name={viewingExercise} store={store} unit={unit} C={C} onClose={() => setViewingExercise(null)}/>
-    );
+    return <ExerciseDetail name={viewingExercise} store={store} unit={unit} C={C} onClose={() => setViewingExercise(null)}/>;
   }
 
+  const accentBlue = "#2563EB";
+  const accentBlueSoft = "#EFF6FF";
+  const isDark = C.bg === "#000" || C.bg === "#0f0f0f" || C.bg?.startsWith("#0") || C.bg?.startsWith("#1");
+  const cardBg = isDark ? "#1a1a1a" : "#ffffff";
+  const chipBg = isDark ? "#2a2a2a" : "#F8FAFC";
+  const chipBorder = isDark ? "#333" : "#E2E8F0";
+  const labelColor = isDark ? "#94a3b8" : "#64748B";
+  const bodyText = isDark ? "#e2e8f0" : "#1E293B";
+  const mutedText = isDark ? "#64748b" : "#94A3B8";
+  const divColor = isDark ? "#2a2a2a" : "#F1F5F9";
+  const inputBg = isDark ? "#252525" : "#F8FAFC";
+
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
       <div onClick={e => e.stopPropagation()} style={{
-        background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480,
-        maxHeight:"92dvh", display:"flex", flexDirection:"column",
-        paddingBottom:"env(safe-area-inset-bottom)", boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"
+        background: cardBg,
+        borderRadius:"24px 24px 0 0",
+        width:"100%", maxWidth:480,
+        maxHeight:"93dvh", display:"flex", flexDirection:"column",
+        paddingBottom:"env(safe-area-inset-bottom)",
+        boxShadow:"0 -2px 40px rgba(0,0,0,0.12)",
+        fontFamily: "'Inter', -apple-system, sans-serif",
       }}>
-        {/* Header */}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 10px", flexShrink:0 }}>
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.text }}>×</button>
-          <div style={{ flex:1, textAlign:"center" }}>
-            {editMode
-              ? <input value={editDay.name} onChange={e => setEditDay(d => ({...d, name:e.target.value}))}
-                  style={{ fontSize:14, fontWeight:700, color:C.text, background:"none", border:"none", outline:"none", textAlign:"center", fontFamily:F, width:"100%" }}/>
-              : <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{editDay.name}</div>
-            }
-            {lastPerformed && !editMode && <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>Last Performed: {lastPerformed}</div>}
-          </div>
-          <button onClick={() => {
-            if (editMode && onSaveProgram) {
-              const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
-              if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === previewDay.day.name ? editDay : d) });
-            }
-            setEditMode(m => !m);
-          }} style={{ fontSize:14, fontWeight:600, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
-            {editMode ? "Save" : "Edit"}
-          </button>
+        {/* Drag handle */}
+        <div style={{ display:"flex", justifyContent:"center", paddingTop:12, paddingBottom:4, flexShrink:0 }}>
+          <div style={{ width:36, height:4, borderRadius:2, background: isDark ? "#333" : "#CBD5E1" }}/>
         </div>
 
-        <div style={{ overflowY:"auto", flex:1, paddingBottom:8 }}>
+        {/* Header */}
+        <div style={{ padding:"8px 20px 16px", flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+            <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, background: isDark ? "#252525" : "#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color: labelColor, fontSize:18, lineHeight:1 }}>×</button>
+
+            {editMode
+              ? <input value={editDay.name} onChange={e => setEditDay(d => ({...d, name:e.target.value}))}
+                  style={{ flex:1, margin:"0 12px", fontSize:16, fontWeight:700, color: bodyText, background:"transparent", border:"none", outline:"none", textAlign:"center", fontFamily:"inherit" }}/>
+              : <div style={{ flex:1, textAlign:"center" }}>
+                  <div style={{ fontSize:17, fontWeight:700, color: bodyText, letterSpacing:-0.3 }}>{editDay.name}</div>
+                  {lastPerformed && <div style={{ fontSize:11, color: mutedText, marginTop:2 }}>Last done: {lastPerformed}</div>}
+                </div>
+            }
+
+            <button onClick={() => {
+              if (editMode && onSaveProgram) {
+                const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
+                if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === previewDay.day.name ? editDay : d) });
+              }
+              setEditMode(m => !m);
+            }} style={{
+              padding:"6px 14px", borderRadius:8, fontSize:13, fontWeight:600,
+              background: editMode ? accentBlue : (isDark ? "#252525" : "#F1F5F9"),
+              color: editMode ? "#fff" : accentBlue,
+              border: editMode ? "none" : `1px solid ${isDark ? "#333" : "#CBD5E1"}`,
+              cursor:"pointer", fontFamily:"inherit"
+            }}>
+              {editMode ? "Done" : "Edit"}
+            </button>
+          </div>
+
+          {/* Stats chips */}
+          {!editMode && (
+            <div style={{ display:"flex", gap:6, marginTop:8, flexWrap:"wrap" }}>
+              <div style={{ padding:"5px 12px", borderRadius:20, background: chipBg, border:`1px solid ${chipBorder}`, fontSize:11, color: labelColor, fontWeight:500 }}>
+                {editDay.exercises.length} exercises
+              </div>
+              {editDay.exercises[0]?.reps && (
+                <div style={{ padding:"5px 12px", borderRadius:20, background: chipBg, border:`1px solid ${chipBorder}`, fontSize:11, color: labelColor, fontWeight:500 }}>
+                  {editDay.exercises[0].reps.split("–")[0] || editDay.exercises[0].reps.split("-")[0] || "3"} sets avg
+                </div>
+              )}
+              {lastPerformed && (
+                <div style={{ padding:"5px 12px", borderRadius:20, background: isDark ? "#1a2a1a" : "#F0FDF4", border:`1px solid ${isDark ? "#2a3a2a" : "#BBF7D0"}`, fontSize:11, color: isDark ? "#4ade80" : "#16A34A", fontWeight:500 }}>
+                  ✓ Completed before
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div style={{ height:1, background: divColor, flexShrink:0 }}/>
+
+        {/* Exercise list */}
+        <div style={{ overflowY:"auto", flex:1 }}>
           {!editMode ? (
-            <div style={{ padding:"0 14px" }}>
+            <div style={{ padding:"8px 0 16px" }}>
               {editDay.exercises.map((ex, i) => {
                 const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
                 const pr = store.prs?.[ex.name];
+                const setCount = ex.reps ? (ex.reps.split("–")[0] || ex.reps.split("-")[0] || "3") : "3";
                 return (
-                  <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom: i < editDay.exercises.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                    <div style={{ width:52, height:52, borderRadius:12, background:C.divider, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                      <MuscleIcon muscle={exInfo?.muscle||""} size={36} C={C}/>
+                  <div key={i} style={{
+                    display:"flex", alignItems:"center", gap:14,
+                    padding:"13px 20px",
+                    borderBottom: i < editDay.exercises.length-1 ? `1px solid ${divColor}` : "none",
+                  }}>
+                    <div style={{
+                      width:44, height:44, borderRadius:12, flexShrink:0,
+                      background: isDark ? "#252525" : "#F8FAFC",
+                      border:`1px solid ${chipBorder}`,
+                      display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden"
+                    }}>
+                      <MuscleIcon muscle={exInfo?.muscle||""} size={28} C={C}/>
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:C.text }}>
-                        {ex.reps ? `${ex.reps.split("–")[0]||ex.reps.split("-")[0]||"3"} × ` : ""}{ex.name}
+                      <div style={{ fontSize:14, fontWeight:600, color: bodyText, letterSpacing:-0.1 }}>
+                        {ex.name}
                       </div>
-                      <div style={{ fontSize:12, color:C.sub }}>{exInfo?.muscle||""}{pr && <span style={{ color:C.gold, marginLeft:6 }}>· PR {cvt(pr,"lbs",unit)}{unit}</span>}</div>
-                      {ex.note && <div style={{ fontSize:11, color:C.accent, marginTop:2 }}>💡 {ex.note}</div>}
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3, flexWrap:"wrap" }}>
+                        <span style={{ fontSize:11, color: accentBlue, fontWeight:600, background: isDark ? "#1e2a3a" : "#EFF6FF", padding:"2px 8px", borderRadius:6 }}>
+                          {setCount} sets
+                          {ex.reps && ex.reps.includes("–") ? ` · ${ex.reps.split("–").slice(1).join("–") || ""}` :
+                           ex.reps && ex.reps.includes("-") ? ` · ${ex.reps.split("-").slice(1).join("-") || ""}` :
+                           ex.reps ? ` · ${ex.reps}` : ""}
+                        </span>
+                        {exInfo?.muscle && <span style={{ fontSize:11, color: mutedText }}>{exInfo.muscle}</span>}
+                        {pr && <span style={{ fontSize:11, color:"#D97706", fontWeight:600 }}>🏆 {cvt(pr,"lbs",unit)}{unit} PR</span>}
+                      </div>
+                      {ex.note && <div style={{ fontSize:11, color: accentBlue, marginTop:4, fontStyle:"italic" }}>💡 {ex.note}</div>}
                     </div>
                     <button onClick={() => setViewingExercise(ex.name)} style={{
-                      width:32, height:32, borderRadius:8, background:C.accentSoft,
-                      border:"none", cursor:"pointer", fontSize:15, color:C.accent, fontWeight:700, flexShrink:0
+                      width:30, height:30, borderRadius:8,
+                      background: isDark ? "#252525" : "#F1F5F9",
+                      border:"none", cursor:"pointer", fontSize:13,
+                      color: accentBlue, fontWeight:700, flexShrink:0,
+                      display:"flex", alignItems:"center", justifyContent:"center"
                     }}>?</button>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div style={{ padding:"0 14px" }}>
-              <div style={{ fontSize:11, color:C.sub, marginBottom:12, marginTop:4 }}>Hold ⠿ and drag to reorder · tap × to remove</div>
+            <div style={{ padding:"8px 16px 16px" }}>
+              <div style={{ fontSize:11, color: mutedText, marginBottom:14, marginTop:4, letterSpacing:0.2 }}>
+                Hold ⠿ to reorder · tap × to remove
+              </div>
               {editDay.exercises.map((ex, i) => (
                 <div key={i}
                   data-drag-item="true"
@@ -3428,51 +3508,67 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     setDragIdx(null);
                   }}
                   style={{
-                    display:"flex", alignItems:"center", gap:8, padding:"10px 0",
-                    borderBottom:`1px solid ${C.divider}`,
+                    display:"flex", alignItems:"center", gap:10, padding:"10px 0",
+                    borderBottom:`1px solid ${divColor}`,
                     opacity: dragIdx?._origIdx === i ? 0.4 : 1,
-                    background: dragIdx?._over === i && dragIdx?._origIdx !== i ? `${C.accent}10` : "transparent",
+                    background: dragIdx?._over === i && dragIdx?._origIdx !== i ? `${accentBlue}0d` : "transparent",
+                    borderRadius: dragIdx?._over === i && dragIdx?._origIdx !== i ? 10 : 0,
+                    transition: "background 0.15s",
                   }}>
                   <span
                     onTouchStart={e => {
                       setDragIdx({ _origIdx: i, _over: i, _startY: e.touches[0].clientY });
                       try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
                     }}
-                    style={{ color:C.muted, fontSize:18, flexShrink:0, touchAction:"none", userSelect:"none" }}>⠿</span>
-                  <div style={{ flex:1 }}>
+                    style={{ color: mutedText, fontSize:18, flexShrink:0, touchAction:"none", userSelect:"none", padding:"0 4px" }}>⠿</span>
+                  <div style={{ flex:1, background: inputBg, borderRadius:12, padding:"10px 12px", border:`1px solid ${chipBorder}` }}>
                     <input value={ex.name}
                       onChange={e => setEditDay(d => ({...d, exercises:d.exercises.map((x,j)=>j!==i?x:{...x,name:e.target.value})}))}
-                      style={{ width:"100%", background:C.divider, border:"none", borderRadius:6, padding:"7px 10px", fontSize:13, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box", marginBottom:4 }}
+                      style={{ width:"100%", background:"transparent", border:"none", fontSize:13, fontWeight:600, color: bodyText, outline:"none", fontFamily:"inherit", marginBottom:6 }}
                     />
                     <div style={{ display:"flex", gap:6 }}>
-                      <input value={ex.reps||""} placeholder="Reps/Sets"
+                      <input value={ex.reps||""} placeholder="e.g. 3×8–12"
                         onChange={e => setEditDay(d => ({...d, exercises:d.exercises.map((x,j)=>j!==i?x:{...x,reps:e.target.value})}))}
-                        style={{ width:90, background:C.divider, border:"none", borderRadius:6, padding:"5px 8px", fontSize:12, color:C.text, outline:"none", fontFamily:F }}
+                        style={{ width:100, background: isDark ? "#333" : "#fff", border:`1px solid ${chipBorder}`, borderRadius:7, padding:"4px 8px", fontSize:11, color: bodyText, outline:"none", fontFamily:"inherit" }}
                       />
-                      <input value={ex.note||""} placeholder="Note..."
+                      <input value={ex.note||""} placeholder="Note (optional)"
                         onChange={e => setEditDay(d => ({...d, exercises:d.exercises.map((x,j)=>j!==i?x:{...x,note:e.target.value})}))}
-                        style={{ flex:1, background:"none", border:"none", borderBottom:`1px solid ${C.divider}`, padding:"5px 0", fontSize:12, color:C.sub, outline:"none", fontFamily:F }}
+                        style={{ flex:1, background:"transparent", border:"none", borderBottom:`1px solid ${chipBorder}`, padding:"4px 0", fontSize:11, color: labelColor, outline:"none", fontFamily:"inherit" }}
                       />
                     </div>
                   </div>
                   <button onClick={() => setEditDay(d => ({...d, exercises:d.exercises.filter((_,j)=>j!==i)}))}
-                    style={{ background:"none", border:"none", fontSize:20, color:"#ef4444", cursor:"pointer", flexShrink:0 }}>×</button>
+                    style={{ background:"none", border:"none", fontSize:18, color:"#EF4444", cursor:"pointer", flexShrink:0, padding:"4px 6px" }}>×</button>
                 </div>
               ))}
-              <button onClick={() => setEditDay(d => ({...d, exercises:[...d.exercises,{name:"",reps:"8-12",note:""}]}))}
-                style={{ width:"100%", marginTop:12, padding:"11px", background:"none", border:`1px dashed ${C.border}`, borderRadius:8, color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
+              <button onClick={() => setEditDay(d => ({...d, exercises:[...d.exercises,{name:"",reps:"3×8-12",note:""}]}))}
+                style={{
+                  width:"100%", marginTop:14, padding:"13px",
+                  background: isDark ? "#1a1f2e" : "#EFF6FF",
+                  border:`1.5px dashed ${isDark ? "#2563eb44" : "#BFDBFE"}`,
+                  borderRadius:12, color: accentBlue, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit"
+                }}>
                 + Add Exercise
               </button>
             </div>
           )}
         </div>
 
-        <div style={{ padding:"12px 14px 16px", flexShrink:0 }}>
+        {/* CTA */}
+        <div style={{ padding:"12px 20px 20px", flexShrink:0, background: cardBg }}>
+          <div style={{ height:1, background: divColor, marginBottom:16 }}/>
           <button onClick={saveAndStart} style={{
-            width:"100%", background:C.accent, color:"#fff", border:"none",
-            borderRadius:14, padding:"16px", fontSize:15, fontWeight:700,
-            cursor:"pointer", fontFamily:F, boxShadow:`0 4px 16px ${C.accent}55`
-          }}>Start Workout</button>
+            width:"100%",
+            background: accentBlue,
+            color:"#fff", border:"none",
+            borderRadius:14, padding:"16px",
+            fontSize:15, fontWeight:700,
+            cursor:"pointer", fontFamily:"inherit",
+            letterSpacing:-0.2,
+            boxShadow:"0 4px 14px rgba(37,99,235,0.35)"
+          }}>
+            {editMode ? "Save & Start Workout" : "Start Workout"}
+          </button>
         </div>
       </div>
     </div>
@@ -5013,7 +5109,26 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
   const isFollowing = me?.following?.includes(userId);
-  const posts = store.posts.filter(p => p.userId === userId && p.type !== "story").sort((a, b) => b.createdAt - a.createdAt);
+  const sharedWorkoutKeys = new Set((store.posts||[]).filter(p=>p.type==="workout"&&p.userId===userId).map(p=>p.workout?.name+p.createdAt));
+  const profileHistoryItems = isMe ? Object.entries(store.history||{}).flatMap(([date, sessions]) =>
+    Object.values(sessions).map(sess => {
+      const key = sess.dayName + new Date(date).getTime();
+      if (sharedWorkoutKeys.has(key)) return null;
+      const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+      return {
+        id: "hist_"+date+"_"+sess.dayName,
+        userId,
+        type: "workout",
+        caption: "",
+        unit: sess.unit || displayUnit || "lbs",
+        workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) },
+        kudos: [], comments: [],
+        createdAt: new Date(date).getTime(),
+        _isHistory: true,
+      };
+    }).filter(Boolean)
+  ) : [];
+  const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
   const streak = isMe ? calcStreak(store.workoutDates) : 0;
   const followers = store.users.find(u => u.id === userId)?.followers?.length || 0;
