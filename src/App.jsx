@@ -2916,7 +2916,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {/* Custom Program Builder */}
       {subTab === "workout" && showBuilder && (
-        <div style={{ position:"absolute", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:100, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
@@ -3352,16 +3352,15 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   }
 
   const accentBlue = "#2563EB";
-  const accentBlueSoft = "#EFF6FF";
-  const isDark = C.bg === "#000" || C.bg === "#0f0f0f" || C.bg?.startsWith("#0") || C.bg?.startsWith("#1");
-  const cardBg = isDark ? "#1a1a1a" : "#ffffff";
-  const chipBg = isDark ? "#2a2a2a" : "#F8FAFC";
-  const chipBorder = isDark ? "#333" : "#E2E8F0";
+  const isDark = C.bg === "#000000" || C.bg === "#000";
+  const cardBg = isDark ? "#111111" : "#ffffff";
+  const chipBg = isDark ? "#1e1e1e" : "#F8FAFC";
+  const chipBorder = isDark ? "#2a2a2a" : "#E2E8F0";
   const labelColor = isDark ? "#94a3b8" : "#64748B";
-  const bodyText = isDark ? "#e2e8f0" : "#1E293B";
-  const mutedText = isDark ? "#64748b" : "#94A3B8";
-  const divColor = isDark ? "#2a2a2a" : "#F1F5F9";
-  const inputBg = isDark ? "#252525" : "#F8FAFC";
+  const bodyText = isDark ? "#f0f0f0" : "#0F172A";
+  const mutedText = isDark ? "#555" : "#94A3B8";
+  const divColor = isDark ? "#1c1c1c" : "#F1F5F9";
+  const inputBg = isDark ? "#1a1a1a" : "#F8FAFC";
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
@@ -6090,6 +6089,26 @@ export default function App() {
 
   async function handleDelete(postId) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    // Handle synthetic history posts (id starts with "hist_")
+    if (postId.startsWith("hist_")) {
+      // Parse: "hist_2026-05-03_Push Day A"
+      const withoutPrefix = postId.slice(5); // remove "hist_"
+      const dateEnd = withoutPrefix.indexOf("_");
+      const date = withoutPrefix.slice(0, dateEnd);
+      const dayName = withoutPrefix.slice(dateEnd + 1);
+      setStore(prev => {
+        const dayHistory = { ...(prev.history[date] || {}) };
+        // Remove any session with that dayName
+        Object.keys(dayHistory).forEach(sid => {
+          if (dayHistory[sid]?.dayName === dayName) delete dayHistory[sid];
+        });
+        const newHistory = { ...prev.history };
+        if (Object.keys(dayHistory).length === 0) delete newHistory[date];
+        else newHistory[date] = dayHistory;
+        return { ...prev, history: newHistory };
+      });
+      return;
+    }
     if (!tok) return;
     setStore(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== postId) }));
     try {
@@ -6819,7 +6838,7 @@ export default function App() {
       </div>
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
-        recentWorkouts={Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([,sessions])=>Object.values(sessions)).slice(0,5)}
+        recentWorkouts={Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([,sessions])=>Object.values(sessions)).filter(sess=>(sess.exercises||[]).some(ex=>(ex.sets||[]).some(s=>s.done))).slice(0,10)}
       />}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
       {storyIndex !== null && (() => {
