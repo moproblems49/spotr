@@ -746,6 +746,7 @@ function loadStore() {
     theme: "light",
     challenges: [],
     groups: [],
+    historyInteractions: {},
     workoutDates: {},
     seenOnboarding: true,
   };
@@ -2147,7 +2148,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 const SESSION_KEY = "seshd_active_session";
 const WSTART_KEY = "seshd_wstart";
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, C }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, currentUserId, C }) {
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -2273,26 +2274,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   function toggleDone(ei, si) {
     setSession(p => {
       const nowDone = !p.exercises[ei]?.sets[si]?.done;
-      
-      // Haptic
       try { if (navigator.vibrate) navigator.vibrate(nowDone ? 30 : 10); } catch {}
-      
-      // Auto-start rest on completion
+
       if (nowDone) {
         const currentExercise = p.exercises[ei];
         const currentSet = currentExercise?.sets[si];
         const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || 90) || 90;
-        // Count remaining sets after this one
-        const remainingAfterThis = currentExercise?.sets.filter((s, j) => j > si && !s.done).length || 0;
-        // Only start timer if there are more sets to do after this
-        if (remainingAfterThis > 0) {
-          setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
-        }
+        setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
       } else {
-        // When unmarking a set, stop the rest timer if it's active
         setRest(null);
       }
-      
+
       return {
         ...p,
         exercises: p.exercises.map((ex, i) => i !== ei ? ex : {
@@ -2301,7 +2293,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         })
       };
     });
-    // Request notification permission on first rest timer (user gesture required)
     try {
       if ("Notification" in window && Notification.permission === "default") {
         Notification.requestPermission().catch(() => {});
@@ -2433,7 +2424,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       setShowWorkoutSummary(true);
 
       // Fire-and-forget DB save (don't block UI)
-      onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name), duration: elapsed, unit, note: "", prs: newPRs });
+      onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: elapsed, unit, note: "", prs: newPRs });
 
       toast(share ? "Workout posted! 🔥" : "Workout saved! 💪", "success");
       if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
@@ -2548,7 +2539,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     if (!p) return null;
                     const newSecs = Math.max(0, p.secs - 10);
                     if (newSecs <= 0) return null;
-                    return p.running ? { ...p, secs:newSecs, startedAt:Date.now() - ((p.total - newSecs) * 1000) } : { ...p, secs:newSecs };
+                    const newTotal = Math.max(newSecs, p.total - 10);
+                    return p.running ? { ...p, secs:newSecs, total:newTotal, startedAt:Date.now() - ((newTotal - newSecs) * 1000) } : { ...p, secs:newSecs, total:newTotal };
                   })}
                   style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:C.surface, border:`2px solid ${C.divider}`, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                   −10s
@@ -2556,7 +2548,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <button onClick={() => setRest(p => {
                     if (!p) return null;
                     const newSecs = p.secs + 10;
-                    const newTotal = Math.max(p.total, newSecs);
+                    const newTotal = p.total + 10;
                     return p.running ? { ...p, secs:newSecs, total:newTotal, startedAt: Date.now() - ((newTotal - newSecs) * 1000) } : { ...p, secs:newSecs, total:newTotal };
                   })}
                   style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:C.surface, border:`2px solid ${C.divider}`, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
@@ -2746,7 +2738,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
                 {/* Share to Groups */}
                 {(() => {
-                  const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(store.currentUserId));
+                  const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
                   if (!myGroups.length) return null;
                   return (
                     <div style={{ marginBottom:14 }}>
@@ -5578,7 +5570,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
       onPost({ type:"photo", caption, imageData:img, location:loc });
     } else if (postKind === "workout") {
       // A set is considered "done" if s.done===true OR if it has reps (older history records may lack done flag)
-      const isDoneSet = s => s.done === true || (s.done !== false && ((s.reps && parseFloat(s.reps) > 0) || (s.r && parseFloat(s.r) > 0)));
+      const isDoneSet = s => s.done === true;
       const doneExercises = (selectedWorkout.exercises||[])
         .filter(e => e.name && (e.sets||[]).some(isDoneSet))
         .map(ex => ({
@@ -6137,8 +6129,24 @@ export default function App() {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
 
-    // _isHistory posts are local-only — no DB row to like
-    if (postId.startsWith("hist_")) return;
+    // _isHistory posts — store kudos locally in historyInteractions
+    if (postId.startsWith("hist_")) {
+      setStore(prev => {
+        const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+        const hasK = (hi.kudos||[]).includes(currentUserId);
+        return {
+          ...prev,
+          historyInteractions: {
+            ...(prev.historyInteractions||{}),
+            [postId]: {
+              ...hi,
+              kudos: hasK ? (hi.kudos||[]).filter(id => id !== currentUserId) : [...(hi.kudos||[]), currentUserId]
+            }
+          }
+        };
+      });
+      return;
+    }
 
     const post = store.posts.find(p => p.id === postId);
     if (!post) return;
@@ -6156,7 +6164,7 @@ export default function App() {
       })
     }));
 
-    // For own posts, skip the DB call (RLS may block self-kudos) — keep optimistic state
+    // Own posts: skip DB (RLS blocks self-kudos) — keep optimistic
     if (isOwnPost) return;
 
     try {
@@ -6166,7 +6174,6 @@ export default function App() {
         await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, tok);
       }
     } catch (e) {
-      // Revert on failure for other people's posts
       setStore(prev => ({
         ...prev,
         posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -6182,19 +6189,28 @@ export default function App() {
   async function handleComment(postId, text) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok || !text.trim()) return;
-    // _isHistory posts have no DB row
-    if (postId.startsWith("hist_")) return;
+
+    // _isHistory posts — store comments locally in historyInteractions
+    if (postId.startsWith("hist_")) {
+      const newComment = { id: uid(), userId: currentUserId, text: text.trim(), createdAt: Date.now() };
+      setStore(prev => {
+        const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+        return {
+          ...prev,
+          historyInteractions: {
+            ...(prev.historyInteractions||{}),
+            [postId]: { ...hi, comments: [...(hi.comments||[]), newComment] }
+          }
+        };
+      });
+      return;
+    }
 
     const post = store.posts.find(p => p.id === postId);
     const isOwnPost = post?.userId === currentUserId;
 
     // Optimistic local comment immediately
-    const localComment = {
-      id: "local_" + uid(),
-      userId: currentUserId,
-      text: text.trim(),
-      createdAt: Date.now()
-    };
+    const localComment = { id: "local_" + uid(), userId: currentUserId, text: text.trim(), createdAt: Date.now() };
     setStore(prev => ({
       ...prev,
       posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -6203,7 +6219,7 @@ export default function App() {
       })
     }));
 
-    // For own posts skip DB (RLS may block self-comment) — keep optimistic
+    // Own posts: skip DB (RLS may block)
     if (isOwnPost) return;
 
     try {
@@ -6213,7 +6229,6 @@ export default function App() {
       }, tok);
       const newComment = Array.isArray(result) ? result[0] : result;
       if (newComment) {
-        // Replace local comment with real DB comment
         setStore(prev => ({
           ...prev,
           posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -6226,8 +6241,6 @@ export default function App() {
         }));
       }
     } catch (e) {
-      console.error("comment error:", e);
-      // Remove optimistic comment on failure (for other people's posts only)
       setStore(prev => ({
         ...prev,
         posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -6477,14 +6490,17 @@ export default function App() {
       const key = sess.dayName + new Date(date).getTime();
       if (sharedWorkoutIds.has(key)) return null;
       const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+      const histId = "hist_"+date+"_"+sess.dayName;
+      const hi = store.historyInteractions?.[histId] || {};
       return {
-        id: "hist_"+date+"_"+sess.dayName,
+        id: histId,
         userId: currentUserId,
         type: "workout",
         caption: "",
         unit: sess.unit || unit,
         workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) },
-        kudos: [], comments: [],
+        kudos: hi.kudos || [],
+        comments: hi.comments || [],
         createdAt: new Date(date).getTime(),
         _isHistory: true,
       };
@@ -6848,7 +6864,7 @@ export default function App() {
         )}
 
         {tab === "tracker" && (
-          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C}
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C} currentUserId={currentUserId}
             onDeleteHistory={async (date, sid) => {
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
