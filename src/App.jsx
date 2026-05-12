@@ -2523,7 +2523,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     {fmtTime(rest.secs)}
                   </div>
                   <div style={{ fontSize:12, color:"#cbd5e1", marginTop:10 }}>
-                    {Math.round((rest.secs/rest.total)*100)}% complete
+                    of {fmtTime(rest.total)}
                   </div>
                 </div>
               </div>
@@ -2556,7 +2556,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <button onClick={() => setRest(p => {
                     if (!p) return null;
                     const newSecs = p.secs + 10;
-                    return p.running ? { ...p, secs:newSecs, startedAt: Date.now() - ((p.total - newSecs) * 1000) } : { ...p, secs:newSecs };
+                    const newTotal = Math.max(p.total, newSecs);
+                    return p.running ? { ...p, secs:newSecs, total:newTotal, startedAt: Date.now() - ((newTotal - newSecs) * 1000) } : { ...p, secs:newSecs, total:newTotal };
                   })}
                   style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:C.surface, border:`2px solid ${C.divider}`, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                   +10s
@@ -2742,11 +2743,43 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     </div>
                   )}
                 </div>
+
+                {/* Share to Groups */}
+                {(() => {
+                  const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(store.currentUserId));
+                  if (!myGroups.length) return null;
+                  return (
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:8 }}>SHARE TO GROUPS</div>
+                      {myGroups.map(g => {
+                        const checked = (workoutSummary.shareToGroups||[]).includes(g.id);
+                        return (
+                          <div key={g.id} onClick={() => setWorkoutSummary(prev => ({
+                            ...prev,
+                            shareToGroups: checked
+                              ? (prev.shareToGroups||[]).filter(id=>id!==g.id)
+                              : [...(prev.shareToGroups||[]), g.id]
+                          }))} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:10, background:C.surface, border:`1px solid ${checked?C.accent:C.border}`, marginBottom:6, cursor:"pointer" }}>
+                            <span style={{ fontSize:20 }}>{g.icon||"👥"}</span>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{g.name}</div>
+                              <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} members</div>
+                            </div>
+                            <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${checked?C.accent:C.border}`, background:checked?C.accent:"none", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                              {checked && <span style={{ color:"#fff", fontSize:12, fontWeight:700 }}>✓</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{ padding:"12px 18px 32px", display:"flex", flexDirection:"column", gap:8 }}>
                 <button onClick={() => {
                   if (workoutSummary.shareData) {
-                    onShareWorkout(workoutSummary.shareData);
+                    const postData = { ...workoutSummary.shareData, groupIds: workoutSummary.shareToGroups||[] };
+                    onShareWorkout(postData);
                   }
                   const text = `Just crushed ${workoutSummary.dayName} on Seshd 🔥\n${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}${workoutSummary.prs?.length ? `\n🏆 ${workoutSummary.prs.map(p=>p.name).join(", ")}` : ""}`;
                   if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
@@ -3014,12 +3047,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {/* Custom Program Builder */}
       {subTab === "workout" && showBuilder && (
-        <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:100, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
           onSave={prog => {
-            setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
+            if (onSaveProgram) {
+              onSaveProgram(prog);
+            } else {
+              setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
+            }
             setShowBuilder(false);
             setViewingProgram(prog.id);
           }}
@@ -3218,10 +3255,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           }}>Delete</button>
                         </div>
                       </div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
-                        {sess.exercises?.filter(e=>e.name).map((ex,j) => (
-                          <span key={j} style={{ fontSize:11, background:C.divider, color:C.sub, borderRadius:6, padding:"3px 8px" }}>{ex.name}</span>
-                        ))}
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {sess.exercises?.filter(e=>e.name).map((ex,j) => {
+                          const doneSets = (ex.sets||[]).filter(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0)));
+                          if (!doneSets.length) return null;
+                          const isPR = (store.prs||{})[ex.name] && doneSets.some(s=>{
+                            const w = parseFloat(s.weight||s.w)||0;
+                            const wLbs = (sess.unit||unit)==="kg" ? w*2.205 : w;
+                            return wLbs > 0 && wLbs >= ((store.prs[ex.name]||0)*0.98);
+                          });
+                          const setsLabel = doneSets.length + " × " + (doneSets[0]?.reps||doneSets[0]?.r||"—");
+                          const topWeight = Math.max(0,...doneSets.map(s=>parseFloat(s.weight||s.w)||0));
+                          return (
+                            <div key={j} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                                  <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{ex.name}</span>
+                                  {isPR && <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", borderRadius:6, padding:"1px 5px", fontWeight:700 }}>PR</span>}
+                                </div>
+                                <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
+                                  {setsLabel} reps{topWeight > 0 ? ` · ${topWeight} ${sess.unit||"lbs"}` : ""}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }).filter(Boolean)}
                       </div>
                     </div>
                   );
@@ -6950,7 +7008,10 @@ export default function App() {
       </div>
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
-        recentWorkouts={Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.values(sessions).map(s=>({...s,_date:date}))).filter(sess=>{const totalDone=(sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);return totalDone>0;}).slice(0,10)}
+        recentWorkouts={Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.values(sessions).map(s=>({...s,_date:date}))).filter(sess=>{
+          const hasDone=(sess.exercises||[]).some(ex=>(ex.sets||[]).some(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0))));
+          return hasDone;
+        }).slice(0,10)}
       />}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
       {storyIndex !== null && (() => {
