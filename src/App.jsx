@@ -731,7 +731,10 @@ const SK = "seshd_v1";
 function loadStore() {
   try {
     const r = localStorage.getItem(SK);
-    if (r) return JSON.parse(r);
+    if (r) {
+      const d = JSON.parse(r);
+      return { ...d, posts: [] }; // never load cached posts — always fetch fresh from DB
+    }
   } catch {}
   return {
     users: [],
@@ -1748,9 +1751,9 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   }
 
   return (
-    <div style={{ borderBottom:`1px solid ${C.divider}`, paddingBottom:16, marginBottom:16 }}>
+    <div style={{ marginBottom:12, borderRadius:0, borderBottom:`1px solid ${C.divider}`, paddingBottom:0 }}>
       {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"0 14px 10px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px 10px" }}>
         <Avatar user={user} size={32} C={C} onClick={() => onUserClick(user?.id)}/>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
@@ -1829,108 +1832,104 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         </div>
       )}
 
-      {post.type === "workout" && post.workout && (
-        <div style={{ margin:"0 14px", background:C.divider, borderRadius:12, padding:"14px 14px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{post.workout.name}</div>
-            <div style={{ display:"flex", gap:14 }}>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.accent, fontFamily:MONO }}>{Math.floor(post.workout.duration/60)}m</div>
-                <div style={{ fontSize:9, color:C.sub, letterSpacing:1 }}>TIME</div>
+      {post.type === "workout" && post.workout && (() => {
+        const isDark = C.bg === "#000000" || C.bg === "#000";
+        return (
+          <div style={{ margin:"0 14px", borderRadius:16, overflow:"hidden", border:`1px solid ${C.border}` }}>
+            {/* Header band */}
+            <div style={{ background: isDark ? "#1a1a1a" : "#F8FAFC", padding:"14px 16px 12px", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div>
+                  <div style={{ fontSize:15, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>{post.workout.name}</div>
+                  <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Strength training</div>
+                </div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <div style={{ textAlign:"center" }}>
+                    <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>{Math.floor(post.workout.duration/60)}m</div>
+                    <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>TIME</div>
+                  </div>
+                  <div style={{ textAlign:"center" }}>
+                    <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
+                    <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
+                  </div>
+                </div>
               </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.accent, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
-                <div style={{ fontSize:9, color:C.sub, letterSpacing:1 }}>VOLUME</div>
-              </div>
+            </div>
+            {/* Exercise rows */}
+            <div style={{ background: isDark ? "#111" : "#fff" }}>
+              {(expanded ? post.workout.exercises : post.workout.exercises.slice(0,3)).map((ex,i) => (
+                <div key={i} style={{ padding:"10px 16px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{ex.name}</span>
+                    {ex.isPR && <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", padding:"2px 6px", borderRadius:8, fontWeight:700, flexShrink:0 }}>🏆 PR</span>}
+                  </div>
+                  <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                    {ex.sets.map((s,j) => (
+                      <span key={j} style={{ fontSize:11, background: isDark ? "#1e1e1e" : "#F1F5F9", border:`1px solid ${C.border}`, borderRadius:6, padding:"3px 8px", color:C.textDim, fontFamily:MONO, fontWeight:600 }}>
+                        {s.w > 0 ? `${cvt(s.w, postUnit, displayUnit)}×${s.r}` : `${s.r} reps`}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {post.workout.exercises.length > 3 && (
+                <button onClick={() => setExpanded(!expanded)} style={{ width:"100%", padding:"10px 16px", fontSize:12, color:C.accent, background:"none", border:"none", cursor:"pointer", fontWeight:700, fontFamily:F, textAlign:"left" }}>
+                  {expanded ? "↑ Show less" : `+ ${post.workout.exercises.length-3} more exercises`}
+                </button>
+              )}
             </div>
           </div>
-          {(expanded ? post.workout.exercises : post.workout.exercises.slice(0,3)).map((ex,i) => (
-            <div key={i} style={{ paddingTop: i>0 ? 10 : 0, borderTop: i>0 ? `1px solid ${C.border}` : "none", marginTop: i>0 ? 10 : 0 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:5 }}>
-                <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{ex.name}</span>
-                {ex.isPR && <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", padding:"1px 6px", borderRadius:8, fontWeight:700, flexShrink:0 }}>🏆 PR</span>}
-              </div>
-              <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                {ex.sets.map((s,j) => (
-                  <span key={j} style={{ fontSize:11, background:C.bg, borderRadius:5, padding:"2px 8px", color:C.textDim, fontFamily:MONO }}>
-                    {cvt(s.w, postUnit, displayUnit)}×{s.r}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-          {post.workout.exercises.length > 3 && (
-            <button onClick={() => setExpanded(!expanded)} style={{ marginTop:10, fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", padding:0, fontWeight:600, fontFamily:F }}>
-              {expanded ? "Show less" : `+${post.workout.exercises.length-3} more`}
-            </button>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* Actions */}
-      <div style={{ display:"flex", alignItems:"center", gap:4, padding:"10px 10px 2px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:4, padding:"8px 12px 2px" }}>
         <button
           onClick={handleKudos}
           aria-label="Give kudos"
           style={{
             background:"none", border:"none", cursor:"pointer",
-            padding:8, display:"flex", alignItems:"center", justifyContent:"center",
+            padding:"8px 10px", display:"flex", alignItems:"center", gap:5,
             transform: pop ? "scale(1.2)" : "scale(1)",
             transition:"transform 0.2s",
           }}
         >
-          {/* Kudos = fire/flame for strength app (more fitting than clap) */}
-          <svg width="24" height="24" viewBox="0 0 24 24" fill={hasKudos ? C.orange : "none"} stroke={hasKudos ? C.orange : C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill={hasKudos ? C.orange : "none"} stroke={hasKudos ? C.orange : C.sub} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2 C12 2 8 6 8 11 C8 14 10 16 10 16 C10 13 11 12 12 12 C13 12 14 13 14 16 C14 16 16 14 16 11 C16 6 12 2 12 2 Z"/>
             <path d="M7 13 C5 15 4 17 4 19 C4 21.5 7 23 12 23 C17 23 20 21.5 20 19 C20 17 19 15 17 13 C17 16 15 18 12 18 C9 18 7 16 7 13 Z"/>
           </svg>
+          {(post.kudos||[]).length > 0 && <span style={{ fontSize:12, color: hasKudos ? C.orange : C.sub, fontWeight:600 }}>{(post.kudos||[]).length}</span>}
         </button>
         <button
           onClick={() => setShowCmts(!showCmts)}
           aria-label="Comments"
           style={{
             background:"none", border:"none", cursor:"pointer",
-            padding:8, display:"flex", alignItems:"center", justifyContent:"center",
+            padding:"8px 10px", display:"flex", alignItems:"center", gap:5,
           }}
         >
-          <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15 Q21 17 19 17 L8 17 L4 21 V17 Q3 17 3 15 V7 Q3 5 5 5 H19 Q21 5 21 7 Z"/>
           </svg>
+          {post.comments.length > 0 && <span style={{ fontSize:12, color:C.sub, fontWeight:600 }}>{post.comments.length}</span>}
         </button>
         <button
           onClick={() => {
-            const shareText = post.caption
-              ? `${user?.username} on Seshd: ${post.caption}`
-              : `Check out ${user?.username}'s workout on Seshd`;
-            const shareUrl = typeof window !== "undefined" ? window.location.href : "";
-            if (navigator.share) {
-              navigator.share({ title: "Seshd", text: shareText, url: shareUrl }).catch(() => {});
-            } else if (navigator.clipboard) {
-              navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => {
-                toast("Link copied! 🔗", "success");
-              }).catch(() => {});
-            }
+            const shareText = post.caption ? `${user?.username} on Seshd: ${post.caption}` : `Check out ${user?.username}'s workout on Seshd`;
+            if (navigator.share) navigator.share({ title:"Seshd", text: shareText, url: window.location.href }).catch(()=>{});
+            else if (navigator.clipboard) { navigator.clipboard.writeText(shareText).then(() => toast("Copied! 🔗","success")).catch(()=>{}); }
           }}
           aria-label="Share"
-          style={{
-            background:"none", border:"none", cursor:"pointer",
-            padding:8, display:"flex", alignItems:"center", justifyContent:"center",
-          }}
+          style={{ background:"none", border:"none", cursor:"pointer", padding:"8px 10px", display:"flex", alignItems:"center", justifyContent:"center" }}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22,2 15,22 11,13 2,9"/>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/>
           </svg>
         </button>
       </div>
 
-      {/* Kudos count + caption + comments */}
-      <div style={{ padding:"2px 14px 0" }}>
-        {(post.kudos||[]).length > 0 && (
-          <div style={{ fontSize:13, fontWeight:600, color:C.text, marginBottom:5 }}>
-            {(post.kudos||[]).length} {(post.kudos||[]).length === 1 ? "kudo" : "kudos"}
-          </div>
-        )}
+      {/* Caption + comments */}
+      <div style={{ padding:"2px 16px 14px" }}>
         {post.caption && (
           <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
             <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
@@ -1939,7 +1938,6 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         )}
         {post.comments.length > 0 && !showCmts && (
           <div>
-            {/* Show first comment inline */}
             {(() => {
               const c = post.comments[0];
               const cu = store.users.find(u => u.id === c.userId);
@@ -1959,32 +1957,34 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
       </div>
 
       {showCmts && (
-        <div style={{ padding:"8px 14px 0" }}>
+        <div style={{ padding:"8px 16px 14px" }}>
           {post.comments.map(c => {
             const cu = store.users.find(u => u.id === c.userId);
             return (
-              <div key={c.id} style={{ display:"flex", gap:8, marginBottom:7 }}>
+              <div key={c.id} style={{ display:"flex", gap:8, marginBottom:8 }}>
                 <Avatar user={cu} size={26} C={C}/>
-                <div style={{ flex:1 }}>
+                <div style={{ flex:1, background:C.divider, borderRadius:12, padding:"8px 12px" }}>
                   <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{cu?.username} </span>
                   <span style={{ fontSize:13, color:C.text }}>{c.text}</span>
-                  <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{timeAgo(c.createdAt)}</div>
+                  <div style={{ fontSize:10, color:C.sub, marginTop:3 }}>{timeAgo(c.createdAt)}</div>
                 </div>
               </div>
             );
           })}
           <div style={{ display:"flex", gap:8, marginTop:8, alignItems:"center" }}>
             <Avatar user={store.users.find(u => u.id === currentUserId)} size={26} C={C}/>
-            <input
-              value={cmtText}
-              onChange={e => setCmtText(e.target.value)}
-              placeholder="Add a comment..."
-              onKeyDown={e => { if (e.key === "Enter" && cmtText.trim()) { onComment(post.id, cmtText); setCmtText(""); } }}
-              style={{ flex:1, background:"transparent", border:"none", padding:"6px 0", fontSize:13, color:C.text, outline:"none", fontFamily:F }}
-            />
-            {cmtText.trim() && (
-              <button onClick={() => { onComment(post.id, cmtText); setCmtText(""); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Post</button>
-            )}
+            <div style={{ flex:1, background:C.divider, borderRadius:20, padding:"8px 14px", display:"flex", alignItems:"center", gap:8 }}>
+              <input
+                value={cmtText}
+                onChange={e => setCmtText(e.target.value)}
+                placeholder="Add a comment..."
+                onKeyDown={e => { if (e.key === "Enter" && cmtText.trim()) { onComment(post.id, cmtText); setCmtText(""); } }}
+                style={{ flex:1, background:"transparent", border:"none", fontSize:13, color:C.text, outline:"none", fontFamily:F }}
+              />
+              {cmtText.trim() && (
+                <button onClick={() => { onComment(post.id, cmtText); setCmtText(""); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>Post</button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2769,18 +2769,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               </div>
               <div style={{ padding:"12px 18px 32px", display:"flex", flexDirection:"column", gap:8 }}>
                 <button onClick={() => {
-                  if (workoutSummary.shareData) {
-                    const postData = { ...workoutSummary.shareData, groupIds: workoutSummary.shareToGroups||[] };
-                    onShareWorkout(postData);
-                  }
-                  const text = `Just crushed ${workoutSummary.dayName} on Seshd 🔥\n${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}${workoutSummary.prs?.length ? `\n🏆 ${workoutSummary.prs.map(p=>p.name).join(", ")}` : ""}`;
+                  if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: [] });
+                  const text = `Just crushed ${workoutSummary.dayName} on Seshd 🔥\n${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
                   if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
                   else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied! 📋", "success"); }
                   setShowWorkoutSummary(false); setWorkoutSummary(null);
-                }} style={{ width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none", borderRadius:10, padding:"14px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
-                  📸 Share Workout
+                }} style={{ width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none", borderRadius:12, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                  📸 Share to Feed
                 </button>
-                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Done</button>
+                {(store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0 && (
+                  <button onClick={() => {
+                    const selectedGroups = workoutSummary.shareToGroups || [];
+                    if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
+                    if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, feedOnly: false, groupOnly: true });
+                    toast(`Shared to ${selectedGroups.length} group${selectedGroups.length>1?"s":""}! 👥`, "success");
+                    setShowWorkoutSummary(false); setWorkoutSummary(null);
+                  }} style={{ width:"100%", background:"none", color:C.accent, border:`1.5px solid ${C.accent}`, borderRadius:12, padding:"14px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                    👥 Share to Groups Only
+                  </button>
+                )}
+                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Done (Don't Share)</button>
               </div>
             </div>
           </div>
@@ -4967,10 +4975,10 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
       {/* Search bar */}
-      <div style={{ padding:"10px 14px", position:"relative" }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:26, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
+      <div style={{ padding:"14px 16px 10px", position:"relative" }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:30, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
           <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
         </svg>
         <input
@@ -4978,59 +4986,64 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           onChange={e => setQ(e.target.value)}
           onFocus={() => setSearchFocused(true)}
           onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
-          placeholder="Search people, exercises..."
-          style={{ width:"100%", background:C.divider, border:"none", borderRadius:12, padding:"11px 14px 11px 36px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}
+          placeholder="Search people or exercises..."
+          style={{ width:"100%", background:C.divider, border:"none", borderRadius:14, padding:"12px 14px 12px 38px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}
         />
         {q.length > 0 && (
-          <button onClick={() => setQ("")} style={{ position:"absolute", right:26, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:4 }}>×</button>
+          <button onClick={() => setQ("")} style={{ position:"absolute", right:28, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:18, padding:4, lineHeight:1 }}>×</button>
         )}
       </div>
 
       {/* Search results */}
       {showResults && (
-        <div style={{ marginBottom:8 }}>
+        <div style={{ padding:"0 16px", marginBottom:8 }}>
           {userResults.length > 0 && (
             <>
-              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"4px 14px 8px" }}>PEOPLE</div>
-              {userResults.map(u => {
-                const amFollowing = following.includes(u.id);
-                return (
-                  <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                    <div onClick={() => onUserClick && onUserClick(u.id)} style={{ display:"flex", alignItems:"center", gap:12, flex:1, cursor:"pointer" }}>
-                      <Avatar user={u} size={42} C={C}/>
-                      <div>
-                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
-                        <div style={{ fontSize:12, color:C.sub }}>{u.name} · {u.followers?.length||0} followers</div>
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"8px 0 10px" }}>PEOPLE</div>
+              <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:12 }}>
+                {userResults.map((u, idx) => {
+                  const amFollowing = following.includes(u.id);
+                  return (
+                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < userResults.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                      <div onClick={() => onUserClick && onUserClick(u.id)} style={{ display:"flex", alignItems:"center", gap:12, flex:1, cursor:"pointer" }}>
+                        <Avatar user={u} size={44} C={C}/>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+                          <div style={{ fontSize:12, color:C.sub }}>{u.name} · {u.followers?.length||0} followers</div>
+                        </div>
                       </div>
+                      <button onClick={() => onFollow && onFollow(u.id)} style={{
+                        padding:"7px 16px", borderRadius:20, fontSize:12, fontWeight:700, flexShrink:0,
+                        background: amFollowing ? "transparent" : C.accent,
+                        color: amFollowing ? C.text : "#fff",
+                        border: `1.5px solid ${amFollowing ? C.border : C.accent}`,
+                        cursor:"pointer", fontFamily:F
+                      }}>{amFollowing ? "Following" : "Follow"}</button>
                     </div>
-                    <button onClick={() => onFollow && onFollow(u.id)} style={{
-                      padding:"6px 14px", borderRadius:8, fontSize:12, fontWeight:600, flexShrink:0,
-                      background: amFollowing ? "transparent" : C.accent,
-                      color: amFollowing ? C.text : "#fff",
-                      border: `1px solid ${amFollowing ? C.border : C.accent}`,
-                      cursor:"pointer", fontFamily:F
-                    }}>{amFollowing ? "Following" : "Follow"}</button>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </>
           )}
           {exerciseResults.length > 0 && (
             <>
-              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"12px 14px 8px" }}>EXERCISES</div>
-              {exerciseResults.map(ex => (
-                <div key={ex.name} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, cursor:"pointer" }}
-                  onClick={() => { /* Could open ExerciseDetail here */ }}>
-                  <MuscleIcon muscle={ex.muscle||""} size={36} C={C}/>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
-                    <div style={{ fontSize:12, color:C.sub }}>{ex.muscle}</div>
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"8px 0 10px" }}>EXERCISES</div>
+              <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:12 }}>
+                {exerciseResults.map((ex, idx) => (
+                  <div key={ex.name} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < exerciseResults.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ width:40, height:40, borderRadius:12, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      <MuscleIcon muscle={ex.muscle||""} size={26} C={C}/>
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{ex.name}</div>
+                      <div style={{ fontSize:12, color:C.sub }}>{ex.muscle}</div>
+                    </div>
+                    {(store.prs||{})[ex.name] && (
+                      <div style={{ fontSize:11, color:C.gold, fontWeight:700, fontFamily:MONO }}>🏆 {store.prs[ex.name]} {store.unit||"lbs"}</div>
+                    )}
                   </div>
-                  {(store.prs||{})[ex.name] && (
-                    <div style={{ marginLeft:"auto", fontSize:11, color:C.gold, fontWeight:600, fontFamily:MONO }}>PR {store.prs[ex.name]} {store.unit||"lbs"}</div>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </>
           )}
         </div>
@@ -5038,70 +5051,79 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
 
       {/* Default discover view */}
       {!showResults && (
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-          <button onClick={() => setSubTab("challenges")} style={{
-            background:"linear-gradient(135deg,#059669,#047857)",
-            border:"none", borderRadius:12, padding:"16px",
-            color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F
-          }}>
-            <div style={{ fontSize:22 }}>🏅</div>
-            <div style={{ fontSize:13, fontWeight:700, marginTop:6 }}>Friends Activity</div>
-            <div style={{ fontSize:10, opacity:0.85 }}>Weekly stats</div>
-          </button>
-          <button onClick={() => setSubTab("groups")} style={{
-            background:"linear-gradient(135deg,#059669,#047857)",
-            border:"none", borderRadius:12, padding:"16px",
-            color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F
-          }}>
-            <div style={{ fontSize:22 }}>👥</div>
-            <div style={{ fontSize:13, fontWeight:700, marginTop:6 }}>Groups</div>
-            <div style={{ fontSize:10, opacity:0.85 }}>Private crews</div>
-          </button>
-        </div>
-      )}
+        <div style={{ padding:"4px 16px 0" }}>
+          {/* Quick access cards */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+            <button onClick={() => setSubTab("challenges")} style={{
+              background:"linear-gradient(135deg,#059669,#047857)",
+              border:"none", borderRadius:16, padding:"18px 16px",
+              color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F,
+              boxShadow:"0 4px 16px rgba(5,150,105,0.3)"
+            }}>
+              <div style={{ fontSize:24, marginBottom:8 }}>🏅</div>
+              <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Friends Activity</div>
+              <div style={{ fontSize:11, opacity:0.8, marginTop:3 }}>Weekly stats</div>
+            </button>
+            <button onClick={() => setSubTab("groups")} style={{
+              background:"linear-gradient(135deg,#7c3aed,#6d28d9)",
+              border:"none", borderRadius:16, padding:"18px 16px",
+              color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F,
+              boxShadow:"0 4px 16px rgba(124,58,237,0.3)"
+            }}>
+              <div style={{ fontSize:24, marginBottom:8 }}>👥</div>
+              <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
+              <div style={{ fontSize:11, opacity:0.8, marginTop:3 }}>Private crews</div>
+            </button>
+          </div>
 
-      {following.length > 0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>🏅 FRIENDS LEADERBOARD</div>
-          <div style={{ border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px" }}>
-            {["Barbell Bench Press","Barbell Back Squat","Deadlift"].map((ex, i) => (
-              <div key={ex} style={{ borderBottom:i<2?`1px solid ${C.divider}`:"none", paddingBottom:i<2?10:0, marginBottom:i<2?10:0 }}>
-                <div style={{ fontSize:11, fontWeight:600, color:C.text, marginBottom:6 }}>{ex}</div>
-                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                  {[...store.users.filter(u => following.includes(u.id)), store.users.find(u => u.id === currentUserId)].filter(Boolean).map((u, j) => (
-                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"3px 10px" }}>
-                      <Avatar user={u} size={16} C={C}/>
-                      <span style={{ fontSize:10, color:C.text, fontWeight:500 }}>{u.name.split(" ")[0]}</span>
-                      <span style={{ fontSize:10, color:C.sub, fontFamily:MONO }}>{[225,185,205][j%3] || "—"}</span>
+          {following.length > 0 && (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>FRIENDS LEADERBOARD</div>
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
+                {["Barbell Bench Press","Barbell Back Squat","Deadlift"].map((ex, i) => (
+                  <div key={ex} style={{ padding:"12px 16px", borderBottom: i<2 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:C.text, marginBottom:8 }}>{ex}</div>
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      {[...store.users.filter(u => following.includes(u.id)), store.users.find(u => u.id === currentUserId)].filter(Boolean).map((u, j) => (
+                        <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"4px 10px" }}>
+                          <Avatar user={u} size={16} C={C}/>
+                          <span style={{ fontSize:11, color:C.text, fontWeight:500 }}>{u.name.split(" ")[0]}</span>
+                          <span style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>{[225,185,205][j%3] || "—"}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                ))}
+                <div style={{ padding:"10px 16px", borderTop:`1px solid ${C.divider}` }}>
+                  <span style={{ fontSize:10, color:C.muted }}>Friends only · no strangers, no faking</span>
                 </div>
               </div>
-            ))}
-            <div style={{ fontSize:10, color:C.muted, marginTop:10 }}>Friends only · no strangers, no faking</div>
+            </div>
+          )}
+
+          <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>SUGGESTED PEOPLE</div>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
+            {store.users.filter(u => u.id !== currentUserId).map((u, idx, arr) => {
+              const isF = following.includes(u.id);
+              return (
+                <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < arr.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                  <Avatar user={u} size={46} C={C} onClick={() => onUserClick(u.id)}/>
+                  <div style={{ flex:1, cursor:"pointer", minWidth:0 }} onClick={() => onUserClick(u.id)}>
+                    <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+                    <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
+                  </div>
+                  <button onClick={() => toggleFollow(u.id)} style={{
+                    padding:"7px 16px", background:isF?"transparent":C.accent,
+                    border:`1.5px solid ${isF?C.border:C.accent}`, borderRadius:20,
+                    fontSize:12, fontWeight:700, color:isF?C.text:"#fff",
+                    cursor:"pointer", flexShrink:0, fontFamily:F
+                  }}>{isF?"Following":"Follow"}</button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
-
-      <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>SUGGESTED PEOPLE</div>
-      {store.users.filter(u => u.id !== currentUserId && (!q || u.name?.toLowerCase().includes(q.toLowerCase()) || u.username?.toLowerCase().includes(q.toLowerCase()))).map(u => {
-        const isF = following.includes(u.id);
-        return (
-          <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
-            <Avatar user={u} size={44} C={C} onClick={() => onUserClick(u.id)}/>
-            <div style={{ flex:1, cursor:"pointer" }} onClick={() => onUserClick(u.id)}>
-              <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
-              <div style={{ fontSize:12, color:C.sub }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
-            </div>
-            <button onClick={() => toggleFollow(u.id)} style={{
-              padding:"6px 16px", background:isF?"transparent":C.accent,
-              border:`1px solid ${isF?C.border:C.accent}`, borderRadius:8,
-              fontSize:12, fontWeight:600, color:isF?C.text:"#fff",
-              cursor:"pointer", flexShrink:0, fontFamily:F
-            }}>{isF?"Following":"Follow"}</button>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -5569,8 +5591,8 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
     } else if (postKind === "photo") {
       onPost({ type:"photo", caption, imageData:img, location:loc });
     } else if (postKind === "workout") {
-      // A set is considered "done" if s.done===true OR if it has reps (older history records may lack done flag)
-      const isDoneSet = s => s.done === true;
+      // done===true means explicitly done; done===undefined (old records) with reps means done; done===false means skipped
+      const isDoneSet = s => s.done === true || (s.done === undefined && (parseFloat(s.reps||s.r) > 0));
       const doneExercises = (selectedWorkout.exercises||[])
         .filter(e => e.name && (e.sets||[]).some(isDoneSet))
         .map(ex => ({
