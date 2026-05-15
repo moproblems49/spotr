@@ -414,8 +414,40 @@ const THEMES = {
   }
 };
 
-const F = "-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
-const MONO = "'SF Mono',Menlo,monospace";
+const F = "'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
+const MONO = "'JetBrains Mono','SF Mono',Menlo,monospace";
+
+// ─── Premium icon system — line icons, single accent ──────────────────────────
+function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
+  const props = { width:size, height:size, viewBox:"0 0 24 24", fill:"none", stroke:color, strokeWidth, strokeLinecap:"round", strokeLinejoin:"round" };
+  switch (name) {
+    case "flame": return <svg {...props}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 17c1.4 0 2.5-1 2.5-2.5 0-2-2.5-3-2.5-5 0-2.5 2.5-3 2.5-3s1 4.5 4 6.5c2 1.5 3 3 3 5a7 7 0 1 1-14 0c0-2.5 2-4 3-5.5"/></svg>;
+    case "dumbbell": return <svg {...props}><path d="m6.5 6.5 11 11"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>;
+    case "trophy": return <svg {...props}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+    case "timer": return <svg {...props}><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></svg>;
+    case "users": return <svg {...props}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+    case "user": return <svg {...props}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+    case "share": return <svg {...props}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>;
+    case "check": return <svg {...props}><polyline points="20 6 9 17 4 12"/></svg>;
+    case "x": return <svg {...props}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+    case "chevron-right": return <svg {...props}><polyline points="9 18 15 12 9 6"/></svg>;
+    case "chevron-left": return <svg {...props}><polyline points="15 18 9 12 15 6"/></svg>;
+    case "plus": return <svg {...props}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+    case "search": return <svg {...props}><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>;
+    case "trending-up": return <svg {...props}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>;
+    case "zap": return <svg {...props}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
+    case "activity": return <svg {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+    case "calendar": return <svg {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+    case "clock": return <svg {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+    case "barbell": return <svg {...props}><line x1="4" y1="12" x2="20" y2="12"/><rect x="1" y="9" width="3" height="6" rx="1"/><rect x="20" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2" height="10" rx="1"/><rect x="17" y="7" width="2" height="10" rx="1"/></svg>;
+    case "package": return <svg {...props}><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
+    case "settings": return <svg {...props}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+    case "edit": return <svg {...props}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+    case "trash": return <svg {...props}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
+    case "spark": return <svg {...props}><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>;
+    default: return null;
+  }
+}
 
 // ─── Muscle group icon (replaces emoji) ──────────────────────────────────────
 function MuscleIcon({ muscle = "", size = 28, C }) {
@@ -774,8 +806,9 @@ function SeshdLogo({ C, big = false }) {
 // AVATAR
 // ═════════════════════════════════════════════════════════════════════════════
 function Avatar({ user, size = 36, onClick, C, ring = false }) {
-  const content = user?.profileImage
-    ? <img src={user.profileImage} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
+  const imgSrc = user?.avatarUrl || user?.profileImage;
+  const content = imgSrc
+    ? <img src={imgSrc} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
     : <span>{user?.avatar || "👤"}</span>;
 
   const innerStyle = {
@@ -812,17 +845,18 @@ function Avatar({ user, size = 36, onClick, C, ring = false }) {
 function StreakBadge({ streak, size = "sm" }) {
   if (!streak) return null;
   const cfg = {
-    sm: { p:"3px 8px", fs:11 },
-    md: { p:"5px 11px", fs:13 },
-  }[size] || { p:"3px 8px", fs:11 };
+    sm: { p:"3px 8px", fs:11, ic:11 },
+    md: { p:"5px 11px", fs:13, ic:13 },
+  }[size] || { p:"3px 8px", fs:11, ic:11 };
 
   return (
     <span style={{
-      display:"inline-flex", alignItems:"center", gap:3,
-      background:"linear-gradient(135deg,#ea580c,#f59e0b)",
-      borderRadius:20, padding:cfg.p, fontWeight:700, color:"#fff", fontSize:cfg.fs
+      display:"inline-flex", alignItems:"center", gap:4,
+      background:"#0A0A0A", color:"#fff",
+      borderRadius:20, padding:cfg.p, fontWeight:700, fontSize:cfg.fs,
+      fontVariantNumeric:"tabular-nums",
     }}>
-      <span>🔥</span>
+      <Icon name="flame" size={cfg.ic} color="#fff" strokeWidth={2.2}/>
       <span>{streak}</span>
     </span>
   );
@@ -1052,6 +1086,10 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, onDelete, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const typeMenuRef = useRef(null);
+  const swipeRef = useRef(null);
+  const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false });
+  const [swipeDx, setSwipeDx] = useState(0);
+  const [swipeDir, setSwipeDir] = useState(null); // "right" | "left" | null
 
   useEffect(() => {
     function handler(e) { if (typeMenuRef.current && !typeMenuRef.current.contains(e.target)) setShowTypeMenu(false); }
@@ -1059,13 +1097,66 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  function onTouchStart(e) {
+    const t = e.touches[0];
+    swipeState.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false };
+  }
+  function onTouchMove(e) {
+    const t = e.touches[0];
+    const dx = t.clientX - swipeState.current.startX;
+    const dy = t.clientY - swipeState.current.startY;
+    if (!swipeState.current.swiping && Math.abs(dy) > Math.abs(dx)) return; // vertical scroll
+    if (Math.abs(dx) > 6) {
+      swipeState.current.swiping = true;
+      e.preventDefault();
+    }
+    if (!swipeState.current.swiping) return;
+    const clamped = Math.max(-90, Math.min(90, dx));
+    swipeState.current.dx = clamped;
+    setSwipeDx(clamped);
+    setSwipeDir(clamped > 0 ? "right" : clamped < 0 ? "left" : null);
+  }
+  function onTouchEnd() {
+    const dx = swipeState.current.dx;
+    if (dx > 60) { onToggleDone(); try { navigator.vibrate(30); } catch {} }
+    else if (dx < -60 && onDelete) { onDelete(); try { navigator.vibrate(40); } catch {} }
+    setSwipeDx(0);
+    setSwipeDir(null);
+    swipeState.current = { startX: 0, startY: 0, dx: 0, swiping: false };
+  }
+
   const prev = exName ? getPrev(store, exName, si, unit) : null;
   const setType = SET_TYPES.find(t => t.id === set.type) || SET_TYPES[0];
   const est1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
   const isDone = set.done;
 
   return (
-    <div style={{ background:isDone?`${C.green}0E`:C.surface, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:11, padding:"8px 10px", margin:"0 14px 3px", position:"relative" }}>
+    <div style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
+      {/* Swipe hint backgrounds */}
+      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-start", paddingLeft:16, background:`${C.green}CC`, opacity: swipeDir==="right" ? Math.min(1, swipeDx/60) : 0, borderRadius:11, transition:"opacity 0.1s" }}>
+        <span style={{ color:"#fff", fontSize:18, fontWeight:800 }}>✓</span>
+      </div>
+      {onDelete && (
+        <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:16, background:"#EF4444CC", opacity: swipeDir==="left" ? Math.min(1, Math.abs(swipeDx)/60) : 0, borderRadius:11, transition:"opacity 0.1s" }}>
+          <span style={{ color:"#fff", fontSize:18, fontWeight:800 }}>🗑</span>
+        </div>
+      )}
+      {/* Row content */}
+      <div
+        ref={swipeRef}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          background:isDone?`${C.green}0E`:C.surface,
+          border:`1.5px solid ${isDone?C.green+"30":C.divider}`,
+          borderRadius:11, padding:"8px 10px",
+          transform: `translateX(${swipeDx}px)`,
+          transition: swipeState.current.swiping ? "none" : "transform 0.25s cubic-bezier(.2,.8,.4,1)",
+          touchAction:"pan-y",
+          position:"relative",
+        }}
+      >
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
         <div style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:isDone?C.green:C.divider, color:isDone?"#fff":C.sub, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, fontFamily:MONO }}>{si+1}</div>
         
@@ -1110,6 +1201,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           {est1RM && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
         </div>
       </div>
+      </div>{/* end swipeable content div */}
     </div>
   );
 });
@@ -1311,26 +1403,69 @@ function WrappedModal({ store, C, onClose }) {
   const streak = calcStreak(store.workoutDates);
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"linear-gradient(135deg,#1d4ed8,#2563eb,#0ea5e9)", borderRadius:20, padding:"32px 20px", width:"100%", maxWidth:340, color:"#fff", textAlign:"center", position:"relative" }}>
-        <button onClick={onClose} style={{ position:"absolute", top:12, right:12, background:"rgba(255,255,255,0.18)", border:"none", color:"#fff", width:28, height:28, borderRadius:"50%", cursor:"pointer", fontSize:12 }}>✕</button>
-        <div style={{ fontSize:10, fontWeight:700, letterSpacing:2, marginBottom:4, opacity:0.8 }}>WEEKLY WRAPPED</div>
-        <div style={{ fontSize:24, fontWeight:800, marginBottom:18 }}>Your Week 📊</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:18 }}>
-          {[
-            ["Workouts", workouts],
-            ["Volume", fmtVol(Math.round(volume), unit)],
-            ["PRs", Object.keys(store.prs||{}).length],
-            ["Streak", `🔥 ${streak}d`]
-          ].map(([l,v]) => (
-            <div key={l} style={{ background:"rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 6px" }}>
-              <div style={{ fontSize:20, fontWeight:800 }}>{v}</div>
-              <div style={{ fontSize:9, opacity:0.85, marginTop:2, letterSpacing:1 }}>{l.toUpperCase()}</div>
-            </div>
-          ))}
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
+        background:"#0A0A0A", borderRadius:24, padding:"28px 24px",
+        width:"100%", maxWidth:360, color:"#fff", position:"relative",
+        fontFamily:F, overflow:"hidden",
+      }}>
+        {/* Grid texture */}
+        <div style={{
+          position:"absolute", inset:0, opacity:0.04, pointerEvents:"none",
+          backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+          backgroundSize:"24px 24px",
+        }}/>
+
+        <button onClick={onClose} style={{
+          position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.08)",
+          border:"none", color:"#fff", width:30, height:30, borderRadius:10,
+          cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1
+        }}>
+          <Icon name="x" size={14} color="#fff"/>
+        </button>
+
+        <div style={{ position:"relative", zIndex:1 }}>
+          <div style={{ fontSize:11, letterSpacing:4, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:8 }}>SESHD WRAPPED</div>
+          <div style={{ fontSize:13, letterSpacing:1.5, fontWeight:600, color:"rgba(255,255,255,0.4)", marginBottom:28 }}>
+            {(() => { const d = new Date(); return `Week of ${d.toLocaleDateString("en",{month:"short",day:"numeric"}).toUpperCase()}`; })()}
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:0, marginBottom:24 }}>
+            {[
+              ["WORKOUTS", workouts, "activity"],
+              ["VOLUME", fmtVol(Math.round(volume), unit).replace(/\s\w+$/, ''), "package"],
+              ["PRS", Object.keys(store.prs||{}).length, "trophy"],
+              ["STREAK", `${streak}d`, "flame"],
+            ].map(([l, v, ic], i) => (
+              <div key={l} className="seshd-enter" style={{
+                padding:"18px 16px",
+                borderTop: i < 2 ? "none" : "1px solid rgba(255,255,255,0.08)",
+                borderLeft: i % 2 === 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
+                animationDelay: `${i*80}ms`,
+              }}>
+                <div style={{ color:"rgba(255,255,255,0.5)", marginBottom:8 }}>
+                  <Icon name={ic} size={14} color="rgba(255,255,255,0.5)"/>
+                </div>
+                <div style={{ fontFamily:MONO, fontSize:32, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>{v}</div>
+                <div style={{ fontSize:9, color:"rgba(255,255,255,0.5)", marginTop:6, letterSpacing:1.5, fontWeight:700 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={() => {
+            const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${Object.keys(store.prs||{}).length} PRs · ${streak} day streak`;
+            if (navigator.share) navigator.share({ title:"Seshd Wrapped", text }).catch(()=>{});
+            else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
+          }} style={{
+            width:"100%", background:"#fff", color:"#0A0A0A", border:"none",
+            borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
+            cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2,
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8
+          }}>
+            <Icon name="share" size={16} color="#0A0A0A"/>
+            Share my week
+          </button>
         </div>
-        <button style={{ width:"100%", background:"#fff", color:"#6d28d9", border:"none", borderRadius:10, padding:"12px", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8 }}>📸 Share to Instagram</button>
-        <button onClick={onClose} style={{ width:"100%", background:"rgba(255,255,255,0.15)", color:"#fff", border:"none", borderRadius:10, padding:"10px", fontSize:12, cursor:"pointer" }}>Close</button>
       </div>
     </div>
   );
@@ -1343,28 +1478,84 @@ function PRModal({ pr, unit, onClose, onShare }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <Confetti/>
-      <div style={{ background:"linear-gradient(135deg,#92400e,#ca8a04,#dc2626)", borderRadius:24, padding:"40px 24px", width:"100%", maxWidth:340, color:"#fff", textAlign:"center", boxShadow:"0 20px 60px rgba(220,38,38,0.4)" }}>
-        <div style={{ fontSize:72, marginBottom:4, lineHeight:1 }}>🏆</div>
-        <div style={{ fontSize:13, fontWeight:800, letterSpacing:4, opacity:0.9, marginBottom:6 }}>PERSONAL RECORD</div>
-        <div style={{ fontSize:22, fontWeight:700, marginBottom:6, lineHeight:1.2 }}>{pr.name}</div>
-        <div style={{ fontSize:56, fontWeight:900, fontFamily:MONO, marginBottom:4, lineHeight:1 }}>{pr.weight}</div>
-        <div style={{ fontSize:16, opacity:0.9, marginBottom: pr.increase > 0 ? 6 : 20 }}>{unit}</div>
-        {pr.increase > 0 && (
-          <div style={{ fontSize:14, background:"rgba(255,255,255,0.2)", borderRadius:20, padding:"6px 16px", display:"inline-block", marginBottom:20, fontWeight:700 }}>
-            ↑ {pr.increase} {unit} from previous best
+      <div className="seshd-scale-enter" style={{
+        background:"#0A0A0A", borderRadius:24, padding:"36px 28px",
+        width:"100%", maxWidth:360, color:"#fff", position:"relative",
+        fontFamily:F, overflow:"hidden",
+      }}>
+        {/* Grid texture */}
+        <div style={{
+          position:"absolute", inset:0, opacity:0.04, pointerEvents:"none",
+          backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+          backgroundSize:"24px 24px",
+        }}/>
+
+        <div style={{ position:"relative", zIndex:1 }}>
+          {/* Header label */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:36 }}>
+            <div>
+              <div style={{ fontSize:11, letterSpacing:4, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:3 }}>SESHD</div>
+              <div style={{ fontSize:10, letterSpacing:2.5, fontWeight:700, color:"#fff" }}>PERSONAL RECORD</div>
+            </div>
+            <div style={{
+              background:"#fff", color:"#0A0A0A",
+              fontSize:9, fontWeight:800, letterSpacing:1.5,
+              padding:"5px 10px", borderRadius:20,
+            }}>NEW</div>
           </div>
-        )}
-        <button onClick={() => {
-          const text = `🏆 New PR on ${pr.name}! ${pr.weight} ${unit}${pr.increase > 0 ? ` (+${pr.increase} ${unit})` : ""} via Seshd 💪`;
-          if (navigator.share) navigator.share({ title:"New PR!", text }).catch(()=>{});
-          else if (navigator.clipboard) { navigator.clipboard.writeText(text); }
-          onClose();
-        }} style={{ display:"block", width:"100%", background:"#fff", color:"#dc2626", border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:800, cursor:"pointer", marginBottom:10, fontFamily:F }}>
-          📸 Share this PR
-        </button>
-        <button onClick={onClose} style={{ display:"block", width:"100%", background:"rgba(255,255,255,0.15)", color:"#fff", border:"none", borderRadius:12, padding:"12px", fontSize:13, cursor:"pointer", fontFamily:F }}>
-          Keep grinding 🔥
-        </button>
+
+          {/* The big number */}
+          <div style={{ marginBottom:32 }}>
+            <div className="seshd-count" style={{
+              fontFamily:MONO, fontSize:88, lineHeight:0.9, fontWeight:700, letterSpacing:-3,
+              fontVariantNumeric: "tabular-nums",
+            }}>{pr.weight}</div>
+            <div style={{ fontSize:16, color:"rgba(255,255,255,0.5)", marginTop:6, letterSpacing:1, fontWeight:600 }}>{unit.toUpperCase()}</div>
+          </div>
+
+          {/* Exercise */}
+          <div style={{ marginBottom:24 }}>
+            <div style={{ fontSize:11, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:600, marginBottom:6 }}>EXERCISE</div>
+            <div style={{ fontSize:20, fontWeight:800, lineHeight:1.2, letterSpacing:-0.5 }}>{pr.name}</div>
+          </div>
+
+          {/* Increase */}
+          {pr.increase > 0 && (
+            <div style={{
+              padding:"14px 16px", marginBottom:24,
+              background:"rgba(255,255,255,0.06)", borderRadius:12,
+              border:"1px solid rgba(255,255,255,0.08)",
+              display:"flex", alignItems:"center", justifyContent:"space-between"
+            }}>
+              <div style={{ fontSize:11, letterSpacing:1.8, fontWeight:700, color:"rgba(255,255,255,0.55)" }}>PREVIOUS BEST</div>
+              <div style={{ fontFamily:MONO, fontSize:14, fontWeight:700 }}>
+                +{pr.increase}<span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginLeft:3 }}>{unit}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Buttons */}
+          <button onClick={() => {
+            const text = `New PR — ${pr.name} ${pr.weight} ${unit}${pr.increase > 0 ? ` (+${pr.increase})` : ""}. via Seshd.`;
+            if (navigator.share) navigator.share({ title:"New PR", text }).catch(()=>{});
+            else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard","success"); }
+            onClose();
+          }} style={{
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+            width:"100%", background:"#fff", color:"#0A0A0A",
+            border:"none", borderRadius:12, padding:"15px",
+            fontSize:14, fontWeight:700, cursor:"pointer", marginBottom:8, fontFamily:F,
+            letterSpacing:-0.2,
+          }}>
+            <Icon name="share" size={16} color="#0A0A0A"/>
+            Share this PR
+          </button>
+          <button onClick={onClose} style={{
+            width:"100%", background:"transparent", color:"rgba(255,255,255,0.7)",
+            border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"13px",
+            fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600,
+          }}>Keep going</button>
+        </div>
       </div>
     </div>
   );
@@ -1376,26 +1567,34 @@ function PRModal({ pr, unit, onClose, onShare }) {
 function Onboarding({ C, onComplete }) {
   const [step, setStep] = useState(0);
   const steps = [
-    { icon:"🏋️", title:"Track every rep", body:"Log sets, weights, and reps. See every exercise improve over time." },
-    { icon:"📸", title:"Share the grind", body:"Post workouts and photos. Give Kudos to your crew. Build your fitness identity." },
-    { icon:"🔥", title:"Compete together", body:"Streaks, challenges, private groups. Train with your people." },
+    { icon:"barbell", title:"Track every rep", body:"Log sets, weights, and reps. Watch every lift improve over time." },
+    { icon:"trending-up", title:"Share the work", body:"Post your workouts. Give kudos to your crew. Build your identity." },
+    { icon:"flame", title:"Train together", body:"Streaks, challenges, private groups. Lift with your people." },
   ];
   const s = steps[step];
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
-        <div style={{ marginBottom:40 }}>
+        <div style={{ marginBottom:48 }}>
           <SeshdLogo C={C} big/>
         </div>
-        <div style={{ fontSize:64, marginBottom:20 }}>{s.icon}</div>
-        <div style={{ fontSize:24, fontWeight:700, color:C.text, marginBottom:10 }}>{s.title}</div>
-        <div style={{ fontSize:15, color:C.sub, lineHeight:1.5, maxWidth:280 }}>{s.body}</div>
+        <div key={step} className="seshd-enter" style={{
+          width:88, height:88, borderRadius:24, background:C.text, color:C.bg,
+          display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28
+        }}>
+          <Icon name={s.icon} size={40} color={C.bg} strokeWidth={1.7}/>
+        </div>
+        <div className="seshd-enter" style={{ fontSize:30, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.8, lineHeight:1.1 }}>{s.title}</div>
+        <div className="seshd-enter" style={{ fontSize:15, color:C.sub, lineHeight:1.5, maxWidth:300 }}>{s.body}</div>
       </div>
       <div style={{ padding:"0 32px 44px" }}>
-        <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:22 }}>
-          {steps.map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.accent:C.border, transition:"all 0.3s" }}/>)}
+        <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:24 }}>
+          {steps.map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s" }}/>)}
         </div>
-        <button onClick={() => step<steps.length-1 ? setStep(step+1) : onComplete()} style={{ width:"100%", background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"14px", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:F }}>
+        <button onClick={() => step<steps.length-1 ? setStep(step+1) : onComplete()} style={{
+          width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
+          fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
+        }}>
           {step<steps.length-1 ? "Continue" : "Get started"}
         </button>
       </div>
@@ -1761,7 +1960,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
               {user?.username}
             </span>
             {post.isPR && (
-              <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", padding:"1px 6px", borderRadius:10, fontWeight:700 }}>🏆 PR</span>
+              <span style={{ fontSize:9, background:C.text, color:C.bg, padding:"2px 8px", borderRadius:8, fontWeight:800, letterSpacing:1 }}>PR</span>
             )}
           </div>
           <div style={{ fontSize:11, color:C.sub }}>
@@ -1784,17 +1983,18 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {/* Body */}
       {post.type === "achievement" && post.achievement?.type === "streak" && (
-        <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#ea580c,#f59e0b)", borderRadius:12, padding:"32px 20px", textAlign:"center" }}>
-          <div style={{ fontSize:48, marginBottom:6 }}>🔥</div>
-          <div style={{ fontSize:42, fontWeight:800, color:"#fff", fontFamily:MONO, lineHeight:1 }}>{post.achievement.days}</div>
-          <div style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.9)", letterSpacing:2, marginTop:4 }}>DAY STREAK</div>
+        <div style={{ margin:"0 14px", background:"#0A0A0A", color:"#fff", borderRadius:16, padding:"28px 20px", textAlign:"center" }}>
+          <div style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:2.5, marginBottom:14 }}>STREAK</div>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:10 }}><Icon name="flame" size={32} color="#fff"/></div>
+          <div style={{ fontFamily:MONO, fontSize:52, fontWeight:700, lineHeight:1, letterSpacing:-2, fontVariantNumeric:"tabular-nums" }}>{post.achievement.days}</div>
+          <div style={{ fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.55)", letterSpacing:2, marginTop:10 }}>DAYS</div>
         </div>
       )}
 
       {(post.type === "photo" || post.type === "form_check") && (
         post.imageData
           ? <img src={post.imageData} alt="" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
-          : <div style={{ width:"100%", aspectRatio:"1", background:`linear-gradient(135deg,${post.imageColor||"#1e293b"},#0f172a)`, display:"flex", alignItems:"center", justifyContent:"center" }}><span style={{ fontSize:48 }}>📸</span></div>
+          : <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}><Icon name="search" size={36} color="currentColor"/></div>
       )}
 
       {post.type === "run" && post.run && (
@@ -1861,7 +2061,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 <div key={i} style={{ padding:"10px 16px", borderBottom:`1px solid ${C.divider}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
                     <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{ex.name}</span>
-                    {ex.isPR && <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", padding:"2px 6px", borderRadius:8, fontWeight:700, flexShrink:0 }}>🏆 PR</span>}
+                    {ex.isPR && <span style={{ fontSize:9, background:C.text, color:C.bg, padding:"2px 7px", borderRadius:6, fontWeight:800, flexShrink:0, letterSpacing:1 }}>PR</span>}
                   </div>
                   <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
                     {ex.sets.map((s,j) => (
@@ -1917,7 +2117,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           onClick={() => {
             const shareText = post.caption ? `${user?.username} on Seshd: ${post.caption}` : `Check out ${user?.username}'s workout on Seshd`;
             if (navigator.share) navigator.share({ title:"Seshd", text: shareText, url: window.location.href }).catch(()=>{});
-            else if (navigator.clipboard) { navigator.clipboard.writeText(shareText).then(() => toast("Copied! 🔗","success")).catch(()=>{}); }
+            else if (navigator.clipboard) { navigator.clipboard.writeText(shareText).then(() => toast("Link copied", "success")).catch(()=>{}); }
           }}
           aria-label="Share"
           style={{ background:"none", border:"none", cursor:"pointer", padding:"8px 10px", display:"flex", alignItems:"center", justifyContent:"center" }}
@@ -2073,7 +2273,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
       <div style={{ flex:1, overflowY:"auto", padding:"12px 16px 100px" }}>
         {(day.exercises||[]).length === 0 ? (
           <div style={{ padding:"40px 20px", borderRadius:20, background:CARD, color:SUB, textAlign:"center", marginTop:8, border:`1px solid ${BORD}` }}>
-            <div style={{ fontSize:32, marginBottom:12 }}>🏋️</div>
+            <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="barbell" size={30} color="currentColor"/></div>
             <div style={{ fontSize:15, fontWeight:700, color:TXT, marginBottom:6 }}>No exercises yet</div>
             <div style={{ fontSize:12 }}>Tap below to add your first exercise</div>
           </div>
@@ -2236,7 +2436,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               }
             } catch {}
             try { if (navigator.vibrate) navigator.vibrate([200,100,200,100,400]); } catch {}
-            try { toast("Rest time's up — go! 🔥", "success"); } catch {}
+            try { toast("Rest is up — go", "success"); } catch {}
             try {
               if ("Notification" in window && Notification.permission === "granted") {
                 new Notification("Rest time's up 🔥", { body:"Get back to it.", icon:"/icon-192.png", tag:"rest-timer" });
@@ -2322,6 +2522,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     try {
       const dk = dKey();
       const sid = uid();
+      const originalPRs = { ...store.prs }; // snapshot before any updates
       let hitPR = null;
       const newPRs = { ...store.prs };
 
@@ -2381,7 +2582,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       // Build summary
       const newPRsList = Object.entries(newPRs)
-        .filter(([k, v]) => (store.prs?.[k] || 0) < v)
+        .filter(([k, v]) => (originalPRs[k] || 0) < v)
         .map(([name, weight]) => ({ name, weight: unit === "lbs" ? weight : cvt(weight, "lbs", "kg") }));
       const totalSets = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").length, 0);
       const totalVol = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
@@ -2412,13 +2613,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               return {
                 name: ex.name,
                 sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-                isPR: maxLbs > 0 && maxLbs > (store.prs?.[ex.name] || 0)
+                isPR: maxLbs > 0 && maxLbs > (originalPRs[ex.name] || 0)
               };
             })
             .filter(ex => ex.sets.length > 0);
           const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
           const hasPR = postEx.some(ex => ex.isPR);
-          return { type:"workout", caption:`Just crushed ${session.dayName} 💪`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
+          return { type:"workout", caption:`${session.dayName} — done.`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
         })() : null,
       });
       setShowWorkoutSummary(true);
@@ -2426,7 +2627,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Fire-and-forget DB save (don't block UI)
       onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: elapsed, unit, note: "", prs: newPRs });
 
-      toast(share ? "Workout posted! 🔥" : "Workout saved! 💪", "success");
+      toast(share ? "Workout posted" : "Workout saved", "success");
       if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
     } finally {
       setFinishing(false);
@@ -2655,10 +2856,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     />
                     <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
-                      <button onClick={() => { const s=set.restTime||store.defaultRestTime||120; setRest({secs:s,total:s,running:true,startedAt:Date.now()}); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
+                      <button onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
                         {fmtTime(set.restTime||store.defaultRestTime||120)}
                       </button>
-                      <button onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 4px", fontSize:10, color:C.muted, fontFamily:F }}>edit</button>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
                     </div>
                     {restEditor?.ei === ei && restEditor?.si === si && (
@@ -2710,26 +2910,114 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
             <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"90dvh", display:"flex", flexDirection:"column" }}>
               <div style={{ overflowY:"auto", flex:1, padding:"24px 18px 0" }}>
-                {/* Shareable card */}
-                <div id="workout-card" style={{ background:`linear-gradient(135deg,${C.accent},${C.accent2})`, borderRadius:16, padding:"20px", marginBottom:16, position:"relative", overflow:"hidden" }}>
-                  <div style={{ position:"absolute", top:-20, right:-20, width:120, height:120, borderRadius:"50%", background:"rgba(255,255,255,0.06)" }}/>
-                  <div style={{ position:"absolute", bottom:-30, left:-10, width:90, height:90, borderRadius:"50%", background:"rgba(255,255,255,0.04)" }}/>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)", fontWeight:700, letterSpacing:2, marginBottom:4 }}>IGNITE · WORKOUT COMPLETE</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:"#fff", marginBottom:14, lineHeight:1.2 }}>{workoutSummary.dayName}</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-                    {[["⏱", workoutSummary.duration, "Time"], ["💪", workoutSummary.sets, "Sets"], ["📦", workoutSummary.volume, "Volume"]].map(([icon, val, label]) => (
-                      <div key={label} style={{ background:"rgba(255,255,255,0.15)", borderRadius:10, padding:"10px 6px", textAlign:"center" }}>
-                        <div style={{ fontSize:14, fontWeight:800, color:"#fff", fontFamily:MONO }}>{val}</div>
-                        <div style={{ fontSize:9, color:"rgba(255,255,255,0.75)", marginTop:2, letterSpacing:0.5 }}>{label.toUpperCase()}</div>
+                {/* Shareable card — magazine-quality art piece */}
+                <div id="workout-card" className="seshd-scale-enter" style={{
+                  background: "#0A0A0A",
+                  borderRadius: 24, padding: "32px 26px 26px",
+                  marginBottom: 16, position: "relative", overflow: "hidden",
+                  aspectRatio: "4/5",
+                  display: "flex", flexDirection: "column",
+                  fontFamily: F,
+                  color: "#fff",
+                }}>
+                  {/* Subtle texture - geometric grid */}
+                  <div style={{
+                    position:"absolute", inset:0, opacity:0.04,
+                    backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+                    backgroundSize:"24px 24px",
+                    pointerEvents:"none",
+                  }}/>
+
+                  {/* Top: Brand mark */}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"auto", position:"relative", zIndex:1 }}>
+                    <div>
+                      <div style={{
+                        fontSize: 11, letterSpacing: 4, fontWeight: 700,
+                        color: "rgba(255,255,255,0.5)", marginBottom: 3,
+                      }}>SESHD</div>
+                      <div style={{
+                        fontSize: 9, letterSpacing: 2, fontWeight: 500,
+                        color: "rgba(255,255,255,0.3)",
+                      }}>{new Date().toLocaleDateString("en", { month:"short", day:"numeric", year:"numeric" }).toUpperCase()}</div>
+                    </div>
+                    {workoutSummary.prs?.length > 0 && (
+                      <div style={{
+                        background:"#fff", color:"#0A0A0A",
+                        fontSize:9, fontWeight:800, letterSpacing:1.5,
+                        padding:"5px 10px", borderRadius:20,
+                      }}>NEW PR</div>
+                    )}
+                  </div>
+
+                  {/* Hero stat — the big number */}
+                  <div style={{ position:"relative", zIndex:1, marginTop:32, marginBottom:28 }}>
+                    <div style={{
+                      fontSize: 13, letterSpacing: 2, fontWeight: 700,
+                      color: "rgba(255,255,255,0.55)", marginBottom: 6,
+                    }}>TOTAL VOLUME</div>
+                    <div style={{
+                      fontFamily: MONO,
+                      fontSize: 72, lineHeight: 0.92, fontWeight: 700,
+                      color: "#fff", letterSpacing: -3,
+                      display: "flex", alignItems: "baseline", gap: 8,
+                    }}>
+                      <span className="seshd-count">{(typeof workoutSummary.volume === 'string' ? workoutSummary.volume : String(workoutSummary.volume)).replace(/\s\w+$/,'')}</span>
+                      <span style={{ fontSize: 18, fontWeight: 600, color: "rgba(255,255,255,0.45)", letterSpacing: 1 }}>
+                        {(typeof workoutSummary.volume === 'string' ? workoutSummary.volume.split(' ').pop() : (unit || 'lbs')).toLowerCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Workout name */}
+                  <div style={{ position:"relative", zIndex:1, marginBottom:28 }}>
+                    <div style={{ fontSize:11, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:600, marginBottom:5 }}>SESSION</div>
+                    <div style={{
+                      fontSize: 22, fontWeight: 800,
+                      lineHeight: 1.1, letterSpacing: -0.5,
+                      color: "#fff",
+                    }}>{workoutSummary.dayName}</div>
+                  </div>
+
+                  {/* Bottom stats row */}
+                  <div style={{
+                    position:"relative", zIndex:1,
+                    display:"grid", gridTemplateColumns:"1fr 1fr",
+                    gap:0, paddingTop:20,
+                    borderTop:"1px solid rgba(255,255,255,0.1)",
+                  }}>
+                    {[
+                      ["TIME", workoutSummary.duration],
+                      ["SETS", workoutSummary.sets],
+                    ].map(([label, val], i) => (
+                      <div key={label} style={{
+                        paddingLeft: i === 0 ? 0 : 20,
+                        borderLeft: i > 0 ? "1px solid rgba(255,255,255,0.1)" : "none",
+                      }}>
+                        <div style={{ fontSize:10, letterSpacing:1.8, fontWeight:600, color:"rgba(255,255,255,0.45)", marginBottom:6 }}>{label}</div>
+                        <div style={{ fontFamily:MONO, fontSize:24, fontWeight:700, color:"#fff", letterSpacing:-0.5 }}>{val}</div>
                       </div>
                     ))}
                   </div>
+
+                  {/* PR callout */}
                   {workoutSummary.prs?.length > 0 && (
-                    <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:10, padding:"8px 12px" }}>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.8)", fontWeight:700, marginBottom:4 }}>🏆 PR{workoutSummary.prs.length > 1 ? "s" : ""}</div>
-                      {workoutSummary.prs.map(pr => (
-                        <div key={pr.name} style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"#fff" }}>
-                          <span>{pr.name}</span><span style={{ fontWeight:700, fontFamily:MONO }}>{pr.weight} {unit}</span>
+                    <div style={{
+                      position:"relative", zIndex:1,
+                      marginTop:18, padding:"14px 16px",
+                      background:"rgba(255,255,255,0.06)",
+                      borderRadius:12,
+                      border:"1px solid rgba(255,255,255,0.08)",
+                    }}>
+                      <div style={{ fontSize:9, letterSpacing:1.8, fontWeight:700, color:"rgba(255,255,255,0.55)", marginBottom:7 }}>
+                        PERSONAL RECORD{workoutSummary.prs.length > 1 ? "S" : ""}
+                      </div>
+                      {workoutSummary.prs.map((pr, i) => (
+                        <div key={pr.name} style={{
+                          display:"flex", justifyContent:"space-between", alignItems:"baseline",
+                          marginTop: i > 0 ? 4 : 0,
+                        }}>
+                          <span style={{ fontSize:13, color:"#fff", fontWeight:500 }}>{pr.name}</span>
+                          <span style={{ fontFamily:MONO, fontSize:14, color:"#fff", fontWeight:700, letterSpacing:-0.3 }}>{pr.weight}<span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginLeft:3 }}>{unit}</span></span>
                         </div>
                       ))}
                     </div>
@@ -2751,14 +3039,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             shareToGroups: checked
                               ? (prev.shareToGroups||[]).filter(id=>id!==g.id)
                               : [...(prev.shareToGroups||[]), g.id]
-                          }))} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:10, background:C.surface, border:`1px solid ${checked?C.accent:C.border}`, marginBottom:6, cursor:"pointer" }}>
-                            <span style={{ fontSize:20 }}>{g.icon||"👥"}</span>
+                          }))} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:10, background:C.surface, border:`1px solid ${checked?C.accent:C.border}`, marginBottom:6, cursor:"pointer", transition:"border-color 0.15s" }}>
+                            <div style={{ width:32, height:32, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            </div>
                             <div style={{ flex:1 }}>
                               <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{g.name}</div>
                               <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} members</div>
                             </div>
                             <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${checked?C.accent:C.border}`, background:checked?C.accent:"none", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                              {checked && <span style={{ color:"#fff", fontSize:12, fontWeight:700 }}>✓</span>}
+                              {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                             </div>
                           </div>
                         );
@@ -2770,25 +3060,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ padding:"12px 18px 32px", display:"flex", flexDirection:"column", gap:8 }}>
                 <button onClick={() => {
                   if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: [] });
-                  const text = `Just crushed ${workoutSummary.dayName} on Seshd 🔥\n${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
+                  const text = `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
                   if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
-                  else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied! 📋", "success"); }
+                  else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
                   setShowWorkoutSummary(false); setWorkoutSummary(null);
-                }} style={{ width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none", borderRadius:12, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
-                  📸 Share to Feed
+                }} style={{ width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                  Share to Feed
                 </button>
                 {(store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0 && (
                   <button onClick={() => {
                     const selectedGroups = workoutSummary.shareToGroups || [];
                     if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
                     if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, feedOnly: false, groupOnly: true });
-                    toast(`Shared to ${selectedGroups.length} group${selectedGroups.length>1?"s":""}! 👥`, "success");
+                    toast(`Shared to ${selectedGroups.length} group${selectedGroups.length>1?"s":""}`, "success");
                     setShowWorkoutSummary(false); setWorkoutSummary(null);
-                  }} style={{ width:"100%", background:"none", color:C.accent, border:`1.5px solid ${C.accent}`, borderRadius:12, padding:"14px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
-                    👥 Share to Groups Only
+                  }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Share to Groups Only
                   </button>
                 )}
-                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Done (Don't Share)</button>
+                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
               </div>
             </div>
           </div>
@@ -2796,11 +3088,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {/* Finish modal */}
         {showFinish && (
           <div onClick={() => setShowFinish(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"20px 18px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
-              <div style={{ fontSize:19, fontWeight:700, color:C.text, marginBottom:4 }}>Finish Workout?</div>
-              <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
-              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "Saving..." : "Finish & Share"}</button>
-              <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"none", color:C.text, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "..." : "Save Only"}</button>
+            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+              <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
+              <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
+              <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
+              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish & share"}</button>
+              <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"transparent", color:C.text, border:`1px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "…" : "Save only"}</button>
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
             </div>
           </div>
@@ -2834,39 +3127,45 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         <div style={{ padding:"16px 14px" }}>
           {/* Streak banner */}
           {(() => { const s = calcStreak(store.workoutDates || {}); return s > 0 ? (
-            <div style={{ background:"linear-gradient(135deg,#ea580c,#f59e0b)", borderRadius:14, padding:"14px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ fontSize:36, lineHeight:1 }}>🔥</div>
-              <div>
-                <div style={{ fontSize:26, fontWeight:800, color:"#fff", fontFamily:MONO, lineHeight:1 }}>{s}</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", marginTop:1 }}>day streak · keep it going</div>
+            <div style={{ background:C.text, color:C.bg, borderRadius:16, padding:"16px 18px", marginBottom:12, display:"flex", alignItems:"center", gap:14 }}>
+              <div style={{ width:40, height:40, borderRadius:12, background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.text, flexShrink:0 }}>
+                <Icon name="flame" size={20}/>
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:C.bg, opacity:0.6, letterSpacing:1.5, marginBottom:2 }}>STREAK</div>
+                <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                  <div style={{ fontFamily:MONO, fontSize:28, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>{s}</div>
+                  <div style={{ fontSize:12, fontWeight:600, opacity:0.6 }}>days · keep going</div>
+                </div>
               </div>
             </div>
           ) : null; })()}
 
           {/* Quick Start */}
           <button onClick={() => startWorkout(null)} style={{
-            width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-            border:"none", borderRadius:14, padding:"16px 18px", marginBottom:10,
-            cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F,
-            boxShadow:`0 4px 16px ${C.accent}44`
+            width:"100%", background:C.text, color:C.bg,
+            border:"none", borderRadius:16, padding:"18px",
+            marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F,
           }}>
-            <div style={{ width:40, height:40, borderRadius:10, background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>⚡</div>
-            <div style={{ textAlign:"left", flex:1 }}>
-              <div style={{ fontSize:15, fontWeight:700, color:"#fff" }}>Quick Start</div>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", marginTop:1 }}>Start an empty workout</div>
+            <div style={{ width:40, height:40, borderRadius:10, background:C.bg, color:C.text, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="zap" size={20}/>
             </div>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+            <div style={{ textAlign:"left", flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:700, letterSpacing:-0.3 }}>Quick Start</div>
+              <div style={{ fontSize:12, opacity:0.6, marginTop:2 }}>Start an empty workout</div>
+            </div>
+            <Icon name="chevron-right" size={18} color={C.bg}/>
           </button>
 
           {/* Calculators */}
           <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-            {[["🧮","1RM Calc",() => setShow1RM(true)],["🏋️","Plates",() => setShowPlateCalc(true)]].map(([icon,label,fn]) => (
+            {[["activity","1RM Calc",() => setShow1RM(true)],["barbell","Plates",() => setShowPlateCalc(true)]].map(([icon,label,fn]) => (
               <button key={label} onClick={fn} style={{
                 flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
-                padding:"11px 8px", display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontFamily:F
+                padding:"11px 12px", display:"flex", alignItems:"center", gap:10, cursor:"pointer", fontFamily:F
               }}>
-                <span style={{ fontSize:18 }}>{icon}</span>
-                <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{label}</span>
+                <Icon name={icon} size={18} color={C.text}/>
+                <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{label}</span>
               </button>
             ))}
           </div>
@@ -2929,7 +3228,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </>
           ) : (
             <div style={{ background:C.surface, border:`1px dashed ${C.border}`, borderRadius:14, padding:"28px 20px", textAlign:"center", marginTop:4 }}>
-              <div style={{ fontSize:32, marginBottom:10 }}>📋</div>
+              <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={30} color="currentColor"/></div>
               <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:4 }}>No active program</div>
               <div style={{ fontSize:12, color:C.sub, marginBottom:16 }}>Import a template to get started</div>
               <button onClick={() => setShowTemplates(true)} style={{
@@ -2948,14 +3247,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none",
               borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
             }}>
-              <div style={{ fontSize:18, marginBottom:3 }}>✨</div>
+              <div style={{ marginBottom:6, display:"flex", justifyContent:"center" }}><Icon name="spark" size={18} color="currentColor"/></div>
               Build Your Own
             </button>
             <button onClick={() => setShowTemplates(true)} style={{
               background:"none", color:C.text, border:`1px solid ${C.border}`,
               borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
             }}>
-              <div style={{ fontSize:18, marginBottom:3 }}>📋</div>
+              <div style={{ marginBottom:6, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={18} color="currentColor"/></div>
               Use Template
             </button>
           </div>
@@ -3108,7 +3407,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{name}</div>
-                  {pr && <div style={{ fontSize:11, color:C.gold, marginTop:1 }}>🏆 PR · {cvt(pr, "lbs", unit)} {unit}</div>}
+                  {pr && <div style={{ fontSize:11, color:C.gold, marginTop:2, fontWeight:600 }}>PR · <span style={{ fontFamily:MONO, fontWeight:700 }}>{cvt(pr, "lbs", unit)} {unit}</span></div>}
                 </div>
                 <span style={{ fontSize:16, color:C.sub }}>›</span>
               </button>
@@ -3221,7 +3520,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
             {!Object.keys(store.history || {}).length && (
               <div style={{ textAlign:"center", color:C.sub, padding:"40px 0", fontSize:13 }}>
-                <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+                <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={36} color="currentColor"/></div>
                 No workouts logged yet
               </div>
             )}
@@ -3247,7 +3546,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                           {prExercises.length > 0 && (
-                            <div style={{ background:"linear-gradient(135deg,#ca8a04,#dc2626)", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700, color:"#fff" }}>🏆 PR</div>
+                            <div style={{ background:C.text, color:C.bg, borderRadius:6, padding:"3px 9px", fontSize:10, fontWeight:800, letterSpacing:1 }}>PR</div>
                           )}
                           <button onClick={() => onDeleteHistory && onDeleteHistory(date, sid)} style={{
                             background:"none", border:`1px solid ${C.border}`, borderRadius:8,
@@ -3271,7 +3570,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               <div style={{ flex:1, minWidth:0 }}>
                                 <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                                   <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{ex.name}</span>
-                                  {isPR && <span style={{ fontSize:9, background:"linear-gradient(135deg,#ca8a04,#dc2626)", color:"#fff", borderRadius:6, padding:"1px 5px", fontWeight:700 }}>PR</span>}
+                                  {isPR && <span style={{ fontSize:9, background:C.text, color:C.bg, borderRadius:5, padding:"2px 6px", fontWeight:800, letterSpacing:0.8 }}>PR</span>}
                                 </div>
                                 <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
                                   {setsLabel} reps{topWeight > 0 ? ` · ${topWeight} ${sess.unit||"lbs"}` : ""}
@@ -3302,18 +3601,20 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             {/* AI Coach button */}
             <div style={{ padding:"12px 14px 0" }}>
               <button onClick={() => { setShowTemplates(false); setShowAICoach(true); }} style={{
-                width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-                border:"none", borderRadius:12, padding:"14px", cursor:"pointer", fontFamily:F,
-                display:"flex", alignItems:"center", gap:12, marginBottom:2
+                width:"100%", background:C.text, color:C.bg,
+                border:"none", borderRadius:14, padding:"16px", cursor:"pointer", fontFamily:F,
+                display:"flex", alignItems:"center", gap:14, marginBottom:2
               }}>
-                <span style={{ fontSize:24 }}>🤖</span>
-                <div style={{ textAlign:"left" }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:"#fff" }}>AI Coach — Build My Program</div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)" }}>Answer 5 questions, get a custom plan</div>
+                <div style={{ width:36, height:36, borderRadius:10, background:C.bg, color:C.text, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <Icon name="spark" size={20}/>
                 </div>
-                <span style={{ marginLeft:"auto", color:"rgba(255,255,255,0.7)", fontSize:18 }}>›</span>
+                <div style={{ textAlign:"left", flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.bg, letterSpacing:-0.2 }}>AI Coach</div>
+                  <div style={{ fontSize:11, color:C.bg, opacity:0.65, marginTop:1 }}>Answer 5 questions, get a custom plan</div>
+                </div>
+                <Icon name="chevron-right" size={18} color={C.bg}/>
               </button>
-              <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginBottom:10, marginTop:6 }}>— or pick from templates below —</div>
+              <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginBottom:10, marginTop:10, letterSpacing:1, fontWeight:600 }}>OR PICK A TEMPLATE</div>
             </div>
 
             <div style={{ overflowY:"auto", flex:1, padding:"0 14px 14px" }}>
@@ -3569,12 +3870,12 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
         <div style={{ background:`linear-gradient(135deg,${accentColor},${accentColor}cc)`, padding:"20px 20px 18px", flexShrink:0 }}>
           <div style={{ display:"flex", gap:20 }}>
             {[
-              ["💪", editDay.exercises.length, "exercises"],
-              ["🔢", editDay.exercises.reduce((a,ex)=>a+(parseInt(ex.reps)||3),0), "total sets"],
-              ...(lastPerformed ? [["✅","Done",lastPerformed]] : [["🆕","New","first time"]]),
+              ["dumbbell", editDay.exercises.length, "exercises"],
+              ["package", editDay.exercises.reduce((a,ex)=>a+(parseInt(ex.reps)||3),0), "total sets"],
+              ...(lastPerformed ? [["check","Done",lastPerformed]] : [["spark","New","first time"]]),
             ].map(([icon,val,label]) => (
               <div key={label} style={{ flex:1, background:"rgba(255,255,255,0.15)", borderRadius:12, padding:"10px 8px", textAlign:"center" }}>
-                <div style={{ fontSize:18, marginBottom:2 }}>{icon}</div>
+                <div style={{ marginBottom:4, display:"flex", justifyContent:"center", color:"rgba(255,255,255,0.95)" }}><Icon name={icon} size={18}/></div>
                 <div style={{ fontSize:15, fontWeight:800, color:"#fff", lineHeight:1 }}>{val}</div>
                 <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", marginTop:3, fontWeight:500 }}>{label}</div>
               </div>
@@ -3604,7 +3905,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     <span style={{ fontSize:11, fontWeight:600, color:BLUE, background:BLUEBG, padding:"3px 9px", borderRadius:20 }}>{ex.reps||"3×8–12"}</span>
                     {exInfo?.muscle && <span style={{ fontSize:11, color:SUB, padding:"3px 0" }}>{exInfo.muscle}</span>}
-                    {pr && <span style={{ fontSize:11, fontWeight:600, color:"#D97706" }}>🏆 PR {cvt(pr,"lbs",unit)}{unit}</span>}
+                    {pr && <span style={{ fontSize:10, fontWeight:800, color:"#fff", background:"#0A0A0A", padding:"3px 8px", borderRadius:6, letterSpacing:0.8 }}>PR {cvt(pr,"lbs",unit)}{unit}</span>}
                   </div>
                   {ex.note && <div style={{ fontSize:11, color:SUB, marginTop:4, fontStyle:"italic" }}>💡 {ex.note}</div>}
                 </div>
@@ -4743,7 +5044,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
               <div style={{ overflowY:"auto", flex:1, padding:"10px 14px 14px" }}>
                 {recents.length === 0 ? (
                   <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
-                    <div style={{ fontSize:32, marginBottom:10 }}>💪</div>
+                    <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="dumbbell" size={30} color="currentColor"/></div>
                     <div style={{ fontSize:13 }}>Complete a workout first to share it</div>
                   </div>
                 ) : recents.map((sess,i) => {
@@ -4759,13 +5060,13 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
                         const r = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
                           method:"POST",
                           headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
-                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:`${sess.dayName} 💪`, workout:workoutData })
+                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:`${sess.dayName}`, workout:workoutData })
                         });
                         if (r.ok) {
                           const d = await r.json();
                           const p = Array.isArray(d)?d[0]:d;
                           if(p) setPosts(prev=>[p,...prev]);
-                          toast("Shared to group 💪", "success");
+                          toast("Shared to group", "success");
                         } else {
                           toast("Couldn't share — try again", "error");
                         }
@@ -4938,6 +5239,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   const [q, setQ] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [subTab, setSubTab] = useState("discover");
+  const [viewingExercise, setViewingExercise] = useState(null);
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
 
@@ -4967,6 +5269,9 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
     }));
   }
 
+  if (viewingExercise) {
+    return <ExerciseDetail name={viewingExercise} store={store} unit={store.unit||"lbs"} C={C} onClose={() => setViewingExercise(null)}/>;
+  }
   if (subTab === "groups") {
     return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")} token={token}/>;
   }
@@ -5030,7 +5335,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
               <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"8px 0 10px" }}>EXERCISES</div>
               <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:12 }}>
                 {exerciseResults.map((ex, idx) => (
-                  <div key={ex.name} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < exerciseResults.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                  <div key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < exerciseResults.length-1 ? `1px solid ${C.divider}` : "none", cursor:"pointer" }}>
                     <div style={{ width:40, height:40, borderRadius:12, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                       <MuscleIcon muscle={ex.muscle||""} size={26} C={C}/>
                     </div>
@@ -5041,6 +5346,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     {(store.prs||{})[ex.name] && (
                       <div style={{ fontSize:11, color:C.gold, fontWeight:700, fontFamily:MONO }}>🏆 {store.prs[ex.name]} {store.unit||"lbs"}</div>
                     )}
+                    <span style={{ fontSize:14, color:C.sub }}>›</span>
                   </div>
                 ))}
               </div>
@@ -5055,24 +5361,32 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           {/* Quick access cards */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
             <button onClick={() => setSubTab("challenges")} style={{
-              background:"linear-gradient(135deg,#059669,#047857)",
+              background:C.text, color:C.bg,
               border:"none", borderRadius:16, padding:"18px 16px",
-              color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F,
-              boxShadow:"0 4px 16px rgba(5,150,105,0.3)"
+              cursor:"pointer", textAlign:"left", fontFamily:F,
+              display:"flex", flexDirection:"column", alignItems:"flex-start", gap:14,
             }}>
-              <div style={{ fontSize:24, marginBottom:8 }}>🏅</div>
-              <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Friends Activity</div>
-              <div style={{ fontSize:11, opacity:0.8, marginTop:3 }}>Weekly stats</div>
+              <div style={{ width:32, height:32, borderRadius:10, background:C.bg, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <Icon name="trending-up" size={18}/>
+              </div>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Friends Activity</div>
+                <div style={{ fontSize:11, opacity:0.65, marginTop:3 }}>Weekly stats</div>
+              </div>
             </button>
             <button onClick={() => setSubTab("groups")} style={{
-              background:"linear-gradient(135deg,#7c3aed,#6d28d9)",
-              border:"none", borderRadius:16, padding:"18px 16px",
-              color:"#fff", cursor:"pointer", textAlign:"left", fontFamily:F,
-              boxShadow:"0 4px 16px rgba(124,58,237,0.3)"
+              background:C.surface, color:C.text,
+              border:`1px solid ${C.border}`, borderRadius:16, padding:"18px 16px",
+              cursor:"pointer", textAlign:"left", fontFamily:F,
+              display:"flex", flexDirection:"column", alignItems:"flex-start", gap:14,
             }}>
-              <div style={{ fontSize:24, marginBottom:8 }}>👥</div>
-              <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
-              <div style={{ fontSize:11, opacity:0.8, marginTop:3 }}>Private crews</div>
+              <div style={{ width:32, height:32, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <Icon name="users" size={18} color={C.text}/>
+              </div>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
+                <div style={{ fontSize:11, color:C.sub, marginTop:3 }}>Private crews</div>
+              </div>
             </button>
           </div>
 
@@ -5209,7 +5523,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
   );
 }
 
-function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow }) {
+function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, token }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
@@ -5253,17 +5567,34 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
     }
   }, [showEdit, user]);
 
-  function saveProfile() {
+  async function saveProfile() {
+    const newName = editName.trim() || user?.name;
+    const newUsername = editUsername.trim().replace(/\s/g, "") || user?.username;
+    const newBio = editBio;
+    // Update local store first (optimistic)
     setStore(p => ({
       ...p,
       users: p.users.map(u => u.id === currentUserId ? {
         ...u,
-        name: editName.trim() || u.name,
-        username: editUsername.trim().replace(/\s/g, "") || u.username,
-        bio: editBio
+        name: newName,
+        username: newUsername,
+        bio: newBio
       } : u)
     }));
     setShowEdit(false);
+    // Persist to Supabase
+    const tok = token || loadSession()?.access_token;
+    if (tok) {
+      try {
+        await sb.query(`profiles?id=eq.${currentUserId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: newName, username: newUsername, bio: newBio })
+        }, tok);
+      } catch (e) {
+        console.error("profile save error:", e);
+        toast("Couldn't save profile changes", "error");
+      }
+    }
   }
 
   function toggleFollow() {
@@ -5278,14 +5609,43 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
     }));
   }
 
-  function handleAvatar(e) {
+  async function handleAvatar(e) {
     const file = e.target.files[0];
     if (!file) return;
+    const tok = token || loadSession()?.access_token;
     const r = new FileReader();
-    r.onload = ev => setStore(p => ({
-      ...p,
-      users: p.users.map(u => u.id === currentUserId ? { ...u, profileImage: ev.target.result } : u)
-    }));
+    r.onload = async ev => {
+      const dataUrl = ev.target.result;
+      // Show preview immediately
+      setStore(p => ({
+        ...p,
+        users: p.users.map(u => u.id === currentUserId ? { ...u, avatarUrl: dataUrl } : u)
+      }));
+      // Upload to Supabase Storage
+      if (tok) {
+        try {
+          const uploadedUrl = await uploadImage(dataUrl, tok, currentUserId);
+          if (uploadedUrl && !uploadedUrl.startsWith("data:")) {
+            // Save URL to profiles table
+            await sb.query(`profiles?id=eq.${currentUserId}`, {
+              method: "PATCH",
+              body: JSON.stringify({ avatar_url: uploadedUrl })
+            }, tok);
+            // Update store with real URL
+            setStore(p => ({
+              ...p,
+              users: p.users.map(u => u.id === currentUserId ? { ...u, avatarUrl: uploadedUrl } : u)
+            }));
+            toast("Profile photo updated!", "success");
+          } else {
+            toast("Upload failed — preview only", "error");
+          }
+        } catch (err) {
+          console.error("avatar upload error:", err);
+          toast("Couldn't save photo", "error");
+        }
+      }
+    };
     r.readAsDataURL(file);
   }
 
@@ -5447,7 +5807,14 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                   <div style={{ fontSize:14, color:C.text }}>Weight Units</div>
                   <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
                     {["lbs","kg"].map(u => (
-                      <button key={u} onClick={() => setStore(p => ({ ...p, unit: u }))} style={{
+                      <button key={u} onClick={async () => {
+                        setStore(p => ({ ...p, unit: u }));
+                        const tok = token || loadSession()?.access_token;
+                        if (tok) {
+                          try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ unit: u }) }, tok); }
+                          catch (e) { console.error("unit save error:", e); }
+                        }
+                      }} style={{
                         padding:"6px 16px", background:(store.unit||"lbs")===u?C.accent:"transparent",
                         color:(store.unit||"lbs")===u?"#fff":C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
@@ -5601,7 +5968,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
         }))
         .filter(ex => ex.sets.length > 0);
       const vol = doneExercises.reduce((a,ex)=>a+ex.sets.reduce((b,s)=>b+s.w*s.r,0),0);
-      onPost({ type:"workout", caption: caption || `Just crushed ${selectedWorkout.dayName} 💪`,
+      onPost({ type:"workout", caption: caption || `${selectedWorkout.dayName} — done.`,
         unit: selectedWorkout.unit || "lbs",
         workout: {
           name: selectedWorkout.dayName,
@@ -5621,11 +5988,16 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
   }
 
   const kinds = [
-    { id:"photo", label:"📸", full:"Photo" },
-    { id:"story", label:"⚡", full:"Story" },
-    { id:"workout", label:"💪", full:"Workout" },
-    { id:"run", label:"🏃", full:"Run" },
+    { id:"photo", label:"image", full:"Photo" },
+    { id:"story", label:"zap", full:"Story" },
+    { id:"workout", label:"dumbbell", full:"Workout" },
+    { id:"run", label:"activity", full:"Run" },
   ];
+
+  function PostKindIcon({ name, size }) {
+    if (name === "image") return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+    return <Icon name={name} size={size}/>;
+  }
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
@@ -5645,13 +6017,13 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
         <div style={{ display:"flex", padding:"0 14px 12px", gap:6 }}>
           {kinds.map(k => (
             <button key={k.id} onClick={() => setPostKind(k.id)} style={{
-              flex:1, padding:"8px 4px", borderRadius:10, fontSize:11, fontWeight:700,
-              background: postKind === k.id ? C.accent : C.divider,
-              color: postKind === k.id ? "#fff" : C.sub,
-              border:"none", cursor:"pointer", fontFamily:F,
-              display:"flex", flexDirection:"column", alignItems:"center", gap:2
+              flex:1, padding:"10px 4px", borderRadius:12, fontSize:11, fontWeight:700,
+              background: postKind === k.id ? C.text : C.surface,
+              color: postKind === k.id ? C.bg : C.sub,
+              border: postKind === k.id ? "none" : `1px solid ${C.border}`, cursor:"pointer", fontFamily:F,
+              display:"flex", flexDirection:"column", alignItems:"center", gap:5
             }}>
-              <span style={{ fontSize:18 }}>{k.label}</span>
+              <PostKindIcon name={k.label} size={18}/>
               <span>{k.full}</span>
             </button>
           ))}
@@ -5696,7 +6068,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
               <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>SELECT WORKOUT TO SHARE</div>
               {recentWorkouts.length === 0 ? (
                 <div style={{ textAlign:"center", color:C.sub, padding:"30px 0", fontSize:13 }}>
-                  <div style={{ fontSize:32, marginBottom:8 }}>💪</div>
+                  <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="dumbbell" size={30} color="currentColor"/></div>
                   Complete a workout first
                 </div>
               ) : (
@@ -5792,8 +6164,8 @@ function EditPostModal({ C, post, onSave, onClose }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // AUTH SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
-function AuthScreen({ onAuth, C }) {
-  const [mode, setMode] = useState("signin"); // "signin" | "signup"
+function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null }) {
+  const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -5829,41 +6201,145 @@ function AuthScreen({ onAuth, C }) {
   }
 
   const inputStyle = {
-    width:"100%", background:C.divider, border:"none", borderRadius:10,
-    padding:"13px 14px", fontSize:16, color:C.text, outline:"none",
+    width:"100%", background:C.divider, border:"none", borderRadius:12,
+    padding:"14px 16px", fontSize:16, color:C.text, outline:"none",
     fontFamily:F, boxSizing:"border-box", marginBottom:10
   };
 
-  return (
-    <div style={{
-      height:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
-      alignItems:"center", justifyContent:"center", padding:"0 28px",
-      paddingTop:"env(safe-area-inset-top)", paddingBottom:"env(safe-area-inset-bottom)"
-    }}>
-      {/* Logo */}
-      <div style={{ marginBottom:32, textAlign:"center" }}>
-        <SeshdLogo C={C} big/>
-        <div style={{ fontSize:13, color:C.sub, marginTop:8 }}>
-          {mode === "signin" ? "Welcome back 🔥" : "Join Seshd — start your journey 🔥"}
+  // ── Welcome / guest entry ────────────────────────────────────
+  if (mode === "welcome") {
+    return (
+      <div style={{
+        minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
+        paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
+        paddingLeft:24, paddingRight:24, position:"relative", overflow:"hidden",
+      }}>
+        {/* Soft ambient gradient — no generic blobs */}
+        <div style={{
+          position:"absolute", top:"-20%", right:"-30%", width:"80%", aspectRatio:"1",
+          background:`radial-gradient(circle, ${C.accent}1a 0%, transparent 70%)`, pointerEvents:"none"
+        }}/>
+        <div style={{
+          position:"absolute", bottom:"-15%", left:"-25%", width:"70%", aspectRatio:"1",
+          background:`radial-gradient(circle, ${C.accent2 || C.accent}14 0%, transparent 70%)`, pointerEvents:"none"
+        }}/>
+
+        {/* Hero */}
+        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", position:"relative", zIndex:1 }}>
+          {promptReason && (
+            <div style={{ marginBottom:24, padding:"14px 18px", borderRadius:14, background:C.surface, border:`1px solid ${C.accent}40` }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
+              <div style={{ fontSize:14, color:C.text, lineHeight:1.4 }}>{promptReason}</div>
+            </div>
+          )}
+
+          <SeshdLogo C={C} big/>
+
+          <h1 style={{
+            fontSize:34, fontWeight:900, color:C.text, marginTop:24, marginBottom:10,
+            letterSpacing:-1, lineHeight:1.05, fontFamily:F
+          }}>
+            Lift heavy.<br/>Track everything.
+          </h1>
+          <p style={{
+            fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:0, fontFamily:F,
+            maxWidth:340
+          }}>
+            A no-bullshit gym log that actually keeps up with you. Train first — make it social later.
+          </p>
+
+          {/* Trust signals — premium feel */}
+          <div style={{ marginTop:28, display:"flex", flexDirection:"column", gap:14 }}>
+            {[
+              ["Plate calculator & 1RM built in"],
+              ["Auto rest timer, swipe-to-complete"],
+              ["Your data stays yours"],
+            ].map(([txt], i) => (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <div style={{
+                  width:24, height:24, borderRadius:12, background:`${C.accent}1f`,
+                  display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0
+                }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div style={{ fontSize:14, color:C.text, fontFamily:F }}>{txt}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTAs */}
+        <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", gap:10 }}>
+          <button onClick={() => onGuest && onGuest()} style={{
+            width:"100%", background:C.text, color:C.bg, border:"none",
+            borderRadius:14, padding:"17px", fontSize:16, fontWeight:800,
+            cursor:"pointer", fontFamily:F, letterSpacing:-0.3,
+            transition:"transform 0.1s",
+          }}
+            onTouchStart={e => e.currentTarget.style.transform = "scale(0.98)"}
+            onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
+          >
+            Start Tracking
+          </button>
+          <button onClick={() => setMode("signin")} style={{
+            width:"100%", background:"transparent", color:C.text, border:`1px solid ${C.border}`,
+            borderRadius:14, padding:"15px", fontSize:14, fontWeight:600,
+            cursor:"pointer", fontFamily:F,
+          }}>
+            I have an account
+          </button>
+          <div style={{ textAlign:"center", marginTop:6, fontSize:11, color:C.muted, fontFamily:F }}>
+            No account needed to start lifting
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Form */}
-      <div style={{ width:"100%", maxWidth:360 }}>
+  // ── Sign in / Sign up form ────────────────────────────────────
+  return (
+    <div style={{
+      minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
+      padding:"0 24px",
+      paddingTop:"max(env(safe-area-inset-top), 20px)",
+      paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
+    }}>
+      <div style={{ display:"flex", alignItems:"center", height:48 }}>
+        <button onClick={() => { setMode("welcome"); setError(""); }} style={{
+          background:"none", border:"none", padding:"10px 4px",
+          display:"flex", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F, color:C.text,
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <span style={{ fontSize:14, fontWeight:600 }}>Back</span>
+        </button>
+      </div>
+
+      <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", maxWidth:380, width:"100%", margin:"0 auto" }}>
+        <h1 style={{
+          fontSize:28, fontWeight:900, color:C.text, marginBottom:6,
+          letterSpacing:-0.8, fontFamily:F
+        }}>
+          {mode === "signin" ? "Welcome back" : "Create your account"}
+        </h1>
+        <p style={{ fontSize:14, color:C.sub, marginBottom:28, fontFamily:F }}>
+          {mode === "signin" ? "Sign in to sync your progress" : "Save your progress and connect with friends"}
+        </p>
+
         {mode === "signup" && (
           <>
             <input value={name} onChange={e => setName(e.target.value)}
-              placeholder="Full name" style={inputStyle}/>
+              placeholder="Full name" style={inputStyle} autoComplete="name"/>
             <input value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""))}
-              placeholder="Username (letters, numbers, _)" style={inputStyle}
-              autoCapitalize="none" autoCorrect="off"/>
+              placeholder="Username" style={inputStyle}
+              autoCapitalize="none" autoCorrect="off" autoComplete="username"/>
           </>
         )}
         <input value={email} onChange={e => setEmail(e.target.value)}
           placeholder="Email" type="email" style={inputStyle}
-          autoCapitalize="none" autoCorrect="off"/>
+          autoCapitalize="none" autoCorrect="off" autoComplete="email"/>
         <input value={password} onChange={e => setPassword(e.target.value)}
-          placeholder="Password (min 6 chars)" type="password" style={inputStyle}/>
+          placeholder="Password" type="password" style={inputStyle}
+          autoComplete={mode === "signin" ? "current-password" : "new-password"}/>
 
         {error && (
           <div style={{ fontSize:13, color:C.red, marginBottom:10, textAlign:"center", lineHeight:1.4 }}>
@@ -5872,19 +6348,22 @@ function AuthScreen({ onAuth, C }) {
         )}
 
         <button onClick={handleSubmit} disabled={loading} style={{
-          width:"100%", background:loading ? C.sub : `linear-gradient(135deg,${C.accent},${C.accent2})`,
-          color:"#fff", border:"none", borderRadius:10, padding:"14px",
+          width:"100%", background:loading ? C.sub : C.text, color:C.bg,
+          border:"none", borderRadius:12, padding:"15px",
           fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer",
-          fontFamily:F, marginBottom:14, transition:"background 0.2s"
+          fontFamily:F, marginTop:6, marginBottom:14,
         }}>
           {loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Create Account"}
         </button>
 
         <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
-          width:"100%", background:"none", border:"none", color:C.accent,
-          fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F, padding:8
+          width:"100%", background:"none", border:"none", color:C.sub,
+          fontSize:13, cursor:"pointer", fontFamily:F, padding:8
         }}>
-          {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+          {mode === "signin"
+            ? <>New to Seshd? <span style={{ color:C.accent, fontWeight:700 }}>Create an account</span></>
+            : <>Have an account? <span style={{ color:C.accent, fontWeight:700 }}>Sign in</span></>
+          }
         </button>
       </div>
     </div>
@@ -5898,15 +6377,20 @@ export default function App() {
   // ── Auth state ──────────────────────────────────────────────────
   const [session, setSession] = useState(loadSession);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(() => {
+    try { return localStorage.getItem("seshd_guest") === "1"; } catch { return false; }
+  });
+  const [authPrompt, setAuthPrompt] = useState(null); // { reason: "..." } when guest hits a gated feature
 
   // ── App data state ──────────────────────────────────────────────
   const [store, setStore] = useState(loadStore);
   const [dbReady, setDbReady] = useState(false);
 
+  const GUEST_ID = "guest-local";
   const token = session?.access_token || null;
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = session?.access_token || null; }, [session]);
-  const currentUserId = session?.user?.id || null;
+  const currentUserId = session?.user?.id || (isGuest ? GUEST_ID : null);
 
   // ── All UI state — must be at top level before any returns ──
   const [tab, setTab] = useState("feed");
@@ -5963,9 +6447,9 @@ export default function App() {
 
   // ── Load user data from Supabase once authenticated ─────────────
   useEffect(() => {
-    if (!token || !currentUserId) return;
+    if (!token || isGuest) return;
     loadUserData();
-  }, [token, currentUserId]);
+  }, [token, currentUserId, isGuest]);
 
   async function loadUserData() {
     try {
@@ -6091,6 +6575,78 @@ export default function App() {
     setSession(data);
   }
 
+  // Migrate guest data to a real account on signup
+  async function migrateGuestData(authData) {
+    const tok = authData.access_token;
+    const newUserId = authData.user.id;
+    if (!tok || !newUserId) return;
+    try {
+      // Upload programs
+      for (const prog of (store.programs || [])) {
+        try {
+          await sb.query("programs", {
+            method: "POST",
+            body: JSON.stringify({
+              id: prog.id, user_id: newUserId, name: prog.name,
+              days: prog.days, is_active: store.activeProgramId === prog.id,
+            })
+          }, tok);
+        } catch (e) { console.error("migrate program:", e); }
+      }
+      // Upload PRs
+      for (const [exName, weightLbs] of Object.entries(store.prs || {})) {
+        try {
+          await sb.query("personal_records", {
+            method: "POST",
+            headers_extra: { "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify({ user_id: newUserId, exercise_name: exName, weight_lbs: weightLbs })
+          }, tok);
+        } catch (e) { console.error("migrate PR:", e); }
+      }
+      // Upload workout history
+      for (const [date, daySessions] of Object.entries(store.history || {})) {
+        for (const sess of Object.values(daySessions)) {
+          try {
+            await sb.query("workout_history", {
+              method: "POST",
+              body: JSON.stringify({
+                user_id: newUserId, day_name: sess.dayName,
+                exercises: sess.exercises, duration_secs: sess.duration || 0,
+                unit: sess.unit || "lbs", note: sess.note || "",
+                created_at: new Date(date).toISOString(),
+              })
+            }, tok);
+          } catch (e) { console.error("migrate history:", e); }
+        }
+      }
+      // Clear guest flag and update session
+      try { localStorage.removeItem("seshd_guest"); } catch {}
+      setIsGuest(false);
+      // Remove guest user record from store
+      setStore(p => ({
+        ...p,
+        users: (p.users || []).filter(u => u.id !== GUEST_ID),
+      }));
+      saveSession(authData);
+      setSession(authData);
+      toast("Welcome — your progress is saved", "success");
+    } catch (e) {
+      console.error("guest migration error:", e);
+      toast("Account created — some data didn't transfer", "error");
+      // Still complete the auth even if migration partially failed
+      try { localStorage.removeItem("seshd_guest"); } catch {}
+      setIsGuest(false);
+      saveSession(authData);
+      setSession(authData);
+    }
+  }
+
+  // Helper: gate a guest action behind signup
+  function requireAuth(reason) {
+    if (isGuest) { setAuthPrompt({ reason }); return true; }
+    return false;
+  }
+
   async function handleSignOut() {
     try { await sb.signOut(token); } catch {}
     clearSession();
@@ -6101,6 +6657,7 @@ export default function App() {
 
   // ── Supabase-backed action handlers ──────────────────────────
   async function handleNewPost(postData) {
+    if (requireAuth("Sign up to share your workout with the feed")) return;
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) { toast("Not signed in", "error"); return; }
     try {
@@ -6148,6 +6705,7 @@ export default function App() {
   }
 
   async function handleKudos(postId) {
+    if (requireAuth("Sign up to give kudos and connect with lifters")) return;
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
 
@@ -6209,6 +6767,7 @@ export default function App() {
   }
 
   async function handleComment(postId, text) {
+    if (requireAuth("Sign up to join the conversation")) return;
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok || !text.trim()) return;
 
@@ -6434,15 +6993,50 @@ export default function App() {
     }
     metaViewport.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
 
-    // Inject global style: ensure all inputs are >=16px to disable iOS zoom-on-focus
+    // Inject Inter + JetBrains Mono from Google Fonts
+    if (!document.getElementById("seshd-fonts")) {
+      const preconnect1 = document.createElement("link");
+      preconnect1.rel = "preconnect";
+      preconnect1.href = "https://fonts.googleapis.com";
+      document.head.appendChild(preconnect1);
+      const preconnect2 = document.createElement("link");
+      preconnect2.rel = "preconnect";
+      preconnect2.href = "https://fonts.gstatic.com";
+      preconnect2.crossOrigin = "anonymous";
+      document.head.appendChild(preconnect2);
+      const fonts = document.createElement("link");
+      fonts.id = "seshd-fonts";
+      fonts.rel = "stylesheet";
+      fonts.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap";
+      document.head.appendChild(fonts);
+    }
+
+    // Inject global style: ensure all inputs are >=16px to disable iOS zoom-on-focus, plus motion utilities
     const styleId = "seshd-no-zoom";
     if (!document.getElementById(styleId)) {
       const style = document.createElement("style");
       style.id = styleId;
       style.textContent = `
+        body, * { font-feature-settings: "cv02","cv03","cv04","cv11"; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         input, textarea, select { font-size: 16px !important; }
         input[type=number] { -moz-appearance: textfield; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+        @keyframes seshd-press { 0%{transform:scale(1)} 50%{transform:scale(0.96)} 100%{transform:scale(1)} }
+        @keyframes seshd-fade-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes seshd-count-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes seshd-pulse-soft { 0%,100%{opacity:1} 50%{opacity:0.55} }
+        @keyframes seshd-slide-up { from{transform:translateY(100%)} to{transform:translateY(0)} }
+        @keyframes seshd-scale-in { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:scale(1)} }
+        @keyframes seshd-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+
+        button { -webkit-tap-highlight-color: transparent; transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s; }
+        button:active:not(:disabled) { transform: scale(0.96); }
+        .seshd-enter { animation: seshd-fade-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .seshd-scale-enter { animation: seshd-scale-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .seshd-count { animation: seshd-count-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; font-variant-numeric: tabular-nums; }
+        .seshd-slide-up { animation: seshd-slide-up 0.36s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .seshd-pulse { animation: seshd-pulse-soft 2s ease-in-out infinite; }
       `;
       document.head.appendChild(style);
     }
@@ -6470,12 +7064,44 @@ export default function App() {
     );
   }
 
-  // ── Show auth screen if not logged in ─────────────────────────
-  if (!session || !currentUserId) {
-    return <AuthScreen onAuth={handleAuth} C={C}/>;
+  // ── Show auth screen if not logged in AND not a guest ─────────
+  if (!session && !isGuest) {
+    return <AuthScreen
+      onAuth={handleAuth}
+      onGuest={() => {
+        try { localStorage.setItem("seshd_guest", "1"); } catch {}
+        // Seed a local guest user record so the app shell works
+        setStore(p => {
+          const hasGuest = (p.users||[]).some(u => u.id === GUEST_ID);
+          return hasGuest ? p : {
+            ...p,
+            users: [...(p.users||[]), { id: GUEST_ID, username: "guest", name: "Guest", bio: "", avatar: "💪", followers: [], following: [] }]
+          };
+        });
+        setIsGuest(true);
+        setDbReady(true); // skip DB load for guests
+        setTab("tracker"); // drop them right into tracker
+      }}
+      C={C}
+    />;
   }
 
-  if (!dbReady) {
+  // Guest → upgrade prompt overlay
+  if (isGuest && authPrompt) {
+    return <AuthScreen
+      onAuth={async (data) => {
+        // Migrate guest data to new account
+        await migrateGuestData(data);
+        setAuthPrompt(null);
+      }}
+      onGuest={() => setAuthPrompt(null)}
+      C={C}
+      initialMode="signup"
+      promptReason={authPrompt.reason}
+    />;
+  }
+
+  if (!dbReady && !isGuest) {
     return (
       <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
         <SeshdLogo C={C} big/>
@@ -6544,6 +7170,7 @@ export default function App() {
   }
 
   async function handleFollow(userId) {
+    if (requireAuth("Sign up to follow friends and see their workouts")) return;
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     const isFollowing = me?.following?.includes(userId);
     setStore(prev => ({
@@ -6583,9 +7210,17 @@ export default function App() {
           onBack={() => setProfileUserId(null)}
           displayUnit={unit}
           C={C}
-          onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
+          onToggleTheme={async (t) => {
+            setStore(p => ({ ...p, theme: t }));
+            const tok = tokenRef.current || loadSession()?.access_token;
+            if (tok) {
+              try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
+              catch (e) { console.error("theme save error:", e); }
+            }
+          }}
           onUserClick={setProfileUserId}
           onFollow={handleFollow}
+          token={token}
         />
       </div>
     );
@@ -6651,11 +7286,32 @@ export default function App() {
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
       <ToastHost/>
 
+      {/* GUEST BANNER */}
+      {isGuest && (
+        <div style={{
+          background:C.text, color:C.bg,
+          padding:"max(env(safe-area-inset-top), 8px) 16px 8px",
+          display:"flex", alignItems:"center", gap:10, flexShrink:0
+        }}>
+          <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
+            <div style={{ fontSize:12, fontWeight:700, lineHeight:1.2 }}>Guest mode</div>
+            <div style={{ fontSize:10, opacity:0.7, lineHeight:1.3, marginTop:1 }}>Data saved on this device only</div>
+          </div>
+          <button onClick={() => setAuthPrompt({ reason: "Create an account to save your progress to the cloud, sync across devices, and back up your data forever." })} style={{
+            background:C.bg, color:C.text, border:"none",
+            borderRadius:8, padding:"6px 12px", fontSize:11, fontWeight:700,
+            cursor:"pointer", fontFamily:F, flexShrink:0,
+          }}>
+            Save progress
+          </button>
+        </div>
+      )}
+
       {/* TOP BAR — Instagram thin, minimal, SVG icons */}
       <div style={{
         background:C.tabBg, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
         borderBottom:`1px solid ${C.divider}`,
-        padding:"calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)",
+        padding: isGuest ? "10px calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)" : "calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)",
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
         <SeshdLogo C={C}/>
@@ -6663,7 +7319,10 @@ export default function App() {
           {streak > 0 && <div style={{ marginRight:4 }}><StreakBadge streak={streak} size="sm"/></div>}
           {tab === "feed" && (
             <button
-              onClick={() => { setNewPostKind("photo"); setShowNewPost(true); }}
+              onClick={() => {
+                if (requireAuth("Sign up to post photos and share your workouts")) return;
+                setNewPostKind("photo"); setShowNewPost(true);
+              }}
               aria-label="New post"
               style={{ background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
             >
@@ -6796,6 +7455,7 @@ export default function App() {
                     if (myStoryPost) {
                       setStoryIndex("self");
                     } else {
+                      if (requireAuth("Sign up to share stories with friends")) return;
                       setNewPostKind("story"); setShowNewPost(true);
                     }
                   }}>
@@ -6831,19 +7491,46 @@ export default function App() {
 
               <div style={{ paddingTop:4 }}>
                 {feedPosts.length === 0 && !isRefreshing && (
-                  <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
-                    <div style={{ fontSize:48, marginBottom:12 }}>🔥</div>
-                    <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Your feed is empty</div>
-                    <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>
-                      Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
+                  isGuest ? (
+                    <div style={{ textAlign:"center", padding:"60px 24px", color:C.sub }}>
+                      <div style={{
+                        width:80, height:80, borderRadius:24,
+                        background:`linear-gradient(135deg,${C.accent}26,${C.accent}0d)`,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        margin:"0 auto 18px",
+                      }}>
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                          <circle cx="9" cy="7" r="4"/>
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                      </div>
+                      <div style={{ fontSize:19, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.3 }}>Friends only feed</div>
+                      <div style={{ fontSize:14, lineHeight:1.5, marginBottom:24, maxWidth:280, margin:"0 auto 24px" }}>
+                        Sign up to follow friends and see their workouts here. No strangers, no faking.
+                      </div>
+                      <button onClick={() => setAuthPrompt({ reason: "Sign up to follow friends and unlock your feed" })} style={{
+                        background:C.text, color:C.bg, border:"none", borderRadius:12,
+                        padding:"13px 28px", fontSize:14, fontWeight:700,
+                        cursor:"pointer", fontFamily:F, letterSpacing:-0.2,
+                      }}>Create account</button>
                     </div>
-                    <button onClick={() => switchTab("tracker")} style={{
-                      background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-                      color:"#fff", border:"none", borderRadius:10,
-                      padding:"11px 22px", fontSize:13, fontWeight:700,
-                      cursor:"pointer", fontFamily:F
-                    }}>Start a Workout</button>
-                  </div>
+                  ) : (
+                    <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
+                      <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="flame" size={42} color="currentColor"/></div>
+                      <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Your feed is empty</div>
+                      <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>
+                        Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
+                      </div>
+                      <button onClick={() => switchTab("tracker")} style={{
+                        background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+                        color:"#fff", border:"none", borderRadius:10,
+                        padding:"11px 22px", fontSize:13, fontWeight:700,
+                        cursor:"pointer", fontFamily:F
+                      }}>Start a Workout</button>
+                    </div>
+                  )
                 )}
                 {feedPosts.length === 0 && isRefreshing && (
                   // Skeleton loader
@@ -6964,11 +7651,19 @@ export default function App() {
             currentUserId={currentUserId}
             displayUnit={unit}
             C={C}
-            onToggleTheme={t => setStore(p => ({ ...p, theme: t }))}
+            onToggleTheme={async (t) => {
+              setStore(p => ({ ...p, theme: t }));
+              const tok = tokenRef.current || loadSession()?.access_token;
+              if (tok) {
+                try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
+                catch (e) { console.error("theme save error:", e); }
+              }
+            }}
             onUserClick={setProfileUserId}
             email={session?.user?.email || ""}
             onSignOut={handleSignOut}
             onFollow={handleFollow}
+            token={token}
           />
         )}
             </div>
