@@ -89,7 +89,14 @@ const sb = (() => {
     return data;
   }
 
-  return { query, rpc, signUp, signIn, signOut, refreshToken };
+  // OAuth: start the flow by redirecting to Supabase's authorize endpoint
+  function signInWithOAuth(provider) {
+    const redirectTo = encodeURIComponent(window.location.origin + window.location.pathname);
+    const url = `${SUPABASE_URL}/auth/v1/authorize?provider=${provider}&redirect_to=${redirectTo}`;
+    window.location.href = url;
+  }
+
+  return { query, rpc, signUp, signIn, signOut, refreshToken, signInWithOAuth };
 })();
 
 // Upload image to Supabase Storage, return public URL
@@ -520,6 +527,19 @@ const SET_TYPES = [
 // UTILITIES
 // ═════════════════════════════════════════════════════════════════════════════
 const uid = () => Math.random().toString(36).slice(2,10);
+
+// Generate a friendly shareable code like "IGNITE-X9K2"
+// Excludes ambiguous chars: 0, O, 1, I, L
+const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function generateShareCode(prefix = "IGNITE") {
+  let suffix = "";
+  for (let i = 0; i < 4; i++) suffix += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  return `${prefix}-${suffix}`;
+}
+function normalizeShareCode(input) {
+  if (!input) return "";
+  return String(input).toUpperCase().replace(/[^A-Z0-9-]/g, "").trim();
+}
 const timeAgo = ts => {
   const s = Math.floor((Date.now()-ts)/1000);
   if (s < 60) return `${s}s`;
@@ -1272,12 +1292,16 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
   const est1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
   const isDone = set.done;
 
-  // Progressive overload suggestion (only for working sets, not warmups, not completed)
+  // Cardio mode detection — show duration + distance inputs instead of weight + reps
+  const exMuscle = exName ? EXERCISE_DB.find(e => e.name === exName)?.muscle : null;
+  const isCardio = exMuscle === "Cardio";
+
+  // Progressive overload suggestion (only for working sets, not warmups, not completed, not cardio)
   const suggestion = useMemo(() => {
-    if (!exName || isDone || set.type === "warmup") return null;
+    if (!exName || isDone || set.type === "warmup" || isCardio) return null;
     if (set.weight || set.reps) return null; // user already filled in
     return suggestNextSet(store, exName, repsTarget, unit, si);
-  }, [exName, isDone, set.type, set.weight, set.reps, store, repsTarget, unit, si]);
+  }, [exName, isDone, set.type, set.weight, set.reps, store, repsTarget, unit, si, isCardio]);
 
   return (
     <div style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
@@ -1324,21 +1348,42 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
           )}
         </div>
 
-        <div style={{ flex:1, textAlign:"center", fontSize:11, color:C.muted, fontFamily:MONO }}>{prev ? `${prev.w}×${prev.r}` : "—"}</div>
-
-        <div style={{ position:"relative", width:70 }}>
-          <input type="number" inputMode="decimal" value={set.weight||""} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
-            style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
-          />
-          <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit}</span>
+        <div style={{ flex:1, textAlign:"center", fontSize:11, color:C.muted, fontFamily:MONO }}>
+          {isCardio ? (prev ? `${prev.w||"—"}m${prev.r?` · ${prev.r}`:""}` : "—") : (prev ? `${prev.w}×${prev.r}` : "—")}
         </div>
 
-        <div style={{ position:"relative", width:58 }}>
-          <input type="number" inputMode="numeric" value={set.reps||""} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
-            style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
-          />
-          <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>reps</span>
-        </div>
+        {isCardio ? (
+          <>
+            <div style={{ position:"relative", width:70 }}>
+              <input type="number" inputMode="decimal" value={set.weight||""} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
+              />
+              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>min</span>
+            </div>
+            <div style={{ position:"relative", width:62 }}>
+              <input type="number" inputMode="decimal" value={set.reps||""} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
+              />
+              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ position:"relative", width:70 }}>
+              <input type="number" inputMode="decimal" value={set.weight||""} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
+              />
+              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit}</span>
+            </div>
+
+            <div style={{ position:"relative", width:58 }}>
+              <input type="number" inputMode="numeric" value={set.reps||""} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
+              />
+              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>reps</span>
+            </div>
+          </>
+        )}
 
         <button onClick={onToggleDone} style={{
           width:32, height:32, borderRadius:9, flexShrink:0,
@@ -1353,8 +1398,11 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
 
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6, paddingTop:5, borderTop:`1px solid ${C.divider}30` }}>
         <div style={{ display:"flex", gap:2 }}>
-          {[-2.5,2.5,5].map(d => (
+          {!isCardio && [-2.5,2.5,5].map(d => (
             <button key={d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}</button>
+          ))}
+          {isCardio && [-1,1,5].map(d => (
+            <button key={d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}m</button>
           ))}
         </div>
         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
@@ -1375,7 +1423,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
           {!suggestion && prev && (!set.weight || !set.reps) && (
             <button onClick={() => { onUpdate({weight:prev.w,reps:prev.r}); haptic("tap"); }} style={{ background:`${C.accent}15`, border:`1px solid ${C.accent}30`, color:C.accent, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:F }}>Use last</button>
           )}
-          {est1RM && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
+          {est1RM && !isCardio && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
         </div>
       </div>
       </div>{/* end swipeable content div */}
@@ -2372,9 +2420,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 // ═════════════════════════════════════════════════════════════════════════════
 // PROGRAM DETAIL VIEW
 // ═════════════════════════════════════════════════════════════════════════════
-function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, onProgramEdited, startWorkout, initialDayIdx = 0 }) {
+function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, onProgramEdited, startWorkout, initialDayIdx = 0, token }) {
   const [localProg, setLocalProg] = useState(() => JSON.parse(JSON.stringify(prog)));
   const [activeDay, setActiveDay] = useState(initialDayIdx);
+  const [shareModal, setShareModal] = useState(null); // { code, generating } when open
   const isActive = store.activeProgramId === prog.id;
 
   useEffect(() => { setLocalProg(JSON.parse(JSON.stringify(prog))); }, [prog.id]);
@@ -2413,9 +2462,116 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               {isActive && <span style={{ fontSize:9, background:C.accent, color:"#fff", borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
             </div>
           </div>
+          <button onClick={async () => {
+            setShareModal({ code: prog.shareCode || null, generating: !prog.shareCode });
+            if (!prog.shareCode && token) {
+              // Generate code, save to DB
+              try {
+                let code = generateShareCode("IGNITE");
+                // Try a few times if collision
+                for (let i = 0; i < 5; i++) {
+                  const existing = await sb.query(`programs?share_code=eq.${code}&select=id`, {}, token).catch(()=>[]);
+                  if (!existing || existing.length === 0) break;
+                  code = generateShareCode("IGNITE");
+                }
+                await sb.query(`programs?id=eq.${prog.id}`, {
+                  method: "PATCH",
+                  body: JSON.stringify({ share_code: code })
+                }, token);
+                const updated = { ...localProg, shareCode: code };
+                setLocalProg(updated);
+                if (onProgramEdited) onProgramEdited(updated);
+                if (onSaveProgram) onSaveProgram(updated);
+                setShareModal({ code, generating: false });
+              } catch (e) {
+                console.error("share code error:", e);
+                setShareModal(null);
+                toast("Couldn't generate share code", "error");
+              }
+            }
+          }} style={{ background:"transparent", border:`1px solid ${BORD}`, borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:600, color:TXT, cursor:"pointer", fontFamily:F, flexShrink:0, display:"flex", alignItems:"center", gap:6 }}>
+            <Icon name="share" size={14} color={TXT}/>
+            Share
+          </button>
           <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:BLUE, border:"none", borderRadius:10, padding:"10px 18px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
         </div>
       </div>
+
+      {/* Share Modal */}
+      {shareModal && (
+        <div onClick={() => setShareModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
+            background:"#0A0A0A", borderRadius:24, padding:"32px 24px",
+            width:"100%", maxWidth:360, color:"#fff", position:"relative",
+            fontFamily:F, overflow:"hidden",
+          }}>
+            <div style={{
+              position:"absolute", inset:0, opacity:0.04, pointerEvents:"none",
+              backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+              backgroundSize:"24px 24px",
+            }}/>
+            <button onClick={() => setShareModal(null)} style={{
+              position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.08)",
+              border:"none", color:"#fff", width:30, height:30, borderRadius:10,
+              cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1
+            }}>
+              <Icon name="x" size={14} color="#fff"/>
+            </button>
+
+            <div style={{ position:"relative", zIndex:1, textAlign:"center" }}>
+              <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:6 }}>SHARE CODE</div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", marginBottom:24, fontWeight:500 }}>{localProg.name}</div>
+
+              {shareModal.generating ? (
+                <div style={{ fontFamily:MONO, fontSize:32, fontWeight:700, color:"rgba(255,255,255,0.3)", padding:"20px 0", letterSpacing:2 }}>···</div>
+              ) : (
+                <div style={{
+                  fontFamily:MONO, fontSize:36, fontWeight:800, color:"#fff",
+                  letterSpacing:3, padding:"24px 0",
+                  borderTop:"1px solid rgba(255,255,255,0.08)",
+                  borderBottom:"1px solid rgba(255,255,255,0.08)",
+                  marginBottom:24,
+                }}>
+                  {shareModal.code}
+                </div>
+              )}
+
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)", marginBottom:20, lineHeight:1.5 }}>
+                Anyone with this code can import your program.
+                Codes are case-insensitive.
+              </div>
+
+              {!shareModal.generating && (
+                <>
+                  <button onClick={() => {
+                    const text = `Try my program on Seshd — ${shareModal.code}`;
+                    if (navigator.share) navigator.share({ title:"Program code", text }).catch(()=>{});
+                    else if (navigator.clipboard) { navigator.clipboard.writeText(shareModal.code); toast("Code copied", "success"); }
+                  }} style={{
+                    width:"100%", background:"#fff", color:"#0A0A0A",
+                    border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
+                    cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2,
+                    display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                  }}>
+                    <Icon name="share" size={16} color="#0A0A0A"/>
+                    Share code
+                  </button>
+                  <button onClick={() => {
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(shareModal.code);
+                      toast("Code copied", "success");
+                    }
+                  }} style={{
+                    width:"100%", background:"transparent", color:"rgba(255,255,255,0.85)",
+                    border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"13px",
+                    fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600,
+                  }}>Copy to clipboard</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Day selector tabs */}
       <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"10px 16px", display:"flex", gap:6, overflowX:"auto", flexShrink:0 }}>
@@ -2525,7 +2681,131 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 const SESSION_KEY = "seshd_active_session";
 const WSTART_KEY = "seshd_wstart";
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, currentUserId, C }) {
+// Inline code-redeem row used in the templates modal
+function CodeRedeemRow({ C, store, setStore, onClose, token }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState("");
+
+  async function lookup() {
+    setError("");
+    setPreview(null);
+    const c = normalizeShareCode(code);
+    if (!c || c.length < 3) { setError("Enter a code"); return; }
+    setLoading(true);
+    try {
+      const rows = await sb.query(
+        `programs?share_code=eq.${encodeURIComponent(c)}&select=id,name,days,user_id`,
+        {},
+        token
+      );
+      if (!rows || rows.length === 0) {
+        setError("Code not found");
+      } else {
+        setPreview(rows[0]);
+      }
+    } catch (e) {
+      setError("Couldn't look up code");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function importProgram() {
+    if (!preview) return;
+    const newId = uid();
+    const imported = {
+      id: newId,
+      name: preview.name + " (imported)",
+      days: preview.days || [],
+    };
+    setStore(p => ({
+      ...p,
+      programs: [...(p.programs || []), imported],
+      activeProgramId: newId,
+    }));
+    // Save to user's account
+    if (token) {
+      sb.query("programs", {
+        method: "POST",
+        body: JSON.stringify({
+          id: newId,
+          name: imported.name,
+          days: imported.days,
+          is_active: true,
+        })
+      }, token).catch(e => console.error("save imported program:", e));
+    }
+    toast("Program imported", "success");
+    setCode("");
+    setPreview(null);
+    setOpen(false);
+    if (onClose) onClose();
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{
+        width:"100%", background:"transparent", color:C.sub,
+        border:`1px dashed ${C.border}`, borderRadius:14,
+        padding:"13px", fontSize:13, fontWeight:600,
+        cursor:"pointer", fontFamily:F, marginTop:8,
+        display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+      }}>
+        <Icon name="zap" size={14} color={C.sub}/>
+        Have a code? Import a program
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ marginTop:8, padding:"14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:C.text, letterSpacing:0.5 }}>ENTER SHARE CODE</div>
+        <button onClick={() => { setOpen(false); setCode(""); setPreview(null); setError(""); }} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", padding:4 }}>
+          <Icon name="x" size={14} color={C.muted}/>
+        </button>
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        <input
+          value={code}
+          onChange={e => { setCode(e.target.value.toUpperCase()); setError(""); setPreview(null); }}
+          onKeyDown={e => { if (e.key === "Enter") lookup(); }}
+          placeholder="IGNITE-X9K2"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          style={{
+            flex:1, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10,
+            padding:"11px 12px", fontSize:15, fontWeight:600, color:C.text, outline:"none",
+            fontFamily:MONO, letterSpacing:1, boxSizing:"border-box",
+          }}
+        />
+        <button onClick={lookup} disabled={loading || !code.trim()} style={{
+          background: loading ? C.sub : C.text, color: C.bg,
+          border:"none", borderRadius:10, padding:"0 16px",
+          fontSize:13, fontWeight:700, cursor: loading ? "not-allowed" : "pointer",
+          fontFamily:F, flexShrink:0,
+        }}>{loading ? "..." : "Find"}</button>
+      </div>
+      {error && <div style={{ fontSize:12, color:"#EF4444", marginTop:10 }}>{error}</div>}
+      {preview && (
+        <div style={{ marginTop:12, padding:"12px", background:C.divider, borderRadius:10 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{preview.name}</div>
+          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{(preview.days||[]).length} days · {(preview.days||[]).reduce((a,d)=>a+(d.exercises?.length||0),0)} exercises</div>
+          <button onClick={importProgram} style={{
+            marginTop:10, width:"100%", background:C.text, color:C.bg,
+            border:"none", borderRadius:10, padding:"11px", fontSize:13, fontWeight:700,
+            cursor:"pointer", fontFamily:F,
+          }}>Import & make active</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, currentUserId, token, C }) {
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -3624,6 +3904,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             onSaveProgram={onSaveProgram}
             onSaveStore={setStore}
             onProgramEdited={onProgramEdited}
+            token={token}
             startWorkout={(day, progId) => {
               setPreviewDay({ day, programName: prog.name, progId });
             }}
@@ -3902,6 +4183,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 </div>
                 <Icon name="chevron-right" size={18} color={C.bg}/>
               </button>
+
+              {/* Code redeem */}
+              <CodeRedeemRow C={C} store={store} setStore={setStore} onClose={() => setShowTemplates(false)} token={token}/>
+
               <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginBottom:10, marginTop:10, letterSpacing:1, fontWeight:600 }}>OR PICK A TEMPLATE</div>
             </div>
 
@@ -5109,7 +5394,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
           `${SUPABASE_URL}/rest/v1/group_posts?group_id=eq.${g.id}&select=*&order=created_at.desc`,
           { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` } }
         );
-        if (res.ok) setPosts((await res.json()) || []);
+        if (res.ok) {
+          const raw = (await res.json()) || [];
+          setPosts(raw.map(p => ({ ...p, _reactions: p.reactions || {} })));
+        }
       } catch {}
       setLoading(false);
     }
@@ -5243,12 +5531,41 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
                         <img src={post._localImage || post.image_url} alt="" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>
                       )}
                       {post.workout && (
-                        <div style={{ marginBottom:8, background:C.divider, borderRadius:10, padding:"10px 12px" }}>
-                          <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{post.workout.name} 💪</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{Math.floor((post.workout.duration||0)/60)}m · {(post.workout.exercises||[]).length} exercises</div>
-                          {(post.workout.exercises||[]).slice(0,3).map((ex,i) => (
-                            <div key={i} style={{ fontSize:12, color:C.sub, marginTop:3 }}>• {ex.name}{ex.sets?.length ? ` ${ex.sets.length}×` : ""}</div>
-                          ))}
+                        <div style={{ marginBottom:8, background:C.divider, borderRadius:12, padding:"12px 14px" }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                            <div style={{ fontSize:14, fontWeight:800, color:C.text, letterSpacing:-0.2 }}>{post.workout.name}</div>
+                            <div style={{ display:"flex", gap:10 }}>
+                              {post.workout.duration && (
+                                <div style={{ textAlign:"right" }}>
+                                  <div style={{ fontSize:12, fontWeight:800, color:C.accent, fontFamily:MONO }}>{Math.floor((post.workout.duration||0)/60)}m</div>
+                                  <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>TIME</div>
+                                </div>
+                              )}
+                              {post.workout.volume > 0 && (
+                                <div style={{ textAlign:"right" }}>
+                                  <div style={{ fontSize:12, fontWeight:800, color:C.accent, fontFamily:MONO }}>{post.workout.volume >= 1000 ? (post.workout.volume/1000).toFixed(1)+"k" : post.workout.volume}</div>
+                                  <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>VOL</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                            {(post.workout.exercises||[]).map((ex,i) => (
+                              <div key={i}>
+                                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                                  <span style={{ fontSize:12, fontWeight:700, color:C.text }}>{ex.name}</span>
+                                  {ex.isPR && <span style={{ fontSize:8, background:C.text, color:C.bg, padding:"1px 6px", borderRadius:6, fontWeight:800, letterSpacing:1 }}>PR</span>}
+                                </div>
+                                <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                                  {(ex.sets||[]).map((s,j) => (
+                                    <span key={j} style={{ fontSize:10, background:C.bg, border:`1px solid ${C.border}`, borderRadius:5, padding:"2px 6px", color:C.textDim||C.sub, fontFamily:MONO, fontWeight:600 }}>
+                                      {s.w > 0 ? `${s.w}×${s.r}` : `${s.r} reps`}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                       {/* Reactions */}
@@ -5257,12 +5574,31 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
                           const count = Object.values(post._reactions||{}).filter(r=>r===emoji).length;
                           const active = myReaction === emoji;
                           return (
-                            <button key={emoji} onClick={() => {
+                            <button key={emoji} onClick={async () => {
                               const prev = post._reactions||{};
                               const next = { ...prev };
                               if (active) delete next[currentUserId];
                               else next[currentUserId] = emoji;
+                              // Optimistic local update
                               setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:next} : x));
+                              // Persist to DB
+                              if (token) {
+                                try {
+                                  await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
+                                    method:"PATCH",
+                                    headers:{
+                                      "apikey":SUPABASE_KEY,
+                                      "Authorization":`Bearer ${token}`,
+                                      "Content-Type":"application/json",
+                                    },
+                                    body: JSON.stringify({ reactions: next })
+                                  });
+                                } catch (e) {
+                                  console.error("reaction save error:", e);
+                                  // Revert on failure
+                                  setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:prev} : x));
+                                }
+                              }
                             }} style={{
                               background: active ? `${C.accent}20` : C.divider,
                               border: `1px solid ${active ? C.accent : "transparent"}`,
@@ -6644,6 +6980,42 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           {loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Create Account"}
         </button>
 
+        {/* OAuth divider */}
+        <div style={{ display:"flex", alignItems:"center", gap:12, margin:"6px 0 14px" }}>
+          <div style={{ flex:1, height:1, background:C.border }}/>
+          <div style={{ fontSize:11, color:C.muted, fontWeight:600, letterSpacing:1 }}>OR</div>
+          <div style={{ flex:1, height:1, background:C.border }}/>
+        </div>
+
+        {/* OAuth buttons */}
+        <button onClick={() => sb.signInWithOAuth("apple")} disabled={loading} style={{
+          width:"100%", background:"#000", color:"#fff",
+          border:"none", borderRadius:12, padding:"14px",
+          fontSize:14, fontWeight:600, cursor:loading?"not-allowed":"pointer",
+          fontFamily:F, marginBottom:10,
+          display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.08zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+          </svg>
+          Continue with Apple
+        </button>
+        <button onClick={() => sb.signInWithOAuth("google")} disabled={loading} style={{
+          width:"100%", background:"#fff", color:"#1f1f1f",
+          border:`1px solid ${C.border}`, borderRadius:12, padding:"14px",
+          fontSize:14, fontWeight:600, cursor:loading?"not-allowed":"pointer",
+          fontFamily:F, marginBottom:14,
+          display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Continue with Google
+        </button>
+
         <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
           width:"100%", background:"none", border:"none", color:C.sub,
           fontSize:13, cursor:"pointer", fontFamily:F, padding:8
@@ -6701,6 +7073,35 @@ export default function App() {
   const [swipeX, setSwipeX] = useState(0);
   useEffect(() => {
     async function init() {
+      // Check for OAuth callback (Supabase redirects with #access_token=... in URL hash)
+      if (typeof window !== "undefined" && window.location.hash.includes("access_token=")) {
+        try {
+          const params = new URLSearchParams(window.location.hash.slice(1));
+          const access_token = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+          const expires_in = params.get("expires_in");
+          if (access_token && refresh_token) {
+            // Get user info
+            const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+              headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${access_token}` },
+            });
+            const user = await userRes.json();
+            const sess = { access_token, refresh_token, expires_in: parseInt(expires_in||"3600"), user };
+            saveSession(sess);
+            setSession(sess);
+            // Clear the hash so it doesn't stick
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+            // If user was a guest, migrate their data
+            if (localStorage.getItem("seshd_guest") === "1") {
+              await migrateGuestData(sess);
+            }
+            setAuthLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error("OAuth callback error:", e);
+        }
+      }
       const saved = loadSession();
       if (!saved?.refresh_token) { setAuthLoading(false); return; }
       try {
@@ -6756,7 +7157,7 @@ export default function App() {
 
       // Convert DB programs to app format
       const appPrograms = (programs || []).map(p => ({
-        id: p.id, name: p.name, days: p.days || []
+        id: p.id, name: p.name, days: p.days || [], shareCode: p.share_code || null
       }));
 
       // Convert PRs to app format { exerciseName: weightLbs }
@@ -6959,6 +7360,36 @@ export default function App() {
       } else {
         imageUrl = postData.imageData || null;
       }
+
+      const groupIds = postData.groupIds || [];
+      const groupOnly = postData.groupOnly === true;
+
+      // Post to each selected group
+      if (groupIds.length > 0) {
+        for (const gid of groupIds) {
+          try {
+            await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
+              method: "POST",
+              headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                group_id: gid,
+                user_id: currentUserId,
+                type: postData.workout ? "workout" : (postData.type || "text"),
+                caption: postData.caption || "",
+                image_url: imageUrl,
+                workout: postData.workout || null,
+              })
+            });
+          } catch (e) { console.error("group post error:", e); }
+        }
+      }
+
+      // If group-only, skip the feed post
+      if (groupOnly) {
+        toast(`Shared to ${groupIds.length} group${groupIds.length>1?"s":""}`, "success");
+        return;
+      }
+
       const row = {
         user_id: currentUserId,
         type: postData.type || "photo",
@@ -7861,7 +8292,7 @@ export default function App() {
         )}
 
         {tab === "tracker" && (
-          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C} currentUserId={currentUserId}
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C} currentUserId={currentUserId} token={token}
             onDeleteHistory={async (date, sid) => {
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
