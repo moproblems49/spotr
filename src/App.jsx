@@ -579,6 +579,135 @@ function getPrev(store, exName, si, unit) {
   return null;
 }
 
+// Get the most recent COMPLETED session for an exercise (across all sets)
+function getLastExerciseSession(store, exName) {
+  const dates = Object.keys(store.history||{}).sort().reverse();
+  for (const d of dates) {
+    const sessions = Object.values(store.history[d]||{});
+    for (const sess of sessions) {
+      const ex = sess.exercises?.find(e => e.name === exName);
+      if (!ex) continue;
+      const doneSets = (ex.sets||[]).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
+      if (doneSets.length > 0) {
+        return {
+          date: d,
+          unit: sess.unit || "lbs",
+          sets: doneSets.map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 })),
+          daysSince: Math.floor((Date.now() - new Date(d).getTime()) / 86400000),
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// Parse rep range like "8-12" or "8–12" or "5,3,1" or "8" → { low, high }
+function parseRepRange(reps) {
+  if (!reps) return null;
+  const s = String(reps).replace(/\s/g,"");
+  // Range with dash or en-dash
+  const m = s.match(/^(\d+)[–-](\d+)$/);
+  if (m) return { low: parseInt(m[1]), high: parseInt(m[2]) };
+  // Single number
+  const n = parseInt(s);
+  if (!isNaN(n) && /^\d+$/.test(s)) return { low: n, high: n };
+  return null;
+}
+
+// Progressive overload — double progression model
+// Returns { type, weight, reps, note, deltaWeight, deltaReps, reason }
+function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
+  const last = getLastExerciseSession(store, exName);
+  if (!last) return null;
+
+  const range = parseRepRange(repsTarget);
+  const lastInUserUnit = last.sets.map(s => ({ w: cvt(s.w, last.unit, unit), r: s.r }));
+  const setMatch = lastInUserUnit[setIndex] || lastInUserUnit[lastInUserUnit.length - 1];
+  if (!setMatch || !setMatch.w) return null;
+
+  const lastWeight = setMatch.w;
+  const lastReps = setMatch.r;
+  const inc = unit === "lbs" ? 5 : 2.5;
+
+  // Deload if it's been 14+ days
+  if (last.daysSince >= 14) {
+    const dl = unit === "lbs" ? Math.round((lastWeight * 0.9) / 5) * 5 : Math.round((lastWeight * 0.9) / 2.5) * 2.5;
+    return {
+      type: "deload",
+      weight: dl,
+      reps: range ? range.low : lastReps,
+      note: "Deload (off " + last.daysSince + "d)",
+      deltaWeight: dl - lastWeight,
+      reason: "Back after a break — start lighter",
+    };
+  }
+
+  // Double progression
+  if (range) {
+    const allHitTop = lastInUserUnit.every(s => s.r >= range.high);
+    if (allHitTop) {
+      return {
+        type: "weight",
+        weight: lastWeight + inc,
+        reps: range.low,
+        note: `+${inc} ${unit}`,
+        deltaWeight: inc,
+        reason: `Hit ${range.high} on all sets — add ${inc} ${unit}`,
+      };
+    } else {
+      // Same weight, push for more reps
+      const target = Math.min(range.high, Math.max(lastReps + 1, range.low));
+      return {
+        type: "reps",
+        weight: lastWeight,
+        reps: target,
+        note: `same weight`,
+        deltaReps: target - lastReps,
+        reason: target > lastReps ? `Push for ${target} reps` : `Match last session`,
+      };
+    }
+  }
+
+  // No range: simple bump on +2 reps
+  if (lastReps >= 10) {
+    return {
+      type: "weight",
+      weight: lastWeight + inc,
+      reps: Math.max(lastReps - 2, 5),
+      note: `+${inc} ${unit}`,
+      deltaWeight: inc,
+      reason: `Strong last time — add ${inc} ${unit}`,
+    };
+  }
+  return {
+    type: "match",
+    weight: lastWeight,
+    reps: lastReps + 1,
+    note: `+1 rep`,
+    deltaReps: 1,
+    reason: `Push for one more rep`,
+  };
+}
+
+// Haptic helpers - tiered patterns
+function haptic(kind) {
+  try {
+    if (!navigator.vibrate) return;
+    switch (kind) {
+      case "tap":      navigator.vibrate(10); break;
+      case "light":    navigator.vibrate(15); break;
+      case "medium":   navigator.vibrate(25); break;
+      case "complete": navigator.vibrate(30); break;
+      case "undo":     navigator.vibrate(12); break;
+      case "delete":   navigator.vibrate([30, 30, 30]); break;
+      case "pr":       navigator.vibrate([20, 40, 20, 40, 80]); break;
+      case "lock":     navigator.vibrate(8); break;
+      case "warn":     navigator.vibrate([30, 60, 30]); break;
+      default:         navigator.vibrate(15);
+    }
+  } catch {}
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SEED DATA
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1083,13 +1212,13 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
-const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, onToggleDone, onDelete, C }) {
+const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const typeMenuRef = useRef(null);
   const swipeRef = useRef(null);
-  const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false });
+  const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false, locked: null });
   const [swipeDx, setSwipeDx] = useState(0);
-  const [swipeDir, setSwipeDir] = useState(null); // "right" | "left" | null
+  const [swipeDir, setSwipeDir] = useState(null);
 
   useEffect(() => {
     function handler(e) { if (typeMenuRef.current && !typeMenuRef.current.contains(e.target)) setShowTypeMenu(false); }
@@ -1099,30 +1228,43 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
 
   function onTouchStart(e) {
     const t = e.touches[0];
-    swipeState.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false };
+    swipeState.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false, locked: null };
   }
   function onTouchMove(e) {
     const t = e.touches[0];
     const dx = t.clientX - swipeState.current.startX;
     const dy = t.clientY - swipeState.current.startY;
-    if (!swipeState.current.swiping && Math.abs(dy) > Math.abs(dx)) return; // vertical scroll
+    if (!swipeState.current.swiping && Math.abs(dy) > Math.abs(dx)) return;
     if (Math.abs(dx) > 6) {
       swipeState.current.swiping = true;
       e.preventDefault();
     }
     if (!swipeState.current.swiping) return;
-    const clamped = Math.max(-90, Math.min(90, dx));
+    const clamped = Math.max(-100, Math.min(100, dx));
+    // Lock-in haptic when crossing the 60px commit threshold
+    const direction = clamped > 0 ? "right" : "left";
+    const wouldCommit = Math.abs(clamped) >= 60;
+    const lockKey = wouldCommit ? direction : null;
+    if (lockKey !== swipeState.current.locked) {
+      swipeState.current.locked = lockKey;
+      if (lockKey) haptic("lock");
+    }
     swipeState.current.dx = clamped;
     setSwipeDx(clamped);
     setSwipeDir(clamped > 0 ? "right" : clamped < 0 ? "left" : null);
   }
   function onTouchEnd() {
     const dx = swipeState.current.dx;
-    if (dx > 60) { onToggleDone(); try { navigator.vibrate(30); } catch {} }
-    else if (dx < -60 && onDelete) { onDelete(); try { navigator.vibrate(40); } catch {} }
+    if (dx > 60) {
+      onToggleDone();
+      haptic(set.done ? "undo" : "complete");
+    } else if (dx < -60 && onDelete) {
+      onDelete();
+      haptic("delete");
+    }
     setSwipeDx(0);
     setSwipeDir(null);
-    swipeState.current = { startX: 0, startY: 0, dx: 0, swiping: false };
+    swipeState.current = { startX: 0, startY: 0, dx: 0, swiping: false, locked: null };
   }
 
   const prev = exName ? getPrev(store, exName, si, unit) : null;
@@ -1130,15 +1272,26 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
   const est1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
   const isDone = set.done;
 
+  // Progressive overload suggestion (only for working sets, not warmups, not completed)
+  const suggestion = useMemo(() => {
+    if (!exName || isDone || set.type === "warmup") return null;
+    if (set.weight || set.reps) return null; // user already filled in
+    return suggestNextSet(store, exName, repsTarget, unit, si);
+  }, [exName, isDone, set.type, set.weight, set.reps, store, repsTarget, unit, si]);
+
   return (
     <div style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
       {/* Swipe hint backgrounds */}
-      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-start", paddingLeft:16, background:`${C.green}CC`, opacity: swipeDir==="right" ? Math.min(1, swipeDx/60) : 0, borderRadius:11, transition:"opacity 0.1s" }}>
-        <span style={{ color:"#fff", fontSize:18, fontWeight:800 }}>✓</span>
+      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-start", paddingLeft:16, background:`${C.green}E5`, opacity: swipeDir==="right" ? Math.min(1, swipeDx/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
+        <div style={{ transform: `scale(${Math.min(1, swipeDx/60)})`, transition:"transform 0.08s ease-out" }}>
+          <Icon name="check" size={20} color="#fff" strokeWidth={3}/>
+        </div>
       </div>
       {onDelete && (
-        <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:16, background:"#EF4444CC", opacity: swipeDir==="left" ? Math.min(1, Math.abs(swipeDx)/60) : 0, borderRadius:11, transition:"opacity 0.1s" }}>
-          <span style={{ color:"#fff", fontSize:18, fontWeight:800 }}>🗑</span>
+        <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:16, background:"#EF4444E5", opacity: swipeDir==="left" ? Math.min(1, Math.abs(swipeDx)/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
+          <div style={{ transform: `scale(${Math.min(1, Math.abs(swipeDx)/60)})`, transition:"transform 0.08s ease-out" }}>
+            <Icon name="trash" size={18} color="#fff" strokeWidth={2.4}/>
+          </div>
         </div>
       )}
       {/* Row content */}
@@ -1152,7 +1305,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           border:`1.5px solid ${isDone?C.green+"30":C.divider}`,
           borderRadius:11, padding:"8px 10px",
           transform: `translateX(${swipeDx}px)`,
-          transition: swipeState.current.swiping ? "none" : "transform 0.25s cubic-bezier(.2,.8,.4,1)",
+          transition: swipeState.current.swiping ? "none" : "transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)",
           touchAction:"pan-y",
           position:"relative",
         }}
@@ -1187,17 +1340,41 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, onUpdate, on
           <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>reps</span>
         </div>
 
-        <button onClick={onToggleDone} style={{ width:32, height:32, borderRadius:9, flexShrink:0, border:`2px solid ${isDone?C.green:C.border}`, background:isDone?C.green:"transparent", color:isDone?"#fff":C.muted, cursor:"pointer", fontSize:15, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}>✓</button>
+        <button onClick={onToggleDone} style={{
+          width:32, height:32, borderRadius:9, flexShrink:0,
+          border:`2px solid ${isDone?C.green:C.border}`, background:isDone?C.green:"transparent",
+          color:isDone?"#fff":C.muted, cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          transition:"all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        }}>
+          <Icon name="check" size={16} color={isDone?"#fff":C.muted} strokeWidth={2.8}/>
+        </button>
       </div>
 
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6, paddingTop:5, borderTop:`1px solid ${C.divider}30` }}>
         <div style={{ display:"flex", gap:2 }}>
           {[-2.5,2.5,5].map(d => (
-            <button key={d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}</button>
+            <button key={d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}</button>
           ))}
         </div>
         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
-          {prev && (!set.weight || !set.reps) && <button onClick={() => onUpdate({weight:prev.w,reps:prev.r})} style={{ background:`${C.accent}15`, border:`1px solid ${C.accent}30`, color:C.accent, borderRadius:5, padding:"2px 7px", fontSize:10, fontWeight:600, cursor:"pointer" }}>↑ Copy</button>}
+          {suggestion && (
+            <button onClick={() => { onUpdate({ weight: String(suggestion.weight), reps: String(suggestion.reps) }); haptic("light"); }}
+              title={suggestion.reason}
+              style={{
+                display:"flex", alignItems:"center", gap:4,
+                background: suggestion.type === "weight" ? `${C.accent}18` : suggestion.type === "deload" ? "#f59e0b18" : `${C.green}18`,
+                border: `1px solid ${suggestion.type === "weight" ? `${C.accent}40` : suggestion.type === "deload" ? "#f59e0b40" : `${C.green}40`}`,
+                color: suggestion.type === "weight" ? C.accent : suggestion.type === "deload" ? "#f59e0b" : C.green,
+                borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:F,
+              }}>
+              <Icon name={suggestion.type === "weight" ? "trending-up" : suggestion.type === "deload" ? "chevron-left" : "trending-up"} size={10} strokeWidth={2.6}/>
+              <span style={{ fontFamily:MONO }}>{suggestion.weight}<span style={{ opacity:0.5 }}>×</span>{suggestion.reps}</span>
+            </button>
+          )}
+          {!suggestion && prev && (!set.weight || !set.reps) && (
+            <button onClick={() => { onUpdate({weight:prev.w,reps:prev.r}); haptic("tap"); }} style={{ background:`${C.accent}15`, border:`1px solid ${C.accent}30`, color:C.accent, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:F }}>Use last</button>
+          )}
           {est1RM && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
         </div>
       </div>
@@ -2474,14 +2651,28 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   function toggleDone(ei, si) {
     setSession(p => {
       const nowDone = !p.exercises[ei]?.sets[si]?.done;
-      try { if (navigator.vibrate) navigator.vibrate(nowDone ? 30 : 10); } catch {}
 
       if (nowDone) {
         const currentExercise = p.exercises[ei];
         const currentSet = currentExercise?.sets[si];
+
+        // Mid-workout PR detection — fire PR haptic if this set is a new record
+        if (currentSet?.weight && currentSet?.reps && currentSet?.type !== "warmup") {
+          const wLbs = unit === "lbs" ? parseFloat(currentSet.weight) : cvt(parseFloat(currentSet.weight), "kg", "lbs");
+          const currentPR = store.prs?.[currentExercise.name] || 0;
+          if (wLbs > currentPR && wLbs > 0) {
+            haptic("pr");
+          } else {
+            haptic("complete");
+          }
+        } else {
+          haptic("complete");
+        }
+
         const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || 90) || 90;
         setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
       } else {
+        haptic("undo");
         setRest(null);
       }
 
@@ -2595,6 +2786,25 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       setElapsed(0);
       setRest(null);
 
+      // Compute progressions hit — exercises where user matched or beat suggested target
+      let progressionsHit = 0;
+      try {
+        session.exercises.forEach(ex => {
+          if (!ex.name) return;
+          // Compare this session's best set vs the suggestion made for this session
+          // (suggestion was computed from history that excluded this session)
+          // We rebuild the suggestion from history WITHOUT this session
+          const histExcludingNow = { ...store, history: store.history };
+          const sug = suggestNextSet(histExcludingNow, ex.name, ex.reps, unit, 0);
+          if (!sug) return;
+          const doneSets = (ex.sets||[]).filter(s => s.done && s.type !== "warmup");
+          if (!doneSets.length) return;
+          const topWeight = Math.max(...doneSets.map(s => parseFloat(s.weight)||0));
+          const topReps = Math.max(...doneSets.filter(s => parseFloat(s.weight) === topWeight).map(s => parseFloat(s.reps)||0));
+          if (topWeight >= sug.weight && topReps >= sug.reps) progressionsHit++;
+        });
+      } catch (e) { /* ignore */ }
+
       // Show summary
       setWorkoutSummary({
         dayName: session.dayName,
@@ -2603,6 +2813,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         volume: fmtVol(Math.round(totalVol), unit),
         exercises: session.exercises.filter(e => e.name).length,
         prs: newPRsList,
+        progressions: progressionsHit,
         share,
         shareData: share ? (() => {
           const postEx = session.exercises
@@ -2849,7 +3060,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
                 {ex.sets.map((set, si) => (
                   <div key={set.id||si}>
-                    <SetRow set={set} si={si} exName={ex.name} store={store} unit={unit} C={C}
+                    <SetRow set={set} si={si} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
                       onUpdate={patch => updateSet(ei,si,patch)}
                       onToggleDone={() => toggleDone(ei,si)}
                       onDelete={ex.sets.length > 1 ? () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.filter((_,j)=>j!==si)}) })) : undefined}
@@ -2998,6 +3209,29 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     ))}
                   </div>
+
+                  {/* PROGRESSION callout — when user beat their suggested targets */}
+                  {workoutSummary.progressions > 0 && (
+                    <div style={{
+                      position:"relative", zIndex:1,
+                      marginTop:16, padding:"12px 14px",
+                      background:"rgba(255,255,255,0.06)",
+                      borderRadius:12,
+                      border:"1px solid rgba(255,255,255,0.08)",
+                      display:"flex", alignItems:"center", justifyContent:"space-between",
+                    }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <Icon name="trending-up" size={16} color="#fff" strokeWidth={2.4}/>
+                        <div>
+                          <div style={{ fontSize:10, letterSpacing:1.5, fontWeight:700, color:"rgba(255,255,255,0.55)" }}>PROGRESSION</div>
+                          <div style={{ fontSize:12, color:"#fff", fontWeight:600, marginTop:1 }}>Beat last session</div>
+                        </div>
+                      </div>
+                      <div style={{ fontFamily:MONO, fontSize:18, fontWeight:700, color:"#fff" }}>
+                        +{workoutSummary.progressions}
+                      </div>
+                    </div>
+                  )}
 
                   {/* PR callout */}
                   {workoutSummary.prs?.length > 0 && (
@@ -3175,6 +3409,60 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
           {prog ? (
             <>
+              {/* Today's Targets — progressive overload suggestions for next day */}
+              {(() => {
+                // Find the next likely day in rotation: day with the oldest last-done date
+                const dayLastDone = prog.days.map((day, di) => {
+                  const dates = Object.keys(store.history||{}).sort().reverse();
+                  for (const dk of dates) {
+                    if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
+                      return { day, di, daysSince: Math.floor((Date.now() - new Date(dk).getTime()) / 86400000) };
+                    }
+                  }
+                  return { day, di, daysSince: 9999 };
+                });
+                // Pick day not done today, with the highest daysSince
+                const candidates = dayLastDone.filter(d => d.daysSince > 0);
+                const nextDay = candidates.sort((a,b) => b.daysSince - a.daysSince)[0]?.day || prog.days[0];
+                if (!nextDay) return null;
+                const targets = (nextDay.exercises||[]).slice(0, 4).map(ex => {
+                  const s = suggestNextSet(store, ex.name, ex.reps, unit, 0);
+                  return s ? { name: ex.name, suggestion: s } : null;
+                }).filter(Boolean);
+                if (!targets.length) return null;
+                return (
+                  <div style={{ marginBottom:16 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>NEXT UP · {nextDay.name.toUpperCase()}</div>
+                    </div>
+                    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"4px 0", overflow:"hidden" }}>
+                      {targets.map((t, i) => (
+                        <div key={t.name} style={{
+                          display:"flex", alignItems:"center", justifyContent:"space-between",
+                          padding:"11px 14px",
+                          borderTop: i > 0 ? `1px solid ${C.divider}` : "none",
+                        }}>
+                          <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
+                            <div style={{ fontSize:13, fontWeight:600, color:C.text, lineHeight:1.2, marginBottom:3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.name}</div>
+                            <div style={{ fontSize:10, color:C.sub, lineHeight:1.3 }}>{t.suggestion.reason}</div>
+                          </div>
+                          <div style={{
+                            display:"flex", alignItems:"center", gap:5, flexShrink:0,
+                            background: t.suggestion.type === "weight" ? `${C.accent}15` : t.suggestion.type === "deload" ? "#f59e0b15" : `${C.green}15`,
+                            border: `1px solid ${t.suggestion.type === "weight" ? `${C.accent}35` : t.suggestion.type === "deload" ? "#f59e0b35" : `${C.green}35`}`,
+                            color: t.suggestion.type === "weight" ? C.accent : t.suggestion.type === "deload" ? "#f59e0b" : C.green,
+                            borderRadius:8, padding:"5px 10px",
+                          }}>
+                            <Icon name={t.suggestion.type === "deload" ? "chevron-left" : "trending-up"} size={11} strokeWidth={2.6}/>
+                            <span style={{ fontFamily:MONO, fontSize:12, fontWeight:700 }}>{t.suggestion.weight}<span style={{ opacity:0.5, margin:"0 2px" }}>×</span>{t.suggestion.reps}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>ACTIVE PROGRAM</div>
                 <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>{prog.name}</div>
