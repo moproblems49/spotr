@@ -3095,15 +3095,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         prs: newPRsList,
         progressions: progressionsHit,
         share,
-        shareData: share ? (() => {
+        shareData: (() => {
           const postEx = session.exercises
-            .filter(ex => ex.name && ex.sets.some(s => s.done && s.type !== "warmup"))
+            .filter(ex => ex.name && ex.sets.some(s => s.done === true && s.type !== "warmup"))
             .map(ex => {
-              const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
+              const maxW = Math.max(0, ...ex.sets.filter(s => s.done === true && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
               const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
               return {
                 name: ex.name,
-                sets: ex.sets.filter(s => s.done && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+                sets: ex.sets.filter(s => s.done === true && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
                 isPR: maxLbs > 0 && maxLbs > (originalPRs[ex.name] || 0)
               };
             })
@@ -3111,7 +3111,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
           const hasPR = postEx.some(ex => ex.isPR);
           return { type:"workout", caption:`${session.dayName} — done.`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
-        })() : null,
+        })(),
       });
       setShowWorkoutSummary(true);
 
@@ -3582,18 +3582,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                   Share to Feed
                 </button>
-                {(store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0 && (
-                  <button onClick={() => {
-                    const selectedGroups = workoutSummary.shareToGroups || [];
-                    if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
-                    if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, feedOnly: false, groupOnly: true });
-                    toast(`Shared to ${selectedGroups.length} group${selectedGroups.length>1?"s":""}`, "success");
-                    setShowWorkoutSummary(false); setWorkoutSummary(null);
-                  }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Share to Groups Only
-                  </button>
-                )}
+                {(() => {
+                  const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
+                  if (myGroups.length === 0) {
+                    return (
+                      <div style={{ width:"100%", background:"transparent", color:C.muted, border:`1.5px dashed ${C.border}`, borderRadius:14, padding:"13px", fontSize:12, fontFamily:F, letterSpacing:-0.1, textAlign:"center" }}>
+                        Join a group from Discover → Groups to share workouts privately
+                      </div>
+                    );
+                  }
+                  return (
+                    <button onClick={() => {
+                      const selectedGroups = workoutSummary.shareToGroups || [];
+                      if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
+                      if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, feedOnly: false, groupOnly: true });
+                      setShowWorkoutSummary(false); setWorkoutSummary(null);
+                    }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      Share to Groups Only{(workoutSummary.shareToGroups||[]).length > 0 ? ` (${(workoutSummary.shareToGroups||[]).length})` : ""}
+                    </button>
+                  );
+                })()}
                 <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
               </div>
             </div>
@@ -5584,7 +5593,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
                               // Persist to DB
                               if (token) {
                                 try {
-                                  await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
+                                  const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
                                     method:"PATCH",
                                     headers:{
                                       "apikey":SUPABASE_KEY,
@@ -5593,9 +5602,14 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
                                     },
                                     body: JSON.stringify({ reactions: next })
                                   });
+                                  if (!res.ok) {
+                                    console.error("reaction save failed:", res.status, await res.text().catch(()=>""));
+                                    toast("Couldn't save reaction — run SQL migration", "error");
+                                    setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:prev} : x));
+                                  }
                                 } catch (e) {
                                   console.error("reaction save error:", e);
-                                  // Revert on failure
+                                  toast("Couldn't save reaction", "error");
                                   setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:prev} : x));
                                 }
                               }
@@ -7232,25 +7246,35 @@ export default function App() {
       );
       if (!posts) return;
 
-      const appPosts = posts.map(p => ({
-        id: p.id,
-        userId: p.user_id,
-        type: p.type,
-        caption: p.caption || "",
-        imageData: p.image_url,
-        location: p.location,
-        workout: p.workout,
-        run: p.run,
-        yoga: p.yoga,
-        achievement: p.achievement,
-        unit: p.unit || "lbs",
-        isPR: p.is_pr,
-        kudos: (p.kudos || []).map(k => k.user_id),
-        comments: (p.comments || []).map(c => ({
+      // Read persisted own-post interactions (these survive page refresh via localStorage)
+      const persistedInteractions = store.historyInteractions || {};
+
+      const appPosts = posts.map(p => {
+        const isOwn = p.user_id === uid;
+        const persisted = isOwn ? persistedInteractions[p.id] : null;
+        const dbKudos = (p.kudos || []).map(k => k.user_id);
+        const dbComments = (p.comments || []).map(c => ({
           id: c.id, userId: c.user_id, text: c.text, createdAt: new Date(c.created_at).getTime()
-        })),
-        createdAt: new Date(p.created_at).getTime(),
-      }));
+        }));
+        return {
+          id: p.id,
+          userId: p.user_id,
+          type: p.type,
+          caption: p.caption || "",
+          imageData: p.image_url,
+          location: p.location,
+          workout: p.workout,
+          run: p.run,
+          yoga: p.yoga,
+          achievement: p.achievement,
+          unit: p.unit || "lbs",
+          isPR: p.is_pr,
+          // Merge persisted own-post kudos (RLS blocks self-like in DB)
+          kudos: persisted ? Array.from(new Set([...dbKudos, ...(persisted.kudos||[])])) : dbKudos,
+          comments: persisted ? [...dbComments, ...(persisted.comments||[])] : dbComments,
+          createdAt: new Date(p.created_at).getTime(),
+        };
+      });
 
       setStore(prev => ({ ...prev, posts: appPosts }));
     } catch (e) {
@@ -7463,8 +7487,23 @@ export default function App() {
       })
     }));
 
-    // Own posts: skip DB (RLS blocks self-kudos) — keep optimistic
-    if (isOwnPost) return;
+    // Own posts: skip DB (RLS blocks self-kudos), persist to historyInteractions for cross-refresh survival
+    if (isOwnPost) {
+      setStore(prev => {
+        const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+        const newKudos = hasKudos
+          ? (hi.kudos||[]).filter(id => id !== currentUserId)
+          : [...(hi.kudos||[]), currentUserId];
+        return {
+          ...prev,
+          historyInteractions: {
+            ...(prev.historyInteractions||{}),
+            [postId]: { ...hi, kudos: newKudos }
+          }
+        };
+      });
+      return;
+    }
 
     try {
       if (hasKudos) {
@@ -7473,6 +7512,8 @@ export default function App() {
         await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, tok);
       }
     } catch (e) {
+      console.error("kudos save failed:", e);
+      toast("Couldn't save like — check connection or DB policy", "error");
       setStore(prev => ({
         ...prev,
         posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -7519,8 +7560,20 @@ export default function App() {
       })
     }));
 
-    // Own posts: skip DB (RLS may block)
-    if (isOwnPost) return;
+    // Own posts: skip DB (RLS may block), persist to historyInteractions
+    if (isOwnPost) {
+      setStore(prev => {
+        const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+        return {
+          ...prev,
+          historyInteractions: {
+            ...(prev.historyInteractions||{}),
+            [postId]: { ...hi, comments: [...(hi.comments||[]), localComment] }
+          }
+        };
+      });
+      return;
+    }
 
     try {
       const result = await sb.query("comments", {
@@ -7541,6 +7594,8 @@ export default function App() {
         }));
       }
     } catch (e) {
+      console.error("comment save failed:", e);
+      toast("Couldn't save comment — check connection or DB policy", "error");
       setStore(prev => ({
         ...prev,
         posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -7560,17 +7615,31 @@ export default function App() {
       const dateEnd = withoutPrefix.indexOf("_");
       const date = withoutPrefix.slice(0, dateEnd);
       const dayName = withoutPrefix.slice(dateEnd + 1);
+      // Collect session UUIDs (the keys) to delete from DB
+      const dayHistory = store.history?.[date] || {};
+      const sidsToDelete = Object.keys(dayHistory).filter(sid => dayHistory[sid]?.dayName === dayName);
+
+      // Remove from local state immediately
       setStore(prev => {
-        const dayHistory = { ...(prev.history[date] || {}) };
-        // Remove any session with that dayName
-        Object.keys(dayHistory).forEach(sid => {
-          if (dayHistory[sid]?.dayName === dayName) delete dayHistory[sid];
-        });
+        const newDay = { ...(prev.history[date] || {}) };
+        sidsToDelete.forEach(sid => delete newDay[sid]);
         const newHistory = { ...prev.history };
-        if (Object.keys(dayHistory).length === 0) delete newHistory[date];
-        else newHistory[date] = dayHistory;
-        return { ...prev, history: newHistory };
+        if (Object.keys(newDay).length === 0) delete newHistory[date];
+        else newHistory[date] = newDay;
+        // Also clear historyInteractions for this synthetic post
+        const newHI = { ...(prev.historyInteractions || {}) };
+        delete newHI[postId];
+        return { ...prev, history: newHistory, historyInteractions: newHI };
       });
+
+      // Delete from Supabase workout_history
+      if (tok) {
+        for (const sid of sidsToDelete) {
+          try {
+            await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
+          } catch (e) { console.error("workout_history delete:", e); }
+        }
+      }
       return;
     }
     if (!tok) return;
@@ -7853,23 +7922,45 @@ export default function App() {
   // Build synthetic feed items from own workout history (not shared)
   const sharedWorkoutIds = new Set((store.posts||[]).filter(p=>p.type==="workout"&&p.userId===currentUserId).map(p=>p.workout?.name+p.createdAt));
   const historyFeedItems = Object.entries(store.history||{}).flatMap(([date, sessions]) =>
-    Object.values(sessions).map(sess => {
+    Object.entries(sessions).map(([sid, sess]) => {
       const key = sess.dayName + new Date(date).getTime();
       if (sharedWorkoutIds.has(key)) return null;
-      const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+      // Skip sessions with zero done sets — these are ghost workouts
+      const doneSets = (sess.exercises||[]).flatMap(ex => (ex.sets||[]).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
+      if (doneSets.length === 0) return null;
+      const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done===true||(s.done===undefined&&parseFloat(s.reps)>0)).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
       const histId = "hist_"+date+"_"+sess.dayName;
       const hi = store.historyInteractions?.[histId] || {};
       return {
         id: histId,
+        sessionId: sid, // for deletion
         userId: currentUserId,
         type: "workout",
         caption: "",
         unit: sess.unit || unit,
-        workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) },
+        workout: {
+          name: sess.dayName,
+          duration: sess.duration||0,
+          volume: Math.round(vol),
+          exercises: (sess.exercises||[])
+            .filter(e => e.name && (e.sets||[]).some(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)))
+            .map(ex => {
+              const doneOnly = (ex.sets||[]).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
+              const maxW = Math.max(0, ...doneOnly.map(s => parseFloat(s.weight) || 0));
+              const sessUnit = sess.unit || "lbs";
+              const maxLbs = sessUnit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
+              return {
+                name: ex.name,
+                isPR: maxLbs > 0 && maxLbs >= ((store.prs||{})[ex.name] || 0) * 0.99,
+                sets: doneOnly.map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 })),
+              };
+            })
+        },
         kudos: hi.kudos || [],
         comments: hi.comments || [],
         createdAt: new Date(date).getTime(),
         _isHistory: true,
+        _date: date,
       };
     }).filter(Boolean)
   );
