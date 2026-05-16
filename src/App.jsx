@@ -1234,6 +1234,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
   const typeMenuRef = useRef(null);
   const swipeRef = useRef(null);
   const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false, locked: null });
@@ -1338,11 +1339,17 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
         <div style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:isDone?C.green:C.divider, color:isDone?"#fff":C.sub, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, fontFamily:MONO }}>{si+1}</div>
         
         <div ref={typeMenuRef} style={{ position:"relative", flexShrink:0 }}>
-          <button onClick={() => setShowTypeMenu(!showTypeMenu)} style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32 }}>{setType.short}</button>
-          {showTypeMenu && (
-            <div style={{ position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:200, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 6px 20px rgba(0,0,0,0.15)", minWidth:120, overflow:"hidden" }}>
+          <button onClick={(e) => {
+            if (!showTypeMenu) {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenuPos({ top: r.bottom + 4, left: r.left });
+            }
+            setShowTypeMenu(!showTypeMenu);
+          }} style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32 }}>{setType.short}</button>
+          {showTypeMenu && menuPos && (
+            <div style={{ position:"fixed", top:menuPos.top, left:menuPos.left, zIndex:9999, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 6px 20px rgba(0,0,0,0.2)", minWidth:120, overflow:"hidden" }}>
               {SET_TYPES.map((t,i) => (
-                <div key={t.id} onClick={() => { onUpdate({type:t.id}); setShowTypeMenu(false); }} style={{ padding:"8px 12px", fontSize:12, color:t.id===set.type?t.color:C.text, fontWeight:t.id===set.type?700:500, background:t.id===set.type?`${t.color}10`:"transparent", borderBottom:i<SET_TYPES.length-1?`1px solid ${C.divider}`:"none", cursor:"pointer" }}>{t.label}</div>
+                <div key={t.id} onClick={() => { onUpdate({type:t.id}); setShowTypeMenu(false); }} style={{ padding:"10px 14px", fontSize:13, color:t.id===set.type?t.color:C.text, fontWeight:t.id===set.type?700:500, background:t.id===set.type?`${t.color}10`:"transparent", borderBottom:i<SET_TYPES.length-1?`1px solid ${C.divider}`:"none", cursor:"pointer" }}>{t.label}</div>
               ))}
             </div>
           )}
@@ -2900,6 +2907,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [rest, setRest] = useState(null); // {secs, total, running, startedAt, exerciseIdx, minimized}
   const [restEditor, setRestEditor] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
+  const [showGroupShare, setShowGroupShare] = useState(false); // group picker after finish-and-share-to-groups
+  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [subTab, setSubTab] = useState("workout");
@@ -3072,10 +3081,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
   const [workoutSummary, setWorkoutSummary] = useState(null);
 
-  async function finishWorkout(share) {
+  async function finishWorkout(share, groupShare = null) {
     if (!session || finishing) return;
     setFinishing(true);
     setShowFinish(false);
+    setShowGroupShare(false);
 
     try {
       const dk = dKey();
@@ -3172,6 +3182,35 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         });
       } catch (e) { /* ignore */ }
 
+      // Build share data (used by both feed share and groups-only share)
+      const shareData = (() => {
+        const postEx = session.exercises
+          .filter(ex => ex.name && ex.sets.some(s => s.done === true && s.type !== "warmup"))
+          .map(ex => {
+            const maxW = Math.max(0, ...ex.sets.filter(s => s.done === true && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
+            const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
+            return {
+              name: ex.name,
+              sets: ex.sets.filter(s => s.done === true && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+              isPR: maxLbs > 0 && maxLbs > (originalPRs[ex.name] || 0)
+            };
+          })
+          .filter(ex => ex.sets.length > 0);
+        const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
+        const hasPR = postEx.some(ex => ex.isPR);
+        return { type:"workout", caption:`${session.dayName} — done.`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
+      })();
+
+      // If user picked "Save & send to groups", post to groups only and skip summary
+      if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0) {
+        onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
+        // Fire-and-forget DB save
+        onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: elapsed, unit, note: "", prs: newPRs });
+        toast(`Sent to ${groupShare.groupIds.length} group${groupShare.groupIds.length===1?"":"s"}`, "success");
+        if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
+        return;
+      }
+
       // Show summary
       setWorkoutSummary({
         dayName: session.dayName,
@@ -3182,23 +3221,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         prs: newPRsList,
         progressions: progressionsHit,
         share,
-        shareData: (() => {
-          const postEx = session.exercises
-            .filter(ex => ex.name && ex.sets.some(s => s.done === true && s.type !== "warmup"))
-            .map(ex => {
-              const maxW = Math.max(0, ...ex.sets.filter(s => s.done === true && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
-              const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
-              return {
-                name: ex.name,
-                sets: ex.sets.filter(s => s.done === true && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-                isPR: maxLbs > 0 && maxLbs > (originalPRs[ex.name] || 0)
-              };
-            })
-            .filter(ex => ex.sets.length > 0);
-          const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
-          const hasPR = postEx.some(ex => ex.isPR);
-          return { type:"workout", caption:`${session.dayName} — done.`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
-        })(),
+        shareData,
       });
       setShowWorkoutSummary(true);
 
@@ -3712,12 +3735,65 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
-              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish & share"}</button>
+              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish & share to feed"}</button>
+              {(() => {
+                const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
+                if (myGroups.length === 0) return null;
+                return (
+                  <button onClick={() => { setShowFinish(false); setSelectedGroupIds([]); setShowGroupShare(true); }} disabled={finishing} style={{ width:"100%", background:"transparent", color:C.text, border:`1px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Save & send to groups
+                  </button>
+                );
+              })()}
               <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"transparent", color:C.text, border:`1px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "…" : "Save only"}</button>
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
             </div>
           </div>
         )}
+
+        {/* Group share picker (Save & send to groups path - skips feed) */}
+        {showGroupShare && (() => {
+          const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
+          return (
+            <div onClick={() => setShowGroupShare(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
+              <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"80dvh", overflowY:"auto" }}>
+                <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
+                <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Send to groups</div>
+                <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>Workout will only be visible in selected groups, not the feed.</div>
+
+                <div style={{ marginBottom:18 }}>
+                  {myGroups.map(g => {
+                    const checked = selectedGroupIds.includes(g.id);
+                    return (
+                      <div key={g.id} onClick={() => setSelectedGroupIds(prev => checked ? prev.filter(id => id !== g.id) : [...prev, g.id])} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:12, background:C.surface, border:`1px solid ${checked?C.text:C.border}`, marginBottom:8, cursor:"pointer", transition:"border-color 0.15s" }}>
+                        <div style={{ width:36, height:36, borderRadius:11, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{g.name}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(g.members||g.member_ids||[]).length} members</div>
+                        </div>
+                        <div style={{ width:22, height:22, borderRadius:7, border:`2px solid ${checked?C.text:C.border}`, background:checked?C.text:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          {checked && <Icon name="check" size={12} color={C.bg} strokeWidth={3}/>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button onClick={async () => {
+                  if (selectedGroupIds.length === 0) { toast("Pick at least one group", "error"); return; }
+                  setShowGroupShare(false);
+                  await finishWorkout(false, { groupIds: selectedGroupIds, groupOnly: true });
+                }} disabled={finishing || selectedGroupIds.length === 0} style={{ width:"100%", background:(finishing||selectedGroupIds.length===0)?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:(finishing||selectedGroupIds.length===0)?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>
+                  {finishing ? "Saving…" : `Send to ${selectedGroupIds.length || "0"} group${selectedGroupIds.length===1?"":"s"}`}
+                </button>
+                <button onClick={() => { setShowGroupShare(false); setShowFinish(true); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Back</button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
