@@ -2355,12 +2355,47 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {/* Caption + comments */}
       <div style={{ padding:"2px 16px 14px" }}>
-        {post.caption && (
-          <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
-            <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
-            {post.caption}
-          </div>
-        )}
+        {post.caption && (() => {
+          // Detect code in caption (IGNITE-XXXX or WO-XXXX)
+          const codeMatch = post.caption.match(/(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i);
+          const code = codeMatch ? codeMatch[0].toUpperCase() : null;
+          // Strip the "Try my program: CODE" suffix from display
+          const displayCaption = code
+            ? post.caption.replace(/\s*·?\s*Try my (program|workout):?\s*(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i, "").trim()
+            : post.caption;
+          return (
+            <>
+              {displayCaption && (
+                <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
+                  <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
+                  {displayCaption}
+                </div>
+              )}
+              {code && (
+                <button onClick={() => {
+                  // Dispatch an event to open the import flow with the code prefilled
+                  window.dispatchEvent(new CustomEvent("seshd:open-code", { detail: { code } }));
+                }} style={{
+                  display:"flex", alignItems:"center", gap:10,
+                  width:"100%", marginTop:6, marginBottom:5,
+                  padding:"10px 12px",
+                  background: C.bg === "#000000" || C.bg === "#000" ? "#141414" : "#F4F6FA",
+                  border:`1px solid ${C.border}`, borderRadius:10, cursor:"pointer", fontFamily:F,
+                  textAlign:"left",
+                }}>
+                  <div style={{ width:30, height:30, borderRadius:8, background:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <Icon name={code.startsWith("WO-") ? "dumbbell" : "calendar"} size={14}/>
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:10, letterSpacing:1.2, fontWeight:700, color:C.sub }}>{code.startsWith("WO-") ? "WORKOUT CODE" : "PROGRAM CODE"}</div>
+                    <div style={{ fontFamily:MONO, fontSize:13, fontWeight:700, color:C.text, letterSpacing:1 }}>{code}</div>
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.accent }}>Import</div>
+                </button>
+              )}
+            </>
+          );
+        })()}
         {post.comments.length > 0 && !showCmts && (
           <div>
             {(() => {
@@ -2489,11 +2524,10 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                 toast("Couldn't generate share code", "error");
               }
             }
-          }} style={{ background:"transparent", border:`1px solid ${BORD}`, borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:600, color:TXT, cursor:"pointer", fontFamily:F, flexShrink:0, display:"flex", alignItems:"center", gap:6 }}>
-            <Icon name="share" size={14} color={TXT}/>
-            Share
+          }} aria-label="Share program" style={{ width:36, height:36, borderRadius:10, background:"transparent", border:`1px solid ${BORD}`, cursor:"pointer", fontFamily:F, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <Icon name="share" size={16} color={TXT}/>
           </button>
-          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:BLUE, border:"none", borderRadius:10, padding:"10px 18px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
+          <button onClick={() => onSaveProgram && onSaveProgram(localProg)} style={{ background:BLUE, border:"none", borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
         </div>
       </div>
 
@@ -2682,12 +2716,20 @@ const SESSION_KEY = "seshd_active_session";
 const WSTART_KEY = "seshd_wstart";
 
 // Inline code-redeem row used in the templates modal
-function CodeRedeemRow({ C, store, setStore, onClose, token }) {
-  const [open, setOpen] = useState(false);
-  const [code, setCode] = useState("");
+function CodeRedeemRow({ C, store, setStore, onClose, token, initialCode = null }) {
+  const [open, setOpen] = useState(!!initialCode);
+  const [code, setCode] = useState(initialCode || "");
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
+
+  // Auto-lookup when initialCode is provided
+  useEffect(() => {
+    if (initialCode) {
+      lookup();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function lookup() {
     setError("");
@@ -2696,15 +2738,35 @@ function CodeRedeemRow({ C, store, setStore, onClose, token }) {
     if (!c || c.length < 3) { setError("Enter a code"); return; }
     setLoading(true);
     try {
-      const rows = await sb.query(
-        `programs?share_code=eq.${encodeURIComponent(c)}&select=id,name,days,user_id`,
-        {},
-        token
-      );
-      if (!rows || rows.length === 0) {
-        setError("Code not found");
+      // Workout codes start with WO-
+      if (c.startsWith("WO-")) {
+        const rows = await sb.query(
+          `workout_codes?code=eq.${encodeURIComponent(c)}&select=code,day_name,exercises`,
+          {},
+          token
+        );
+        if (!rows || rows.length === 0) {
+          setError("Code not found");
+        } else {
+          const w = rows[0];
+          setPreview({
+            kind: "workout",
+            name: w.day_name,
+            days: [{ id: uid(), name: w.day_name, exercises: w.exercises || [] }],
+            exerciseCount: (w.exercises || []).length,
+          });
+        }
       } else {
-        setPreview(rows[0]);
+        const rows = await sb.query(
+          `programs?share_code=eq.${encodeURIComponent(c)}&select=id,name,days,user_id`,
+          {},
+          token
+        );
+        if (!rows || rows.length === 0) {
+          setError("Code not found");
+        } else {
+          setPreview({ ...rows[0], kind: "program" });
+        }
       }
     } catch (e) {
       setError("Couldn't look up code");
@@ -2716,9 +2778,10 @@ function CodeRedeemRow({ C, store, setStore, onClose, token }) {
   function importProgram() {
     if (!preview) return;
     const newId = uid();
+    const isWorkout = preview.kind === "workout";
     const imported = {
       id: newId,
-      name: preview.name + " (imported)",
+      name: isWorkout ? `${preview.name} (imported)` : `${preview.name} (imported)`,
       days: preview.days || [],
     };
     setStore(p => ({
@@ -2738,7 +2801,7 @@ function CodeRedeemRow({ C, store, setStore, onClose, token }) {
         })
       }, token).catch(e => console.error("save imported program:", e));
     }
-    toast("Program imported", "success");
+    toast(isWorkout ? "Workout imported" : "Program imported", "success");
     setCode("");
     setPreview(null);
     setOpen(false);
@@ -2773,7 +2836,7 @@ function CodeRedeemRow({ C, store, setStore, onClose, token }) {
           value={code}
           onChange={e => { setCode(e.target.value.toUpperCase()); setError(""); setPreview(null); }}
           onKeyDown={e => { if (e.key === "Enter") lookup(); }}
-          placeholder="IGNITE-X9K2"
+          placeholder="IGNITE-X9K2 or WO-X9K2"
           autoCapitalize="characters"
           autoCorrect="off"
           style={{
@@ -2792,8 +2855,18 @@ function CodeRedeemRow({ C, store, setStore, onClose, token }) {
       {error && <div style={{ fontSize:12, color:"#EF4444", marginTop:10 }}>{error}</div>}
       {preview && (
         <div style={{ marginTop:12, padding:"12px", background:C.divider, borderRadius:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+            <span style={{ fontSize:9, fontWeight:800, letterSpacing:1.2, color:C.bg, background:C.text, padding:"2px 6px", borderRadius:5 }}>
+              {preview.kind === "workout" ? "WORKOUT" : "PROGRAM"}
+            </span>
+          </div>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{preview.name}</div>
-          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{(preview.days||[]).length} days · {(preview.days||[]).reduce((a,d)=>a+(d.exercises?.length||0),0)} exercises</div>
+          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
+            {preview.kind === "workout"
+              ? `${preview.exerciseCount} exercises`
+              : `${(preview.days||[]).length} days · ${(preview.days||[]).reduce((a,d)=>a+(d.exercises?.length||0),0)} exercises`
+            }
+          </div>
           <button onClick={importProgram} style={{
             marginTop:10, width:"100%", background:C.text, color:C.bg,
             border:"none", borderRadius:10, padding:"11px", fontSize:13, fontWeight:700,
@@ -2831,6 +2904,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [subTab, setSubTab] = useState("workout");
   const [showTemplates, setShowTemplates] = useState(false);
+  const [prefilledCode, setPrefilledCode] = useState(null);
   const [showAICoach, setShowAICoach] = useState(false);
   const [viewingProgram, setViewingProgram] = useState(null); // program ID
   const [showBuilder, setShowBuilder] = useState(false);
@@ -2840,6 +2914,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
+
+  // Listen for code-import requests from feed posts
+  useEffect(() => {
+    function handleOpenCode(e) {
+      const c = e?.detail?.code;
+      if (c) {
+        setPrefilledCode(c);
+        setShowTemplates(true);
+      }
+    }
+    window.addEventListener("seshd:open-code-internal", handleOpenCode);
+    return () => window.removeEventListener("seshd:open-code-internal", handleOpenCode);
+  }, []);
   const rtRef = useRef(null);
 
   useEffect(() => {
@@ -3573,8 +3660,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               </div>
               <div style={{ padding:"12px 18px 32px", display:"flex", flexDirection:"column", gap:8 }}>
                 <button onClick={() => {
-                  if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: [] });
-                  const text = `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
+                  // Find active program's share code to append to caption
+                  const activeProg = (store.programs||[]).find(p => p.id === store.activeProgramId);
+                  const progCode = activeProg?.shareCode || null;
+                  if (workoutSummary.shareData) {
+                    const enrichedShareData = progCode
+                      ? { ...workoutSummary.shareData, caption: `${workoutSummary.shareData.caption} · Try my program: ${progCode}` }
+                      : workoutSummary.shareData;
+                    onShareWorkout({ ...enrichedShareData, groupIds: [] });
+                  }
+                  const text = progCode
+                    ? `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}\nTry my program: ${progCode}`
+                    : `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
                   if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
                   else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
                   setShowWorkoutSummary(false); setWorkoutSummary(null);
@@ -3900,7 +3997,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
-          <div style={{ position:"absolute", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden", maxWidth:480, margin:"0 auto" }}>
           <ProgramDetailView
             prog={prog}
             store={store}
@@ -4168,10 +4265,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {showTemplates && (
-        <div onClick={() => setShowTemplates(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
+        <div onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
           <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-              <button onClick={() => setShowTemplates(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+              <button onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Starter Templates</div>
               <div style={{ width:50 }}/>
             </div>
@@ -4194,7 +4291,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               </button>
 
               {/* Code redeem */}
-              <CodeRedeemRow C={C} store={store} setStore={setStore} onClose={() => setShowTemplates(false)} token={token}/>
+              <CodeRedeemRow C={C} store={store} setStore={setStore} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} token={token} initialCode={prefilledCode}/>
 
               <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginBottom:10, marginTop:10, letterSpacing:1, fontWeight:600 }}>OR PICK A TEMPLATE</div>
             </div>
@@ -4345,6 +4442,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           onClose={() => setPreviewDay(null)}
           onStart={day => { setPreviewDay(null); startWorkout(day); }}
           onSaveProgram={onSaveProgram}
+          token={token}
         />
       )}
 
@@ -4367,10 +4465,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 // ═════════════════════════════════════════════════════════════════════════════
 // AI COACH MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveProgram }) {
+function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveProgram, token }) {
   const [editMode, setEditMode] = useState(false);
   const [editDay, setEditDay] = useState(() => JSON.parse(JSON.stringify(previewDay.day)));
   const [viewingExercise, setViewingExercise] = useState(null);
+  const [shareModal, setShareModal] = useState(null);
 
   const isDark = C.bg === "#000000" || C.bg === "#000";
   const BG    = isDark ? "#0a0a0a" : "#F4F6FA";
@@ -4435,6 +4534,13 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           {lastPerformed && <div style={{ fontSize:11, color:SUB, marginTop:1 }}>Last done {lastPerformed}</div>}
         </div>
         <button onClick={() => {
+          // Open picker: share this day OR the whole program
+          const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
+          setShareModal({ stage: "picker", prog, day: editDay });
+        }} aria-label="Share" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <Icon name="share" size={16} color={TXT}/>
+        </button>
+        <button onClick={() => {
           if (editMode && onSaveProgram) {
             const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
             if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === previewDay.day.name ? editDay : d) });
@@ -4446,6 +4552,179 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           color: editMode ? "#fff" : BLUE,
         }}>{editMode ? "Done" : "Edit"}</button>
       </div>
+
+      {/* Share Modal */}
+      {shareModal && (
+        <div onClick={() => setShareModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
+            background:"#0A0A0A", borderRadius:24, padding:"32px 24px",
+            width:"100%", maxWidth:360, color:"#fff", position:"relative",
+            fontFamily:F, overflow:"hidden",
+          }}>
+            <div style={{
+              position:"absolute", inset:0, opacity:0.04, pointerEvents:"none",
+              backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+              backgroundSize:"24px 24px",
+            }}/>
+            <button onClick={() => setShareModal(null)} style={{
+              position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.08)",
+              border:"none", color:"#fff", width:30, height:30, borderRadius:10,
+              cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1
+            }}>
+              <Icon name="x" size={14} color="#fff"/>
+            </button>
+
+            {/* Stage 1: Picker - share day or program */}
+            {shareModal.stage === "picker" && (
+              <div style={{ position:"relative", zIndex:1 }}>
+                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:8, textAlign:"center" }}>SHARE</div>
+                <div style={{ fontSize:18, fontWeight:800, color:"#fff", marginBottom:24, textAlign:"center", letterSpacing:-0.3 }}>What do you want to share?</div>
+
+                <button onClick={async () => {
+                  const day = shareModal.day;
+                  if (!day || !token) { setShareModal(null); return; }
+                  setShareModal({ stage:"code", kind:"day", name: day.name, generating: true });
+                  try {
+                    let code = generateShareCode("WO");
+                    for (let i = 0; i < 5; i++) {
+                      const existing = await sb.query(`workout_codes?code=eq.${code}&select=code`, {}, token).catch(()=>[]);
+                      if (!existing || existing.length === 0) break;
+                      code = generateShareCode("WO");
+                    }
+                    await sb.query("workout_codes", {
+                      method: "POST",
+                      body: JSON.stringify({
+                        code,
+                        user_id: store.currentUserId || undefined,
+                        day_name: day.name,
+                        exercises: day.exercises || [],
+                      })
+                    }, token);
+                    setShareModal({ stage:"code", kind:"day", name: day.name, code, generating: false });
+                  } catch (e) {
+                    console.error("workout code error:", e);
+                    setShareModal(null);
+                    toast("Couldn't generate code — run SQL migration", "error");
+                  }
+                }} style={{
+                  width:"100%", background:"rgba(255,255,255,0.06)",
+                  border:"1px solid rgba(255,255,255,0.12)", borderRadius:14,
+                  padding:"16px", marginBottom:10, cursor:"pointer", fontFamily:F,
+                  display:"flex", alignItems:"center", gap:12, color:"#fff", textAlign:"left",
+                }}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:"#fff", color:"#0A0A0A", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <Icon name="dumbbell" size={18} color="#0A0A0A"/>
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.2 }}>This workout</div>
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", marginTop:1 }}>{shareModal.day?.name || ""} · {(shareModal.day?.exercises||[]).length} exercises</div>
+                  </div>
+                  <Icon name="chevron-right" size={16} color="rgba(255,255,255,0.4)"/>
+                </button>
+
+                {shareModal.prog && (
+                  <button onClick={async () => {
+                    const prog = shareModal.prog;
+                    if (prog.shareCode) {
+                      setShareModal({ stage:"code", kind:"program", name: prog.name, code: prog.shareCode, generating: false });
+                      return;
+                    }
+                    setShareModal({ stage:"code", kind:"program", name: prog.name, generating: true });
+                    if (token) {
+                      try {
+                        let code = generateShareCode("IGNITE");
+                        for (let i = 0; i < 5; i++) {
+                          const existing = await sb.query(`programs?share_code=eq.${code}&select=id`, {}, token).catch(()=>[]);
+                          if (!existing || existing.length === 0) break;
+                          code = generateShareCode("IGNITE");
+                        }
+                        await sb.query(`programs?id=eq.${prog.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({ share_code: code })
+                        }, token);
+                        if (onSaveProgram) onSaveProgram({ ...prog, shareCode: code });
+                        setShareModal({ stage:"code", kind:"program", name: prog.name, code, generating: false });
+                      } catch (e) {
+                        console.error("share code error:", e);
+                        setShareModal(null);
+                        toast("Couldn't generate share code", "error");
+                      }
+                    }
+                  }} style={{
+                    width:"100%", background:"rgba(255,255,255,0.06)",
+                    border:"1px solid rgba(255,255,255,0.12)", borderRadius:14,
+                    padding:"16px", marginBottom:6, cursor:"pointer", fontFamily:F,
+                    display:"flex", alignItems:"center", gap:12, color:"#fff", textAlign:"left",
+                  }}>
+                    <div style={{ width:36, height:36, borderRadius:10, background:"#fff", color:"#0A0A0A", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      <Icon name="calendar" size={18} color="#0A0A0A"/>
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.2 }}>Whole program</div>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", marginTop:1 }}>{shareModal.prog.name} · {(shareModal.prog.days||[]).length} days</div>
+                    </div>
+                    <Icon name="chevron-right" size={16} color="rgba(255,255,255,0.4)"/>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Stage 2: Code display */}
+            {shareModal.stage === "code" && (
+              <div style={{ position:"relative", zIndex:1, textAlign:"center" }}>
+                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:6 }}>
+                  {shareModal.kind === "day" ? "WORKOUT CODE" : "PROGRAM CODE"}
+                </div>
+                <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", marginBottom:24, fontWeight:500 }}>{shareModal.name || ""}</div>
+                {shareModal.generating ? (
+                  <div style={{ fontFamily:MONO, fontSize:32, fontWeight:700, color:"rgba(255,255,255,0.3)", padding:"20px 0", letterSpacing:2 }}>···</div>
+                ) : (
+                  <div style={{
+                    fontFamily:MONO, fontSize:32, fontWeight:800, color:"#fff",
+                    letterSpacing:2, padding:"24px 0",
+                    borderTop:"1px solid rgba(255,255,255,0.08)",
+                    borderBottom:"1px solid rgba(255,255,255,0.08)",
+                    marginBottom:24,
+                  }}>
+                    {shareModal.code}
+                  </div>
+                )}
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)", marginBottom:20, lineHeight:1.5 }}>
+                  Anyone with this code can import {shareModal.kind === "day" ? "this workout" : "this program"}.
+                </div>
+                {!shareModal.generating && (
+                  <>
+                    <button onClick={() => {
+                      const label = shareModal.kind === "day" ? "workout" : "program";
+                      const text = `Try my ${label} on Seshd — ${shareModal.code}`;
+                      if (navigator.share) navigator.share({ title:`${label} code`, text }).catch(()=>{});
+                      else if (navigator.clipboard) { navigator.clipboard.writeText(shareModal.code); toast("Code copied", "success"); }
+                    }} style={{
+                      width:"100%", background:"#fff", color:"#0A0A0A",
+                      border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
+                      cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2,
+                      display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                    }}>
+                      <Icon name="share" size={16} color="#0A0A0A"/>
+                      Share code
+                    </button>
+                    <button onClick={() => {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(shareModal.code);
+                        toast("Code copied", "success");
+                      }
+                    }} style={{
+                      width:"100%", background:"transparent", color:"rgba(255,255,255,0.85)",
+                      border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"13px",
+                      fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600,
+                    }}>Copy to clipboard</button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Hero band */}
       {!editMode && (
@@ -5383,7 +5662,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   );
 }
 
-function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, onBack, onUpdateMembers, onLeave }) {
+function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
   const [tab, setTab] = useState("feed");
   const [posts, setPosts] = useState([]);
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
@@ -5405,7 +5684,17 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
         );
         if (res.ok) {
           const raw = (await res.json()) || [];
-          setPosts(raw.map(p => ({ ...p, _reactions: p.reactions || {} })));
+          // Merge persisted self-reactions (RLS may block self-PATCH on own group posts)
+          const persisted = store.historyInteractions || {};
+          setPosts(raw.map(p => {
+            const dbReactions = p.reactions || {};
+            const selfKey = `group_${p.id}`;
+            const selfReaction = persisted[selfKey]?.selfReaction;
+            const merged = { ...dbReactions };
+            if (selfReaction) merged[currentUserId] = selfReaction;
+            else if (selfReaction === null) delete merged[currentUserId]; // explicit unreact
+            return { ...p, _reactions: merged };
+          }));
         }
       } catch {}
       setLoading(false);
@@ -5590,7 +5879,27 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, C, token, o
                               else next[currentUserId] = emoji;
                               // Optimistic local update
                               setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:next} : x));
-                              // Persist to DB
+
+                              const isOwnPost = post.user_id === currentUserId;
+
+                              // Persist self-reaction to localStorage so it survives refresh
+                              // (RLS may block self-PATCH on own group posts)
+                              setStore(prevStore => {
+                                const selfKey = `group_${post.id}`;
+                                const newHI = { ...(prevStore.historyInteractions || {}) };
+                                if (active) {
+                                  // Unreact - mark explicit removal
+                                  newHI[selfKey] = { ...(newHI[selfKey] || {}), selfReaction: null };
+                                } else {
+                                  newHI[selfKey] = { ...(newHI[selfKey] || {}), selfReaction: emoji };
+                                }
+                                return { ...prevStore, historyInteractions: newHI };
+                              });
+
+                              // Own post: skip DB call (RLS blocks self-PATCH), keep optimistic + local persist
+                              if (isOwnPost) return;
+
+                              // Persist to DB for other people's posts
                               if (token) {
                                 try {
                                   const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
@@ -5791,7 +6100,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
     const notMembers = store.users.filter(u => !(g.members||[]).includes(u.id) && u.id !== currentUserId);
     return <GroupDetail
       g={g} members={members} notMembers={notMembers}
-      currentUserId={currentUserId} store={store} C={C} token={token}
+      currentUserId={currentUserId} store={store} setStore={setStore} C={C} token={token}
       onBack={() => setActiveGroup(null)}
       onUpdateMembers={updateGroupMembers}
       onLeave={() => { updateGroupMembers(g.id, (g.members||[]).filter(m => m !== currentUserId)); setActiveGroup(null); }}
@@ -7071,6 +7380,26 @@ export default function App() {
   const [prevTab, setPrevTab] = useState(null);
   const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
   function switchTab(t) { setPrevTab(tab); setTab(t); }
+
+  // When user taps an Import button on a feed code, switch to tracker and re-dispatch
+  useEffect(() => {
+    function handleOpenCode(e) {
+      const code = e?.detail?.code;
+      if (!code) return;
+      // If we're not on tracker tab, switch and re-dispatch after mount
+      if (tab !== "tracker") {
+        switchTab("tracker");
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("seshd:open-code-internal", { detail: { code } }));
+        }, 100);
+      } else {
+        window.dispatchEvent(new CustomEvent("seshd:open-code-internal", { detail: { code } }));
+      }
+    }
+    window.addEventListener("seshd:open-code", handleOpenCode);
+    return () => window.removeEventListener("seshd:open-code", handleOpenCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostKind, setNewPostKind] = useState("photo");
   const [profileUserId, setProfileUserId] = useState(null);
