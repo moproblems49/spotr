@@ -1244,7 +1244,11 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
   useEffect(() => {
     function handler(e) { if (typeMenuRef.current && !typeMenuRef.current.contains(e.target)) setShowTypeMenu(false); }
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
   }, []);
 
   function onTouchStart(e) {
@@ -1305,7 +1309,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
   }, [exName, isDone, set.type, set.weight, set.reps, store, repsTarget, unit, si, isCardio]);
 
   return (
-    <div style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
+    <div data-no-tab-swipe style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
       {/* Swipe hint backgrounds */}
       <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-start", paddingLeft:16, background:`${C.green}E5`, opacity: swipeDir==="right" ? Math.min(1, swipeDx/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
         <div style={{ transform: `scale(${Math.min(1, swipeDx/60)})`, transition:"transform 0.08s ease-out" }}>
@@ -1339,17 +1343,21 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
         <div style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:isDone?C.green:C.divider, color:isDone?"#fff":C.sub, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, fontFamily:MONO }}>{si+1}</div>
         
         <div ref={typeMenuRef} style={{ position:"relative", flexShrink:0 }}>
-          <button onClick={(e) => {
-            if (!showTypeMenu) {
+          <button
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
               const r = e.currentTarget.getBoundingClientRect();
               setMenuPos({ top: r.bottom + 4, left: r.left });
-            }
-            setShowTypeMenu(!showTypeMenu);
-          }} style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32 }}>{setType.short}</button>
+              setShowTypeMenu(s => !s);
+            }}
+            style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"manipulation" }}>{setType.short}</button>
           {showTypeMenu && menuPos && (
-            <div style={{ position:"fixed", top:menuPos.top, left:menuPos.left, zIndex:9999, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 6px 20px rgba(0,0,0,0.2)", minWidth:120, overflow:"hidden" }}>
+            <div onTouchStart={(e)=>e.stopPropagation()} style={{ position:"fixed", top:menuPos.top, left:menuPos.left, zIndex:9999, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 6px 20px rgba(0,0,0,0.2)", minWidth:120, overflow:"hidden" }}>
               {SET_TYPES.map((t,i) => (
-                <div key={t.id} onClick={() => { onUpdate({type:t.id}); setShowTypeMenu(false); }} style={{ padding:"10px 14px", fontSize:13, color:t.id===set.type?t.color:C.text, fontWeight:t.id===set.type?700:500, background:t.id===set.type?`${t.color}10`:"transparent", borderBottom:i<SET_TYPES.length-1?`1px solid ${C.divider}`:"none", cursor:"pointer" }}>{t.label}</div>
+                <div key={t.id} onClick={(e) => { e.stopPropagation(); onUpdate({type:t.id}); setShowTypeMenu(false); }} style={{ padding:"10px 14px", fontSize:13, color:t.id===set.type?t.color:C.text, fontWeight:t.id===set.type?700:500, background:t.id===set.type?`${t.color}10`:"transparent", borderBottom:i<SET_TYPES.length-1?`1px solid ${C.divider}`:"none", cursor:"pointer" }}>{t.label}</div>
               ))}
             </div>
           )}
@@ -7655,8 +7663,7 @@ export default function App() {
       const persistedInteractions = store.historyInteractions || {};
 
       const appPosts = posts.map(p => {
-        const isOwn = p.user_id === uid;
-        const persisted = isOwn ? persistedInteractions[p.id] : null;
+        const persisted = persistedInteractions[p.id];
         const dbKudos = (p.kudos || []).map(k => k.user_id);
         const dbComments = (p.comments || []).map(c => ({
           id: c.id, userId: c.user_id, text: c.text, createdAt: new Date(c.created_at).getTime()
@@ -7674,7 +7681,7 @@ export default function App() {
           achievement: p.achievement,
           unit: p.unit || "lbs",
           isPR: p.is_pr,
-          // Merge persisted own-post kudos (RLS blocks self-like in DB)
+          // Merge persisted kudos (covers both own-post RLS-blocked likes and other-post likes still in flight)
           kudos: persisted ? Array.from(new Set([...dbKudos, ...(persisted.kudos||[])])) : dbKudos,
           comments: persisted ? [...dbComments, ...(persisted.comments||[])] : dbComments,
           createdAt: new Date(p.created_at).getTime(),
@@ -7819,6 +7826,7 @@ export default function App() {
         return;
       }
 
+      const nowIso = new Date().toISOString();
       const row = {
         user_id: currentUserId,
         type: postData.type || "photo",
@@ -7831,6 +7839,7 @@ export default function App() {
         achievement: postData.achievement || null,
         unit: store.unit || "lbs",
         is_pr: postData.isPR || false,
+        created_at: nowIso,
       };
       const result = await sb.query("posts", {
         method: "POST", body: JSON.stringify(row)
@@ -7845,7 +7854,8 @@ export default function App() {
           run: newPost.run, yoga: newPost.yoga, achievement: newPost.achievement,
           unit: newPost.unit, isPR: newPost.is_pr,
           kudos: [], comments: [],
-          createdAt: new Date(newPost.created_at).getTime(),
+          // Use the timestamp we set on the row (client wall-clock) instead of trusting whatever DB returned
+          createdAt: new Date(newPost.created_at || nowIso).getTime(),
         };
         setStore(prev => ({ ...prev, posts: [appPost, ...prev.posts] }));
       }
@@ -7892,23 +7902,23 @@ export default function App() {
       })
     }));
 
-    // Own posts: skip DB (RLS blocks self-kudos), persist to historyInteractions for cross-refresh survival
-    if (isOwnPost) {
-      setStore(prev => {
-        const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
-        const newKudos = hasKudos
-          ? (hi.kudos||[]).filter(id => id !== currentUserId)
-          : [...(hi.kudos||[]), currentUserId];
-        return {
-          ...prev,
-          historyInteractions: {
-            ...(prev.historyInteractions||{}),
-            [postId]: { ...hi, kudos: newKudos }
-          }
-        };
-      });
-      return;
-    }
+    // Persist to historyInteractions so it survives even if DB write is in flight during refresh
+    setStore(prev => {
+      const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+      const newKudos = hasKudos
+        ? (hi.kudos||[]).filter(id => id !== currentUserId)
+        : Array.from(new Set([...(hi.kudos||[]), currentUserId]));
+      return {
+        ...prev,
+        historyInteractions: {
+          ...(prev.historyInteractions||{}),
+          [postId]: { ...hi, kudos: newKudos }
+        }
+      };
+    });
+
+    // Own posts: skip DB (RLS blocks self-kudos) — historyInteractions already updated above
+    if (isOwnPost) return;
 
     try {
       if (hasKudos) {
@@ -7916,6 +7926,21 @@ export default function App() {
       } else {
         await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, tok);
       }
+      // DB write succeeded — remove the local copy from historyInteractions to avoid double-counting after refresh
+      setStore(prev => {
+        const hi = prev.historyInteractions?.[postId];
+        if (!hi) return prev;
+        return {
+          ...prev,
+          historyInteractions: {
+            ...(prev.historyInteractions||{}),
+            [postId]: {
+              ...hi,
+              kudos: (hi.kudos||[]).filter(id => id !== currentUserId),
+            }
+          }
+        };
+      });
     } catch (e) {
       console.error("kudos save failed:", e);
       toast("Couldn't save like — check connection or DB policy", "error");
@@ -7965,20 +7990,20 @@ export default function App() {
       })
     }));
 
-    // Own posts: skip DB (RLS may block), persist to historyInteractions
-    if (isOwnPost) {
-      setStore(prev => {
-        const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
-        return {
-          ...prev,
-          historyInteractions: {
-            ...(prev.historyInteractions||{}),
-            [postId]: { ...hi, comments: [...(hi.comments||[]), localComment] }
-          }
-        };
-      });
-      return;
-    }
+    // Persist to historyInteractions for refresh survival
+    setStore(prev => {
+      const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+      return {
+        ...prev,
+        historyInteractions: {
+          ...(prev.historyInteractions||{}),
+          [postId]: { ...hi, comments: [...(hi.comments||[]), localComment] }
+        }
+      };
+    });
+
+    // Own posts: skip DB (RLS may block) — already persisted to historyInteractions above
+    if (isOwnPost) return;
 
     try {
       const result = await sb.query("comments", {
@@ -7997,6 +8022,20 @@ export default function App() {
             } : c)
           })
         }));
+        // DB write succeeded — remove the local copy from historyInteractions so it won't duplicate after refresh
+        setStore(prev => {
+          const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+          return {
+            ...prev,
+            historyInteractions: {
+              ...(prev.historyInteractions||{}),
+              [postId]: {
+                ...hi,
+                comments: (hi.comments||[]).filter(c => c.id !== localComment.id),
+              }
+            }
+          };
+        });
       }
     } catch (e) {
       console.error("comment save failed:", e);
@@ -8445,6 +8484,10 @@ export default function App() {
     <div
       onTouchStart={(e) => {
         if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null) return;
+        // Skip tab swipe if the touch started on an interactive element that has its own swipe behavior
+        // (e.g. SetRow, story carousel, horizontal scroller)
+        const target = e.target;
+        if (target && target.closest && target.closest("[data-no-tab-swipe]")) return;
         const t = e.touches[0];
         swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now(), type: null };
         setSwipeX(0);
