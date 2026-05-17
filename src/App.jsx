@@ -1232,7 +1232,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
-const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, C }) {
+const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const typeMenuRef = useRef(null);
@@ -1240,25 +1240,40 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
   const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false, locked: null });
   const [swipeDx, setSwipeDx] = useState(0);
   const [swipeDir, setSwipeDir] = useState(null);
+  const longPressTimer = useRef(null);
 
   useEffect(() => {
     function handler(e) { if (typeMenuRef.current && !typeMenuRef.current.contains(e.target)) setShowTypeMenu(false); }
-    document.addEventListener("mousedown", handler);
-    document.addEventListener("touchstart", handler);
-    return () => {
-      document.removeEventListener("mousedown", handler);
-      document.removeEventListener("touchstart", handler);
-    };
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, []);
+
+  function clearLongPress() {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  }
 
   function onTouchStart(e) {
     const t = e.touches[0];
     swipeState.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false, locked: null };
+    // Start long-press timer if copy-to-next is wired up. Cancel if user moves or releases early.
+    if (onCopyToNext && (set.weight || set.reps)) {
+      clearLongPress();
+      longPressTimer.current = setTimeout(() => {
+        if (!swipeState.current.swiping) {
+          onCopyToNext();
+          haptic("complete");
+          toast("Copied to next set", "success");
+        }
+        longPressTimer.current = null;
+      }, 550);
+    }
   }
   function onTouchMove(e) {
     const t = e.touches[0];
     const dx = t.clientX - swipeState.current.startX;
     const dy = t.clientY - swipeState.current.startY;
+    // Any meaningful movement cancels the long-press
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) clearLongPress();
     if (!swipeState.current.swiping && Math.abs(dy) > Math.abs(dx)) return;
     if (Math.abs(dx) > 6) {
       swipeState.current.swiping = true;
@@ -1279,6 +1294,7 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
     setSwipeDir(clamped > 0 ? "right" : clamped < 0 ? "left" : null);
   }
   function onTouchEnd() {
+    clearLongPress();
     const dx = swipeState.current.dx;
     if (dx > 60) {
       onToggleDone();
@@ -1344,20 +1360,26 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
         
         <div ref={typeMenuRef} style={{ position:"relative", flexShrink:0 }}>
           <button
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchMove={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => e.stopPropagation()}
-            onClick={(e) => {
+            type="button"
+            onPointerDown={(e) => { e.stopPropagation(); }}
+            onPointerUp={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               const r = e.currentTarget.getBoundingClientRect();
               setMenuPos({ top: r.bottom + 4, left: r.left });
               setShowTypeMenu(s => !s);
             }}
-            style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"manipulation" }}>{setType.short}</button>
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+            style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"manipulation", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
           {showTypeMenu && menuPos && (
-            <div onTouchStart={(e)=>e.stopPropagation()} style={{ position:"fixed", top:menuPos.top, left:menuPos.left, zIndex:9999, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 6px 20px rgba(0,0,0,0.2)", minWidth:120, overflow:"hidden" }}>
+            <div onPointerDown={(e)=>e.stopPropagation()} style={{ position:"fixed", top:menuPos.top, left:menuPos.left, zIndex:9999, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 6px 20px rgba(0,0,0,0.2)", minWidth:140, overflow:"hidden" }}>
               {SET_TYPES.map((t,i) => (
-                <div key={t.id} onClick={(e) => { e.stopPropagation(); onUpdate({type:t.id}); setShowTypeMenu(false); }} style={{ padding:"10px 14px", fontSize:13, color:t.id===set.type?t.color:C.text, fontWeight:t.id===set.type?700:500, background:t.id===set.type?`${t.color}10`:"transparent", borderBottom:i<SET_TYPES.length-1?`1px solid ${C.divider}`:"none", cursor:"pointer" }}>{t.label}</div>
+                <div
+                  key={t.id}
+                  onPointerUp={(e) => { e.stopPropagation(); e.preventDefault(); onUpdate({type:t.id}); setShowTypeMenu(false); }}
+                  style={{ padding:"12px 16px", fontSize:14, color:t.id===set.type?t.color:C.text, fontWeight:t.id===set.type?700:500, background:t.id===set.type?`${t.color}10`:"transparent", borderBottom:i<SET_TYPES.length-1?`1px solid ${C.divider}`:"none", cursor:"pointer", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>
+                  {t.label}
+                </div>
               ))}
             </div>
           )}
@@ -2166,12 +2188,15 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
     </div>
   );
 }
-const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
+const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
   const isOwn = post.userId === currentUserId;
   const [showCmts, setShowCmts] = useState(false);
   const [cmtText, setCmtText] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editCommentText, setEditCommentText] = useState("");
+  const [commentMenu, setCommentMenu] = useState(null); // commentId of open menu
   const [showMenu, setShowMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [pop, setPop] = useState(false);
@@ -2435,13 +2460,57 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         <div style={{ padding:"8px 16px 14px" }}>
           {post.comments.map(c => {
             const cu = store.users.find(u => u.id === c.userId);
+            const isOwn = c.userId === currentUserId;
+            const isEditing = editingCommentId === c.id;
             return (
               <div key={c.id} style={{ display:"flex", gap:8, marginBottom:8 }}>
                 <Avatar user={cu} size={26} C={C}/>
-                <div style={{ flex:1, background:C.divider, borderRadius:12, padding:"8px 12px" }}>
-                  <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{cu?.username} </span>
-                  <span style={{ fontSize:13, color:C.text }}>{c.text}</span>
-                  <div style={{ fontSize:10, color:C.sub, marginTop:3 }}>{timeAgo(c.createdAt)}</div>
+                <div style={{ flex:1, background:C.divider, borderRadius:12, padding:"8px 12px", position:"relative" }}>
+                  {isEditing ? (
+                    <div>
+                      <input
+                        autoFocus
+                        value={editCommentText}
+                        onChange={e => setEditCommentText(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && editCommentText.trim()) {
+                            onEditComment && onEditComment(post.id, c.id, editCommentText.trim());
+                            setEditingCommentId(null);
+                          } else if (e.key === "Escape") {
+                            setEditingCommentId(null);
+                          }
+                        }}
+                        style={{ width:"100%", background:"transparent", border:"none", fontSize:13, color:C.text, outline:"none", fontFamily:F, padding:0 }}
+                      />
+                      <div style={{ display:"flex", gap:8, marginTop:6 }}>
+                        <button onClick={() => {
+                          if (editCommentText.trim()) {
+                            onEditComment && onEditComment(post.id, c.id, editCommentText.trim());
+                          }
+                          setEditingCommentId(null);
+                        }} style={{ fontSize:11, fontWeight:700, color:C.accent, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Save</button>
+                        <button onClick={() => setEditingCommentId(null)} style={{ fontSize:11, color:C.sub, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{cu?.username} </span>
+                      <span style={{ fontSize:13, color:C.text }}>{c.text}</span>
+                      <div style={{ fontSize:10, color:C.sub, marginTop:3, display:"flex", alignItems:"center", gap:8 }}>
+                        <span>{timeAgo(c.createdAt)}</span>
+                        {isOwn && (
+                          <>
+                            <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.text); }} style={{ background:"none", border:"none", color:C.sub, fontSize:10, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Edit</button>
+                            <button onClick={() => {
+                              if (window.confirm("Delete this comment?")) {
+                                onDeleteComment && onDeleteComment(post.id, c.id);
+                              }
+                            }} style={{ background:"none", border:"none", color:"#EF4444", fontSize:10, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Delete</button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -3032,6 +3101,38 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     setElapsed(0);
   }
 
+  // "Repeat workout" — start a new session pre-loaded from a past session's exercises.
+  // Pre-fills the same set count + previous weight/reps as placeholders (via the existing prev system).
+  function repeatFromSession(pastSession) {
+    if (!pastSession?.exercises) return;
+    const exs = pastSession.exercises.filter(e => e.name).map(ex => {
+      const oldSets = (ex.sets || []).filter(s => s.done === true || (s.done !== false && (parseFloat(s.reps) > 0 || parseFloat(s.r) > 0)));
+      const setCount = Math.max(1, oldSets.length);
+      return {
+        id: uid(),
+        name: ex.name,
+        reps: ex.reps || "",
+        note: ex.note || "",
+        sets: Array.from({ length: setCount }, () => ({
+          id: uid(),
+          weight: "",
+          reps: "",
+          done: false,
+          type: "normal",
+        })),
+      };
+    });
+    setSession({
+      dayId: null,
+      dayName: pastSession.dayName || "Repeat workout",
+      programId: store.activeProgramId || null,
+      exercises: exs,
+    });
+    setWStart(Date.now());
+    setElapsed(0);
+    setSubTab("workout");
+  }
+
   function toggleDone(ei, si) {
     setSession(p => {
       const nowDone = !p.exercises[ei]?.sets[si]?.done;
@@ -3220,6 +3321,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       }
 
       // Show summary
+      // Capture undo info so user can roll back if they finished by accident
       setWorkoutSummary({
         dayName: session.dayName,
         duration: fmtTime(elapsed),
@@ -3230,6 +3332,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         progressions: progressionsHit,
         share,
         shareData,
+        undo: {
+          dk, sid,
+          // Full snapshot of the session so we can restore it
+          session: JSON.parse(JSON.stringify(session)),
+          elapsed,
+          prevPRs: originalPRs,
+        },
       });
       setShowWorkoutSummary(true);
 
@@ -3462,6 +3571,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       onUpdate={patch => updateSet(ei,si,patch)}
                       onToggleDone={() => toggleDone(ei,si)}
                       onDelete={ex.sets.length > 1 ? () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.filter((_,j)=>j!==si)}) })) : undefined}
+                      onCopyToNext={() => setSession(p => ({
+                        ...p,
+                        exercises: p.exercises.map((x, i) => {
+                          if (i !== ei) return x;
+                          const sets = [...x.sets];
+                          const src = sets[si];
+                          const target = sets[si + 1];
+                          if (!target) {
+                            // Append a new set copied from current
+                            sets.push({ id: uid(), weight: src.weight, reps: src.reps, done: false, type: src.type || "normal" });
+                          } else {
+                            // Only fill if target is empty (don't clobber)
+                            sets[si + 1] = {
+                              ...target,
+                              weight: target.weight || src.weight,
+                              reps: target.reps || src.reps,
+                            };
+                          }
+                          return { ...x, sets };
+                        })
+                      }))}
                     />
                     <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
@@ -3732,6 +3862,35 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })()}
                 <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
+                {workoutSummary.undo && (
+                  <button onClick={async () => {
+                    const u = workoutSummary.undo;
+                    // 1. Remove from local history
+                    setStore(prev => {
+                      const day = { ...(prev.history?.[u.dk] || {}) };
+                      delete day[u.sid];
+                      const newHistory = { ...prev.history };
+                      if (Object.keys(day).length === 0) delete newHistory[u.dk];
+                      else newHistory[u.dk] = day;
+                      // Restore PRs to pre-finish snapshot
+                      return { ...prev, history: newHistory, prs: u.prevPRs || prev.prs };
+                    });
+                    // 2. Restore the session
+                    setSession(u.session);
+                    setElapsed(u.elapsed || 0);
+                    setWStart(Date.now() - (u.elapsed || 0) * 1000);
+                    setShowWorkoutSummary(false);
+                    setWorkoutSummary(null);
+                    // 3. Remove from Supabase workout_history (best-effort)
+                    try {
+                      const tok = tokenRef.current || loadSession()?.access_token;
+                      if (tok) await sb.query(`workout_history?id=eq.${u.sid}`, { method:"DELETE" }, tok);
+                    } catch (e) { /* not fatal */ }
+                    toast("Workout reopened — make your edits", "success");
+                  }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"6px 10px", fontSize:12, cursor:"pointer", fontFamily:F, marginTop:-4 }}>
+                    Undo finish & edit
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -4303,10 +4462,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
                         </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                           {prExercises.length > 0 && (
                             <div style={{ background:C.text, color:C.bg, borderRadius:6, padding:"3px 9px", fontSize:10, fontWeight:800, letterSpacing:1 }}>PR</div>
                           )}
+                          <button onClick={() => repeatFromSession(sess)} style={{
+                            background:C.text, border:"none", borderRadius:8,
+                            color:C.bg, fontSize:12, padding:"5px 11px", cursor:"pointer", fontFamily:F, fontWeight:700
+                          }}>Repeat</button>
                           <button onClick={() => onDeleteHistory && onDeleteHistory(date, sid)} style={{
                             background:"none", border:`1px solid ${C.border}`, borderRadius:8,
                             color:"#EF4444", fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
@@ -5769,11 +5932,17 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
         if (res.ok) {
           const raw = (await res.json()) || [];
           // Merge persisted self-reactions (RLS may block self-PATCH on own group posts)
+          // Handle both shapes: { selfReaction: emoji } (new) and { kudos: [userId] } (old, treat as 🔥)
           const persisted = store.historyInteractions || {};
           setPosts(raw.map(p => {
             const dbReactions = p.reactions || {};
             const selfKey = `group_${p.id}`;
-            const selfReaction = persisted[selfKey]?.selfReaction;
+            const persistedEntry = persisted[selfKey];
+            let selfReaction = persistedEntry?.selfReaction;
+            // Backwards compat: if old kudos array exists with current user, treat as a 🔥 reaction
+            if (selfReaction === undefined && Array.isArray(persistedEntry?.kudos) && persistedEntry.kudos.includes(currentUserId)) {
+              selfReaction = "🔥";
+            }
             const merged = { ...dbReactions };
             if (selfReaction) merged[currentUserId] = selfReaction;
             else if (selfReaction === null) delete merged[currentUserId]; // explicit unreact
@@ -6769,6 +6938,8 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             C={C}
             onKudos={() => {}}
             onComment={() => {}}
+            onEditComment={() => {}}
+            onDeleteComment={() => {}}
             onUserClick={() => {}}
             onEdit={() => {}}
             onDelete={() => {}}
@@ -7453,6 +7624,13 @@ export default function App() {
   const [store, setStore] = useState(loadStore);
   const [dbReady, setDbReady] = useState(false);
 
+  // Live tick for time-ago labels — re-renders every 30s so "1m" becomes "2m" etc.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(n => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
   const GUEST_ID = "guest-local";
   const token = session?.access_token || null;
   const tokenRef = useRef(token);
@@ -8047,6 +8225,86 @@ export default function App() {
           comments: (p.comments||[]).filter(c => c.id !== localComment.id)
         })
       }));
+    }
+  }
+
+  async function handleEditComment(postId, commentId, newText) {
+    if (!newText || !newText.trim()) return;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+
+    // Optimistic update in posts
+    setStore(prev => ({
+      ...prev,
+      posts: prev.posts.map(p => p.id !== postId ? p : {
+        ...p,
+        comments: (p.comments||[]).map(c => c.id === commentId ? { ...c, text: newText.trim(), editedAt: Date.now() } : c)
+      })
+    }));
+
+    // Also update historyInteractions if the comment lives there (e.g. local-only or own-post)
+    setStore(prev => {
+      const hi = prev.historyInteractions?.[postId];
+      if (!hi?.comments) return prev;
+      const idx = hi.comments.findIndex(c => c.id === commentId);
+      if (idx < 0) return prev;
+      const updated = { ...hi.comments[idx], text: newText.trim() };
+      return {
+        ...prev,
+        historyInteractions: {
+          ...(prev.historyInteractions||{}),
+          [postId]: { ...hi, comments: hi.comments.map((c,i) => i === idx ? updated : c) }
+        }
+      };
+    });
+
+    // Skip DB call if it's a local-only comment (own post, RLS-blocked) or _isHistory post
+    if (postId.startsWith("hist_") || String(commentId).startsWith("local_")) return;
+    if (!tok) return;
+
+    try {
+      await sb.query(`comments?id=eq.${commentId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ text: newText.trim() })
+      }, tok);
+    } catch (e) {
+      console.error("comment edit failed:", e);
+      toast("Couldn't save edit", "error");
+    }
+  }
+
+  async function handleDeleteComment(postId, commentId) {
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+
+    // Optimistic remove from posts
+    setStore(prev => ({
+      ...prev,
+      posts: prev.posts.map(p => p.id !== postId ? p : {
+        ...p,
+        comments: (p.comments||[]).filter(c => c.id !== commentId)
+      })
+    }));
+
+    // Remove from historyInteractions too
+    setStore(prev => {
+      const hi = prev.historyInteractions?.[postId];
+      if (!hi?.comments) return prev;
+      return {
+        ...prev,
+        historyInteractions: {
+          ...(prev.historyInteractions||{}),
+          [postId]: { ...hi, comments: hi.comments.filter(c => c.id !== commentId) }
+        }
+      };
+    });
+
+    if (postId.startsWith("hist_") || String(commentId).startsWith("local_")) return;
+    if (!tok) return;
+
+    try {
+      await sb.query(`comments?id=eq.${commentId}`, { method: "DELETE" }, tok);
+    } catch (e) {
+      console.error("comment delete failed:", e);
+      toast("Couldn't delete comment", "error");
     }
   }
 
@@ -8819,6 +9077,8 @@ export default function App() {
                       C={C}
                       onKudos={handleKudos}
                       onComment={handleComment}
+                      onEditComment={handleEditComment}
+                      onDeleteComment={handleDeleteComment}
                       onUserClick={setProfileUserId}
                       onEdit={setEditingPost}
                       onDelete={handleDelete}
