@@ -1,6 +1,7 @@
 // v1778305358100
 // PATCHED v13 - BUILD 2026-05-11 - share filter, edit workout redesign, builder sets/rest/notes
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SUPABASE CLIENT
@@ -1359,44 +1360,45 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
             }}
             style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"manipulation", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
         </div>
-        {showTypeMenu && (
+        {showTypeMenu && createPortal(
           <div onClick={() => setShowTypeMenu(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:9998, display:"flex", alignItems:"flex-end", touchAction:"manipulation" }}>
             <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{
               background:C.bg, width:"100%", maxWidth:480, margin:"0 auto",
-              borderRadius:"20px 20px 0 0", padding:"16px 16px 32px",
+              borderRadius:"20px 20px 0 0", padding:"12px 14px 28px",
               borderTop:`1px solid ${C.border}`,
             }}>
-              <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 16px" }}/>
-              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12, paddingLeft:4 }}>SET TYPE</div>
+              <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 12px" }}/>
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10, paddingLeft:4 }}>SET TYPE</div>
               {SET_TYPES.map((t, i) => (
                 <button
                   key={t.id}
                   onClick={() => { onUpdate({ type: t.id }); setShowTypeMenu(false); }}
                   style={{
-                    width:"100%", display:"flex", alignItems:"center", gap:12,
+                    width:"100%", display:"flex", alignItems:"center", gap:10,
                     background: t.id === set.type ? `${t.color}10` : "transparent",
                     border: `1px solid ${t.id === set.type ? t.color + "40" : C.border}`,
-                    borderRadius:14, padding:"14px 16px",
-                    fontSize:15, fontWeight:600,
+                    borderRadius:12, padding:"10px 12px",
+                    fontSize:14, fontWeight:600,
                     color: t.id === set.type ? t.color : C.text,
                     cursor:"pointer", fontFamily:F,
-                    marginBottom: i < SET_TYPES.length - 1 ? 8 : 0,
+                    marginBottom: i < SET_TYPES.length - 1 ? 6 : 0,
                     textAlign:"left",
                   }}>
                   <div style={{
-                    width:32, height:32, borderRadius:8, flexShrink:0,
+                    width:26, height:26, borderRadius:7, flexShrink:0,
                     background: `${t.color}20`, color: t.color,
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:13, fontWeight:800, fontFamily:MONO,
+                    fontSize:11, fontWeight:800, fontFamily:MONO,
                   }}>{t.short}</div>
                   <span style={{ flex:1 }}>{t.label}</span>
                   {t.id === set.type && (
-                    <Icon name="check" size={16} color={t.color} strokeWidth={3}/>
+                    <Icon name="check" size={14} color={t.color} strokeWidth={3}/>
                   )}
                 </button>
               ))}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         <div style={{ flex:1, textAlign:"center", fontSize:11, color:C.muted, fontFamily:MONO }}>
@@ -8079,7 +8081,7 @@ export default function App() {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
 
-    // _isHistory posts — store kudos locally in historyInteractions
+    // _isHistory posts — store kudos locally in historyInteractions (no DB equivalent yet)
     if (postId.startsWith("hist_")) {
       setStore(prev => {
         const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
@@ -8101,7 +8103,6 @@ export default function App() {
     const post = store.posts.find(p => p.id === postId);
     if (!post) return;
     const hasKudos = (post.kudos||[]).includes(currentUserId);
-    const isOwnPost = post.userId === currentUserId;
 
     // Optimistic update immediately
     setStore(prev => ({
@@ -8114,48 +8115,16 @@ export default function App() {
       })
     }));
 
-    // Persist to historyInteractions so it survives even if DB write is in flight during refresh
-    setStore(prev => {
-      const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
-      const newKudos = hasKudos
-        ? (hi.kudos||[]).filter(id => id !== currentUserId)
-        : Array.from(new Set([...(hi.kudos||[]), currentUserId]));
-      return {
-        ...prev,
-        historyInteractions: {
-          ...(prev.historyInteractions||{}),
-          [postId]: { ...hi, kudos: newKudos }
-        }
-      };
-    });
-
-    // Own posts: skip DB (RLS blocks self-kudos) — historyInteractions already updated above
-    if (isOwnPost) return;
-
     try {
       if (hasKudos) {
         await sb.query(`kudos?post_id=eq.${postId}&user_id=eq.${currentUserId}`, { method:"DELETE" }, tok);
       } else {
         await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, tok);
       }
-      // DB write succeeded — remove the local copy from historyInteractions to avoid double-counting after refresh
-      setStore(prev => {
-        const hi = prev.historyInteractions?.[postId];
-        if (!hi) return prev;
-        return {
-          ...prev,
-          historyInteractions: {
-            ...(prev.historyInteractions||{}),
-            [postId]: {
-              ...hi,
-              kudos: (hi.kudos||[]).filter(id => id !== currentUserId),
-            }
-          }
-        };
-      });
     } catch (e) {
       console.error("kudos save failed:", e);
-      toast("Couldn't save like — check connection or DB policy", "error");
+      toast("Couldn't save like", "error");
+      // Revert optimistic update
       setStore(prev => ({
         ...prev,
         posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -8190,10 +8159,10 @@ export default function App() {
     }
 
     const post = store.posts.find(p => p.id === postId);
-    const isOwnPost = post?.userId === currentUserId;
+    if (!post) return;
 
     // Optimistic local comment immediately
-    const localComment = { id: "local_" + uid(), userId: currentUserId, text: text.trim(), createdAt: Date.now() };
+    const localComment = { id: "local_" + uid(), userId: currentUserId, text: text.trim(), likes: [], createdAt: Date.now() };
     setStore(prev => ({
       ...prev,
       posts: prev.posts.map(p => p.id !== postId ? p : {
@@ -8201,21 +8170,6 @@ export default function App() {
         comments: [...(p.comments||[]), localComment]
       })
     }));
-
-    // Persist to historyInteractions for refresh survival
-    setStore(prev => {
-      const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
-      return {
-        ...prev,
-        historyInteractions: {
-          ...(prev.historyInteractions||{}),
-          [postId]: { ...hi, comments: [...(hi.comments||[]), localComment] }
-        }
-      };
-    });
-
-    // Own posts: skip DB (RLS may block) — already persisted to historyInteractions above
-    if (isOwnPost) return;
 
     try {
       const result = await sb.query("comments", {
@@ -8235,24 +8189,10 @@ export default function App() {
             } : c)
           })
         }));
-        // DB write succeeded — remove the local copy from historyInteractions so it won't duplicate after refresh
-        setStore(prev => {
-          const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
-          return {
-            ...prev,
-            historyInteractions: {
-              ...(prev.historyInteractions||{}),
-              [postId]: {
-                ...hi,
-                comments: (hi.comments||[]).filter(c => c.id !== localComment.id),
-              }
-            }
-          };
-        });
       }
     } catch (e) {
       console.error("comment save failed:", e);
-      toast("Couldn't save comment — check connection or DB policy", "error");
+      toast("Couldn't save comment", "error");
       setStore(prev => ({
         ...prev,
         posts: prev.posts.map(p => p.id !== postId ? p : {
