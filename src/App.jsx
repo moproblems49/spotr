@@ -1234,19 +1234,11 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
-  const [menuPos, setMenuPos] = useState(null);
-  const typeMenuRef = useRef(null);
   const swipeRef = useRef(null);
   const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false, locked: null });
   const [swipeDx, setSwipeDx] = useState(0);
   const [swipeDir, setSwipeDir] = useState(null);
   const longPressTimer = useRef(null);
-
-  useEffect(() => {
-    function handler(e) { if (typeMenuRef.current && !typeMenuRef.current.contains(e.target)) setShowTypeMenu(false); }
-    document.addEventListener("pointerdown", handler);
-    return () => document.removeEventListener("pointerdown", handler);
-  }, []);
 
   function clearLongPress() {
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
@@ -1358,32 +1350,54 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
         <div style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:isDone?C.green:C.divider, color:isDone?"#fff":C.sub, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, fontFamily:MONO }}>{si+1}</div>
         
-        <div ref={typeMenuRef} style={{ position:"relative", flexShrink:0 }}>
+        <div style={{ position:"relative", flexShrink:0 }}>
           <button
             type="button"
-            onPointerDown={(e) => { e.stopPropagation(); }}
-            onPointerUp={(e) => {
+            onClick={(e) => {
               e.stopPropagation();
-              e.preventDefault();
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenuPos({ top: r.bottom + 4, left: r.left });
-              setShowTypeMenu(s => !s);
+              setShowTypeMenu(true);
             }}
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
             style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"manipulation", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
-          {showTypeMenu && menuPos && (
-            <div onPointerDown={(e)=>e.stopPropagation()} style={{ position:"fixed", top:menuPos.top, left:menuPos.left, zIndex:9999, background:C.bg, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 6px 20px rgba(0,0,0,0.2)", minWidth:140, overflow:"hidden" }}>
-              {SET_TYPES.map((t,i) => (
-                <div
+        </div>
+        {showTypeMenu && (
+          <div onClick={() => setShowTypeMenu(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:9998, display:"flex", alignItems:"flex-end", touchAction:"manipulation" }}>
+            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{
+              background:C.bg, width:"100%", maxWidth:480, margin:"0 auto",
+              borderRadius:"20px 20px 0 0", padding:"16px 16px 32px",
+              borderTop:`1px solid ${C.border}`,
+            }}>
+              <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 16px" }}/>
+              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12, paddingLeft:4 }}>SET TYPE</div>
+              {SET_TYPES.map((t, i) => (
+                <button
                   key={t.id}
-                  onPointerUp={(e) => { e.stopPropagation(); e.preventDefault(); onUpdate({type:t.id}); setShowTypeMenu(false); }}
-                  style={{ padding:"12px 16px", fontSize:14, color:t.id===set.type?t.color:C.text, fontWeight:t.id===set.type?700:500, background:t.id===set.type?`${t.color}10`:"transparent", borderBottom:i<SET_TYPES.length-1?`1px solid ${C.divider}`:"none", cursor:"pointer", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>
-                  {t.label}
-                </div>
+                  onClick={() => { onUpdate({ type: t.id }); setShowTypeMenu(false); }}
+                  style={{
+                    width:"100%", display:"flex", alignItems:"center", gap:12,
+                    background: t.id === set.type ? `${t.color}10` : "transparent",
+                    border: `1px solid ${t.id === set.type ? t.color + "40" : C.border}`,
+                    borderRadius:14, padding:"14px 16px",
+                    fontSize:15, fontWeight:600,
+                    color: t.id === set.type ? t.color : C.text,
+                    cursor:"pointer", fontFamily:F,
+                    marginBottom: i < SET_TYPES.length - 1 ? 8 : 0,
+                    textAlign:"left",
+                  }}>
+                  <div style={{
+                    width:32, height:32, borderRadius:8, flexShrink:0,
+                    background: `${t.color}20`, color: t.color,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:13, fontWeight:800, fontFamily:MONO,
+                  }}>{t.short}</div>
+                  <span style={{ flex:1 }}>{t.label}</span>
+                  {t.id === set.type && (
+                    <Icon name="check" size={16} color={t.color} strokeWidth={3}/>
+                  )}
+                </button>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <div style={{ flex:1, textAlign:"center", fontSize:11, color:C.muted, fontFamily:MONO }}>
           {isCardio ? (prev ? `${prev.w||"—"}m${prev.r?` · ${prev.r}`:""}` : "—") : (prev ? `${prev.w}×${prev.r}` : "—")}
@@ -2188,7 +2202,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
     </div>
   );
 }
-const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
+const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onLikeComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
   const isOwn = post.userId === currentUserId;
@@ -2457,15 +2471,17 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
       </div>
 
       {showCmts && (
-        <div style={{ padding:"8px 16px 14px" }}>
+        <div style={{ padding:"4px 16px 14px" }}>
           {post.comments.map(c => {
             const cu = store.users.find(u => u.id === c.userId);
             const isOwn = c.userId === currentUserId;
             const isEditing = editingCommentId === c.id;
+            const likes = c.likes || [];
+            const isLiked = likes.includes(currentUserId);
             return (
-              <div key={c.id} style={{ display:"flex", gap:8, marginBottom:8 }}>
-                <Avatar user={cu} size={26} C={C}/>
-                <div style={{ flex:1, background:C.divider, borderRadius:12, padding:"8px 12px", position:"relative" }}>
+              <div key={c.id} style={{ display:"flex", gap:10, marginBottom:14, alignItems:"flex-start" }}>
+                <Avatar user={cu} size={30} C={C}/>
+                <div style={{ flex:1, minWidth:0 }}>
                   {isEditing ? (
                     <div>
                       <input
@@ -2480,50 +2496,66 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                             setEditingCommentId(null);
                           }
                         }}
-                        style={{ width:"100%", background:"transparent", border:"none", fontSize:13, color:C.text, outline:"none", fontFamily:F, padding:0 }}
+                        style={{ width:"100%", background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 8px", fontSize:13, color:C.text, outline:"none", fontFamily:F }}
                       />
-                      <div style={{ display:"flex", gap:8, marginTop:6 }}>
+                      <div style={{ display:"flex", gap:12, marginTop:6 }}>
                         <button onClick={() => {
                           if (editCommentText.trim()) {
                             onEditComment && onEditComment(post.id, c.id, editCommentText.trim());
                           }
                           setEditingCommentId(null);
-                        }} style={{ fontSize:11, fontWeight:700, color:C.accent, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Save</button>
-                        <button onClick={() => setEditingCommentId(null)} style={{ fontSize:11, color:C.sub, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Cancel</button>
+                        }} style={{ fontSize:12, fontWeight:700, color:C.accent, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Save</button>
+                        <button onClick={() => setEditingCommentId(null)} style={{ fontSize:12, color:C.sub, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Cancel</button>
                       </div>
                     </div>
                   ) : (
                     <>
-                      <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{cu?.username} </span>
-                      <span style={{ fontSize:13, color:C.text }}>{c.text}</span>
-                      <div style={{ fontSize:10, color:C.sub, marginTop:3, display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>
+                        <span style={{ fontWeight:600, marginRight:5 }}>{cu?.username}</span>
+                        {c.text}
+                      </div>
+                      <div style={{ fontSize:11, color:C.muted, marginTop:3, display:"flex", alignItems:"center", gap:14 }}>
                         <span>{timeAgo(c.createdAt)}</span>
+                        {likes.length > 0 && (
+                          <span style={{ fontWeight:600 }}>{likes.length} {likes.length === 1 ? "like" : "likes"}</span>
+                        )}
                         {isOwn && (
                           <>
-                            <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.text); }} style={{ background:"none", border:"none", color:C.sub, fontSize:10, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Edit</button>
+                            <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.text); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Edit</button>
                             <button onClick={() => {
                               if (window.confirm("Delete this comment?")) {
                                 onDeleteComment && onDeleteComment(post.id, c.id);
                               }
-                            }} style={{ background:"none", border:"none", color:"#EF4444", fontSize:10, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Delete</button>
+                            }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Delete</button>
                           </>
                         )}
                       </div>
                     </>
                   )}
                 </div>
+                {!isEditing && (
+                  <button onClick={() => onLikeComment && onLikeComment(post.id, c.id)} aria-label="Like comment" style={{
+                    background:"none", border:"none", padding:4, cursor:"pointer",
+                    display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+                    marginTop:2,
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill={isLiked ? "#EF4444" : "none"} stroke={isLiked ? "#EF4444" : C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                  </button>
+                )}
               </div>
             );
           })}
-          <div style={{ display:"flex", gap:8, marginTop:8, alignItems:"center" }}>
-            <Avatar user={store.users.find(u => u.id === currentUserId)} size={26} C={C}/>
-            <div style={{ flex:1, background:C.divider, borderRadius:20, padding:"8px 14px", display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ display:"flex", gap:10, marginTop:4, alignItems:"center" }}>
+            <Avatar user={store.users.find(u => u.id === currentUserId)} size={30} C={C}/>
+            <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, borderBottom:`1px solid ${C.divider}`, paddingBottom:6 }}>
               <input
                 value={cmtText}
                 onChange={e => setCmtText(e.target.value)}
                 placeholder="Add a comment..."
                 onKeyDown={e => { if (e.key === "Enter" && cmtText.trim()) { onComment(post.id, cmtText); setCmtText(""); } }}
-                style={{ flex:1, background:"transparent", border:"none", fontSize:13, color:C.text, outline:"none", fontFamily:F }}
+                style={{ flex:1, background:"transparent", border:"none", fontSize:13, color:C.text, outline:"none", fontFamily:F, padding:"4px 0" }}
               />
               {cmtText.trim() && (
                 <button onClick={() => { onComment(post.id, cmtText); setCmtText(""); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>Post</button>
@@ -7832,7 +7864,7 @@ export default function App() {
     try {
       // Get all posts with kudos + comments counts
       const posts = await sb.query(
-        `posts?select=*,kudos(user_id),comments(id,user_id,text,created_at)&order=created_at.desc&limit=50`,
+        `posts?select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)&order=created_at.desc&limit=50`,
         {}, tok
       );
       if (!posts) return;
@@ -7844,7 +7876,9 @@ export default function App() {
         const persisted = persistedInteractions[p.id];
         const dbKudos = (p.kudos || []).map(k => k.user_id);
         const dbComments = (p.comments || []).map(c => ({
-          id: c.id, userId: c.user_id, text: c.text, createdAt: new Date(c.created_at).getTime()
+          id: c.id, userId: c.user_id, text: c.text,
+          likes: c.likes || [],
+          createdAt: new Date(c.created_at).getTime()
         }));
         return {
           id: p.id,
@@ -8196,7 +8230,8 @@ export default function App() {
             ...p,
             comments: p.comments.map(c => c.id === localComment.id ? {
               id: newComment.id, userId: newComment.user_id,
-              text: newComment.text, createdAt: new Date(newComment.created_at).getTime()
+              text: newComment.text, likes: newComment.likes || [],
+              createdAt: new Date(newComment.created_at).getTime()
             } : c)
           })
         }));
@@ -8269,6 +8304,68 @@ export default function App() {
     } catch (e) {
       console.error("comment edit failed:", e);
       toast("Couldn't save edit", "error");
+    }
+  }
+
+  async function handleLikeComment(postId, commentId) {
+    if (requireAuth("Sign up to like comments")) return;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+
+    // Find current state
+    const post = store.posts.find(p => p.id === postId);
+    if (!post) return;
+    const comment = (post.comments||[]).find(c => c.id === commentId);
+    if (!comment) return;
+    const likes = comment.likes || [];
+    const isLiked = likes.includes(currentUserId);
+    const newLikes = isLiked
+      ? likes.filter(id => id !== currentUserId)
+      : [...likes, currentUserId];
+
+    // Optimistic update
+    setStore(prev => ({
+      ...prev,
+      posts: prev.posts.map(p => p.id !== postId ? p : {
+        ...p,
+        comments: (p.comments||[]).map(c => c.id === commentId ? { ...c, likes: newLikes } : c)
+      })
+    }));
+
+    // Local-only comments or hist_ posts: persist to historyInteractions
+    if (postId.startsWith("hist_") || String(commentId).startsWith("local_")) {
+      setStore(prev => {
+        const hi = prev.historyInteractions?.[postId] || { kudos: [], comments: [] };
+        return {
+          ...prev,
+          historyInteractions: {
+            ...(prev.historyInteractions||{}),
+            [postId]: {
+              ...hi,
+              comments: (hi.comments||[]).map(c => c.id === commentId ? { ...c, likes: newLikes } : c)
+            }
+          }
+        };
+      });
+      return;
+    }
+
+    if (!tok) return;
+    try {
+      await sb.query(`comments?id=eq.${commentId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ likes: newLikes })
+      }, tok);
+    } catch (e) {
+      console.error("comment like failed:", e);
+      toast("Couldn't save like", "error");
+      // Revert
+      setStore(prev => ({
+        ...prev,
+        posts: prev.posts.map(p => p.id !== postId ? p : {
+          ...p,
+          comments: (p.comments||[]).map(c => c.id === commentId ? { ...c, likes } : c)
+        })
+      }));
     }
   }
 
@@ -9079,6 +9176,7 @@ export default function App() {
                       onComment={handleComment}
                       onEditComment={handleEditComment}
                       onDeleteComment={handleDeleteComment}
+                      onLikeComment={handleLikeComment}
                       onUserClick={setProfileUserId}
                       onEdit={setEditingPost}
                       onDelete={handleDelete}
