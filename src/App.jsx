@@ -458,32 +458,211 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
 }
 
 // ─── Muscle group icon (replaces emoji) ──────────────────────────────────────
+// Anatomical SVG icons — stylized body silhouettes with the target muscle highlighted
 function MuscleIcon({ muscle = "", size = 28, C }) {
   const m = (muscle || "").toLowerCase().split("/")[0].trim();
   const colors = {
     chest:"#ef4444", back:"#3b82f6", shoulders:"#8b5cf6", biceps:"#f59e0b",
-    triceps:"#f97316", quads:"#10b981", hamstrings:"#10b981", glutes:"#ec4899",
-    calves:"#06b6d4", core:"#84cc16", traps:"#6366f1", forearms:"#f59e0b",
+    triceps:"#f97316", quads:"#10b981", hamstrings:"#14b8a6", glutes:"#ec4899",
+    calves:"#06b6d4", core:"#84cc16", abs:"#84cc16", traps:"#6366f1", forearms:"#eab308",
     "full body":"#2563eb", "rear delts":"#8b5cf6", "shoulders/traps":"#8b5cf6",
     "chest/tris":"#ef4444", "quads/glutes":"#10b981",
   };
   const color = colors[m] || C?.accent || "#2563eb";
-  const abbrevs = {
-    chest:"CHE", back:"BCK", shoulders:"SHO", biceps:"BIC", triceps:"TRI",
-    quads:"QUA", hamstrings:"HAM", glutes:"GLU", calves:"CAL", core:"COR",
-    traps:"TRP", forearms:"FOR", "full body":"FULL", "rear delts":"RD",
-    "chest/tris":"CT", "quads/glutes":"QG", "shoulders/traps":"ST",
-  };
-  const label = abbrevs[m] || m.substring(0,3).toUpperCase();
+  const isDark = C?.bg === "#0a0a0c";
+  const bodyFill = isDark ? "#2a2a2e" : "#e8ecf0";
+  const bodyStroke = isDark ? "#3a3a3e" : "#cbd5e1";
+
+  // Front-view body for chest, abs, arms, quads, etc.
+  // Back-view body for back, hamstrings, glutes, calves, traps
+  const isBackView = ["back","hamstrings","glutes","calves","traps","rear delts"].includes(m);
+
   return (
     <div style={{
-      width:size, height:size, borderRadius:Math.round(size*0.25),
-      background:color+"18", display:"flex", alignItems:"center",
-      justifyContent:"center", flexShrink:0, border:`1.5px solid ${color}55`
+      width:size, height:size, borderRadius:Math.round(size*0.28),
+      background: isDark ? "#161618" : "#f8fafc",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      flexShrink:0, border:`1px solid ${isDark ? "#252528" : "#e8ecf0"}`,
+      overflow:"hidden",
     }}>
-      <span style={{ fontSize:Math.round(size*0.32), fontWeight:800, color, fontFamily:"monospace", lineHeight:1, letterSpacing:-0.5 }}>{label}</span>
+      <svg width={size*0.85} height={size*0.85} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Body silhouette */}
+        {isBackView ? (
+          <BodyBack baseFill={bodyFill} stroke={bodyStroke}/>
+        ) : (
+          <BodyFront baseFill={bodyFill} stroke={bodyStroke}/>
+        )}
+        {/* Highlighted muscle overlay */}
+        <MuscleOverlay muscle={m} color={color}/>
+      </svg>
     </div>
   );
+}
+
+function BodyFront({ baseFill, stroke }) {
+  return (
+    <g fill={baseFill} stroke={stroke} strokeWidth="0.7" strokeLinejoin="round">
+      {/* Head */}
+      <ellipse cx="24" cy="8.5" rx="3.6" ry="4.2"/>
+      {/* Neck */}
+      <rect x="22.5" y="12" width="3" height="2" rx="0.5"/>
+      {/* Torso/shoulders */}
+      <path d="M14 16 Q14 14 16 13.5 L21.5 13 L26.5 13 L32 13.5 Q34 14 34 16 L33 28 Q32 30 30 30 L18 30 Q16 30 15 28 Z"/>
+      {/* Arms upper */}
+      <path d="M14 16 Q12 17 11.5 19 L10.5 25 Q10.3 27 11 28 L13 28.3 Q14 28 14 26 Z"/>
+      <path d="M34 16 Q36 17 36.5 19 L37.5 25 Q37.7 27 37 28 L35 28.3 Q34 28 34 26 Z"/>
+      {/* Forearms */}
+      <path d="M11 28 L10 35 Q10 36.5 11 36.7 L13 36.7 Q14 36.5 14 35.3 L13.5 28.3 Z"/>
+      <path d="M37 28 L38 35 Q38 36.5 37 36.7 L35 36.7 Q34 36.5 34 35.3 L34.5 28.3 Z"/>
+      {/* Waist/hips */}
+      <path d="M16 30 L17 35 L18 38 L23 38 L25 38 L30 38 L31 35 L32 30 Z"/>
+      {/* Quads */}
+      <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
+      <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
+    </g>
+  );
+}
+
+function BodyBack({ baseFill, stroke }) {
+  return (
+    <g fill={baseFill} stroke={stroke} strokeWidth="0.7" strokeLinejoin="round">
+      {/* Head */}
+      <ellipse cx="24" cy="8.5" rx="3.6" ry="4.2"/>
+      {/* Neck */}
+      <rect x="22.5" y="12" width="3" height="2" rx="0.5"/>
+      {/* Back/shoulders */}
+      <path d="M14 16 Q14 14 16 13.5 L21.5 13 L26.5 13 L32 13.5 Q34 14 34 16 L33 28 Q32 30 30 30 L18 30 Q16 30 15 28 Z"/>
+      {/* Arms upper */}
+      <path d="M14 16 Q12 17 11.5 19 L10.5 25 Q10.3 27 11 28 L13 28.3 Q14 28 14 26 Z"/>
+      <path d="M34 16 Q36 17 36.5 19 L37.5 25 Q37.7 27 37 28 L35 28.3 Q34 28 34 26 Z"/>
+      {/* Forearms */}
+      <path d="M11 28 L10 35 Q10 36.5 11 36.7 L13 36.7 Q14 36.5 14 35.3 L13.5 28.3 Z"/>
+      <path d="M37 28 L38 35 Q38 36.5 37 36.7 L35 36.7 Q34 36.5 34 35.3 L34.5 28.3 Z"/>
+      {/* Hips */}
+      <path d="M16 30 L17 35 L18 38 L23 38 L25 38 L30 38 L31 35 L32 30 Z"/>
+      {/* Hamstrings/glutes area */}
+      <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
+      <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
+    </g>
+  );
+}
+
+function MuscleOverlay({ muscle, color }) {
+  const m = muscle;
+  // Each overlay is a colored path that sits ON TOP of the base body
+  if (m === "chest" || m === "chest/tris") {
+    return (
+      <g fill={color} opacity="0.92">
+        <path d="M16.5 14.5 Q17 17.5 19 20 Q21 22 23.5 22 L24.5 22 Q27 22 29 20 Q31 17.5 31.5 14.5 Q28 14 24 14 Q20 14 16.5 14.5 Z"/>
+      </g>
+    );
+  }
+  if (m === "back") {
+    return (
+      <g fill={color} opacity="0.92">
+        {/* Lats */}
+        <path d="M15.5 16 L14.5 25 Q15 27 17 28 L20 27 L20 18 Q18 16.5 15.5 16 Z"/>
+        <path d="M32.5 16 L33.5 25 Q33 27 31 28 L28 27 L28 18 Q30 16.5 32.5 16 Z"/>
+        {/* Mid back */}
+        <path d="M20 17 L20 27 L28 27 L28 17 Z" opacity="0.7"/>
+      </g>
+    );
+  }
+  if (m === "shoulders" || m === "shoulders/traps" || m === "rear delts") {
+    return (
+      <g fill={color} opacity="0.92">
+        <ellipse cx="14.5" cy="17" rx="3.2" ry="2.5"/>
+        <ellipse cx="33.5" cy="17" rx="3.2" ry="2.5"/>
+      </g>
+    );
+  }
+  if (m === "biceps") {
+    return (
+      <g fill={color} opacity="0.92">
+        <ellipse cx="12" cy="22.5" rx="2" ry="3.5"/>
+        <ellipse cx="36" cy="22.5" rx="2" ry="3.5"/>
+      </g>
+    );
+  }
+  if (m === "triceps") {
+    return (
+      <g fill={color} opacity="0.92">
+        <ellipse cx="11.5" cy="24" rx="1.8" ry="3.5"/>
+        <ellipse cx="36.5" cy="24" rx="1.8" ry="3.5"/>
+      </g>
+    );
+  }
+  if (m === "forearms") {
+    return (
+      <g fill={color} opacity="0.92">
+        <path d="M11 28 L10 35 Q10 36.5 11 36.7 L13 36.7 Q14 36.5 14 35.3 L13.5 28.3 Z"/>
+        <path d="M37 28 L38 35 Q38 36.5 37 36.7 L35 36.7 Q34 36.5 34 35.3 L34.5 28.3 Z"/>
+      </g>
+    );
+  }
+  if (m === "core" || m === "abs") {
+    return (
+      <g fill={color} opacity="0.92">
+        {/* Six pack blocks */}
+        <rect x="21.5" y="22" width="5" height="3" rx="0.6"/>
+        <rect x="21.5" y="25.5" width="5" height="3" rx="0.6"/>
+        <rect x="21" y="29" width="6" height="3" rx="0.6"/>
+      </g>
+    );
+  }
+  if (m === "quads") {
+    return (
+      <g fill={color} opacity="0.92">
+        <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
+        <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
+      </g>
+    );
+  }
+  if (m === "hamstrings" || m === "quads/glutes") {
+    return (
+      <g fill={color} opacity="0.92">
+        <path d="M17.5 39 L16.5 45 L21 45 L22 39 Z"/>
+        <path d="M30.5 39 L31.5 45 L27 45 L26 39 Z"/>
+      </g>
+    );
+  }
+  if (m === "glutes") {
+    return (
+      <g fill={color} opacity="0.92">
+        <ellipse cx="20.5" cy="34" rx="3.5" ry="3"/>
+        <ellipse cx="27.5" cy="34" rx="3.5" ry="3"/>
+      </g>
+    );
+  }
+  if (m === "calves") {
+    return (
+      <g fill={color} opacity="0.92">
+        {/* Approximate calves at bottom of body */}
+        <ellipse cx="19" cy="44" rx="2" ry="2"/>
+        <ellipse cx="29" cy="44" rx="2" ry="2"/>
+      </g>
+    );
+  }
+  if (m === "traps") {
+    return (
+      <g fill={color} opacity="0.92">
+        {/* Upper traps - between shoulders and neck */}
+        <path d="M19 13.5 Q22 13 24 13 Q26 13 29 13.5 L28 16 Q26 15.5 24 15.5 Q22 15.5 20 16 Z"/>
+      </g>
+    );
+  }
+  if (m === "full body") {
+    // Highlight the whole figure subtly
+    return (
+      <g fill={color} opacity="0.35">
+        <path d="M14 16 Q14 14 16 13.5 L21.5 13 L26.5 13 L32 13.5 Q34 14 34 16 L33 28 Q32 30 30 30 L18 30 Q16 30 15 28 Z"/>
+        <path d="M16 30 L17 35 L18 38 L23 38 L25 38 L30 38 L31 35 L32 30 Z"/>
+        <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
+        <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
+      </g>
+    );
+  }
+  return null;
 }
 
 let _setToast = null;
@@ -3112,66 +3291,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
-  // Drag-to-reorder state for exercises during workout
-  const [draggingEx, setDraggingEx] = useState(null); // { index, offsetY, height }
-  const dragLongPressRef = useRef(null);
-  const dragStartRef = useRef(null); // { y, scrollY, ei }
-  const exerciseElRefs = useRef({}); // ei -> DOM element
+  // Reorder mode — when on, exercises collapse to compact rows you can drag freely
+  const [reorderMode, setReorderMode] = useState(false);
+  const [draggingEx, setDraggingEx] = useState(null); // { index, offsetY, height, startY }
+  const dragStartRef = useRef(null);
+  const reorderListRef = useRef(null);
 
-  function startExDrag(ei, touch) {
-    const el = exerciseElRefs.current[ei];
-    const height = el ? el.offsetHeight : 100;
-    dragStartRef.current = { y: touch.clientY, ei };
+  function startReorderDrag(ei, e) {
+    const t = e.touches?.[0] || e;
+    const li = reorderListRef.current?.children[ei];
+    const height = li ? li.offsetHeight : 56;
+    dragStartRef.current = { y: t.clientY, ei };
     setDraggingEx({ index: ei, offsetY: 0, height });
     haptic("medium");
   }
-  function onExTouchStart(ei, e) {
-    if (dragLongPressRef.current) clearTimeout(dragLongPressRef.current);
-    const t = e.touches[0];
-    const startY = t.clientY;
-    const startX = t.clientX;
-    dragLongPressRef.current = setTimeout(() => {
-      startExDrag(ei, t);
-      dragLongPressRef.current = null;
-    }, 380);
-    // Cancel if user moves before long-press fires (treat as scroll)
-    const cancelHandler = (ev) => {
-      const tt = ev.touches?.[0];
-      if (!tt) return;
-      if (Math.abs(tt.clientY - startY) > 6 || Math.abs(tt.clientX - startX) > 6) {
-        if (dragLongPressRef.current) {
-          clearTimeout(dragLongPressRef.current);
-          dragLongPressRef.current = null;
-        }
-        document.removeEventListener("touchmove", cancelHandler);
-      }
-    };
-    document.addEventListener("touchmove", cancelHandler, { passive: true });
-    const cleanupRelease = () => {
-      if (dragLongPressRef.current) {
-        clearTimeout(dragLongPressRef.current);
-        dragLongPressRef.current = null;
-      }
-      document.removeEventListener("touchmove", cancelHandler);
-      document.removeEventListener("touchend", cleanupRelease);
-      document.removeEventListener("touchcancel", cleanupRelease);
-    };
-    document.addEventListener("touchend", cleanupRelease, { once: true });
-    document.addEventListener("touchcancel", cleanupRelease, { once: true });
-  }
-  function onExTouchMove(e) {
+  function onReorderTouchMove(e) {
     if (!draggingEx || !dragStartRef.current) return;
     const t = e.touches[0];
     const offsetY = t.clientY - dragStartRef.current.y;
     setDraggingEx(d => d ? { ...d, offsetY } : null);
     e.preventDefault();
   }
-  function onExTouchEnd() {
+  function onReorderTouchEnd() {
     if (!draggingEx || !dragStartRef.current) return;
     const fromIdx = dragStartRef.current.ei;
-    const height = draggingEx.height || 100;
+    const height = draggingEx.height || 56;
     const slots = Math.round(draggingEx.offsetY / height);
-    const toIdx = Math.max(0, Math.min(session?.exercises.length - 1, fromIdx + slots));
+    const toIdx = Math.max(0, Math.min((session?.exercises.length || 1) - 1, fromIdx + slots));
     if (toIdx !== fromIdx && session) {
       setSession(p => {
         const arr = [...p.exercises];
@@ -3735,46 +3881,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {/* Exercises */}
 
         <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
+          {session.exercises.length > 1 && (
+            <div style={{ padding:"10px 14px 0", display:"flex", justifyContent:"flex-end" }}>
+              <button onClick={() => setReorderMode(true)} style={{
+                background:"transparent", border:`1px solid ${C.border}`,
+                borderRadius:10, padding:"6px 12px",
+                fontSize:11, fontWeight:700, color:C.sub,
+                letterSpacing:0.5, cursor:"pointer", fontFamily:F,
+                display:"flex", alignItems:"center", gap:6,
+              }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                REORDER
+              </button>
+            </div>
+          )}
           {session.exercises.map((ex, ei) => {
             const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
-            const isBeingDragged = draggingEx && draggingEx.index === ei;
-            // Calculate offset for non-dragged items to make room
-            let visualOffset = 0;
-            if (draggingEx && draggingEx.index !== ei) {
-              const fromIdx = draggingEx.index;
-              const targetIdx = Math.max(0, Math.min(session.exercises.length - 1, fromIdx + Math.round(draggingEx.offsetY / (draggingEx.height || 100))));
-              const h = draggingEx.height || 100;
-              if (fromIdx < ei && ei <= targetIdx) visualOffset = -h;
-              else if (targetIdx <= ei && ei < fromIdx) visualOffset = h;
-            }
             return (
-              <div
-                key={ex.id || ei}
-                ref={el => { exerciseElRefs.current[ei] = el; }}
-                style={{
-                  position: isBeingDragged ? "relative" : "static",
-                  transform: isBeingDragged
-                    ? `translateY(${draggingEx.offsetY}px) scale(1.02)`
-                    : `translateY(${visualOffset}px)`,
-                  transition: isBeingDragged ? "none" : "transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                  zIndex: isBeingDragged ? 100 : "auto",
-                  boxShadow: isBeingDragged ? "0 12px 32px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.08)" : "none",
-                  background: isBeingDragged ? C.bg : "transparent",
-                  borderRadius: isBeingDragged ? 14 : 0,
-                  opacity: draggingEx && !isBeingDragged ? 0.5 : 1,
-                  touchAction: isBeingDragged ? "none" : "auto",
-                }}
-                onTouchMove={isBeingDragged ? onExTouchMove : undefined}
-                onTouchEnd={isBeingDragged ? onExTouchEnd : undefined}
-              >
+              <div key={ex.id || ei}>
                 {/* Exercise header */}
                 <div style={{ padding:"14px 14px 6px", display:"flex", alignItems:"flex-start", gap:10 }}>
-                  <button
-                    onTouchStart={(e) => { if (session.exercises.length > 1) onExTouchStart(ei, e); }}
-                    onClick={() => ex.name && setViewingExercise(ex.name)}
-                    aria-label="Hold to reorder, tap to view"
-                    style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "grab", flexShrink:0, marginTop:2, touchAction:"manipulation", userSelect:"none", WebkitTapHighlightColor:"transparent" }}
-                  >
+                  <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0, marginTop:2 }}>
                     <MuscleIcon muscle={exInfo?.muscle||""} size={36} C={C}/>
                   </button>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -4133,6 +4260,72 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
           </div>
         )}
+        {/* Reorder modal — collapsed cards you can drag freely */}
+        {reorderMode && session && (
+          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column" }}>
+            <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
+              <button onClick={() => { setReorderMode(false); setDraggingEx(null); dragStartRef.current = null; }} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F }}>Done</button>
+              <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Reorder exercises</div>
+              <div style={{ width:48 }}/>
+            </div>
+            <div style={{ fontSize:11, color:C.sub, padding:"10px 16px 4px", letterSpacing:0.4, fontWeight:600 }}>HOLD & DRAG TO MOVE</div>
+            <div
+              ref={reorderListRef}
+              style={{ padding:"6px 12px 24px", overflowY:"auto", flex:1, position:"relative", touchAction: draggingEx ? "none" : "auto" }}
+              onTouchMove={draggingEx ? onReorderTouchMove : undefined}
+              onTouchEnd={draggingEx ? onReorderTouchEnd : undefined}
+              onTouchCancel={draggingEx ? onReorderTouchEnd : undefined}
+            >
+              {session.exercises.map((ex, ei) => {
+                const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+                const isDragging = draggingEx && draggingEx.index === ei;
+                let visualOffset = 0;
+                if (draggingEx && !isDragging) {
+                  const fromIdx = draggingEx.index;
+                  const h = draggingEx.height || 56;
+                  const targetIdx = Math.max(0, Math.min(session.exercises.length - 1, fromIdx + Math.round(draggingEx.offsetY / h)));
+                  if (fromIdx < ei && ei <= targetIdx) visualOffset = -h;
+                  else if (targetIdx <= ei && ei < fromIdx) visualOffset = h;
+                }
+                return (
+                  <div
+                    key={ex.id || ei}
+                    onTouchStart={(e) => { e.stopPropagation(); startReorderDrag(ei, e); }}
+                    style={{
+                      display:"flex", alignItems:"center", gap:12,
+                      padding:"14px 14px", marginBottom:8,
+                      background: isDragging ? C.surface : C.surface,
+                      border: `1px solid ${isDragging ? C.accent : C.border}`,
+                      borderRadius:14,
+                      transform: isDragging
+                        ? `translateY(${draggingEx.offsetY}px) scale(1.02)`
+                        : `translateY(${visualOffset}px)`,
+                      transition: isDragging ? "none" : "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                      zIndex: isDragging ? 100 : 1,
+                      position:"relative",
+                      boxShadow: isDragging ? "0 16px 36px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.10)" : "none",
+                      opacity: draggingEx && !isDragging ? 0.5 : 1,
+                      touchAction:"none",
+                      userSelect:"none",
+                      WebkitUserSelect:"none",
+                      WebkitTouchCallout:"none",
+                      WebkitTapHighlightColor:"transparent",
+                    }}>
+                    <MuscleIcon muscle={exInfo?.muscle||""} size={32} C={C}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ex.name || "Unnamed"}</div>
+                      <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.sets?.length || 0} sets · {exInfo?.muscle || ""}</div>
+                    </div>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}>
+                      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Finish modal */}
         {showFinish && (
           <div onClick={() => setShowFinish(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
