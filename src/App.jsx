@@ -1337,9 +1337,10 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
   const isCardio = exMuscle === "Cardio";
 
   // Barbell detection — show plate breakdown inline when this is a barbell move with a set weight
+  // Match common barbell movement names; exclude dumbbell/kettlebell/machine/cable variants
   const isBarbell = exName ? (
-    /barbell|bench press|squat|deadlift|romanian|good morning|hip thrust|landmine|t-bar|bent[- ]?over row|pendlay|sumo|conventional|front squat|back squat|overhead press|ohp|push press|jerk|clean|snatch|trap bar/i.test(exName)
-    && !/dumbbell|db |kettlebell|kb |smith machine|machine|cable|band/i.test(exName)
+    /\bbarbell\b|\bbench press\b|\bsquat\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bhip thrust\b|\blandmine\b|\bt-?bar\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo\b|\bconventional\b|\boverhead press\b|\bohp\b|\bpush press\b|\bjerk\b|\bclean\b|\bsnatch\b|\btrap bar\b|\brow\b|\bpress\b|\bcurl\b/i.test(exName)
+    && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|tricep|chest fly|fly|lateral|raise/i.test(exName)
   ) : false;
   const platesBreakdown = useMemo(() => {
     if (!isBarbell || !set.weight || isCardio || set.type === "warmup") return null;
@@ -1539,19 +1540,19 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
         </div>
       </div>
       {platesBreakdown && platesBreakdown.length > 0 && (
-        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:5, paddingTop:5, borderTop:`1px solid ${C.divider}30`, flexWrap:"wrap" }}>
-          <span style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:0.5, marginRight:2 }}>PLATES/SIDE</span>
+        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:6, paddingTop:6, borderTop:`1px dashed ${C.divider}`, flexWrap:"wrap" }}>
+          <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, marginRight:2 }}>PLATES/SIDE</span>
           {platesBreakdown.map((p, i) => (
             <div key={i} style={{
               display:"flex", alignItems:"center", gap:3,
-              padding:"1px 6px",
-              background: `${PLATE_COLOR_MAP[p.p] || C.muted}18`,
-              border: `1px solid ${PLATE_COLOR_MAP[p.p] || C.muted}40`,
-              borderRadius:5,
-              fontSize:10, fontWeight:700, fontFamily:MONO,
+              padding:"2px 7px",
+              background: `${PLATE_COLOR_MAP[p.p] || C.muted}22`,
+              border: `1px solid ${PLATE_COLOR_MAP[p.p] || C.muted}50`,
+              borderRadius:6,
+              fontSize:11, fontWeight:700, fontFamily:MONO,
               color: PLATE_COLOR_MAP[p.p] || C.text,
             }}>
-              {p.count}<span style={{ opacity:0.6 }}>×</span>{p.p}
+              {p.count}<span style={{ opacity:0.55 }}>×</span>{p.p}
             </div>
           ))}
         </div>
@@ -3111,6 +3112,78 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
+  // Drag-to-reorder state for exercises during workout
+  const [draggingEx, setDraggingEx] = useState(null); // { index, offsetY, height }
+  const dragLongPressRef = useRef(null);
+  const dragStartRef = useRef(null); // { y, scrollY, ei }
+  const exerciseElRefs = useRef({}); // ei -> DOM element
+
+  function startExDrag(ei, touch) {
+    const el = exerciseElRefs.current[ei];
+    const height = el ? el.offsetHeight : 100;
+    dragStartRef.current = { y: touch.clientY, ei };
+    setDraggingEx({ index: ei, offsetY: 0, height });
+    haptic("medium");
+  }
+  function onExTouchStart(ei, e) {
+    if (dragLongPressRef.current) clearTimeout(dragLongPressRef.current);
+    const t = e.touches[0];
+    const startY = t.clientY;
+    const startX = t.clientX;
+    dragLongPressRef.current = setTimeout(() => {
+      startExDrag(ei, t);
+      dragLongPressRef.current = null;
+    }, 380);
+    // Cancel if user moves before long-press fires (treat as scroll)
+    const cancelHandler = (ev) => {
+      const tt = ev.touches?.[0];
+      if (!tt) return;
+      if (Math.abs(tt.clientY - startY) > 6 || Math.abs(tt.clientX - startX) > 6) {
+        if (dragLongPressRef.current) {
+          clearTimeout(dragLongPressRef.current);
+          dragLongPressRef.current = null;
+        }
+        document.removeEventListener("touchmove", cancelHandler);
+      }
+    };
+    document.addEventListener("touchmove", cancelHandler, { passive: true });
+    const cleanupRelease = () => {
+      if (dragLongPressRef.current) {
+        clearTimeout(dragLongPressRef.current);
+        dragLongPressRef.current = null;
+      }
+      document.removeEventListener("touchmove", cancelHandler);
+      document.removeEventListener("touchend", cleanupRelease);
+      document.removeEventListener("touchcancel", cleanupRelease);
+    };
+    document.addEventListener("touchend", cleanupRelease, { once: true });
+    document.addEventListener("touchcancel", cleanupRelease, { once: true });
+  }
+  function onExTouchMove(e) {
+    if (!draggingEx || !dragStartRef.current) return;
+    const t = e.touches[0];
+    const offsetY = t.clientY - dragStartRef.current.y;
+    setDraggingEx(d => d ? { ...d, offsetY } : null);
+    e.preventDefault();
+  }
+  function onExTouchEnd() {
+    if (!draggingEx || !dragStartRef.current) return;
+    const fromIdx = dragStartRef.current.ei;
+    const height = draggingEx.height || 100;
+    const slots = Math.round(draggingEx.offsetY / height);
+    const toIdx = Math.max(0, Math.min(session?.exercises.length - 1, fromIdx + slots));
+    if (toIdx !== fromIdx && session) {
+      setSession(p => {
+        const arr = [...p.exercises];
+        const [moved] = arr.splice(fromIdx, 1);
+        arr.splice(toIdx, 0, moved);
+        return { ...p, exercises: arr };
+      });
+      haptic("complete");
+    }
+    setDraggingEx(null);
+    dragStartRef.current = null;
+  }
 
   // Listen for code-import requests from feed posts
   useEffect(() => {
@@ -3484,6 +3557,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       <div style={{ background:C.bg, flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
         {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
+        {viewingExercise && (
+          <ExerciseDetail
+            name={viewingExercise}
+            store={store}
+            unit={unit}
+            C={C}
+            onClose={() => setViewingExercise(null)}
+          />
+        )}
 
         {/* Header */}
         <div style={{ background:C.bg, padding:"10px 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -3655,11 +3737,44 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+            const isBeingDragged = draggingEx && draggingEx.index === ei;
+            // Calculate offset for non-dragged items to make room
+            let visualOffset = 0;
+            if (draggingEx && draggingEx.index !== ei) {
+              const fromIdx = draggingEx.index;
+              const targetIdx = Math.max(0, Math.min(session.exercises.length - 1, fromIdx + Math.round(draggingEx.offsetY / (draggingEx.height || 100))));
+              const h = draggingEx.height || 100;
+              if (fromIdx < ei && ei <= targetIdx) visualOffset = -h;
+              else if (targetIdx <= ei && ei < fromIdx) visualOffset = h;
+            }
             return (
-              <div key={ex.id || ei}>
+              <div
+                key={ex.id || ei}
+                ref={el => { exerciseElRefs.current[ei] = el; }}
+                style={{
+                  position: isBeingDragged ? "relative" : "static",
+                  transform: isBeingDragged
+                    ? `translateY(${draggingEx.offsetY}px) scale(1.02)`
+                    : `translateY(${visualOffset}px)`,
+                  transition: isBeingDragged ? "none" : "transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                  zIndex: isBeingDragged ? 100 : "auto",
+                  boxShadow: isBeingDragged ? "0 12px 32px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.08)" : "none",
+                  background: isBeingDragged ? C.bg : "transparent",
+                  borderRadius: isBeingDragged ? 14 : 0,
+                  opacity: draggingEx && !isBeingDragged ? 0.5 : 1,
+                  touchAction: isBeingDragged ? "none" : "auto",
+                }}
+                onTouchMove={isBeingDragged ? onExTouchMove : undefined}
+                onTouchEnd={isBeingDragged ? onExTouchEnd : undefined}
+              >
                 {/* Exercise header */}
                 <div style={{ padding:"14px 14px 6px", display:"flex", alignItems:"flex-start", gap:10 }}>
-                  <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor:ex.name?"pointer":"default", flexShrink:0, marginTop:2 }}>
+                  <button
+                    onTouchStart={(e) => { if (session.exercises.length > 1) onExTouchStart(ei, e); }}
+                    onClick={() => ex.name && setViewingExercise(ex.name)}
+                    aria-label="Hold to reorder, tap to view"
+                    style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "grab", flexShrink:0, marginTop:2, touchAction:"manipulation", userSelect:"none", WebkitTapHighlightColor:"transparent" }}
+                  >
                     <MuscleIcon muscle={exInfo?.muscle||""} size={36} C={C}/>
                   </button>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -3675,35 +3790,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       style={{ width:"100%", background:"none", border:"none", padding:"3px 0", fontSize:11, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box", marginTop:4 }}
                     />
                   </div>
-                  <div style={{ display:"flex", gap:4, flexShrink:0, alignItems:"center" }}>
-                    {session.exercises.length > 1 && (
-                      <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-                        <button
-                          onClick={() => setSession(p => {
-                            if (ei === 0) return p;
-                            const arr = [...p.exercises];
-                            [arr[ei-1], arr[ei]] = [arr[ei], arr[ei-1]];
-                            return { ...p, exercises: arr };
-                          })}
-                          disabled={ei === 0}
-                          aria-label="Move up"
-                          style={{ background: ei === 0 ? "transparent" : C.divider, border:"none", borderRadius:6, width:24, height:18, cursor: ei === 0 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, opacity: ei === 0 ? 0.3 : 1 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                        </button>
-                        <button
-                          onClick={() => setSession(p => {
-                            if (ei === p.exercises.length - 1) return p;
-                            const arr = [...p.exercises];
-                            [arr[ei+1], arr[ei]] = [arr[ei], arr[ei+1]];
-                            return { ...p, exercises: arr };
-                          })}
-                          disabled={ei === session.exercises.length - 1}
-                          aria-label="Move down"
-                          style={{ background: ei === session.exercises.length - 1 ? "transparent" : C.divider, border:"none", borderRadius:6, width:24, height:18, cursor: ei === session.exercises.length - 1 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, opacity: ei === session.exercises.length - 1 ? 0.3 : 1 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </button>
-                      </div>
-                    )}
+                  <div style={{ display:"flex", gap:6, flexShrink:0, alignItems:"center" }}>
                     {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
                     <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) }))} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
@@ -7885,6 +7972,28 @@ export default function App() {
     if (!token || isGuest) return;
     loadUserData();
   }, [token, currentUserId, isGuest]);
+
+  // Re-fetch when the app comes back to foreground — keeps phone & desktop in sync
+  // when user has switched between them or backgrounded the app for a while.
+  useEffect(() => {
+    if (!token || isGuest) return;
+    const lastFetchRef = { current: Date.now() };
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      // Throttle: only re-fetch if it's been at least 30 seconds since last fetch
+      const now = Date.now();
+      if (now - lastFetchRef.current < 30000) return;
+      lastFetchRef.current = now;
+      loadUserData();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, isGuest, currentUserId]);
 
   async function loadUserData() {
     try {
