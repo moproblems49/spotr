@@ -774,6 +774,74 @@ function calc1RM(weight, reps) {
   return Math.round(w * (1 + r / 30));
 }
 
+// Get ISO week boundary (Mon 00:00 local) for a given date
+function weekStart(d = new Date()) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  const day = date.getDay(); // 0 (Sun) - 6 (Sat)
+  const offset = day === 0 ? 6 : day - 1; // distance back to Monday
+  date.setDate(date.getDate() - offset);
+  return date;
+}
+function weekKey(d) {
+  const w = weekStart(d);
+  return `${w.getFullYear()}-W${String(Math.floor((w.getTime() - new Date(w.getFullYear(), 0, 1).getTime()) / 604800000) + 1).padStart(2, "0")}`;
+}
+
+// Streak v2 — "active week" model.
+// User has a weekly workout target (default 3). Each week they hit the target counts as "active".
+// Streak is # of consecutive active weeks ending in the current or previous week.
+// Returns: { count, target, thisWeek, weeksActive, status } where status is "active" | "at-risk" | "lost"
+function calcWeeklyStreak(workoutDates, target = 3) {
+  const keys = Object.keys(workoutDates || {});
+  if (!keys.length) return { count: 0, target, thisWeek: 0, status: "lost" };
+
+  // Group workouts by week key
+  const byWeek = {};
+  for (const dk of keys) {
+    const wk = weekKey(new Date(dk));
+    byWeek[wk] = (byWeek[wk] || 0) + 1;
+  }
+
+  // Start from the most recent week we have activity in, walk backward
+  const now = new Date();
+  const thisWeekKey = weekKey(now);
+  const thisWeekCount = byWeek[thisWeekKey] || 0;
+
+  // Determine streak: count consecutive active weeks ending in this week OR last week
+  // (this week not counted as failure until the week is over)
+  let streak = 0;
+  let cursor = new Date(now);
+  let countingThisWeek = thisWeekCount >= target;
+
+  // Move cursor to start of this week, then iterate weeks
+  cursor = weekStart(cursor);
+  // Skip this week if it's not yet "made" — only count if hit target OR allow grace
+  if (!countingThisWeek) {
+    // Don't count this week toward streak yet, but don't break it either — start from last week
+    cursor.setDate(cursor.getDate() - 7);
+  }
+
+  for (let i = 0; i < 104; i++) { // up to 2 years
+    const wk = weekKey(cursor);
+    const count = byWeek[wk] || 0;
+    if (count >= target) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 7);
+    } else {
+      break;
+    }
+  }
+
+  // Status: active if hit this week, at-risk if last week was active but this week isn't yet
+  let status = "lost";
+  if (countingThisWeek) status = "active";
+  else if (streak > 0) status = "at-risk"; // had a streak going, this week not yet made
+
+  return { count: streak, target, thisWeek: thisWeekCount, status };
+}
+
+// Legacy daily-streak helper — kept for components that haven't migrated yet
 function calcStreak(workoutDates) {
   const keys = Object.keys(workoutDates||{}).sort().reverse();
   if (!keys.length) return 0;
@@ -1137,6 +1205,7 @@ function loadStore() {
     groups: [],
     historyInteractions: {},
     workoutDates: {},
+    weeklyTarget: 3, // default: 3 workouts/week for streak system
     seenOnboarding: true,
   };
 }
@@ -1196,22 +1265,31 @@ function Avatar({ user, size = 36, onClick, C, ring = false }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STREAK BADGE — minimal
 // ═════════════════════════════════════════════════════════════════════════════
-function StreakBadge({ streak, size = "sm" }) {
-  if (!streak) return null;
+function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
+  // When no streak, show "this week's progress" prompt if user has any thisWeek
+  if (!streak && !thisWeek) return null;
   const cfg = {
     sm: { p:"3px 8px", fs:11, ic:11 },
     md: { p:"5px 11px", fs:13, ic:13 },
   }[size] || { p:"3px 8px", fs:11, ic:11 };
 
+  // Visual state based on weekly status
+  // active = solid black, on-fire
+  // at-risk = amber outline, prompts user to lift this week
+  // building (no streak yet but lifting this week) = subtle grey with progress
+  let bg = "#0A0A0A", fg = "#fff", flameColor = "#fff";
+  if (status === "at-risk") { bg = "#f59e0b"; fg = "#fff"; flameColor = "#fff"; }
+  else if (!streak && thisWeek) { bg = "#262626"; fg = "#fff"; flameColor = "#a3a3a3"; }
+
   return (
     <span style={{
       display:"inline-flex", alignItems:"center", gap:4,
-      background:"#0A0A0A", color:"#fff",
+      background:bg, color:fg,
       borderRadius:20, padding:cfg.p, fontWeight:700, fontSize:cfg.fs,
       fontVariantNumeric:"tabular-nums",
     }}>
-      <Icon name="flame" size={cfg.ic} color="#fff" strokeWidth={2.2}/>
-      <span>{streak}</span>
+      <Icon name="flame" size={cfg.ic} color={flameColor} strokeWidth={2.2}/>
+      <span>{streak > 0 ? streak : `${thisWeek}/${target||3}`}</span>
     </span>
   );
 }
@@ -1437,7 +1515,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
-const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, C }) {
+const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const swipeRef = useRef(null);
@@ -1647,13 +1725,13 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
         {isCardio ? (
           <>
             <div style={{ position:"relative", width:70 }}>
-              <input type="number" inputMode="decimal" value={set.weight||""} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
+              <input type="number" inputMode="decimal" value={set.weight||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("weight"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>min</span>
             </div>
             <div style={{ position:"relative", width:62 }}>
-              <input type="number" inputMode="decimal" value={set.reps||""} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
+              <input type="number" inputMode="decimal" value={set.reps||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("reps"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
@@ -1662,14 +1740,14 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
         ) : (
           <>
             <div style={{ position:"relative", width:70 }}>
-              <input type="number" inputMode="decimal" value={set.weight||""} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
+              <input type="number" inputMode="decimal" value={set.weight||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("weight"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit}</span>
             </div>
 
             <div style={{ position:"relative", width:58 }}>
-              <input type="number" inputMode="numeric" value={set.reps||""} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
+              <input type="number" inputMode="numeric" value={set.reps||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("reps"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>reps</span>
@@ -1688,14 +1766,22 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
         </button>
       </div>
 
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6, paddingTop:5, borderTop:`1px solid ${C.divider}30` }}>
-        <div style={{ display:"flex", gap:2 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6, paddingTop:5, borderTop:`1px solid ${C.divider}30`, gap:6 }}>
+        <div style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
           {!isCardio && [-2.5,2.5,5].map(d => (
-            <button key={d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}</button>
+            <button key={"w"+d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}</button>
           ))}
           {isCardio && [-1,1,5].map(d => (
-            <button key={d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}m</button>
+            <button key={"m"+d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}m</button>
           ))}
+          {!isCardio && (
+            <>
+              <span style={{ fontSize:9, color:C.muted, alignSelf:"center", margin:"0 2px 0 4px", fontWeight:700 }}>·</span>
+              {[-1, 1].map(d => (
+                <button key={"r"+d} onClick={() => { const cur=parseInt(set.reps)||parseInt(prev?.r)||0; onUpdate({reps:String(Math.max(0, cur+d))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}r</button>
+              ))}
+            </>
+          )}
         </div>
         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
           {suggestion && (
@@ -3253,6 +3339,156 @@ function CodeRedeemRow({ C, store, setStore, onClose, token, initialCode = null 
   );
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// EDIT HISTORY MODAL — fix wrong numbers in an already-saved workout
+// ═════════════════════════════════════════════════════════════════════════════
+function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setStore, onClose }) {
+  const { date, sid, sess } = editing;
+  const [exercises, setExercises] = useState(() => JSON.parse(JSON.stringify(sess.exercises || [])));
+  const [saving, setSaving] = useState(false);
+
+  function updateSet(ei, si, patch) {
+    setExercises(p => p.map((ex, i) => i !== ei ? ex : {
+      ...ex,
+      sets: ex.sets.map((s, j) => j !== si ? s : { ...s, ...patch })
+    }));
+  }
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    // 1. Update local history
+    setStore(prev => {
+      const dayHistory = { ...(prev.history[date] || {}) };
+      if (dayHistory[sid]) {
+        dayHistory[sid] = { ...dayHistory[sid], exercises };
+      }
+      return { ...prev, history: { ...prev.history, [date]: dayHistory } };
+    });
+    // 2. Patch DB row
+    try {
+      if (token && !String(sid).startsWith("local_")) {
+        await sb.query(`workout_history?id=eq.${sid}`, {
+          method: "PATCH",
+          body: JSON.stringify({ exercises })
+        }, token);
+      }
+    } catch (e) {
+      console.error("edit workout failed:", e);
+      toast("Saved locally — couldn't sync to server", "error");
+      setSaving(false);
+      onClose();
+      return;
+    }
+    // 3. Update any feed post that links to this workout (best-effort: match by dayName + finishedAt window)
+    setStore(prev => {
+      const newPosts = (prev.posts || []).map(p => {
+        if (p.userId !== currentUserId) return p;
+        if (p.type !== "workout") return p;
+        if (!p.workout) return p;
+        if (p.workout.name !== sess.dayName) return p;
+        // Match if posted around the same time as the workout finished
+        const finishedAt = sess.finishedAt || new Date(date).getTime();
+        if (Math.abs((p.createdAt || 0) - finishedAt) > 86400000) return p; // > 24h apart, not the same workout
+        // Rebuild the post.workout.exercises to reflect new numbers
+        const postEx = exercises.filter(e => e.name).map(ex => {
+          const doneSets = (ex.sets || []).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
+          const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
+          return {
+            name: ex.name,
+            isPR: maxW > 0 && maxW >= ((prev.prs || {})[ex.name] || 0) * 0.99,
+            sets: doneSets.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+          };
+        });
+        const newVolume = exercises.reduce((a, ex) => a + (ex.sets || [])
+          .filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
+          .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+        return { ...p, workout: { ...p.workout, exercises: postEx, volume: Math.round(newVolume) } };
+      });
+      return { ...prev, posts: newPosts };
+    });
+    // 4. Patch any matching feed post on the server too (best-effort)
+    try {
+      if (token) {
+        const match = (store.posts || []).find(p =>
+          p.userId === currentUserId &&
+          p.type === "workout" &&
+          p.workout?.name === sess.dayName &&
+          Math.abs((p.createdAt || 0) - (sess.finishedAt || new Date(date).getTime())) < 86400000
+        );
+        if (match && !String(match.id).startsWith("hist_")) {
+          // Recompute the workout payload to mirror local state
+          const postEx = exercises.filter(e => e.name).map(ex => {
+            const doneSets = (ex.sets || []).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
+            const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
+            return {
+              name: ex.name,
+              isPR: maxW > 0 && maxW >= ((store.prs || {})[ex.name] || 0) * 0.99,
+              sets: doneSets.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+            };
+          });
+          const newVolume = exercises.reduce((a, ex) => a + (ex.sets || [])
+            .filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
+            .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+          await sb.query(`posts?id=eq.${match.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: postEx, volume: Math.round(newVolume) } })
+          }, token);
+        }
+      }
+    } catch (e) {
+      console.error("post sync failed:", e);
+    }
+    toast("Workout updated", "success");
+    haptic("complete");
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, background:C.bg, zIndex:600,
+      maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column",
+    }}>
+      <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
+        <button onClick={onClose} style={{ background:"none", border:"none", color:C.sub, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Cancel</button>
+        <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Edit workout</div>
+        <button onClick={handleSave} disabled={saving} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor: saving ? "default" : "pointer", fontFamily:F, opacity: saving ? 0.5 : 1 }}>{saving ? "..." : "Save"}</button>
+      </div>
+      <div style={{ flex:1, overflowY:"auto", padding:"12px 14px 32px" }}>
+        <div style={{ fontSize:11, color:C.sub, marginBottom:10, letterSpacing:0.4, fontWeight:600 }}>{sess.dayName} · {new Date(date).toLocaleDateString()}</div>
+        {exercises.map((ex, ei) => (
+          <div key={ei} style={{ marginBottom:18, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 12px 8px" }}>
+            <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:8, letterSpacing:-0.2 }}>{ex.name || "Unnamed"}</div>
+            <div style={{ display:"grid", gridTemplateColumns:"30px 1fr 1fr 28px", gap:8, alignItems:"center", marginBottom:6 }}>
+              <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>SET</div>
+              <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>{unit?.toUpperCase() || "LBS"}</div>
+              <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>REPS</div>
+              <div/>
+            </div>
+            {(ex.sets || []).map((s, si) => (
+              <div key={si} style={{ display:"grid", gridTemplateColumns:"30px 1fr 1fr 28px", gap:8, alignItems:"center", marginBottom:6 }}>
+                <div style={{ fontSize:13, color:C.sub, fontWeight:700, fontFamily:MONO }}>{si + 1}</div>
+                <input type="number" inputMode="decimal" value={s.weight || ""} onFocus={e => e.target.select()} onChange={e => updateSet(ei, si, { weight: e.target.value })}
+                  style={{ width:"100%", background:C.bg, border:`1.5px solid ${C.divider}`, borderRadius:8, padding:"7px 8px", fontSize:14, fontWeight:700, color:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
+                />
+                <input type="number" inputMode="numeric" value={s.reps || ""} onFocus={e => e.target.select()} onChange={e => updateSet(ei, si, { reps: e.target.value })}
+                  style={{ width:"100%", background:C.bg, border:`1.5px solid ${C.divider}`, borderRadius:8, padding:"7px 8px", fontSize:14, fontWeight:700, color:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
+                />
+                <button onClick={() => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: x.sets.filter((_, j) => j !== si) }))} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:0 }}>×</button>
+              </div>
+            ))}
+            <button onClick={() => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: [...x.sets, { id: uid(), weight: "", reps: "", done: true, type: "normal" }] }))}
+              style={{ width:"100%", marginTop:4, background:"transparent", border:`1px dashed ${C.border}`, borderRadius:8, padding:"7px", fontSize:12, color:C.sub, cursor:"pointer", fontFamily:F, fontWeight:600 }}>
+              + Add set
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, currentUserId, token, C }) {
   const [session, setSession] = useState(() => {
     try {
@@ -3272,7 +3508,30 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       return ws ? parseInt(ws) : null;
     } catch { return null; }
   });
-  const [rest, setRest] = useState(null); // {secs, total, running, startedAt, exerciseIdx, minimized}
+  const REST_KEY = "seshd_rest";
+  const [rest, setRest] = useState(() => {
+    try {
+      const raw = localStorage.getItem(REST_KEY);
+      if (!raw) return null;
+      const r = JSON.parse(raw);
+      if (!r?.startedAt || !r?.total) return null;
+      // Recompute secs based on real elapsed time so it's accurate after coming back
+      const elapsedMs = Date.now() - r.startedAt;
+      const secsRemaining = Math.max(0, r.total - Math.floor(elapsedMs / 1000));
+      if (secsRemaining === 0) return null; // already finished while away
+      return { ...r, secs: secsRemaining };
+    } catch { return null; }
+  });
+  // Persist rest state across tab switches / unmounts
+  useEffect(() => {
+    try {
+      if (rest && rest.running) {
+        localStorage.setItem(REST_KEY, JSON.stringify(rest));
+      } else {
+        localStorage.removeItem(REST_KEY);
+      }
+    } catch {}
+  }, [rest]);
   const [restEditor, setRestEditor] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
   const [showGroupShare, setShowGroupShare] = useState(false); // group picker after finish-and-share-to-groups
@@ -3287,6 +3546,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [showBuilder, setShowBuilder] = useState(false);
   const [initialDayIdx, setInitialDayIdx] = useState(0);
   const [previewDay, setPreviewDay] = useState(null); // {day, programName}
+  const [editingHistory, setEditingHistory] = useState(null); // { date, sid, sess }
+  // Keyboard accessory bar — tracks which set input is focused so we can show quick +/- buttons above the keyboard
+  const [focusedSet, setFocusedSet] = useState(null); // { ei, si, field: "weight"|"reps", isCardio }
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
@@ -3346,7 +3608,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const rtRef = useRef(null);
 
   useEffect(() => {
-    if (!session) { localStorage.removeItem(SESSION_KEY); return; }
+    if (!session) { try { localStorage.removeItem(SESSION_KEY); } catch {} return; }
     const id = setInterval(() => {
       try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
     }, 5000);
@@ -3359,10 +3621,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   useEffect(() => {
     clearInterval(elRef.current);
     if (wStart) {
-      localStorage.setItem(WSTART_KEY, String(wStart));
+      try { localStorage.setItem(WSTART_KEY, String(wStart)); } catch {}
       elRef.current = setInterval(() => setElapsed(Math.floor((Date.now()-wStart)/1000)), 1000);
     } else {
-      localStorage.removeItem(WSTART_KEY);
+      try { localStorage.removeItem(WSTART_KEY); } catch {}
     }
     return () => clearInterval(elRef.current);
   }, [wStart]);
@@ -3569,7 +3831,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           ...p.history,
           [dk]: {
             ...(p.history[dk] || {}),
-            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: elapsed, unit, note: "" }
+            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: elapsed, unit, note: "", finishedAt: Date.now() }
           }
         },
         prs: newPRs,
@@ -3608,7 +3870,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       // Clear session first so workout screen dismisses
       clearInterval(elRef.current);
-      localStorage.removeItem(SESSION_KEY);
+      try { localStorage.removeItem(SESSION_KEY); } catch {}
       setSession(null);
       setWStart(null);
       setElapsed(0);
@@ -3712,10 +3974,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             onClose={() => setViewingExercise(null)}
           />
         )}
+        {editingHistory && (
+          <EditHistoryModal
+            editing={editingHistory}
+            unit={unit}
+            C={C}
+            token={token}
+            currentUserId={currentUserId}
+            store={store}
+            setStore={setStore}
+            onClose={() => setEditingHistory(null)}
+          />
+        )}
 
         {/* Header */}
         <div style={{ background:C.bg, padding:"10px 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <button onClick={() => { clearInterval(elRef.current); localStorage.removeItem(SESSION_KEY); setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+          <button onClick={() => { clearInterval(elRef.current); try { localStorage.removeItem(SESSION_KEY); } catch {} setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ textAlign:"center" }}>
             <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
             <div style={{ fontSize:28, fontWeight:800, color:C.accent, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
@@ -3910,7 +4184,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v}) }))}
                         C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
                     </div>
-                    {exInfo?.muscle && <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{exInfo.muscle}</div>}
+                    {exInfo?.muscle && (
+                      <div style={{ fontSize:11, color:C.sub, marginTop:1, display:"flex", alignItems:"center", gap:6 }}>
+                        <span>{exInfo.muscle}</span>
+                        {(ex.sets||[]).length > 0 && (
+                          <div style={{ display:"flex", gap:3 }}>
+                            {ex.sets.map((s, idx) => (
+                              <div key={s.id || idx} style={{
+                                width:6, height:6, borderRadius:"50%",
+                                background: s.done ? C.green : (s.weight || s.reps) ? `${C.text}40` : `${C.muted}40`,
+                              }}/>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <input value={ex.note||""}
                       onChange={e => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,note:e.target.value}) }))}
                       placeholder="Add note..."
@@ -3932,7 +4220,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
                 {ex.sets.map((set, si) => (
                   <div key={set.id||si}>
-                    <SetRow set={set} si={si} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
+                    <SetRow set={set} si={si} ei={ei} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
+                      onFocusInput={(field) => setFocusedSet({ ei, si, field })}
+                      onBlurInput={() => {
+                        // small delay so a tap on the keyboard accessory button can register before clearing focused state
+                        setTimeout(() => setFocusedSet(prev => (prev && prev.ei === ei && prev.si === si) ? null : prev), 100);
+                      }}
                       onUpdate={patch => updateSet(ei,si,patch)}
                       onToggleDone={() => toggleDone(ei,si)}
                       onDelete={ex.sets.length > 1 ? () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.filter((_,j)=>j!==si)}) })) : undefined}
@@ -4326,6 +4619,68 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
         )}
 
+        {/* Keyboard accessory bar — appears above the iOS keyboard when a set input is focused
+            Lets user nudge weight or reps without dismissing the keyboard */}
+        {focusedSet && (() => {
+          const ex = session.exercises?.[focusedSet.ei];
+          const set = ex?.sets?.[focusedSet.si];
+          if (!ex || !set) return null;
+          const exMuscle = ex.name ? EXERCISE_DB.find(e => e.name === ex.name)?.muscle : null;
+          const isCardio = exMuscle === "Cardio";
+          const weightAdj = isCardio ? [-1, 1, 5] : [-2.5, 2.5, 5];
+          const repsAdj = [-1, 1, 5];
+          const applyWeight = (d) => {
+            const cur = parseFloat(set.weight) || 0;
+            updateSet(focusedSet.ei, focusedSet.si, { weight: String(Math.max(0, Math.round((cur + d) * 10) / 10)) });
+            haptic("tap");
+          };
+          const applyReps = (d) => {
+            const cur = parseInt(set.reps) || 0;
+            updateSet(focusedSet.ei, focusedSet.si, { reps: String(Math.max(0, cur + d)) });
+            haptic("tap");
+          };
+          return (
+            <div
+              onMouseDown={(e) => e.preventDefault()}
+              onTouchStart={(e) => e.stopPropagation()}
+              style={{
+                position:"fixed", left:0, right:0, bottom:0,
+                maxWidth:480, margin:"0 auto",
+                background:C.surface, borderTop:`1px solid ${C.border}`,
+                padding:"8px 10px calc(8px + env(safe-area-inset-bottom))",
+                zIndex:400, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+                boxShadow:"0 -4px 14px rgba(0,0,0,0.06)",
+              }}>
+              <div style={{ display:"flex", gap:5, flexWrap:"nowrap", alignItems:"center" }}>
+                <span style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:0.4, marginRight:2 }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</span>
+                {weightAdj.map(d => (
+                  <button key={"w"+d} onClick={() => applyWeight(d)} style={{
+                    background:"transparent", border:`1px solid ${d<0?"#ef444440":"#22c55e40"}`,
+                    color:d<0?"#ef4444":"#22c55e", borderRadius:8, padding:"6px 10px",
+                    fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:MONO, minWidth:42,
+                  }}>{d>0?"+":""}{d}</button>
+                ))}
+              </div>
+              {!isCardio && (
+                <div style={{ display:"flex", gap:5, flexWrap:"nowrap", alignItems:"center" }}>
+                  <span style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:0.4, marginRight:2 }}>REPS</span>
+                  {repsAdj.map(d => (
+                    <button key={"r"+d} onClick={() => applyReps(d)} style={{
+                      background:"transparent", border:`1px solid ${d<0?"#ef444440":"#22c55e40"}`,
+                      color:d<0?"#ef4444":"#22c55e", borderRadius:8, padding:"6px 10px",
+                      fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:MONO, minWidth:36,
+                    }}>{d>0?"+":""}{d}</button>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => { if (document.activeElement?.blur) document.activeElement.blur(); }} style={{
+                background:"transparent", border:"none", padding:"6px 8px",
+                color:C.sub, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F, flexShrink:0,
+              }}>Done</button>
+            </div>
+          );
+        })()}
+
         {/* Finish modal */}
         {showFinish && (
           <div onClick={() => setShowFinish(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
@@ -4383,7 +4738,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <button onClick={async () => {
                   if (selectedGroupIds.length === 0) { toast("Pick at least one group", "error"); return; }
                   setShowGroupShare(false);
-                  await finishWorkout(false, { groupIds: selectedGroupIds, groupOnly: true });
+                  try {
+                    await finishWorkout(false, { groupIds: selectedGroupIds, groupOnly: true });
+                  } catch (e) {
+                    console.error("Group share finish failed:", e);
+                    toast("Couldn't save to groups — your workout is saved locally", "error");
+                  }
                 }} disabled={finishing || selectedGroupIds.length === 0} style={{ width:"100%", background:(finishing||selectedGroupIds.length===0)?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:(finishing||selectedGroupIds.length===0)?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>
                   {finishing ? "Saving…" : `Send to ${selectedGroupIds.length || "0"} group${selectedGroupIds.length===1?"":"s"}`}
                 </button>
@@ -4419,21 +4779,45 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {subTab === "workout" && (
         <div style={{ padding:"16px 14px" }}>
-          {/* Streak banner */}
-          {(() => { const s = calcStreak(store.workoutDates || {}); return s > 0 ? (
-            <div style={{ background:C.text, color:C.bg, borderRadius:16, padding:"16px 18px", marginBottom:12, display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:40, height:40, borderRadius:12, background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.text, flexShrink:0 }}>
-                <Icon name="flame" size={20}/>
-              </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:C.bg, opacity:0.6, letterSpacing:1.5, marginBottom:2 }}>STREAK</div>
-                <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
-                  <div style={{ fontFamily:MONO, fontSize:28, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>{s}</div>
-                  <div style={{ fontSize:12, fontWeight:600, opacity:0.6 }}>days · keep going</div>
+          {/* Weekly streak banner */}
+          {(() => {
+            const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+            if (!ws.count && !ws.thisWeek) return null;
+            const isAtRisk = ws.status === "at-risk";
+            const isBuilding = !ws.count && ws.thisWeek > 0;
+            return (
+              <div style={{
+                background: isAtRisk ? "#f59e0b" : (isBuilding ? C.surface : C.text),
+                color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg),
+                border: isBuilding ? `1px solid ${C.border}` : "none",
+                borderRadius:16, padding:"16px 18px", marginBottom:12,
+                display:"flex", alignItems:"center", gap:14,
+              }}>
+                <div style={{ width:40, height:40, borderRadius:12,
+                  background: isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.2)" : C.bg),
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.text),
+                  flexShrink:0 }}>
+                  <Icon name="flame" size={20}/>
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:11, fontWeight:700, opacity:0.6, letterSpacing:1.5, marginBottom:2 }}>
+                    {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
+                  </div>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                    <div style={{ fontFamily:MONO, fontSize:28, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>
+                      {ws.count > 0 ? ws.count : `${ws.thisWeek}/${ws.target}`}
+                    </div>
+                    <div style={{ fontSize:12, fontWeight:600, opacity:0.6 }}>
+                      {ws.count > 0
+                        ? (isAtRisk ? `${ws.thisWeek}/${ws.target} this week` : `week${ws.count === 1 ? "" : "s"} active`)
+                        : "workouts this week"}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null; })()}
+            );
+          })()}
 
           {/* Quick Start */}
           <button onClick={() => startWorkout(null)} style={{
@@ -4901,6 +5285,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             background:C.text, border:"none", borderRadius:8,
                             color:C.bg, fontSize:12, padding:"5px 11px", cursor:"pointer", fontFamily:F, fontWeight:700
                           }}>Repeat</button>
+                          <button onClick={() => setEditingHistory({ date, sid, sess: JSON.parse(JSON.stringify(sess)) })} style={{
+                            background:"none", border:`1px solid ${C.border}`, borderRadius:8,
+                            color:C.text, fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
+                          }}>Edit</button>
                           <button onClick={() => onDeleteHistory && onDeleteHistory(date, sid)} style={{
                             background:"none", border:`1px solid ${C.border}`, borderRadius:8,
                             color:"#EF4444", fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
@@ -5121,6 +5509,20 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           onStart={day => { setPreviewDay(null); startWorkout(day); }}
           onSaveProgram={onSaveProgram}
           token={token}
+        />
+      )}
+
+      {/* Edit History modal — lets you fix wrong numbers in a finished workout */}
+      {editingHistory && (
+        <EditHistoryModal
+          editing={editingHistory}
+          unit={unit}
+          C={C}
+          token={token}
+          currentUserId={currentUserId}
+          store={store}
+          setStore={setStore}
+          onClose={() => setEditingHistory(null)}
         />
       )}
 
@@ -6510,10 +6912,15 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                         {isMyPost && (
                           <button onClick={async () => {
                             if (!token) return;
-                            await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
-                              method:"DELETE", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}` }
-                            });
-                            setPosts(p => p.filter(x => x.id !== post.id));
+                            try {
+                              await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
+                                method:"DELETE", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}` }
+                              });
+                              setPosts(p => p.filter(x => x.id !== post.id));
+                            } catch (e) {
+                              console.error("group post delete failed:", e);
+                              toast("Couldn't delete post — check connection", "error");
+                            }
                           }} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:"0 2px" }}>×</button>
                         )}
                       </div>
@@ -7086,15 +7493,9 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       volume += daySessions.reduce((a, s) => a + (s.exercises||[]).reduce((b, ex) =>
         b + (ex.sets||[]).filter(st=>st.done).reduce((c,st) => c + (parseFloat(st.weight)||0)*(parseFloat(st.reps)||0), 0), 0), 0);
     }
-    // streak
-    let streak = 0;
-    let check = new Date().toISOString().split("T")[0];
-    while (history[check] && Object.values(history[check]).length > 0) {
-      streak++;
-      const d = new Date(check); d.setDate(d.getDate()-1);
-      check = d.toISOString().split("T")[0];
-    }
-    return { sessions, volume: Math.round(volume), streak, prs: Object.keys(store.prs||{}).length };
+    // weekly streak — # of consecutive weeks user hit weeklyTarget
+    const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+    return { sessions, volume: Math.round(volume), streak: ws.count, prs: Object.keys(store.prs||{}).length };
   }
 
   const myStats = getMyStats();
@@ -7170,7 +7571,8 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   ) : [];
   const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
-  const streak = isMe ? calcStreak(store.workoutDates) : 0;
+  const weeklyStreak = isMe ? calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3) : { count: 0, thisWeek: 0, target: 3, status: "lost" };
+  const streak = weeklyStreak.count;
   const followers = store.users.find(u => u.id === userId)?.followers?.length || 0;
   const following2 = store.users.find(u => u.id === userId)?.following?.length || 0;
   const [showEdit, setShowEdit] = useState(false);
@@ -7301,7 +7703,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:14, fontWeight:600, color:C.text, display:"flex", alignItems:"center", gap:8 }}>
             {user?.name}
-            {isMe && streak > 0 && <StreakBadge streak={streak} size="sm"/>}
+            {isMe && (streak > 0 || weeklyStreak.thisWeek > 0) && <StreakBadge streak={streak} status={weeklyStreak.status} thisWeek={weeklyStreak.thisWeek} target={weeklyStreak.target} size="sm"/>}
           </div>
           <div style={{ fontSize:13, color:C.sub }}>@{user?.username}</div>
           {user?.bio && <div style={{ fontSize:13, color:C.text, marginTop:4 }}>{user.bio}</div>}
@@ -7442,6 +7844,25 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                         color:(store.unit||"lbs")===u?"#fff":C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                       }}>{u.toUpperCase()}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>STREAK</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
+                  <div>
+                    <div style={{ fontSize:14, color:C.text }}>Weekly target</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Hit this each week to keep your streak</div>
+                  </div>
+                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
+                    {[2, 3, 4, 5].map(n => (
+                      <button key={n} onClick={() => setStore(p => ({ ...p, weeklyTarget: n }))} style={{
+                        padding:"6px 12px", background:(store.weeklyTarget||3)===n?C.accent:"transparent",
+                        color:(store.weeklyTarget||3)===n?"#fff":C.sub, border:"none", borderRadius:20,
+                        fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, minWidth:32
+                      }}>{n}</button>
                     ))}
                   </div>
                 </div>
@@ -8220,7 +8641,9 @@ export default function App() {
         if (!appHistory[dk]) appHistory[dk] = {};
         appHistory[dk][w.id] = {
           dayName: w.day_name, exercises: w.exercises,
-          duration: w.duration_secs, unit: w.unit, note: w.note
+          duration: w.duration_secs, unit: w.unit, note: w.note,
+          // Capture the actual finish timestamp (Supabase auto-populates created_at on insert)
+          finishedAt: w.created_at ? new Date(w.created_at).getTime() : new Date(dk).getTime(),
         };
         appWorkoutDates[dk] = true;
       });
@@ -9066,7 +9489,8 @@ export default function App() {
   const myStoryPost = recentStoryPosts.find(p => p.userId === currentUserId);
   const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))].filter(id => id !== currentUserId);
   const storyUsers = storyUserIds.map(id => store.users.find(u => u.id === id)).filter(Boolean);
-  const streak = calcStreak(store.workoutDates || {});
+  const weeklyStreak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+  const streak = weeklyStreak.count;
   // Build synthetic feed items from own workout history (not shared)
   const sharedWorkoutIds = new Set((store.posts||[]).filter(p=>p.type==="workout"&&p.userId===currentUserId).map(p=>p.workout?.name+p.createdAt));
   const historyFeedItems = Object.entries(store.history||{}).flatMap(([date, sessions]) =>
@@ -9106,7 +9530,8 @@ export default function App() {
         },
         kudos: hi.kudos || [],
         comments: hi.comments || [],
-        createdAt: new Date(date).getTime(),
+        // Use the actual finish timestamp if available, else fall back to midnight of the workout date
+        createdAt: sess.finishedAt || new Date(date).getTime(),
         _isHistory: true,
         _date: date,
       };
@@ -9245,6 +9670,30 @@ export default function App() {
       }}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
     >
+      {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
+      <style>{`
+        button, [role="button"], .seshd-tappable {
+          -webkit-user-select: none;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          -webkit-touch-callout: none;
+          touch-action: manipulation;
+        }
+        /* Inputs and editable text should still allow selection */
+        input, textarea, [contenteditable="true"] {
+          -webkit-user-select: text;
+          user-select: text;
+          -webkit-touch-callout: default;
+        }
+        /* Avoid double-tap zoom on iOS */
+        body, html { touch-action: manipulation; }
+        /* Disable native long-press text selection on commonly-tapped content */
+        [data-tap-only] {
+          -webkit-user-select: none;
+          user-select: none;
+          -webkit-touch-callout: none;
+        }
+      `}</style>
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
       <ToastHost/>
 
@@ -9278,7 +9727,7 @@ export default function App() {
       }}>
         <SeshdLogo C={C}/>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          {streak > 0 && <div style={{ marginRight:4 }}><StreakBadge streak={streak} size="sm"/></div>}
+          {(streak > 0 || weeklyStreak.thisWeek > 0) && <div style={{ marginRight:4 }}><StreakBadge streak={streak} status={weeklyStreak.status} thisWeek={weeklyStreak.thisWeek} target={weeklyStreak.target} size="sm"/></div>}
           {tab === "feed" && (
             <button
               onClick={() => {
