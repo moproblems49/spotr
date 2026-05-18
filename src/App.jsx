@@ -383,23 +383,23 @@ const EXERCISE_DB = [
 // ═════════════════════════════════════════════════════════════════════════════
 const THEMES = {
   dark: {
-    bg: "#000000",
-    surface: "#0a0a0a",
-    card: "#0a0a0a",
-    border: "#1c1c1e",
-    divider: "#141414",
-    accent: "#7c3aed",
-    accentSoft: "rgba(124,58,237,0.12)",
-    accent2: "#6d28d9",
+    bg: "#0a0a0c",
+    surface: "#141416",
+    card: "#141416",
+    border: "#2a2a2e",
+    divider: "#1c1c1f",
+    accent: "#8b5cf6",
+    accentSoft: "rgba(139,92,246,0.14)",
+    accent2: "#7c3aed",
     orange: "#f97316",
-    green: "#30d158",
-    gold: "#eab308",
-    red: "#ff3b30",
-    text: "#f5f5f5",
-    textDim: "#d1d5db",
-    sub: "#8e8e93",
-    muted: "#5c5c60",
-    tabBg: "rgba(0,0,0,0.95)",
+    green: "#34d399",
+    gold: "#facc15",
+    red: "#f87171",
+    text: "#f5f5f7",
+    textDim: "#d4d4d8",
+    sub: "#a1a1aa",
+    muted: "#71717a",
+    tabBg: "rgba(10,10,12,0.95)",
   },
   light: {
     bg: "#ffffff",
@@ -554,6 +554,31 @@ const fmtVol = (v, u) => v >= 1000 ? `${(v/1000).toFixed(1)}k ${u}` : `${v} ${u}
 const dKey = (d = new Date()) => d.toISOString().split("T")[0];
 
 const LBS_TO_KG = 0.453592;
+
+// Reusable plate-per-side calculator
+// Returns array of { p, count } or null if unachievable
+const BARBELL_BAR_LBS = 45;
+const BARBELL_BAR_KG = 20;
+const PLATES_LBS_LIST = [45, 35, 25, 10, 5, 2.5];
+const PLATES_KG_LIST = [25, 20, 15, 10, 5, 2.5, 1.25];
+const PLATE_COLOR_MAP = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
+function calcPlatesPerSide(totalWeight, unit) {
+  const t = parseFloat(totalWeight);
+  const bar = unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS;
+  if (!t || t <= bar) return null;
+  let remaining = (t - bar) / 2;
+  const plates = unit === "kg" ? PLATES_KG_LIST : PLATES_LBS_LIST;
+  const result = [];
+  for (const p of plates) {
+    const count = Math.floor(remaining / p);
+    if (count > 0) {
+      result.push({ p, count });
+      remaining = Math.round((remaining - p * count) * 1000) / 1000;
+    }
+  }
+  if (remaining > 0.01) return null;
+  return result;
+}
 function cvt(w, from, to) {
   if (!w || from === to) return w;
   const n = parseFloat(w);
@@ -1235,6 +1260,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
   const swipeRef = useRef(null);
   const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false, locked: null });
   const [swipeDx, setSwipeDx] = useState(0);
@@ -1310,6 +1336,16 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
   const exMuscle = exName ? EXERCISE_DB.find(e => e.name === exName)?.muscle : null;
   const isCardio = exMuscle === "Cardio";
 
+  // Barbell detection — show plate breakdown inline when this is a barbell move with a set weight
+  const isBarbell = exName ? (
+    /barbell|bench press|squat|deadlift|romanian|good morning|hip thrust|landmine|t-bar|bent[- ]?over row|pendlay|sumo|conventional|front squat|back squat|overhead press|ohp|push press|jerk|clean|snatch|trap bar/i.test(exName)
+    && !/dumbbell|db |kettlebell|kb |smith machine|machine|cable|band/i.test(exName)
+  ) : false;
+  const platesBreakdown = useMemo(() => {
+    if (!isBarbell || !set.weight || isCardio || set.type === "warmup") return null;
+    return calcPlatesPerSide(set.weight, unit);
+  }, [isBarbell, set.weight, set.type, unit, isCardio]);
+
   // Progressive overload suggestion (only for working sets, not warmups, not completed, not cardio)
   const suggestion = useMemo(() => {
     if (!exName || isDone || set.type === "warmup" || isCardio) return null;
@@ -1356,48 +1392,71 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              if (showTypeMenu) { setShowTypeMenu(false); return; }
+              const r = e.currentTarget.getBoundingClientRect();
+              // Anchor dropdown just below the button. If it would overflow bottom of viewport, anchor above instead.
+              const menuHeight = 200; // approximate
+              const spaceBelow = window.innerHeight - r.bottom;
+              const top = spaceBelow < menuHeight + 20 ? r.top - menuHeight - 4 : r.bottom + 6;
+              setMenuPos({ top, left: r.left });
               setShowTypeMenu(true);
             }}
             style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"manipulation", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
         </div>
-        {showTypeMenu && createPortal(
-          <div onClick={() => setShowTypeMenu(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:9998, display:"flex", alignItems:"flex-end", touchAction:"manipulation" }}>
-            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{
-              background:C.bg, width:"100%", maxWidth:480, margin:"0 auto",
-              borderRadius:"20px 20px 0 0", padding:"12px 14px 28px",
-              borderTop:`1px solid ${C.border}`,
+        {showTypeMenu && menuPos && createPortal(
+          <>
+            {/* Transparent backdrop to catch outside taps */}
+            <div onClick={() => setShowTypeMenu(false)} style={{ position:"fixed", inset:0, zIndex:9998, touchAction:"manipulation" }}/>
+            {/* Compact dropdown - Seshd style */}
+            <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
+              position:"fixed",
+              top:menuPos.top,
+              left:Math.max(8, Math.min(menuPos.left, window.innerWidth - 196)),
+              zIndex:9999,
+              background:C.bg,
+              border:`1px solid ${C.border}`,
+              borderRadius:14,
+              padding:4,
+              minWidth:188,
+              boxShadow:"0 18px 40px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.08)",
+              fontFamily:F,
+              overflow:"hidden",
             }}>
-              <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 12px" }}/>
-              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10, paddingLeft:4 }}>SET TYPE</div>
-              {SET_TYPES.map((t, i) => (
-                <button
-                  key={t.id}
-                  onClick={() => { onUpdate({ type: t.id }); setShowTypeMenu(false); }}
-                  style={{
-                    width:"100%", display:"flex", alignItems:"center", gap:10,
-                    background: t.id === set.type ? `${t.color}10` : "transparent",
-                    border: `1px solid ${t.id === set.type ? t.color + "40" : C.border}`,
-                    borderRadius:12, padding:"10px 12px",
-                    fontSize:14, fontWeight:600,
-                    color: t.id === set.type ? t.color : C.text,
-                    cursor:"pointer", fontFamily:F,
-                    marginBottom: i < SET_TYPES.length - 1 ? 6 : 0,
-                    textAlign:"left",
-                  }}>
-                  <div style={{
-                    width:26, height:26, borderRadius:7, flexShrink:0,
-                    background: `${t.color}20`, color: t.color,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:11, fontWeight:800, fontFamily:MONO,
-                  }}>{t.short}</div>
-                  <span style={{ flex:1 }}>{t.label}</span>
-                  {t.id === set.type && (
-                    <Icon name="check" size={14} color={t.color} strokeWidth={3}/>
-                  )}
-                </button>
-              ))}
+              {SET_TYPES.map((t, i) => {
+                const isCurrent = t.id === set.type;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { onUpdate({ type: t.id }); setShowTypeMenu(false); }}
+                    style={{
+                      width:"100%", display:"flex", alignItems:"center", gap:11,
+                      background: isCurrent ? C.divider : "transparent",
+                      border:"none",
+                      borderRadius:10,
+                      padding:"10px 10px",
+                      fontSize:14, fontWeight:600,
+                      color: C.text,
+                      cursor:"pointer", fontFamily:F,
+                      textAlign:"left",
+                      letterSpacing:-0.2,
+                    }}>
+                    <div style={{
+                      width:26, height:26, borderRadius:7, flexShrink:0,
+                      background: `${t.color}18`,
+                      color: t.color,
+                      border: `1.5px solid ${t.color}40`,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:11, fontWeight:800, fontFamily:MONO,
+                    }}>{t.short}</div>
+                    <span style={{ flex:1 }}>{t.label}</span>
+                    {isCurrent && (
+                      <div style={{ width:6, height:6, borderRadius:"50%", background:C.text, flexShrink:0, marginRight:4 }}/>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          </div>,
+          </>,
           document.body
         )}
 
@@ -1479,6 +1538,24 @@ const SetRow = memo(function SetRow({ set, si, exName, store, unit, repsTarget, 
           {est1RM && !isCardio && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
         </div>
       </div>
+      {platesBreakdown && platesBreakdown.length > 0 && (
+        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:5, paddingTop:5, borderTop:`1px solid ${C.divider}30`, flexWrap:"wrap" }}>
+          <span style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:0.5, marginRight:2 }}>PLATES/SIDE</span>
+          {platesBreakdown.map((p, i) => (
+            <div key={i} style={{
+              display:"flex", alignItems:"center", gap:3,
+              padding:"1px 6px",
+              background: `${PLATE_COLOR_MAP[p.p] || C.muted}18`,
+              border: `1px solid ${PLATE_COLOR_MAP[p.p] || C.muted}40`,
+              borderRadius:5,
+              fontSize:10, fontWeight:700, fontFamily:MONO,
+              color: PLATE_COLOR_MAP[p.p] || C.text,
+            }}>
+              {p.count}<span style={{ opacity:0.6 }}>×</span>{p.p}
+            </div>
+          ))}
+        </div>
+      )}
       </div>{/* end swipeable content div */}
     </div>
   );
@@ -1930,7 +2007,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
   }
 
   const activeDay = days[activeDayIdx] || days[0];
-  const isDark = C.bg === "#000000" || C.bg === "#000";
+  const isDark = C.bg === "#0a0a0c";
   const surface = isDark ? "#141414" : "#F8FAFC";
   const border = isDark ? "#222" : "#E8ECF0";
   const inputBg = isDark ? "#1e1e1e" : "#fff";
@@ -2314,7 +2391,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
       )}
 
       {post.type === "workout" && post.workout && (() => {
-        const isDark = C.bg === "#000000" || C.bg === "#000";
+        const isDark = C.bg === "#0a0a0c";
         return (
           <div style={{ margin:"0 14px", borderRadius:16, overflow:"hidden", border:`1px solid ${C.border}` }}>
             {/* Header band */}
@@ -2435,7 +2512,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                   display:"flex", alignItems:"center", gap:10,
                   width:"100%", marginTop:6, marginBottom:5,
                   padding:"10px 12px",
-                  background: C.bg === "#000000" || C.bg === "#000" ? "#141414" : "#F4F6FA",
+                  background: C.bg === "#0a0a0c" ? "#141414" : "#F4F6FA",
                   border:`1px solid ${C.border}`, borderRadius:10, cursor:"pointer", fontFamily:F,
                   textAlign:"left",
                 }}>
@@ -2588,7 +2665,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   function addEx() { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:[...(d.exercises||[]),{name:"",sets:3,reps:"8-12",rest:"90",note:""}]})}); }
   function removeEx(ei) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.filter((_,xi)=>xi!==ei)})}); }
 
-  const isDark = C.bg === "#000000" || C.bg === "#000";
+  const isDark = C.bg === "#0a0a0c";
   const CARD = isDark ? "#141414" : "#FFFFFF";
   const BG   = isDark ? "#0a0a0a" : "#F4F6FA";
   const BORD = isDark ? "#222"    : "#E8ECF0";
@@ -3101,6 +3178,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             } catch {}
             try { if (navigator.vibrate) navigator.vibrate([200,100,200,100,400]); } catch {}
             try { toast("Rest is up — go", "success"); } catch {}
+            // System notification — shows in the notification tray even if the app is backgrounded
+            try {
+              if ("Notification" in window && Notification.permission === "granted" && document.visibilityState !== "visible") {
+                new Notification("Rest's up — back to work", {
+                  body: "Go hit your next set",
+                  icon: "/icon-192.png",
+                  badge: "/icon-192.png",
+                  tag: "seshd-rest",
+                  silent: false,
+                });
+              }
+            } catch {}
             try {
               if ("Notification" in window && Notification.permission === "granted") {
                 new Notification("Rest time's up 🔥", { body:"Get back to it.", icon:"/icon-192.png", tag:"rest-timer" });
@@ -3586,7 +3675,35 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       style={{ width:"100%", background:"none", border:"none", padding:"3px 0", fontSize:11, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box", marginTop:4 }}
                     />
                   </div>
-                  <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                  <div style={{ display:"flex", gap:4, flexShrink:0, alignItems:"center" }}>
+                    {session.exercises.length > 1 && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+                        <button
+                          onClick={() => setSession(p => {
+                            if (ei === 0) return p;
+                            const arr = [...p.exercises];
+                            [arr[ei-1], arr[ei]] = [arr[ei], arr[ei-1]];
+                            return { ...p, exercises: arr };
+                          })}
+                          disabled={ei === 0}
+                          aria-label="Move up"
+                          style={{ background: ei === 0 ? "transparent" : C.divider, border:"none", borderRadius:6, width:24, height:18, cursor: ei === 0 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, opacity: ei === 0 ? 0.3 : 1 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button
+                          onClick={() => setSession(p => {
+                            if (ei === p.exercises.length - 1) return p;
+                            const arr = [...p.exercises];
+                            [arr[ei+1], arr[ei]] = [arr[ei], arr[ei+1]];
+                            return { ...p, exercises: arr };
+                          })}
+                          disabled={ei === session.exercises.length - 1}
+                          aria-label="Move down"
+                          style={{ background: ei === session.exercises.length - 1 ? "transparent" : C.divider, border:"none", borderRadius:6, width:24, height:18, cursor: ei === session.exercises.length - 1 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, opacity: ei === session.exercises.length - 1 ? 0.3 : 1 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                      </div>
+                    )}
                     {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
                     <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) }))} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
@@ -4752,7 +4869,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const [viewingExercise, setViewingExercise] = useState(null);
   const [shareModal, setShareModal] = useState(null);
 
-  const isDark = C.bg === "#000000" || C.bg === "#000";
+  const isDark = C.bg === "#0a0a0c";
   const BG    = isDark ? "#0a0a0a" : "#F4F6FA";
   const CARD  = isDark ? "#141414" : "#FFFFFF";
   const BORD  = isDark ? "#222"    : "#E8ECF0";
@@ -5799,15 +5916,24 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
         if (!doneSets.length) continue;
         const maxW = Math.max(...doneSets.map(s => cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit)));
         const vol = doneSets.reduce((a, s) => a + (cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit)) * (parseFloat(s.reps)||0), 0);
+        // Best estimated 1RM across all done sets in this session
+        const e1rm = Math.max(...doneSets.map(s => {
+          const w = cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit);
+          const r = parseInt(s.reps) || 0;
+          return calc1RM(w, r) || 0;
+        }));
         const d = new Date(dk);
         const label = `${d.getMonth()+1}/${d.getDate()}`;
-        points.push({ label, weight: maxW, volume: vol, date: dk, sets: doneSets.length });
+        points.push({ label, weight: maxW, volume: vol, e1rm, date: dk, sets: doneSets.length });
       }
     }
     return points;
   }, [store.history, name, unit]);
 
-  const chartData = historyData.map(p => ({ label: p.label, value: chartMode === "weight" ? p.weight : p.volume }));
+  const chartData = historyData.map(p => ({
+    label: p.label,
+    value: chartMode === "weight" ? p.weight : chartMode === "e1rm" ? p.e1rm : p.volume
+  }));
   const totalSets = historyData.reduce((a, p) => a + p.sets, 0);
   const totalVol = historyData.reduce((a, p) => a + p.volume, 0);
   const sessions = historyData.length;
@@ -5856,13 +5982,13 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <div style={{ fontSize:13, fontWeight:600, color:C.text }}>Progress</div>
             <div style={{ display:"flex", background:C.divider, borderRadius:16, padding:2 }}>
-              {["weight","volume"].map(m => (
+              {[["weight","Max"],["e1rm","Est 1RM"],["volume","Volume"]].map(([m, label]) => (
                 <button key={m} onClick={() => setChartMode(m)} style={{
                   padding:"4px 10px", borderRadius:14, border:"none",
                   background: chartMode===m ? C.accent : "transparent",
                   color: chartMode===m ? "#fff" : C.sub,
                   fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
-                }}>{m === "weight" ? "Max Weight" : "Volume"}</button>
+                }}>{label}</button>
               ))}
             </div>
           </div>
@@ -6167,26 +6293,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                               // Optimistic local update
                               setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:next} : x));
 
-                              const isOwnPost = post.user_id === currentUserId;
-
-                              // Persist self-reaction to localStorage so it survives refresh
-                              // (RLS may block self-PATCH on own group posts)
-                              setStore(prevStore => {
-                                const selfKey = `group_${post.id}`;
-                                const newHI = { ...(prevStore.historyInteractions || {}) };
-                                if (active) {
-                                  // Unreact - mark explicit removal
-                                  newHI[selfKey] = { ...(newHI[selfKey] || {}), selfReaction: null };
-                                } else {
-                                  newHI[selfKey] = { ...(newHI[selfKey] || {}), selfReaction: emoji };
-                                }
-                                return { ...prevStore, historyInteractions: newHI };
-                              });
-
-                              // Own post: skip DB call (RLS blocks self-PATCH), keep optimistic + local persist
-                              if (isOwnPost) return;
-
-                              // Persist to DB for other people's posts
+                              // Persist to DB - RLS now allows any authenticated user to update reactions
                               if (token) {
                                 try {
                                   const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
@@ -6200,7 +6307,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                                   });
                                   if (!res.ok) {
                                     console.error("reaction save failed:", res.status, await res.text().catch(()=>""));
-                                    toast("Couldn't save reaction — run SQL migration", "error");
+                                    toast("Couldn't save reaction", "error");
                                     setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:prev} : x));
                                   }
                                 } catch (e) {
