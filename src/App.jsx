@@ -375,6 +375,28 @@ const EXERCISE_DB = [
   { name:"Assault Bike", muscle:"Cardio" },
   { name:"Ski Erg", muscle:"Cardio" },
   { name:"Incline Walk", muscle:"Cardio" },
+  // ── YOGA / MIND-BODY ──────────────────────────────────────────────────────
+  // Tracked by duration (no weight, no reps) — similar to cardio but its own category.
+  // Covers the major styles users would actually search for.
+  { name:"Vinyasa Flow", muscle:"Yoga" },
+  { name:"Hatha Yoga", muscle:"Yoga" },
+  { name:"Ashtanga Yoga", muscle:"Yoga" },
+  { name:"Yin Yoga", muscle:"Yoga" },
+  { name:"Restorative Yoga", muscle:"Yoga" },
+  { name:"Power Yoga", muscle:"Yoga" },
+  { name:"Bikram / Hot Yoga", muscle:"Yoga" },
+  { name:"Iyengar Yoga", muscle:"Yoga" },
+  { name:"Kundalini Yoga", muscle:"Yoga" },
+  { name:"Sivananda Yoga", muscle:"Yoga" },
+  { name:"Acro Yoga", muscle:"Yoga" },
+  { name:"Yoga Nidra", muscle:"Yoga" },
+  { name:"Prenatal Yoga", muscle:"Yoga" },
+  { name:"Chair Yoga", muscle:"Yoga" },
+  { name:"Sun Salutation", muscle:"Yoga" },
+  { name:"Pilates", muscle:"Yoga" },
+  { name:"Mobility Flow", muscle:"Yoga" },
+  { name:"Stretching", muscle:"Yoga" },
+  { name:"Meditation", muscle:"Yoga" },
 ];
 
 
@@ -467,6 +489,7 @@ function MuscleIcon({ muscle = "", size = 28, C }) {
     calves:"#06b6d4", core:"#84cc16", abs:"#84cc16", traps:"#6366f1", forearms:"#eab308",
     "full body":"#2563eb", "rear delts":"#8b5cf6", "shoulders/traps":"#8b5cf6",
     "chest/tris":"#ef4444", "quads/glutes":"#10b981",
+    cardio:"#ef4444", yoga:"#a855f7", // duration-based exercises
   };
   const color = colors[m] || C?.accent || "#2563eb";
   const isDark = C?.bg === "#0a0a0c";
@@ -1238,7 +1261,6 @@ function loadStore() {
     historyInteractions: {},
     workoutDates: {},
     weeklyTarget: 3, // default: 3 workouts/week for streak system
-    tintedTabs: false, // opt-in: subtly warm tracker, cool social tabs
     seenOnboarding: true,
   };
 }
@@ -1605,7 +1627,7 @@ function Heatmap({ workoutDates, history, C, onDayTap }) {
       {view === "heat" && (
         <>
           {/* Heatmap grid */}
-          <div style={{ overflowX:"auto", paddingBottom:4 }}>
+          <div data-no-tab-swipe style={{ overflowX:"auto", paddingBottom:4, WebkitOverflowScrolling:"touch", touchAction:"pan-x" }}>
             {/* Month labels */}
             <div style={{ display:"flex", gap:3, marginBottom:2, paddingLeft:0 }}>
               {cols.map((col, ci) => {
@@ -1892,9 +1914,10 @@ const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarg
   const est1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
   const isDone = set.done;
 
-  // Cardio mode detection — show duration + distance inputs instead of weight + reps
+  // Duration-based exercise detection — show duration input instead of weight + reps.
+  // Cardio (running, biking) tracks duration + distance. Yoga tracks duration only.
   const exMuscle = exName ? EXERCISE_DB.find(e => e.name === exName)?.muscle : null;
-  const isCardio = exMuscle === "Cardio";
+  const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
 
   // Barbell detection — show plate breakdown inline when this is a barbell move with a set weight
   // Match common barbell movement names; exclude dumbbell/kettlebell/machine/cable variants
@@ -2617,7 +2640,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
       </div>
 
       {/* Day tabs */}
-      <div style={{ display:"flex", gap:6, padding:"12px 18px", borderBottom:`1px solid ${border}`, overflowX:"auto", flexShrink:0 }}>
+      <div data-no-tab-swipe style={{ display:"flex", gap:6, padding:"12px 18px", borderBottom:`1px solid ${border}`, overflowX:"auto", flexShrink:0, touchAction:"pan-x" }}>
         {days.map((d, i) => (
           <button key={d.id} onClick={() => setActiveDayIdx(i)} style={{
             padding:"7px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:F,
@@ -5018,7 +5041,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const set = ex?.sets?.[focusedSet.si];
           if (!ex || !set) return null;
           const exMuscle = ex.name ? EXERCISE_DB.find(e => e.name === ex.name)?.muscle : null;
-          const isCardio = exMuscle === "Cardio";
+          const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
           const weightAdj = isCardio ? [-1, 1, 5] : [-2.5, 2.5, 5];
           const repsAdj = [-1, 1, 5];
           const applyWeight = (d) => {
@@ -5566,8 +5589,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             {exerciseSearch && <button onClick={() => setExerciseSearch("")} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.sub, fontSize:16, cursor:"pointer" }}>×</button>}
           </div>
           {/* Filter Pills */}
-          <div style={{ display:"flex", gap:6, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
-            {["All","Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Traps","Forearms","Full Body","Cardio"].map(f => (
+          <div data-no-tab-swipe style={{ display:"flex", gap:6, marginBottom:14, overflowX:"auto", paddingBottom:4, WebkitOverflowScrolling:"touch", touchAction:"pan-x" }}>
+            {["All","Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Traps","Forearms","Full Body","Cardio","Yoga"].map(f => (
               <button key={f} onClick={() => setExerciseFilter(f)} style={{
                 padding:"5px 12px", background: exerciseFilter===f ? C.accent : C.divider,
                 border:"none", borderRadius:20, fontSize:11, fontWeight:600,
@@ -5609,7 +5632,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginTop:20, marginBottom:10 }}>
             BROWSE ALL · {EXERCISE_DB.length}
           </div>
-          {["Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Full Body","Traps","Forearms"].map(group => {
+          {["Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Full Body","Traps","Forearms","Cardio","Yoga"].map(group => {
             const exercises = EXERCISE_DB.filter(e => {
               const matchSearch = !exerciseSearch || e.name.toLowerCase().includes(exerciseSearch.toLowerCase());
               const matchFilter = exerciseFilter === "All" || (e.muscle||"").toLowerCase().includes(exerciseFilter.toLowerCase());
@@ -6786,6 +6809,8 @@ const MUSCLE_CUES = {
   glutes: { cues:["Full hip extension","Squeeze at top","Posterior pelvic tilt","Drive through heels"], mistakes:["No lockout","Lumbar hyperextension","Rushing"] },
   calves: { cues:["Full stretch at bottom","Pause at top","Slow and controlled","Full ROM"], mistakes:["Bouncing","Partial range","Too fast"] },
   core: { cues:["Brace don't suck in","Exhale on effort","Control the movement","Neutral spine"], mistakes:["Holding breath","Hip flexor dominance","Momentum"] },
+  cardio: { cues:["Warm up gradually","Maintain steady breathing rhythm","Land softly with midfoot","Keep posture upright"], mistakes:["Starting too fast","Heel striking hard","Tensing shoulders"] },
+  yoga: { cues:["Match breath to movement","Engage your core in every pose","Soften the jaw and shoulders","Hold poses with intent, not strain"], mistakes:["Holding breath","Pushing past pain","Comparing to others","Skipping the cool down"] },
 };
 
 function getCues(name, muscle) {
@@ -6881,9 +6906,8 @@ const WGER_IDS = {
 function ExerciseAnimation({ name, muscle, C }) {
   const [gifUrl, setGifUrl] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [muscles, setMuscles] = useState(null);
-  const [fetchError, setFetchError] = useState(null);
-  const CACHE_KEY = "seshd_exercise_gifs_v1";
+  // Bump cache version to invalidate any wrong images cached from old search-fallback code
+  const CACHE_KEY = "seshd_exercise_gifs_v2";
 
   useEffect(() => {
     let cancelled = false;
@@ -6891,75 +6915,57 @@ function ExerciseAnimation({ name, muscle, C }) {
 
     async function fetchGif() {
       setLoading(true);
-      setFetchError(null);
+      setGifUrl(null);
 
       // Cache check
       try {
         const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-        if (cache[name]) {
-          if (!cancelled) { setGifUrl(cache[name].gif); setMuscles(cache[name].muscles); setLoading(false); }
+        if (cache[name] !== undefined) {
+          // cached null means "we tried, no image available — don't try again"
+          if (!cancelled) { setGifUrl(cache[name]); setLoading(false); }
           return;
         }
       } catch {}
 
-      // Hard timeout — show muscle icon after 6s if nothing loads
-      timeoutId = setTimeout(() => {
-        if (!cancelled) { setLoading(false); }
-      }, 6000);
-
-      async function tryFetch(url) {
-        const res = await fetch(url, { headers: { "Accept":"application/json" } });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      }
-
-      // 1. Try direct ID if we have it
+      // Only fetch when we have a confirmed WGER ID mapping. The search-based fallback
+      // returned wrong images too often (a chest exercise returning a crunch illustration etc.)
+      // so we now treat absence of a confirmed mapping as "show our anatomical fallback".
       const baseId = WGER_IDS[name];
-      if (baseId) {
+      if (!baseId) {
+        if (!cancelled) { setGifUrl(null); setLoading(false); }
         try {
-          const imgData = await tryFetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${baseId}&format=json`);
-          const img = imgData?.results?.[0]?.image;
-          if (img && !cancelled) {
-            clearTimeout(timeoutId);
-            const m = { target: muscle, secondary: [], bodyPart: muscle };
-            setGifUrl(img); setMuscles(m); setLoading(false);
-            try {
-              const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-              cache[name] = { gif: img, muscles: m };
-              if (Object.keys(cache).length > 200) delete cache[Object.keys(cache)[0]];
-              localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-            } catch {}
-            return;
-          }
+          const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+          cache[name] = null; // record "no image available"
+          if (Object.keys(cache).length > 300) delete cache[Object.keys(cache)[0]];
+          localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
         } catch {}
+        return;
       }
 
-      // 2. Search fallback
-      const queries = [name.toLowerCase(), toWgerQuery(name)].filter((q,i,a) => q && a.indexOf(q)===i);
-      for (const q of queries) {
-        try {
-          const searchData = await tryFetch(`https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(q)}&language=english&format=json`);
-          const s = searchData?.suggestions?.[0];
-          const bid = s?.data?.base_id || s?.data?.id;
-          if (!bid) continue;
-          const imgData = await tryFetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${bid}&format=json`);
-          const img = imgData?.results?.[0]?.image;
-          if (img && !cancelled) {
-            clearTimeout(timeoutId);
-            const m = { target: muscle, secondary: [], bodyPart: muscle };
-            setGifUrl(img); setMuscles(m); setLoading(false);
-            try {
-              const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-              cache[name] = { gif: img, muscles: m };
-              if (Object.keys(cache).length > 200) delete cache[Object.keys(cache)[0]];
-              localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-            } catch {}
-            return;
-          }
-        } catch {}
-      }
+      // Hard timeout — show fallback after 5s if network is slow
+      timeoutId = setTimeout(() => { if (!cancelled) setLoading(false); }, 5000);
 
-      if (!cancelled) { clearTimeout(timeoutId); setLoading(false); }
+      try {
+        const res = await fetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${baseId}&format=json`, {
+          headers: { "Accept":"application/json" }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const imgData = await res.json();
+        const img = imgData?.results?.[0]?.image;
+        if (cancelled) return;
+        clearTimeout(timeoutId);
+        setGifUrl(img || null);
+        setLoading(false);
+        // Cache result (including null if no image found)
+        try {
+          const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+          cache[name] = img || null;
+          if (Object.keys(cache).length > 300) delete cache[Object.keys(cache)[0]];
+          localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+      } catch {
+        if (!cancelled) { setGifUrl(null); setLoading(false); }
+      }
     }
 
     fetchGif();
@@ -6980,24 +6986,16 @@ function ExerciseAnimation({ name, muscle, C }) {
       {gifUrl ? (
         <img src={gifUrl} alt={name} style={{ width:"100%", maxHeight:300, objectFit:"contain", display:"block", background:"#fff" }}/>
       ) : (
-        <div style={{ height:200, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10, padding:"0 20px" }}>
-          <MuscleIcon muscle={muscle} size={52} C={C}/>
-          <div style={{ fontSize:11, color:C.sub, textAlign:"center" }}>{name}</div>
-          {fetchError && <div style={{ fontSize:10, color:"#ef4444", textAlign:"center", marginTop:4 }}>API error: {fetchError}</div>}
-        </div>
-      )}
-      {muscles && (
-        <div style={{ padding:"10px 14px", display:"flex", gap:8, flexWrap:"wrap", background:C.bg }}>
-          {muscles.target && (
-            <span style={{ background:C.accent, color:"#fff", borderRadius:12, padding:"3px 10px", fontSize:11, fontWeight:600, textTransform:"capitalize" }}>
-              🎯 {muscles.target}
-            </span>
-          )}
-          {(muscles.secondary || []).slice(0,3).map(m => (
-            <span key={m} style={{ background:C.divider, color:C.sub, borderRadius:12, padding:"3px 10px", fontSize:11, textTransform:"capitalize" }}>
-              {m}
-            </span>
-          ))}
+        <div style={{
+          minHeight:200, display:"flex", alignItems:"center", justifyContent:"center",
+          flexDirection:"column", gap:14, padding:"30px 20px",
+          background: C.surface,
+        }}>
+          <MuscleIcon muscle={muscle} size={72} C={C}/>
+          <div style={{ fontSize:13, color:C.text, fontWeight:600, textAlign:"center", letterSpacing:-0.2 }}>{name}</div>
+          <div style={{ fontSize:11, color:C.sub, textAlign:"center", letterSpacing:0.4, fontWeight:600 }}>
+            {muscle?.toUpperCase()}
+          </div>
         </div>
       )}
     </div>
@@ -7213,7 +7211,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
 
         {/* How To */}
         <div style={{ margin:"0 16px 16px" }}>
-          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>HOW TO DO IT</div>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>TIPS</div>
           <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
             {cueData.cues.map((cue, i) => (
               <div key={i} style={{
@@ -8398,36 +8396,6 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                       }}>{n}</button>
                     ))}
                   </div>
-                </div>
-              </div>
-
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>APPEARANCE</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
-                  <div style={{ flex:1, paddingRight:12 }}>
-                    <div style={{ fontSize:14, color:C.text }}>Tinted tabs</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Subtly warm the tracker, cool the social tabs</div>
-                  </div>
-                  {/* iOS-style toggle switch */}
-                  <button
-                    onClick={() => setStore(p => ({ ...p, tintedTabs: !p.tintedTabs }))}
-                    role="switch"
-                    aria-checked={!!store.tintedTabs}
-                    style={{
-                      width:44, height:26, borderRadius:13,
-                      background: store.tintedTabs ? C.accent : C.divider,
-                      border:"none", padding:0, position:"relative",
-                      cursor:"pointer", transition:"background 0.18s ease",
-                      flexShrink:0,
-                    }}>
-                    <div style={{
-                      width:22, height:22, borderRadius:"50%",
-                      background:"#fff", position:"absolute", top:2,
-                      left: store.tintedTabs ? 20 : 2,
-                      transition:"left 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                      boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
-                    }}/>
-                  </button>
                 </div>
               </div>
 
@@ -9990,17 +9958,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  // Tinted tabs — opt-in setting that subtly warms/cools the app background per tab.
-  // Tracker = warm (slight orange bias). Feed/Activity = cool (slight blue bias).
-  // The shift is intentionally tiny (~2 RGB units) so it's felt subliminally without breaking continuity.
-  const tintedBg = useMemo(() => {
-    if (!store.tintedTabs) return C.bg;
-    const isDark = C.bg === "#0a0a0c";
-    if (tab === "tracker") return isDark ? "#0c0a09" : "#fffdfb";
-    if (tab === "feed" || tab === "activity") return isDark ? "#0a0a0d" : "#fbfcff";
-    return C.bg; // groups, discover, profile stay neutral
-  }, [tab, store.tintedTabs, C.bg]);
-
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
     return (
@@ -10256,7 +10213,7 @@ export default function App() {
           if (idx < TABS_ORDER.length - 1) switchTab(TABS_ORDER[idx + 1]);
         }
       }}
-      style={{ background:tintedBg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", transition:"background 0.4s ease-out" }}
+      style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
     >
       {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
       <style>{`
