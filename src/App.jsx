@@ -983,19 +983,51 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
 }
 
 // Haptic helpers - tiered patterns
+// Haptic feedback vocabulary
+//
+// Each `kind` produces a different vibration pattern. The goal is for users
+// to start subconsciously associating certain feels with certain actions —
+// the way iOS uses crisp/soft/heavy for different interactions.
+//
+// Web Vibration API takes either a single ms or an array of [vibrate, pause, vibrate, ...].
+// Most users on iOS won't feel these (Safari doesn't support navigator.vibrate)
+// but Android and Capacitor-wrapped builds will. The patterns degrade gracefully.
 function haptic(kind) {
   try {
     if (!navigator.vibrate) return;
     switch (kind) {
-      case "tap":      navigator.vibrate(10); break;
-      case "light":    navigator.vibrate(15); break;
-      case "medium":   navigator.vibrate(25); break;
-      case "complete": navigator.vibrate(30); break;
-      case "undo":     navigator.vibrate(12); break;
-      case "delete":   navigator.vibrate([30, 30, 30]); break;
-      case "pr":       navigator.vibrate([20, 40, 20, 40, 80]); break;
-      case "lock":     navigator.vibrate(8); break;
-      case "warn":     navigator.vibrate([30, 60, 30]); break;
+      // ── Standard taps ───────────────────────────────────────────────
+      case "tap":      navigator.vibrate(8); break;   // generic button press, very subtle
+      case "light":    navigator.vibrate(12); break;  // chip/toggle selection
+      case "medium":   navigator.vibrate(20); break;  // set checked (not last)
+      case "heavy":    navigator.vibrate(35); break;  // important confirmation
+
+      // ── Workout flow ────────────────────────────────────────────────
+      case "complete": navigator.vibrate(28); break;          // last set of exercise done
+      case "rest-end": navigator.vibrate([60, 80, 60]); break; // rest timer fires
+      case "lock":     navigator.vibrate(6); break;            // swipe-to-done lock detent
+
+      // ── PR celebration — tiered by magnitude ────────────────────────
+      case "pr-small": navigator.vibrate([15, 30, 15, 30, 40]); break;            // PR by 0-5%
+      case "pr":       navigator.vibrate([20, 40, 20, 40, 80]); break;            // standard PR
+      case "pr-big":   navigator.vibrate([25, 30, 25, 30, 25, 30, 120]); break;   // PR by 10%+
+
+      // ── Navigation ──────────────────────────────────────────────────
+      case "modal-in":  navigator.vibrate(10); break;  // open a sheet/modal
+      case "modal-out": navigator.vibrate(6); break;   // dismiss a sheet/modal
+      case "back":      navigator.vibrate(8); break;   // navigate backward
+      case "tab":       navigator.vibrate(12); break;  // switch tab
+
+      // ── Destructive ─────────────────────────────────────────────────
+      case "delete":   navigator.vibrate([30, 30, 30]); break;     // confirm delete
+      case "undo":     navigator.vibrate(12); break;               // undo
+      case "warn":     navigator.vibrate([30, 60, 30]); break;     // confirm warning
+
+      // ── Status ──────────────────────────────────────────────────────
+      case "success":  navigator.vibrate([15, 30, 30]); break;     // generic success (post sent etc)
+      case "error":    navigator.vibrate([40, 60, 40, 60, 40]); break; // operation failed
+      case "refresh":  navigator.vibrate([10, 20, 10]); break;     // pull-to-refresh tick
+
       default:         navigator.vibrate(15);
     }
   } catch {}
@@ -1206,6 +1238,7 @@ function loadStore() {
     historyInteractions: {},
     workoutDates: {},
     weeklyTarget: 3, // default: 3 workouts/week for streak system
+    tintedTabs: false, // opt-in: subtly warm tracker, cool social tabs
     seenOnboarding: true,
   };
 }
@@ -1265,6 +1298,27 @@ function Avatar({ user, size = 36, onClick, C, ring = false }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STREAK BADGE — minimal
 // ═════════════════════════════════════════════════════════════════════════════
+// Skeleton — animated placeholder block. Use to show shape of loading content
+// without flashing a blank list. Renders a subtle left-to-right shimmer that
+// works in light and dark mode. Matches Linear/Things 3 aesthetic — no rainbow,
+// no bouncing dots.
+function Skeleton({ width = "100%", height = 12, radius = 6, C, style }) {
+  // Two-tone gradient that translates across the element via background-position
+  // The colors are calibrated to be visible but not distracting in either theme.
+  const isDark = C?.bg === "#0a0a0c";
+  const baseColor = isDark ? "rgba(255,255,255,0.045)" : "rgba(0,0,0,0.04)";
+  const highlightColor = isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)";
+  return (
+    <div style={{
+      width, height, borderRadius:radius,
+      background: `linear-gradient(90deg, ${baseColor} 0%, ${highlightColor} 50%, ${baseColor} 100%)`,
+      backgroundSize:"200% 100%",
+      animation:"seshd-shimmer 1.6s ease-in-out infinite",
+      ...style,
+    }}/>
+  );
+}
+
 // PullToRefresh — wraps a scrollable area and triggers `onRefresh` when user
 // pulls past the threshold while at the top. iOS-style spring animation.
 function PullToRefresh({ onRefresh, C, children }) {
@@ -1301,7 +1355,7 @@ function PullToRefresh({ onRefresh, C, children }) {
     trackingRef.current = false;
     if (pull >= THRESHOLD && !refreshing) {
       setRefreshing(true);
-      haptic("medium");
+      haptic("refresh");
       try { await onRefresh?.(); } catch {}
       setRefreshing(false);
     }
@@ -1448,7 +1502,11 @@ function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // HEATMAP
 // ═════════════════════════════════════════════════════════════════════════════
-function Heatmap({ workoutDates, C }) {
+function Heatmap({ workoutDates, history, C, onDayTap }) {
+  const [view, setView] = useState("heat"); // "heat" | "cal"
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
+  });
   const weeks = 26; // 6 months
   const today = new Date(); today.setHours(0,0,0,0);
   const allDays = [];
@@ -1476,6 +1534,29 @@ function Heatmap({ workoutDates, C }) {
     }
   });
 
+  // Calendar view: build a Mon-first grid for the displayed month
+  const calData = useMemo(() => {
+    const monthStart = new Date(calMonth);
+    const monthEnd = new Date(calMonth); monthEnd.setMonth(monthEnd.getMonth() + 1); monthEnd.setDate(0);
+    const firstDow = monthStart.getDay(); // 0 Sun - 6 Sat
+    const leadingBlanks = firstDow === 0 ? 6 : firstDow - 1; // Mon-first
+    const daysInMonth = monthEnd.getDate();
+    const cells = [];
+    for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+    for (let i = 1; i <= daysInMonth; i++) {
+      const d = new Date(calMonth.getFullYear(), calMonth.getMonth(), i);
+      const k = dKey(d);
+      cells.push({
+        date: d,
+        k,
+        active: !!(workoutDates||{})[k],
+        isToday: dKey(d) === dKey(new Date()),
+        isFuture: d > today,
+      });
+    }
+    return cells;
+  }, [calMonth, workoutDates]);
+
   return (
     <div style={{ padding:"16px 0 8px" }}>
       {/* Stats strip */}
@@ -1495,44 +1576,115 @@ function Heatmap({ workoutDates, C }) {
         ))}
       </div>
 
-      {/* Heatmap grid */}
-      <div style={{ overflowX:"auto", paddingBottom:4 }}>
-        {/* Month labels */}
-        <div style={{ display:"flex", gap:3, marginBottom:2, paddingLeft:0 }}>
-          {cols.map((col, ci) => {
-            const ml = monthLabels.find(m => m.ci === ci);
-            return (
-              <div key={ci} style={{ width:12, fontSize:8, color:C.muted, textAlign:"center", flexShrink:0 }}>
-                {ml ? ml.label : ""}
-              </div>
-            );
-          })}
-        </div>
-        {/* Day rows (Mon/Wed/Fri labels) */}
-        <div style={{ display:"flex", gap:3 }}>
-          {cols.map((col, ci) => (
-            <div key={ci} style={{ display:"flex", flexDirection:"column", gap:3, flexShrink:0 }}>
-              {col.map((d, di) => (
-                <div key={di} title={d.k} style={{
-                  width:12, height:12, borderRadius:3,
-                  background: d.active
-                    ? C.accent
-                    : C.divider,
-                  opacity: d.active ? 1 : 0.5,
-                  transition:"opacity 0.2s",
-                }}/>
-              ))}
-            </div>
+      {/* View toggle — segmented */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+        <div style={{ display:"flex", background:C.divider, borderRadius:8, padding:2 }}>
+          {[["heat","Heatmap"],["cal","Calendar"]].map(([k, lbl]) => (
+            <button key={k} onClick={() => setView(k)} style={{
+              padding:"4px 12px", borderRadius:6, border:"none",
+              background: view === k ? C.bg : "transparent",
+              color: view === k ? C.text : C.sub,
+              fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F,
+              boxShadow: view === k ? `0 1px 2px ${C.divider}` : "none",
+            }}>{lbl}</button>
           ))}
         </div>
+        {view === "cal" && (
+          <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+            <button onClick={() => setCalMonth(p => { const n = new Date(p); n.setMonth(n.getMonth()-1); return n; })}
+              style={{ background:"none", border:"none", padding:"4px 6px", cursor:"pointer", color:C.sub, fontSize:14, fontFamily:F }}>‹</button>
+            <span style={{ fontSize:12, color:C.text, fontWeight:600, minWidth:80, textAlign:"center", fontFamily:MONO }}>
+              {calMonth.toLocaleDateString(undefined, { month:"short", year:"numeric" })}
+            </span>
+            <button onClick={() => setCalMonth(p => { const n = new Date(p); n.setMonth(n.getMonth()+1); return n; })}
+              style={{ background:"none", border:"none", padding:"4px 6px", cursor:"pointer", color:C.sub, fontSize:14, fontFamily:F }}>›</button>
+          </div>
+        )}
       </div>
-      <div style={{ display:"flex", justifyContent:"flex-end", alignItems:"center", gap:4, marginTop:6 }}>
-        <span style={{ fontSize:9, color:C.muted }}>Less</span>
-        {[0.2, 0.45, 0.7, 1].map(op => (
-          <div key={op} style={{ width:10, height:10, borderRadius:2, background:C.accent, opacity:op }}/>
-        ))}
-        <span style={{ fontSize:9, color:C.muted }}>More</span>
-      </div>
+
+      {view === "heat" && (
+        <>
+          {/* Heatmap grid */}
+          <div style={{ overflowX:"auto", paddingBottom:4 }}>
+            {/* Month labels */}
+            <div style={{ display:"flex", gap:3, marginBottom:2, paddingLeft:0 }}>
+              {cols.map((col, ci) => {
+                const ml = monthLabels.find(m => m.ci === ci);
+                return (
+                  <div key={ci} style={{ width:12, fontSize:8, color:C.muted, textAlign:"center", flexShrink:0 }}>
+                    {ml ? ml.label : ""}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Day rows (Mon/Wed/Fri labels) */}
+            <div style={{ display:"flex", gap:3 }}>
+              {cols.map((col, ci) => (
+                <div key={ci} style={{ display:"flex", flexDirection:"column", gap:3, flexShrink:0 }}>
+                  {col.map((d, di) => (
+                    <div key={di} title={d.k}
+                      onClick={() => d.active && onDayTap?.(d.k)}
+                      style={{
+                        width:12, height:12, borderRadius:3,
+                        background: d.active ? C.accent : C.divider,
+                        opacity: d.active ? 1 : 0.5,
+                        cursor: d.active ? "pointer" : "default",
+                        transition:"opacity 0.2s",
+                    }}/>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display:"flex", justifyContent:"flex-end", alignItems:"center", gap:4, marginTop:6 }}>
+            <span style={{ fontSize:9, color:C.muted }}>Less</span>
+            {[0.2, 0.45, 0.7, 1].map(op => (
+              <div key={op} style={{ width:10, height:10, borderRadius:2, background:C.accent, opacity:op }}/>
+            ))}
+            <span style={{ fontSize:9, color:C.muted }}>More</span>
+          </div>
+        </>
+      )}
+
+      {view === "cal" && (
+        <div>
+          {/* Day-of-week header — Mon-first */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:4, marginBottom:6 }}>
+            {["M","T","W","T","F","S","S"].map((d, i) => (
+              <div key={i} style={{ fontSize:10, color:C.muted, fontWeight:600, textAlign:"center", letterSpacing:0.5 }}>{d}</div>
+            ))}
+          </div>
+          {/* Day cells */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:4 }}>
+            {calData.map((cell, i) => {
+              if (!cell) return <div key={i}/>;
+              return (
+                <button
+                  key={cell.k}
+                  onClick={() => cell.active && onDayTap?.(cell.k)}
+                  disabled={!cell.active}
+                  style={{
+                    aspectRatio:"1 / 1",
+                    border:"none",
+                    background: cell.active ? C.accent : C.divider,
+                    color: cell.active ? "#fff" : (cell.isFuture ? C.muted : C.sub),
+                    opacity: cell.isFuture ? 0.35 : 1,
+                    fontSize:13, fontWeight: cell.isToday ? 800 : 600,
+                    fontFamily:MONO,
+                    borderRadius:8,
+                    cursor: cell.active ? "pointer" : "default",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    position:"relative",
+                    outline: cell.isToday ? `1.5px solid ${C.text}` : "none",
+                    outlineOffset:-1.5,
+                  }}>
+                  {cell.date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3973,7 +4125,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const wLbs = unit === "lbs" ? parseFloat(currentSet.weight) : cvt(parseFloat(currentSet.weight), "kg", "lbs");
           const currentPR = store.prs?.[currentExercise.name] || 0;
           if (wLbs > currentPR && wLbs > 0) {
-            haptic("pr");
+            // Tier the haptic by how big the PR is
+            const pctOver = currentPR > 0 ? (wLbs - currentPR) / currentPR : 1;
+            if (pctOver >= 0.10) haptic("pr-big");
+            else if (pctOver >= 0.05) haptic("pr");
+            else haptic("pr-small");
             setPrBurst(b => b + 1);
           } else {
             // Last set of an exercise gets a richer haptic + slight nod
@@ -5060,6 +5216,67 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })()}
 
+          {/* "On this day" — surfaces a comparable past workout for context */}
+          {(() => {
+            // Look back at meaningful intervals; pick the most distant one with data
+            const today = new Date(); today.setHours(0,0,0,0);
+            const candidates = [
+              { months: 12, label: "1 year ago" },
+              { months: 6, label: "6 months ago" },
+              { months: 3, label: "3 months ago" },
+              { months: 1, label: "1 month ago" },
+            ];
+            let match = null;
+            for (const c of candidates) {
+              const target = new Date(today);
+              target.setMonth(target.getMonth() - c.months);
+              // Allow a ±3 day window around the target date
+              for (let offset = -3; offset <= 3; offset++) {
+                const probe = new Date(target);
+                probe.setDate(probe.getDate() + offset);
+                const k = dKey(probe);
+                const day = store.history?.[k];
+                if (day && Object.keys(day).length > 0) {
+                  const session = Object.values(day)[0];
+                  match = { label: c.label, session, date: k, daysAway: Math.abs(offset) };
+                  break;
+                }
+              }
+              if (match) break;
+            }
+            if (!match) return null;
+
+            const vol = (match.session.exercises||[]).reduce((a, ex) => a + (ex.sets||[]).filter(s => s.done).reduce((b, s) => b + (parseFloat(s.weight)||0)*(parseFloat(s.reps)||0), 0), 0);
+            const setCount = (match.session.exercises||[]).reduce((a, ex) => a + (ex.sets||[]).filter(s => s.done).length, 0);
+
+            return (
+              <div style={{
+                background:C.surface, border:`1px solid ${C.border}`, borderRadius:14,
+                padding:"12px 14px", marginBottom:12,
+                display:"flex", alignItems:"center", gap:12,
+              }}>
+                <div style={{
+                  width:36, height:36, borderRadius:10, background:C.divider,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  flexShrink:0, color:C.sub,
+                }}>
+                  <Icon name="clock" size={16}/>
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:10, fontWeight:600, color:C.sub, letterSpacing:0.6, marginBottom:1 }}>
+                    {match.label.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize:13, color:C.text, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {match.session.dayName || "Workout"}
+                  </div>
+                  <div style={{ fontSize:11, color:C.sub, fontFamily:MONO, marginTop:1 }}>
+                    {setCount} sets · {Math.round(vol)} {match.session.unit || "lbs"}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Quick Start */}
           <button onClick={() => startWorkout(null)} style={{
             width:"100%", background:C.text, color:C.bg,
@@ -5424,7 +5641,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         <PullToRefresh onRefresh={onRefresh} C={C}>
           <div style={{ paddingBottom:24 }}>
           <div style={{ padding:"12px 14px 0" }}>
-            <Heatmap workoutDates={store.workoutDates} C={C}/>
+            <Heatmap
+              workoutDates={store.workoutDates}
+              history={store.history}
+              C={C}
+              onDayTap={(dk) => {
+                const el = document.querySelector(`[data-history-date="${dk}"]`);
+                if (el) {
+                  el.scrollIntoView({ behavior:"smooth", block:"center" });
+                  haptic("tap");
+                }
+              }}
+            />
           </div>
 
           {/* Volume chart - last 8 weeks */}
@@ -5500,7 +5728,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               </div>
             )}
             {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => (
-              <div key={date} style={{ marginBottom:16 }}>
+              <div key={date} data-history-date={date} style={{ marginBottom:16, scrollMarginTop:60 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
                   {new Date(date).toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
                 </div>
@@ -6862,6 +7090,19 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   const totalSets = historyData.reduce((a, p) => a + p.sets, 0);
   const totalVol = historyData.reduce((a, p) => a + p.volume, 0);
   const sessions = historyData.length;
+  const bestE1RM = historyData.reduce((m, p) => Math.max(m, p.e1rm || 0), 0);
+  const lastSession = historyData.length ? historyData[historyData.length - 1] : null;
+  const lastSessionAgo = (() => {
+    if (!lastSession) return null;
+    const days = Math.floor((Date.now() - new Date(lastSession.date).getTime()) / 86400000);
+    if (days === 0) return "today";
+    if (days === 1) return "1 day ago";
+    if (days < 7) return `${days} days ago`;
+    if (days < 30) return `${Math.floor(days/7)}w ago`;
+    return `${Math.floor(days/30)}mo ago`;
+  })();
+  // Last 3 sessions for the mini-recent list (newest first)
+  const recentSessions = historyData.slice(-3).reverse();
 
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
@@ -6886,19 +7127,68 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
           <ExerciseAnimation name={name} muscle={exInfo.muscle} C={C}/>
         </div>
 
-        {/* Stats strip */}
+        {/* Stats strip — 2x2 grid of key metrics */}
         {sessions > 0 && (
-          <div style={{ display:"flex", gap:0, margin:"0 16px 16px", border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-            {[
-              ["Sessions", sessions],
-              ["Total Sets", totalSets],
-              ["Volume", totalVol > 1000 ? `${(totalVol/1000).toFixed(1)}k` : Math.round(totalVol)],
-            ].map(([label, val], i) => (
-              <div key={label} style={{ flex:1, padding:"12px 8px", textAlign:"center", borderRight: i < 2 ? `1px solid ${C.divider}` : "none" }}>
-                <div style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>{val}</div>
-                <div style={{ fontSize:10, color:C.sub, marginTop:2 }}>{label}</div>
-              </div>
-            ))}
+          <div style={{ margin:"0 16px 14px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              {[
+                ["Last session", lastSessionAgo],
+                ["Sessions", sessions],
+                ["Best est 1RM", bestE1RM > 0 ? `${Math.round(bestE1RM)} ${unit}` : "—"],
+                ["Total volume", totalVol > 1000 ? `${(totalVol/1000).toFixed(1)}k ${unit}` : `${Math.round(totalVol)} ${unit}`],
+              ].map(([label, val]) => (
+                <div key={label} style={{
+                  background:C.surface,
+                  border:`1px solid ${C.border}`,
+                  borderRadius:10,
+                  padding:"10px 12px",
+                }}>
+                  <div style={{ fontSize:10, color:C.sub, fontWeight:600, letterSpacing:0.6, marginBottom:3 }}>
+                    {label.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.2 }}>
+                    {val}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent sessions — last 3 inline so user can scan what they did */}
+        {recentSessions.length > 0 && (
+          <div style={{ margin:"0 16px 16px" }}>
+            <div style={{ fontSize:11, color:C.sub, fontWeight:600, letterSpacing:0.6, marginBottom:8, paddingLeft:2 }}>
+              RECENT
+            </div>
+            <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", background:C.surface }}>
+              {recentSessions.map((s, i) => {
+                const d = new Date(s.date);
+                const dateLabel = d.toLocaleDateString(undefined, { month:"short", day:"numeric" });
+                return (
+                  <div key={s.date} style={{
+                    display:"flex", alignItems:"center", justifyContent:"space-between",
+                    padding:"11px 14px",
+                    borderBottom: i < recentSessions.length - 1 ? `1px solid ${C.divider}` : "none",
+                  }}>
+                    <div>
+                      <div style={{ fontSize:13, color:C.text, fontWeight:600 }}>{dateLabel}</div>
+                      <div style={{ fontSize:11, color:C.sub, marginTop:1, fontFamily:MONO }}>
+                        {s.sets} {s.sets === 1 ? "set" : "sets"}
+                      </div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontSize:13, color:C.text, fontWeight:700, fontFamily:MONO }}>
+                        {Math.round(s.weight)} <span style={{ fontSize:10, color:C.sub, fontWeight:500 }}>{unit}</span>
+                      </div>
+                      <div style={{ fontSize:10, color:C.sub, marginTop:1, fontFamily:MONO }}>
+                        {Math.round(s.volume)} vol
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -8111,6 +8401,36 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                 </div>
               </div>
 
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>APPEARANCE</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
+                  <div style={{ flex:1, paddingRight:12 }}>
+                    <div style={{ fontSize:14, color:C.text }}>Tinted tabs</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Subtly warm the tracker, cool the social tabs</div>
+                  </div>
+                  {/* iOS-style toggle switch */}
+                  <button
+                    onClick={() => setStore(p => ({ ...p, tintedTabs: !p.tintedTabs }))}
+                    role="switch"
+                    aria-checked={!!store.tintedTabs}
+                    style={{
+                      width:44, height:26, borderRadius:13,
+                      background: store.tintedTabs ? C.accent : C.divider,
+                      border:"none", padding:0, position:"relative",
+                      cursor:"pointer", transition:"background 0.18s ease",
+                      flexShrink:0,
+                    }}>
+                    <div style={{
+                      width:22, height:22, borderRadius:"50%",
+                      background:"#fff", position:"absolute", top:2,
+                      left: store.tintedTabs ? 20 : 2,
+                      transition:"left 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                      boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
+                    }}/>
+                  </button>
+                </div>
+              </div>
+
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ABOUT</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
@@ -8726,7 +9046,7 @@ export default function App() {
   const [tab, setTab] = useState("feed");
   const [prevTab, setPrevTab] = useState(null);
   const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
-  function switchTab(t) { setPrevTab(tab); setTab(t); }
+  function switchTab(t) { if (t !== tab) haptic("tab"); setPrevTab(tab); setTab(t); }
 
   // When user taps an Import button on a feed code, switch to tracker and re-dispatch
   useEffect(() => {
@@ -9670,6 +9990,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // Tinted tabs — opt-in setting that subtly warms/cools the app background per tab.
+  // Tracker = warm (slight orange bias). Feed/Activity = cool (slight blue bias).
+  // The shift is intentionally tiny (~2 RGB units) so it's felt subliminally without breaking continuity.
+  const tintedBg = useMemo(() => {
+    if (!store.tintedTabs) return C.bg;
+    const isDark = C.bg === "#0a0a0c";
+    if (tab === "tracker") return isDark ? "#0c0a09" : "#fffdfb";
+    if (tab === "feed" || tab === "activity") return isDark ? "#0a0a0d" : "#fbfcff";
+    return C.bg; // groups, discover, profile stay neutral
+  }, [tab, store.tintedTabs, C.bg]);
+
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
     return (
@@ -9925,7 +10256,7 @@ export default function App() {
           if (idx < TABS_ORDER.length - 1) switchTab(TABS_ORDER[idx + 1]);
         }
       }}
-      style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
+      style={{ background:tintedBg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", transition:"background 0.4s ease-out" }}
     >
       {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
       <style>{`
@@ -10201,22 +10532,25 @@ export default function App() {
                   )
                 )}
                 {feedPosts.length === 0 && isRefreshing && (
-                  // Skeleton loader
-                  <div style={{ padding:"0 14px" }}>
+                  // Skeleton loader — three placeholder post cards
+                  <div style={{ padding:"4px 14px 0" }}>
                     {[1,2,3].map(i => (
-                      <div key={i} style={{ marginBottom:16, borderBottom:`1px solid ${C.divider}`, paddingBottom:16 }}>
+                      <div key={i} style={{ marginBottom:18, paddingBottom:18, borderBottom:`1px solid ${C.divider}` }}>
+                        {/* Header — avatar + name + timestamp */}
                         <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:12 }}>
-                          <div style={{ width:40, height:40, borderRadius:"50%", background:C.divider, animation:"shimmer 1.2s ease-in-out infinite alternate" }}/>
-                          <div>
-                            <div style={{ width:100, height:12, borderRadius:6, background:C.divider, marginBottom:6 }}/>
-                            <div style={{ width:60, height:10, borderRadius:6, background:C.divider }}/>
+                          <Skeleton width={36} height={36} radius={18} C={C}/>
+                          <div style={{ flex:1 }}>
+                            <Skeleton width={110} height={11} C={C} style={{ marginBottom:5 }}/>
+                            <Skeleton width={60} height={9} C={C}/>
                           </div>
                         </div>
-                        <div style={{ width:"100%", height:180, borderRadius:12, background:C.divider, marginBottom:10 }}/>
-                        <div style={{ width:"70%", height:10, borderRadius:6, background:C.divider }}/>
+                        {/* Body — workout card placeholder */}
+                        <Skeleton width="100%" height={140} radius={12} C={C} style={{ marginBottom:10 }}/>
+                        {/* Caption + reactions */}
+                        <Skeleton width="65%" height={10} C={C} style={{ marginBottom:6 }}/>
+                        <Skeleton width="40%" height={10} C={C}/>
                       </div>
                     ))}
-                    <style>{`@keyframes shimmer{from{opacity:0.5}to{opacity:1}}`}</style>
                   </div>
                 )}
                 {feedPosts.map((post, i) => (
