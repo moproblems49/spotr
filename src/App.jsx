@@ -1265,6 +1265,147 @@ function Avatar({ user, size = 36, onClick, C, ring = false }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STREAK BADGE — minimal
 // ═════════════════════════════════════════════════════════════════════════════
+// PullToRefresh — wraps a scrollable area and triggers `onRefresh` when user
+// pulls past the threshold while at the top. iOS-style spring animation.
+function PullToRefresh({ onRefresh, C, children }) {
+  const [pull, setPull] = useState(0); // current pull distance in pixels
+  const [refreshing, setRefreshing] = useState(false);
+  const scrollRef = useRef(null);
+  const startYRef = useRef(0);
+  const trackingRef = useRef(false);
+  const THRESHOLD = 70;
+  const MAX_PULL = 120;
+
+  function onTouchStart(e) {
+    if (refreshing) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    // Only initiate pull when at the very top of the scrollable
+    if (el.scrollTop > 1) return;
+    startYRef.current = e.touches[0].clientY;
+    trackingRef.current = true;
+  }
+  function onTouchMove(e) {
+    if (!trackingRef.current || refreshing) return;
+    const dy = e.touches[0].clientY - startYRef.current;
+    if (dy <= 0) {
+      setPull(0);
+      return;
+    }
+    // Damped pull — gets harder as user pulls further
+    const damped = Math.min(MAX_PULL, dy * 0.55);
+    setPull(damped);
+  }
+  async function onTouchEnd() {
+    if (!trackingRef.current) return;
+    trackingRef.current = false;
+    if (pull >= THRESHOLD && !refreshing) {
+      setRefreshing(true);
+      haptic("medium");
+      try { await onRefresh?.(); } catch {}
+      setRefreshing(false);
+    }
+    setPull(0);
+  }
+
+  const visiblePull = refreshing ? THRESHOLD : pull;
+  const progress = Math.min(1, visiblePull / THRESHOLD);
+
+  return (
+    <div
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={() => { trackingRef.current = false; setPull(0); }}
+      style={{ overflow:"hidden", flex:1, display:"flex", flexDirection:"column", position:"relative" }}
+    >
+      {/* Spinner indicator above the content */}
+      <div style={{
+        position:"absolute", top:-30, left:0, right:0,
+        display:"flex", justifyContent:"center", alignItems:"center",
+        height:60,
+        transform:`translateY(${visiblePull}px)`,
+        transition: trackingRef.current ? "none" : "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        pointerEvents:"none",
+        zIndex:1,
+      }}>
+        <div style={{
+          width:28, height:28,
+          border:`2.5px solid ${C.divider}`,
+          borderTopColor:C.accent,
+          borderRadius:"50%",
+          transform:`rotate(${progress * 360}deg)`,
+          animation: refreshing ? "ptr-spin 0.8s linear infinite" : "none",
+          opacity: progress,
+        }}/>
+      </div>
+      <style>{`@keyframes ptr-spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Scrollable content — translated downward when pulling */}
+      <div
+        ref={scrollRef}
+        style={{
+          flex:1,
+          overflowY:"auto",
+          transform:`translateY(${visiblePull}px)`,
+          transition: trackingRef.current ? "none" : "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          WebkitOverflowScrolling:"touch",
+          // Prevent iOS native overscroll/rubber-band from competing with our custom pull animation
+          overscrollBehaviorY:"contain",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// AnimatedNumber — smoothly tweens between values with a brief scale pulse on change.
+// Use for stats that update during interaction (e.g. running volume during a workout).
+function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleString(), style }) {
+  const [display, setDisplay] = useState(value);
+  const [pulse, setPulse] = useState(false);
+  const fromRef = useRef(value);
+  const startRef = useRef(0);
+  const rafRef = useRef(0);
+  const pulseTimerRef = useRef(0);
+  useEffect(() => {
+    if (display === value) return;
+    fromRef.current = display;
+    startRef.current = performance.now();
+    setPulse(true);
+    // Clear any pending pulse-clear timer from a previous animation so it doesn't
+    // fire mid-tween and snap us out of the pulsed state.
+    if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+    const animate = (t) => {
+      const elapsed = t - startRef.current;
+      const progress = Math.min(1, elapsed / duration);
+      // Ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = Math.round(fromRef.current + (value - fromRef.current) * eased);
+      setDisplay(next);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate);
+      } else {
+        pulseTimerRef.current = setTimeout(() => setPulse(false), 220);
+      }
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return (
+    <span style={{
+      ...style,
+      display:"inline-block",
+      transform: pulse ? "scale(1.08)" : "scale(1)",
+      transition: "transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
+    }}>{format(display)}</span>
+  );
+}
+
 function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
   // When no streak, show "this week's progress" prompt if user has any thisWeek
   if (!streak && !thisWeek) return null;
@@ -1278,6 +1419,16 @@ function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
   // at-risk = amber outline, prompts user to lift this week
   // building (no streak yet but lifting this week) = subtle grey with progress
   let bg = "#0A0A0A", fg = "#fff", flameColor = "#fff";
+
+  // Milestone tiers — flame color changes as streak grows.
+  // The bg stays neutral so the flame color does the storytelling.
+  if (status === "active" && streak > 0) {
+    if (streak >= 26) flameColor = "#a855f7"; // half-year — purple
+    else if (streak >= 12) flameColor = "#facc15"; // 3 months — gold
+    else if (streak >= 4) flameColor = "#f97316"; // 1 month — orange
+    // else stays white
+  }
+
   if (status === "at-risk") { bg = "#f59e0b"; fg = "#fff"; flameColor = "#fff"; }
   else if (!streak && thisWeek) { bg = "#262626"; fg = "#fff"; flameColor = "#a3a3a3"; }
 
@@ -1635,6 +1786,9 @@ const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarg
         style={{
           background:isDone?`${C.green}0E`:C.surface,
           border:`1.5px solid ${isDone?C.green+"30":C.divider}`,
+          // Colored left stripe for non-normal set types — visually rhythmic across an exercise.
+          // Always 4px so changing the type doesn't shift layout; transparent when "normal".
+          borderLeft: `4px solid ${setType.id !== "normal" ? setType.color : "transparent"}`,
           borderRadius:11, padding:"8px 10px",
           transform: `translateX(${swipeDx}px)`,
           transition: swipeState.current.swiping ? "none" : "transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)",
@@ -1831,20 +1985,37 @@ const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarg
 // ═════════════════════════════════════════════════════════════════════════════
 // CONFETTI (for PR modal)
 // ═════════════════════════════════════════════════════════════════════════════
-function Confetti() {
-  const colors = ["#7c3aed","#f97316","#eab308","#30d158","#a855f7"];
+function Confetti({ origin = "top", duration = 2 }) {
+  // origin: "top" (PR modal full-screen) | "set" (centered around the checkmark)
+  const colors = ["#7c3aed","#f97316","#eab308","#30d158","#a855f7","#ec4899","#3b82f6"];
+  const count = origin === "set" ? 24 : 36;
+  const topPos = origin === "set" ? "45%" : "25%";
   return (
     <>
-      <style>{`@keyframes cfp{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(520px) rotate(720deg);opacity:0}}`}</style>
-      <div style={{ position:"fixed", top:"25%", left:0, right:0, pointerEvents:"none", zIndex:998 }}>
-        {Array.from({length:36},(_,i) => ({
-          id:i, left:50+(Math.random()-0.5)*85,
-          delay:Math.random()*0.4, color:colors[i%5], dur:1.4+Math.random()*1.2
-        })).map(p => (
+      <style>{`
+        @keyframes cfp{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(520px) rotate(720deg);opacity:0}}
+        @keyframes cfpBurst{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}50%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) rotate(720deg) scale(0.4);opacity:0}}
+      `}</style>
+      <div style={{ position:"fixed", top:topPos, left:0, right:0, pointerEvents:"none", zIndex:998 }}>
+        {Array.from({length:count},(_,i) => {
+          const angle = (i / count) * Math.PI * 2;
+          const distance = 120 + Math.random() * 80;
+          return {
+            id:i,
+            left: origin === "set" ? 50 : 50+(Math.random()-0.5)*85,
+            delay: origin === "set" ? Math.random()*0.1 : Math.random()*0.4,
+            color: colors[i % colors.length],
+            dur: origin === "set" ? 0.9 + Math.random()*0.4 : duration,
+            dx: origin === "set" ? Math.cos(angle) * distance : 0,
+            dy: origin === "set" ? Math.sin(angle) * distance + 200 : 0,
+          };
+        }).map(p => (
           <div key={p.id} style={{
             position:"absolute", left:`${p.left}%`, width:8, height:8,
             background:p.color, borderRadius:2,
-            animation:`cfp ${p.dur}s ${p.delay}s ease-out forwards`
+            ...(origin === "set"
+              ? { "--dx": `${p.dx}px`, "--dy": `${p.dy}px`, animation:`cfpBurst ${p.dur}s ${p.delay}s cubic-bezier(0.2, 0.6, 0.4, 1) forwards` }
+              : { animation:`cfp ${p.dur}s ${p.delay}s ease-out forwards` })
           }}/>
         ))}
       </div>
@@ -2587,9 +2758,24 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
               <span style={{ fontSize:9, background:C.text, color:C.bg, padding:"2px 8px", borderRadius:8, fontWeight:800, letterSpacing:1 }}>PR</span>
             )}
           </div>
-          <div style={{ fontSize:11, color:C.sub }}>
+          <div style={{ fontSize:11, color:C.sub, display:"flex", alignItems:"center", gap:5 }}>
             {post.location && <>{post.location} · </>}
-            {timeAgo(post.createdAt)}
+            {(() => {
+              const secs = Math.floor((Date.now() - post.createdAt) / 1000);
+              const isFresh = secs >= 0 && secs < 60;
+              if (isFresh) {
+                return (
+                  <span style={{ color:"#22c55e", fontWeight:700, display:"inline-flex", alignItems:"center", gap:4 }}>
+                    <span style={{
+                      width:6, height:6, borderRadius:"50%", background:"#22c55e",
+                      animation:"seshd-fresh-pulse 1.2s ease-out infinite",
+                    }}/>
+                    just now
+                  </span>
+                );
+              }
+              return timeAgo(post.createdAt);
+            })()}
           </div>
         </div>
         {isOwn && (
@@ -3489,7 +3675,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
   );
 }
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, currentUserId, token, C }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, currentUserId, token, C }) {
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -3549,6 +3735,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [editingHistory, setEditingHistory] = useState(null); // { date, sid, sess }
   // Keyboard accessory bar — tracks which set input is focused so we can show quick +/- buttons above the keyboard
   const [focusedSet, setFocusedSet] = useState(null); // { ei, si, field: "weight"|"reps", isCardio }
+  const [prBurst, setPrBurst] = useState(0); // increment to trigger a fresh confetti burst (used as key)
+  // Clear the burst after its animation finishes so the DOM doesn't grow indefinitely.
+  // Burst duration is ~1.3s max (0.9 + 0.4 random delay), give it 2s of buffer.
+  useEffect(() => {
+    if (prBurst === 0) return;
+    const id = setTimeout(() => setPrBurst(0), 2000);
+    return () => clearTimeout(id);
+  }, [prBurst]);
+  // Tracks the bottom inset created by the iOS keyboard (and its built-in input accessory bar).
+  // visualViewport shrinks when the keyboard opens; we use the difference to position our toolbar above it.
+  const [kbOffset, setKbOffset] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      // window.innerHeight - vv.height = pixels the keyboard is covering at the bottom (approx)
+      const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbOffset(overlap);
+    }
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
@@ -3592,6 +3805,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     setDraggingEx(null);
     dragStartRef.current = null;
   }
+
+  // Memoized running volume — recomputed only when session changes, not on every keystroke
+  const runningVolume = useMemo(() => {
+    if (!session) return 0;
+    return session.exercises.reduce(
+      (a, ex) => a + (ex.sets || []).filter(s => s.done).reduce(
+        (b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0
+      ), 0
+    );
+  }, [session]);
 
   // Listen for code-import requests from feed posts
   useEffect(() => {
@@ -3745,14 +3968,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const currentExercise = p.exercises[ei];
         const currentSet = currentExercise?.sets[si];
 
-        // Mid-workout PR detection — fire PR haptic if this set is a new record
+        // Mid-workout PR detection — fire PR haptic + confetti burst if this set is a new record
         if (currentSet?.weight && currentSet?.reps && currentSet?.type !== "warmup") {
           const wLbs = unit === "lbs" ? parseFloat(currentSet.weight) : cvt(parseFloat(currentSet.weight), "kg", "lbs");
           const currentPR = store.prs?.[currentExercise.name] || 0;
           if (wLbs > currentPR && wLbs > 0) {
             haptic("pr");
+            setPrBurst(b => b + 1);
           } else {
-            haptic("complete");
+            // Last set of an exercise gets a richer haptic + slight nod
+            const isLastSet = si === currentExercise.sets.length - 1;
+            haptic(isLastSet ? "complete" : "medium");
           }
         } else {
           haptic("complete");
@@ -4000,7 +4226,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {/* Progress + tools */}
         <div style={{ background:C.surface, padding:"8px 14px 10px", borderBottom:`1px solid ${C.divider}` }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-            <span style={{ fontSize:11, color:C.sub, fontWeight:600 }}>{done} / {total} sets · {unit.toUpperCase()}</span>
+            <span style={{ fontSize:11, color:C.sub, fontWeight:600 }}>
+              {done} / {total} sets ·{" "}
+              <AnimatedNumber
+                value={runningVolume}
+                style={{ fontWeight:700, color:C.text, fontFamily:MONO }}
+              />
+              {" "}{unit.toUpperCase()}
+            </span>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM</button>
               <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>Plates</button>
@@ -4619,6 +4852,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
         )}
 
+        {/* PR confetti burst — fires when a mid-workout PR is detected */}
+        {prBurst > 0 && <Confetti key={prBurst} origin="set"/>}
+
         {/* Keyboard accessory bar — appears above the iOS keyboard when a set input is focused
             Lets user nudge weight or reps without dismissing the keyboard */}
         {focusedSet && (() => {
@@ -4644,12 +4880,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               onMouseDown={(e) => e.preventDefault()}
               onTouchStart={(e) => e.stopPropagation()}
               style={{
-                position:"fixed", left:0, right:0, bottom:0,
+                position:"fixed", left:0, right:0,
+                // Sit immediately above the keyboard (visualViewport tells us how tall the keyboard is).
+                // iOS layers its own input accessory bar (~44px) on top of the keyboard frame; visualViewport
+                // doesn't account for that, so we lift our bar by an extra 44px when the keyboard is open.
+                bottom: kbOffset > 0 ? kbOffset + 44 : 0,
                 maxWidth:480, margin:"0 auto",
                 background:C.surface, borderTop:`1px solid ${C.border}`,
-                padding:"8px 10px calc(8px + env(safe-area-inset-bottom))",
+                padding:"10px 10px calc(10px + env(safe-area-inset-bottom))",
                 zIndex:400, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
-                boxShadow:"0 -4px 14px rgba(0,0,0,0.06)",
+                boxShadow:"0 -4px 14px rgba(0,0,0,0.08)",
+                transition:"bottom 0.15s ease-out",
               }}>
               <div style={{ display:"flex", gap:5, flexWrap:"nowrap", alignItems:"center" }}>
                 <span style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:0.4, marginRight:2 }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</span>
@@ -5180,7 +5421,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {subTab === "history" && (
-        <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
+        <PullToRefresh onRefresh={onRefresh} C={C}>
+          <div style={{ paddingBottom:24 }}>
           <div style={{ padding:"12px 14px 0" }}>
             <Heatmap workoutDates={store.workoutDates} C={C}/>
           </div>
@@ -5328,6 +5570,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             ))}
           </div>
         </div>
+        </PullToRefresh>
       )}
 
       {showTemplates && (
@@ -9327,7 +9570,9 @@ export default function App() {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
     try {
-      await loadFeed(tok, currentUserId, store.users);
+      // loadUserData reloads history, PRs, programs, profile, and calls loadFeed internally
+      // (so we don't need to call loadFeed again here — that would double-fetch).
+      await loadUserData?.();
     } catch (e) { console.error("refresh error:", e); }
   }
 
@@ -9388,6 +9633,7 @@ export default function App() {
         @keyframes seshd-slide-up { from{transform:translateY(100%)} to{transform:translateY(0)} }
         @keyframes seshd-scale-in { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:scale(1)} }
         @keyframes seshd-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes seshd-fresh-pulse { 0%,100%{opacity:0.5;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.15)} }
 
         button { -webkit-tap-highlight-color: transparent; transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s; }
         button:active:not(:disabled) { transform: scale(0.96); }
@@ -9406,12 +9652,23 @@ export default function App() {
   const unit = store.unit || "lbs";
 
   // HOOKS — must be before any early returns (React rules of hooks)
-  const lastSeenActivityRef = useRef(parseInt(localStorage.getItem("seshd_last_activity") || "0"));
+  // Stores the timestamp of the last time the user "checked" their notifications.
+  // Activity newer than this counts as "unread" and surfaces a red dot.
+  // The notifications themselves are not deleted — only the unread badge clears.
+  const [lastSeenActivity, setLastSeenActivity] = useState(() => {
+    try { return parseInt(localStorage.getItem("seshd_last_activity") || "0"); }
+    catch { return 0; }
+  });
   function markActivitySeen() {
     const now = Date.now();
-    lastSeenActivityRef.current = now;
-    localStorage.setItem("seshd_last_activity", String(now));
+    setLastSeenActivity(now);
+    try { localStorage.setItem("seshd_last_activity", String(now)); } catch {}
   }
+  // Clear the unread badge whenever the activity tab becomes active
+  useEffect(() => {
+    if (tab === "activity") markActivitySeen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
@@ -9575,8 +9832,8 @@ export default function App() {
   const notifCount = (store.posts || [])
     .filter(p => p.userId === currentUserId)
     .reduce((a, pt) => {
-      const newKudos = (pt.kudos||[]).filter(x => x !== currentUserId && pt.createdAt > lastSeenActivityRef.current).length;
-      const newComments = (pt.comments||[]).filter(c => c.userId !== currentUserId && c.createdAt > lastSeenActivityRef.current).length;
+      const newKudos = (pt.kudos||[]).filter(x => x !== currentUserId && pt.createdAt > lastSeenActivity).length;
+      const newComments = (pt.comments||[]).filter(c => c.userId !== currentUserId && c.createdAt > lastSeenActivity).length;
       return a + newKudos + newComments;
     }, 0);
 
@@ -9757,7 +10014,7 @@ export default function App() {
             </svg>
           </button>
           <button
-            onClick={() => setTab("activity")}
+            onClick={() => { markActivitySeen(); setTab("activity"); }}
             aria-label="Activity"
             style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
           >
@@ -9987,7 +10244,7 @@ export default function App() {
         )}
 
         {tab === "tracker" && (
-          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} C={C} currentUserId={currentUserId} token={token}
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={token}
             onDeleteHistory={async (date, sid) => {
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
@@ -10006,7 +10263,6 @@ export default function App() {
         )}
 
         {tab === "activity" && (() => {
-          markActivitySeen();
           const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
           const events = [];
           myPosts.forEach(post => {
