@@ -1221,12 +1221,6 @@ const SEED_POSTS = [
   },
 ];
 
-const SEED_CHALLENGES = [
-  { id:"ch1", name:"30-Day Push-Up Challenge", description:"Progressive push-ups every day", createdBy:"u4", participants:["u4","u2","u3","u1","u8"], startDate:Date.now()-1000*60*60*24*3, endDate:Date.now()+1000*60*60*24*27, icon:"💪" },
-  { id:"ch2", name:"January Squat Streak", description:"Squat at least 3x per week for the whole month", createdBy:"u7", participants:["u7","u5","u2"], startDate:Date.now()-1000*60*60*24*10, endDate:Date.now()+1000*60*60*24*20, icon:"🦵" },
-  { id:"ch3", name:"10K Steps Daily", description:"Hit 10,000 steps every day for 30 days", createdBy:"u6", participants:["u6","u9","u4","u1"], startDate:Date.now()-1000*60*60*24*5, endDate:Date.now()+1000*60*60*24*25, icon:"👟" },
-];
-
 const SEED_GROUPS = [
   { id:"g1", name:"The Crew", description:"Our gym group — training log + accountability", createdBy:"u1", members:["u1","u2","u3","u7"], icon:"🏋️" },
   { id:"g2", name:"Pull Day Party", description:"Back & biceps obsessed", createdBy:"u3", members:["u3","u1","u2","u7"], icon:"💪" },
@@ -1237,7 +1231,16 @@ const SEED_GROUPS = [
 // STORAGE
 // ═════════════════════════════════════════════════════════════════════════════
 const SK = "seshd_v1";
+// One-time cleanup of old localStorage keys no longer used.
+// Safe to call on every load — the keys just get removed if present.
+function cleanupStaleLocalStorage() {
+  try {
+    localStorage.removeItem("seshd_exercise_gifs_v1");
+    localStorage.removeItem("seshd_exercise_gifs_v2");
+  } catch {}
+}
 function loadStore() {
+  cleanupStaleLocalStorage();
   try {
     const r = localStorage.getItem(SK);
     if (r) {
@@ -1256,10 +1259,9 @@ function loadStore() {
     defaultRestTime: 120,
     unit: "lbs",
     theme: "light",
-    challenges: [],
-    groups: [],
     historyInteractions: {},
     workoutDates: {},
+    groups: [],
     weeklyTarget: 3, // default: 3 workouts/week for streak system
     seenOnboarding: true,
   };
@@ -2536,7 +2538,7 @@ function Onboarding({ C, onComplete }) {
   const steps = [
     { icon:"barbell", title:"Track every rep", body:"Log sets, weights, and reps. Watch every lift improve over time." },
     { icon:"trending-up", title:"Share the work", body:"Post your workouts. Give kudos to your crew. Build your identity." },
-    { icon:"flame", title:"Train together", body:"Streaks, challenges, private groups. Lift with your people." },
+    { icon:"flame", title:"Train together", body:"Streaks, private groups, and friend activity. Lift with your people." },
   ];
   const s = steps[step];
   return (
@@ -4163,7 +4165,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           haptic("complete");
         }
 
-        const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || 90) || 90;
+        // Rest time cascade: per-set override → exercise default → user's setting → 90s safety fallback
+        const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || store.defaultRestTime || 90) || 90;
         setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
       } else {
         haptic("undo");
@@ -6872,13 +6875,6 @@ function useTouchDrag(items, onReorder) {
   return { dragging, overIdx, containerRef, onHandleTouchStart, onContainerTouchMove, onContainerTouchEnd };
 }
 
-function toWgerQuery(name) {
-  return name.toLowerCase()
-    .replace(/\(.*?\)/g,"")
-    .replace(/barbell |dumbbell |db |ez bar |cable |machine |weighted |lever |single-arm |chest-supported /g,"")
-    .replace(/\s+/g," ").trim();
-}
-
 // Direct wger base IDs for common exercises — faster and more reliable than search
 const WGER_IDS = {
   "Barbell Bench Press":192,"Incline Barbell Press":314,"Incline DB Press":206,"Flat DB Press":207,
@@ -6903,104 +6899,6 @@ const WGER_IDS = {
   "Barbell Shrugs":133,"DB Shrugs":134,
 };
 
-function ExerciseAnimation({ name, muscle, C }) {
-  const [gifUrl, setGifUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
-  // Bump cache version to invalidate any wrong images cached from old search-fallback code
-  const CACHE_KEY = "seshd_exercise_gifs_v2";
-
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId = null;
-
-    async function fetchGif() {
-      setLoading(true);
-      setGifUrl(null);
-
-      // Cache check
-      try {
-        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-        if (cache[name] !== undefined) {
-          // cached null means "we tried, no image available — don't try again"
-          if (!cancelled) { setGifUrl(cache[name]); setLoading(false); }
-          return;
-        }
-      } catch {}
-
-      // Only fetch when we have a confirmed WGER ID mapping. The search-based fallback
-      // returned wrong images too often (a chest exercise returning a crunch illustration etc.)
-      // so we now treat absence of a confirmed mapping as "show our anatomical fallback".
-      const baseId = WGER_IDS[name];
-      if (!baseId) {
-        if (!cancelled) { setGifUrl(null); setLoading(false); }
-        try {
-          const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-          cache[name] = null; // record "no image available"
-          if (Object.keys(cache).length > 300) delete cache[Object.keys(cache)[0]];
-          localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-        } catch {}
-        return;
-      }
-
-      // Hard timeout — show fallback after 5s if network is slow
-      timeoutId = setTimeout(() => { if (!cancelled) setLoading(false); }, 5000);
-
-      try {
-        const res = await fetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${baseId}&format=json`, {
-          headers: { "Accept":"application/json" }
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const imgData = await res.json();
-        const img = imgData?.results?.[0]?.image;
-        if (cancelled) return;
-        clearTimeout(timeoutId);
-        setGifUrl(img || null);
-        setLoading(false);
-        // Cache result (including null if no image found)
-        try {
-          const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-          cache[name] = img || null;
-          if (Object.keys(cache).length > 300) delete cache[Object.keys(cache)[0]];
-          localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-        } catch {}
-      } catch {
-        if (!cancelled) { setGifUrl(null); setLoading(false); }
-      }
-    }
-
-    fetchGif();
-    return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
-  }, [name]);
-
-  if (loading) return (
-    <div style={{ width:"100%", height:240, display:"flex", alignItems:"center", justifyContent:"center", background:C.divider, borderRadius:12 }}>
-      <div style={{ textAlign:"center" }}>
-        <div style={{ width:36, height:36, borderRadius:"50%", border:`3px solid ${C.divider}`, borderTopColor:C.accent, animation:"spotrSpin 0.8s linear infinite", margin:"0 auto 10px" }}/>
-        <div style={{ fontSize:11, color:C.sub }}>Loading demo...</div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{ width:"100%", borderRadius:12, overflow:"hidden", background:C.divider }}>
-      {gifUrl ? (
-        <img src={gifUrl} alt={name} style={{ width:"100%", maxHeight:300, objectFit:"contain", display:"block", background:"#fff" }}/>
-      ) : (
-        <div style={{
-          minHeight:200, display:"flex", alignItems:"center", justifyContent:"center",
-          flexDirection:"column", gap:14, padding:"30px 20px",
-          background: C.surface,
-        }}>
-          <MuscleIcon muscle={muscle} size={72} C={C}/>
-          <div style={{ fontSize:13, color:C.text, fontWeight:600, textAlign:"center", letterSpacing:-0.2 }}>{name}</div>
-          <div style={{ fontSize:11, color:C.sub, textAlign:"center", letterSpacing:0.4, fontWeight:600 }}>
-            {muscle?.toUpperCase()}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function ExerciseVolumeChart({ data, unit, C }) {
   if (!data || data.length === 0) return (
@@ -7120,14 +7018,18 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
       </div>
 
       <div style={{ overflowY:"auto", flex:1 }}>
-        {/* Animation */}
-        <div style={{ display:"flex", justifyContent:"center", padding:"20px 0 10px", background:C.bg }}>
-          <ExerciseAnimation name={name} muscle={exInfo.muscle} C={C}/>
+        {/* Large muscle illustration — name + muscle already shown above in the back button row */}
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"center",
+          padding:"28px 20px", background:C.surface,
+          borderBottom:`1px solid ${C.divider}`,
+        }}>
+          <MuscleIcon muscle={exInfo.muscle} size={96} C={C}/>
         </div>
 
         {/* Stats strip — 2x2 grid of key metrics */}
         {sessions > 0 && (
-          <div style={{ margin:"0 16px 14px" }}>
+          <div style={{ margin:"16px 16px 14px" }}>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
               {[
                 ["Last session", lastSessionAgo],
@@ -7834,8 +7736,8 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   if (subTab === "groups") {
     return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")} token={token}/>;
   }
-  if (subTab === "challenges") {
-    return <FriendsActivityScreen store={store} currentUserId={currentUserId} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick}/>;
+  if (subTab === "activity") {
+    return <FriendsActivityScreen store={store} currentUserId={currentUserId} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick} token={token}/>;
   }
 
   return (
@@ -7919,7 +7821,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
         <div style={{ padding:"4px 16px 0" }}>
           {/* Quick access cards */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
-            <button onClick={() => setSubTab("challenges")} style={{
+            <button onClick={() => setSubTab("activity")} style={{
               background:C.text, color:C.bg,
               border:"none", borderRadius:16, padding:"18px 16px",
               cursor:"pointer", textAlign:"left", fontFamily:F,
@@ -8006,12 +7908,15 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
 // ═════════════════════════════════════════════════════════════════════════════
 // FRIENDS ACTIVITY
 // ═════════════════════════════════════════════════════════════════════════════
-function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserClick }) {
+function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserClick, token }) {
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
   const friends = [currentUserId, ...following].map(id => store.users.find(u => u.id === id)).filter(Boolean);
 
-  function getMyStats() {
+  // Stats keyed by user_id: { sessions, volume, prs, streak, loaded }
+  const [friendStats, setFriendStats] = useState({});
+
+  function computeMyStats() {
     const now = Date.now();
     const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
     let sessions = 0, volume = 0;
@@ -8024,12 +7929,105 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       volume += daySessions.reduce((a, s) => a + (s.exercises||[]).reduce((b, ex) =>
         b + (ex.sets||[]).filter(st=>st.done).reduce((c,st) => c + (parseFloat(st.weight)||0)*(parseFloat(st.reps)||0), 0), 0), 0);
     }
-    // weekly streak — # of consecutive weeks user hit weeklyTarget
     const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
-    return { sessions, volume: Math.round(volume), streak: ws.count, prs: Object.keys(store.prs||{}).length };
+    return { sessions, volume: Math.round(volume), streak: ws.count, prs: Object.keys(store.prs||{}).length, loaded:true };
   }
 
-  const myStats = getMyStats();
+  // Compute stats for one friend from their fetched workout_history rows.
+  // friendUnit: the unit the friend tracks in ("lbs" or "kg"). Volume gets
+  // converted to the viewer's unit so all rows compare apples-to-apples.
+  function computeFriendStats(rows, prCount, friendUnit = "lbs") {
+    const viewerUnit = unit || "lbs";
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    let sessions = 0, volume = 0;
+    // workoutDates set built from all rows for streak calculation
+    const workoutDates = {};
+    (rows || []).forEach(row => {
+      const dk = row.workout_date || (row.created_at ? row.created_at.split("T")[0] : null);
+      if (!dk) return;
+      workoutDates[dk] = true;
+      // This-week count
+      const dayMs = new Date(dk).getTime();
+      if (dayMs >= weekAgo) {
+        sessions += 1;
+        const exercises = row.exercises || [];
+        volume += exercises.reduce((a, ex) => a + (ex.sets||[]).filter(s => s.done).reduce(
+          (b, s) => b + (parseFloat(s.weight)||0) * (parseFloat(s.reps)||0), 0
+        ), 0);
+      }
+    });
+    // Convert to viewer's unit so the volume number is meaningful across friends
+    if (friendUnit !== viewerUnit) {
+      volume = cvt(volume, friendUnit, viewerUnit);
+    }
+    const ws = calcWeeklyStreak(workoutDates, store.weeklyTarget || 3);
+    return { sessions, volume: Math.round(volume), streak: ws.count, prs: prCount ?? 0, loaded:true };
+  }
+
+  // Fetch real stats for each friend (parallel). Requires RLS policy allowing
+  // followers to read workout_history.user_id IN (your_following_ids). If RLS
+  // blocks the read, the fetch resolves to an empty array and we show "—".
+  useEffect(() => {
+    if (!token) return;
+    // Always compute own stats locally — independent of whether you have friends
+    setFriendStats(prev => ({ ...prev, [currentUserId]: computeMyStats() }));
+
+    const friendIds = following.filter(id => id !== currentUserId);
+    if (friendIds.length === 0) return;
+
+    let cancelled = false;
+    async function loadFriends() {
+      const weekAgoISO = new Date(Date.now() - 14 * 86400000).toISOString().split("T")[0];
+      // Batch-fetch all friends' last 2 weeks of history (2 weeks gives enough data for streak calc)
+      try {
+        const idList = friendIds.join(",");
+        // Fetch in parallel: workout history + PR counts + units per friend
+        // unit needed so we can convert their volume to my unit (most users mix kg/lbs)
+        const [rows, prCounts, profiles] = await Promise.all([
+          sb.query(
+            `workout_history?user_id=in.(${idList})&workout_date=gte.${weekAgoISO}&select=user_id,workout_date,exercises,created_at`,
+            {}, token
+          ).catch(() => []),
+          sb.query(
+            `personal_records?user_id=in.(${idList})&select=user_id`,
+            {}, token
+          ).catch(() => []),
+          sb.query(
+            `profiles?id=in.(${idList})&select=id,unit`,
+            {}, token
+          ).catch(() => []),
+        ]);
+        if (cancelled) return;
+
+        // Group rows by user_id
+        const byUser = {};
+        (rows || []).forEach(r => {
+          if (!byUser[r.user_id]) byUser[r.user_id] = [];
+          byUser[r.user_id].push(r);
+        });
+        // Count PRs per user
+        const prByUser = {};
+        (prCounts || []).forEach(p => { prByUser[p.user_id] = (prByUser[p.user_id] || 0) + 1; });
+        // Friend's unit (default lbs)
+        const unitByUser = {};
+        (profiles || []).forEach(p => { unitByUser[p.id] = p.unit || "lbs"; });
+
+        // Compute stats per friend — convert their volume into viewer's unit
+        const next = {};
+        friendIds.forEach(fid => {
+          const friendUnit = unitByUser[fid] || "lbs";
+          next[fid] = computeFriendStats(byUser[fid] || [], prByUser[fid] || 0, friendUnit);
+        });
+        setFriendStats(prev => ({ ...prev, ...next }));
+      } catch (e) {
+        console.warn("friend stats sync failed:", e);
+      }
+    }
+    loadFriends();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, following.join(",")]);
 
   return (
     <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
@@ -8041,7 +8039,9 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
         <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>THIS WEEK</div>
         {friends.map((u) => {
           const isMe = u.id === currentUserId;
-          const stats = isMe ? myStats : { sessions:"—", volume:"—", streak:0, prs:"—" };
+          const cached = friendStats[u.id];
+          const stats = cached || { sessions:"—", volume:"—", streak:0, prs:"—", loaded:false };
+          const showStreakBadge = stats.loaded && stats.streak > 0;
           return (
             <div key={u.id} style={{ border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:10, background: isMe ? C.accentSoft : C.bg }}>
               <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
@@ -8052,19 +8052,26 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
                   <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{isMe ? "You" : u.name}</div>
                   <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                 </div>
-                {isMe && stats.streak > 0 && (
+                {showStreakBadge && (
                   <div style={{ background:"#f97316", borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:700, color:"#fff" }}>🔥 {stats.streak}</div>
                 )}
               </div>
               <div style={{ display:"flex", gap:0, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
-                {[["Sessions", stats.sessions], ["Volume", isMe && stats.volume > 1000 ? (stats.volume/1000).toFixed(1)+"k" : stats.volume], ["PRs", stats.prs]].map(([label, val], j) => (
+                {[
+                  ["Sessions", stats.sessions],
+                  [`Volume (${(unit||"lbs")})`, stats.loaded && stats.volume > 1000 ? (stats.volume/1000).toFixed(1)+"k" : stats.volume],
+                  ["PRs", stats.prs],
+                ].map(([label, val], j) => (
                   <div key={label} style={{ flex:1, padding:"10px 6px", textAlign:"center", borderRight: j<2 ? `1px solid ${C.divider}` : "none" }}>
-                    <div style={{ fontSize:17, fontWeight:800, color: isMe ? C.accent : C.text, fontFamily:MONO }}>{val}</div>
+                    {!stats.loaded && !isMe ? (
+                      <Skeleton width={28} height={17} radius={4} C={C} style={{ margin:"2px auto 4px" }}/>
+                    ) : (
+                      <div style={{ fontSize:17, fontWeight:800, color: isMe ? C.accent : C.text, fontFamily:MONO }}>{val}</div>
+                    )}
                     <div style={{ fontSize:10, color:C.sub, marginTop:2 }}>{label}</div>
                   </div>
                 ))}
               </div>
-              {!isMe && <div style={{ fontSize:11, color:C.sub, textAlign:"center", marginTop:8 }}>Stats sync when {u.name} logs workouts</div>}
             </div>
           );
         })}
@@ -8399,16 +8406,39 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                 </div>
               </div>
 
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>WORKOUT</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
+                  <div>
+                    <div style={{ fontSize:14, color:C.text }}>Default rest time</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Used when an exercise has no custom rest set</div>
+                  </div>
+                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
+                    {[60, 90, 120, 180].map(n => (
+                      <button key={n} onClick={async () => {
+                        setStore(p => ({ ...p, defaultRestTime: n }));
+                        const tok = token || loadSession()?.access_token;
+                        if (tok) {
+                          try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ default_rest_time: n }) }, tok); }
+                          catch (e) { console.error("rest time save error:", e); }
+                        }
+                      }} style={{
+                        padding:"6px 10px", background:(store.defaultRestTime||120)===n?C.accent:"transparent",
+                        color:(store.defaultRestTime||120)===n?"#fff":C.sub, border:"none", borderRadius:20,
+                        fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F, minWidth:36,
+                        fontVariantNumeric:"tabular-nums",
+                      }}>{n < 60 ? `${n}s` : `${n/60}m`}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ABOUT</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
                   <div style={{ fontSize:14, color:C.text }}>Version</div>
                   <div style={{ fontSize:13, color:C.sub }}>1.0 (beta)</div>
                 </div>
-              </div>
-
-              <div style={{ fontSize:11, color:C.muted, textAlign:"center", padding:"14px 0" }}>
-                More settings coming soon
               </div>
 
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ACCOUNT</div>
