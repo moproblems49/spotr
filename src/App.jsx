@@ -1237,6 +1237,7 @@ function cleanupStaleLocalStorage() {
   try {
     localStorage.removeItem("seshd_exercise_gifs_v1");
     localStorage.removeItem("seshd_exercise_gifs_v2");
+    localStorage.removeItem("seshd_last_activity"); // replaced by seshd_seen_activity_count
   } catch {}
 }
 function loadStore() {
@@ -3802,6 +3803,56 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
     } catch (e) {
       console.error("post sync failed:", e);
     }
+    // 5. Patch any matching GROUP posts on the server (same workout shared to groups).
+    // Group posts store the workout JSONB directly but have no link to workout_history id,
+    // so we match on user_id + workout name + a time window around when the workout finished.
+    try {
+      if (token) {
+        const finishedAt = sess.finishedAt || new Date(date).getTime();
+        const myGroups = (store.groups || []).filter(g =>
+          (g.members || g.member_ids || []).includes(currentUserId)
+        );
+        if (myGroups.length > 0) {
+          // Recompute the workout payload once (same shape used for feed posts)
+          const postEx = exercises.filter(e => e.name).map(ex => {
+            const doneSets = (ex.sets || []).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
+            const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
+            return {
+              name: ex.name,
+              isPR: maxW > 0 && maxW >= ((store.prs || {})[ex.name] || 0) * 0.99,
+              sets: doneSets.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+            };
+          });
+          const newVolume = exercises.reduce((a, ex) => a + (ex.sets || [])
+            .filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
+            .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+
+          // For each group I'm in, fetch my recent workout posts and patch the matching one.
+          // Run all groups in parallel — sequential awaits would be slow for users in many groups.
+          await Promise.all(myGroups.map(async (g) => {
+            try {
+              const rows = await sb.query(
+                `group_posts?group_id=eq.${g.id}&user_id=eq.${currentUserId}&type=eq.workout&select=id,workout,created_at&order=created_at.desc`,
+                {}, token
+              ).catch(() => []);
+              const match = (rows || []).find(gp => {
+                if (!gp.workout || gp.workout.name !== sess.dayName) return false;
+                const gpTime = gp.created_at ? new Date(gp.created_at).getTime() : 0;
+                return Math.abs(gpTime - finishedAt) < 86400000;
+              });
+              if (match) {
+                await sb.query(`group_posts?id=eq.${match.id}`, {
+                  method: "PATCH",
+                  body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: postEx, volume: Math.round(newVolume) } })
+                }, token);
+              }
+            } catch (e) { console.error(`group post sync failed for group ${g.id}:`, e); }
+          }));
+        }
+      }
+    } catch (e) {
+      console.error("group post sync failed:", e);
+    }
     toast("Workout updated", "success");
     haptic("complete");
     setSaving(false);
@@ -4547,7 +4598,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ flex:1, height:6, background:C.divider, borderRadius:999, overflow:"hidden" }}>
                     <div style={{ width:`${Math.round((rest.secs/rest.total)*100)}%`, height:"100%", background:C.accent }}/>
                   </div>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.text }}>{Math.round((rest.secs/rest.total)*100)}%</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums", minWidth:32, textAlign:"right" }}>{Math.round((rest.secs/rest.total)*100)}%</div>
                 </div>
               </div>
             </div>
@@ -5748,9 +5799,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <div style={{ padding:"14px 14px 0" }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
             {!Object.keys(store.history || {}).length && (
-              <div style={{ textAlign:"center", color:C.sub, padding:"40px 0", fontSize:13 }}>
+              <div style={{ textAlign:"center", color:C.sub, padding:"40px 24px", fontSize:13 }}>
                 <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={36} color="currentColor"/></div>
-                No workouts logged yet
+                <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No workouts logged yet</div>
+                <div style={{ fontSize:13, lineHeight:1.5, marginBottom:18 }}>
+                  Your completed sessions will show up here. Track your first one to start building your history.
+                </div>
+                <button onClick={() => setSubTab("workout")} style={{
+                  background:C.accent, color:"#fff", border:"none", borderRadius:10,
+                  padding:"10px 22px", fontSize:13, fontWeight:700,
+                  cursor:"pointer", fontFamily:F
+                }}>Go to workouts</button>
               </div>
             )}
             {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => (
@@ -7828,7 +7887,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
               display:"flex", flexDirection:"column", alignItems:"flex-start", gap:14,
             }}>
               <div style={{ width:32, height:32, borderRadius:10, background:C.bg, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <Icon name="trending-up" size={18}/>
+                <Icon name="activity" size={18}/>
               </div>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Friends Activity</div>
@@ -8076,7 +8135,13 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
           );
         })}
         {friends.length <= 1 && (
-          <div style={{ textAlign:"center", padding:"20px 0", color:C.sub, fontSize:13 }}>Follow friends in Discover to see their activity here</div>
+          <div style={{ textAlign:"center", padding:"30px 24px", color:C.sub, fontSize:13 }}>
+            <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="users" size={32} color="currentColor"/></div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:6 }}>No friends followed yet</div>
+            <div style={{ fontSize:12, lineHeight:1.5 }}>
+              Follow people in the Discover tab to see their weekly stats here.
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -8227,13 +8292,13 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             )}
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text }}>{posts.length}</div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
+            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}>{posts.length}</div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
             <button onClick={() => setListModal("followers")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{followers}</div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}>{followers}</div>
               <div style={{ fontSize:12, color:C.sub }}>Followers</div>
             </button>
             <button onClick={() => setListModal("following")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{following2}</div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}>{following2}</div>
               <div style={{ fontSize:12, color:C.sub }}>Following</div>
             </button>
           </div>
@@ -8287,7 +8352,17 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 
       <div style={{ borderTop:`1px solid ${C.divider}`, paddingTop:16 }}>
         {posts.length === 0 && (
-          <div style={{ textAlign:"center", color:C.sub, padding:"36px 0", fontSize:14 }}>No posts yet.</div>
+          <div style={{ textAlign:"center", color:C.sub, padding:"40px 24px", fontSize:13 }}>
+            <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="dumbbell" size={36} color="currentColor"/></div>
+            <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>
+              {isMe ? "No posts yet" : `${(user?.name || "").split(" ")[0] || "They"} hasn't posted yet`}
+            </div>
+            <div style={{ fontSize:13, lineHeight:1.5 }}>
+              {isMe
+                ? "Share a workout, photo, or PR. Your friends will see it in their feed."
+                : "Check back when they share their next session."}
+            </div>
+          </div>
         )}
         {posts.map(post => (
           <PostCard
@@ -9018,6 +9093,9 @@ export default function App() {
   // ── Auth state ──────────────────────────────────────────────────
   const [session, setSession] = useState(loadSession);
   const [authLoading, setAuthLoading] = useState(true);
+  // True while the initial user-data fetch (profiles/programs/PRs/history/groups/feed) is in flight.
+  // Used to show skeleton loaders on screens that would otherwise flash empty states.
+  const [dataLoading, setDataLoading] = useState(false);
   const [isGuest, setIsGuest] = useState(() => {
     try { return localStorage.getItem("seshd_guest") === "1"; } catch { return false; }
   });
@@ -9171,6 +9249,7 @@ export default function App() {
   }, [token, isGuest, currentUserId]);
 
   async function loadUserData() {
+    setDataLoading(true);
     try {
       // Load profile
       const tok = tokenRef.current || token;
@@ -9252,6 +9331,8 @@ export default function App() {
       console.error("loadUserData error:", e);
       toast("Couldn't load your data — check connection", "error");
       setDbReady(true);
+    } finally {
+      setDataLoading(false);
     }
   }
 
@@ -9971,22 +10052,36 @@ export default function App() {
 
   // HOOKS — must be before any early returns (React rules of hooks)
   // Stores the timestamp of the last time the user "checked" their notifications.
-  // Activity newer than this counts as "unread" and surfaces a red dot.
-  // The notifications themselves are not deleted — only the unread badge clears.
-  const [lastSeenActivity, setLastSeenActivity] = useState(() => {
-    try { return parseInt(localStorage.getItem("seshd_last_activity") || "0"); }
+  // Activity badge tracking.
+  //
+  // Kudos are stored as bare user-id arrays with NO timestamp, so we can't compare
+  // them against a "last seen" time. Instead we track the total COUNT of activity
+  // items (kudos + comments from others on our posts) that the user has already seen.
+  // The badge shows the difference between the current total and the seen total.
+  // This fixes the bug where old kudos/comments re-appeared as "new" on every login.
+  const [seenActivityCount, setSeenActivityCount] = useState(() => {
+    try { return parseInt(localStorage.getItem("seshd_seen_activity_count") || "0"); }
     catch { return 0; }
   });
+
+  // Current total of activity items on the user's own posts
+  const currentActivityCount = (store.posts || [])
+    .filter(p => p.userId === currentUserId)
+    .reduce((a, pt) => {
+      const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId).length;
+      const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId).length;
+      return a + kudosFromOthers + commentsFromOthers;
+    }, 0);
+
   function markActivitySeen() {
-    const now = Date.now();
-    setLastSeenActivity(now);
-    try { localStorage.setItem("seshd_last_activity", String(now)); } catch {}
+    setSeenActivityCount(currentActivityCount);
+    try { localStorage.setItem("seshd_seen_activity_count", String(currentActivityCount)); } catch {}
   }
   // Clear the unread badge whenever the activity tab becomes active
   useEffect(() => {
     if (tab === "activity") markActivitySeen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, currentActivityCount]);
 
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
@@ -10147,13 +10242,9 @@ export default function App() {
     } catch (e) { console.error("follow error:", e); }
   }
 
-  const notifCount = (store.posts || [])
-    .filter(p => p.userId === currentUserId)
-    .reduce((a, pt) => {
-      const newKudos = (pt.kudos||[]).filter(x => x !== currentUserId && pt.createdAt > lastSeenActivity).length;
-      const newComments = (pt.comments||[]).filter(c => c.userId !== currentUserId && c.createdAt > lastSeenActivity).length;
-      return a + newKudos + newComments;
-    }, 0);
+  // Unread = how many more activity items exist now than when last seen.
+  // Clamped at 0 (e.g. if a kudos was removed, we don't show negative).
+  const notifCount = Math.max(0, currentActivityCount - seenActivityCount);
 
   if (prModal) return <PRModal pr={prModal} unit={unit} onClose={() => setPrModal(null)}/>;
 
@@ -10476,7 +10567,7 @@ export default function App() {
               </div>
 
               <div style={{ paddingTop:4 }}>
-                {feedPosts.length === 0 && !isRefreshing && (
+                {feedPosts.length === 0 && !isRefreshing && !dataLoading && (
                   isGuest ? (
                     <div style={{ textAlign:"center", padding:"60px 24px", color:C.sub }}>
                       <div style={{
@@ -10518,7 +10609,7 @@ export default function App() {
                     </div>
                   )
                 )}
-                {feedPosts.length === 0 && isRefreshing && (
+                {feedPosts.length === 0 && (isRefreshing || dataLoading) && (
                   // Skeleton loader — three placeholder post cards
                   <div style={{ padding:"4px 14px 0" }}>
                     {[1,2,3].map(i => (
@@ -10607,11 +10698,24 @@ export default function App() {
                   </svg>
                 </button>
               </div>
-              {events.length === 0 ? (
+              {dataLoading && events.length === 0 ? (
+                // Skeleton — 4 rows shaped like activity entries
+                <div style={{ padding:"6px 0" }}>
+                  {[1,2,3,4].map(i => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                      <Skeleton width={40} height={40} radius={20} C={C}/>
+                      <div style={{ flex:1 }}>
+                        <Skeleton width="60%" height={11} C={C} style={{ marginBottom:6 }}/>
+                        <Skeleton width="35%" height={9} C={C}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : events.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
                   <div style={{ fontSize:40, marginBottom:12 }}>🔔</div>
                   <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No activity yet</div>
-                  <div style={{ fontSize:13 }}>Kudos and comments on your posts will show here</div>
+                  <div style={{ fontSize:13 }}>When friends like or comment on your posts, you'll see it here. Share a workout to get the conversation going.</div>
                 </div>
               ) : events.slice(0,50).map((ev, i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
