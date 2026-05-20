@@ -781,6 +781,43 @@ function calcPlatesPerSide(totalWeight, unit) {
   if (remaining > 0.01) return null;
   return result;
 }
+// Generate warmup sets ramping up to a working weight.
+// Returns 4 sets: empty bar, then ~45%, ~65%, ~85% of working weight, each rounded
+// to the nearest achievable weight given standard plates. Reps taper as weight rises.
+// Used by the opt-in "Add warmup" button on compound barbell lifts.
+function generateWarmupSets(workingWeight, unit) {
+  const w = parseFloat(workingWeight);
+  if (!w || w <= 0) return [];
+  const bar = unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS;
+  // Smallest increment we can actually load (plate × 2 sides)
+  const minPlate = unit === "kg" ? 1.25 : 2.5;
+  const step = minPlate * 2;
+  // Round a target weight to the nearest achievable barbell load (>= bar)
+  const roundToBar = (target) => {
+    if (target <= bar) return bar;
+    const rounded = Math.round((target - bar) / step) * step + bar;
+    return Math.max(bar, rounded);
+  };
+  // Only warm up if the working weight is meaningfully above the bar
+  if (w <= bar + step) return [];
+  const ramp = [
+    { pct: 0, reps: 8 },     // empty bar
+    { pct: 0.45, reps: 5 },
+    { pct: 0.65, reps: 3 },
+    { pct: 0.85, reps: 2 },
+  ];
+  const sets = [];
+  let lastWeight = -1;
+  for (const r of ramp) {
+    const target = r.pct === 0 ? bar : roundToBar(w * r.pct);
+    // Skip if this warmup weight equals the working weight or duplicates the previous step
+    if (target >= w || target === lastWeight) continue;
+    lastWeight = target;
+    sets.push({ id: uid(), weight: String(target), reps: String(r.reps), done: false, type: "warmup" });
+  }
+  return sets;
+}
+
 function cvt(w, from, to) {
   if (!w || from === to) return w;
   const n = parseFloat(w);
@@ -1440,10 +1477,13 @@ function PullToRefresh({ onRefresh, C, children }) {
 
 // AnimatedNumber — smoothly tweens between values with a brief scale pulse on change.
 // Use for stats that update during interaction (e.g. running volume during a workout).
-function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleString(), style }) {
-  const [display, setDisplay] = useState(value);
+function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleString(), style, animateOnMount = false }) {
+  // When animateOnMount is true, the display starts at 0 and counts up to `value`
+  // on first render (used for the finish-screen hero number). Otherwise it starts
+  // at `value` and only animates when `value` later changes (used for running totals).
+  const [display, setDisplay] = useState(animateOnMount ? 0 : value);
   const [pulse, setPulse] = useState(false);
-  const fromRef = useRef(value);
+  const fromRef = useRef(animateOnMount ? 0 : value);
   const startRef = useRef(0);
   const rafRef = useRef(0);
   const pulseTimerRef = useRef(0);
@@ -2476,10 +2516,14 @@ function PRModal({ pr, unit, onClose, onShare }) {
 
           {/* The big number */}
           <div style={{ marginBottom:32 }}>
-            <div className="seshd-count" style={{
+            <div style={{
               fontFamily:MONO, fontSize:88, lineHeight:0.9, fontWeight:700, letterSpacing:-3,
               fontVariantNumeric: "tabular-nums",
-            }}>{pr.weight}</div>
+            }}>
+              {Number.isInteger(parseFloat(pr.weight))
+                ? <AnimatedNumber value={parseFloat(pr.weight) || 0} duration={900} animateOnMount/>
+                : <span className="seshd-count">{pr.weight}</span>}
+            </div>
             <div style={{ fontSize:16, color:"rgba(255,255,255,0.5)", marginTop:6, letterSpacing:1, fontWeight:600 }}>{unit.toUpperCase()}</div>
           </div>
 
@@ -2489,7 +2533,7 @@ function PRModal({ pr, unit, onClose, onShare }) {
             <div style={{ fontSize:20, fontWeight:800, lineHeight:1.2, letterSpacing:-0.5 }}>{pr.name}</div>
           </div>
 
-          {/* Increase */}
+          {/* Increase — show what you beat */}
           {pr.increase > 0 && (
             <div style={{
               padding:"14px 16px", marginBottom:24,
@@ -2498,8 +2542,13 @@ function PRModal({ pr, unit, onClose, onShare }) {
               display:"flex", alignItems:"center", justifyContent:"space-between"
             }}>
               <div style={{ fontSize:11, letterSpacing:1.8, fontWeight:700, color:"rgba(255,255,255,0.55)" }}>PREVIOUS BEST</div>
-              <div style={{ fontFamily:MONO, fontSize:14, fontWeight:700 }}>
-                +{pr.increase}<span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginLeft:3 }}>{unit}</span>
+              <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                <span style={{ fontFamily:MONO, fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.4)", textDecoration:"line-through" }}>
+                  {Math.round(((parseFloat(pr.weight)||0) - pr.increase) * 10) / 10} {unit}
+                </span>
+                <span style={{ fontFamily:MONO, fontSize:14, fontWeight:700, color:"#fff" }}>
+                  +{pr.increase}
+                </span>
               </div>
             </div>
           )}
@@ -4390,6 +4439,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         duration: fmtTime(elapsed),
         sets: totalSets,
         volume: fmtVol(Math.round(totalVol), unit),
+        volumeRaw: Math.round(totalVol),
         exercises: session.exercises.filter(e => e.name).length,
         prs: newPRsList,
         progressions: progressionsHit,
@@ -4754,9 +4804,36 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </div>
                 ))}
 
-                <div style={{ display:"flex", padding:"8px 14px 12px", borderBottom:`1px solid ${C.divider}` }}>
-                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
-                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
+                <div style={{ display:"flex", padding:"8px 14px 12px", borderBottom:`1px solid ${C.divider}`, gap:8, flexWrap:"wrap" }}>
+                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
+                  {(() => {
+                    // Warmup button — only on compound barbell lifts, when a working weight exists and no warmups present yet
+                    const exName = ex.name || "";
+                    const isCompound = (
+                      /\bbarbell\b|\bbench press\b|\bsquat\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bhip thrust\b|\boverhead press\b|\bohp\b|\bpush press\b|\bclean\b|\bsnatch\b|\bpendlay\b|\brow\b/i.test(exName)
+                      && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith|machine|cable|band/i.test(exName)
+                    );
+                    const hasWarmup = ex.sets.some(s => s.type === "warmup");
+                    const topWorkingWeight = Math.max(0, ...ex.sets.filter(s => s.type !== "warmup" && s.weight).map(s => parseFloat(s.weight) || 0));
+                    if (!isCompound || hasWarmup || topWorkingWeight <= 0) return null;
+                    return (
+                      <button onClick={() => {
+                        const warmups = generateWarmupSets(topWorkingWeight, unit);
+                        if (!warmups.length) { toast("Working weight too light for warmups", "error"); return; }
+                        setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x, sets:[...warmups, ...x.sets]}) }));
+                        haptic("success");
+                        toast(`Added ${warmups.length} warmup sets`, "success");
+                      }} style={{
+                        flex:1, minWidth:100, padding:"10px 12px", background:`${C.orange}14`,
+                        border:`1px solid ${C.orange}40`, borderRadius:12, color:C.orange,
+                        fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"center",
+                        display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                      }}>
+                        <Icon name="flame" size={13} color={C.orange}/> Add warmup
+                      </button>
+                    );
+                  })()}
+                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
                 </div>
               </div>
             );
@@ -4824,7 +4901,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       color: "#fff", letterSpacing: -3,
                       display: "flex", alignItems: "baseline", gap: 8,
                     }}>
-                      <span className="seshd-count">{(typeof workoutSummary.volume === 'string' ? workoutSummary.volume : String(workoutSummary.volume)).replace(/\s\w+$/,'')}</span>
+                      <AnimatedNumber
+                        value={workoutSummary.volumeRaw ?? 0}
+                        duration={1100}
+                        animateOnMount
+                        format={(n) => n.toLocaleString()}
+                      />
                       <span style={{ fontSize: 18, fontWeight: 600, color: "rgba(255,255,255,0.45)", letterSpacing: 1 }}>
                         {(typeof workoutSummary.volume === 'string' ? workoutSummary.volume.split(' ').pop() : (unit || 'lbs')).toLowerCase()}
                       </span>
@@ -5826,7 +5908,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     return maxW > 0 && (store.prs||{})[ex.name] && maxW >= (store.prs[ex.name] * (sess.unit==="kg"?2.205:1) * 0.98);
                   }) || [];
                   return (
-                    <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
+                    <div key={i} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.2)}s`, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
@@ -8292,13 +8374,13 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             )}
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}>{posts.length}</div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
+            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
             <button onClick={() => setListModal("followers")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}>{followers}</div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}><AnimatedNumber value={followers} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>Followers</div>
             </button>
             <button onClick={() => setListModal("following")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}>{following2}</div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}><AnimatedNumber value={following2} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>Following</div>
             </button>
           </div>
@@ -10034,13 +10116,22 @@ export default function App() {
         @keyframes seshd-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         @keyframes seshd-fresh-pulse { 0%,100%{opacity:0.5;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.15)} }
 
-        button { -webkit-tap-highlight-color: transparent; transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s; }
-        button:active:not(:disabled) { transform: scale(0.96); }
+        button { -webkit-tap-highlight-color: transparent; transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s; }
+        button:active:not(:disabled) { transform: scale(0.97); }
+        /* Pressable cards/rows — add className="seshd-pressable" to any tappable card */
+        .seshd-pressable { transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1); -webkit-tap-highlight-color: transparent; }
+        .seshd-pressable:active { transform: scale(0.985); }
         .seshd-enter { animation: seshd-fade-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .seshd-scale-enter { animation: seshd-scale-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .seshd-count { animation: seshd-count-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; font-variant-numeric: tabular-nums; }
         .seshd-slide-up { animation: seshd-slide-up 0.36s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .seshd-pulse { animation: seshd-pulse-soft 2s ease-in-out infinite; }
+        /* Tab content transition — applied on tab change */
+        @keyframes seshd-tab-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        .seshd-tab-enter { animation: seshd-tab-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        /* Soft fade for skeleton→content swaps */
+        @keyframes seshd-content-fade { from{opacity:0} to{opacity:1} }
+        .seshd-content-fade { animation: seshd-content-fade 0.35s ease-out both; }
       `;
       document.head.appendChild(style);
     }
@@ -10632,7 +10723,11 @@ export default function App() {
                   </div>
                 )}
                 {feedPosts.map((post, i) => (
-                  <div key={post.id}>
+                  <div
+                    key={post.id}
+                    className="seshd-content-fade"
+                    style={{ animationDelay: `${Math.min(i * 0.04, 0.3)}s` }}
+                  >
                     <PostCard
                       post={post}
                       store={store}
@@ -10718,7 +10813,7 @@ export default function App() {
                   <div style={{ fontSize:13 }}>When friends like or comment on your posts, you'll see it here. Share a workout to get the conversation going.</div>
                 </div>
               ) : events.slice(0,50).map((ev, i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                <div key={i} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
                   <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
                   <div style={{ flex:1 }}>
                     <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{ev.user.username} </span>
