@@ -407,25 +407,29 @@ const EXERCISE_DB = [
 // ═════════════════════════════════════════════════════════════════════════════
 const THEMES = {
   dark: {
-    bg: "#0a0a0c",
-    surface: "#141416",
-    card: "#141416",
-    border: "#2a2a2e",
-    divider: "#1c1c1f",
+    isDark: true,
+    // Deep-grey elevation system (not pure black) — calmer, more premium, easier on the eyes.
+    // Each layer is distinctly lighter than the one below it so cards read as "raised".
+    bg: "#0e0e11",          // app background — deep charcoal with a faint cool tint
+    surface: "#1a1a1f",     // raised cards/sheets — clearly above bg
+    card: "#1a1a1f",
+    border: "#2e2e36",      // visible but subtle card borders
+    divider: "#232329",     // hairline separators within surfaces
     accent: "#8b5cf6",
-    accentSoft: "rgba(139,92,246,0.14)",
+    accentSoft: "rgba(139,92,246,0.16)",
     accent2: "#7c3aed",
-    orange: "#f97316",
+    orange: "#fb923c",
     green: "#34d399",
-    gold: "#facc15",
+    gold: "#fbbf24",
     red: "#f87171",
-    text: "#f5f5f7",
-    textDim: "#d4d4d8",
-    sub: "#a1a1aa",
-    muted: "#71717a",
-    tabBg: "rgba(10,10,12,0.95)",
+    text: "#f4f4f6",        // near-white, not pure white (softer)
+    textDim: "#cdcdd3",
+    sub: "#9a9aa5",
+    muted: "#6b6b76",
+    tabBg: "rgba(14,14,17,0.85)",
   },
   light: {
+    isDark: false,
     bg: "#ffffff",
     surface: "#ffffff",
     card: "#ffffff",
@@ -494,7 +498,7 @@ function MuscleIcon({ muscle = "", size = 28, C }) {
     cardio:"#ef4444", yoga:"#a855f7", // duration-based exercises
   };
   const color = colors[m] || C?.accent || "#2563eb";
-  const isDark = C?.bg === "#0a0a0c";
+  const isDark = C?.isDark ?? (C?.bg === "#0a0a0c");
   const bodyFill = isDark ? "#2a2a2e" : "#e8ecf0";
   const bodyStroke = isDark ? "#3a3a3e" : "#cbd5e1";
 
@@ -1387,7 +1391,7 @@ function Avatar({ user, size = 36, onClick, C, ring = false }) {
 function Skeleton({ width = "100%", height = 12, radius = 6, C, style }) {
   // Two-tone gradient that translates across the element via background-position
   // The colors are calibrated to be visible but not distracting in either theme.
-  const isDark = C?.bg === "#0a0a0c";
+  const isDark = C?.isDark ?? (C?.bg === "#0a0a0c");
   const baseColor = isDark ? "rgba(255,255,255,0.045)" : "rgba(0,0,0,0.04)";
   const highlightColor = isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)";
   return (
@@ -2691,7 +2695,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
   }
 
   const activeDay = days[activeDayIdx] || days[0];
-  const isDark = C.bg === "#0a0a0c";
+  const isDark = C.isDark ?? (C.bg === "#0a0a0c");
   const surface = isDark ? "#141414" : "#F8FAFC";
   const border = isDark ? "#222" : "#E8ECF0";
   const inputBg = isDark ? "#1e1e1e" : "#fff";
@@ -3090,7 +3094,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
       )}
 
       {post.type === "workout" && post.workout && (() => {
-        const isDark = C.bg === "#0a0a0c";
+        const isDark = C.isDark ?? (C.bg === "#0a0a0c");
         return (
           <div style={{ margin:"0 14px", borderRadius:16, overflow:"hidden", border:`1px solid ${C.border}` }}>
             {/* Header band */}
@@ -3211,7 +3215,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                   display:"flex", alignItems:"center", gap:10,
                   width:"100%", marginTop:6, marginBottom:5,
                   padding:"10px 12px",
-                  background: C.bg === "#0a0a0c" ? "#141414" : "#F4F6FA",
+                  background: C.isDark ? "#141414" : "#F4F6FA",
                   border:`1px solid ${C.border}`, borderRadius:10, cursor:"pointer", fontFamily:F,
                   textAlign:"left",
                 }}>
@@ -3364,7 +3368,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   function addEx() { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:[...(d.exercises||[]),{name:"",sets:3,reps:"8-12",rest:"90",note:""}]})}); }
   function removeEx(ei) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.filter((_,xi)=>xi!==ei)})}); }
 
-  const isDark = C.bg === "#0a0a0c";
+  const isDark = C.isDark ?? (C.bg === "#0a0a0c");
   const CARD = isDark ? "#141414" : "#FFFFFF";
   const BG   = isDark ? "#0a0a0a" : "#F4F6FA";
   const BORD = isDark ? "#222"    : "#E8ECF0";
@@ -4304,7 +4308,23 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         ...p,
         exercises: p.exercises.map((ex, i) => i !== ei ? ex : {
           ...ex,
-          sets: ex.sets.map((s, j) => j !== si ? s : { ...s, done: nowDone })
+          sets: ex.sets.map((s, j) => {
+            if (j !== si) return s;
+            // When marking done: if weight/reps are empty but the placeholder shows a
+            // previous value, commit that previous value so it doesn't save as 0.
+            // (The grayed placeholder is what the user is visually "accepting".)
+            if (nowDone) {
+              const prevVals = ex.name ? getPrev(store, ex.name, si, unit) : null;
+              const filledWeight = (s.weight === "" || s.weight === undefined || s.weight === null)
+                ? (prevVals?.w != null ? String(prevVals.w) : s.weight)
+                : s.weight;
+              const filledReps = (s.reps === "" || s.reps === undefined || s.reps === null)
+                ? (prevVals?.r != null ? String(prevVals.r) : s.reps)
+                : s.reps;
+              return { ...s, weight: filledWeight, reps: filledReps, done: nowDone };
+            }
+            return { ...s, done: nowDone };
+          })
         })
       };
     });
@@ -4400,16 +4420,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Instead of silently overwriting the program (surprising for one-off swaps),
       // we detect changes and offer the user a choice on the summary screen.
       let programChange = null;
-      if (session.programId && session.dayName && onSaveProgram) {
+      if (session.programId && onSaveProgram) {
         const prog = store.programs.find(p => p.id === session.programId);
-        const day = prog?.days?.find(d => d.name === session.dayName);
+        // Match the day by id first (most reliable), then fall back to name
+        const day = prog?.days?.find(d => d.id === session.dayId)
+          || prog?.days?.find(d => d.name === session.dayName);
         if (prog && day) {
           const sessionExNames = session.exercises.filter(e => e.name).map(e => e.name);
           const dayExNames = (day.exercises || []).map(e => e.name);
           const changed = sessionExNames.length !== dayExNames.length
             || sessionExNames.some((n, i) => n !== dayExNames[i]);
-          if (changed) {
-            const updatedDays = prog.days.map(d => d.name === session.dayName ? {
+          if (changed && sessionExNames.length > 0) {
+            const updatedDays = prog.days.map(d => (d.id === day.id) ? {
               ...d,
               exercises: session.exercises.filter(e => e.name).map(ex => ({
                 name: ex.name, reps: ex.reps || d.exercises.find(x => x.name === ex.name)?.reps || "8-12",
@@ -6320,7 +6342,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const [viewingExercise, setViewingExercise] = useState(null);
   const [shareModal, setShareModal] = useState(null);
 
-  const isDark = C.bg === "#0a0a0c";
+  const isDark = C.isDark ?? (C.bg === "#0a0a0c");
   const BG    = isDark ? "#0a0a0a" : "#F4F6FA";
   const CARD  = isDark ? "#141414" : "#FFFFFF";
   const BORD  = isDark ? "#222"    : "#E8ECF0";
