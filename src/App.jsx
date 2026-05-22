@@ -24,9 +24,11 @@ const sb = (() => {
   }
 
   async function query(path, opts = {}, token = null) {
+    const { headers_extra, ...fetchOpts } = opts;
+    const mergedHeaders = { ...authHeaders(token), ...(headers_extra || {}) };
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      headers: authHeaders(token),
-      ...opts,
+      headers: mergedHeaders,
+      ...fetchOpts,
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -999,6 +1001,24 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
   if (range) {
     const allHitTop = lastInUserUnit.every(s => s.r >= range.high);
     if (allHitTop) {
+      // How far did they exceed the top of the range? If they blew way past it
+      // (e.g. did 15 reps on a 5-8 range), snapping back to range.low (5) is jarring
+      // and probably means the range is set too low for how they actually train.
+      // In that case keep them near the reps they actually did rather than forcing a big drop.
+      const avgReps = Math.round(lastInUserUnit.reduce((a, s) => a + s.r, 0) / lastInUserUnit.length);
+      const overshoot = avgReps - range.high;
+      if (overshoot >= 4) {
+        // They're training well above the range — add weight but keep reps realistic
+        // (drop just 2-3 reps from what they did, not all the way to range.low)
+        return {
+          type: "weight",
+          weight: lastWeight + inc,
+          reps: Math.max(range.high, avgReps - 2),
+          note: `+${inc} ${unit}`,
+          deltaWeight: inc,
+          reason: `Way above target reps — add ${inc} ${unit}, keep reps high`,
+        };
+      }
       return {
         type: "weight",
         weight: lastWeight + inc,
@@ -4109,6 +4129,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
   useEffect(() => {
     if (!session) { try { localStorage.removeItem(SESSION_KEY); } catch {} return; }
+    // Save immediately on every change so a crash/background-kill never loses more
+    // than the very last keystroke. The interval is a backup for elapsed-time drift.
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
     const id = setInterval(() => {
       try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
     }, 5000);
@@ -4158,24 +4181,25 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               }
             } catch {}
             try { if (navigator.vibrate) navigator.vibrate([200,100,200,100,400]); } catch {}
-            try { toast("Rest is up — go", "success"); } catch {}
-            // System notification — shows in the notification tray even if the app is backgrounded
-            try {
-              if ("Notification" in window && Notification.permission === "granted" && document.visibilityState !== "visible") {
-                new Notification("Rest's up — back to work", {
-                  body: "Go hit your next set",
-                  icon: "/icon-192.png",
-                  badge: "/icon-192.png",
-                  tag: "seshd-rest",
-                  silent: false,
-                });
-              }
-            } catch {}
-            try {
-              if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("Rest time's up 🔥", { body:"Get back to it.", icon:"/icon-192.png", tag:"rest-timer" });
-              }
-            } catch {}
+            // In-app toast only when the app is actually on screen
+            if (document.visibilityState === "visible") {
+              try { toast("Rest is up — go", "success"); } catch {}
+            } else {
+              // System notification only when the app is backgrounded / another app is in use.
+              // (Note: iOS Safari/PWA only delivers these when the page is alive in the background;
+              // true background delivery requires the native build via push notifications.)
+              try {
+                if ("Notification" in window && Notification.permission === "granted") {
+                  new Notification("Rest's up — back to work", {
+                    body: "Go hit your next set",
+                    icon: "/icon-192.png",
+                    badge: "/icon-192.png",
+                    tag: "seshd-rest", // tag dedupes — replaces any existing rest notification
+                    silent: false,
+                  });
+                }
+              } catch {}
+            }
             return null;
           }
           return { ...p, secs: remaining };
@@ -4203,6 +4227,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     });
     setWStart(Date.now());
     setElapsed(0);
+    lastActivityRef.current = Date.now(); // reset idle tracker for the new session
   }
 
   // "Repeat workout" — start a new session pre-loaded from a past session's exercises.
@@ -4234,10 +4259,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     });
     setWStart(Date.now());
     setElapsed(0);
+    lastActivityRef.current = Date.now();
     setSubTab("workout");
   }
 
   function toggleDone(ei, si) {
+    lastActivityRef.current = Date.now(); // mark activity for idle-gap detection
     setSession(p => {
       const nowDone = !p.exercises[ei]?.sets[si]?.done;
 
@@ -4299,6 +4326,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   }
 
   const [finishing, setFinishing] = useState(false);
+  // Tracks the wall-clock time of the last set completion. Used to cap workout
+  // duration if the user forgets to hit Finish for hours (idle gap detection).
+  const lastActivityRef = useRef(Date.now());
   const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
   const [workoutSummary, setWorkoutSummary] = useState(null);
 
@@ -4314,6 +4344,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       const originalPRs = { ...store.prs }; // snapshot before any updates
       let hitPR = null;
       const newPRs = { ...store.prs };
+
+      // Idle-gap correction: if the user forgot to hit Finish and there's a long gap
+      // since their last completed set, the raw elapsed time would be misleadingly long.
+      // Cap the recorded duration at (last activity − start) + a 5-min cooldown buffer.
+      const IDLE_THRESHOLD = 20 * 60 * 1000; // 20 minutes
+      const now = Date.now();
+      const gap = now - lastActivityRef.current;
+      let recordedDuration = elapsed;
+      if (gap > IDLE_THRESHOLD && wStart) {
+        const activeMs = (lastActivityRef.current - wStart) + 5 * 60 * 1000; // + 5 min buffer
+        recordedDuration = Math.max(60, Math.floor(activeMs / 1000));
+      }
 
       const cleanEx = session.exercises.filter(e => e.name).map(ex => ({
         name: ex.name,
@@ -4339,7 +4381,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           ...p.history,
           [dk]: {
             ...(p.history[dk] || {}),
-            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: elapsed, unit, note: "", finishedAt: Date.now() }
+            [sid]: { dayName: session.dayName, exercises: cleanEx, duration: recordedDuration, unit, note: "", finishedAt: Date.now() }
           }
         },
         prs: newPRs,
@@ -4354,18 +4396,28 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }
       }));
 
-      // Save program changes
+      // Detect whether the session structure differs from the saved program day.
+      // Instead of silently overwriting the program (surprising for one-off swaps),
+      // we detect changes and offer the user a choice on the summary screen.
+      let programChange = null;
       if (session.programId && session.dayName && onSaveProgram) {
         const prog = store.programs.find(p => p.id === session.programId);
-        if (prog) {
-          const updatedDays = prog.days.map(d => d.name === session.dayName ? {
-            ...d,
-            exercises: session.exercises.filter(e => e.name).map(ex => ({
-              name: ex.name, reps: ex.reps || d.exercises.find(x => x.name === ex.name)?.reps || "8-12",
-              note: ex.note || ""
-            }))
-          } : d);
-          onSaveProgram({ ...prog, days: updatedDays });
+        const day = prog?.days?.find(d => d.name === session.dayName);
+        if (prog && day) {
+          const sessionExNames = session.exercises.filter(e => e.name).map(e => e.name);
+          const dayExNames = (day.exercises || []).map(e => e.name);
+          const changed = sessionExNames.length !== dayExNames.length
+            || sessionExNames.some((n, i) => n !== dayExNames[i]);
+          if (changed) {
+            const updatedDays = prog.days.map(d => d.name === session.dayName ? {
+              ...d,
+              exercises: session.exercises.filter(e => e.name).map(ex => ({
+                name: ex.name, reps: ex.reps || d.exercises.find(x => x.name === ex.name)?.reps || "8-12",
+                note: ex.note || ""
+              }))
+            } : d);
+            programChange = { prog, updatedDays, progName: prog.name };
+          }
         }
       }
 
@@ -4425,9 +4477,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // If user picked "Save & send to groups", post to groups only and skip summary
       if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0) {
         onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
-        // Fire-and-forget DB save
-        onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: elapsed, unit, note: "", prs: newPRs });
-        toast(`Sent to ${groupShare.groupIds.length} group${groupShare.groupIds.length===1?"":"s"}`, "success");
+        const gSave = await onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
+        if (gSave && gSave.ok === false) {
+          try {
+            const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
+            pending.push({ dk, sid, savedAt: Date.now(), data: { dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
+            localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
+          } catch {}
+          toast("Saved on this device — couldn't reach server. Will retry.", "error");
+        } else {
+          toast(`Sent to ${groupShare.groupIds.length} group${groupShare.groupIds.length===1?"":"s"}`, "success");
+        }
         if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
         return;
       }
@@ -4436,13 +4496,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Capture undo info so user can roll back if they finished by accident
       setWorkoutSummary({
         dayName: session.dayName,
-        duration: fmtTime(elapsed),
+        duration: fmtTime(recordedDuration),
         sets: totalSets,
         volume: fmtVol(Math.round(totalVol), unit),
         volumeRaw: Math.round(totalVol),
         exercises: session.exercises.filter(e => e.name).length,
         prs: newPRsList,
         progressions: progressionsHit,
+        programChange,
         share,
         shareData,
         undo: {
@@ -4455,10 +4516,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       });
       setShowWorkoutSummary(true);
 
-      // Fire-and-forget DB save (don't block UI)
-      onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: elapsed, unit, note: "", prs: newPRs });
+      // Save to DB and verify it landed. The local store already has the workout
+      // (via setStore above), and that's persisted to localStorage — but the DB is
+      // the source of truth on next login, so a silent DB failure = lost workout.
+      // We await the result and tell the user the truth.
+      const saveResult = await onSaveWorkout({
+        dayName: session.dayName,
+        exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })),
+        duration: recordedDuration,
+        unit, note: "", prs: newPRs
+      });
 
-      toast(share ? "Workout posted" : "Workout saved", "success");
+      if (saveResult && saveResult.ok === false) {
+        // DB save failed — keep a pending copy so it can be retried, and warn the user
+        try {
+          const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
+          pending.push({ dk, sid, savedAt: Date.now(), data: {
+            dayName: session.dayName,
+            exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })),
+            duration: recordedDuration, unit, note: "", prs: newPRs
+          }});
+          localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
+        } catch {}
+        toast("Saved on this device — couldn't reach server. Will retry.", "error");
+      } else {
+        toast(share ? "Workout posted" : "Workout saved", "success");
+      }
+
       if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
     } finally {
       setFinishing(false);
@@ -4992,6 +5076,36 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   )}
                 </div>
 
+                {/* Offer to save mid-workout changes back to the program */}
+                {workoutSummary.programChange && !workoutSummary.programUpdated && (
+                  <div style={{ marginBottom:14, padding:"14px", borderRadius:12, background:C.surface, border:`1px solid ${C.border}` }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:C.text, marginBottom:3 }}>You changed this workout</div>
+                    <div style={{ fontSize:12, color:C.sub, lineHeight:1.45, marginBottom:12 }}>
+                      Update "{workoutSummary.programChange.progName}" so these exercises are there next time?
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={() => {
+                        const pc = workoutSummary.programChange;
+                        onSaveProgram({ ...pc.prog, days: pc.updatedDays });
+                        setWorkoutSummary(prev => ({ ...prev, programUpdated: true }));
+                        haptic("success");
+                        toast("Program updated", "success");
+                      }} style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:C.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                        Update program
+                      </button>
+                      <button onClick={() => setWorkoutSummary(prev => ({ ...prev, programChange: null }))}
+                        style={{ flex:1, padding:"10px", borderRadius:10, border:`1px solid ${C.border}`, background:"none", color:C.sub, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>
+                        Keep original
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {workoutSummary.programUpdated && (
+                  <div style={{ marginBottom:14, padding:"12px 14px", borderRadius:12, background:`${C.green}14`, border:`1px solid ${C.green}40`, fontSize:12, color:C.green, fontWeight:600, display:"flex", alignItems:"center", gap:8 }}>
+                    <Icon name="check" size={14} color={C.green}/> Saved to your program
+                  </div>
+                )}
+
                 {/* Share to Groups */}
                 {(() => {
                   const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
@@ -5026,28 +5140,37 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })()}
               </div>
               <div style={{ padding:"12px 18px 32px", display:"flex", flexDirection:"column", gap:8 }}>
-                <button onClick={() => {
-                  // Find active program's share code to append to caption
-                  const activeProg = (store.programs||[]).find(p => p.id === store.activeProgramId);
-                  const progCode = activeProg?.shareCode || null;
-                  if (workoutSummary.shareData) {
-                    const enrichedShareData = progCode
-                      ? { ...workoutSummary.shareData, caption: `${workoutSummary.shareData.caption} · Try my program: ${progCode}` }
-                      : workoutSummary.shareData;
-                    onShareWorkout({ ...enrichedShareData, groupIds: [] });
-                  }
-                  const text = progCode
-                    ? `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}\nTry my program: ${progCode}`
-                    : `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
-                  if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
-                  else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
-                  setShowWorkoutSummary(false); setWorkoutSummary(null);
-                }} style={{ width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-                  Share to Feed
-                </button>
+                {(() => {
+                  const selectedGroups = workoutSummary.shareToGroups || [];
+                  const hasGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0;
+                  const groupLabel = selectedGroups.length > 0 ? ` + ${selectedGroups.length} group${selectedGroups.length>1?"s":""}` : "";
+                  return (
+                    <button onClick={() => {
+                      // Find active program's share code to append to caption
+                      const activeProg = (store.programs||[]).find(p => p.id === store.activeProgramId);
+                      const progCode = activeProg?.shareCode || null;
+                      if (workoutSummary.shareData) {
+                        const enrichedShareData = progCode
+                          ? { ...workoutSummary.shareData, caption: `${workoutSummary.shareData.caption} · Try my program: ${progCode}` }
+                          : workoutSummary.shareData;
+                        // Share to feed AND any selected groups in one shot
+                        onShareWorkout({ ...enrichedShareData, groupIds: selectedGroups, groupOnly: false });
+                      }
+                      const text = progCode
+                        ? `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}\nTry my program: ${progCode}`
+                        : `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
+                      if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
+                      else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
+                      setShowWorkoutSummary(false); setWorkoutSummary(null);
+                    }} style={{ width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                      Share to Feed{groupLabel}
+                    </button>
+                  );
+                })()}
                 {(() => {
                   const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
+                  const selectedGroups = workoutSummary.shareToGroups || [];
                   if (myGroups.length === 0) {
                     return (
                       <div style={{ width:"100%", background:"transparent", color:C.muted, border:`1.5px dashed ${C.border}`, borderRadius:14, padding:"13px", fontSize:12, fontFamily:F, letterSpacing:-0.1, textAlign:"center" }}>
@@ -5055,15 +5178,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     );
                   }
+                  // Secondary option: share to groups only (no feed post)
                   return (
                     <button onClick={() => {
-                      const selectedGroups = workoutSummary.shareToGroups || [];
                       if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
                       if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, feedOnly: false, groupOnly: true });
                       setShowWorkoutSummary(false); setWorkoutSummary(null);
                     }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                      Share to Groups Only{(workoutSummary.shareToGroups||[]).length > 0 ? ` (${(workoutSummary.shareToGroups||[]).length})` : ""}
+                      Groups Only{selectedGroups.length > 0 ? ` (${selectedGroups.length})` : ""}
                     </button>
                   );
                 })()}
@@ -5244,7 +5367,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
-              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish & share to feed"}</button>
+              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish & share"}</button>
               {(() => {
                 const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
                 if (myGroups.length === 0) return null;
@@ -5911,7 +6034,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div key={i} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.2)}s`, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
+                          <div style={{ fontSize:14, fontWeight:700, color:C.text, display:"flex", alignItems:"center", gap:7 }}>
+                            {sess.dayName}
+                            {sess.pendingSync && (
+                              <span style={{ display:"inline-flex", alignItems:"center", gap:4, background:`${C.orange}1A`, color:C.orange, borderRadius:6, padding:"2px 7px", fontSize:9, fontWeight:700, letterSpacing:0.4 }}>
+                                <span style={{ width:5, height:5, borderRadius:"50%", background:C.orange }} className="seshd-pulse"/>
+                                SYNCING
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
@@ -9305,7 +9436,10 @@ export default function App() {
   // ── Load user data from Supabase once authenticated ─────────────
   useEffect(() => {
     if (!token || isGuest) return;
-    loadUserData();
+    loadUserData().then(() => {
+      // After data loads, retry any workouts that failed to sync earlier
+      flushPendingWorkouts();
+    });
   }, [token, currentUserId, isGuest]);
 
   // Re-fetch when the app comes back to foreground — keeps phone & desktop in sync
@@ -9369,6 +9503,29 @@ export default function App() {
         };
         appWorkoutDates[dk] = true;
       });
+
+      // Preserve any locally-saved workouts that haven't synced to the DB yet,
+      // so a failed-sync workout isn't wiped out when we overwrite history from the DB.
+      try {
+        const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
+        pending.forEach(item => {
+          if (!item?.dk || !item?.sid || !item?.data) return;
+          if (!appHistory[item.dk]) appHistory[item.dk] = {};
+          // Only add if not already present (avoid duplicating a synced one)
+          if (!appHistory[item.dk][item.sid]) {
+            appHistory[item.dk][item.sid] = {
+              dayName: item.data.dayName,
+              exercises: item.data.exercises,
+              duration: item.data.duration,
+              unit: item.data.unit,
+              note: item.data.note || "",
+              finishedAt: item.savedAt || new Date(item.dk).getTime(),
+              pendingSync: true,
+            };
+          }
+          appWorkoutDates[item.dk] = true;
+        });
+      } catch {}
 
       // Clear stale posts immediately so deleted ones don't flash
       setStore(prev => ({ ...prev, posts: [] }));
@@ -10020,7 +10177,10 @@ export default function App() {
 
   async function handleSaveWorkout(workoutData) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
-    if (!tok) return;
+    if (!tok) {
+      toast("Not signed in — workout saved on this device only", "error");
+      return { ok: false, reason: "no-token" };
+    }
     try {
       const row = {
         user_id: currentUserId,
@@ -10031,19 +10191,57 @@ export default function App() {
         note: workoutData.note || "",
         workout_date: new Date().toISOString().split("T")[0],
       };
-      await sb.query("workout_history", { method:"POST", body: JSON.stringify(row) }, tok);
+      // Request the inserted row back so we can confirm the write actually landed
+      const inserted = await sb.query("workout_history", {
+        method:"POST",
+        headers_extra: { "Prefer": "return=representation" },
+        body: JSON.stringify(row)
+      }, tok);
+      const savedRow = Array.isArray(inserted) ? inserted[0] : inserted;
+      if (!savedRow || !savedRow.id) {
+        throw new Error("No row returned from insert — write may have failed");
+      }
 
-      // Save PRs
+      // Save PRs (best-effort — a PR failing shouldn't fail the whole workout)
       if (workoutData.prs) {
         for (const [exName, weight] of Object.entries(workoutData.prs)) {
-          await sb.query("personal_records", {
-            method:"POST",
-            headers_extra: { "Prefer": "resolution=merge-duplicates" },
-            body: JSON.stringify({ user_id: currentUserId, exercise_name: exName, weight_lbs: weight })
-          }, tok);
+          try {
+            await sb.query("personal_records", {
+              method:"POST",
+              headers_extra: { "Prefer": "resolution=merge-duplicates" },
+              body: JSON.stringify({ user_id: currentUserId, exercise_name: exName, weight_lbs: weight })
+            }, tok);
+          } catch (prErr) { console.error("PR save error:", prErr); }
         }
       }
-    } catch (e) { console.error("workout save error:", e); }
+      return { ok: true, id: savedRow.id };
+    } catch (e) {
+      console.error("workout save error:", e);
+      return { ok: false, reason: "db-error", error: e };
+    }
+  }
+
+  // Retry any workouts that failed to save to the DB previously (offline, token expired, etc.)
+  // Runs after data loads. Pending workouts live in localStorage until they sync.
+  async function flushPendingWorkouts() {
+    let pending;
+    try { pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]"); }
+    catch { return; }
+    if (!pending.length) return;
+    const stillPending = [];
+    for (const item of pending) {
+      const result = await handleSaveWorkout(item.data);
+      if (!result || result.ok !== true) {
+        stillPending.push(item); // keep for next time
+      }
+    }
+    try { localStorage.setItem("seshd_pending_workouts", JSON.stringify(stillPending)); } catch {}
+    if (pending.length > stillPending.length) {
+      const synced = pending.length - stillPending.length;
+      toast(`Synced ${synced} workout${synced > 1 ? "s" : ""} from earlier`, "success");
+      // Reload so the synced workouts appear in history
+      loadUserData?.();
+    }
   }
 
   // Pull to refresh
