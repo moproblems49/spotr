@@ -409,12 +409,12 @@ const THEMES = {
   dark: {
     isDark: true,
     // Deep-grey elevation system (not pure black) — calmer, more premium, easier on the eyes.
-    // Each layer is distinctly lighter than the one below it so cards read as "raised".
-    bg: "#0e0e11",          // app background — deep charcoal with a faint cool tint
-    surface: "#1a1a1f",     // raised cards/sheets — clearly above bg
-    card: "#1a1a1f",
-    border: "#2e2e36",      // visible but subtle card borders
-    divider: "#232329",     // hairline separators within surfaces
+    // Layer gap widened so cards visibly "float" above the background.
+    bg: "#0b0b0e",          // app background — deepest layer
+    surface: "#1c1c22",     // raised cards/sheets — clearly lighter than bg
+    card: "#1c1c22",
+    border: "#33333d",      // brighter borders so card edges read clearly
+    divider: "#26262d",     // hairline separators within surfaces
     accent: "#8b5cf6",
     accentSoft: "rgba(139,92,246,0.16)",
     accent2: "#7c3aed",
@@ -426,7 +426,7 @@ const THEMES = {
     textDim: "#cdcdd3",
     sub: "#9a9aa5",
     muted: "#6b6b76",
-    tabBg: "rgba(14,14,17,0.85)",
+    tabBg: "rgba(11,11,14,0.85)",
   },
   light: {
     isDark: false,
@@ -759,7 +759,13 @@ const timeAgo = ts => {
 };
 const fmtTime = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const fmtVol = (v, u) => v >= 1000 ? `${(v/1000).toFixed(1)}k ${u}` : `${v} ${u}`;
-const dKey = (d = new Date()) => d.toISOString().split("T")[0];
+// Local-date key YYYY-MM-DD. MUST use local components, not toISOString() (which is
+// UTC and shifts the day for users in positive-UTC timezones, misaligning the
+// heatmap/calendar and day-grouping of workouts).
+const dKey = (d = new Date()) => {
+  const dt = (d instanceof Date) ? d : new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+};
 
 const LBS_TO_KG = 0.453592;
 
@@ -958,6 +964,118 @@ function getLastExerciseSession(store, exName) {
     }
   }
   return null;
+}
+
+// ─── Progress Insights Engine ───────────────────────────────────────────────
+// Scans workout history and surfaces the single most compelling TRUE fact about
+// the user's recent progress. Returns { icon, headline, sub } or null.
+// Everything here is derived from data already on hand — no new tracking needed.
+// The whole point: make the user feel their progress, which they often don't notice.
+function getProgressInsight(store, unit) {
+  const history = store.history || {};
+  const dates = Object.keys(history).sort(); // ascending
+  if (dates.length < 2) return null; // need some history to say anything meaningful
+
+  const now = Date.now();
+  const DAY = 86400000;
+  const candidates = [];
+
+  // Helper: collect all completed (non-warmup) sets for an exercise with their date
+  function exerciseSets(exName) {
+    const out = [];
+    for (const d of dates) {
+      for (const sess of Object.values(history[d] || {})) {
+        const ex = (sess.exercises || []).find(e => e.name === exName);
+        if (!ex) continue;
+        const su = sess.unit || "lbs";
+        (ex.sets || []).forEach(s => {
+          const done = s.done === true || (s.done === undefined && parseFloat(s.reps) > 0);
+          if (done && s.type !== "warmup") {
+            const w = cvt(parseFloat(s.weight) || 0, su, unit);
+            const r = parseFloat(s.reps) || 0;
+            // Epley 1RM is only reliable up to ~12 reps. Above that, a burnout/endurance
+            // set would inflate the estimate and produce a false "you got stronger" claim,
+            // so we don't let those sets define an e1RM for insight purposes.
+            const e1rm = (r >= 1 && r <= 12) ? (calc1RM(w, r) || 0) : 0;
+            out.push({ date: d, t: new Date(d).getTime(), w, r, e1rm });
+          }
+        });
+      }
+    }
+    return out;
+  }
+
+  // 1. Strength gain on a key lift over the last ~8 weeks (best e1RM then vs now)
+  const allExercises = new Set();
+  for (const d of dates) {
+    for (const sess of Object.values(history[d] || {})) {
+      (sess.exercises || []).forEach(e => e.name && allExercises.add(e.name));
+    }
+  }
+  for (const exName of allExercises) {
+    const sets = exerciseSets(exName);
+    if (sets.length < 4) continue; // need enough data
+    const eightWeeksAgo = now - 56 * DAY;
+    const older = sets.filter(s => s.t < eightWeeksAgo);
+    const recent = sets.filter(s => s.t >= eightWeeksAgo);
+    if (!older.length || !recent.length) {
+      // Not enough span — compare first quarter vs last quarter of available data
+      const q = Math.max(1, Math.floor(sets.length / 4));
+      const earlyBest = Math.max(...sets.slice(0, q).map(s => s.e1rm));
+      const lateBest = Math.max(...sets.slice(-q).map(s => s.e1rm));
+      if (earlyBest > 0 && lateBest > earlyBest) {
+        const gain = Math.round(lateBest - earlyBest);
+        if (gain >= (unit === "kg" ? 5 : 10)) {
+          candidates.push({ priority: 2, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max since you started tracking it` });
+        }
+      }
+      continue;
+    }
+    const olderBest = Math.max(...older.map(s => s.e1rm));
+    const recentBest = Math.max(...recent.map(s => s.e1rm));
+    if (olderBest > 0 && recentBest > olderBest) {
+      const gain = Math.round(recentBest - olderBest);
+      if (gain >= (unit === "kg" ? 5 : 10)) {
+        candidates.push({ priority: 1, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max, recent sessions vs earlier` });
+      }
+    }
+  }
+
+  // 2. Weekly streak milestone
+  const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+  if (ws.count >= 2) {
+    candidates.push({ priority: ws.count >= 4 ? 1 : 3, icon: "flame", headline: `${ws.count} week streak`, sub: `You've hit your weekly target ${ws.count} weeks running. Keep it alive.` });
+  }
+
+  // 3. Biggest-volume week ever (this week vs all prior weeks)
+  const volByWeek = {};
+  for (const d of dates) {
+    for (const sess of Object.values(history[d] || {})) {
+      const su = sess.unit || "lbs";
+      const v = (sess.exercises || []).reduce((a, ex) => a + (ex.sets || [])
+        .filter(s => (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) && s.type !== "warmup")
+        .reduce((b, s) => b + cvt(parseFloat(s.weight) || 0, su, unit) * (parseFloat(s.reps) || 0), 0), 0);
+      const wk = weekKey(new Date(d));
+      volByWeek[wk] = (volByWeek[wk] || 0) + v;
+    }
+  }
+  const thisWk = weekKey(new Date());
+  const thisWkVol = volByWeek[thisWk] || 0;
+  const priorVols = Object.entries(volByWeek).filter(([k]) => k !== thisWk).map(([, v]) => v);
+  if (thisWkVol > 0 && priorVols.length >= 2 && thisWkVol > Math.max(...priorVols)) {
+    candidates.push({ priority: 2, icon: "trophy", headline: `Biggest week yet`, sub: `${Math.round(thisWkVol).toLocaleString()} ${unit} lifted this week — a personal best` });
+  }
+
+  // 4. Total sessions milestone
+  const totalSessions = dates.reduce((a, d) => a + Object.keys(history[d] || {}).length, 0);
+  if ([10, 25, 50, 100, 150, 200, 250, 300, 500].includes(totalSessions)) {
+    candidates.push({ priority: 1, icon: "trophy", headline: `${totalSessions} workouts logged`, sub: `That's real consistency. Proud of you.` });
+  }
+
+  if (!candidates.length) return null;
+  // Lower priority number = more compelling. Tie-break randomly so it varies.
+  candidates.sort((a, b) => a.priority - b.priority || Math.random() - 0.5);
+  return candidates[0];
 }
 
 // Parse rep range like "8-12" or "8–12" or "5,3,1" or "8" → { low, high }
@@ -2430,10 +2548,37 @@ function WrappedModal({ store, C, onClose }) {
   const weekAgo = Date.now() - 7*24*60*60*1000;
   const weekHistory = Object.entries(store.history||{}).filter(([d]) => new Date(d).getTime() > weekAgo);
   const workouts = weekHistory.reduce((a,[,ss]) => a + Object.keys(ss).length, 0);
-  const volume = weekHistory.reduce((a,[,ss]) => a + Object.values(ss).reduce((b,s) =>
-    b + (s.exercises||[]).reduce((c,ex) =>
-      c + (ex.sets||[]).reduce((d2,s2) =>
-        d2 + (s2.done ? (parseFloat(s2.weight)||0) * (parseFloat(s2.reps)||0) : 0), 0), 0), 0), 0);
+  // Volume: exclude warmups and convert each session's stored unit to the display unit,
+  // matching how volume is computed everywhere else in the app.
+  const volume = weekHistory.reduce((a,[,ss]) => a + Object.values(ss).reduce((b,s) => {
+    const su = s.unit || "lbs";
+    return b + (s.exercises||[]).reduce((c,ex) =>
+      c + (ex.sets||[]).reduce((d2,s2) => {
+        const done = s2.done === true || (s2.done === undefined && parseFloat(s2.reps) > 0);
+        if (!done || s2.type === "warmup") return d2;
+        return d2 + cvt(parseFloat(s2.weight)||0, su, unit) * (parseFloat(s2.reps)||0);
+      }, 0), 0);
+  }, 0), 0);
+  // PRs this week: count distinct exercises that hit a top set this week beating their
+  // prior best. Approximation using current stored PRs vs sessions in the window would
+  // require historical PR snapshots, so we count exercises whose best e1RM-relevant set
+  // this week equals or exceeds the stored PR (i.e. the PR was likely set this week).
+  const weekPRs = (() => {
+    const prs = store.prs || {};
+    const seen = new Set();
+    weekHistory.forEach(([, ss]) => Object.values(ss).forEach(s => {
+      const su = s.unit || "lbs";
+      (s.exercises||[]).forEach(ex => {
+        if (!ex.name || !prs[ex.name]) return;
+        const maxLbs = Math.max(0, ...(ex.sets||[])
+          .filter(st => (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)) && st.type !== "warmup")
+          .map(st => { const w = parseFloat(st.weight)||0; return su === "lbs" ? w : cvt(w, "kg", "lbs"); }));
+        // PR stored in lbs; if this week's best meets it, the PR was (re)set this week
+        if (maxLbs > 0 && maxLbs >= prs[ex.name] * 0.999) seen.add(ex.name);
+      });
+    }));
+    return seen.size;
+  })();
   const streak = calcStreak(store.workoutDates);
 
   return (
@@ -2468,7 +2613,7 @@ function WrappedModal({ store, C, onClose }) {
             {[
               ["WORKOUTS", workouts, "activity"],
               ["VOLUME", fmtVol(Math.round(volume), unit).replace(/\s\w+$/, ''), "package"],
-              ["PRS", Object.keys(store.prs||{}).length, "trophy"],
+              ["PRS", weekPRs, "trophy"],
               ["STREAK", `${streak}d`, "flame"],
             ].map(([l, v, ic], i) => (
               <div key={l} className="seshd-enter" style={{
@@ -2487,7 +2632,7 @@ function WrappedModal({ store, C, onClose }) {
           </div>
 
           <button onClick={() => {
-            const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${Object.keys(store.prs||{}).length} PRs · ${streak} day streak`;
+            const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PRs · ${streak} day streak`;
             if (navigator.share) navigator.share({ title:"Seshd Wrapped", text }).catch(()=>{});
             else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
           }} style={{
@@ -2609,37 +2754,103 @@ function PRModal({ pr, unit, onClose, onShare }) {
 // ═════════════════════════════════════════════════════════════════════════════
 function Onboarding({ C, onComplete }) {
   const [step, setStep] = useState(0);
-  const steps = [
+  const [answers, setAnswers] = useState({ goal: null, experience: null, daysPerWeek: null });
+
+  // Intro screens followed by quick personalization questions.
+  const introScreens = [
     { icon:"barbell", title:"Track every rep", body:"Log sets, weights, and reps. Watch every lift improve over time." },
     { icon:"trending-up", title:"Share the work", body:"Post your workouts. Give kudos to your crew. Build your identity." },
     { icon:"flame", title:"Train together", body:"Streaks, private groups, and friend activity. Lift with your people." },
   ];
-  const s = steps[step];
+  const questions = [
+    { key:"goal", q:"What's your main goal?", opts:[
+      { v:"strength", label:"Get stronger" },
+      { v:"muscle", label:"Build muscle" },
+      { v:"lean", label:"Get lean" },
+      { v:"general", label:"Stay healthy" },
+    ]},
+    { key:"experience", q:"How long have you been lifting?", opts:[
+      { v:"new", label:"Just starting" },
+      { v:"some", label:"Less than a year" },
+      { v:"experienced", label:"1–3 years" },
+      { v:"advanced", label:"3+ years" },
+    ]},
+    { key:"daysPerWeek", q:"How many days a week can you train?", opts:[
+      { v:2, label:"2 days" },
+      { v:3, label:"3 days" },
+      { v:4, label:"4 days" },
+      { v:5, label:"5+ days" },
+    ]},
+  ];
+  const totalSteps = introScreens.length + questions.length;
+  const inIntro = step < introScreens.length;
+  const qIndex = step - introScreens.length;
+
+  function next() {
+    if (step < totalSteps - 1) setStep(step + 1);
+    else onComplete(answers);
+  }
+  function pick(key, v) {
+    setAnswers(a => ({ ...a, [key]: v }));
+    // Auto-advance shortly after a tap for a snappy feel
+    setTimeout(() => {
+      setStep(s => (s < totalSteps - 1 ? s + 1 : s));
+      if (step >= totalSteps - 1) onComplete({ ...answers, [key]: v });
+    }, 220);
+  }
+
+  const s = inIntro ? introScreens[step] : null;
+  const question = !inIntro ? questions[qIndex] : null;
+
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
         <div style={{ marginBottom:48 }}>
           <SeshdLogo C={C} big/>
         </div>
-        <div key={step} className="seshd-enter" style={{
-          width:88, height:88, borderRadius:24, background:C.text, color:C.bg,
-          display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28
-        }}>
-          <Icon name={s.icon} size={40} color={C.bg} strokeWidth={1.7}/>
-        </div>
-        <div className="seshd-enter" style={{ fontSize:30, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.8, lineHeight:1.1 }}>{s.title}</div>
-        <div className="seshd-enter" style={{ fontSize:15, color:C.sub, lineHeight:1.5, maxWidth:300 }}>{s.body}</div>
+        {inIntro ? (
+          <>
+            <div key={step} className="seshd-enter" style={{
+              width:88, height:88, borderRadius:24, background:C.text, color:C.bg,
+              display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28
+            }}>
+              <Icon name={s.icon} size={40} color={C.bg} strokeWidth={1.7}/>
+            </div>
+            <div className="seshd-enter" style={{ fontSize:30, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.8, lineHeight:1.1 }}>{s.title}</div>
+            <div className="seshd-enter" style={{ fontSize:15, color:C.sub, lineHeight:1.5, maxWidth:300 }}>{s.body}</div>
+          </>
+        ) : (
+          <div key={step} className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
+            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:24, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {question.opts.map(opt => {
+                const selected = answers[question.key] === opt.v;
+                return (
+                  <button key={String(opt.v)} onClick={() => pick(question.key, opt.v)} style={{
+                    width:"100%", padding:"16px 18px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                    background: selected ? C.accent : C.surface,
+                    border:`1.5px solid ${selected ? C.accent : C.border}`,
+                    color: selected ? "#fff" : C.text,
+                    fontSize:15, fontWeight:600, textAlign:"left", transition:"all 0.15s",
+                  }}>{opt.label}</button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ padding:"0 32px 44px" }}>
         <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:24 }}>
-          {steps.map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s" }}/>)}
+          {Array.from({ length: totalSteps }).map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s" }}/>)}
         </div>
-        <button onClick={() => step<steps.length-1 ? setStep(step+1) : onComplete()} style={{
-          width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
-          fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
-        }}>
-          {step<steps.length-1 ? "Continue" : "Get started"}
-        </button>
+        {inIntro && (
+          <button onClick={next} style={{
+            width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
+            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
+          }}>
+            Continue
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2696,11 +2907,11 @@ function ProgramBuilder({ C, onCancel, onSave }) {
 
   const activeDay = days[activeDayIdx] || days[0];
   const isDark = C.isDark ?? (C.bg === "#0a0a0c");
-  const surface = isDark ? "#141414" : "#F8FAFC";
-  const border = isDark ? "#222" : "#E8ECF0";
-  const inputBg = isDark ? "#1e1e1e" : "#fff";
-  const labelClr = isDark ? "#888" : "#64748B";
-  const bodyClr = isDark ? "#f0f0f0" : "#0F172A";
+  const surface = C.surface;
+  const border = C.border;
+  const inputBg = isDark ? C.bg : "#fff";
+  const labelClr = C.sub;
+  const bodyClr = C.text;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden", background:C.bg }}>
@@ -2712,7 +2923,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
           placeholder="Program name..."
           style={{ flex:1, margin:"0 14px", background:"transparent", border:"none", fontSize:16, fontWeight:700, color:bodyClr, outline:"none", fontFamily:F, textAlign:"center" }}
         />
-        <button onClick={save} style={{ fontSize:14, fontWeight:700, color:"#fff", background:"#2563EB", border:"none", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:F }}>Save</button>
+        <button onClick={save} style={{ fontSize:14, fontWeight:700, color:"#fff", background:C.accent, border:"none", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:F }}>Save</button>
       </div>
 
       {/* Day tabs */}
@@ -2721,14 +2932,14 @@ function ProgramBuilder({ C, onCancel, onSave }) {
           <button key={d.id} onClick={() => setActiveDayIdx(i)} style={{
             padding:"7px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:F,
             fontSize:12, fontWeight:600, whiteSpace:"nowrap", flexShrink:0,
-            background: activeDayIdx === i ? "#2563EB" : (isDark ? "#1e1e1e" : "#EEF2F7"),
+            background: activeDayIdx === i ? C.accent : (isDark ? C.divider : "#EEF2F7"),
             color: activeDayIdx === i ? "#fff" : labelClr,
           }}>{d.name}</button>
         ))}
         <button onClick={addDay} style={{
           padding:"7px 14px", borderRadius:20, border:`1.5px dashed ${isDark ? "#333" : "#CBD5E1"}`,
           background:"none", cursor:"pointer", fontFamily:F, fontSize:12, fontWeight:600,
-          color:"#2563EB", whiteSpace:"nowrap", flexShrink:0
+          color:C.accent, whiteSpace:"nowrap", flexShrink:0
         }}>+ Day</button>
       </div>
 
@@ -2767,9 +2978,9 @@ function ProgramBuilder({ C, onCancel, onSave }) {
                 <div>
                   <div style={{ fontSize:10, fontWeight:600, color:labelClr, letterSpacing:0.5, marginBottom:4 }}>SETS</div>
                   <div style={{ display:"flex", alignItems:"center", gap:4, background: isDark?"#111":"#F1F5F9", borderRadius:8, padding:"6px 10px" }}>
-                    <button onClick={() => updateEx(ei,{sets:Math.max(1,(ex.sets||3)-1)})} style={{ background:"none", border:"none", color:"#2563EB", fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>−</button>
+                    <button onClick={() => updateEx(ei,{sets:Math.max(1,(ex.sets||3)-1)})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>−</button>
                     <span style={{ flex:1, textAlign:"center", fontSize:16, fontWeight:700, color:bodyClr, fontFamily:MONO }}>{ex.sets||3}</span>
-                    <button onClick={() => updateEx(ei,{sets:(ex.sets||3)+1})} style={{ background:"none", border:"none", color:"#2563EB", fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>+</button>
+                    <button onClick={() => updateEx(ei,{sets:(ex.sets||3)+1})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>+</button>
                   </div>
                 </div>
                 <div>
@@ -2794,8 +3005,8 @@ function ProgramBuilder({ C, onCancel, onSave }) {
         })}
 
         {/* Add exercise search */}
-        <div style={{ background:inputBg, border:`1.5px dashed ${isDark?"#2563eb55":"#BFDBFE"}`, borderRadius:16, padding:"12px 14px" }}>
-          <div style={{ fontSize:11, fontWeight:600, color:"#2563EB", marginBottom:8, letterSpacing:0.3 }}>+ ADD EXERCISE</div>
+        <div style={{ background:inputBg, border:`1.5px dashed ${isDark?C.accent+"55":"#BFDBFE"}`, borderRadius:16, padding:"12px 14px" }}>
+          <div style={{ fontSize:11, fontWeight:600, color:C.accent, marginBottom:8, letterSpacing:0.3 }}>+ ADD EXERCISE</div>
           <ExerciseInput
             key={`builder-${activeDayIdx}-${activeDay.exercises.length}`}
             value="" onChange={v => { if (v) addExercise(v); }} C={C}
@@ -3369,12 +3580,12 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   function removeEx(ei) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.filter((_,xi)=>xi!==ei)})}); }
 
   const isDark = C.isDark ?? (C.bg === "#0a0a0c");
-  const CARD = isDark ? "#141414" : "#FFFFFF";
-  const BG   = isDark ? "#0a0a0a" : "#F4F6FA";
-  const BORD = isDark ? "#222"    : "#E8ECF0";
-  const SUB  = isDark ? "#666"    : "#94A3B8";
-  const TXT  = isDark ? "#F0F0F0" : "#0F172A";
-  const BLUE = "#2563EB";
+  const CARD = C.surface;
+  const BG   = C.bg;
+  const BORD = C.border;
+  const SUB  = C.sub;
+  const TXT  = C.text;
+  const BLUE = C.accent;
 
   const DAY_COLORS = ["#7C3AED","#2563EB","#059669","#D97706","#DC2626","#0891B2","#7C3AED"];
 
@@ -4064,6 +4275,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     };
   }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
+  const [dismissedInsight, setDismissedInsight] = useState(false);
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
@@ -4272,9 +4484,25 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     setSession(p => {
       const nowDone = !p.exercises[ei]?.sets[si]?.done;
 
+      // Resolve the effective weight/reps up front. When marking done with empty fields,
+      // the grayed placeholder (previous workout's value) is what the user is accepting,
+      // so we commit it. Both PR detection and the saved set use these resolved values.
+      const currentExercise = p.exercises[ei];
+      const rawSet = currentExercise?.sets[si];
+      let resolvedWeight = rawSet?.weight;
+      let resolvedReps = rawSet?.reps;
+      if (nowDone && currentExercise?.name) {
+        const prevVals = getPrev(store, currentExercise.name, si, unit);
+        if (resolvedWeight === "" || resolvedWeight === undefined || resolvedWeight === null) {
+          resolvedWeight = prevVals?.w != null ? String(prevVals.w) : resolvedWeight;
+        }
+        if (resolvedReps === "" || resolvedReps === undefined || resolvedReps === null) {
+          resolvedReps = prevVals?.r != null ? String(prevVals.r) : resolvedReps;
+        }
+      }
+
       if (nowDone) {
-        const currentExercise = p.exercises[ei];
-        const currentSet = currentExercise?.sets[si];
+        const currentSet = { ...rawSet, weight: resolvedWeight, reps: resolvedReps };
 
         // Mid-workout PR detection — fire PR haptic + confetti burst if this set is a new record
         if (currentSet?.weight && currentSet?.reps && currentSet?.type !== "warmup") {
@@ -4310,18 +4538,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           ...ex,
           sets: ex.sets.map((s, j) => {
             if (j !== si) return s;
-            // When marking done: if weight/reps are empty but the placeholder shows a
-            // previous value, commit that previous value so it doesn't save as 0.
-            // (The grayed placeholder is what the user is visually "accepting".)
             if (nowDone) {
-              const prevVals = ex.name ? getPrev(store, ex.name, si, unit) : null;
-              const filledWeight = (s.weight === "" || s.weight === undefined || s.weight === null)
-                ? (prevVals?.w != null ? String(prevVals.w) : s.weight)
-                : s.weight;
-              const filledReps = (s.reps === "" || s.reps === undefined || s.reps === null)
-                ? (prevVals?.r != null ? String(prevVals.r) : s.reps)
-                : s.reps;
-              return { ...s, weight: filledWeight, reps: filledReps, done: nowDone };
+              return { ...s, weight: resolvedWeight, reps: resolvedReps, done: nowDone };
             }
             return { ...s, done: nowDone };
           })
@@ -4526,6 +4744,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         prs: newPRsList,
         progressions: progressionsHit,
         programChange,
+        streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count,
         share,
         shareData,
         undo: {
@@ -4920,7 +5139,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith|machine|cable|band/i.test(exName)
                     );
                     const hasWarmup = ex.sets.some(s => s.type === "warmup");
-                    const topWorkingWeight = Math.max(0, ...ex.sets.filter(s => s.type !== "warmup" && s.weight).map(s => parseFloat(s.weight) || 0));
+                    // Working weight = highest entered weight, OR the previous-workout weight
+                    // shown as a placeholder (so the button appears before you type anything).
+                    let topWorkingWeight = Math.max(0, ...ex.sets.filter(s => s.type !== "warmup" && s.weight).map(s => parseFloat(s.weight) || 0));
+                    if (topWorkingWeight <= 0 && ex.name) {
+                      const prevW = getPrev(store, ex.name, 0, unit)?.w;
+                      if (prevW) topWorkingWeight = parseFloat(prevW) || 0;
+                    }
                     if (!isCompound || hasWarmup || topWorkingWeight <= 0) return null;
                     return (
                       <button onClick={() => {
@@ -4986,13 +5211,25 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         color: "rgba(255,255,255,0.3)",
                       }}>{new Date().toLocaleDateString("en", { month:"short", day:"numeric", year:"numeric" }).toUpperCase()}</div>
                     </div>
-                    {workoutSummary.prs?.length > 0 && (
-                      <div style={{
-                        background:"#fff", color:"#0A0A0A",
-                        fontSize:9, fontWeight:800, letterSpacing:1.5,
-                        padding:"5px 10px", borderRadius:20,
-                      }}>NEW PR</div>
-                    )}
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+                      {workoutSummary.prs?.length > 0 && (
+                        <div style={{
+                          background:"#fff", color:"#0A0A0A",
+                          fontSize:9, fontWeight:800, letterSpacing:1.5,
+                          padding:"5px 10px", borderRadius:20,
+                        }}>NEW PR</div>
+                      )}
+                      {workoutSummary.streakWeeks > 0 && (
+                        <div style={{
+                          display:"flex", alignItems:"center", gap:4,
+                          background:"rgba(251,146,60,0.18)", color:"#fb923c",
+                          fontSize:10, fontWeight:800, letterSpacing:0.5,
+                          padding:"5px 9px", borderRadius:20,
+                        }}>
+                          <Icon name="flame" size={11} color="#fb923c"/> {workoutSummary.streakWeeks}W STREAK
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Hero stat — the big number */}
@@ -5520,9 +5757,38 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })()}
 
+          {/* Proactive progress insight — surfaces something true & motivating from history.
+              Only shown if there's a compelling fact and the user hasn't dismissed it this session. */}
+          {!dismissedInsight && (() => {
+            const insight = getProgressInsight(store, unit);
+            if (!insight) return null;
+            return (
+              <div className="seshd-content-fade" style={{
+                background: C.accentSoft, border: `1px solid ${C.accent}40`,
+                borderRadius: 16, padding: "14px 16px", marginBottom: 12,
+                display: "flex", alignItems: "center", gap: 13, position: "relative",
+              }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                  background: C.accent, color: "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Icon name={insight.icon === "flame" ? "flame" : insight.icon === "trophy" ? "trophy" : "trending-up"} size={19} color="#fff"/>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text, letterSpacing: -0.2 }}>{insight.headline}</div>
+                  <div style={{ fontSize: 12, color: C.sub, marginTop: 1, lineHeight: 1.35 }}>{insight.sub}</div>
+                </div>
+                <button onClick={() => setDismissedInsight(true)} style={{
+                  background: "none", border: "none", color: C.muted, cursor: "pointer",
+                  fontSize: 18, padding: "0 2px", lineHeight: 1, flexShrink: 0, alignSelf: "flex-start",
+                }}>×</button>
+              </div>
+            );
+          })()}
+
           {/* "On this day" — surfaces a comparable past workout for context */}
           {(() => {
-            // Look back at meaningful intervals; pick the most distant one with data
             const today = new Date(); today.setHours(0,0,0,0);
             const candidates = [
               { months: 12, label: "1 year ago" },
@@ -5710,7 +5976,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
                         fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
                       }}>Edit</button>
-                      <button onClick={() => startWorkout(day)} style={{
+                      <button onClick={() => startWorkout(day, prog.id)} style={{
                         flex:1, padding:"9px", background:"none", border:"none",
                         fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
                       }}>Start ›</button>
@@ -6343,13 +6609,13 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const [shareModal, setShareModal] = useState(null);
 
   const isDark = C.isDark ?? (C.bg === "#0a0a0c");
-  const BG    = isDark ? "#0a0a0a" : "#F4F6FA";
-  const CARD  = isDark ? "#141414" : "#FFFFFF";
-  const BORD  = isDark ? "#222"    : "#E8ECF0";
-  const SUB   = isDark ? "#666"    : "#94A3B8";
-  const TXT   = isDark ? "#F0F0F0" : "#0F172A";
-  const BLUE  = "#2563EB";
-  const BLUEBG= isDark ? "#1a2540" : "#EFF6FF";
+  const BG    = C.bg;
+  const CARD  = C.surface;
+  const BORD  = C.border;
+  const SUB   = C.sub;
+  const TXT   = C.text;
+  const BLUE  = C.accent;
+  const BLUEBG= C.accentSoft;
 
   function saveAndStart() {
     if (editMode && onSaveProgram) {
@@ -7255,7 +7521,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
       for (const sess of sessions) {
         const ex = sess.exercises?.find(e => e.name === name);
         if (!ex) continue;
-        const doneSets = (ex.sets || []).filter(s => s.done && (s.weight || s.reps));
+        const doneSets = (ex.sets || []).filter(s => s.done && (s.weight || s.reps) && s.type !== "warmup");
         if (!doneSets.length) continue;
         const maxW = Math.max(...doneSets.map(s => cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit)));
         const vol = doneSets.reduce((a, s) => a + (cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit)) * (parseFloat(s.reps)||0), 0);
@@ -9469,12 +9735,26 @@ export default function App() {
   useEffect(() => {
     if (!token || isGuest) return;
     const lastFetchRef = { current: Date.now() };
-    function onVisible() {
+    async function onVisible() {
       if (document.visibilityState !== "visible") return;
       // Throttle: only re-fetch if it's been at least 30 seconds since last fetch
       const now = Date.now();
       if (now - lastFetchRef.current < 30000) return;
       lastFetchRef.current = now;
+      // Refresh the token first — if the app was backgrounded for a long time the
+      // access token may have expired, which would make loadUserData (and any save)
+      // fail silently. Refreshing here keeps a long-backgrounded session healthy.
+      const saved = loadSession();
+      if (saved?.refresh_token) {
+        try {
+          const fresh = await sb.refreshToken(saved.refresh_token);
+          const merged = { ...saved, ...fresh };
+          saveSession(merged);
+          setSession(merged);
+        } catch (e) {
+          console.warn("Foreground token refresh failed:", e.message);
+        }
+      }
       loadUserData();
     }
     document.addEventListener("visibilitychange", onVisible);
@@ -10211,7 +10491,7 @@ export default function App() {
         duration_secs: workoutData.duration,
         unit: workoutData.unit || "lbs",
         note: workoutData.note || "",
-        workout_date: new Date().toISOString().split("T")[0],
+        workout_date: dKey(),
       };
       // Request the inserted row back so we can confirm the write actually landed
       const inserted = await sb.query("workout_history", {
@@ -10537,11 +10817,18 @@ export default function App() {
     if (requireAuth("Sign up to follow friends and see their workouts")) return;
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     const isFollowing = me?.following?.includes(userId);
+    // Optimistic update — update BOTH my following list and the target's followers list
+    // so counts stay consistent on both profiles without waiting for a reload.
     setStore(prev => ({
       ...prev,
-      users: prev.users.map(u => u.id !== currentUserId ? u : {
-        ...u,
-        following: isFollowing ? u.following.filter(id => id !== userId) : [...(u.following||[]), userId]
+      users: prev.users.map(u => {
+        if (u.id === currentUserId) {
+          return { ...u, following: isFollowing ? (u.following||[]).filter(id => id !== userId) : [...(u.following||[]), userId] };
+        }
+        if (u.id === userId) {
+          return { ...u, followers: isFollowing ? (u.followers||[]).filter(id => id !== currentUserId) : [...(u.followers||[]), currentUserId] };
+        }
+        return u;
       })
     }));
     try {
@@ -10550,7 +10837,23 @@ export default function App() {
       } else {
         await sb.query("follows", { method:"POST", body: JSON.stringify({ follower_id: currentUserId, following_id: userId }) }, tok);
       }
-    } catch (e) { console.error("follow error:", e); }
+    } catch (e) {
+      console.error("follow error:", e);
+      // Revert both sides on failure
+      setStore(prev => ({
+        ...prev,
+        users: prev.users.map(u => {
+          if (u.id === currentUserId) {
+            return { ...u, following: isFollowing ? [...(u.following||[]), userId] : (u.following||[]).filter(id => id !== userId) };
+          }
+          if (u.id === userId) {
+            return { ...u, followers: isFollowing ? [...(u.followers||[]), currentUserId] : (u.followers||[]).filter(id => id !== currentUserId) };
+          }
+          return u;
+        })
+      }));
+      toast("Couldn't update follow", "error");
+    }
   }
 
   // Unread = how many more activity items exist now than when last seen.
@@ -10558,6 +10861,19 @@ export default function App() {
   const notifCount = Math.max(0, currentActivityCount - seenActivityCount);
 
   if (prModal) return <PRModal pr={prModal} unit={unit} onClose={() => setPrModal(null)}/>;
+
+  // First-run onboarding. Gated on store.seenOnboarding (defaults true, so it stays
+  // OFF until intentionally enabled). When shown, captures goal/experience/days and
+  // sets the user's weekly target before dropping them into the app.
+  if (!store.seenOnboarding && !isGuest) {
+    return <Onboarding C={C} onComplete={async (answers) => {
+      const target = answers?.daysPerWeek ? Math.min(7, Math.max(1, parseInt(answers.daysPerWeek))) : 3;
+      // weeklyTarget lives in the local store (persisted to localStorage), consistent with
+      // the settings toggle. We don't PATCH a profiles column here because the streak target
+      // isn't a DB-backed field — avoids a 400 on a column that may not exist.
+      setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {} }));
+    }}/>;
+  }
 
   if (profileUserId) {
     return (
