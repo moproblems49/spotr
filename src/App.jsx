@@ -430,23 +430,26 @@ const THEMES = {
   },
   light: {
     isDark: false,
-    bg: "#ffffff",
-    surface: "#ffffff",
+    // Premium light: the canvas is a soft warm-neutral, NOT pure white, so true-white
+    // cards visibly lift off the background (Things-3 / Linear approach). Borders are
+    // present-but-quiet, text is deep near-black for crisp contrast.
+    bg: "#f6f5f3",          // warm off-white canvas
+    surface: "#ffffff",     // cards are pure white → they float above the canvas
     card: "#ffffff",
-    border: "#efefef",
-    divider: "#f5f5f5",
+    border: "#e7e4df",      // warm hairline, visible against white cards
+    divider: "#eeece8",     // softer separator within cards
     accent: "#7c3aed",
-    accentSoft: "rgba(124,58,237,0.08)",
+    accentSoft: "rgba(124,58,237,0.07)",
     accent2: "#6d28d9",
     orange: "#ea580c",
     green: "#16a34a",
     gold: "#ca8a04",
-    red: "#ed4956",
-    text: "#262626",
-    textDim: "#3c3c3c",
-    sub: "#8e8e8e",
-    muted: "#c7c7c7",
-    tabBg: "rgba(255,255,255,0.97)",
+    red: "#e11d48",
+    text: "#1c1b1a",        // deep warm near-black for crisp reading
+    textDim: "#3a3936",
+    sub: "#76726c",         // warm grey, not cold #8e8e8e
+    muted: "#a9a59e",
+    tabBg: "rgba(246,245,243,0.85)",
   }
 };
 
@@ -3994,6 +3997,8 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
   const { date, sid, sess } = editing;
   const [exercises, setExercises] = useState(() => JSON.parse(JSON.stringify(sess.exercises || [])));
   const [saving, setSaving] = useState(false);
+  const [newExName, setNewExName] = useState("");
+  const [showExSuggest, setShowExSuggest] = useState(false);
 
   function updateSet(ei, si, patch) {
     setExercises(p => p.map((ex, i) => i !== ei ? ex : {
@@ -4001,6 +4006,26 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
       sets: ex.sets.map((s, j) => j !== si ? s : { ...s, ...patch })
     }));
   }
+
+  function addExercise(name) {
+    const nm = (name || newExName).trim();
+    if (!nm) return;
+    setExercises(p => [...p, {
+      id: uid(), name: nm,
+      sets: [{ id: uid(), weight: "", reps: "", done: true, type: "normal" }],
+    }]);
+    setNewExName("");
+    setShowExSuggest(false);
+  }
+
+  function removeExercise(ei) {
+    setExercises(p => p.filter((_, i) => i !== ei));
+  }
+
+  // Autocomplete suggestions from the exercise DB
+  const exSuggestions = newExName.trim().length >= 1
+    ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(newExName.trim().toLowerCase())).slice(0, 6)
+    : [];
 
   async function handleSave() {
     if (saving) return;
@@ -4157,7 +4182,10 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         <div style={{ fontSize:11, color:C.sub, marginBottom:10, letterSpacing:0.4, fontWeight:600 }}>{sess.dayName} · {new Date(date).toLocaleDateString()}</div>
         {exercises.map((ex, ei) => (
           <div key={ei} style={{ marginBottom:18, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 12px 8px" }}>
-            <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:8, letterSpacing:-0.2 }}>{ex.name || "Unnamed"}</div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>{ex.name || "Unnamed"}</div>
+              <button onClick={() => removeExercise(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"2px 4px" }}>Remove</button>
+            </div>
             <div style={{ display:"grid", gridTemplateColumns:"30px 1fr 1fr 28px", gap:8, alignItems:"center", marginBottom:6 }}>
               <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>SET</div>
               <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>{unit?.toUpperCase() || "LBS"}</div>
@@ -4182,6 +4210,40 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
             </button>
           </div>
         ))}
+
+        {/* Add a new exercise — for when one was forgotten during the workout */}
+        <div style={{ marginTop:4, position:"relative" }}>
+          <div style={{ fontSize:11, color:C.sub, fontWeight:600, letterSpacing:0.4, marginBottom:8 }}>ADD AN EXERCISE</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input
+              value={newExName}
+              onChange={e => { setNewExName(e.target.value); setShowExSuggest(true); }}
+              onFocus={() => setShowExSuggest(true)}
+              placeholder="Exercise name..."
+              style={{ flex:1, background:C.bg, border:`1.5px solid ${C.divider}`, borderRadius:10, padding:"10px 12px", fontSize:14, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box" }}
+            />
+            <button onClick={() => addExercise()} disabled={!newExName.trim()} style={{
+              background: newExName.trim() ? C.accent : C.divider, color: newExName.trim() ? "#fff" : C.muted,
+              border:"none", borderRadius:10, padding:"10px 16px", fontSize:14, fontWeight:700,
+              cursor: newExName.trim() ? "pointer" : "default", fontFamily:F, flexShrink:0,
+            }}>Add</button>
+          </div>
+          {showExSuggest && exSuggestions.length > 0 && (
+            <div style={{ marginTop:6, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
+              {exSuggestions.map((e, i) => (
+                <button key={e.name} onClick={() => addExercise(e.name)} style={{
+                  width:"100%", textAlign:"left", background:"none", border:"none",
+                  borderTop: i > 0 ? `1px solid ${C.divider}` : "none",
+                  padding:"10px 12px", fontSize:13, color:C.text, cursor:"pointer", fontFamily:F,
+                  display:"flex", justifyContent:"space-between", alignItems:"center",
+                }}>
+                  <span>{e.name}</span>
+                  <span style={{ fontSize:11, color:C.muted }}>{e.muscle}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -6319,7 +6381,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     return maxW > 0 && (store.prs||{})[ex.name] && maxW >= (store.prs[ex.name] * (sess.unit==="kg"?2.205:1) * 0.98);
                   }) || [];
                   return (
-                    <div key={i} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.2)}s`, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
+                    <div key={i} className="seshd-content-fade seshd-float" style={{ animationDelay:`${Math.min(i * 0.03, 0.2)}s`, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:700, color:C.text, display:"flex", alignItems:"center", gap:7 }}>
@@ -9119,8 +9181,9 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
     const dist = parseFloat(runDist);
     const totalMins = (parseInt(runHrs)||0)*60 + (parseInt(runMins)||0) + (parseInt(runSecs)||0)/60;
     if (!dist || !totalMins) return null;
-    const paceMin = Math.floor(totalMins / dist);
-    const paceSec = Math.round(((totalMins / dist) - paceMin) * 60);
+    const paceTotalSec = Math.round((totalMins / dist) * 60);
+    const paceMin = Math.floor(paceTotalSec / 60);
+    const paceSec = paceTotalSec % 60;
     return `${paceMin}:${String(paceSec).padStart(2,"0")} /${runDistUnit}`;
   }
 
@@ -9140,7 +9203,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
       onPost({ type:"photo", caption, imageData:img, location:loc });
     } else if (postKind === "workout") {
       // done===true means explicitly done; done===undefined (old records) with reps means done; done===false means skipped
-      const isDoneSet = s => s.done === true || (s.done === undefined && (parseFloat(s.reps||s.r) > 0));
+      const isDoneSet = s => (s.done === true || (s.done === undefined && (parseFloat(s.reps||s.r) > 0))) && s.type !== "warmup";
       const doneExercises = (selectedWorkout.exercises||[])
         .filter(e => e.name && (e.sets||[]).some(isDoneSet))
         .map(ex => ({
@@ -10632,6 +10695,9 @@ export default function App() {
         /* Soft fade for skeleton→content swaps */
         @keyframes seshd-content-fade { from{opacity:0} to{opacity:1} }
         .seshd-content-fade { animation: seshd-content-fade 0.35s ease-out both; }
+        /* Premium light-mode depth: soft shadow makes white cards float on the warm canvas.
+           Applied via .seshd-float — harmless in dark mode (shadow barely visible on dark bg). */
+        .seshd-float { box-shadow: 0 1px 2px rgba(28,27,26,0.04), 0 2px 8px rgba(28,27,26,0.04); }
       `;
       document.head.appendChild(style);
     }
@@ -10758,6 +10824,10 @@ export default function App() {
     Object.entries(sessions).map(([sid, sess]) => {
       const key = sess.dayName + new Date(date).getTime();
       if (sharedWorkoutIds.has(key)) return null;
+      // Only show a history workout in the FEED if the user explicitly shared it to feed.
+      // Workouts that were only saved, or sent to groups only, stay out of the feed
+      // (they remain in the History tab). This respects the user's sharing choice.
+      if (!sess.sharedToFeed) return null;
       // Skip sessions with zero done sets — these are ghost workouts
       const doneSets = (sess.exercises||[]).flatMap(ex => (ex.sets||[]).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
       if (doneSets.length === 0) return null;
@@ -11351,11 +11421,11 @@ export default function App() {
               ) : events.slice(0,50).map((ev, i) => (
                 <div key={i} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
                   <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
-                  <div style={{ flex:1 }}>
-                    <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{ev.user.username} </span>
-                    <span style={{ fontSize:13, color:C.text }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
+                      <span style={{ fontWeight:600 }}>{ev.user.username} </span>
                       {ev.type === "kudos" ? "liked your post 🔥" : `commented: "${ev.comment?.text}"`}
-                    </span>
+                    </div>
                     <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
                   </div>
                   {ev.post.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
