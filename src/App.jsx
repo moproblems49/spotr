@@ -9244,8 +9244,8 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
   }
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"92dvh", display:"flex", flexDirection:"column" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:440, maxHeight:"88dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.35)" }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px" }}>
           <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
