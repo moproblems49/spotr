@@ -1446,7 +1446,7 @@ function loadStore() {
     workoutDates: {},
     groups: [],
     weeklyTarget: 3, // default: 3 workouts/week for streak system
-    seenOnboarding: true,
+    seenOnboarding: false,
   };
 }
 function saveStore(d) { try { localStorage.setItem(SK, JSON.stringify(d)); } catch {} }
@@ -2322,21 +2322,49 @@ const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarg
         </div>
       </div>
       {platesBreakdown && platesBreakdown.length > 0 && (
-        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:6, paddingTop:6, borderTop:`1px dashed ${C.divider}`, flexWrap:"wrap" }}>
-          <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, marginRight:2 }}>PLATES/SIDE</span>
-          {platesBreakdown.map((p, i) => (
-            <div key={i} style={{
-              display:"flex", alignItems:"center", gap:3,
-              padding:"2px 7px",
-              background: `${PLATE_COLOR_MAP[p.p] || C.muted}22`,
-              border: `1px solid ${PLATE_COLOR_MAP[p.p] || C.muted}50`,
-              borderRadius:6,
-              fontSize:11, fontWeight:700, fontFamily:MONO,
-              color: PLATE_COLOR_MAP[p.p] || C.text,
-            }}>
-              {p.count}<span style={{ opacity:0.55 }}>×</span>{p.p}
+        <div style={{ marginTop:6, paddingTop:8, borderTop:`1px dashed ${C.divider}` }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, flexShrink:0 }}>PER SIDE</span>
+            {/* Visual barbell: sleeve + plates loaded heaviest-inner to lightest-outer.
+                Disc height scales with plate weight so a 45 towers over a 2.5. */}
+            <div style={{ display:"flex", alignItems:"center", flex:1, minWidth:0, height:46, overflowX:"auto" }}>
+              {/* Bar collar */}
+              <div style={{ width:10, height:8, background:C.muted, borderRadius:2, flexShrink:0 }}/>
+              {/* Plates, heaviest first (inner) */}
+              {(() => {
+                const order = [...platesBreakdown].sort((a,b) => b.p - a.p);
+                const maxPlate = unit === "kg" ? 25 : 45;
+                const discs = [];
+                order.forEach(pl => {
+                  for (let k = 0; k < pl.count; k++) {
+                    // Height scales 16px (lightest) → 44px (heaviest), by weight ratio
+                    const ratio = Math.min(1, pl.p / maxPlate);
+                    const h = Math.round(16 + ratio * 28);
+                    const color = PLATE_COLOR_MAP[pl.p] || C.muted;
+                    discs.push(
+                      <div key={`${pl.p}-${k}`} title={`${pl.p} ${unit}`} style={{
+                        width:9, height:h, background:color, borderRadius:2,
+                        marginRight:1.5, flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                      }}/>
+                    );
+                  }
+                });
+                return discs;
+              })()}
+              {/* Bar shaft extending out */}
+              <div style={{ width:18, height:4, background:C.muted, borderRadius:2, flexShrink:0, opacity:0.5 }}/>
             </div>
-          ))}
+          </div>
+          {/* Legend: which colors = which weights */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5, flexWrap:"wrap", paddingLeft:46 }}>
+            {[...platesBreakdown].sort((a,b)=>b.p-a.p).map((p,i) => (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:4 }}>
+                <div style={{ width:8, height:8, borderRadius:2, background: PLATE_COLOR_MAP[p.p] || C.muted }}/>
+                <span style={{ fontSize:10, color:C.sub, fontWeight:600, fontFamily:MONO }}>{p.count}×{p.p}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       </div>{/* end swipeable content div */}
@@ -4586,9 +4614,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           haptic("complete");
         }
 
-        // Rest time cascade: per-set override → exercise default → user's setting → 90s safety fallback
-        const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || store.defaultRestTime || 90) || 90;
-        setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
+        // Rest time cascade: per-set override → exercise default → user's setting → 90s safety fallback.
+        // Superset exercises skip rest entirely — you go straight into the next movement.
+        if (currentExercise?.superset) {
+          setRest(null);
+        } else {
+          const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || store.defaultRestTime || 90) || 90;
+          setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
+        }
       } else {
         haptic("undo");
         setRest(null);
@@ -5109,10 +5142,28 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     />
                   </div>
                   <div style={{ display:"flex", gap:6, flexShrink:0, alignItems:"center" }}>
+                    {/* Superset link — links this exercise with the next so they're performed
+                        back-to-back. When linked, the rest timer is skipped between them. */}
+                    {ei < session.exercises.length - 1 && (
+                      <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x, superset: !x.superset}) }))}
+                        title={ex.superset ? "Linked as superset" : "Link with next exercise"}
+                        style={{ background: ex.superset ? C.accent : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>
+                        </svg>
+                      </button>
+                    )}
                     {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
                     <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) }))} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
                 </div>
+                {/* Superset connector — shows this exercise flows into the next with no rest */}
+                {ex.superset && ei < session.exercises.length - 1 && (
+                  <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 4px 20px" }}>
+                    <div style={{ width:2, height:14, background:C.accent, borderRadius:2 }}/>
+                    <span style={{ fontSize:10, fontWeight:700, color:C.accent, letterSpacing:0.5 }}>SUPERSET — no rest, straight into next</span>
+                  </div>
+                )}
 
                 {/* Column headers */}
                 <div style={{ display:"grid", gridTemplateColumns:"32px 36px 1fr 76px 76px 36px", gap:4, padding:"0 14px 4px" }}>
@@ -9915,7 +9966,7 @@ export default function App() {
         unit: me?.unit || "lbs",
         theme: me?.theme || "light",
         defaultRestTime: me?.default_rest_time || 120,
-        seenOnboarding: true,
+        seenOnboarding: me?.seen_onboarding === true,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
@@ -10932,16 +10983,24 @@ export default function App() {
 
   if (prModal) return <PRModal pr={prModal} unit={unit} onClose={() => setPrModal(null)}/>;
 
-  // First-run onboarding. Gated on store.seenOnboarding (defaults true, so it stays
-  // OFF until intentionally enabled). When shown, captures goal/experience/days and
-  // sets the user's weekly target before dropping them into the app.
-  if (!store.seenOnboarding && !isGuest) {
+  // First-run onboarding. Shows only to genuinely new users: not a guest, hasn't seen it,
+  // and has no workout history yet (so existing testers who predate the flag don't get it).
+  // Also wait until data has finished loading so we don't flash it before history arrives.
+  const hasAnyHistory = Object.keys(store.history || {}).length > 0;
+  const onboardedLocally = (() => { try { return localStorage.getItem("seshd_onboarded") === "1"; } catch { return false; } })();
+  if (!store.seenOnboarding && !onboardedLocally && !isGuest && !dataLoading && !hasAnyHistory) {
     return <Onboarding C={C} onComplete={async (answers) => {
       const target = answers?.daysPerWeek ? Math.min(7, Math.max(1, parseInt(answers.daysPerWeek))) : 3;
-      // weeklyTarget lives in the local store (persisted to localStorage), consistent with
-      // the settings toggle. We don't PATCH a profiles column here because the streak target
-      // isn't a DB-backed field — avoids a 400 on a column that may not exist.
+      try { localStorage.setItem("seshd_onboarded", "1"); } catch {}
       setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {} }));
+      // Persist seen-onboarding to the profile so it doesn't reappear after a reload or
+      // on another device. Best-effort: if the column doesn't exist yet the local store
+      // flag still prevents it showing again this session/device.
+      const tok = tokenRef.current || loadSession()?.access_token;
+      if (tok) {
+        try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true }) }, tok); }
+        catch (e) { console.error("onboarding flag save error:", e); }
+      }
     }}/>;
   }
 
