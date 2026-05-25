@@ -2114,9 +2114,13 @@ const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarg
     && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|tricep|chest fly|fly|lateral|raise/i.test(exName)
   ) : false;
   const platesBreakdown = useMemo(() => {
-    if (!isBarbell || !set.weight || isCardio || set.type === "warmup") return null;
-    return calcPlatesPerSide(set.weight, unit);
-  }, [isBarbell, set.weight, set.type, unit, isCardio]);
+    if (!isBarbell || isCardio || set.type === "warmup") return null;
+    // Use the entered weight, or fall back to the grayed placeholder (previous weeks' weight)
+    // so the plate diagram shows before you type, matching what the input displays.
+    const effWeight = (set.weight !== "" && set.weight != null) ? set.weight : (prev?.w ?? null);
+    if (!effWeight) return null;
+    return calcPlatesPerSide(effWeight, unit);
+  }, [isBarbell, set.weight, set.type, unit, isCardio, prev]);
 
   // Progressive overload suggestion (only for working sets, not warmups, not completed, not cardio)
   const suggestion = useMemo(() => {
@@ -2284,21 +2288,24 @@ const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarg
       </div>
 
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6, paddingTop:5, borderTop:`1px solid ${C.divider}30`, gap:6 }}>
-        <div style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
-          {!isCardio && [-2.5,2.5,5].map(d => (
-            <button key={"w"+d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}</button>
-          ))}
-          {isCardio && [-1,1,5].map(d => (
-            <button key={"m"+d} onClick={() => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}m</button>
-          ))}
-          {!isCardio && (
-            <>
-              <span style={{ fontSize:9, color:C.muted, alignSelf:"center", margin:"0 2px 0 4px", fontWeight:700 }}>·</span>
-              {[-1, 1].map(d => (
-                <button key={"r"+d} onClick={() => { const cur=parseInt(set.reps)||parseInt(prev?.r)||0; onUpdate({reps:String(Math.max(0, cur+d))}); haptic("tap"); }} style={{ background:"none", border:`1px solid ${d<0?"#ef444430":"#22c55e30"}`, color:d<0?"#ef4444":"#22c55e", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:MONO }}>{d>0?"+":""}{d}r</button>
-              ))}
-            </>
-          )}
+        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          {(() => {
+            const step = isCardio ? 1 : 2.5;
+            const adjBtn = {
+              background: C.isDark ? "rgba(255,255,255,0.05)" : C.bg,
+              border:`1px solid ${C.border}`, color:C.text,
+              borderRadius:7, padding:"4px 11px", fontSize:13, fontWeight:600,
+              cursor:"pointer", fontFamily:F, minWidth:34,
+            };
+            const apply = d => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); };
+            return (
+              <>
+                <button onClick={() => apply(-step)} style={adjBtn}>−</button>
+                <span style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:0.4, fontFamily:MONO }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</span>
+                <button onClick={() => apply(step)} style={adjBtn}>+</button>
+              </>
+            );
+          })()}
         </div>
         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
           {suggestion && (
@@ -4366,6 +4373,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
   const [dismissedInsight, setDismissedInsight] = useState(false);
+  const [restPickerEx, setRestPickerEx] = useState(null); // exercise index whose rest picker is open
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
@@ -4522,7 +4530,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     const exs = day
       ? day.exercises.map(ex => ({
           ...ex, id: uid(),
-          sets: Array.from({ length: 3 }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal" }))
+          // Carry the day's saved rest (e.g. Push A's bench rest) onto each set so it
+          // displays and applies immediately. ex.rest persists per program day.
+          sets: Array.from({ length: 3 }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal", ...(ex.rest ? { restTime: ex.rest } : {}) }))
         }))
       : [{ id: uid(), name: "", reps: "", note: "", sets: [{ id: uid(), weight: "", reps: "", done: false, type: "normal" }] }];
     setSession({
@@ -4746,10 +4756,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           if (changed && sessionExNames.length > 0) {
             const updatedDays = prog.days.map(d => (d.id === day.id) ? {
               ...d,
-              exercises: session.exercises.filter(e => e.name).map(ex => ({
-                name: ex.name, reps: ex.reps || d.exercises.find(x => x.name === ex.name)?.reps || "8-12",
-                note: ex.note || ""
-              }))
+              exercises: session.exercises.filter(e => e.name).map(ex => {
+                const prevDayEx = d.exercises.find(x => x.name === ex.name);
+                return {
+                  name: ex.name,
+                  reps: ex.reps || prevDayEx?.reps || "8-12",
+                  note: ex.note || "",
+                  // Preserve any per-exercise rest — prefer the session's (just-set) value,
+                  // else keep what the program day already had, so structural updates don't wipe rest.
+                  ...((ex.rest || prevDayEx?.rest) ? { rest: ex.rest || prevDayEx.rest } : {}),
+                };
+              })
             } : d);
             programChange = { prog, updatedDays, progName: prog.name };
           }
@@ -5142,6 +5159,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     />
                   </div>
                   <div style={{ display:"flex", gap:6, flexShrink:0, alignItems:"center" }}>
+                    {/* Per-exercise rest timer — sets the rest for ALL sets in this exercise */}
+                    <button onClick={() => setRestPickerEx(restPickerEx === ei ? null : ei)}
+                      title="Rest time for this exercise"
+                      style={{ background: restPickerEx === ei ? C.accent : "none", border:`1px solid ${restPickerEx === ei ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={restPickerEx === ei ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/>
+                      </svg>
+                      {ex.rest ? <span style={{ fontSize:10, fontWeight:700, color: restPickerEx === ei ? "#fff" : C.sub, fontFamily:MONO }}>{ex.rest >= 60 ? `${ex.rest/60}m`.replace(".0m","m").replace(".5m","½m") : `${ex.rest}s`}</span> : null}
+                    </button>
                     {/* Superset link — links this exercise with the next so they're performed
                         back-to-back. When linked, the rest timer is skipped between them. */}
                     {ei < session.exercises.length - 1 && (
@@ -5154,9 +5180,42 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </button>
                     )}
                     {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
-                    <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) }))} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
+                    <button onClick={() => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); }} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
                 </div>
+                {/* Per-exercise rest picker — applies to all sets in this exercise */}
+                {restPickerEx === ei && (
+                  <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 8px", flexWrap:"wrap" }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:0.4, marginRight:2 }}>REST</span>
+                    {[60, 90, 120, 150, 180, 240].map(secs => {
+                      const active = (ex.rest || 0) === secs;
+                      return (
+                        <button key={secs} onClick={() => {
+                          setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{ ...x, rest: secs, sets: x.sets.map(s => ({ ...s, restTime: secs })) }) }));
+                          // Persist the rest into the program day so it's remembered next time
+                          // this day is trained (e.g. Push A keeps its own rest per exercise).
+                          if (session.programId && onSaveProgram) {
+                            const prog = store.programs.find(p => p.id === session.programId);
+                            const day = prog?.days?.find(d => d.id === session.dayId) || prog?.days?.find(d => d.name === session.dayName);
+                            if (prog && day) {
+                              const updatedDays = prog.days.map(d => (d.id === day.id) ? {
+                                ...d,
+                                exercises: (d.exercises || []).map(dex => dex.name === ex.name ? { ...dex, rest: secs } : dex)
+                              } : d);
+                              onSaveProgram({ ...prog, days: updatedDays, _silent: true });
+                            }
+                          }
+                          setRestPickerEx(null);
+                          haptic("tap");
+                        }} style={{
+                          padding:"6px 11px", borderRadius:8, cursor:"pointer", fontFamily:MONO, fontSize:12, fontWeight:700,
+                          background: active ? C.accent : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
+                          border:`1px solid ${active ? C.accent : C.border}`, color: active ? "#fff" : C.text,
+                        }}>{secs >= 60 ? `${secs/60}`.replace(/\.5/,"½") + "m" : `${secs}s`}</button>
+                      );
+                    })}
+                  </div>
+                )}
                 {/* Superset connector — shows this exercise flows into the next with no rest */}
                 {ex.superset && ei < session.exercises.length - 1 && (
                   <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 4px 20px" }}>
@@ -5673,17 +5732,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           if (!ex || !set) return null;
           const exMuscle = ex.name ? EXERCISE_DB.find(e => e.name === ex.name)?.muscle : null;
           const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
-          const weightAdj = isCardio ? [-1, 1, 5] : [-2.5, 2.5, 5];
-          const repsAdj = [-1, 1, 5];
+          // Single increment per type — clean and uncluttered. Reps are entered directly
+          // (the numeric keyboard / future custom pad handles them), so no rep steppers here.
+          const wStep = isCardio ? 1 : 2.5;
           const applyWeight = (d) => {
             const cur = parseFloat(set.weight) || 0;
             updateSet(focusedSet.ei, focusedSet.si, { weight: String(Math.max(0, Math.round((cur + d) * 10) / 10)) });
             haptic("tap");
           };
-          const applyReps = (d) => {
-            const cur = parseInt(set.reps) || 0;
-            updateSet(focusedSet.ei, focusedSet.si, { reps: String(Math.max(0, cur + d)) });
-            haptic("tap");
+          const curWeight = set.weight !== "" && set.weight != null ? set.weight : "—";
+          const stepBtn = {
+            width:40, height:36, borderRadius:9, cursor:"pointer",
+            background:C.isDark ? "rgba(255,255,255,0.06)" : C.bg,
+            border:`1px solid ${C.border}`, color:C.text,
+            fontSize:18, fontWeight:600, fontFamily:F,
+            display:"flex", alignItems:"center", justifyContent:"center",
           };
           return (
             <div
@@ -5691,42 +5754,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               onTouchStart={(e) => e.stopPropagation()}
               style={{
                 position:"fixed", left:0, right:0,
-                // Sit immediately above the keyboard (visualViewport tells us how tall the keyboard is).
-                // iOS layers its own input accessory bar (~44px) on top of the keyboard frame; visualViewport
-                // doesn't account for that, so we lift our bar by an extra 44px when the keyboard is open.
                 bottom: kbOffset > 0 ? kbOffset + 44 : 0,
                 maxWidth:480, margin:"0 auto",
                 background:C.surface, borderTop:`1px solid ${C.border}`,
-                padding:"10px 10px calc(10px + env(safe-area-inset-bottom))",
-                zIndex:400, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
-                boxShadow:"0 -4px 14px rgba(0,0,0,0.08)",
+                padding:"10px 14px calc(10px + env(safe-area-inset-bottom))",
+                zIndex:400, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+                boxShadow:"0 -4px 14px rgba(0,0,0,0.06)",
                 transition:"bottom 0.15s ease-out",
               }}>
-              <div style={{ display:"flex", gap:5, flexWrap:"nowrap", alignItems:"center" }}>
-                <span style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:0.4, marginRight:2 }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</span>
-                {weightAdj.map(d => (
-                  <button key={"w"+d} onClick={() => applyWeight(d)} style={{
-                    background:"transparent", border:`1px solid ${d<0?"#ef444440":"#22c55e40"}`,
-                    color:d<0?"#ef4444":"#22c55e", borderRadius:8, padding:"6px 10px",
-                    fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:MONO, minWidth:42,
-                  }}>{d>0?"+":""}{d}</button>
-                ))}
-              </div>
-              {!isCardio && (
-                <div style={{ display:"flex", gap:5, flexWrap:"nowrap", alignItems:"center" }}>
-                  <span style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:0.4, marginRight:2 }}>REPS</span>
-                  {repsAdj.map(d => (
-                    <button key={"r"+d} onClick={() => applyReps(d)} style={{
-                      background:"transparent", border:`1px solid ${d<0?"#ef444440":"#22c55e40"}`,
-                      color:d<0?"#ef4444":"#22c55e", borderRadius:8, padding:"6px 10px",
-                      fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:MONO, minWidth:36,
-                    }}>{d>0?"+":""}{d}</button>
-                  ))}
+              {/* Weight stepper — − [value unit] + */}
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <button onClick={() => applyWeight(-wStep)} style={stepBtn}>−</button>
+                <div style={{ minWidth:72, textAlign:"center" }}>
+                  <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{curWeight}</div>
+                  <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:0.8, marginTop:2 }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</div>
                 </div>
-              )}
+                <button onClick={() => applyWeight(wStep)} style={stepBtn}>+</button>
+              </div>
               <button onClick={() => { if (document.activeElement?.blur) document.activeElement.blur(); }} style={{
-                background:"transparent", border:"none", padding:"6px 8px",
-                color:C.sub, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F, flexShrink:0,
+                background:C.accent, border:"none", borderRadius:9, padding:"9px 18px",
+                color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0,
               }}>Done</button>
             </div>
           );
@@ -6001,7 +6048,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   const dates = Object.keys(store.history||{}).sort().reverse();
                   for (const dk of dates) {
                     if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
-                      return { day, di, daysSince: Math.floor((Date.now() - new Date(dk).getTime()) / 86400000) };
+                      return { day, di, daysSince: Math.floor((Date.now() - new Date(dk + "T12:00:00").getTime()) / 86400000) };
                     }
                   }
                   return { day, di, daysSince: 9999 };
@@ -6058,7 +6105,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     const dates = Object.keys(store.history||{}).sort().reverse();
                     for (const dk of dates) {
                       if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
-                        const d = Math.floor((Date.now() - new Date(dk).getTime()) / 86400000);
+                        const d = Math.floor((Date.now() - new Date(dk + "T12:00:00").getTime()) / 86400000);
                         return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
                       }
                     }
@@ -6752,7 +6799,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const lastPerformed = (() => {
     for (const dk of Object.keys(store.history||{}).sort().reverse()) {
       if (Object.values(store.history[dk]||{}).some(s => s.dayName === editDay.name)) {
-        const d = Math.floor((Date.now() - new Date(dk).getTime()) / 86400000);
+        const d = Math.floor((Date.now() - new Date(dk + "T12:00:00").getTime()) / 86400000);
         return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
       }
     }
@@ -8595,7 +8642,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
     let sessions = 0, volume = 0;
     const history = store.history || {};
     for (const dk of Object.keys(history)) {
-      const dayMs = new Date(dk).getTime();
+      const dayMs = new Date(dk + "T12:00:00").getTime();
       if (dayMs < weekAgo) continue;
       const daySessions = Object.values(history[dk] || {});
       sessions += daySessions.length;
@@ -8621,7 +8668,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       if (!dk) return;
       workoutDates[dk] = true;
       // This-week count
-      const dayMs = new Date(dk).getTime();
+      const dayMs = new Date(dk + "T12:00:00").getTime();
       if (dayMs >= weekAgo) {
         sessions += 1;
         const exercises = row.exercises || [];
@@ -8781,7 +8828,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
         unit: sess.unit || displayUnit || "lbs",
         workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) },
         kudos: [], comments: [],
-        createdAt: new Date(date).getTime(),
+        createdAt: sess.finishedAt || new Date(date + "T12:00:00").getTime(),
         _isHistory: true,
       };
     }).filter(Boolean)
@@ -9090,33 +9137,6 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                         color:(store.weeklyTarget||3)===n?"#fff":C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, minWidth:32
                       }}>{n}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>WORKOUT</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
-                  <div>
-                    <div style={{ fontSize:14, color:C.text }}>Default rest time</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Used when an exercise has no custom rest set</div>
-                  </div>
-                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
-                    {[60, 90, 120, 180].map(n => (
-                      <button key={n} onClick={async () => {
-                        setStore(p => ({ ...p, defaultRestTime: n }));
-                        const tok = token || loadSession()?.access_token;
-                        if (tok) {
-                          try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ default_rest_time: n }) }, tok); }
-                          catch (e) { console.error("rest time save error:", e); }
-                        }
-                      }} style={{
-                        padding:"6px 10px", background:(store.defaultRestTime||120)===n?C.accent:"transparent",
-                        color:(store.defaultRestTime||120)===n?"#fff":C.sub, border:"none", borderRadius:20,
-                        fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F, minWidth:36,
-                        fontVariantNumeric:"tabular-nums",
-                      }}>{n < 60 ? `${n}s` : `${n/60}m`}</button>
                     ))}
                   </div>
                 </div>
@@ -9915,7 +9935,7 @@ export default function App() {
           dayName: w.day_name, exercises: w.exercises,
           duration: w.duration_secs, unit: w.unit, note: w.note,
           // Capture the actual finish timestamp (Supabase auto-populates created_at on insert)
-          finishedAt: w.created_at ? new Date(w.created_at).getTime() : new Date(dk).getTime(),
+          finishedAt: w.created_at ? new Date(w.created_at).getTime() : new Date(dk + "T12:00:00").getTime(),
         };
         appWorkoutDates[dk] = true;
       });
@@ -9935,7 +9955,7 @@ export default function App() {
               duration: item.data.duration,
               unit: item.data.unit,
               note: item.data.note || "",
-              finishedAt: item.savedAt || new Date(item.dk).getTime(),
+              finishedAt: item.savedAt || new Date(item.dk + "T12:00:00").getTime(),
               pendingSync: true,
             };
           }
@@ -10539,6 +10559,14 @@ export default function App() {
         setStore(prev => ({ ...prev, activeProgramId: null }));
         return;
       }
+      // Silent save (e.g. persisting a per-exercise rest tweak): just patch the days,
+      // no deactivate/reactivate churn, no active-program change.
+      if (program._silent && program.id && store.programs.find(p => p.id === program.id)) {
+        setStore(prev => ({ ...prev, programs: prev.programs.map(p => p.id === program.id ? { ...program, _silent: undefined } : p) }));
+        try { await sb.query(`programs?id=eq.${program.id}`, { method:"PATCH", body: JSON.stringify({ days: program.days }) }, tok); }
+        catch (e) { console.error("silent program save error:", e); }
+        return;
+      }
       // Deactivate all others
       await sb.query(`programs?user_id=eq.${currentUserId}`, {
         method:"PATCH", body: JSON.stringify({ is_active: false })
@@ -10717,7 +10745,10 @@ export default function App() {
       style.id = styleId;
       style.textContent = `
         body, * { font-feature-settings: "cv02","cv03","cv04","cv11"; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-        input, textarea, select { font-size: 16px !important; }
+        /* Prevent the iOS long-press text-selection / lookup callout everywhere except real
+           text inputs — fixes the selection bubble appearing when holding a set/plate row. */
+        * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        input, textarea, select { font-size: 16px !important; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
         input[type=number] { -moz-appearance: textfield; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
@@ -10912,8 +10943,8 @@ export default function App() {
         },
         kudos: hi.kudos || [],
         comments: hi.comments || [],
-        // Use the actual finish timestamp if available, else fall back to midnight of the workout date
-        createdAt: sess.finishedAt || new Date(date).getTime(),
+        // Use the actual finish timestamp if available, else local noon of the workout date
+        createdAt: sess.finishedAt || new Date(date + "T12:00:00").getTime(),
         _isHistory: true,
         _date: date,
       };
