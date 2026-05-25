@@ -932,12 +932,18 @@ function calcStreak(workoutDates) {
 }
 
 function getPrev(store, exName, si, unit) {
+  // `si` here is the WORKING-set index (warmups excluded). We match it against the
+  // previous session's working sets only, so warmups on either side don't misalign
+  // the "Previous" column.
+  if (si == null || si < 0) return null;
   const dates = Object.keys(store.history||{}).sort().reverse();
   for (const d of dates) {
     const sessions = Object.values(store.history[d]||{});
     for (const sess of sessions) {
       const ex = sess.exercises?.find(e => e.name === exName);
-      const set = ex?.sets?.[si];
+      if (!ex) continue;
+      const workingSets = (ex.sets || []).filter(s => s.type !== "warmup");
+      const set = workingSets[si];
       if (set?.weight || set?.reps) {
         const su = sess.unit || "lbs";
         return { w: cvt(set.weight||0, su, unit), r: set.reps||0 };
@@ -1963,13 +1969,20 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
           boxShadow:"0 12px 40px rgba(0,0,0,0.15)"
         }}>
           {/* Category filters */}
-          <div style={{
-            padding: "12px 16px 8px",
-            borderBottom: `1px solid ${C.divider}`,
-            display: "flex",
-            gap: 6,
-            overflowX: "auto"
-          }}>
+          <div
+            data-no-tab-swipe
+            style={{
+              padding: "12px 16px 8px",
+              borderBottom: `1px solid ${C.divider}`,
+              display: "flex",
+              gap: 6,
+              overflowX: "auto",
+              touchAction: "pan-x",
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none",
+            }}
+            onTouchMove={(e) => e.stopPropagation()}
+          >
             {categories.map(cat => (
               <button
                 key={cat}
@@ -2028,7 +2041,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
-const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
+const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const swipeRef = useRef(null);
@@ -2097,7 +2110,9 @@ const SetRow = memo(function SetRow({ set, si, ei, exName, store, unit, repsTarg
     swipeState.current = { startX: 0, startY: 0, dx: 0, swiping: false, locked: null };
   }
 
-  const prev = exName ? getPrev(store, exName, si, unit) : null;
+  // prevIndex is the set's position among working (non-warmup) sets; warmups get -1.
+  // Falls back to si for any caller that doesn't pass it.
+  const prev = exName && set.type !== "warmup" ? getPrev(store, exName, prevIndex != null ? prevIndex : si, unit) : null;
   const setType = SET_TYPES.find(t => t.id === set.type) || SET_TYPES[0];
   const est1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
   const isDone = set.done;
@@ -4591,8 +4606,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       const rawSet = currentExercise?.sets[si];
       let resolvedWeight = rawSet?.weight;
       let resolvedReps = rawSet?.reps;
-      if (nowDone && currentExercise?.name) {
-        const prevVals = getPrev(store, currentExercise.name, si, unit);
+      if (nowDone && currentExercise?.name && rawSet?.type !== "warmup") {
+        // Use the working-set index (warmups excluded) so the placeholder matches the
+        // correct previous working set even when warmups are prepended.
+        const workingIdx = (currentExercise.sets || []).slice(0, si).filter(s => s.type !== "warmup").length;
+        const prevVals = getPrev(store, currentExercise.name, workingIdx, unit);
         if (resolvedWeight === "" || resolvedWeight === undefined || resolvedWeight === null) {
           resolvedWeight = prevVals?.w != null ? String(prevVals.w) : resolvedWeight;
         }
@@ -4894,6 +4912,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         toast("Saved on this device — couldn't reach server. Will retry.", "error");
       } else {
         toast(share ? "Workout posted" : "Workout saved", "success");
+        // Finish & share → actually create the feed post (this was missing — sharing
+        // only built shareData but never posted it).
+        if (share && onShareWorkout) {
+          onShareWorkout({ ...shareData, groupOnly: false });
+        }
       }
 
       if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
@@ -5231,9 +5254,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   ))}
                 </div>
 
-                {ex.sets.map((set, si) => (
+                {ex.sets.map((set, si) => {
+                  // Position among working (non-warmup) sets, for the "Previous" column.
+                  const prevIndex = set.type === "warmup" ? -1 : ex.sets.slice(0, si).filter(s => s.type !== "warmup").length;
+                  return (
                   <div key={set.id||si}>
-                    <SetRow set={set} si={si} ei={ei} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
+                    <SetRow set={set} si={si} prevIndex={prevIndex} ei={ei} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
                       onFocusInput={(field) => setFocusedSet({ ei, si, field })}
                       onBlurInput={() => {
                         // small delay so a tap on the keyboard accessory button can register before clearing focused state
@@ -5299,7 +5325,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
 
                 <div style={{ display:"flex", padding:"8px 14px 12px", borderBottom:`1px solid ${C.divider}`, gap:8, flexWrap:"wrap" }}>
                   <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
@@ -8809,7 +8836,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
   );
 }
 
-function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, token }) {
+function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, onRefresh, token }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
@@ -8937,7 +8964,8 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+    <PullToRefresh onRefresh={onRefresh} C={C}>
+    <div style={{ paddingBottom:20 }}>
       <div style={{ padding:"12px 14px" }}>
         {onBack && (
           <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", marginBottom:10, display:"block" }}>‹</button>
@@ -9221,6 +9249,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
         );
       })()}
     </div>
+    </PullToRefresh>
   );
 }
 
@@ -11056,6 +11085,7 @@ export default function App() {
           }}
           onUserClick={setProfileUserId}
           onFollow={handleFollow}
+          onRefresh={handleRefresh}
           token={token}
         />
       </div>
@@ -11549,6 +11579,7 @@ export default function App() {
             email={session?.user?.email || ""}
             onSignOut={handleSignOut}
             onFollow={handleFollow}
+            onRefresh={handleRefresh}
             token={token}
           />
         )}
