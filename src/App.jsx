@@ -8728,7 +8728,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           {following.length > 0 && (
             <div style={{ marginBottom:20 }}>
               <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>FRIENDS LEADERBOARD</div>
-              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
+              <div className="seshd-float" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:18, overflow:"hidden" }}>
                 {(() => {
                   // The six big barbell compounds, using the EXACT names from EXERCISE_DB
                   // (verified — e.g. "Overhead Press (Barbell)", not "Overhead Press").
@@ -8754,30 +8754,58 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     .sort((a, b) => (b.val ?? -1) - (a.val ?? -1));
                   // Friendlier display label (drop the parenthetical qualifier)
                   const label = exName.replace(" (Barbell)", "").replace("Barbell ", "");
+                  // Does anyone have a real number? Used to decide whether to crown a leader.
+                  const hasLeader = rows.length > 0 && rows[0].val != null;
+                  // Show the top 5. If "you" rank outside the top 5, pin your row at the
+                  // bottom with your true rank so you always see where you stand.
+                  const TOP_N = 5;
+                  const myIndex = rows.findIndex(r => r.u.id === currentUserId);
+                  const visible = rows.slice(0, TOP_N).map((r, ri) => ({ ...r, rank: ri }));
+                  const pinned = (myIndex >= TOP_N) ? { ...rows[myIndex], rank: myIndex, _pinned: true } : null;
                   return (
-                  <div key={exName} style={{ padding:"12px 16px", borderBottom: i < lifts.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:C.text, marginBottom:8 }}>{label}</div>
-                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                      {rows.map(({ u, val }) => (
-                        <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"4px 10px" }}>
-                          <Avatar user={u} size={16} C={C}/>
-                          <span style={{ fontSize:11, color:C.text, fontWeight:500 }}>{(u.name || u.username || "Lifter").split(" ")[0]}</span>
-                          <span style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>{val != null ? val : "—"}</span>
-                        </div>
-                      ))}
+                  <div key={exName} style={{ padding:"14px 16px", borderBottom: i < lifts.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>{label}</div>
+                      <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1.5 }}>{(unit||"lbs").toUpperCase()}</div>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                      {[...visible, ...(pinned ? [pinned] : [])].map(({ u, val, rank, _pinned }) => {
+                        const isLeader = hasLeader && rank === 0;
+                        const isMe = u.id === currentUserId;
+                        return (
+                          <div key={u.id} style={{
+                            display:"flex", alignItems:"center", gap:10,
+                            padding:"7px 10px", borderRadius:11,
+                            background: isLeader ? C.accentSoft : (isMe ? C.divider : "transparent"),
+                            border: isLeader ? `1px solid ${C.accent}30` : "1px solid transparent",
+                            marginTop: _pinned ? 4 : 0,
+                            borderTop: _pinned ? `1px dashed ${C.border}` : undefined,
+                          }}>
+                            {/* Rank */}
+                            <div style={{
+                              width:18, fontSize:11, fontWeight:800, fontFamily:MONO, flexShrink:0,
+                              color: isLeader ? C.accent : C.muted, textAlign:"center",
+                            }}>{val != null ? rank + 1 : "·"}</div>
+                            <Avatar user={u} size={22} C={C}/>
+                            <span style={{ fontSize:13, fontWeight: isMe ? 700 : 500, color: C.text, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {(u.name || u.username || "Lifter").split(" ")[0]}{isMe ? " (you)" : ""}
+                            </span>
+                            <span style={{ fontSize:15, fontFamily:MONO, fontWeight:700, fontVariantNumeric:"tabular-nums", color: val != null ? (isLeader ? C.accent : C.text) : C.muted }}>
+                              {val != null ? val : "—"}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                   );
                   });
                 })()}
                 <button onClick={() => setShowAllLifts(v => !v)} style={{
-                  width:"100%", padding:"11px 16px", borderTop:`1px solid ${C.divider}`,
+                  width:"100%", padding:"13px 16px", borderTop:`1px solid ${C.divider}`,
                   background:"none", border:"none", cursor:"pointer", fontFamily:F,
-                  fontSize:12, fontWeight:600, color:C.accent, textAlign:"center",
+                  fontSize:12, fontWeight:700, color:C.accent, textAlign:"center", letterSpacing:-0.1,
                 }}>{showAllLifts ? "Show less" : "Show all 6 lifts"}</button>
-                <div style={{ padding:"10px 16px", borderTop:`1px solid ${C.divider}` }}>
-                  <span style={{ fontSize:10, color:C.muted }}>Friends only · no strangers, no faking</span>
-                </div>
               </div>
             </div>
           )}
