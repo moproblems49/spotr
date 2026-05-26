@@ -2392,6 +2392,25 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       </div>{/* end swipeable content div */}
     </div>
   );
+}, (a, b) => {
+  // Re-render only when something this row actually displays changes. Passing the whole
+  // `store` previously defeated memo (store gets a new identity on every keystroke in any
+  // field), so every row re-rendered on every keypress. We compare the meaningful fields
+  // and treat history by reference (it doesn't change mid-workout, so prev/suggestion stay valid).
+  const s1 = a.set, s2 = b.set;
+  return (
+    s1 === s2 || (
+      s1.weight === s2.weight && s1.reps === s2.reps && s1.done === s2.done &&
+      s1.type === s2.type && s1.restTime === s2.restTime
+    )
+  ) &&
+    a.si === b.si && a.prevIndex === b.prevIndex && a.ei === b.ei &&
+    a.unit === b.unit && a.exName === b.exName && a.repsTarget === b.repsTarget &&
+    a.C === b.C &&
+    // Track whether delete is allowed (becomes undefined when only one set remains),
+    // otherwise the last set could keep a stale swipe-to-delete.
+    (!!a.onDelete === !!b.onDelete) &&
+    (a.store?.history === b.store?.history);
 });
 
 
@@ -4455,6 +4474,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     return () => window.removeEventListener("seshd:open-code-internal", handleOpenCode);
   }, []);
   const rtRef = useRef(null);
+  const rtFiredRef = useRef(false); // ensures rest-end fanfare fires exactly once at 250ms tick
 
   useEffect(() => {
     if (!session) { try { localStorage.removeItem(SESSION_KEY); } catch {} return; }
@@ -4484,6 +4504,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   useEffect(() => {
     clearInterval(rtRef.current);
     if (rest?.running && rest.secs > 0) {
+      rtFiredRef.current = false; // new rest period — arm the end fanfare
       rtRef.current = setInterval(() => setRest(p => {
         if (!p || !p.running) return p;
         // Always recalculate from startedAt if available (handles backgrounding)
@@ -4492,6 +4513,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const remaining = Math.max(0, p.total - elapsed);
           if (remaining <= 0) {
             clearInterval(rtRef.current);
+            if (rtFiredRef.current) return null; // already fired — don't double-fire at 250ms cadence
+            rtFiredRef.current = true;
             try {
               const Ctx = window.AudioContext || window.webkitAudioContext;
               if (Ctx) {
@@ -4531,12 +4554,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             }
             return null;
           }
+          // Only trigger a re-render when the displayed second actually changed —
+          // the 250ms cadence keeps the display crisp without 4 redundant updates/sec.
+          if (remaining === p.secs) return p;
           return { ...p, secs: remaining };
         }
         // Fallback: count down
         if (p.secs <= 1) return null;
         return { ...p, secs: p.secs - 1 };
-      }), 1000);
+      }), 250);
     }
     return () => clearInterval(rtRef.current);
   }, [rest?.running, rest?.startedAt]);
@@ -4835,7 +4861,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             return {
               name: ex.name,
               sets: ex.sets.filter(s => s.done === true && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-              isPR: maxLbs > 0 && maxLbs > (originalPRs[ex.name] || 0)
+              isPR: maxLbs > 0 && maxLbs > (originalPRs[ex.name] || 0) + 0.001
             };
           })
           .filter(ex => ex.sets.length > 0);
@@ -8451,6 +8477,36 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
 
+  // Load followed users' PRs (exercise → lbs) so the leaderboard shows real numbers.
+  // Requires an RLS policy allowing followers to read each other's personal_records;
+  // if blocked, the rows come back empty and the leaderboard shows "—".
+  useEffect(() => {
+    if (!token) return;
+    const friendIds = following.filter(id => id !== currentUserId);
+    if (friendIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await sb.query(
+          `personal_records?user_id=in.(${friendIds.join(",")})&select=user_id,exercise_name,weight_lbs`,
+          {}, token
+        ).catch(() => []);
+        if (cancelled || !rows || rows.length === 0) return;
+        const prMapByUser = {};
+        rows.forEach(p => {
+          if (!prMapByUser[p.user_id]) prMapByUser[p.user_id] = {};
+          if (p.exercise_name && p.weight_lbs != null) prMapByUser[p.user_id][p.exercise_name] = p.weight_lbs;
+        });
+        setStore(prev => ({
+          ...prev,
+          users: (prev.users || []).map(u => prMapByUser[u.id] ? { ...u, prs: prMapByUser[u.id] } : u),
+        }));
+      } catch (e) { console.warn("friend PR load failed:", e); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, following.join(",")]);
+
   const userResults = q.length >= 1
     ? store.users.filter(u => u.id !== currentUserId && (
         u.name?.toLowerCase().includes(q.toLowerCase()) ||
@@ -8602,20 +8658,39 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             <div style={{ marginBottom:20 }}>
               <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>FRIENDS LEADERBOARD</div>
               <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
-                {["Barbell Bench Press","Barbell Back Squat","Deadlift"].map((ex, i) => (
-                  <div key={ex} style={{ padding:"12px 16px", borderBottom: i<2 ? `1px solid ${C.divider}` : "none" }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:C.text, marginBottom:8 }}>{ex}</div>
+                {["Barbell Bench Press","Barbell Back Squat","Deadlift"].map((exName, i) => {
+                  // Real numbers only. Your PR comes from store.prs; friends' PRs come from
+                  // u.prs (loaded on this screen via the effect above). Both are stored in lbs
+                  // and converted to the viewer's unit. Anyone without loaded PR data shows "—".
+                  const rows = [...store.users.filter(u => following.includes(u.id)), store.users.find(u => u.id === currentUserId)]
+                    .filter(Boolean)
+                    .map(u => {
+                      let val = null;
+                      if (u.id === currentUserId) {
+                        const lbs = (store.prs || {})[exName];
+                        if (lbs) val = unit === "lbs" ? Math.round(lbs) : Math.round(cvt(lbs, "lbs", "kg"));
+                      } else if (u.prs && u.prs[exName]) {
+                        val = unit === "lbs" ? Math.round(u.prs[exName]) : Math.round(cvt(u.prs[exName], "lbs", "kg"));
+                      }
+                      return { u, val };
+                    })
+                    // Sort highest first; nulls last
+                    .sort((a, b) => (b.val ?? -1) - (a.val ?? -1));
+                  return (
+                  <div key={exName} style={{ padding:"12px 16px", borderBottom: i<2 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:C.text, marginBottom:8 }}>{exName}</div>
                     <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                      {[...store.users.filter(u => following.includes(u.id)), store.users.find(u => u.id === currentUserId)].filter(Boolean).map((u, j) => (
+                      {rows.map(({ u, val }) => (
                         <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"4px 10px" }}>
                           <Avatar user={u} size={16} C={C}/>
                           <span style={{ fontSize:11, color:C.text, fontWeight:500 }}>{u.name.split(" ")[0]}</span>
-                          <span style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>{[225,185,205][j%3] || "—"}</span>
+                          <span style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>{val != null ? val : "—"}</span>
                         </div>
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <div style={{ padding:"10px 16px", borderTop:`1px solid ${C.divider}` }}>
                   <span style={{ fontSize:10, color:C.muted }}>Friends only · no strangers, no faking</span>
                 </div>
@@ -10780,6 +10855,11 @@ export default function App() {
         input, textarea, select { font-size: 16px !important; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
         input[type=number] { -moz-appearance: textfield; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        /* Micro-feel: kill the iOS gray tap-flash, and give every button a crisp press-down.
+           Since web haptics are dormant on iOS, this visual depress is the tactile feedback. */
+        * { -webkit-tap-highlight-color: transparent; }
+        button { transition: transform 0.06s ease-out, opacity 0.12s ease-out; touch-action: manipulation; }
+        button:active { transform: scale(0.95); }
 
         @keyframes seshd-press { 0%{transform:scale(1)} 50%{transform:scale(0.96)} 100%{transform:scale(1)} }
         @keyframes seshd-fade-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
