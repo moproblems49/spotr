@@ -2719,8 +2719,16 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
           {onPostToFeed && (
             <button onClick={() => {
               onPostToFeed({
-                type: "text",
-                caption: `My week on Seshd 💪\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} · ${weekPRs} PR${weekPRs===1?"":"s"} · ${streak} day streak`,
+                type: "achievement",
+                caption: "",
+                achievement: {
+                  type: "wrapped",
+                  workouts,
+                  volume: Math.round(volume),
+                  weekPRs,
+                  streak,
+                  unit,
+                },
               });
               toast("Posted to your feed", "success");
               onClose();
@@ -3344,6 +3352,35 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           <div style={{ fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.55)", letterSpacing:2, marginTop:10 }}>DAYS</div>
         </div>
       )}
+
+      {post.type === "achievement" && post.achievement?.type === "wrapped" && (() => {
+        const w = post.achievement;
+        const wUnit = w.unit || "lbs";
+        const stats = [
+          [String(w.workouts ?? 0), "WORKOUTS"],
+          [fmtVol(w.volume ?? 0, wUnit), "VOLUME"],
+          [String(w.weekPRs ?? 0), w.weekPRs === 1 ? "PR" : "PRS"],
+          [String(w.streak ?? 0), "DAY STREAK"],
+        ];
+        return (
+          <div style={{ margin:"0 14px", background:"#0A0A0A", color:"#fff", borderRadius:16, padding:"24px 20px", position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", inset:0, opacity:0.04, pointerEvents:"none",
+              backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`, backgroundSize:"24px 24px" }}/>
+            <div style={{ position:"relative", zIndex:1 }}>
+              <div style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:3, marginBottom:4 }}>SESHD</div>
+              <div style={{ fontSize:18, fontWeight:800, letterSpacing:-0.5, marginBottom:20 }}>My week</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18 }}>
+                {stats.map(([v, l], i) => (
+                  <div key={i}>
+                    <div style={{ fontFamily:MONO, fontSize:26, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>{v}</div>
+                    <div style={{ fontSize:9, color:"rgba(255,255,255,0.5)", marginTop:5, letterSpacing:1.5, fontWeight:700 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {(post.type === "photo" || post.type === "form_check") && (
         post.imageData
@@ -8506,6 +8543,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   const [searchFocused, setSearchFocused] = useState(false);
   const [subTab, setSubTab] = useState("discover");
   const [viewingExercise, setViewingExercise] = useState(null);
+  const [showAllLifts, setShowAllLifts] = useState(false);
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
   const unit = store.unit || "lbs"; // DiscoverScreen isn't passed `unit`; read it from store
@@ -8691,7 +8729,12 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             <div style={{ marginBottom:20 }}>
               <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>FRIENDS LEADERBOARD</div>
               <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
-                {["Barbell Bench Press","Barbell Back Squat","Deadlift"].map((exName, i) => {
+                {(() => {
+                  // The six big barbell compounds, using the EXACT names from EXERCISE_DB
+                  // (verified — e.g. "Overhead Press (Barbell)", not "Overhead Press").
+                  const ALL_LIFTS = ["Barbell Bench Press","Barbell Back Squat","Deadlift","Overhead Press (Barbell)","Barbell Row","Hip Thrust (Barbell)"];
+                  const lifts = showAllLifts ? ALL_LIFTS : ALL_LIFTS.slice(0, 3);
+                  return lifts.map((exName, i) => {
                   // Real numbers only. Your PR comes from store.prs; friends' PRs come from
                   // u.prs (loaded on this screen via the effect above). Both are stored in lbs
                   // and converted to the viewer's unit. Anyone without loaded PR data shows "—".
@@ -8709,9 +8752,11 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     })
                     // Sort highest first; nulls last
                     .sort((a, b) => (b.val ?? -1) - (a.val ?? -1));
+                  // Friendlier display label (drop the parenthetical qualifier)
+                  const label = exName.replace(" (Barbell)", "").replace("Barbell ", "");
                   return (
-                  <div key={exName} style={{ padding:"12px 16px", borderBottom: i<2 ? `1px solid ${C.divider}` : "none" }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:C.text, marginBottom:8 }}>{exName}</div>
+                  <div key={exName} style={{ padding:"12px 16px", borderBottom: i < lifts.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:C.text, marginBottom:8 }}>{label}</div>
                     <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                       {rows.map(({ u, val }) => (
                         <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"4px 10px" }}>
@@ -8723,7 +8768,13 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     </div>
                   </div>
                   );
-                })}
+                  });
+                })()}
+                <button onClick={() => setShowAllLifts(v => !v)} style={{
+                  width:"100%", padding:"11px 16px", borderTop:`1px solid ${C.divider}`,
+                  background:"none", border:"none", cursor:"pointer", fontFamily:F,
+                  fontSize:12, fontWeight:600, color:C.accent, textAlign:"center",
+                }}>{showAllLifts ? "Show less" : "Show all 6 lifts"}</button>
                 <div style={{ padding:"10px 16px", borderTop:`1px solid ${C.divider}` }}>
                   <span style={{ fontSize:10, color:C.muted }}>Friends only · no strangers, no faking</span>
                 </div>
