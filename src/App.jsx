@@ -2615,7 +2615,7 @@ function PlateCalcModal({ onClose, unit, C }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // WRAPPED MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function WrappedModal({ store, C, onClose }) {
+function WrappedModal({ store, C, onClose, onPostToFeed }) {
   const unit = store.unit || "lbs";
   const weekAgo = Date.now() - 7*24*60*60*1000;
   const weekHistory = Object.entries(store.history||{}).filter(([d]) => new Date(d).getTime() > weekAgo);
@@ -2716,6 +2716,23 @@ function WrappedModal({ store, C, onClose }) {
             <Icon name="share" size={16} color="#0A0A0A"/>
             Share my week
           </button>
+          {onPostToFeed && (
+            <button onClick={() => {
+              onPostToFeed({
+                type: "text",
+                caption: `My week on Seshd 💪\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} · ${weekPRs} PR${weekPRs===1?"":"s"} · ${streak} day streak`,
+              });
+              toast("Posted to your feed", "success");
+              onClose();
+            }} style={{
+              width:"100%", background:"rgba(255,255,255,0.08)", color:"#fff",
+              border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"13px",
+              fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2,
+              display:"flex", alignItems:"center", justifyContent:"center", gap:8
+            }}>
+              Post to my feed
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -2725,7 +2742,12 @@ function WrappedModal({ store, C, onClose }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // PR MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function PRModal({ pr, unit, onClose, onShare }) {
+function PRModal({ prs, unit, onClose }) {
+  const list = (prs || []).filter(Boolean);
+  if (list.length === 0) return null;
+  const hero = list[0];
+  const rest = list.slice(1);
+  const multiple = list.length > 1;
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <Confetti/>
@@ -2743,77 +2765,65 @@ function PRModal({ pr, unit, onClose, onShare }) {
 
         <div style={{ position:"relative", zIndex:1 }}>
           {/* Header label */}
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:36 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:multiple ? 24 : 36 }}>
             <div>
               <div style={{ fontSize:11, letterSpacing:4, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:3 }}>SESHD</div>
-              <div style={{ fontSize:10, letterSpacing:2.5, fontWeight:700, color:"#fff" }}>PERSONAL RECORD</div>
+              <div style={{ fontSize:10, letterSpacing:2.5, fontWeight:700, color:"#fff" }}>PERSONAL RECORD{multiple ? "S" : ""}</div>
             </div>
             <div style={{
               background:"#fff", color:"#0A0A0A",
               fontSize:9, fontWeight:800, letterSpacing:1.5,
               padding:"5px 10px", borderRadius:20,
-            }}>NEW</div>
+            }}>{multiple ? `${list.length} NEW` : "NEW"}</div>
           </div>
 
-          {/* The big number */}
-          <div style={{ marginBottom:32 }}>
+          {/* Hero PR — the big number */}
+          <div style={{ marginBottom:multiple ? 4 : 32 }}>
             <div style={{
-              fontFamily:MONO, fontSize:88, lineHeight:0.9, fontWeight:700, letterSpacing:-3,
+              fontFamily:MONO, fontSize:multiple ? 64 : 88, lineHeight:0.9, fontWeight:700, letterSpacing:-3,
               fontVariantNumeric: "tabular-nums",
             }}>
-              {Number.isInteger(parseFloat(pr.weight))
-                ? <AnimatedNumber value={parseFloat(pr.weight) || 0} duration={900} animateOnMount/>
-                : <span className="seshd-count">{pr.weight}</span>}
+              {Number.isInteger(parseFloat(hero.weight))
+                ? <AnimatedNumber value={parseFloat(hero.weight) || 0} duration={900} animateOnMount/>
+                : <span className="seshd-count">{hero.weight}</span>}
             </div>
             <div style={{ fontSize:16, color:"rgba(255,255,255,0.5)", marginTop:6, letterSpacing:1, fontWeight:600 }}>{unit.toUpperCase()}</div>
           </div>
 
-          {/* Exercise */}
-          <div style={{ marginBottom:24 }}>
+          {/* Hero exercise */}
+          <div style={{ marginBottom:multiple ? 16 : 24 }}>
             <div style={{ fontSize:11, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:600, marginBottom:6 }}>EXERCISE</div>
-            <div style={{ fontSize:20, fontWeight:800, lineHeight:1.2, letterSpacing:-0.5 }}>{pr.name}</div>
+            <div style={{ fontSize:20, fontWeight:800, lineHeight:1.2, letterSpacing:-0.5 }}>{hero.name}</div>
+            {hero.increase > 0 && (
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:4, fontFamily:MONO }}>
+                +{hero.increase} {unit} over your previous best
+              </div>
+            )}
           </div>
 
-          {/* Increase — show what you beat */}
-          {pr.increase > 0 && (
-            <div style={{
-              padding:"14px 16px", marginBottom:24,
-              background:"rgba(255,255,255,0.06)", borderRadius:12,
-              border:"1px solid rgba(255,255,255,0.08)",
-              display:"flex", alignItems:"center", justifyContent:"space-between"
-            }}>
-              <div style={{ fontSize:11, letterSpacing:1.8, fontWeight:700, color:"rgba(255,255,255,0.55)" }}>PREVIOUS BEST</div>
-              <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
-                <span style={{ fontFamily:MONO, fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.4)", textDecoration:"line-through" }}>
-                  {Math.round(((parseFloat(pr.weight)||0) - pr.increase) * 10) / 10} {unit}
-                </span>
-                <span style={{ fontFamily:MONO, fontSize:14, fontWeight:700, color:"#fff" }}>
-                  +{pr.increase}
-                </span>
+          {/* Additional PRs hit this session */}
+          {rest.length > 0 && (
+            <div style={{ marginBottom:24, borderTop:"1px solid rgba(255,255,255,0.1)", paddingTop:16 }}>
+              <div style={{ fontSize:10, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:700, marginBottom:10 }}>
+                ALSO SET TODAY
               </div>
+              {rest.map((pr, i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: i < rest.length-1 ? 10 : 0 }}>
+                  <span style={{ fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.85)" }}>{pr.name}</span>
+                  <span style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+                    <span style={{ fontFamily:MONO, fontSize:15, fontWeight:700, color:"#fff" }}>{pr.weight} {unit}</span>
+                    {pr.increase > 0 && <span style={{ fontFamily:MONO, fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.4)" }}>+{pr.increase}</span>}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Buttons */}
-          <button onClick={() => {
-            const text = `New PR — ${pr.name} ${pr.weight} ${unit}${pr.increase > 0 ? ` (+${pr.increase})` : ""}. via Seshd.`;
-            if (navigator.share) navigator.share({ title:"New PR", text }).catch(()=>{});
-            else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard","success"); }
-            onClose();
-          }} style={{
-            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+          {/* Single dismiss — no share button. A clean card invites a screenshot. */}
+          <button onClick={onClose} style={{
             width:"100%", background:"#fff", color:"#0A0A0A",
             border:"none", borderRadius:12, padding:"15px",
-            fontSize:14, fontWeight:700, cursor:"pointer", marginBottom:8, fontFamily:F,
-            letterSpacing:-0.2,
-          }}>
-            <Icon name="share" size={16} color="#0A0A0A"/>
-            Share this PR
-          </button>
-          <button onClick={onClose} style={{
-            width:"100%", background:"transparent", color:"rgba(255,255,255,0.7)",
-            border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"13px",
-            fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600,
+            fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2,
           }}>Keep going</button>
         </div>
       </div>
@@ -4729,7 +4739,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       const dk = dKey();
       const sid = uid();
       const originalPRs = { ...store.prs }; // snapshot before any updates
-      let hitPR = null;
+      let hitPRs = [];
       const newPRs = { ...store.prs };
 
       // Idle-gap correction: if the user forgot to hit Finish and there's a long gap
@@ -4757,7 +4767,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const prev = newPRs[ex.name] || 0;
         if (maxLbs > 0 && maxLbs > prev) {
           newPRs[ex.name] = maxLbs;
-          hitPR = { name: ex.name, weight: maxW, increase: Math.round((maxLbs - prev) * 10) / 10 };
+          hitPRs.push({ name: ex.name, weight: maxW, increase: Math.round((maxLbs - prev) * 10) / 10 });
         }
       });
 
@@ -4884,7 +4894,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         } else {
           toast(`Sent to ${groupShare.groupIds.length} group${groupShare.groupIds.length===1?"":"s"}`, "success");
         }
-        if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
+        if (hitPRs.length) setTimeout(() => onPRHit(hitPRs), 300);
         return;
       }
 
@@ -4945,7 +4955,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }
       }
 
-      if (hitPR) setTimeout(() => onPRHit(hitPR), 300);
+      if (hitPRs.length) setTimeout(() => onPRHit(hitPRs), 300);
     } finally {
       setFinishing(false);
     }
@@ -5944,13 +5954,35 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 borderRadius:16, padding:"16px 18px", marginBottom:12,
                 display:"flex", alignItems:"center", gap:14,
               }}>
-                <div style={{ width:40, height:40, borderRadius:12,
-                  background: isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.2)" : C.bg),
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.text),
-                  flexShrink:0 }}>
-                  <Icon name="flame" size={20}/>
-                </div>
+                {/* Week-progress pips: one per target workout, filled by this week's count.
+                    Makes the streak feel alive during the week, not just when it ticks over. */}
+                {(() => {
+                  const onColor = isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg);
+                  const offColor = isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.18)");
+                  const pips = Math.min(7, Math.max(1, ws.target || 3));
+                  const filled = Math.min(pips, ws.thisWeek);
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0 }}>
+                      <div style={{
+                        width:40, height:40, borderRadius:12,
+                        background: isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.2)" : C.bg),
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.text),
+                      }}>
+                        <Icon name="flame" size={20}/>
+                      </div>
+                      <div style={{ display:"flex", gap:3 }}>
+                        {Array.from({ length: pips }).map((_, i) => (
+                          <div key={i} style={{
+                            width:6, height:6, borderRadius:3,
+                            background: i < filled ? onColor : offColor,
+                            transition:"background 0.3s ease",
+                          }}/>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:11, fontWeight:700, opacity:0.6, letterSpacing:1.5, marginBottom:2 }}>
                     {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
@@ -5961,7 +5993,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     </div>
                     <div style={{ fontSize:12, fontWeight:600, opacity:0.6 }}>
                       {ws.count > 0
-                        ? (isAtRisk ? `${ws.thisWeek}/${ws.target} this week` : `week${ws.count === 1 ? "" : "s"} active`)
+                        ? `week${ws.count === 1 ? "" : "s"} · ${ws.thisWeek}/${ws.target} done`
                         : "workouts this week"}
                     </div>
                   </div>
@@ -8476,6 +8508,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   const [viewingExercise, setViewingExercise] = useState(null);
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
+  const unit = store.unit || "lbs"; // DiscoverScreen isn't passed `unit`; read it from store
 
   // Load followed users' PRs (exercise → lbs) so the leaderboard shows real numbers.
   // Requires an RLS policy allowing followers to read each other's personal_records;
@@ -8683,7 +8716,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                       {rows.map(({ u, val }) => (
                         <div key={u.id} style={{ display:"flex", alignItems:"center", gap:5, background:C.divider, borderRadius:20, padding:"4px 10px" }}>
                           <Avatar user={u} size={16} C={C}/>
-                          <span style={{ fontSize:11, color:C.text, fontWeight:500 }}>{u.name.split(" ")[0]}</span>
+                          <span style={{ fontSize:11, color:C.text, fontWeight:500 }}>{(u.name || u.username || "Lifter").split(" ")[0]}</span>
                           <span style={{ fontSize:11, color:C.accent, fontFamily:MONO, fontWeight:700 }}>{val != null ? val : "—"}</span>
                         </div>
                       ))}
@@ -11121,7 +11154,7 @@ export default function App() {
   // Clamped at 0 (e.g. if a kudos was removed, we don't show negative).
   const notifCount = Math.max(0, currentActivityCount - seenActivityCount);
 
-  if (prModal) return <PRModal pr={prModal} unit={unit} onClose={() => setPrModal(null)}/>;
+  if (prModal) return <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>;
 
   // First-run onboarding. Shows only to genuinely new users: not a guest, hasn't seen it,
   // and has no workout history yet (so existing testers who predate the flag don't get it).
@@ -11257,7 +11290,7 @@ export default function App() {
           -webkit-touch-callout: none;
         }
       `}</style>
-      {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)}/>}
+      {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
 
       {/* GUEST BANNER */}
