@@ -6689,7 +6689,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <Icon name="spark" size={20}/>
                 </div>
                 <div style={{ textAlign:"left", flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:C.bg, letterSpacing:-0.2 }}>AI Coach</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.bg, letterSpacing:-0.2 }}>Plan Builder</div>
                   <div style={{ fontSize:11, color:C.bg, opacity:0.65, marginTop:1 }}>Answer 5 questions, get a custom plan</div>
                 </div>
                 <Icon name="chevron-right" size={18} color={C.bg}/>
