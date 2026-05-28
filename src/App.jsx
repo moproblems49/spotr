@@ -399,6 +399,39 @@ const EXERCISE_DB = [
   { name:"Mobility Flow", muscle:"Yoga" },
   { name:"Stretching", muscle:"Yoga" },
   { name:"Meditation", muscle:"Yoga" },
+
+  // — Common gym machines that were missing from the catalog —
+  // Back / pull
+  { name:"High Row (Machine)", muscle:"Back" },
+  { name:"Low Row (Machine)", muscle:"Back" },
+  { name:"Plate-Loaded Row", muscle:"Back" },
+  { name:"Assisted Pull-Up (Machine)", muscle:"Back" },
+  { name:"Pullover Machine", muscle:"Back" },
+  { name:"Back Extension (Machine)", muscle:"Back" },
+  // Chest / push
+  { name:"Incline Chest Press (Machine)", muscle:"Chest" },
+  { name:"Decline Chest Press (Machine)", muscle:"Chest" },
+  { name:"Plate-Loaded Chest Press", muscle:"Chest" },
+  { name:"Assisted Dip (Machine)", muscle:"Chest" },
+  // Shoulders
+  { name:"Plate-Loaded Shoulder Press", muscle:"Shoulders" },
+  { name:"Reverse Pec Deck", muscle:"Rear Delts" },
+  // Legs
+  { name:"Adduction Machine", muscle:"Quads" },
+  { name:"Hack Squat (Machine)", muscle:"Quads" },
+  { name:"Pendulum Squat", muscle:"Quads" },
+  { name:"Belt Squat", muscle:"Quads" },
+  { name:"Glute Drive (Machine)", muscle:"Glutes" },
+  { name:"Reverse Hyperextension", muscle:"Glutes" },
+  // Calves
+  { name:"Standing Calf Raise (Machine)", muscle:"Calves" },
+  { name:"Seated Calf Raise (Machine)", muscle:"Calves" },
+  // Core
+  { name:"Crunch Machine", muscle:"Core" },
+  { name:"Ab Coaster", muscle:"Core" },
+  // Arms
+  { name:"Preacher Curl Machine", muscle:"Biceps" },
+  { name:"Dip Machine", muscle:"Triceps" },
 ];
 
 
@@ -762,6 +795,36 @@ const timeAgo = ts => {
 };
 const fmtTime = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const fmtVol = (v, u) => v >= 1000 ? `${(v/1000).toFixed(1)}k ${u}` : `${v} ${u}`;
+
+// Split comment/caption text into React fragments, highlighting @username mentions
+// in the accent color when the username matches a known user.
+function renderWithMentions(text, store, C) {
+  if (!text) return text;
+  const usernames = new Set((store?.users || []).map(u => (u.username || "").toLowerCase()).filter(Boolean));
+  const parts = text.split(/(@[a-zA-Z0-9_]+)/g);
+  return parts.map((part, i) => {
+    if (part[0] === "@") {
+      const handle = part.slice(1).toLowerCase();
+      if (usernames.has(handle)) {
+        return <span key={i} style={{ color: C.accent, fontWeight: 600 }}>{part}</span>;
+      }
+    }
+    return part;
+  });
+}
+
+// Pull the set of valid @mentioned user IDs out of a piece of text (for notifications).
+function extractMentions(text, users) {
+  if (!text) return [];
+  const handles = (text.match(/@([a-zA-Z0-9_]+)/g) || []).map(m => m.slice(1).toLowerCase());
+  if (handles.length === 0) return [];
+  const ids = [];
+  (users || []).forEach(u => {
+    if (u.username && handles.includes(u.username.toLowerCase())) ids.push(u.id);
+  });
+  return [...new Set(ids)];
+}
+
 // Local-date key YYYY-MM-DD. MUST use local components, not toISOString() (which is
 // UTC and shifts the day for users in positive-UTC timezones, misaligning the
 // heatmap/calendar and day-grouping of workouts).
@@ -779,8 +842,32 @@ const BARBELL_BAR_KG = 20;
 const PLATES_LBS_LIST = [45, 35, 25, 10, 5, 2.5];
 const PLATES_KG_LIST = [25, 20, 15, 10, 5, 2.5, 1.25];
 const PLATE_COLOR_MAP = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
-function calcPlatesPerSide(totalWeight, unit) {
+// Detect exercises where weight is loaded on ONE end of the bar only (T-bar row, landmine
+// variants). For these, the "bar" doesn't add resistance — the user enters total plate
+// weight directly, and we show plates as a single stack, not "per side."
+function isOneSidedBarbell(name) {
+  if (!name) return false;
+  return /\bt-?bar\b|\blandmine\b/i.test(name);
+}
+
+function calcPlatesPerSide(totalWeight, unit, oneSided = false) {
   const t = parseFloat(totalWeight);
+  if (oneSided) {
+    // No bar subtraction, no halving — the entered weight IS the plate weight on one end.
+    if (!t || t <= 0) return null;
+    let remaining = t;
+    const plates = unit === "kg" ? PLATES_KG_LIST : PLATES_LBS_LIST;
+    const result = [];
+    for (const p of plates) {
+      const count = Math.floor(remaining / p);
+      if (count > 0) {
+        result.push({ p, count });
+        remaining = Math.round((remaining - p * count) * 1000) / 1000;
+      }
+    }
+    if (remaining > 0.01) return null;
+    return result;
+  }
   const bar = unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS;
   if (!t || t <= bar) return null;
   let remaining = (t - bar) / 2;
@@ -980,7 +1067,7 @@ function getLastExerciseSession(store, exName) {
 // the user's recent progress. Returns { icon, headline, sub } or null.
 // Everything here is derived from data already on hand — no new tracking needed.
 // The whole point: make the user feel their progress, which they often don't notice.
-function getProgressInsight(store, unit) {
+function getProgressInsight(store, unit, returnAll = false) {
   const history = store.history || {};
   const dates = Object.keys(history).sort(); // ascending
   if (dates.length < 2) return null; // need some history to say anything meaningful
@@ -1081,10 +1168,17 @@ function getProgressInsight(store, unit) {
     candidates.push({ priority: 1, icon: "trophy", headline: `${totalSessions} workouts logged`, sub: `That's real consistency. Proud of you.` });
   }
 
-  if (!candidates.length) return null;
+  if (!candidates.length) return returnAll ? [] : null;
   // Lower priority number = more compelling. Tie-break randomly so it varies.
   candidates.sort((a, b) => a.priority - b.priority || Math.random() - 0.5);
-  return candidates[0];
+  return returnAll ? candidates : candidates[0];
+}
+
+// Returns ALL insight candidates (sorted, most compelling first) for the swipeable
+// card stack on the workout tab. Wraps getProgressInsight's collection by exposing
+// the internal candidate list via the optional `returnAll` flag.
+function getProgressInsights(store, unit) {
+  return getProgressInsight(store, unit, true) || [];
 }
 
 // Parse rep range like "8-12" or "8–12" or "5,3,1" or "8" → { low, high }
@@ -2128,14 +2222,15 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     /\bbarbell\b|\bbench press\b|\bsquat\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bhip thrust\b|\blandmine\b|\bt-?bar\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo\b|\bconventional\b|\boverhead press\b|\bohp\b|\bpush press\b|\bjerk\b|\bclean\b|\bsnatch\b|\btrap bar\b|\brow\b|\bpress\b|\bcurl\b/i.test(exName)
     && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|tricep|chest fly|fly|lateral|raise/i.test(exName)
   ) : false;
+  const oneSided = exName ? isOneSidedBarbell(exName) : false;
   const platesBreakdown = useMemo(() => {
     if (!isBarbell || isCardio || set.type === "warmup") return null;
     // Use the entered weight, or fall back to the grayed placeholder (previous weeks' weight)
     // so the plate diagram shows before you type, matching what the input displays.
     const effWeight = (set.weight !== "" && set.weight != null) ? set.weight : (prev?.w ?? null);
     if (!effWeight) return null;
-    return calcPlatesPerSide(effWeight, unit);
-  }, [isBarbell, set.weight, set.type, unit, isCardio, prev]);
+    return calcPlatesPerSide(effWeight, unit, oneSided);
+  }, [isBarbell, set.weight, set.type, unit, isCardio, prev, oneSided]);
 
   // Progressive overload suggestion (only for working sets, not warmups, not completed, not cardio)
   const suggestion = useMemo(() => {
@@ -2346,7 +2441,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       {platesBreakdown && platesBreakdown.length > 0 && (
         <div style={{ marginTop:6, paddingTop:8, borderTop:`1px dashed ${C.divider}` }}>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, flexShrink:0 }}>PER SIDE</span>
+            <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, flexShrink:0 }}>{oneSided ? "LOADED" : "PER SIDE"}</span>
             {/* Visual barbell: sleeve + plates loaded heaviest-inner to lightest-outer.
                 Disc height scales with plate weight so a 45 towers over a 2.5. */}
             <div style={{ display:"flex", alignItems:"center", flex:1, minWidth:0, height:46, overflowX:"auto" }}>
@@ -3110,10 +3205,11 @@ function ProgramBuilder({ C, onCancel, onSave }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STORY VIEWER — Instagram-style full-screen with auto-advance
 // ═════════════════════════════════════════════════════════════════════════════
-function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, C }) {
+function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, onReact, C }) {
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
+  const [sentReaction, setSentReaction] = useState(null);
   const dragStart = useRef(null);
   const duration = 5000; // 5 seconds per story
 
@@ -3258,13 +3354,30 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
         </div>
       </div>
 
-      {/* Reply footer + swipe hints */}
+      {/* Reaction bar + reply footer */}
       <div style={{ padding:"10px 14px 14px", flexShrink:0 }}>
+        {sentReaction ? (
+          <div style={{ textAlign:"center", padding:"10px", color:"#fff", fontSize:14, fontWeight:600 }}>
+            {sentReaction} Reaction sent
+          </div>
+        ) : (
+          <div style={{ display:"flex", justifyContent:"space-around", alignItems:"center", marginBottom:10 }}>
+            {["👍","❤️","😂","🔥","💪"].map(emoji => (
+              <button key={emoji} onClick={(e) => {
+                e.stopPropagation();
+                onReact && onReact(post, emoji);
+                setSentReaction(emoji);
+                haptic("light");
+                setTimeout(() => { if (hasNext) onNext(); else onClose(); }, 700);
+              }} style={{
+                background:"none", border:"none", fontSize:30, cursor:"pointer", padding:"4px 8px",
+                lineHeight:1, transition:"transform 0.1s",
+              }}>{emoji}</button>
+            ))}
+          </div>
+        )}
         <div onClick={() => { onClose(); }} style={{ background:"rgba(255,255,255,0.12)", borderRadius:24, padding:"10px 16px", color:"rgba(255,255,255,0.7)", fontSize:13, cursor:"pointer" }}>
           Reply to {user.username}...
-        </div>
-        <div style={{ textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.4)", marginTop:8 }}>
-          Swipe ← → to navigate · ↑ for profile · ↓ to close
         </div>
       </div>
     </div>
@@ -3276,6 +3389,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   const isOwn = post.userId === currentUserId;
   const [showCmts, setShowCmts] = useState(false);
   const [cmtText, setCmtText] = useState("");
+  const [mentionQuery, setMentionQuery] = useState(null); // active @query string, or null
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState("");
   const [commentMenu, setCommentMenu] = useState(null); // commentId of open menu
@@ -3624,7 +3738,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                     <>
                       <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>
                         <span style={{ fontWeight:600, marginRight:5 }}>{cu?.username}</span>
-                        {c.text}
+                        {renderWithMentions(c.text, store, C)}
                       </div>
                       <div style={{ fontSize:11, color:C.muted, marginTop:3, display:"flex", alignItems:"center", gap:14 }}>
                         <span>{timeAgo(c.createdAt)}</span>
@@ -3659,18 +3773,55 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
               </div>
             );
           })}
-          <div style={{ display:"flex", gap:10, marginTop:4, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:10, marginTop:4, alignItems:"center", position:"relative" }}>
+            {/* @mention autocomplete — appears while typing @handle */}
+            {mentionQuery !== null && (() => {
+              const q = mentionQuery.toLowerCase();
+              const matches = (store.users || [])
+                .filter(u => u.id !== currentUserId && u.username && u.username.toLowerCase().includes(q))
+                .slice(0, 5);
+              if (matches.length === 0) return null;
+              const pickMention = (uname) => {
+                // Replace the trailing @query with @username + space
+                const replaced = cmtText.replace(/@[a-zA-Z0-9_]*$/, "@" + uname + " ");
+                setCmtText(replaced);
+                setMentionQuery(null);
+              };
+              return (
+                <div style={{ position:"absolute", bottom:"100%", left:40, right:0, marginBottom:6,
+                  background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", zIndex:20,
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.12)" }}>
+                  {matches.map((u, i) => (
+                    <button key={u.id} onClick={() => pickMention(u.username)} style={{
+                      width:"100%", display:"flex", alignItems:"center", gap:8, padding:"8px 12px",
+                      background:"none", border:"none", borderTop: i>0?`1px solid ${C.divider}`:"none",
+                      cursor:"pointer", fontFamily:F, textAlign:"left",
+                    }}>
+                      <Avatar user={u} size={22} C={C}/>
+                      <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{u.username}</span>
+                      <span style={{ fontSize:12, color:C.sub }}>{u.name}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
             <Avatar user={store.users.find(u => u.id === currentUserId)} size={30} C={C}/>
             <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, borderBottom:`1px solid ${C.divider}`, paddingBottom:6 }}>
               <input
                 value={cmtText}
-                onChange={e => setCmtText(e.target.value)}
+                onChange={e => {
+                  const v = e.target.value;
+                  setCmtText(v);
+                  // Detect a trailing @handle being typed (caret at end)
+                  const m = v.match(/@([a-zA-Z0-9_]*)$/);
+                  setMentionQuery(m ? m[1] : null);
+                }}
                 placeholder="Add a comment..."
-                onKeyDown={e => { if (e.key === "Enter" && cmtText.trim()) { onComment(post.id, cmtText); setCmtText(""); } }}
+                onKeyDown={e => { if (e.key === "Enter" && cmtText.trim()) { onComment(post.id, cmtText); setCmtText(""); setMentionQuery(null); } }}
                 style={{ flex:1, background:"transparent", border:"none", fontSize:13, color:C.text, outline:"none", fontFamily:F, padding:"4px 0" }}
               />
               {cmtText.trim() && (
-                <button onClick={() => { onComment(post.id, cmtText); setCmtText(""); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>Post</button>
+                <button onClick={() => { onComment(post.id, cmtText); setCmtText(""); setMentionQuery(null); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>Post</button>
               )}
             </div>
           </div>
@@ -4361,6 +4512,86 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Swipeable stack of progress-insight cards (Robinhood-style): swipe a card away to
+// dismiss it and reveal the next. No close button. Tracks finger; snaps back if the
+// swipe is too small (fixes the half-swipe flicker — dismissal is committed only past
+// a threshold, on release).
+function InsightCards({ insights, C }) {
+  const [index, setIndex] = useState(0);
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const start = useRef(null);
+
+  if (!insights || index >= insights.length) return null;
+  const insight = insights[index];
+
+  const onStart = (x) => { start.current = x; setDragging(true); };
+  const onMove = (x) => { if (start.current != null) setDx(x - start.current); };
+  const onEnd = () => {
+    const threshold = 90;
+    if (Math.abs(dx) > threshold) {
+      // Commit dismissal: fling the card out, then advance to the next.
+      const dir = dx > 0 ? 1 : -1;
+      setDx(dir * 500);
+      setTimeout(() => { setIndex(i => i + 1); setDx(0); setDragging(false); }, 180);
+    } else {
+      // Not far enough — snap back (no flicker; we only ever show ONE card at a time).
+      setDx(0);
+      setDragging(false);
+    }
+    start.current = null;
+  };
+
+  const opacity = Math.max(0, 1 - Math.abs(dx) / 220);
+  const hasNext = index < insights.length - 1;
+
+  return (
+    <div style={{ position:"relative", marginBottom:12 }}>
+      {/* Peek of the next card behind the current one, for depth */}
+      {hasNext && (
+        <div style={{
+          position:"absolute", inset:0, top:6, transform:"scale(0.97)",
+          background:C.accentSoft, border:`1px solid ${C.accent}25`, borderRadius:16, opacity:0.6,
+        }}/>
+      )}
+      <div
+        onTouchStart={(e) => onStart(e.touches[0].clientX)}
+        onTouchMove={(e) => onMove(e.touches[0].clientX)}
+        onTouchEnd={onEnd}
+        onMouseDown={(e) => onStart(e.clientX)}
+        onMouseMove={(e) => { if (start.current != null) onMove(e.clientX); }}
+        onMouseUp={onEnd}
+        onMouseLeave={() => { if (start.current != null) onEnd(); }}
+        style={{
+          background:C.accentSoft, border:`1px solid ${C.accent}40`,
+          borderRadius:16, padding:"14px 16px",
+          display:"flex", alignItems:"center", gap:13, position:"relative",
+          transform:`translateX(${dx}px) rotate(${dx * 0.02}deg)`,
+          opacity, touchAction:"pan-y",
+          transition: dragging ? "none" : "transform 0.18s ease-out, opacity 0.18s ease-out",
+          cursor: dragging ? "grabbing" : "grab", userSelect:"none",
+        }}
+      >
+        <div style={{ width:38, height:38, borderRadius:11, flexShrink:0, background:C.accent, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <Icon name={insight.icon === "flame" ? "flame" : insight.icon === "trophy" ? "trophy" : "trending-up"} size={19} color="#fff"/>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>{insight.headline}</div>
+          <div style={{ fontSize:12, color:C.sub, marginTop:1, lineHeight:1.35 }}>{insight.sub}</div>
+        </div>
+      </div>
+      {/* Dots indicator when there are multiple */}
+      {insights.length > 1 && (
+        <div style={{ display:"flex", justifyContent:"center", gap:5, marginTop:8 }}>
+          {insights.map((_, i) => (
+            <div key={i} style={{ width:5, height:5, borderRadius:3, background: i === index ? C.accent : C.divider, transition:"background 0.2s" }}/>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -6039,34 +6270,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })()}
 
-          {/* Proactive progress insight — surfaces something true & motivating from history.
-              Only shown if there's a compelling fact and the user hasn't dismissed it this session. */}
-          {!dismissedInsight && (() => {
-            const insight = getProgressInsight(store, unit);
-            if (!insight) return null;
-            return (
-              <div className="seshd-content-fade" style={{
-                background: C.accentSoft, border: `1px solid ${C.accent}40`,
-                borderRadius: 16, padding: "14px 16px", marginBottom: 12,
-                display: "flex", alignItems: "center", gap: 13, position: "relative",
-              }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-                  background: C.accent, color: "#fff",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <Icon name={insight.icon === "flame" ? "flame" : insight.icon === "trophy" ? "trophy" : "trending-up"} size={19} color="#fff"/>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text, letterSpacing: -0.2 }}>{insight.headline}</div>
-                  <div style={{ fontSize: 12, color: C.sub, marginTop: 1, lineHeight: 1.35 }}>{insight.sub}</div>
-                </div>
-                <button onClick={() => setDismissedInsight(true)} style={{
-                  background: "none", border: "none", color: C.muted, cursor: "pointer",
-                  fontSize: 18, padding: "0 2px", lineHeight: 1, flexShrink: 0, alignSelf: "flex-start",
-                }}>×</button>
-              </div>
-            );
+          {/* Proactive progress insights — swipeable stack (Robinhood-style). Swipe a card
+              away to see the next; no close button. */}
+          {(() => {
+            const insights = getProgressInsights(store, unit);
+            if (!insights.length) return null;
+            return <InsightCards insights={insights} C={C}/>;
           })()}
 
           {/* "On this day" — surfaces a comparable past workout for context */}
@@ -6227,7 +6436,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     const dates = Object.keys(store.history||{}).sort().reverse();
                     for (const dk of dates) {
                       if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
-                        const d = Math.floor((Date.now() - new Date(dk + "T12:00:00").getTime()) / 86400000);
+                        // Compare dk to today's date key as strings — robust against TZ/DST quirks
+                        // that could make a same-day workout appear as "-1d ago" via time math.
+                        const today = dKey();
+                        if (dk >= today) return "Today";
+                        const d = Math.max(0, Math.floor((new Date(today + "T12:00:00").getTime() - new Date(dk + "T12:00:00").getTime()) / 86400000));
                         return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
                       }
                     }
@@ -6921,7 +7134,9 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const lastPerformed = (() => {
     for (const dk of Object.keys(store.history||{}).sort().reverse()) {
       if (Object.values(store.history[dk]||{}).some(s => s.dayName === editDay.name)) {
-        const d = Math.floor((Date.now() - new Date(dk + "T12:00:00").getTime()) / 86400000);
+        const today = dKey();
+        if (dk >= today) return "Today";
+        const d = Math.max(0, Math.floor((new Date(today + "T12:00:00").getTime() - new Date(dk + "T12:00:00").getTime()) / 86400000));
         return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
       }
     }
@@ -11025,13 +11240,26 @@ export default function App() {
   });
 
   // Current total of activity items on the user's own posts
-  const currentActivityCount = (store.posts || [])
-    .filter(p => p.userId === currentUserId)
-    .reduce((a, pt) => {
-      const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId).length;
-      const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId).length;
-      return a + kudosFromOthers + commentsFromOthers;
-    }, 0);
+  const currentActivityCount = (() => {
+    let count = (store.posts || [])
+      .filter(p => p.userId === currentUserId)
+      .reduce((a, pt) => {
+        const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId).length;
+        const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId).length;
+        return a + kudosFromOthers + commentsFromOthers;
+      }, 0);
+    // @mentions of me in comments on others' posts
+    (store.posts || []).forEach(p => {
+      if (p.userId === currentUserId) return; // already counted above
+      (p.comments || []).filter(c => c.userId !== currentUserId).forEach(c => {
+        if (extractMentions(c.text, store.users).includes(currentUserId)) count++;
+      });
+    });
+    // Friend activity (posts from people I follow, excluding ephemeral stories)
+    const following = store.users.find(u => u.id === currentUserId)?.following || [];
+    count += (store.posts || []).filter(p => following.includes(p.userId) && p.type !== "story").length;
+    return count;
+  })();
 
   function markActivitySeen() {
     setSeenActivityCount(currentActivityCount);
@@ -11455,7 +11683,7 @@ export default function App() {
         const isDragging = swipeStart.current.type === "horizontal";
         const dragPct = isDragging ? (swipeX / (window.innerWidth || 390)) * 100 : 0;
         return (
-          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative" }}>
+          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative", background:C.bg }}>
             <style>{`
               @keyframes slideInLeft {
                 from { transform:translateX(100%); }
@@ -11690,6 +11918,7 @@ export default function App() {
         {tab === "activity" && (() => {
           const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
           const events = [];
+          const myUsername = (store.users.find(u => u.id === currentUserId)?.username || "").toLowerCase();
           myPosts.forEach(post => {
             (post.kudos||[]).filter(uid => uid !== currentUserId).forEach(uid => {
               const u = store.users.find(x => x.id === uid);
@@ -11699,6 +11928,37 @@ export default function App() {
               const u = store.users.find(x => x.id === c.userId);
               if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt });
             });
+          });
+          // @mentions of me — scan comments on ALL visible posts (not just mine) for my handle
+          if (myUsername) {
+            (store.posts||[]).forEach(post => {
+              (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
+                const mentioned = extractMentions(c.text, store.users).includes(currentUserId);
+                if (mentioned) {
+                  const u = store.users.find(x => x.id === c.userId);
+                  // avoid duplicating an event already captured as a comment-on-my-post
+                  const dup = post.userId === currentUserId;
+                  if (u && !dup) events.push({ type:"mention", user:u, post, comment:c, ts: c.createdAt });
+                }
+              });
+            });
+          }
+          // Friend activity — people I follow posting / hitting a PR.
+          // Exclude stories (ephemeral) and label by what they actually posted.
+          const following = store.users.find(u => u.id === currentUserId)?.following || [];
+          (store.posts||[]).filter(p => following.includes(p.userId) && p.type !== "story").forEach(post => {
+            const u = store.users.find(x => x.id === post.userId);
+            if (!u) return;
+            const isPRpost = post.isPR || post.workout?.exercises?.some(e => e.isPR);
+            if (isPRpost) {
+              events.push({ type:"friend_pr", user:u, post, ts: post.createdAt });
+            } else {
+              // Describe by type: workout, run, or a generic post
+              const verb = post.workout ? "shared a workout"
+                : post.run ? "logged a run"
+                : "shared a post";
+              events.push({ type:"friend_post", user:u, post, verb, ts: post.createdAt });
+            }
           });
           events.sort((a,b) => b.ts - a.ts);
           return (
@@ -11736,7 +11996,12 @@ export default function App() {
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
                       <span style={{ fontWeight:600 }}>{ev.user.username} </span>
-                      {ev.type === "kudos" ? "liked your post 🔥" : `commented: "${ev.comment?.text}"`}
+                      {ev.type === "kudos" ? "liked your post 🔥"
+                        : ev.type === "comment" ? `commented: "${ev.comment?.text}"`
+                        : ev.type === "mention" ? `mentioned you: "${ev.comment?.text}"`
+                        : ev.type === "friend_pr" ? "hit a new PR 🏆"
+                        : ev.type === "friend_post" ? (ev.verb || "shared a post")
+                        : ""}
                     </div>
                     <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
                   </div>
@@ -11887,6 +12152,14 @@ export default function App() {
             hasNext={storyIndex < allStoryEntries.length - 1}
             hasPrev={storyIndex > 0}
             onViewProfile={() => { setStoryIndex(null); setProfileUserId(entry.user.id); }}
+            onReact={(storyPost, emoji) => {
+              // Reuse the kudos system: a story reaction registers as a kudos on the story
+              // post, so the author sees the engagement in their activity feed.
+              if (storyPost?.id && !(storyPost.kudos||[]).includes(currentUserId)) {
+                handleKudos(storyPost.id);
+              }
+              toast(`${emoji} sent to ${entry.user.username}`, "success");
+            }}
             C={C}
           />
         );
