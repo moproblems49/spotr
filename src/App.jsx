@@ -1573,14 +1573,7 @@ function cleanupStaleLocalStorage() {
 }
 function loadStore() {
   cleanupStaleLocalStorage();
-  try {
-    const r = localStorage.getItem(SK);
-    if (r) {
-      const d = JSON.parse(r);
-      return { ...d, posts: [] }; // never load cached posts — always fetch fresh from DB
-    }
-  } catch {}
-  return {
+  const defaults = {
     users: [],
     posts: [],
     currentUserId: null,
@@ -1598,6 +1591,16 @@ function loadStore() {
     seenOnboarding: false,
     bodyLog: [], // body tracking entries: { id, date, weight, measurements:{}, photoData }
   };
+  try {
+    const r = localStorage.getItem(SK);
+    if (r) {
+      const d = JSON.parse(r);
+      // Merge over defaults so a store saved by an OLDER app version (missing newer keys
+      // like bodyLog/weeklyTarget) never has undefined collections that could crash.
+      return { ...defaults, ...d, posts: [] }; // never load cached posts — always fetch fresh from DB
+    }
+  } catch {}
+  return defaults;
 }
 function saveStore(d) {
   try { localStorage.setItem(SK, JSON.stringify(d)); }
@@ -2298,7 +2301,11 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     if (!exName || isDone || set.type === "warmup" || isCardio) return null;
     if (set.weight || set.reps) return null; // user already filled in
     return suggestNextSet(store, exName, repsTarget, unit, si);
-  }, [exName, isDone, set.type, set.weight, set.reps, store, repsTarget, unit, si, isCardio]);
+    // Depend on store.history (the only thing suggestNextSet reads) rather than the whole
+    // store object — store gets a new identity on every keystroke, which would otherwise
+    // recompute this on each keypress even though history hasn't changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exName, isDone, set.type, set.weight, set.reps, store.history, repsTarget, unit, si, isCardio]);
 
   return (
     <div data-no-tab-swipe style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
@@ -4273,7 +4280,10 @@ function CodeRedeemRow({ C, store, setStore, onClose, token, initialCode = null 
     const imported = {
       id: newId,
       name: isWorkout ? `${preview.name} (imported)` : `${preview.name} (imported)`,
-      days: preview.days || [],
+      // Ensure every day has a stable id — template/shared days often arrive without one,
+      // which breaks day-level features (update-program detection, rest persistence) that
+      // match by id. Generating ids here makes those reliable.
+      days: (preview.days || []).map(d => ({ ...d, id: d.id || uid() })),
     };
     setStore(p => ({
       ...p,
@@ -5210,9 +5220,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       let programChange = null;
       if (session.programId && onSaveProgram) {
         const prog = store.programs.find(p => p.id === session.programId);
-        // Match the day by id first (most reliable), then fall back to name
-        const day = prog?.days?.find(d => d.id === session.dayId)
-          || prog?.days?.find(d => d.name === session.dayName);
+        // Match the day by id first (most reliable), then fall back to a normalized name
+        // compare so punctuation/spacing drift ("Legs A · Quads" vs "Legs A - Quads") doesn't
+        // make the match fail (which would silently suppress the update-program prompt).
+        const _norm = (n) => String(n || "").toLowerCase().replace(/[·.\-–—|]/g, " ").replace(/\s+/g, " ").trim();
+        const day = (session.dayId && prog?.days?.find(d => d.id === session.dayId))
+          || prog?.days?.find(d => d.name === session.dayName)
+          || prog?.days?.find(d => _norm(d.name) === _norm(session.dayName));
         if (prog && day) {
           const sessionWorkingEx = session.exercises.filter(e => e.name);
           const sessionExNames = sessionWorkingEx.map(e => e.name);
@@ -5347,11 +5361,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // If user picked "Save & send to groups", post to groups only and skip summary
       if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0) {
         onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
-        const gSave = await onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
+        const gSave = await onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
         if (gSave && gSave.ok === false) {
           try {
             const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
-            pending.push({ dk, sid, savedAt: Date.now(), data: { dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
+            pending.push({ dk, sid, savedAt: Date.now(), data: { dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
             localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
           } catch {}
           toast("Saved on this device — couldn't reach server. Will retry.", "error");
@@ -5395,7 +5409,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // We await the result and tell the user the truth.
       const saveResult = await onSaveWorkout({
         dayName: session.dayName,
-        exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })),
+        exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
         duration: recordedDuration,
         unit, note: "", prs: newPRs
       });
@@ -5406,7 +5420,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
           pending.push({ dk, sid, savedAt: Date.now(), data: {
             dayName: session.dayName,
-            exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type })) })),
+            exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
             duration: recordedDuration, unit, note: "", prs: newPRs
           }});
           localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
@@ -6607,19 +6621,35 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <>
               {/* Today's Targets — progressive overload suggestions for next day */}
               {(() => {
-                // Find the next likely day in rotation: day with the oldest last-done date
-                const dayLastDone = prog.days.map((day, di) => {
-                  const dates = Object.keys(store.history||{}).sort().reverse();
-                  for (const dk of dates) {
-                    if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
-                      return { day, di, daysSince: Math.floor((Date.now() - new Date(dk + "T12:00:00").getTime()) / 86400000) };
-                    }
+                // Determine the next day in rotation. The robust approach: find the day we
+                // completed MOST RECENTLY, then suggest the NEXT day in program order after it.
+                // (The old "highest daysSince" approach mis-ranked when several days were never
+                // done — they all tied at 9999 — and could suggest the day you just finished.)
+                const dates = Object.keys(store.history || {}).sort().reverse();
+                // Normalize day names so matching survives punctuation/spacing drift between
+                // a stored session and the (possibly edited) program day — e.g. "Legs A · Quad
+                // Focus" vs "Legs A - Quad Focus" vs "legs a quad focus". Without this, a tiny
+                // character difference makes the match fail and the rotation skips your day.
+                const normName = (n) => String(n || "").toLowerCase().replace(/[·.\-–—|]/g, " ").replace(/\s+/g, " ").trim();
+                const lastDoneIndexFor = (day) => {
+                  const target = normName(day.name);
+                  for (let i = 0; i < dates.length; i++) {
+                    if (Object.values(store.history[dates[i]] || {}).some(s => normName(s.dayName) === target)) return i; // 0 = most recent date
                   }
-                  return { day, di, daysSince: 9999 };
-                });
-                // Pick day not done today, with the highest daysSince
-                const candidates = dayLastDone.filter(d => d.daysSince > 0);
-                const nextDay = candidates.sort((a,b) => b.daysSince - a.daysSince)[0]?.day || prog.days[0];
+                  return Infinity; // never done
+                };
+                // Index (into sorted dates) of each program day's last completion
+                const dayInfo = prog.days.map((day, di) => ({ day, di, recency: lastDoneIndexFor(day) }));
+                // The most-recently-completed program day (smallest recency index)
+                const mostRecent = dayInfo.filter(d => d.recency !== Infinity).sort((a, b) => a.recency - b.recency)[0];
+                let nextDay;
+                if (mostRecent) {
+                  // Suggest the next day in program order after the one we last did (wraps around)
+                  nextDay = prog.days[(mostRecent.di + 1) % prog.days.length];
+                } else {
+                  // Nothing done yet → start at the first day
+                  nextDay = prog.days[0];
+                }
                 if (!nextDay) return null;
                 const targets = (nextDay.exercises||[]).slice(0, 4).map(ex => {
                   const s = suggestNextSet(store, ex.name, ex.reps, unit, 0);
@@ -7164,90 +7194,48 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
             <div style={{ overflowY:"auto", flex:1, padding:"0 14px 14px" }}>
               {[
-                { id:"mypp6", name:"No Mercy PPL · 6 Day", icon:"⭐", desc:"Built for you · detailed notes · daily laterals", featured:true, days:[
-                  { name:"Push A · Heavy Chest", exercises:[
-                    { name:"Barbell Bench Press", reps:"5–7", note:"Last set: rest-pause" },
-                    { name:"Incline DB Press", reps:"8–10", note:"2 sec negative" },
-                    { name:"Cable Fly (Low-to-High)", reps:"10–12", note:"Drop set final set" },
-                    { name:"Weighted Dips", reps:"8–12", note:"Lean forward for chest" },
-                    { name:"DB Shoulder Press", reps:"10–12", note:"Superset with laterals" },
-                    { name:"Lateral Raises", reps:"15–20", note:"No rest after press" },
-                    { name:"Tricep Rope Pushdown", reps:"12–15", note:"Drop set final set" },
-                    { name:"Overhead Tricep Extension", reps:"12–15", note:"Slow eccentric" },
-                    { name:"Lateral Raises (finisher)", reps:"15–25", note:"Light pump finisher" },
-                  ]},
-                  { name:"Pull A · Back Width", exercises:[
-                    { name:"Weighted Pull-Ups", reps:"6–10", note:"Full dead hang each rep" },
-                    { name:"Lat Pulldown (wide)", reps:"10–12", note:"Extended set if needed" },
-                    { name:"Pendlay Row", reps:"5–7", note:"Bar dead stops on floor" },
-                    { name:"Seated Cable Row (narrow)", reps:"10–12", note:"Full stretch + contraction" },
-                    { name:"Straight-Arm Pulldown", reps:"12–15", note:"Isolates lat, no bicep" },
-                    { name:"Face Pulls (rope)", reps:"15–20", note:"External rotate at peak" },
-                    { name:"Incline DB Curl", reps:"10–12", note:"Best for bicep peak" },
-                    { name:"Hammer Curl → Cable Curl", reps:"10+10", note:"Back to back, no rest" },
-                    { name:"Lateral Raises (finisher)", reps:"15–25", note:"Light pump finisher" },
-                  ]},
-                  { name:"Legs A · Quad Focus", exercises:[
-                    { name:"Barbell Back Squat", reps:"5–8", note:"2 feeder sets first" },
-                    { name:"Leg Press (quad bias)", reps:"10–12", note:"Feet low/narrow" },
-                    { name:"Hack Squat / Bulgarian", reps:"10–12", note:"Alternate week to week" },
-                    { name:"Leg Extension", reps:"12–15", note:"Drop set + 2 sec pause" },
-                    { name:"Romanian Deadlift", reps:"10–12", note:"Slow eccentric" },
-                    { name:"Lying Leg Curl", reps:"12–15", note:"Supinate feet" },
-                    { name:"Standing Calf Raise", reps:"15–20", note:"Full stretch, no bounce" },
-                    { name:"Seated Calf Raise", reps:"15–20", note:"Hits soleus" },
-                    { name:"Lateral Raises (finisher)", reps:"15–20", note:"Even after legs" },
-                  ]},
-                  { name:"Push B · Shoulders/Arms", exercises:[
-                    { name:"Standing Barbell OHP", reps:"5–7", note:"Brace hard, arc press" },
-                    { name:"DB Arnold Press", reps:"10–12", note:"Full rotation" },
-                    { name:"DB Lateral Raises (heavy)", reps:"10–15", note:"Volume work" },
-                    { name:"Cable Lateral Raise (single)", reps:"15–20", note:"Lean away from cable" },
-                    { name:"Incline DB Press", reps:"10–12", note:"Upper chest secondary" },
-                    { name:"Cable Chest Fly", reps:"12–15", note:"Stretch and squeeze" },
-                    { name:"Skull Crushers → CGBP", reps:"10+8", note:"Extend to failure then switch" },
-                    { name:"Tricep Dips (burnout)", reps:"Failure", note:"Absolute failure" },
-                    { name:"Lateral Raises (finisher)", reps:"20–25", note:"Lighter — high vol day" },
-                  ]},
-                  { name:"Pull B · Back Thickness", exercises:[
-                    { name:"Barbell Bent-Over Row", reps:"5–7", note:"Bar to lower chest, explosive" },
-                    { name:"T-Bar / Chest-Supported Row", reps:"8–10", note:"Use straps" },
-                    { name:"Single-Arm DB Row", reps:"10–12", note:"Elbow past torso" },
-                    { name:"Lat Pulldown (underhand)", reps:"10–12", note:"Different angle from Pull A" },
-                    { name:"Rear Delt Fly (bent-over)", reps:"15–20", note:"Drop set last set" },
-                    { name:"Cable Face Pull", reps:"15–20", note:"High anchor, external rotate" },
-                    { name:"EZ Bar Curl → Reverse Curl", reps:"10+10", note:"Both bicep heads" },
-                    { name:"Cable Curl (single-arm)", reps:"12–15", note:"Constant tension" },
-                    { name:"Lateral Raises (finisher)", reps:"15–25", note:"Light finisher" },
-                  ]},
-                  { name:"Legs B · Posterior Chain", exercises:[
-                    { name:"Conventional Deadlift", reps:"4–6", note:"Full deadlift from floor" },
-                    { name:"Romanian Deadlift (heavy)", reps:"8–10", note:"Heavier than Legs A" },
-                    { name:"Bulgarian Split Squat", reps:"10–12", note:"Non-negotiable" },
-                    { name:"Leg Press (high/wide)", reps:"12–15", note:"Glute + ham bias" },
-                    { name:"Seated Leg Curl", reps:"12–15", note:"Different from lying" },
-                    { name:"Hip Thrust (barbell)", reps:"10–12", note:"Chin to chest, full squeeze" },
-                    { name:"Standing Calf Raise", reps:"15–20", note:"Full ROM, slow" },
-                    { name:"Lateral Raises (finisher)", reps:"15–20", note:"Even after deadlifts" },
-                  ]},
+                { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", featured:true, days:[
+                  { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
+                  { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
+                  { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row","DB Shoulder Press","Lateral Raises","Cable Crunch"] },
                 ]},
-                { id:"ppl", name:"Push Pull Legs", icon:"🔥", desc:"3-day hypertrophy", days:[
-                  { name:"Push", exercises:["Barbell Bench Press","Incline DB Press","Lateral Raises","Tricep Pushdown"] },
-                  { name:"Pull", exercises:["Pull-Ups","Barbell Row","Face Pulls","Barbell Curl"] },
-                  { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Standing Calf Raise"] },
+                { id:"ul4", name:"Upper / Lower", icon:"⚡", desc:"4-day · strength + size", days:[
+                  { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (wide)","Barbell Curl","Tricep Rope Pushdown"] },
+                  { name:"Lower A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+                  { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","DB Shoulder Press","Seated Cable Row","Hammer Curl","Skull Crushers"] },
+                  { name:"Lower B", exercises:["Deadlift","Hack Squat (Machine)","Leg Extension","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
                 ]},
-                { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"Wendler strength", days:[
-                  { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press"] },
-                  { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row"] },
-                  { name:"Deadlift Day", exercises:["Deadlift","Seated Leg Curl"] },
-                  { name:"OHP Day", exercises:["Overhead Press","Pull-Ups"] },
+                { id:"ppl6", name:"Push / Pull / Legs", icon:"🔥", desc:"6-day · classic hypertrophy", days:[
+                  { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+                  { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (wide)","Barbell Row","Seated Cable Row","Face Pulls","Barbell Curl","Incline DB Curl"] },
+                  { name:"Legs A · Quad Focus", exercises:["Barbell Back Squat","Leg Press","Leg Extension","Romanian Deadlift","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+                  { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
+                  { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly","Preacher Curl Machine","Hammer Curl"] },
+                  { name:"Legs B · Posterior Chain", exercises:["Romanian Deadlift","Hack Squat (Machine)","Seated Leg Curl","Hip Thrust (Barbell)","Leg Extension","Seated Calf Raise (Machine)"] },
                 ]},
-                { id:"bro", name:"Bro Split", icon:"💯", desc:"One muscle/day · 5 days", days:[
-                  { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Cable Fly"] },
-                  { name:"Back Day", exercises:["Deadlift","Pull-Ups","Barbell Row"] },
-                  { name:"Shoulder Day", exercises:["Overhead Press","Lateral Raises"] },
-                  { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers"] },
-                  { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press"] },
+                { id:"pplul", name:"PPL · Upper / Lower", icon:"🗓️", desc:"5-day · PPLUL hybrid", days:[
+                  { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+                  { name:"Pull", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Face Pulls","Barbell Curl","Hammer Curl"] },
+                  { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+                  { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row","DB Shoulder Press","Lat Pulldown (wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers"] },
+                  { name:"Lower", exercises:["Hack Squat (Machine)","Romanian Deadlift","Leg Extension","Seated Leg Curl","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
+                ]},
+                { id:"bro", name:"Bro Split", icon:"💯", desc:"5-day · one muscle per day", days:[
+                  { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Weighted Dips"] },
+                  { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row","Lat Pulldown (wide)"] },
+                  { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Face Pulls"] },
+                  { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
+                  { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Leg Extension","Standing Calf Raise (Machine)"] },
+                ]},
+                { id:"sl5x5", name:"StrongLifts 5×5", icon:"🏋️", desc:"3-day · beginner strength", days:[
+                  { name:"Workout A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row"] },
+                  { name:"Workout B", exercises:["Barbell Back Squat","Overhead Press (Barbell)","Deadlift"] },
+                ]},
+                { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"4-day · Wendler strength", days:[
+                  { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press","Seated Leg Curl"] },
+                  { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row","Tricep Rope Pushdown"] },
+                  { name:"Deadlift Day", exercises:["Deadlift","Romanian Deadlift","Standing Calf Raise (Machine)"] },
+                  { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises"] },
                 ]},
               ].map(t => (
                 <div key={t.id} style={{
@@ -7256,7 +7244,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   borderRadius:12, padding:"14px", marginBottom:10
                 }}>
                   {t.featured && (
-                    <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>FEATURED · YOUR PROGRAM</div>
+                    <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
                   )}
                   <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.icon} {t.name}</div>
                   <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>{t.desc} · {t.days.length} days</div>
@@ -7768,7 +7756,7 @@ function AICoachModal({ C, onClose, onImport }) {
     // Define programs for key combinations
     const PROGRAMS = {
       "muscle-6-advanced-full": {
-        name:"No Mercy PPL · Advanced", icon:"🔥",
+        name:"6-Day PPL · Advanced", icon:"🔥",
         days:[
           { name:"Push A · Chest Heavy", exercises:[
             { name:"Barbell Bench Press", reps:"4×5–7", note:"Rest-pause last set" },
@@ -9825,6 +9813,16 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   const [showSettings, setShowSettings] = useState(false);
   const [showBody, setShowBody] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  // Lock the page behind full-screen/bottom-sheet overlays so scrolling inside them
+  // doesn't bleed through to the profile underneath (iOS overscroll-behavior alone
+  // isn't enough for a bottom sheet that doesn't cover the full viewport).
+  useEffect(() => {
+    const open = showSettings || showBody || showDelete;
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [showSettings, showBody, showDelete]);
   const [deleteText, setDeleteText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [listModal, setListModal] = useState(null); // "followers" | "following" | null
