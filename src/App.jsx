@@ -4821,7 +4821,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     };
   }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
-  const [dismissedInsight, setDismissedInsight] = useState(false);
   const [restPickerEx, setRestPickerEx] = useState(null); // exercise index whose rest picker is open
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
@@ -9721,6 +9720,82 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
   const isFollowing = me?.following?.includes(userId);
+
+  // Export all of the user's data as a downloadable JSON file (App Store / GDPR friendly).
+  function exportData() {
+    try {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        app: "Seshd",
+        account: { id: currentUserId, email: email || null, name: me?.name || null, username: me?.username || null },
+        programs: store.programs || [],
+        workoutHistory: store.history || {},
+        personalRecords: store.prs || {},
+        bodyLog: store.bodyLog || [],
+        posts: (store.posts || []).filter(p => p.userId === currentUserId),
+        settings: { unit: store.unit || "lbs", weeklyTarget: store.weeklyTarget || 3, onboardingAnswers: store.onboardingAnswers || {} },
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `seshd-data-${dKey()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      haptic("success");
+      toast("Your data has been exported", "success");
+    } catch (e) {
+      toast("Couldn't export data — please try again", "error");
+    }
+  }
+
+  // Permanently delete the account and all associated data. Required for App Store approval.
+  async function deleteAccount() {
+    if (deleteText.trim().toUpperCase() !== "DELETE") return;
+    setDeleting(true);
+    const tok = token;
+    try {
+      const uid_ = currentUserId;
+      // [table query, isCritical] — "critical" rows hold personal data that MUST be gone for
+      // compliance. Non-critical (kudos/comments/follows) are best-effort. profiles last so
+      // RLS policies tied to the profile row stay valid through the earlier deletes.
+      const tables = [
+        [`kudos?user_id=eq.${uid_}`, false],
+        [`comments?user_id=eq.${uid_}`, false],
+        [`group_posts?user_id=eq.${uid_}`, true],
+        [`posts?user_id=eq.${uid_}`, true],
+        [`workout_codes?user_id=eq.${uid_}`, false],
+        [`workout_history?user_id=eq.${uid_}`, true],
+        [`personal_records?user_id=eq.${uid_}`, true],
+        [`programs?user_id=eq.${uid_}`, true],
+        [`follows?follower_id=eq.${uid_}`, false],
+        [`follows?following_id=eq.${uid_}`, false],
+        [`profiles?id=eq.${uid_}`, true],
+      ];
+      let criticalFailed = false;
+      for (const [t, critical] of tables) {
+        try { await sb.query(t, { method: "DELETE" }, tok); }
+        catch (e) { if (critical) criticalFailed = true; }
+      }
+      // Clear all local data so nothing lingers on-device regardless
+      try { localStorage.clear(); } catch {}
+      if (criticalFailed) {
+        // Personal data may remain server-side — don't falsely tell the user it's all gone.
+        setDeleting(false);
+        toast("Some data couldn't be removed. Sign out and contact support to finish.", "error");
+        return;
+      }
+      haptic("success");
+      toast("Your account has been deleted", "success");
+      setTimeout(() => onSignOut && onSignOut(), 600);
+    } catch (e) {
+      setDeleting(false);
+      toast("Couldn't fully delete the account — please contact support", "error");
+    }
+  }
+
   const sharedWorkoutKeys = new Set((store.posts||[]).filter(p=>p.type==="workout"&&p.userId===userId).map(p=>p.workout?.name+p.createdAt));
   const profileHistoryItems = isMe ? Object.entries(store.history||{}).flatMap(([date, sessions]) =>
     Object.values(sessions).map(sess => {
@@ -9749,6 +9824,9 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
   const [showEdit, setShowEdit] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showBody, setShowBody] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [listModal, setListModal] = useState(null); // "followers" | "following" | null
   const [editName, setEditName] = useState(user?.name || "");
   const [editUsername, setEditUsername] = useState(user?.username || "");
@@ -9998,6 +10076,31 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
       {/* Settings modal */}
       {showBody && <BodyTrackingScreen store={store} setStore={setStore} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>}
 
+      {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
+      {showDelete && (
+        <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}` }}>
+            <div style={{ width:46, height:46, borderRadius:13, background:"#ef444418", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
+              <Icon name="trash" size={22} color="#ef4444"/>
+            </div>
+            <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.3 }}>Delete your account?</div>
+            <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>
+              This permanently erases your workouts, programs, PRs, body log, posts, and profile. This cannot be undone. Consider exporting your data first.
+            </div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>Type <span style={{ fontWeight:700, color:C.text, fontFamily:MONO }}>DELETE</span> to confirm</div>
+            <input value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder="DELETE" autoCapitalize="characters"
+              style={{ width:"100%", background:C.bg, border:`1.5px solid ${deleteText.trim().toUpperCase()==="DELETE" ? "#ef4444" : C.divider}`, borderRadius:10, padding:"11px 13px", fontSize:15, fontWeight:700, color:C.text, outline:"none", fontFamily:MONO, boxSizing:"border-box", marginBottom:16, letterSpacing:1 }}/>
+            <div style={{ display:"flex", gap:8 }}>
+              <button disabled={deleting} onClick={() => { setShowDelete(false); setDeleteText(""); }} style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, color:C.text, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Cancel</button>
+              <button disabled={deleteText.trim().toUpperCase()!=="DELETE" || deleting} onClick={deleteAccount}
+                style={{ flex:1, background: (deleteText.trim().toUpperCase()==="DELETE" && !deleting) ? "#ef4444" : C.divider, color: (deleteText.trim().toUpperCase()==="DELETE" && !deleting) ? "#fff" : C.muted, border:"none", borderRadius:11, padding:"12px", fontSize:14, fontWeight:700, cursor: (deleteText.trim().toUpperCase()==="DELETE" && !deleting) ? "pointer" : "default", fontFamily:F }}>
+                {deleting ? "Deleting…" : "Delete forever"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
           <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
@@ -10075,13 +10178,27 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                   <div style={{ fontSize:14, color:C.text }}>Signed in as</div>
                   <div style={{ fontSize:12, color:C.sub }}>{email || ""}</div>
                 </div>
+                <button onClick={exportData} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:C.text }}>Export my data</div>
+                  <Icon name="share" size={15} color={C.sub}/>
+                </button>
                 <button onClick={() => { setShowSettings(false); setTimeout(() => onSignOut && onSignOut(), 200); }} style={{
-                  width:"100%", background:"none", border:"none", padding:"14px",
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
                   display:"flex", alignItems:"center", justifyContent:"space-between",
                   cursor:"pointer", fontFamily:F
                 }}>
                   <div style={{ fontSize:14, color:"#ef4444", fontWeight:600 }}>Sign Out</div>
                   <span style={{ fontSize:16, color:"#ef4444" }}>→</span>
+                </button>
+                <button onClick={() => setShowDelete(true)} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px",
+                  display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:"#ef4444", fontWeight:600 }}>Delete account</div>
+                  <Icon name="trash" size={15} color="#ef4444"/>
                 </button>
               </div>
             </div>
