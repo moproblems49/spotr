@@ -3028,7 +3028,7 @@ function Onboarding({ C, onComplete }) {
   // Intro screens followed by quick personalization questions.
   const introScreens = [
     { icon:"barbell", title:"Track every rep", body:"Log sets, weights, and reps. Watch every lift improve over time." },
-    { icon:"trending-up", title:"Share the work", body:"Post your workouts. Give kudos to your crew. Build your identity." },
+    { icon:"trending-up", title:"See your progress", body:"Charts, PRs, and smart suggestions for what to lift next session." },
     { icon:"flame", title:"Train together", body:"Streaks, private groups, and friend activity. Lift with your people." },
   ];
   const questions = [
@@ -3051,28 +3051,38 @@ function Onboarding({ C, onComplete }) {
       { v:5, label:"5+ days" },
     ]},
   ];
-  const totalSteps = introScreens.length + questions.length;
+  // step layout: [intro screens][questions][closing]
+  const totalSteps = introScreens.length + questions.length + 1;
+  const closingStep = totalSteps - 1;
   const inIntro = step < introScreens.length;
   const qIndex = step - introScreens.length;
+  const inQuestions = qIndex >= 0 && qIndex < questions.length;
+  const inClosing = step === closingStep;
 
   function next() {
     if (step < totalSteps - 1) setStep(step + 1);
     else onComplete(answers);
   }
+  function back() { if (step > 0) setStep(step - 1); }
   function pick(key, v) {
     setAnswers(a => ({ ...a, [key]: v }));
-    // Auto-advance shortly after a tap for a snappy feel
-    setTimeout(() => {
-      setStep(s => (s < totalSteps - 1 ? s + 1 : s));
-      if (step >= totalSteps - 1) onComplete({ ...answers, [key]: v });
-    }, 220);
+    // Auto-advance shortly after a tap for a snappy feel (into the next question or the closing screen)
+    setTimeout(() => setStep(s => Math.min(s + 1, closingStep)), 220);
   }
 
   const s = inIntro ? introScreens[step] : null;
-  const question = !inIntro ? questions[qIndex] : null;
+  const question = inQuestions ? questions[qIndex] : null;
+
+  // Personalized closing copy from their answers
+  const goalLabel = { strength:"getting stronger", muscle:"building muscle", lean:"getting lean", general:"staying healthy" }[answers.goal] || "your goals";
+  const dpw = answers.daysPerWeek || 3;
 
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
+      {/* Back button — available after the first screen */}
+      {step > 0 && !inClosing && (
+        <button onClick={back} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 16px)", left:18, background:"none", border:"none", fontSize:24, color:C.sub, cursor:"pointer", fontFamily:F, zIndex:2, padding:6 }}>‹</button>
+      )}
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
         <div style={{ marginBottom:48 }}>
           <SeshdLogo C={C} big/>
@@ -3088,6 +3098,16 @@ function Onboarding({ C, onComplete }) {
             <div className="seshd-enter" style={{ fontSize:30, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.8, lineHeight:1.1 }}>{s.title}</div>
             <div className="seshd-enter" style={{ fontSize:15, color:C.sub, lineHeight:1.5, maxWidth:300 }}>{s.body}</div>
           </>
+        ) : inClosing ? (
+          <div key="closing" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
+            <div style={{ width:88, height:88, borderRadius:24, background:C.accent, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28, marginLeft:"auto", marginRight:"auto" }}>
+              <Icon name="check" size={42} color="#fff" strokeWidth={2}/>
+            </div>
+            <div style={{ fontSize:28, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.6, lineHeight:1.15 }}>You're all set</div>
+            <div style={{ fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:8 }}>
+              We'll tailor things around {goalLabel}, {dpw} days a week. Start your first workout whenever you're ready — your progress builds from here.
+            </div>
+          </div>
         ) : (
           <div key={step} className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
             <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:24, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
@@ -3118,6 +3138,14 @@ function Onboarding({ C, onComplete }) {
             fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
           }}>
             Continue
+          </button>
+        )}
+        {inClosing && (
+          <button onClick={() => onComplete(answers)} style={{
+            width:"100%", background:C.accent, color:"#fff", border:"none", borderRadius:14, padding:"16px",
+            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
+          }}>
+            Let's go
           </button>
         )}
       </div>
@@ -5210,7 +5238,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           });
           const changed = namesOrOrderChanged || setCountChanged;
           if (changed && sessionExNames.length > 0) {
-            const updatedDays = prog.days.map(d => (d.id === day.id) ? {
+            const updatedDays = prog.days.map(d => (d === day) ? {
               ...d,
               exercises: sessionWorkingEx.map(ex => {
                 const prevDayEx = d.exercises.find(x => x.name === ex.name);
@@ -5239,6 +5267,37 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         .map(([name, weight]) => ({ name, weight: unit === "lbs" ? weight : cvt(weight, "lbs", "kg") }));
       const totalSets = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").length, 0);
       const totalVol = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+
+      // Volume vs the last time this same session (dayName) was trained — the most
+      // motivating finish-screen stat ("you beat last Push A by 340 lbs").
+      let volVsLast = null;
+      try {
+        const dayKeys = Object.keys(store.history || {}).sort().reverse();
+        for (const dk of dayKeys) {
+          const match = Object.values(store.history[dk] || {}).find(s => s.dayName === session.dayName);
+          if (match) {
+            const lastVolLbs = (match.exercises || []).reduce((a, ex) =>
+              a + (ex.sets || []).filter(s => (s.done === true || s.done === undefined) && s.type !== "warmup")
+                .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+            // Convert last session's stored volume into the current display unit
+            const lastVol = (match.unit || "lbs") === unit ? lastVolLbs
+              : cvt(lastVolLbs, match.unit || "lbs", unit);
+            if (lastVol > 0) volVsLast = Math.round(totalVol - lastVol);
+            break;
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      // Muscle groups trained this session (for the summary)
+      const musclesTrained = (() => {
+        const set = new Set();
+        session.exercises.forEach(ex => {
+          if (!ex.name || !ex.sets.some(s => s.done && s.type !== "warmup")) return;
+          const m = EXERCISE_DB.find(e => e.name === ex.name)?.muscle;
+          if (m && m !== "Cardio" && m !== "Yoga") set.add(m);
+        });
+        return Array.from(set);
+      })();
 
       // Clear session first so workout screen dismisses
       clearInterval(elRef.current);
@@ -5315,6 +5374,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         exercises: session.exercises.filter(e => e.name).length,
         prs: newPRsList,
         progressions: progressionsHit,
+        volVsLast,
+        musclesTrained,
         programChange,
         streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count,
         share,
@@ -5663,7 +5724,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             const prog = store.programs.find(p => p.id === session.programId);
                             const day = prog?.days?.find(d => d.id === session.dayId) || prog?.days?.find(d => d.name === session.dayName);
                             if (prog && day) {
-                              const updatedDays = prog.days.map(d => (d.id === day.id) ? {
+                              const updatedDays = prog.days.map(d => (d === day) ? {
                                 ...d,
                                 exercises: (d.exercises || []).map(dex => dex.name === ex.name ? { ...dex, rest: secs } : dex)
                               } : d);
@@ -5928,6 +5989,38 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     ))}
                   </div>
 
+                  {/* vs last session — the motivating comparison */}
+                  {workoutSummary.volVsLast != null && workoutSummary.volVsLast !== 0 && (
+                    <div style={{
+                      position:"relative", zIndex:1, marginTop:16, padding:"12px 14px",
+                      background:"rgba(255,255,255,0.06)", borderRadius:12, border:"1px solid rgba(255,255,255,0.08)",
+                      display:"flex", alignItems:"center", justifyContent:"space-between",
+                    }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <Icon name={workoutSummary.volVsLast > 0 ? "trending-up" : "activity"} size={16} color="#fff" strokeWidth={2.4}/>
+                        <div>
+                          <div style={{ fontSize:10, letterSpacing:1.5, fontWeight:700, color:"rgba(255,255,255,0.55)" }}>VS LAST {workoutSummary.dayName?.toUpperCase()}</div>
+                          <div style={{ fontSize:12, color:"#fff", fontWeight:600, marginTop:1 }}>{workoutSummary.volVsLast > 0 ? "More volume than last time" : "Lighter session than last time"}</div>
+                        </div>
+                      </div>
+                      <div style={{ fontFamily:MONO, fontSize:18, fontWeight:700, color:"#fff" }}>
+                        {workoutSummary.volVsLast > 0 ? "+" : ""}{workoutSummary.volVsLast.toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Muscle groups trained */}
+                  {workoutSummary.musclesTrained?.length > 0 && (
+                    <div style={{ position:"relative", zIndex:1, marginTop:16 }}>
+                      <div style={{ fontSize:10, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:600, marginBottom:8 }}>TRAINED</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                        {workoutSummary.musclesTrained.map(m => (
+                          <span key={m} style={{ fontSize:11, fontWeight:600, color:"#fff", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:20, padding:"4px 11px" }}>{m}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* PROGRESSION callout — when user beat their suggested targets */}
                   {workoutSummary.progressions > 0 && (
                     <div style={{
@@ -5986,7 +6079,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ display:"flex", gap:8 }}>
                       <button onClick={() => {
                         const pc = workoutSummary.programChange;
-                        onSaveProgram({ ...pc.prog, days: pc.updatedDays });
+                        // Use a silent save: patch the day structure only, without the
+                        // deactivate/reactivate churn that would otherwise switch which
+                        // program is "active" — the user only changed exercises, not their plan.
+                        onSaveProgram({ ...pc.prog, days: pc.updatedDays, _silent: true });
                         setWorkoutSummary(prev => ({ ...prev, programUpdated: true }));
                         haptic("success");
                         toast("Program updated", "success");
