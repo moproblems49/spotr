@@ -797,16 +797,25 @@ const fmtTime = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60)
 const fmtVol = (v, u) => v >= 1000 ? `${(v/1000).toFixed(1)}k ${u}` : `${v} ${u}`;
 
 // Split comment/caption text into React fragments, highlighting @username mentions
-// in the accent color when the username matches a known user.
-function renderWithMentions(text, store, C) {
+// in the accent color when the username matches a known user. If onUserClick is provided,
+// the mention is clickable and opens the user's profile.
+function renderWithMentions(text, store, C, onUserClick) {
   if (!text) return text;
-  const usernames = new Set((store?.users || []).map(u => (u.username || "").toLowerCase()).filter(Boolean));
+  const usersByHandle = new Map();
+  (store?.users || []).forEach(u => { if (u.username) usersByHandle.set(u.username.toLowerCase(), u); });
   const parts = text.split(/(@[a-zA-Z0-9_]+)/g);
   return parts.map((part, i) => {
     if (part[0] === "@") {
       const handle = part.slice(1).toLowerCase();
-      if (usernames.has(handle)) {
-        return <span key={i} style={{ color: C.accent, fontWeight: 600 }}>{part}</span>;
+      const u = usersByHandle.get(handle);
+      if (u) {
+        return (
+          <span
+            key={i}
+            onClick={(e) => { if (onUserClick) { e.stopPropagation(); onUserClick(u.id); } }}
+            style={{ color: C.accent, fontWeight: 600, cursor: onUserClick ? "pointer" : "default" }}
+          >{part}</span>
+        );
       }
     }
     return part;
@@ -1048,13 +1057,25 @@ function getLastExerciseSession(store, exName) {
     for (const sess of sessions) {
       const ex = sess.exercises?.find(e => e.name === exName);
       if (!ex) continue;
-      const doneSets = (ex.sets||[]).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
+      // Filter to WORKING sets only — exclude warmups (their light weight + low reps would
+      // otherwise mask real progression and make the engine recommend "same weight, push reps"
+      // even when the user actually hit the top of their range on their working sets).
+      const doneSets = (ex.sets||[]).filter(s =>
+        s.type !== "warmup" &&
+        (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
+      );
       if (doneSets.length > 0) {
+        // Days-since needs LOCAL date math (the key is YYYY-MM-DD; constructing a Date
+        // from that string parses as UTC midnight, which shifts the day in non-zero
+        // timezones and can yield off-by-one daysSince).
+        const todayKey = dKey();
+        const todayMs = new Date(todayKey + "T12:00:00").getTime();
+        const dMs = new Date(d + "T12:00:00").getTime();
         return {
           date: d,
           unit: sess.unit || "lbs",
           sets: doneSets.map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 })),
-          daysSince: Math.floor((Date.now() - new Date(d).getTime()) / 86400000),
+          daysSince: Math.max(0, Math.floor((todayMs - dMs) / 86400000)),
         };
       }
     }
@@ -1168,6 +1189,35 @@ function getProgressInsight(store, unit, returnAll = false) {
     candidates.push({ priority: 1, icon: "trophy", headline: `${totalSessions} workouts logged`, sub: `That's real consistency. Proud of you.` });
   }
 
+  // 5. Recovery awareness — if the user has trained one muscle group 3+ times in the
+  // last 4 days, gently flag it (could use a rest day for that group). Quiet, low-priority
+  // so it doesn't dominate when there's better news.
+  {
+    const sevenDayAgo = now - 4 * DAY;
+    const muscleHits = {};
+    for (const d of dates) {
+      const dms = new Date(d + "T12:00:00").getTime();
+      if (dms < sevenDayAgo) continue;
+      for (const sess of Object.values(history[d] || {})) {
+        const musclesThisSession = new Set();
+        (sess.exercises || []).forEach(ex => {
+          if (!ex.name) return;
+          // Only count if there were real working sets
+          const worked = (ex.sets || []).some(s => s.type !== "warmup" && (s.done === true || parseFloat(s.reps) > 0));
+          if (!worked) return;
+          const m = (EXERCISE_DB.find(e => e.name === ex.name)?.muscle) || "";
+          if (m && m !== "Cardio" && m !== "Yoga") musclesThisSession.add(m);
+        });
+        musclesThisSession.forEach(m => { muscleHits[m] = (muscleHits[m] || 0) + 1; });
+      }
+    }
+    const overworked = Object.entries(muscleHits).filter(([m, c]) => c >= 3);
+    if (overworked.length > 0) {
+      const [m, c] = overworked[0];
+      candidates.push({ priority: 5, icon: "trending", headline: `${m} trained ${c}× in 4 days`, sub: `Consider a rest day for that group — recovery is where the gains stick.` });
+    }
+  }
+
   if (!candidates.length) return returnAll ? [] : null;
   // Lower priority number = more compelling. Tie-break randomly so it varies.
   candidates.sort((a, b) => a.priority - b.priority || Math.random() - 0.5);
@@ -1222,23 +1272,22 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
     };
   }
 
-  // Double progression
+  // Double progression — judged PER-SET against the matching set from last session.
+  // Old logic checked `every set hit the range top`, which meant a fatigued last set
+  // (e.g. 5 reps on a 6-8 range) blocked the suggestion to add weight on set 1 — even
+  // when set 1 cleanly hit 8 last time. Real progression is per-set.
   if (range) {
-    const allHitTop = lastInUserUnit.every(s => s.r >= range.high);
-    if (allHitTop) {
-      // How far did they exceed the top of the range? If they blew way past it
-      // (e.g. did 15 reps on a 5-8 range), snapping back to range.low (5) is jarring
-      // and probably means the range is set too low for how they actually train.
-      // In that case keep them near the reps they actually did rather than forcing a big drop.
-      const avgReps = Math.round(lastInUserUnit.reduce((a, s) => a + s.r, 0) / lastInUserUnit.length);
-      const overshoot = avgReps - range.high;
+    const setHitTop = lastReps >= range.high;
+    if (setHitTop) {
+      // The matching set hit the top of the range last time → add weight.
+      // If they went way past the top (e.g. 15 reps on a 5-8 range), bump weight
+      // but keep reps realistic instead of dropping all the way to range.low.
+      const overshoot = lastReps - range.high;
       if (overshoot >= 4) {
-        // They're training well above the range — add weight but keep reps realistic
-        // (drop just 2-3 reps from what they did, not all the way to range.low)
         return {
           type: "weight",
           weight: lastWeight + inc,
-          reps: Math.max(range.high, avgReps - 2),
+          reps: Math.max(range.high, lastReps - 2),
           note: `+${inc} ${unit}`,
           deltaWeight: inc,
           reason: `Way above target reps — add ${inc} ${unit}, keep reps high`,
@@ -1250,10 +1299,10 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
         reps: range.low,
         note: `+${inc} ${unit}`,
         deltaWeight: inc,
-        reason: `Hit ${range.high} on all sets — add ${inc} ${unit}`,
+        reason: `Hit ${range.high} on this set — add ${inc} ${unit}`,
       };
     } else {
-      // Same weight, push for more reps
+      // Same weight, push for more reps (within the range)
       const target = Math.min(range.high, Math.max(lastReps + 1, range.low));
       return {
         type: "reps",
@@ -3738,7 +3787,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                     <>
                       <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>
                         <span style={{ fontWeight:600, marginRight:5 }}>{cu?.username}</span>
-                        {renderWithMentions(c.text, store, C)}
+                        {renderWithMentions(c.text, store, C, onUserClick)}
                       </div>
                       <div style={{ fontSize:11, color:C.muted, marginTop:3, display:"flex", alignItems:"center", gap:14 }}>
                         <span>{timeAgo(c.createdAt)}</span>
@@ -4289,6 +4338,16 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
     setExercises(p => p.filter((_, i) => i !== ei));
   }
 
+  function moveExercise(ei, dir) {
+    setExercises(p => {
+      const ni = ei + dir;
+      if (ni < 0 || ni >= p.length) return p;
+      const next = [...p];
+      [next[ei], next[ni]] = [next[ni], next[ei]];
+      return next;
+    });
+  }
+
   // Autocomplete suggestions from the exercise DB
   const exSuggestions = newExName.trim().length >= 1
     ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(newExName.trim().toLowerCase())).slice(0, 6)
@@ -4451,7 +4510,11 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
           <div key={ei} style={{ marginBottom:18, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 12px 8px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
               <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>{ex.name || "Unnamed"}</div>
-              <button onClick={() => removeExercise(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"2px 4px" }}>Remove</button>
+              <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                <button onClick={() => moveExercise(ei, -1)} disabled={ei === 0} style={{ background:"none", border:"none", color: ei === 0 ? C.muted : C.sub, fontSize:16, fontWeight:700, cursor: ei === 0 ? "default" : "pointer", fontFamily:F, padding:"2px 6px", opacity: ei === 0 ? 0.35 : 1 }}>↑</button>
+                <button onClick={() => moveExercise(ei, 1)} disabled={ei === exercises.length - 1} style={{ background:"none", border:"none", color: ei === exercises.length - 1 ? C.muted : C.sub, fontSize:16, fontWeight:700, cursor: ei === exercises.length - 1 ? "default" : "pointer", fontFamily:F, padding:"2px 6px", opacity: ei === exercises.length - 1 ? 0.35 : 1 }}>↓</button>
+                <button onClick={() => removeExercise(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"2px 4px" }}>Remove</button>
+              </div>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"30px 1fr 1fr 28px", gap:8, alignItems:"center", marginBottom:6 }}>
               <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>SET</div>
@@ -4525,32 +4588,43 @@ function InsightCards({ insights, C }) {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const start = useRef(null);
+  const startY = useRef(null);
+  const axis = useRef(null); // "h" or "v" — locked after first meaningful move
 
   if (!insights || index >= insights.length) return null;
   const insight = insights[index];
 
-  const onStart = (x) => { start.current = x; setDragging(true); };
-  const onMove = (x) => { if (start.current != null) setDx(x - start.current); };
+  const onStart = (x, y) => { start.current = x; startY.current = y; axis.current = null; setDragging(true); };
+  const onMove = (x, y) => {
+    if (start.current == null) return;
+    const ddx = x - start.current;
+    const ddy = y != null ? y - startY.current : 0;
+    // Lock axis after a small movement so a diagonal drag doesn't trigger both this and the page swipe
+    if (axis.current == null && (Math.abs(ddx) > 6 || Math.abs(ddy) > 6)) {
+      axis.current = Math.abs(ddx) > Math.abs(ddy) ? "h" : "v";
+    }
+    if (axis.current === "h") setDx(ddx);
+  };
   const onEnd = () => {
     const threshold = 90;
-    if (Math.abs(dx) > threshold) {
-      // Commit dismissal: fling the card out, then advance to the next.
+    if (axis.current === "h" && Math.abs(dx) > threshold) {
       const dir = dx > 0 ? 1 : -1;
       setDx(dir * 500);
-      setTimeout(() => { setIndex(i => i + 1); setDx(0); setDragging(false); }, 180);
+      setTimeout(() => { setIndex(i => i + 1); setDx(0); setDragging(false); axis.current = null; }, 180);
     } else {
-      // Not far enough — snap back (no flicker; we only ever show ONE card at a time).
       setDx(0);
       setDragging(false);
+      axis.current = null;
     }
     start.current = null;
+    startY.current = null;
   };
 
   const opacity = Math.max(0, 1 - Math.abs(dx) / 220);
   const hasNext = index < insights.length - 1;
 
   return (
-    <div style={{ position:"relative", marginBottom:12 }}>
+    <div data-no-tab-swipe style={{ position:"relative", marginBottom:12 }}>
       {/* Peek of the next card behind the current one, for depth */}
       {hasNext && (
         <div style={{
@@ -4559,11 +4633,11 @@ function InsightCards({ insights, C }) {
         }}/>
       )}
       <div
-        onTouchStart={(e) => onStart(e.touches[0].clientX)}
-        onTouchMove={(e) => onMove(e.touches[0].clientX)}
-        onTouchEnd={onEnd}
-        onMouseDown={(e) => onStart(e.clientX)}
-        onMouseMove={(e) => { if (start.current != null) onMove(e.clientX); }}
+        onTouchStart={(e) => { e.stopPropagation(); onStart(e.touches[0].clientX, e.touches[0].clientY); }}
+        onTouchMove={(e) => { onMove(e.touches[0].clientX, e.touches[0].clientY); if (axis.current === "h") e.stopPropagation(); }}
+        onTouchEnd={(e) => { e.stopPropagation(); onEnd(); }}
+        onMouseDown={(e) => onStart(e.clientX, e.clientY)}
+        onMouseMove={(e) => { if (start.current != null) onMove(e.clientX, e.clientY); }}
         onMouseUp={onEnd}
         onMouseLeave={() => { if (start.current != null) onEnd(); }}
         style={{
@@ -4572,7 +4646,7 @@ function InsightCards({ insights, C }) {
           display:"flex", alignItems:"center", gap:13, position:"relative",
           transform:`translateX(${dx}px) rotate(${dx * 0.02}deg)`,
           opacity, touchAction:"pan-y",
-          transition: dragging ? "none" : "transform 0.18s ease-out, opacity 0.18s ease-out",
+          transition: dragging && axis.current === "h" ? "none" : "transform 0.18s ease-out, opacity 0.18s ease-out",
           cursor: dragging ? "grabbing" : "grab", userSelect:"none",
         }}
       >
@@ -4596,7 +4670,7 @@ function InsightCards({ insights, C }) {
   );
 }
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, currentUserId, token, C }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, currentUserId, token, C, dataLoading }) {
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -4847,12 +4921,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
   function startWorkout(day, progId) {
     const exs = day
-      ? day.exercises.map(ex => ({
-          ...ex, id: uid(),
-          // Carry the day's saved rest (e.g. Push A's bench rest) onto each set so it
-          // displays and applies immediately. ex.rest persists per program day.
-          sets: Array.from({ length: 3 }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal", ...(ex.rest ? { restTime: ex.rest } : {}) }))
-        }))
+      ? day.exercises.map(ex => {
+          // Use the day's saved set count if present, else fall back to the leading "N×"
+          // in the reps string (e.g. "4×8-12" → 4), else default to 3.
+          const repsLead = String(ex.reps || "").match(/^\s*(\d+)\s*[×x]/i);
+          const setCount = (typeof ex.sets === "number" && ex.sets > 0) ? ex.sets
+            : (repsLead ? parseInt(repsLead[1]) : 3);
+          return {
+            ...ex, id: uid(),
+            // Carry the day's saved rest (e.g. Push A's bench rest) onto each set so it
+            // displays and applies immediately. ex.rest persists per program day.
+            sets: Array.from({ length: Math.min(12, Math.max(1, setCount)) }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal", ...(ex.rest ? { restTime: ex.rest } : {}) }))
+          };
+        })
       : [{ id: uid(), name: "", reps: "", note: "", sets: [{ id: uid(), weight: "", reps: "", done: false, type: "normal" }] }];
     setSession({
       dayId: day?.id || null,
@@ -5071,19 +5152,41 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const day = prog?.days?.find(d => d.id === session.dayId)
           || prog?.days?.find(d => d.name === session.dayName);
         if (prog && day) {
-          const sessionExNames = session.exercises.filter(e => e.name).map(e => e.name);
+          const sessionWorkingEx = session.exercises.filter(e => e.name);
+          const sessionExNames = sessionWorkingEx.map(e => e.name);
           const dayExNames = (day.exercises || []).map(e => e.name);
-          const changed = sessionExNames.length !== dayExNames.length
+          const namesOrOrderChanged = sessionExNames.length !== dayExNames.length
             || sessionExNames.some((n, i) => n !== dayExNames[i]);
+          // Set-count change: for each exercise that matched a day exercise by name,
+          // did the number of WORKING sets (warmups don't count toward the day's plan) differ
+          // from what the program day specifies? We compare against `sets` (a number on the day)
+          // or fall back to the reps string's leading "Nx" (e.g. "3×8-12" → 3).
+          const dayDefaultSetsFor = (dayEx) => {
+            if (typeof dayEx?.sets === "number") return dayEx.sets;
+            const m = String(dayEx?.reps || "").match(/^\s*(\d+)\s*[×x]/i);
+            return m ? parseInt(m[1]) : null;
+          };
+          const setCountChanged = sessionWorkingEx.some(ex => {
+            const dayEx = (day.exercises || []).find(d => d.name === ex.name);
+            if (!dayEx) return false; // new exercise — covered by namesOrOrderChanged
+            const workingCount = (ex.sets || []).filter(s => s.type !== "warmup").length;
+            const dayCount = dayDefaultSetsFor(dayEx);
+            return dayCount != null && workingCount !== dayCount;
+          });
+          const changed = namesOrOrderChanged || setCountChanged;
           if (changed && sessionExNames.length > 0) {
             const updatedDays = prog.days.map(d => (d.id === day.id) ? {
               ...d,
-              exercises: session.exercises.filter(e => e.name).map(ex => {
+              exercises: sessionWorkingEx.map(ex => {
                 const prevDayEx = d.exercises.find(x => x.name === ex.name);
+                const workingCount = (ex.sets || []).filter(s => s.type !== "warmup").length;
                 return {
                   name: ex.name,
                   reps: ex.reps || prevDayEx?.reps || "8-12",
                   note: ex.note || "",
+                  // Persist the actual set count the user did this session, so next time
+                  // this day is trained the program reflects their real structure.
+                  sets: workingCount > 0 ? workingCount : (prevDayEx?.sets ?? undefined),
                   // Preserve any per-exercise rest — prefer the session's (just-set) value,
                   // else keep what the program day already had, so structural updates don't wipe rest.
                   ...((ex.rest || prevDayEx?.rest) ? { rest: ex.rest || prevDayEx.rest } : {}),
@@ -5514,7 +5617,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 {restPickerEx === ei && (
                   <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 8px", flexWrap:"wrap" }}>
                     <span style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:0.4, marginRight:2 }}>REST</span>
-                    {[60, 90, 120, 150, 180, 240].map(secs => {
+                    {[90, 120, 180, 300].map(secs => {
                       const active = (ex.rest || 0) === secs;
                       return (
                         <button key={secs} onClick={() => {
@@ -6786,10 +6889,25 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {/* Workout list */}
           <div style={{ padding:"14px 14px 0" }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
-            {!Object.keys(store.history || {}).length && (
+            {!Object.keys(store.history || {}).length && dataLoading && (
+              // Loading — show skeleton rows instead of flashing the empty state to returning users
+              <div>
+                {[0,1,2].map(i => (
+                  <div key={i} style={{ marginBottom:16 }}>
+                    <Skeleton width={140} height={11} C={C} style={{ marginBottom:8 }}/>
+                    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:14 }}>
+                      <Skeleton width="55%" height={14} C={C} style={{ marginBottom:8 }}/>
+                      <Skeleton width="80%" height={10} C={C} style={{ marginBottom:6 }}/>
+                      <Skeleton width="40%" height={10} C={C}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!Object.keys(store.history || {}).length && !dataLoading && (
               <div style={{ textAlign:"center", color:C.sub, padding:"40px 24px", fontSize:13 }}>
                 <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={36} color="currentColor"/></div>
-                <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No workouts logged yet</div>
+                <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No workouts logged yet</div>
                 <div style={{ fontSize:13, lineHeight:1.5, marginBottom:18 }}>
                   Your completed sessions will show up here. Track your first one to start building your history.
                 </div>
@@ -8380,9 +8498,9 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             {loading && <div style={{ textAlign:"center", padding:40, color:C.sub }}>Loading...</div>}
             {!loading && posts.length === 0 && (
               <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
-                <div style={{ fontSize:36, marginBottom:12 }}>💬</div>
-                <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No posts yet</div>
-                <div style={{ fontSize:13 }}>Be the first to post something to the group</div>
+                <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="users" size={36} color="currentColor"/></div>
+                <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No posts yet</div>
+                <div style={{ fontSize:13 }}>Be the first to post something to the group.</div>
               </div>
             )}
             {posts.map(post => {
@@ -8948,6 +9066,24 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                   // The six big barbell compounds, using the EXACT names from EXERCISE_DB
                   // (verified — e.g. "Overhead Press (Barbell)", not "Overhead Press").
                   const ALL_LIFTS = ["Barbell Bench Press","Barbell Back Squat","Deadlift","Overhead Press (Barbell)","Barbell Row","Hip Thrust (Barbell)"];
+                  // For each canonical lift, also recognise common user-typed variants so
+                  // their PR counts on the leaderboard. Adding new aliases here is safe —
+                  // we take the MAX of any match, so the canonical name still wins if both exist.
+                  const LIFT_ALIASES = {
+                    "Barbell Bench Press": ["Bench Press","Flat Barbell Bench","Flat Bench"],
+                    "Barbell Back Squat": ["Back Squat","Low Bar Squat","High Bar Squat","Squat"],
+                    "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift"],
+                    "Overhead Press (Barbell)": ["Overhead Press","OHP","Standing Barbell OHP","Standing OHP","Standing Press","Strict Press","Military Press","Barbell OHP","Barbell Overhead Press"],
+                    "Barbell Row": ["Bent-Over Row","Bent Over Row","Pendlay Row","Yates Row"],
+                    "Hip Thrust (Barbell)": ["Hip Thrust","Barbell Hip Thrust","Glute Bridge (Barbell)"],
+                  };
+                  // Resolve the best (max) PR from canonical name + any alias the user may have used
+                  const bestPR = (prMap, canonical) => {
+                    if (!prMap) return null;
+                    const candidates = [prMap[canonical], ...(LIFT_ALIASES[canonical] || []).map(a => prMap[a])].filter(v => v != null);
+                    if (candidates.length === 0) return null;
+                    return Math.max(...candidates);
+                  };
                   const lifts = showAllLifts ? ALL_LIFTS : ALL_LIFTS.slice(0, 3);
                   return lifts.map((exName, i) => {
                   // Real numbers only. Your PR comes from store.prs; friends' PRs come from
@@ -8958,10 +9094,11 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     .map(u => {
                       let val = null;
                       if (u.id === currentUserId) {
-                        const lbs = (store.prs || {})[exName];
+                        const lbs = bestPR(store.prs, exName);
                         if (lbs) val = unit === "lbs" ? Math.round(lbs) : Math.round(cvt(lbs, "lbs", "kg"));
-                      } else if (u.prs && u.prs[exName]) {
-                        val = unit === "lbs" ? Math.round(u.prs[exName]) : Math.round(cvt(u.prs[exName], "lbs", "kg"));
+                      } else {
+                        const lbs = bestPR(u.prs, exName);
+                        if (lbs) val = unit === "lbs" ? Math.round(lbs) : Math.round(cvt(lbs, "lbs", "kg"));
                       }
                       return { u, val };
                     })
@@ -9517,7 +9654,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
               <button onClick={() => setShowSettings(false)} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F, width:50 }}>Done</button>
             </div>
-            <div style={{ overflowY:"auto", flex:1, padding:"14px" }}>
+            <div style={{ overflowY:"auto", flex:1, padding:"14px", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch" }}>
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PREFERENCES</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
@@ -11255,9 +11392,8 @@ export default function App() {
         if (extractMentions(c.text, store.users).includes(currentUserId)) count++;
       });
     });
-    // Friend activity (posts from people I follow, excluding ephemeral stories)
-    const following = store.users.find(u => u.id === currentUserId)?.following || [];
-    count += (store.posts || []).filter(p => following.includes(p.userId) && p.type !== "story").length;
+    // Activity is now strictly things directed at you — kudos, comments, mentions.
+    // (Removed friend-post counting; that lived in the main feed and inflated the badge.)
     return count;
   })();
 
@@ -11517,9 +11653,11 @@ export default function App() {
       onTouchStart={(e) => {
         if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null) return;
         // Skip tab swipe if the touch started on an interactive element that has its own swipe behavior
-        // (e.g. SetRow, story carousel, horizontal scroller)
+        // (e.g. SetRow, story carousel, horizontal scroller), or on a text input where the user may
+        // be trying to select/edit text.
         const target = e.target;
         if (target && target.closest && target.closest("[data-no-tab-swipe]")) return;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
         const t = e.touches[0];
         swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now(), type: null };
         setSwipeX(0);
@@ -11897,7 +12035,7 @@ export default function App() {
         )}
 
         {tab === "tracker" && (
-          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={token}
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={token} dataLoading={dataLoading}
             onDeleteHistory={async (date, sid) => {
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
@@ -11943,23 +12081,9 @@ export default function App() {
               });
             });
           }
-          // Friend activity — people I follow posting / hitting a PR.
-          // Exclude stories (ephemeral) and label by what they actually posted.
-          const following = store.users.find(u => u.id === currentUserId)?.following || [];
-          (store.posts||[]).filter(p => following.includes(p.userId) && p.type !== "story").forEach(post => {
-            const u = store.users.find(x => x.id === post.userId);
-            if (!u) return;
-            const isPRpost = post.isPR || post.workout?.exercises?.some(e => e.isPR);
-            if (isPRpost) {
-              events.push({ type:"friend_pr", user:u, post, ts: post.createdAt });
-            } else {
-              // Describe by type: workout, run, or a generic post
-              const verb = post.workout ? "shared a workout"
-                : post.run ? "logged a run"
-                : "shared a post";
-              events.push({ type:"friend_post", user:u, post, verb, ts: post.createdAt });
-            }
-          });
+          // Note: removed friend_post / friend_pr events — Activity is now strictly things
+          // directed at you (kudos, comments, mentions). Friend posts already appear in your
+          // main feed; piling them into Activity made the badge noisy with many follows.
           events.sort((a,b) => b.ts - a.ts);
           return (
             <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
@@ -11986,9 +12110,9 @@ export default function App() {
                 </div>
               ) : events.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
-                  <div style={{ fontSize:40, marginBottom:12 }}>🔔</div>
-                  <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>No activity yet</div>
-                  <div style={{ fontSize:13 }}>When friends like or comment on your posts, you'll see it here. Share a workout to get the conversation going.</div>
+                  <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="users" size={40} color="currentColor"/></div>
+                  <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
+                  <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
                 </div>
               ) : events.slice(0,50).map((ev, i) => (
                 <div key={i} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
