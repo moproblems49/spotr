@@ -3210,6 +3210,13 @@ function ProgramBuilder({ C, onCancel, onSave }) {
   }
 
   const activeDay = days[activeDayIdx] || days[0];
+  function moveDay(dir) {
+    const ni = activeDayIdx + dir;
+    if (ni < 0 || ni >= days.length) return;
+    setDays(ds => { const next = [...ds]; [next[activeDayIdx], next[ni]] = [next[ni], next[activeDayIdx]]; return next; });
+    setActiveDayIdx(ni);
+    haptic("tap");
+  }
   const isDark = C.isDark ?? (C.bg === "#0a0a0c");
   const surface = C.surface;
   const border = C.border;
@@ -3251,6 +3258,12 @@ function ProgramBuilder({ C, onCancel, onSave }) {
       <div style={{ flex:1, overflowY:"auto", padding:"12px 18px 100px" }}>
         {/* Day name edit */}
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
+          {days.length > 1 && (
+            <div style={{ display:"flex", gap:2 }}>
+              <button onClick={() => moveDay(-1)} disabled={activeDayIdx === 0} aria-label="Move day left" style={{ background:inputBg, border:`1px solid ${border}`, borderRadius:8, padding:"10px 11px", color: activeDayIdx === 0 ? C.muted : bodyClr, fontSize:13, cursor: activeDayIdx === 0 ? "default" : "pointer", fontFamily:F, opacity: activeDayIdx === 0 ? 0.4 : 1 }}>‹</button>
+              <button onClick={() => moveDay(1)} disabled={activeDayIdx === days.length - 1} aria-label="Move day right" style={{ background:inputBg, border:`1px solid ${border}`, borderRadius:8, padding:"10px 11px", color: activeDayIdx === days.length - 1 ? C.muted : bodyClr, fontSize:13, cursor: activeDayIdx === days.length - 1 ? "default" : "pointer", fontFamily:F, opacity: activeDayIdx === days.length - 1 ? 0.4 : 1 }}>›</button>
+            </div>
+          )}
           <input
             value={activeDay.name} onChange={e => updateDayName(activeDayIdx, e.target.value)}
             style={{ flex:1, background:inputBg, border:`1px solid ${border}`, borderRadius:10, padding:"10px 14px", fontSize:14, fontWeight:600, color:bodyClr, outline:"none", fontFamily:F }}
@@ -4128,7 +4141,21 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
       </div>
 
       {/* Day name + Start */}
-      <div style={{ background:isDark?"#111":"#fff", borderBottom:`1px solid ${BORD}`, padding:"12px 18px", display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+      <div style={{ background:isDark?"#111":"#fff", borderBottom:`1px solid ${BORD}`, padding:"12px 18px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+        {(localProg.days||[]).length > 1 && (
+          <div style={{ display:"flex", gap:2, flexShrink:0 }}>
+            <button onClick={() => {
+              if (activeDay === 0) return;
+              const ds = [...localProg.days]; [ds[activeDay], ds[activeDay-1]] = [ds[activeDay-1], ds[activeDay]];
+              patch({ ...localProg, days: ds }); setActiveDay(activeDay-1); haptic("tap");
+            }} disabled={activeDay === 0} aria-label="Move day left" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color: activeDay === 0 ? SUB : TXT, fontSize:13, cursor: activeDay === 0 ? "default" : "pointer", fontFamily:F, opacity: activeDay === 0 ? 0.4 : 1 }}>‹</button>
+            <button onClick={() => {
+              if (activeDay === localProg.days.length-1) return;
+              const ds = [...localProg.days]; [ds[activeDay], ds[activeDay+1]] = [ds[activeDay+1], ds[activeDay]];
+              patch({ ...localProg, days: ds }); setActiveDay(activeDay+1); haptic("tap");
+            }} disabled={activeDay === localProg.days.length-1} aria-label="Move day right" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color: activeDay === localProg.days.length-1 ? SUB : TXT, fontSize:13, cursor: activeDay === localProg.days.length-1 ? "default" : "pointer", fontFamily:F, opacity: activeDay === localProg.days.length-1 ? 0.4 : 1 }}>›</button>
+          </div>
+        )}
         <input value={day.name} onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, name:e.target.value})})}
           placeholder="Day name..." style={{ flex:1, border:"none", outline:"none", background:"none", color:TXT, fontSize:15, fontWeight:700, fontFamily:F }} />
         <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:DAY_COLORS[activeDay%7], border:"none", borderRadius:10, padding:"10px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0, boxShadow:`0 4px 12px ${DAY_COLORS[activeDay%7]}55` }}>Start ›</button>
@@ -10100,8 +10127,8 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
       )}
 
       {showSettings && (
-        <div onClick={() => setShowSettings(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+        <div onClick={() => setShowSettings(false)} onTouchMove={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", touchAction:"none" }}>
+          <div onClick={e => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <div style={{ width:50 }}/>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
