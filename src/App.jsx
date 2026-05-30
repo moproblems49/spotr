@@ -2,6 +2,9 @@
 // PATCHED v13 - BUILD 2026-05-11 - share filter, edit workout redesign, builder sets/rest/notes
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter, DragOverlay } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SUPABASE CLIENT
@@ -1143,7 +1146,7 @@ function getProgressInsight(store, unit, returnAll = false) {
       if (earlyBest > 0 && lateBest > earlyBest) {
         const gain = Math.round(lateBest - earlyBest);
         if (gain >= (unit === "kg" ? 5 : 10)) {
-          candidates.push({ priority: 2, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max since you started tracking it` });
+          candidates.push({ key: `strength:${exName}`, priority: 2, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max since you started tracking it` });
         }
       }
       continue;
@@ -1153,7 +1156,7 @@ function getProgressInsight(store, unit, returnAll = false) {
     if (olderBest > 0 && recentBest > olderBest) {
       const gain = Math.round(recentBest - olderBest);
       if (gain >= (unit === "kg" ? 5 : 10)) {
-        candidates.push({ priority: 1, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max, recent sessions vs earlier` });
+        candidates.push({ key: `strength:${exName}`, priority: 1, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max, recent sessions vs earlier` });
       }
     }
   }
@@ -1161,7 +1164,7 @@ function getProgressInsight(store, unit, returnAll = false) {
   // 2. Weekly streak milestone
   const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
   if (ws.count >= 2) {
-    candidates.push({ priority: ws.count >= 4 ? 1 : 3, icon: "flame", headline: `${ws.count} week streak`, sub: `You've hit your weekly target ${ws.count} weeks running. Keep it alive.` });
+    candidates.push({ key: `streak:${ws.count}`, priority: ws.count >= 4 ? 1 : 3, icon: "flame", headline: `${ws.count} week streak`, sub: `You've hit your weekly target ${ws.count} weeks running. Keep it alive.` });
   }
 
   // 3. Biggest-volume week ever (this week vs all prior weeks)
@@ -1180,13 +1183,13 @@ function getProgressInsight(store, unit, returnAll = false) {
   const thisWkVol = volByWeek[thisWk] || 0;
   const priorVols = Object.entries(volByWeek).filter(([k]) => k !== thisWk).map(([, v]) => v);
   if (thisWkVol > 0 && priorVols.length >= 2 && thisWkVol > Math.max(...priorVols)) {
-    candidates.push({ priority: 2, icon: "trophy", headline: `Biggest week yet`, sub: `${Math.round(thisWkVol).toLocaleString()} ${unit} lifted this week — a personal best` });
+    candidates.push({ key: `bigweek:${thisWk}`, priority: 2, icon: "trophy", headline: `Biggest week yet`, sub: `${Math.round(thisWkVol).toLocaleString()} ${unit} lifted this week — a personal best` });
   }
 
   // 4. Total sessions milestone
   const totalSessions = dates.reduce((a, d) => a + Object.keys(history[d] || {}).length, 0);
   if ([10, 25, 50, 100, 150, 200, 250, 300, 500].includes(totalSessions)) {
-    candidates.push({ priority: 1, icon: "trophy", headline: `${totalSessions} workouts logged`, sub: `That's real consistency. Proud of you.` });
+    candidates.push({ key: `sessions:${totalSessions}`, priority: 1, icon: "trophy", headline: `${totalSessions} workouts logged`, sub: `That's real consistency. Proud of you.` });
   }
 
   // 5. Recovery awareness — if the user has trained one muscle group 3+ times in the
@@ -1214,14 +1217,18 @@ function getProgressInsight(store, unit, returnAll = false) {
     const overworked = Object.entries(muscleHits).filter(([m, c]) => c >= 3);
     if (overworked.length > 0) {
       const [m, c] = overworked[0];
-      candidates.push({ priority: 5, icon: "trending", headline: `${m} trained ${c}× in 4 days`, sub: `Consider a rest day for that group — recovery is where the gains stick.` });
+      candidates.push({ key: `recovery:${m}:${weekKey(new Date())}`, priority: 5, icon: "trending", headline: `${m} trained ${c}× in 4 days`, sub: `Consider a rest day for that group — recovery is where the gains stick.` });
     }
   }
 
   if (!candidates.length) return returnAll ? [] : null;
+  // Drop any insight the user has already swiped away (persisted keys).
+  const dismissed = new Set(store.dismissedInsights || []);
+  const live = candidates.filter(c => !c.key || !dismissed.has(c.key));
+  if (!live.length) return returnAll ? [] : null;
   // Lower priority number = more compelling. Tie-break randomly so it varies.
-  candidates.sort((a, b) => a.priority - b.priority || Math.random() - 0.5);
-  return returnAll ? candidates : candidates[0];
+  live.sort((a, b) => a.priority - b.priority || Math.random() - 0.5);
+  return returnAll ? live : live[0];
 }
 
 // Returns ALL insight candidates (sorted, most compelling first) for the swipeable
@@ -1588,6 +1595,7 @@ function loadStore() {
     workoutDates: {},
     groups: [],
     weeklyTarget: 3, // default: 3 workouts/week for streak system
+    dismissedInsights: [], // keys of insight cards the user swiped away (persisted)
     seenOnboarding: false,
     bodyLog: [], // body tracking entries: { id, date, weight, measurements:{}, photoData }
   };
@@ -3470,7 +3478,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 
         <div style={{ width:"100%", aspectRatio:"9/16", maxHeight:"100%", borderRadius:12, overflow:"hidden", position:"relative", display:"flex", alignItems:"center", justifyContent:"center" }}>
           {post?.imageData ? (
-            <img src={post.imageData} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+            <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
           ) : (
             <div style={{ width:"100%", height:"100%", background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
               <div style={{ fontSize:60, marginBottom:16 }}>{user.avatar || "💪"}</div>
@@ -3630,7 +3638,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {(post.type === "photo" || post.type === "form_check") && (
         post.imageData
-          ? <img src={post.imageData} alt="" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
+          ? <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
           : <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}><Icon name="search" size={36} color="currentColor"/></div>
       )}
 
@@ -4683,7 +4691,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
 // dismiss it and reveal the next. No close button. Tracks finger; snaps back if the
 // swipe is too small (fixes the half-swipe flicker — dismissal is committed only past
 // a threshold, on release).
-function InsightCards({ insights, C, big }) {
+function InsightCards({ insights, C, big, onDismiss }) {
   const [index, setIndex] = useState(0);
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -4705,12 +4713,16 @@ function InsightCards({ insights, C, big }) {
     }
     if (axis.current === "h") setDx(ddx);
   };
-  const onEnd = () => {
+    const onEnd = () => {
     const threshold = 90;
     if (axis.current === "h" && Math.abs(dx) > threshold) {
       const dir = dx > 0 ? 1 : -1;
+      const dismissedKey = insights[index]?.key;
       setDx(dir * 500);
-      setTimeout(() => { setIndex(i => i + 1); setDx(0); setDragging(false); axis.current = null; }, 180);
+      setTimeout(() => {
+        if (dismissedKey && onDismiss) onDismiss(dismissedKey);
+        setIndex(i => i + 1); setDx(0); setDragging(false); axis.current = null;
+      }, 180);
     } else {
       setDx(0);
       setDragging(false);
@@ -4775,18 +4787,17 @@ function InsightCards({ insights, C, big }) {
 // (the handle only appears with >1 day). Kept self-contained so the drag state can't leak
 // into the rest of the workout tab.
 const DAY_CARD_COLORS = ["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"];
-function DayCardList({ prog, store, C, onPreview, onEdit, onStart, onReorder }) {
-  const [dragIdx, setDragIdx] = useState(null);   // index being dragged
-  const [overIdx, setOverIdx] = useState(null);   // index it would drop into
-  const [dragY, setDragY] = useState(0);           // finger delta from pickup
-  const startY = useRef(0);
-  const cardH = useRef(72);                        // measured card height (+gap)
-  const listRef = useRef(null);
 
-  const lastDoneFor = (day) => {
-    const dates = Object.keys(store.history||{}).sort().reverse();
+// One sortable day card. Uses dnd-kit's useSortable so the lift/slide/drop motion is
+// hardware-accelerated and the other cards animate out of the way automatically.
+function SortableDayCard({ day, di, prog, store, C, onPreview, onEdit, onStart }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: day.id });
+  const color = DAY_CARD_COLORS[di % 7];
+
+  const lastDone = (() => {
+    const dates = Object.keys(store.history || {}).sort().reverse();
     for (const dk of dates) {
-      if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
+      if (Object.values(store.history[dk] || {}).some(s => s.dayName === day.name)) {
         const today = dKey();
         if (dk >= today) return "Today";
         const d = Math.max(0, Math.floor((new Date(today + "T12:00:00").getTime() - new Date(dk + "T12:00:00").getTime()) / 86400000));
@@ -4794,118 +4805,164 @@ function DayCardList({ prog, store, C, onPreview, onEdit, onStart, onReorder }) 
       }
     }
     return null;
+  })();
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    background: C.surface,
+    border: `1px solid ${isDragging ? C.accent : C.border}`,
+    borderLeft: `4px solid ${color}`,
+    borderRadius: 14,
+    overflow: "hidden",
+    position: "relative",
+    zIndex: isDragging ? 20 : 1,
+    boxShadow: isDragging ? "0 14px 34px rgba(0,0,0,0.28)" : "none",
+    opacity: isDragging ? 0.92 : 1,
   };
 
-  function pickUp(i, clientY, el) {
-    // Measure actual card height (including the 6px gap) for accurate slot math
-    const card = el?.closest("[data-day-card]");
-    if (card) cardH.current = card.offsetHeight + 6;
-    startY.current = clientY;
-    setDragIdx(i); setOverIdx(i); setDragY(0);
-    haptic("tap");
-  }
-  // While a drag is active, lock the page so it can't scroll underneath the drag.
-  // (React touch listeners are passive, so preventDefault alone can't stop scroll —
-  // locking the body is the reliable cross-WebView way.)
-  useEffect(() => {
-    if (dragIdx == null) return;
-    const prevOverflow = document.body.style.overflow;
-    const prevTouch = document.body.style.touchAction;
-    document.body.style.overflow = "hidden";
-    document.body.style.touchAction = "none";
-    return () => { document.body.style.overflow = prevOverflow; document.body.style.touchAction = prevTouch; };
-  }, [dragIdx]);
-  function moveTo(clientY) {
-    if (dragIdx == null) return;
-    const dy = clientY - startY.current;
-    setDragY(dy);
-    const shift = Math.round(dy / cardH.current);
-    const target = Math.max(0, Math.min(prog.days.length - 1, dragIdx + shift));
-    setOverIdx(target);
-  }
-  function drop() {
-    if (dragIdx == null) return;
-    if (overIdx != null && overIdx !== dragIdx) {
-      const ds = [...prog.days];
-      const [moved] = ds.splice(dragIdx, 1);
-      ds.splice(overIdx, 0, moved);
-      onReorder(ds);
-      haptic("success");
-    }
-    setDragIdx(null); setOverIdx(null); setDragY(0);
+  return (
+    <div ref={setNodeRef} data-day-card style={style}>
+      <div style={{ display:"flex", alignItems:"stretch" }}>
+        {prog.days.length > 1 && (
+          <div
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            aria-label="Drag to reorder day"
+            style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 14px", cursor:"grab", color:C.muted, touchAction:"none", flexShrink:0, alignSelf:"stretch" }}>
+            <svg width="12" height="18" viewBox="0 0 12 18" fill={C.muted}><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg>
+          </div>
+        )}
+        <button onClick={() => onPreview(day)} style={{
+          flex:1, minWidth:0, background:"none", border:"none", padding:"13px 14px 13px 4px",
+          display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
+        }}>
+          <div style={{ width:38, height:38, borderRadius:10, background:`${color}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <span style={{ fontSize:14, fontWeight:800, color }}>{di+1}</span>
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
+            <div style={{ fontSize:11, color:C.sub, marginTop:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+              {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
+            </div>
+          </div>
+          <div style={{ textAlign:"right", flexShrink:0 }}>
+            {lastDone && <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>{lastDone}</div>}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+          </div>
+        </button>
+      </div>
+      <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
+        <button onClick={() => onEdit(di)} style={{
+          flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
+          fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+        }}>Edit</button>
+        <button onClick={() => onStart(day)} style={{
+          flex:1, padding:"9px", background:"none", border:"none",
+          fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+        }}>Start ›</button>
+      </div>
+    </div>
+  );
+}
+
+// Reorderable list of program day cards (powered by dnd-kit for smooth lift/slide/drop).
+// The drag handle is the grip icon; pressing it and moving picks the card up, the others
+// animate out of the way, and releasing commits + persists the new order.
+function DayCardList({ prog, store, C, onPreview, onEdit, onStart, onReorder }) {
+  // Touch needs a small press delay so a tap still scrolls/opens; mouse uses a tiny distance.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  // Ensure every day has a STABLE id for dnd-kit. Using uid() here would mint a new id on
+  // every render (breaking drag); an index-based fallback is stable across renders for a
+  // given list. Programs created/imported in-app already have real ids.
+  const days = (prog.days || []).map((d, i) => d.id ? d : { ...d, id: `day-${i}` });
+  const ids = days.map(d => d.id);
+
+  function handleDragEnd(event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = ids.indexOf(active.id);
+    const newIndex = ids.indexOf(over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    onReorder(arrayMove(days, oldIndex, newIndex));
+    haptic("success");
   }
 
   return (
-    <div ref={listRef} style={{ display:"flex", flexDirection:"column", gap:6 }}>
-      {prog.days.map((day, di) => {
-        const lastDone = lastDoneFor(day);
-        const color = DAY_CARD_COLORS[di%7];
-        const isDragging = dragIdx === di;
-        // Cards between the dragged card's origin and its target slide to make room
-        let shiftPx = 0;
-        if (dragIdx != null && !isDragging && overIdx != null) {
-          if (dragIdx < overIdx && di > dragIdx && di <= overIdx) shiftPx = -cardH.current;
-          else if (dragIdx > overIdx && di < dragIdx && di >= overIdx) shiftPx = cardH.current;
-        }
-        return (
-          <div key={day.id || di} data-day-card style={{
-            background:C.surface, border:`1px solid ${isDragging ? C.accent : C.border}`, borderRadius:14, overflow:"hidden",
-            borderLeft:`4px solid ${color}`,
-            transform: isDragging ? `translateY(${dragY}px) scale(1.02)` : `translateY(${shiftPx}px)`,
-            transition: isDragging ? "none" : "transform 0.2s cubic-bezier(0.2,0,0,1)",
-            boxShadow: isDragging ? "0 12px 30px rgba(0,0,0,0.25)" : "none",
-            position:"relative", zIndex: isDragging ? 10 : 1, touchAction: dragIdx != null ? "none" : "auto",
-          }}>
-            <div style={{ display:"flex", alignItems:"stretch" }}>
-              {prog.days.length > 1 && (
-                <div
-                  onTouchStart={(e) => pickUp(di, e.touches[0].clientY, e.currentTarget)}
-                  onTouchMove={(e) => { if (dragIdx != null) { e.preventDefault(); e.stopPropagation(); moveTo(e.touches[0].clientY); } }}
-                  onTouchEnd={drop}
-                  onTouchCancel={drop}
-                  onMouseDown={(e) => pickUp(di, e.clientY, e.currentTarget)}
-                  aria-label="Drag to reorder day"
-                  style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 12px", cursor:"grab", color:C.muted, touchAction:"none", flexShrink:0 }}>
-                  {/* grip dots */}
-                  <svg width="12" height="18" viewBox="0 0 12 18" fill={C.muted}><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg>
-                </div>
-              )}
-              <button onClick={() => onPreview(day)} style={{
-                flex:1, minWidth:0, background:"none", border:"none", padding:"13px 14px 13px 4px",
-                display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
-              }}>
-                <div style={{ width:38, height:38, borderRadius:10, background:`${color}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <span style={{ fontSize:14, fontWeight:800, color }}>{di+1}</span>
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
-                  <div style={{ fontSize:11, color:C.sub, marginTop:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                    {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
-                  </div>
-                </div>
-                <div style={{ textAlign:"right", flexShrink:0 }}>
-                  {lastDone && <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>{lastDone}</div>}
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
-                </div>
-              </button>
-            </div>
-            <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-              <button onClick={() => onEdit(di)} style={{
-                flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
-                fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
-              }}>Edit</button>
-              <button onClick={() => onStart(day)} style={{
-                flex:1, padding:"9px", background:"none", border:"none",
-                fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
-              }}>Start ›</button>
-            </div>
-          </div>
-        );
-      })}
-      {/* Global move listeners while dragging via mouse (touch handled on the handle) */}
-      {dragIdx != null && (
-        <div onMouseMove={(e) => moveTo(e.clientY)} onMouseUp={drop} style={{ position:"fixed", inset:0, zIndex:9, cursor:"grabbing" }}/>
-      )}
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} onDragStart={() => haptic("tap")}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {days.map((day, di) => (
+            <SortableDayCard key={day.id} day={day} di={di} prog={prog} store={store} C={C} onPreview={onPreview} onEdit={onEdit} onStart={onStart} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+// One sortable exercise row for the in-workout "Reorder exercises" screen (dnd-kit).
+function SortableExerciseRow({ id, ex, C }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    display:"flex", alignItems:"center", gap:12, padding:"14px 14px", marginBottom:8,
+    background: C.surface, border:`1px solid ${isDragging ? C.accent : C.border}`, borderRadius:14,
+    zIndex: isDragging ? 100 : 1, position:"relative",
+    boxShadow: isDragging ? "0 16px 36px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.10)" : "none",
+    opacity: isDragging ? 0.9 : 1,
+    touchAction:"none", userSelect:"none", WebkitUserSelect:"none", WebkitTouchCallout:"none", WebkitTapHighlightColor:"transparent",
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <MuscleIcon muscle={exInfo?.muscle||""} size={32} C={C}/>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ex.name || "Unnamed"}</div>
+        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.sets?.length || 0} sets · {exInfo?.muscle || ""}</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}>
+        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </div>
+  );
+}
+
+// One sortable program row in the "MY PROGRAMS" list (dnd-kit). Grip = drag handle so a
+// tap still opens the program (the old version conflated tap and drag).
+function SortableProgramRow({ p, C, isActive, onOpen }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: p.id });
+  const style = {
+    transform: CSS.Transform.toString(transform), transition,
+    background: isActive ? C.accentSoft : C.surface,
+    border:`1px solid ${isDragging ? C.accent : (isActive ? C.accent : C.border)}`,
+    borderRadius:10, padding:"13px 14px", marginBottom:8,
+    display:"flex", alignItems:"center", gap:12,
+    zIndex: isDragging ? 50 : 1, position:"relative",
+    boxShadow: isDragging ? "0 12px 30px rgba(0,0,0,0.22)" : "none",
+    opacity: isDragging ? 0.92 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label="Drag to reorder program"
+        style={{ touchAction:"none", cursor:"grab", color:C.muted, display:"flex", alignItems:"center", flexShrink:0, padding:"4px 2px" }}>
+        <svg width="12" height="18" viewBox="0 0 12 18" fill={C.muted}><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg>
+      </div>
+      <button onClick={onOpen} style={{ flex:1, minWidth:0, background:"none", border:"none", textAlign:"left", cursor:"pointer", fontFamily:F, padding:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+          <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
+          {isActive && <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>}
+        </div>
+        <div style={{ fontSize:11, color:C.sub }}>
+          {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
+        </div>
+      </button>
     </div>
   );
 }
@@ -5004,42 +5061,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const elRef = useRef(null);
   // Reorder mode — when on, exercises collapse to compact rows you can drag freely
   const [reorderMode, setReorderMode] = useState(false);
-  const [draggingEx, setDraggingEx] = useState(null); // { index, offsetY, height, startY }
-  const dragStartRef = useRef(null);
-  const reorderListRef = useRef(null);
-
-  function startReorderDrag(ei, e) {
-    const t = e.touches?.[0] || e;
-    const li = reorderListRef.current?.children[ei];
-    const height = li ? li.offsetHeight : 56;
-    dragStartRef.current = { y: t.clientY, ei };
-    setDraggingEx({ index: ei, offsetY: 0, height });
-    haptic("medium");
-  }
-  function onReorderTouchMove(e) {
-    if (!draggingEx || !dragStartRef.current) return;
-    const t = e.touches[0];
-    const offsetY = t.clientY - dragStartRef.current.y;
-    setDraggingEx(d => d ? { ...d, offsetY } : null);
-    e.preventDefault();
-  }
-  function onReorderTouchEnd() {
-    if (!draggingEx || !dragStartRef.current) return;
-    const fromIdx = dragStartRef.current.ei;
-    const height = draggingEx.height || 56;
-    const slots = Math.round(draggingEx.offsetY / height);
-    const toIdx = Math.max(0, Math.min((session?.exercises.length || 1) - 1, fromIdx + slots));
-    if (toIdx !== fromIdx && session) {
-      setSession(p => {
-        const arr = [...p.exercises];
-        const [moved] = arr.splice(fromIdx, 1);
-        arr.splice(toIdx, 0, moved);
-        return { ...p, exercises: arr };
-      });
-      haptic("complete");
-    }
-    setDraggingEx(null);
-    dragStartRef.current = null;
+  // Exercise reordering during a workout now uses dnd-kit (same engine as day reorder)
+  // for a consistent, smooth lift/slide/drop feel across the app.
+  const exReorderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  function handleExerciseDragEnd(event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !session) return;
+    setSession(p => {
+      // Match the same id scheme used by the SortableContext items (ex.id or `ex-<index>`),
+      // otherwise findIndex won't locate the dragged rows and the reorder would no-op.
+      const idOf = (e, i) => e.id || `ex-${i}`;
+      const oldIndex = p.exercises.findIndex((e, i) => idOf(e, i) === active.id);
+      const newIndex = p.exercises.findIndex((e, i) => idOf(e, i) === over.id);
+      if (oldIndex < 0 || newIndex < 0) return p;
+      return { ...p, exercises: arrayMove(p.exercises, oldIndex, newIndex) };
+    });
+    haptic("complete");
   }
 
   // Memoized running volume — recomputed only when session changes, not on every keystroke
@@ -6404,64 +6445,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {reorderMode && session && (
           <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
-              <button onClick={() => { setReorderMode(false); setDraggingEx(null); dragStartRef.current = null; }} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F }}>Done</button>
+              <button onClick={() => setReorderMode(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F }}>Done</button>
               <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Reorder exercises</div>
               <div style={{ width:48 }}/>
             </div>
-            <div style={{ fontSize:11, color:C.sub, padding:"10px 16px 4px", letterSpacing:0.4, fontWeight:600 }}>HOLD & DRAG TO MOVE</div>
-            <div
-              ref={reorderListRef}
-              style={{ padding:"6px 12px 24px", overflowY:"auto", flex:1, position:"relative", touchAction: draggingEx ? "none" : "auto" }}
-              onTouchMove={draggingEx ? onReorderTouchMove : undefined}
-              onTouchEnd={draggingEx ? onReorderTouchEnd : undefined}
-              onTouchCancel={draggingEx ? onReorderTouchEnd : undefined}
-            >
-              {session.exercises.map((ex, ei) => {
-                const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
-                const isDragging = draggingEx && draggingEx.index === ei;
-                let visualOffset = 0;
-                if (draggingEx && !isDragging) {
-                  const fromIdx = draggingEx.index;
-                  const h = draggingEx.height || 56;
-                  const targetIdx = Math.max(0, Math.min(session.exercises.length - 1, fromIdx + Math.round(draggingEx.offsetY / h)));
-                  if (fromIdx < ei && ei <= targetIdx) visualOffset = -h;
-                  else if (targetIdx <= ei && ei < fromIdx) visualOffset = h;
-                }
-                return (
-                  <div
-                    key={ex.id || ei}
-                    onTouchStart={(e) => { e.stopPropagation(); startReorderDrag(ei, e); }}
-                    style={{
-                      display:"flex", alignItems:"center", gap:12,
-                      padding:"14px 14px", marginBottom:8,
-                      background: isDragging ? C.surface : C.surface,
-                      border: `1px solid ${isDragging ? C.accent : C.border}`,
-                      borderRadius:14,
-                      transform: isDragging
-                        ? `translateY(${draggingEx.offsetY}px) scale(1.02)`
-                        : `translateY(${visualOffset}px)`,
-                      transition: isDragging ? "none" : "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                      zIndex: isDragging ? 100 : 1,
-                      position:"relative",
-                      boxShadow: isDragging ? "0 16px 36px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.10)" : "none",
-                      opacity: draggingEx && !isDragging ? 0.5 : 1,
-                      touchAction:"none",
-                      userSelect:"none",
-                      WebkitUserSelect:"none",
-                      WebkitTouchCallout:"none",
-                      WebkitTapHighlightColor:"transparent",
-                    }}>
-                    <MuscleIcon muscle={exInfo?.muscle||""} size={32} C={C}/>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ex.name || "Unnamed"}</div>
-                      <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.sets?.length || 0} sets · {exInfo?.muscle || ""}</div>
-                    </div>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}>
-                      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-                    </svg>
-                  </div>
-                );
-              })}
+            <div style={{ fontSize:11, color:C.sub, padding:"10px 16px 4px", letterSpacing:0.4, fontWeight:600 }}>DRAG TO MOVE</div>
+            <div style={{ padding:"6px 12px 24px", overflowY:"auto", flex:1 }}>
+              <DndContext sensors={exReorderSensors} collisionDetection={closestCenter} onDragEnd={handleExerciseDragEnd} onDragStart={() => haptic("medium")}>
+                <SortableContext items={session.exercises.map((ex, ei) => ex.id || `ex-${ei}`)} strategy={verticalListSortingStrategy}>
+                  {session.exercises.map((ex, ei) => (
+                    <SortableExerciseRow key={ex.id || `ex-${ei}`} id={ex.id || `ex-${ei}`} ex={ex} C={C}/>
+                  ))}
+                </SortableContext>
+              </DndContext>
             </div>
           </div>
         )}
@@ -6781,7 +6777,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {(() => {
             const insights = getProgressInsights(store, unit);
             if (!insights.length) return null;
-            return <InsightCards insights={insights} C={C} big/>;
+            return <InsightCards insights={insights} C={C} big onDismiss={(key) => setStore(p => ({ ...p, dismissedInsights: [...(p.dismissedInsights || []), key] }))}/>;
           })()}
 
           {prog ? (
@@ -6909,56 +6905,25 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {(!store.programs || !store.programs.length) && (
             <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
           )}
-          {(() => {
-            const progDragRef = { dragging: false, startY: 0, origIdx: 0, overIdx: 0 };
-            return (store.programs || []).map((p, idx) => (
-            <div key={p.id}
-              data-drag-item="true"
-              onTouchStart={e => {
-                progDragRef.dragging = true;
-                progDragRef.startY = e.touches[0].clientY;
-                progDragRef.origIdx = idx;
-                progDragRef.overIdx = idx;
-                try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
-              }}
-              onTouchMove={e => {
-                if (!progDragRef.dragging) return;
-                e.preventDefault();
-                const dy = e.touches[0].clientY - progDragRef.startY;
-                progDragRef.overIdx = Math.max(0, Math.min((store.programs.length - 1), idx + Math.round(dy / 72)));
-              }}
-              onTouchEnd={() => {
-                if (!progDragRef.dragging) return;
-                progDragRef.dragging = false;
-                if (progDragRef.overIdx !== progDragRef.origIdx) {
-                  const arr = [...store.programs];
-                  const [moved] = arr.splice(progDragRef.origIdx, 1);
-                  arr.splice(progDragRef.overIdx, 0, moved);
-                  setStore(prev => ({ ...prev, programs: arr }));
-                }
-              }}
-              onClick={() => setViewingProgram(p.id)}
-              style={{
-                background: store.activeProgramId === p.id ? C.accentSoft : "none",
-                border:`1px solid ${store.activeProgramId === p.id ? C.accent : C.border}`,
-                borderRadius:10, padding:"13px 14px", marginBottom:8, cursor:"pointer",
-                display:"flex", alignItems:"center", gap:12
-              }}>
-              <div style={{ flex:1 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-                  {store.activeProgramId === p.id && (
-                    <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>
-                  )}
-                </div>
-                <div style={{ fontSize:11, color:C.sub }}>
-                  {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
-                </div>
-              </div>
-              <span style={{ fontSize:18, color:C.muted, touchAction:"none" }}>⠿</span>
-            </div>
-            ));
-          })()}
+          <DndContext sensors={exReorderSensors} collisionDetection={closestCenter}
+            onDragStart={() => haptic("medium")}
+            onDragEnd={(event) => {
+              const { active, over } = event;
+              if (!over || active.id === over.id) return;
+              const arr = store.programs || [];
+              const oldIndex = arr.findIndex(p => p.id === active.id);
+              const newIndex = arr.findIndex(p => p.id === over.id);
+              if (oldIndex < 0 || newIndex < 0) return;
+              setStore(prev => ({ ...prev, programs: arrayMove(prev.programs, oldIndex, newIndex) }));
+              haptic("complete");
+            }}>
+            <SortableContext items={(store.programs || []).map(p => p.id)} strategy={verticalListSortingStrategy}>
+              {(store.programs || []).map((p) => (
+                <SortableProgramRow key={p.id} p={p} C={C} isActive={store.activeProgramId === p.id} onOpen={() => setViewingProgram(p.id)}/>
+              ))}
+            </SortableContext>
+          </DndContext>
+          {(() => { return null; })()}
         </div>
       )}
 
@@ -8248,52 +8213,6 @@ function getCues(name, muscle) {
 // ── Exercise demo fetcher — uses multiple sources with fallback ──────────────
 
 // Strip prefixes to normalize search queries
-// ─── Touch-based drag-to-reorder (works on iOS Safari) ───────────────────────
-function useTouchDrag(items, onReorder) {
-  const dragRef = useRef(null); // { idx, startY, currentY, nodeHeight }
-  const [dragging, setDragging] = useState(null); // index being dragged
-  const [overIdx, setOverIdx] = useState(null);
-  const containerRef = useRef(null);
-
-  function onHandleTouchStart(idx, e) {
-    e.stopPropagation();
-    const touch = e.touches[0];
-    const node = e.currentTarget.closest('[data-drag-item]');
-    dragRef.current = {
-      idx,
-      startY: touch.clientY,
-      nodeHeight: node?.getBoundingClientRect().height || 60,
-    };
-    setDragging(idx);
-    setOverIdx(idx);
-    try { if (navigator.vibrate) navigator.vibrate(20); } catch {}
-  }
-
-  function onContainerTouchMove(e) {
-    if (dragRef.current === null || dragging === null) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    const dy = touch.clientY - dragRef.current.startY;
-    const steps = Math.round(dy / dragRef.current.nodeHeight);
-    const newOver = Math.max(0, Math.min(items.length - 1, dragRef.current.idx + steps));
-    setOverIdx(newOver);
-  }
-
-  function onContainerTouchEnd() {
-    if (dragRef.current !== null && overIdx !== null && overIdx !== dragging) {
-      const arr = [...items];
-      const [moved] = arr.splice(dragging, 1);
-      arr.splice(overIdx, 0, moved);
-      onReorder(arr);
-    }
-    dragRef.current = null;
-    setDragging(null);
-    setOverIdx(null);
-  }
-
-  return { dragging, overIdx, containerRef, onHandleTouchStart, onContainerTouchMove, onContainerTouchEnd };
-}
-
 // Direct wger base IDs for common exercises — faster and more reliable than search
 const WGER_IDS = {
   "Barbell Bench Press":192,"Incline Barbell Press":314,"Incline DB Press":206,"Flat DB Press":207,
@@ -8778,7 +8697,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                       </div>
                       {post.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.5, marginBottom:6 }}>{post.caption}</div>}
                       {(post.image_url || post._localImage) && (
-                        <img src={post._localImage || post.image_url} alt="" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>
+                        <img src={post._localImage || post.image_url} alt="" loading="lazy" decoding="async" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>
                       )}
                       {post.workout && (
                         <div style={{ marginBottom:8, background:C.divider, borderRadius:12, padding:"12px 14px" }}>
@@ -10701,7 +10620,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         }}/>
 
         {/* Hero */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", position:"relative", zIndex:1 }}>
+        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", position:"relative", zIndex:1, paddingBottom:"8vh" }}>
           {promptReason && (
             <div style={{ marginBottom:24, padding:"14px 18px", borderRadius:14, background:C.surface, border:`1px solid ${C.accent}40` }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
@@ -11148,6 +11067,9 @@ export default function App() {
         theme: me?.theme || "light",
         defaultRestTime: me?.default_rest_time || 120,
         seenOnboarding: me?.seen_onboarding === true,
+        // weeklyTarget lives on-device (localStorage), not as a server column — carry the
+        // existing value through so a server refresh doesn't reset it back to the default.
+        weeklyTarget: prev.weeklyTarget || 3,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
