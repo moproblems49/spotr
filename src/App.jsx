@@ -3624,21 +3624,21 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
       {post.type === "run" && post.run && (
         <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#0ea5e9,#0284c7)", borderRadius:12, padding:"18px 18px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-            <span style={{ fontSize:28 }}>🏃</span>
+            <span style={{ display:"flex" }}><Icon name="activity" size={26} color="#fff"/></span>
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:"#fff" }}>
                 {post.run.distance} {post.run.distUnit}
               </div>
-              {post.run.route && <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)" }}>📍 {post.run.route}</div>}
+              {post.run.route && <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)" }}>{post.run.route}</div>}
             </div>
           </div>
           <div style={{ display:"flex", gap:16 }}>
             {[
-              ["⏱", `${Math.floor(post.run.durationMins/60) ? Math.floor(post.run.durationMins/60)+"h " : ""}${post.run.durationMins%60}m`, "Time"],
-              post.run.pace && ["⚡", post.run.pace, "Pace"],
-            ].filter(Boolean).map(([icon, val, label]) => (
+              [`${Math.floor(post.run.durationMins/60) ? Math.floor(post.run.durationMins/60)+"h " : ""}${post.run.durationMins%60}m`, "Time"],
+              post.run.pace && [post.run.pace, "Pace"],
+            ].filter(Boolean).map(([val, label]) => (
               <div key={label} style={{ flex:1, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
-                <div style={{ fontSize:10, color:"rgba(255,255,255,0.7)", marginBottom:2 }}>{icon} {label}</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.7)", marginBottom:2 }}>{label}</div>
                 <div style={{ fontSize:14, fontWeight:700, color:"#fff", fontFamily:MONO }}>{val}</div>
               </div>
             ))}
@@ -3648,7 +3648,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {post.type === "yoga" && post.yoga && (
         <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#7c3aed,#a78bfa)", borderRadius:12, padding:"18px 18px", display:"flex", alignItems:"center", gap:14 }}>
-          <span style={{ fontSize:40 }}>🧘</span>
+          <span style={{ display:"flex" }}><Icon name="spark" size={36} color="#fff"/></span>
           <div>
             <div style={{ fontSize:16, fontWeight:700, color:"#fff", textTransform:"capitalize" }}>{post.yoga.style} Yoga</div>
             <div style={{ fontSize:13, color:"rgba(255,255,255,0.85)", marginTop:2 }}>{post.yoga.durationMins} minutes</div>
@@ -6886,7 +6886,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         <div style={{ padding:"16px 14px" }}>
           {/* Search Bar */}
           <div style={{ position:"relative", marginBottom:12 }}>
-            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:14, color:C.sub }}>🔍</span>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", display:"flex" }}><Icon name="search" size={15} color={C.sub}/></span>
             <input value={exerciseSearch} onChange={e => setExerciseSearch(e.target.value)}
               placeholder="Search exercises..."
               style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"10px 10px 10px 38px", fontSize:14, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box" }}
@@ -6955,7 +6955,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   }}>
                     <MuscleIcon muscle={ex.muscle} size={24} C={C}/>
                     <div style={{ flex:1, fontSize:13, color:C.text }}>{ex.name}</div>
-                    {store.prs?.[ex.name] && <span style={{ fontSize:11, color:C.gold }}>🏆</span>}
+                    {store.prs?.[ex.name] && <Icon name="trophy" size={12} color={C.gold}/>}
                     <span style={{ fontSize:14, color:C.sub }}>›</span>
                   </button>
                 ))}
@@ -7246,7 +7246,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   {t.featured && (
                     <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
                   )}
-                  <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.icon} {t.name}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.name}</div>
                   <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>{t.desc} · {t.days.length} days</div>
                   <button onClick={() => {
                     const prog = {
@@ -7638,7 +7638,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     {exInfo?.muscle && <span style={{ fontSize:11, color:SUB, padding:"3px 0" }}>{exInfo.muscle}</span>}
                     {pr && <span style={{ fontSize:10, fontWeight:800, color:"#fff", background:"#0A0A0A", padding:"3px 8px", borderRadius:6, letterSpacing:0.8 }}>PR {cvt(pr,"lbs",unit)}{unit}</span>}
                   </div>
-                  {ex.note && <div style={{ fontSize:11, color:SUB, marginTop:4, fontStyle:"italic" }}>💡 {ex.note}</div>}
+                  {ex.note && <div style={{ fontSize:11, color:SUB, marginTop:4, fontStyle:"italic" }}>{ex.note}</div>}
                 </div>
                 <button onClick={() => setViewingExercise(ex.name)} style={{ width:32, height:32, borderRadius:8, background:BLUEBG, border:"none", cursor:"pointer", color:BLUE, fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>?</button>
               </div>
@@ -7707,10 +7707,10 @@ function AICoachModal({ C, onClose, onImport }) {
     {
       key:"goal", label:"What's your main goal?",
       options:[
-        { id:"muscle", label:"💪 Build Muscle", desc:"Hypertrophy focus, moderate reps" },
-        { id:"strength", label:"🏋️ Get Stronger", desc:"Heavy compounds, low reps" },
-        { id:"fat_loss", label:"🔥 Lose Fat", desc:"Higher volume, circuits" },
-        { id:"general", label:"⚡ General Fitness", desc:"Balanced, all-around" },
+        { id:"muscle", label:"Build Muscle", desc:"Hypertrophy focus, moderate reps" },
+        { id:"strength", label:"Get Stronger", desc:"Heavy compounds, low reps" },
+        { id:"fat_loss", label:"Lose Fat", desc:"Higher volume, circuits" },
+        { id:"general", label:"General Fitness", desc:"Balanced, all-around" },
       ]
     },
     {
@@ -7725,26 +7725,26 @@ function AICoachModal({ C, onClose, onImport }) {
     {
       key:"level", label:"What's your experience level?",
       options:[
-        { id:"beginner", label:"🌱 Beginner", desc:"Under 1 year lifting" },
-        { id:"intermediate", label:"📈 Intermediate", desc:"1–3 years" },
-        { id:"advanced", label:"🔥 Advanced", desc:"3+ years, know your lifts" },
+        { id:"beginner", label:"Beginner", desc:"Under 1 year lifting" },
+        { id:"intermediate", label:"Intermediate", desc:"1–3 years" },
+        { id:"advanced", label:"Advanced", desc:"3+ years, know your lifts" },
       ]
     },
     {
       key:"equipment", label:"What equipment do you have?",
       options:[
-        { id:"full", label:"🏋️ Full Gym", desc:"Barbells, cables, machines" },
-        { id:"home", label:"🏠 Home Gym", desc:"Barbell + bench + rack" },
-        { id:"dumbbells", label:"💪 Dumbbells Only", desc:"Adjustable or fixed set" },
+        { id:"full", label:"Full Gym", desc:"Barbells, cables, machines" },
+        { id:"home", label:"Home Gym", desc:"Barbell + bench + rack" },
+        { id:"dumbbells", label:"Dumbbells Only", desc:"Adjustable or fixed set" },
       ]
     },
     {
       key:"focus", label:"Any specific focus area?",
       options:[
         { id:"none", label:"No Preference", desc:"Balanced program" },
-        { id:"upper", label:"💪 Upper Body", desc:"More chest, back, arms" },
-        { id:"legs", label:"🦵 Legs", desc:"Quad/glute/hamstring focus" },
-        { id:"posterior", label:"🍑 Posterior Chain", desc:"Glutes, hamstrings, back" },
+        { id:"upper", label:"Upper Body", desc:"More chest, back, arms" },
+        { id:"legs", label:"Legs", desc:"Quad/glute/hamstring focus" },
+        { id:"posterior", label:"Posterior Chain", desc:"Glutes, hamstrings, back" },
       ]
     },
   ];
@@ -8561,8 +8561,8 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
       <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
         <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer" }}>‹</button>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{g.icon} {g.name}</div>
-          <div style={{ fontSize:11, color:C.sub }}>🔒 {(g.members||[]).length} members</div>
+          <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{g.name}</div>
+          <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} members</div>
         </div>
         <div style={{ display:"flex", gap:0, background:C.divider, borderRadius:8, padding:2 }}>
           {["feed","members"].map(t => (
@@ -8601,8 +8601,8 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:8 }}>
               <div style={{ display:"flex", gap:12 }}>
-                <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600 }}>📷 Photo</button>
-                <button onClick={() => setShowWorkoutPicker(true)} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600 }}>💪 Share Workout</button>
+                <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="plus" size={14} color={C.accent}/> Photo</button>
+                <button onClick={() => setShowWorkoutPicker(true)} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
               </div>
               <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
                 background:(caption.trim()||img)?C.accent:C.divider, color:(caption.trim()||img)?"#fff":C.sub,
@@ -8933,7 +8933,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
           background:"none", border:`1px dashed ${C.border}`,
           borderRadius:12, padding:"26px", textAlign:"center"
         }}>
-          <div style={{ fontSize:28, marginBottom:8 }}>👥</div>
+          <div style={{ marginBottom:10, display:"flex", justifyContent:"center" }}><Icon name="users" size={32} color={C.sub}/></div>
           <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>No groups yet</div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Create one for your gym crew or team</div>
           <button onClick={() => setShowCreate(true)} style={{
@@ -8948,10 +8948,10 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
           marginBottom:8, cursor:"pointer"
         }}>
           <div style={{ display:"flex", alignItems:"center", gap:11, marginBottom:g.description?6:0 }}>
-            <div style={{ fontSize:26 }}>{g.icon}</div>
+            <div style={{ width:38, height:38, borderRadius:10, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><Icon name="users" size={19} color={C.accent}/></div>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{g.name}</div>
-              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>🔒 {g.members.length} members</div>
+              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{g.members.length} members</div>
             </div>
             <span style={{ fontSize:16, color:C.sub }}>›</span>
           </div>
@@ -9130,7 +9130,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                       <div style={{ fontSize:12, color:C.sub }}>{ex.muscle}</div>
                     </div>
                     {(store.prs||{})[ex.name] && (
-                      <div style={{ fontSize:11, color:C.gold, fontWeight:700, fontFamily:MONO }}>🏆 {store.prs[ex.name]} {store.unit||"lbs"}</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:11, color:C.gold, fontWeight:700, fontFamily:MONO }}><Icon name="trophy" size={12} color={C.gold}/> {store.prs[ex.name]} {store.unit||"lbs"}</div>
                     )}
                     <span style={{ fontSize:14, color:C.sub }}>›</span>
                   </div>
@@ -9457,7 +9457,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
                   <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                 </div>
                 {showStreakBadge && (
-                  <div style={{ background:"#f97316", borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:700, color:"#fff" }}>🔥 {stats.streak}</div>
+                  <div style={{ background:"#f97316", borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:700, color:"#fff", display:"inline-flex", alignItems:"center", gap:4 }}><Icon name="flame" size={12} color="#fff"/> {stats.streak}</div>
                 )}
               </div>
               <div style={{ display:"flex", gap:0, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
@@ -9933,7 +9933,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             {isMe && (
               <>
                 <input ref={avatarRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatar}/>
-                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#fff", cursor:"pointer" }}>📷</div>
+                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", cursor:"pointer" }}><Icon name="plus" size={12} color="#fff"/></div>
               </>
             )}
           </div>
@@ -10395,13 +10395,13 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                       <button onClick={e => { e.stopPropagation(); setImg(null); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:26, height:26, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
                     </>
                   : <>
-                      <span style={{ fontSize:32 }}>{postKind==="story"?"⚡":"📸"}</span>
+                      <span style={{ display:"flex" }}><Icon name={postKind==="story"?"zap":"plus"} size={30} color={C.sub}/></span>
                       <span style={{ fontSize:13, color:C.sub }}>Tap to add {postKind==="story"?"story photo":"photo"}</span>
                     </>
                 }
               </div>
               {postKind === "photo" && (
-                <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Location (optional)"
+                <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="Location (optional)"
                   style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"11px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
               )}
               <div style={{ position:"relative" }}>
@@ -10482,7 +10482,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                   <span style={{ fontSize:18, fontWeight:800, color:C.accent, fontFamily:MONO }}>{calcPace()}</span>
                 </div>
               )}
-              <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="📍 Route or location"
+              <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="Route or location"
                 style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"11px 14px", fontSize:14, color:C.text, outline:"none", marginBottom:10, boxSizing:"border-box", fontFamily:F }}/>
               <textarea value={caption} onChange={e => setCaption(e.target.value.slice(0,MAX_CAPTION))} placeholder="How did it go?" rows={2}
                 style={{ width:"100%", background:C.divider, border:"none", borderRadius:12, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", fontFamily:F }}/>
@@ -11627,7 +11627,7 @@ export default function App() {
           : [...prev.programs, program],
         activeProgramId: program.id
       }));
-      toast("Program activated 💪", "success");
+      toast("Program activated", "success");
     } catch (e) {
       console.error("program save error:", e);
       toast("Couldn't save program", "error");
@@ -12587,10 +12587,10 @@ export default function App() {
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
                       <span style={{ fontWeight:600 }}>{ev.user.username} </span>
-                      {ev.type === "kudos" ? "liked your post 🔥"
+                      {ev.type === "kudos" ? "liked your post"
                         : ev.type === "comment" ? `commented: "${ev.comment?.text}"`
                         : ev.type === "mention" ? `mentioned you: "${ev.comment?.text}"`
-                        : ev.type === "friend_pr" ? "hit a new PR 🏆"
+                        : ev.type === "friend_pr" ? "hit a new PR"
                         : ev.type === "friend_post" ? (ev.verb || "shared a post")
                         : ""}
                     </div>
