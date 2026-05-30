@@ -4683,7 +4683,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
 // dismiss it and reveal the next. No close button. Tracks finger; snaps back if the
 // swipe is too small (fixes the half-swipe flicker — dismissal is committed only past
 // a threshold, on release).
-function InsightCards({ insights, C }) {
+function InsightCards({ insights, C, big }) {
   const [index, setIndex] = useState(0);
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -4742,20 +4742,20 @@ function InsightCards({ insights, C }) {
         onMouseLeave={() => { if (start.current != null) onEnd(); }}
         style={{
           background:C.accentSoft, border:`1px solid ${C.accent}40`,
-          borderRadius:16, padding:"14px 16px",
-          display:"flex", alignItems:"center", gap:13, position:"relative",
+          borderRadius:16, padding: big ? "18px 18px" : "14px 16px",
+          display:"flex", alignItems:"center", gap: big ? 15 : 13, position:"relative",
           transform:`translateX(${dx}px) rotate(${dx * 0.02}deg)`,
           opacity, touchAction:"pan-y",
           transition: dragging && axis.current === "h" ? "none" : "transform 0.18s ease-out, opacity 0.18s ease-out",
           cursor: dragging ? "grabbing" : "grab", userSelect:"none",
         }}
       >
-        <div style={{ width:38, height:38, borderRadius:11, flexShrink:0, background:C.accent, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <Icon name={insight.icon === "flame" ? "flame" : insight.icon === "trophy" ? "trophy" : "trending-up"} size={19} color="#fff"/>
+        <div style={{ width: big ? 44 : 38, height: big ? 44 : 38, borderRadius: big ? 13 : 11, flexShrink:0, background:C.accent, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <Icon name={insight.icon === "flame" ? "flame" : insight.icon === "trophy" ? "trophy" : "trending-up"} size={big ? 22 : 19} color="#fff"/>
         </div>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>{insight.headline}</div>
-          <div style={{ fontSize:12, color:C.sub, marginTop:1, lineHeight:1.35 }}>{insight.sub}</div>
+          <div style={{ fontSize: big ? 15 : 14, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>{insight.headline}</div>
+          <div style={{ fontSize: big ? 13 : 12, color:C.sub, marginTop: big ? 2 : 1, lineHeight:1.4 }}>{insight.sub}</div>
         </div>
       </div>
       {/* Dots indicator when there are multiple */}
@@ -4765,6 +4765,146 @@ function InsightCards({ insights, C }) {
             <div key={i} style={{ width:5, height:5, borderRadius:3, background: i === index ? C.accent : C.divider, transition:"background 0.2s" }}/>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Reorderable list of program day cards with a drag handle (grip). Press the handle and
+// drag vertically; other cards slide out of the way; release to drop. Falls back gracefully
+// (the handle only appears with >1 day). Kept self-contained so the drag state can't leak
+// into the rest of the workout tab.
+const DAY_CARD_COLORS = ["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"];
+function DayCardList({ prog, store, C, onPreview, onEdit, onStart, onReorder }) {
+  const [dragIdx, setDragIdx] = useState(null);   // index being dragged
+  const [overIdx, setOverIdx] = useState(null);   // index it would drop into
+  const [dragY, setDragY] = useState(0);           // finger delta from pickup
+  const startY = useRef(0);
+  const cardH = useRef(72);                        // measured card height (+gap)
+  const listRef = useRef(null);
+
+  const lastDoneFor = (day) => {
+    const dates = Object.keys(store.history||{}).sort().reverse();
+    for (const dk of dates) {
+      if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
+        const today = dKey();
+        if (dk >= today) return "Today";
+        const d = Math.max(0, Math.floor((new Date(today + "T12:00:00").getTime() - new Date(dk + "T12:00:00").getTime()) / 86400000));
+        return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
+      }
+    }
+    return null;
+  };
+
+  function pickUp(i, clientY, el) {
+    // Measure actual card height (including the 6px gap) for accurate slot math
+    const card = el?.closest("[data-day-card]");
+    if (card) cardH.current = card.offsetHeight + 6;
+    startY.current = clientY;
+    setDragIdx(i); setOverIdx(i); setDragY(0);
+    haptic("tap");
+  }
+  // While a drag is active, lock the page so it can't scroll underneath the drag.
+  // (React touch listeners are passive, so preventDefault alone can't stop scroll —
+  // locking the body is the reliable cross-WebView way.)
+  useEffect(() => {
+    if (dragIdx == null) return;
+    const prevOverflow = document.body.style.overflow;
+    const prevTouch = document.body.style.touchAction;
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+    return () => { document.body.style.overflow = prevOverflow; document.body.style.touchAction = prevTouch; };
+  }, [dragIdx]);
+  function moveTo(clientY) {
+    if (dragIdx == null) return;
+    const dy = clientY - startY.current;
+    setDragY(dy);
+    const shift = Math.round(dy / cardH.current);
+    const target = Math.max(0, Math.min(prog.days.length - 1, dragIdx + shift));
+    setOverIdx(target);
+  }
+  function drop() {
+    if (dragIdx == null) return;
+    if (overIdx != null && overIdx !== dragIdx) {
+      const ds = [...prog.days];
+      const [moved] = ds.splice(dragIdx, 1);
+      ds.splice(overIdx, 0, moved);
+      onReorder(ds);
+      haptic("success");
+    }
+    setDragIdx(null); setOverIdx(null); setDragY(0);
+  }
+
+  return (
+    <div ref={listRef} style={{ display:"flex", flexDirection:"column", gap:6 }}>
+      {prog.days.map((day, di) => {
+        const lastDone = lastDoneFor(day);
+        const color = DAY_CARD_COLORS[di%7];
+        const isDragging = dragIdx === di;
+        // Cards between the dragged card's origin and its target slide to make room
+        let shiftPx = 0;
+        if (dragIdx != null && !isDragging && overIdx != null) {
+          if (dragIdx < overIdx && di > dragIdx && di <= overIdx) shiftPx = -cardH.current;
+          else if (dragIdx > overIdx && di < dragIdx && di >= overIdx) shiftPx = cardH.current;
+        }
+        return (
+          <div key={day.id || di} data-day-card style={{
+            background:C.surface, border:`1px solid ${isDragging ? C.accent : C.border}`, borderRadius:14, overflow:"hidden",
+            borderLeft:`4px solid ${color}`,
+            transform: isDragging ? `translateY(${dragY}px) scale(1.02)` : `translateY(${shiftPx}px)`,
+            transition: isDragging ? "none" : "transform 0.2s cubic-bezier(0.2,0,0,1)",
+            boxShadow: isDragging ? "0 12px 30px rgba(0,0,0,0.25)" : "none",
+            position:"relative", zIndex: isDragging ? 10 : 1, touchAction: dragIdx != null ? "none" : "auto",
+          }}>
+            <div style={{ display:"flex", alignItems:"stretch" }}>
+              {prog.days.length > 1 && (
+                <div
+                  onTouchStart={(e) => pickUp(di, e.touches[0].clientY, e.currentTarget)}
+                  onTouchMove={(e) => { if (dragIdx != null) { e.preventDefault(); e.stopPropagation(); moveTo(e.touches[0].clientY); } }}
+                  onTouchEnd={drop}
+                  onTouchCancel={drop}
+                  onMouseDown={(e) => pickUp(di, e.clientY, e.currentTarget)}
+                  aria-label="Drag to reorder day"
+                  style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 12px", cursor:"grab", color:C.muted, touchAction:"none", flexShrink:0 }}>
+                  {/* grip dots */}
+                  <svg width="12" height="18" viewBox="0 0 12 18" fill={C.muted}><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg>
+                </div>
+              )}
+              <button onClick={() => onPreview(day)} style={{
+                flex:1, minWidth:0, background:"none", border:"none", padding:"13px 14px 13px 4px",
+                display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
+              }}>
+                <div style={{ width:38, height:38, borderRadius:10, background:`${color}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <span style={{ fontSize:14, fontWeight:800, color }}>{di+1}</span>
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
+                  <div style={{ fontSize:11, color:C.sub, marginTop:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                    {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
+                  </div>
+                </div>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  {lastDone && <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>{lastDone}</div>}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
+                </div>
+              </button>
+            </div>
+            <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
+              <button onClick={() => onEdit(di)} style={{
+                flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
+                fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
+              }}>Edit</button>
+              <button onClick={() => onStart(day)} style={{
+                flex:1, padding:"9px", background:"none", border:"none",
+                fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+              }}>Start ›</button>
+            </div>
+          </div>
+        );
+      })}
+      {/* Global move listeners while dragging via mouse (touch handled on the handle) */}
+      {dragIdx != null && (
+        <div onMouseMove={(e) => moveTo(e.clientY)} onMouseUp={drop} style={{ position:"fixed", inset:0, zIndex:9, cursor:"grabbing" }}/>
       )}
     </div>
   );
@@ -6544,14 +6684,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })()}
 
-          {/* Proactive progress insights — swipeable stack (Robinhood-style). Swipe a card
-              away to see the next; no close button. */}
-          {(() => {
-            const insights = getProgressInsights(store, unit);
-            if (!insights.length) return null;
-            return <InsightCards insights={insights} C={C}/>;
-          })()}
-
           {/* "On this day" — surfaces a comparable past workout for context */}
           {(() => {
             const today = new Date(); today.setHours(0,0,0,0);
@@ -6644,6 +6776,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
           {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
 
+          {/* Proactive progress insights — swipeable stack (Robinhood-style). Sits below the
+              tools so the action (Quick Start) and calculators come first, then the motivation. */}
+          {(() => {
+            const insights = getProgressInsights(store, unit);
+            if (!insights.length) return null;
+            return <InsightCards insights={insights} C={C} big/>;
+          })()}
+
           {prog ? (
             <>
               {/* Today's Targets — progressive overload suggestions for next day */}
@@ -6720,56 +6860,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>ACTIVE PROGRAM</div>
                 <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>{prog.name}</div>
               </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                {prog.days.map((day, di) => {
-                  const lastDone = (() => {
-                    const dates = Object.keys(store.history||{}).sort().reverse();
-                    for (const dk of dates) {
-                      if (Object.values(store.history[dk]||{}).some(s => s.dayName === day.name)) {
-                        // Compare dk to today's date key as strings — robust against TZ/DST quirks
-                        // that could make a same-day workout appear as "-1d ago" via time math.
-                        const today = dKey();
-                        if (dk >= today) return "Today";
-                        const d = Math.max(0, Math.floor((new Date(today + "T12:00:00").getTime() - new Date(dk + "T12:00:00").getTime()) / 86400000));
-                        return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
-                      }
-                    }
-                    return null;
-                  })();
-                  return (
-                  <div key={day.id || di} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, overflow:"hidden", borderLeft:`4px solid ${["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"][di%7]}` }}>
-                    <button onClick={() => setPreviewDay({ day, programName: prog.name })} style={{
-                      width:"100%", background:"none", border:"none", padding:"13px 14px",
-                      display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
-                    }}>
-                      <div style={{ width:38, height:38, borderRadius:10, background:`${["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"][di%7]}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                        <span style={{ fontSize:14, fontWeight:800, color:["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"][di%7] }}>{di+1}</span>
-                      </div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
-                        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
-                          {day.exercises.slice(0,3).map(e=>e.name).join(" · ")}{day.exercises.length > 3 ? ` +${day.exercises.length-3}` : ""}
-                        </div>
-                      </div>
-                      <div style={{ textAlign:"right", flexShrink:0 }}>
-                        {lastDone && <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>{lastDone}</div>}
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9,18 15,12 9,6"/></svg>
-                      </div>
-                    </button>
-                    <div style={{ display:"flex", borderTop:`1px solid ${C.divider}` }}>
-                      <button onClick={() => { setViewingProgram(prog.id); setInitialDayIdx(di); }} style={{
-                        flex:1, padding:"9px", background:"none", border:"none", borderRight:`1px solid ${C.divider}`,
-                        fontSize:12, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F
-                      }}>Edit</button>
-                      <button onClick={() => startWorkout(day, prog.id)} style={{
-                        flex:1, padding:"9px", background:"none", border:"none",
-                        fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
-                      }}>Start ›</button>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
+              <DayCardList
+                prog={prog}
+                store={store}
+                C={C}
+                onPreview={(day) => setPreviewDay({ day, programName: prog.name })}
+                onEdit={(di) => { setViewingProgram(prog.id); setInitialDayIdx(di); }}
+                onStart={(day) => startWorkout(day, prog.id)}
+                onReorder={(ds) => onSaveProgram({ ...prog, days: ds, _silent: true })}
+              />
             </>
           ) : (
             <div style={{ background:C.surface, border:`1px dashed ${C.border}`, borderRadius:14, padding:"28px 20px", textAlign:"center", marginTop:4 }}>
@@ -10099,11 +10198,11 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
       )}
 
       {/* Settings modal */}
-      {showBody && <BodyTrackingScreen store={store} setStore={setStore} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>}
+      {showBody && createPortal(<BodyTrackingScreen store={store} setStore={setStore} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>, document.body)}
 
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
-      {showDelete && (
-        <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      {showDelete && createPortal((
+        <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}` }}>
             <div style={{ width:46, height:46, borderRadius:13, background:"#ef444418", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
               <Icon name="trash" size={22} color="#ef4444"/>
@@ -10124,10 +10223,10 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
-      {showSettings && (
-        <div onClick={() => setShowSettings(false)} onTouchMove={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", touchAction:"none" }}>
+      {showSettings && createPortal((
+        <div onClick={() => setShowSettings(false)} onTouchMove={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", touchAction:"none" }}>
           <div onClick={e => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <div style={{ width:50 }}/>
@@ -10229,7 +10328,7 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {/* Followers / Following list modal */}
       {listModal && (() => {
