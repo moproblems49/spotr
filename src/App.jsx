@@ -2296,7 +2296,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   ) : false;
   const oneSided = exName ? isOneSidedBarbell(exName) : false;
   const platesBreakdown = useMemo(() => {
-    if (!isBarbell || isCardio || set.type === "warmup") return null;
+    if (!isBarbell || isCardio) return null;
     // Use the entered weight, or fall back to the grayed placeholder (previous weeks' weight)
     // so the plate diagram shows before you type, matching what the input displays.
     const effWeight = (set.weight !== "" && set.weight != null) ? set.weight : (prev?.w ?? null);
@@ -2308,12 +2308,13 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   const suggestion = useMemo(() => {
     if (!exName || isDone || set.type === "warmup" || isCardio) return null;
     if (set.weight || set.reps) return null; // user already filled in
-    return suggestNextSet(store, exName, repsTarget, unit, si);
-    // Depend on store.history (the only thing suggestNextSet reads) rather than the whole
-    // store object — store gets a new identity on every keystroke, which would otherwise
-    // recompute this on each keypress even though history hasn't changed.
+    // Use prevIndex (the WORKING-set position, warmups excluded) — the same index the shadow
+    // placeholder uses — so the suggestion reads the matching set from last session. Passing
+    // raw `si` (which counts warmups) made them read different sets, so the green arrow could
+    // suggest FEWER reps than the shadow showed you hit last time.
+    return suggestNextSet(store, exName, repsTarget, unit, prevIndex != null ? prevIndex : si);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exName, isDone, set.type, set.weight, set.reps, store.history, repsTarget, unit, si, isCardio]);
+  }, [exName, isDone, set.type, set.weight, set.reps, store.history, repsTarget, unit, si, prevIndex, isCardio]);
 
   return (
     <div data-no-tab-swipe style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
@@ -2511,7 +2512,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           {!suggestion && prev && (!set.weight || !set.reps) && (
             <button onClick={() => { onUpdate({weight:prev.w,reps:prev.r}); haptic("tap"); }} style={{ background:`${C.accent}15`, border:`1px solid ${C.accent}30`, color:C.accent, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:F }}>Use last</button>
           )}
-          {est1RM && !isCardio && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
+          {est1RM && !isCardio && set.type !== "warmup" && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
           {/* RPE tag — only for completed working sets. Tap to set/clear how hard the set felt
               (6-10, RPE = reps-in-reserve scale). Kept out of the main row to avoid clutter. */}
           {isDone && !isCardio && set.type !== "warmup" && (
@@ -3026,7 +3027,7 @@ function PRModal({ prs, unit, onClose }) {
             width:"100%", background:"#fff", color:"#0A0A0A",
             border:"none", borderRadius:12, padding:"15px",
             fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2,
-          }}>Keep going</button>
+          }}>Let's go</button>
         </div>
       </div>
     </div>
@@ -5426,8 +5427,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Instead of silently overwriting the program (surprising for one-off swaps),
       // we detect changes and offer the user a choice on the summary screen.
       let programChange = null;
-      if (session.programId && onSaveProgram) {
-        const prog = store.programs.find(p => p.id === session.programId);
+      if (onSaveProgram) {
+        // Resolve the program: prefer the session's programId, else fall back to the active
+        // program. (A session started without a programId — e.g. from certain entry points —
+        // would otherwise skip change detection entirely and never offer to update.)
+        const prog = store.programs.find(p => p.id === session.programId)
+          || store.programs.find(p => p.id === store.activeProgramId);
         // Match the day by id first (most reliable), then fall back to a normalized name
         // compare so punctuation/spacing drift ("Legs A · Quads" vs "Legs A - Quads") doesn't
         // make the match fail (which would silently suppress the update-program prompt).
@@ -5520,10 +5525,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         return Array.from(set);
       })();
 
-      // Clear session first so workout screen dismisses
+      // NOTE: we intentionally do NOT clear `session` here. The summary overlay lives inside
+      // the `if (session)` render and covers the workout UI (fixed, full-screen). Clearing the
+      // session now would unmount the summary (and its "Update program?" prompt) before the
+      // user ever sees it. Session is cleared when the summary is dismissed instead.
       clearInterval(elRef.current);
       try { localStorage.removeItem(SESSION_KEY); } catch {}
-      setSession(null);
       setWStart(null);
       setElapsed(0);
       setRest(null);
@@ -5566,8 +5573,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         return { type:"workout", caption:`${session.dayName} — done.`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
       })();
 
-      // If user picked "Save & send to groups", post to groups only and skip summary
-      if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0) {
+      // If user picked "Save & send to groups", post to groups. Normally we skip the summary
+      // for this fast path — BUT if the session changed the program's structure, we still need
+      // to show the summary so the "Update program?" prompt appears (it lives on the summary).
+      if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && !programChange) {
         onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
         const gSave = await onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
         if (gSave && gSave.ok === false) {
@@ -5640,6 +5649,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         // only built shareData but never posted it).
         if (share && onShareWorkout) {
           onShareWorkout({ ...shareData, groupOnly: false });
+        }
+        // If this was a group-share that fell through to the summary (because a program change
+        // needed confirming), still post to the selected groups so they aren't skipped.
+        if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && onShareWorkout) {
+          onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
         }
       }
 
@@ -6378,7 +6392,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         : `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
                       if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
                       else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
-                      setShowWorkoutSummary(false); setWorkoutSummary(null);
+                      setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
                     }} style={{ width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                       Share to Feed{groupLabel}
@@ -6400,14 +6414,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <button onClick={() => {
                       if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
                       if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, feedOnly: false, groupOnly: true });
-                      setShowWorkoutSummary(false); setWorkoutSummary(null);
+                      setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
                     }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                       Groups Only{selectedGroups.length > 0 ? ` (${selectedGroups.length})` : ""}
                     </button>
                   );
                 })()}
-                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
+                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
                 {workoutSummary.undo && (
                   <button onClick={async () => {
                     const u = workoutSummary.undo;
@@ -10606,7 +10620,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
     return (
       <div style={{
         minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
-        paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
+        paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 24px) + 20px)",
         paddingLeft:24, paddingRight:24, position:"relative", overflow:"hidden",
       }}>
         {/* Soft ambient gradient — no generic blobs */}
@@ -11134,7 +11148,27 @@ export default function App() {
         };
       });
 
-      setStore(prev => ({ ...prev, posts: appPosts }));
+      setStore(prev => {
+        const incoming = appPosts;
+        const incomingIds = new Set(incoming.map(p => p.id));
+        // Preserve the locally-held image preview on a just-created post until its uploaded
+        // image_url is live.
+        const merged = incoming.map(p => {
+          const existing = (prev.posts || []).find(o => o.id === p.id);
+          return existing?._localImage && !p.imageData ? { ...p, _localImage: existing._localImage } : p;
+        });
+        // Carry forward ONLY very-recently-created local posts the server query hasn't
+        // surfaced yet (created in the last 2 min) — covers the just-posted-then-refreshed
+        // race. We deliberately do NOT carry arbitrary older posts, so a post deleted on the
+        // server is correctly removed rather than zombie-resurrected.
+        const now = Date.now();
+        const carried = (prev.posts || []).filter(o =>
+          !incomingIds.has(o.id) && o.createdAt && (now - o.createdAt) < 120000
+        );
+        const all = [...merged, ...carried];
+        all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return { ...prev, posts: all };
+      });
     } catch (e) {
       console.error("loadFeed error:", e);
     }
@@ -12112,7 +12146,9 @@ export default function App() {
   // Clamped at 0 (e.g. if a kudos was removed, we don't show negative).
   const notifCount = Math.max(0, currentActivityCount - seenActivityCount);
 
-  if (prModal) return <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>;
+  // (PR modal is rendered as an overlay near the end of the tree — NOT as an early return —
+  // so the workout summary (with the "Update program?" prompt) stays mounted underneath and
+  // is still visible after the user dismisses the PR celebration.)
 
   // First-run onboarding. Shows only to genuinely new users: not a guest, hasn't seen it,
   // and has no workout history yet (so existing testers who predate the flag don't get it).
@@ -12250,6 +12286,7 @@ export default function App() {
           -webkit-touch-callout: none;
         }
       `}</style>
+      {prModal && <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>}
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
 
