@@ -1,14 +1,110 @@
 // v1778305358100
 // PATCHED v13 - BUILD 2026-05-11 - share filter, edit workout redesign, builder sets/rest/notes
-import { useState, useEffect, useRef, memo, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SUPABASE CLIENT
+// DURABLE NATIVE STORAGE
+// localStorage in an iOS WKWebView is NOT durable — iOS can evict it under storage
+// pressure, which would wipe a user's local workout state. This layer makes the app's
+// state survive that by mirroring every localStorage write to the native Capacitor
+// Preferences store (real on-device storage), and restoring from it at launch.
+//
+// Design choice (deliberately low-risk): the app keeps using synchronous `localStorage`
+// exactly as before — we don't touch the ~30 call sites. We just (1) hydrate localStorage
+// from native Preferences ONCE at startup (before React renders), and (2) transparently
+// mirror writes/removes to native in the background by wrapping setItem/removeItem.
+// If Preferences is empty on first run (existing users), localStorage already has their
+// data and we seed Preferences from it — so nothing is ever lost in the transition.
 // ═════════════════════════════════════════════════════════════════════════════
+function nativePrefs() {
+  const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+  if (Cap?.isNativePlatform?.() && Cap.Plugins?.Preferences) return Cap.Plugins.Preferences;
+  return null;
+}
+
+// Keys we mirror to native storage. We only persist the app's real state — not transient
+// caches. (Anything not listed still works in localStorage; it just isn't durably backed.)
+const DURABLE_PREFIX = "seshd_";
+
+// Mirror a single key's current localStorage value into native Preferences (fire-and-forget).
+function mirrorToNative(key) {
+  const P = nativePrefs();
+  if (!P) return;
+  try {
+    const val = localStorage.getItem(key);
+    if (val == null) { P.remove({ key }).catch(() => {}); }
+    else { P.set({ key, value: val }).catch(() => {}); }
+  } catch {}
+}
+
+// Install the write-through mirror ONCE. After this, every localStorage.setItem/removeItem
+// for a seshd_* key also updates native storage. Idempotent.
+let __mirrorInstalled = false;
+function installStorageMirror() {
+  if (__mirrorInstalled || typeof window === "undefined" || !window.localStorage) return;
+  if (!nativePrefs()) return; // web build / not native — plain localStorage is fine
+  __mirrorInstalled = true;
+  const origSet = localStorage.setItem.bind(localStorage);
+  const origRemove = localStorage.removeItem.bind(localStorage);
+  localStorage.setItem = function (key, value) {
+    origSet(key, value);
+    if (typeof key === "string" && key.startsWith(DURABLE_PREFIX)) {
+      try { nativePrefs()?.set({ key, value: String(value) }).catch(() => {}); } catch {}
+    }
+  };
+  localStorage.removeItem = function (key) {
+    origRemove(key);
+    if (typeof key === "string" && key.startsWith(DURABLE_PREFIX)) {
+      try { nativePrefs()?.remove({ key }).catch(() => {}); } catch {}
+    }
+  };
+}
+
+// Hydrate localStorage from native Preferences at startup. MUST be awaited before the app
+// reads localStorage (i.e. before React mounts) so loadStore()/loadSession() see real data.
+// - If native has data: copy it into localStorage (this is the durable source of truth).
+// - If native is empty but localStorage has data (existing user's first run on this build):
+//   seed native from localStorage so it's protected from here on.
+// Exported so the app entry (main.jsx) can `await hydrateFromNative()` BEFORE mounting React,
+// ensuring localStorage is populated from durable native storage before loadStore() runs.
+export { hydrateFromNative };
+
+async function hydrateFromNative() {
+  const P = nativePrefs();
+  if (!P) return; // web / non-native — localStorage is already the store
+  try {
+    const { keys } = await P.keys();
+    const nativeKeys = (keys || []).filter(k => typeof k === "string" && k.startsWith(DURABLE_PREFIX));
+    if (nativeKeys.length > 0) {
+      // Native is the source of truth — pull everything into localStorage.
+      for (const key of nativeKeys) {
+        try {
+          const { value } = await P.get({ key });
+          if (value != null) localStorage.setItem(key, value);
+        } catch {}
+      }
+    } else {
+      // First run with native storage available — seed it from whatever localStorage has.
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(DURABLE_PREFIX)) {
+            const value = localStorage.getItem(key);
+            if (value != null) await P.set({ key, value });
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  // Install the write-through mirror AFTER hydration so we don't echo during restore.
+  installStorageMirror();
+}
+
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -107,30 +203,77 @@ const sb = (() => {
 
 // Upload image to Supabase Storage, return public URL
 // Upload image via Edge Function proxy — bypasses iOS Safari CORS/Storage issues
+// Downscale + recompress an image (base64 data URL) before upload. Phone photos are often
+// 3-8MB; this caps the longest side at maxDim and re-encodes as JPEG, typically cutting size
+// by 80-95%. Faster uploads on mobile data, smaller storage, snappier loads. Falls back to the
+// original on any failure (e.g. canvas blocked) so upload still works.
+function compressImage(base64DataUrl, maxDim = 1200, quality = 0.8) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+            else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(base64DataUrl); return; }
+          ctx.drawImage(img, 0, 0, width, height);
+          // JPEG drops transparency (fine for photos/avatars) and compresses well.
+          const out = canvas.toDataURL("image/jpeg", quality);
+          resolve(out && out.length > 20 ? out : base64DataUrl);
+        } catch { resolve(base64DataUrl); }
+      };
+      img.onerror = () => resolve(base64DataUrl);
+      img.src = base64DataUrl;
+    } catch { resolve(base64DataUrl); }
+  });
+}
+
+// Upload an image (base64 data URL) directly to Supabase Storage and return its public URL.
+// Direct-to-Storage means NO Edge Function is required — just a public "images" bucket.
+// Falls back to returning null on failure (callers keep the local preview / handle gracefully).
 async function uploadImage(base64DataUrl, token, userId) {
   if (!base64DataUrl || !token) return null;
   try {
-    const mime = base64DataUrl.match(/data:(.*?);/)?.[1] || "image/jpeg";
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-image`, {
+    // Compress/resize first (no-op fallback to original if it fails). Always JPEG after this.
+    const compressed = await compressImage(base64DataUrl);
+    const mime = compressed.match(/data:(.*?);/)?.[1] || "image/jpeg";
+    const ext = mime.split("/")[1]?.split("+")[0] || "jpg";
+    // base64 → binary blob
+    const base64 = compressed.split(",")[1] || "";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    // Unique path per user so uploads don't collide and RLS can scope by the user's folder.
+    const path = `${userId || "anon"}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/images/${path}`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
+        "Content-Type": mime,
+        "x-upsert": "true",
       },
-      body: JSON.stringify({ base64: base64DataUrl, mimeType: mime }),
+      body: blob,
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.warn("uploadImage edge fn error:", err);
+      const err = await res.text().catch(() => "");
+      console.warn("uploadImage storage error:", res.status, err);
       return null;
     }
-    const { url } = await res.json();
-    return url || null;
+    // Public URL for the object (bucket must be public-read).
+    return `${SUPABASE_URL}/storage/v1/object/public/images/${path}`;
   } catch (e) {
     console.warn("uploadImage failed:", e);
     return null;
   }
 }
+
 
 // Session storage
 const SESSION_STORAGE_KEY = "seshd_session";
@@ -1354,6 +1497,33 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
 // Most users on iOS won't feel these (Safari doesn't support navigator.vibrate)
 // but Android and Capacitor-wrapped builds will. The patterns degrade gracefully.
 function haptic(kind) {
+  // Native haptics (iOS/Android) via the Capacitor Haptics plugin, reached through the runtime
+  // global so there's no build-time import (keeps the web bundle clean). Real Taptic Engine
+  // feedback — far better than web vibration, which iOS Safari/WKWebView ignores entirely.
+  try {
+    const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+    if (Cap?.isNativePlatform?.() && Cap.Plugins?.Haptics) {
+      const H = Cap.Plugins.Haptics;
+      const impact = (style) => { try { H.impact({ style }); } catch {} };
+      const notify = (type) => { try { H.notification({ type }); } catch {} };
+      switch (kind) {
+        case "tap": case "lock": case "modal-out": case "back": impact("LIGHT"); break;
+        case "light": case "modal-in": case "tab": case "undo": case "refresh": impact("LIGHT"); break;
+        case "medium": impact("MEDIUM"); break;
+        case "heavy": impact("HEAVY"); break;
+        case "complete": notify("SUCCESS"); break;
+        case "rest-end": notify("WARNING"); break;
+        case "delete": case "warn": notify("WARNING"); break;
+        case "error": notify("ERROR"); break;
+        case "success": notify("SUCCESS"); break;
+        case "pr-small": notify("SUCCESS"); break;
+        case "pr": notify("SUCCESS"); break;
+        case "pr-big": notify("SUCCESS"); setTimeout(() => notify("SUCCESS"), 130); break;
+        default: impact("LIGHT");
+      }
+      return; // handled natively — don't also fire web vibration
+    }
+  } catch {}
   try {
     if (!navigator.vibrate) return;
     switch (kind) {
@@ -1395,8 +1565,88 @@ function haptic(kind) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SEED DATA
+// LOCAL NOTIFICATIONS — native rest-timer alert that fires even when the app is
+// backgrounded or the phone is locked. A JS timer can't run in the background on iOS
+// (the WebView is suspended), so instead we SCHEDULE a local notification for when the
+// rest period ends, and cancel it if rest finishes/cancels early. Reached via the runtime
+// Capacitor global so there's no build-time import (keeps the web bundle clean).
 // ═════════════════════════════════════════════════════════════════════════════
+function nativeLocalNotifs() {
+  const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+  if (Cap?.isNativePlatform?.() && Cap.Plugins?.LocalNotifications) return Cap.Plugins.LocalNotifications;
+  return null;
+}
+const REST_NOTIF_ID = 7711; // fixed id so we can reliably cancel/replace the rest notification
+let __notifPermAsked = false;
+async function ensureNotifPermission() {
+  const LN = nativeLocalNotifs();
+  if (!LN) return false;
+  try {
+    const status = await LN.checkPermissions();
+    if (status?.display === "granted") return true;
+    if (__notifPermAsked) return false; // don't nag if already asked & denied this session
+    __notifPermAsked = true;
+    const req = await LN.requestPermissions();
+    return req?.display === "granted";
+  } catch { return false; }
+}
+// Schedule the "rest is up" notification `seconds` from now. Cancels any prior one first.
+async function scheduleRestNotification(seconds) {
+  const LN = nativeLocalNotifs();
+  if (!LN || !seconds || seconds < 1) return;
+  try {
+    const ok = await ensureNotifPermission();
+    if (!ok) return;
+    await LN.cancel({ notifications: [{ id: REST_NOTIF_ID }] }).catch(() => {});
+    await LN.schedule({
+      notifications: [{
+        id: REST_NOTIF_ID,
+        title: "Rest's up — back to work",
+        body: "Go hit your next set 💪",
+        schedule: { at: new Date(Date.now() + seconds * 1000) },
+        sound: "default",
+      }],
+    });
+  } catch {}
+}
+async function cancelRestNotification() {
+  const LN = nativeLocalNotifs();
+  if (!LN) return;
+  try { await LN.cancel({ notifications: [{ id: REST_NOTIF_ID }] }); } catch {}
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// NETWORK STATUS — offline detection. Uses the Capacitor Network plugin for reliable
+// native state + change events, falling back to navigator.onLine on web. Drives the
+// "you're offline" indicator and (later) the sync-queue flush on reconnect.
+// ═════════════════════════════════════════════════════════════════════════════
+function nativeNetwork() {
+  const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+  if (Cap?.isNativePlatform?.() && Cap.Plugins?.Network) return Cap.Plugins.Network;
+  return null;
+}
+// Subscribe to connectivity changes. Calls cb(isOnline) on every change and once initially.
+// Returns an unsubscribe function. Works on web (online/offline events) and native (plugin).
+function subscribeNetwork(cb) {
+  const N = nativeNetwork();
+  if (N) {
+    let handle = null;
+    try { N.getStatus().then(s => cb(!!s.connected)).catch(() => cb(true)); } catch { cb(true); }
+    try { handle = N.addListener("networkStatusChange", (s) => cb(!!s.connected)); } catch {}
+    return () => { try { handle?.remove?.(); } catch {} };
+  }
+  // Web fallback
+  const on = () => cb(true), off = () => cb(false);
+  try {
+    cb(typeof navigator !== "undefined" ? navigator.onLine !== false : true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+  } catch {}
+  return () => { try { window.removeEventListener("online", on); window.removeEventListener("offline", off); } catch {} };
+}
+
+
+
 const SEED_USERS = [
   { id:"u1", username:"you", name:"You", avatar:"💪", bio:"Chasing PRs 🔥", followers:["u2","u3","u4","u5","u6","u7","u8"], following:["u2","u3","u4","u5","u6","u7","u8","u9"] },
   { id:"u2", username:"marcus_lifts", name:"Marcus Chen", avatar:"🔥", bio:"Powerlifter · 600lb DL", followers:["u1","u3","u5"], following:["u1","u5"] },
@@ -2206,6 +2456,90 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
 // ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// CUSTOM NUMBER PAD — replaces the iOS keyboard for weight/reps entry.
+// The native numeric keyboard covers half the screen, lags, and on iOS doesn't even
+// show a decimal/done reliably. This is a fixed bottom pad: big tap targets, a decimal
+// (weight only), backspace, quick +/- steppers, and a Next button to jump weight→reps→
+// next set. Inputs are read-only so iOS never opens its own keyboard.
+// ═════════════════════════════════════════════════════════════════════════════
+function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onClose, C }) {
+  const decimalAllowed = field === "weight"; // reps are whole numbers
+  // Reps step by 1; weight by 2.5 (the common micro-plate jump); cardio fields by 1.
+  const step = (field === "reps" || isCardio) ? 1 : 2.5;
+  const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22 }) => (
+    <button
+      onMouseDown={(e) => { e.preventDefault(); }}
+      onClick={() => { onPress(); haptic("tap"); }}
+      style={{
+        flex, height:52, margin:3, borderRadius:11, cursor:"pointer",
+        background: bg || (C.isDark ? "rgba(255,255,255,0.07)" : "#fff"),
+        border:`1px solid ${C.border}`, color: color || C.text,
+        fontSize, fontWeight:700, fontFamily:F,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        userSelect:"none", WebkitUserSelect:"none",
+      }}
+    >{label}</button>
+  );
+  const fieldLabel = isCardio
+    ? (field === "weight" ? "MINUTES" : (unit === "kg" ? "KM" : "MI"))
+    : (field === "weight" ? (unit || "lbs").toUpperCase() : "REPS");
+  return (
+    <>
+      {/* Tap-anywhere-above backdrop to dismiss — so you're never trapped if Done is covered. */}
+      <div onClick={onClose} onTouchStart={(e) => { e.preventDefault(); onClose(); }} style={{ position:"fixed", inset:0, zIndex:449, background:"transparent" }}/>
+    <div
+      onMouseDown={(e) => e.preventDefault()}
+      onTouchStart={(e) => e.stopPropagation()}
+      style={{
+        position:"fixed", left:0, right:0, bottom:0, maxWidth:480, margin:"0 auto",
+        background:C.surface, borderTop:`1px solid ${C.border}`,
+        padding:"4px 6px calc(8px + env(safe-area-inset-bottom))",
+        zIndex:450, boxShadow:"0 -6px 20px rgba(0,0,0,0.12)",
+      }}
+    >
+      {/* Grab handle — tap to dismiss (visual affordance for closing the pad). */}
+      <div onClick={onClose} style={{ display:"flex", justifyContent:"center", padding:"4px 0 8px", cursor:"pointer" }}>
+        <div style={{ width:40, height:5, borderRadius:3, background:C.border }}/>
+      </div>
+      {/* Current field indicator + steppers */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"2px 8px 8px" }}>
+        <button onMouseDown={(e)=>e.preventDefault()} onClick={() => { onStep(-step); haptic("tap"); }} style={{ width:46, height:34, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>−</button>
+        <div style={{ textAlign:"center", minWidth:90 }}>
+          <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{value !== "" && value != null ? value : "—"}</div>
+          <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, marginTop:3 }}>{fieldLabel}</div>
+        </div>
+        <button onMouseDown={(e)=>e.preventDefault()} onClick={() => { onStep(step); haptic("tap"); }} style={{ width:46, height:34, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>+</button>
+      </div>
+      {/* Digit grid */}
+      <div style={{ display:"flex" }}>
+        <div style={{ flex:3 }}>
+          <div style={{ display:"flex" }}>
+            <Key label="1" onPress={() => onInput("1")} /><Key label="2" onPress={() => onInput("2")} /><Key label="3" onPress={() => onInput("3")} />
+          </div>
+          <div style={{ display:"flex" }}>
+            <Key label="4" onPress={() => onInput("4")} /><Key label="5" onPress={() => onInput("5")} /><Key label="6" onPress={() => onInput("6")} />
+          </div>
+          <div style={{ display:"flex" }}>
+            <Key label="7" onPress={() => onInput("7")} /><Key label="8" onPress={() => onInput("8")} /><Key label="9" onPress={() => onInput("9")} />
+          </div>
+          <div style={{ display:"flex" }}>
+            <Key label={decimalAllowed ? "." : ""} onPress={() => decimalAllowed && onInput(".")} />
+            <Key label="0" onPress={() => onInput("0")} />
+            <Key label="⌫" onPress={() => onInput("del")} fontSize={20} />
+          </div>
+        </div>
+        {/* Right action column */}
+        <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
+          <Key label="Next" onPress={onNext} bg={C.accent} color="#fff" fontSize={15} flex={3} />
+          <Key label="Done" onPress={onClose} fontSize={14} />
+        </div>
+      </div>
+    </div>
+    </>
+  );
+}
+
 const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [showRpe, setShowRpe] = useState(false);
@@ -2278,14 +2612,20 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
 
   // prevIndex is the set's position among working (non-warmup) sets; warmups get -1.
   // Falls back to si for any caller that doesn't pass it.
-  const prev = exName && set.type !== "warmup" ? getPrev(store, exName, prevIndex != null ? prevIndex : si, unit) : null;
+  // Memoized: getPrev searches workout history and EXERCISE_DB.find scans the whole DB —
+  // these don't depend on what you're currently typing, so recomputing them on every weight/
+  // reps keystroke was the main source of input lag. Recompute only when their real inputs change.
+  const prev = useMemo(
+    () => (exName && set.type !== "warmup") ? getPrev(store, exName, prevIndex != null ? prevIndex : si, unit) : null,
+    [store.history, exName, set.type, prevIndex, si, unit]
+  );
   const setType = SET_TYPES.find(t => t.id === set.type) || SET_TYPES[0];
   const est1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
   const isDone = set.done;
 
   // Duration-based exercise detection — show duration input instead of weight + reps.
   // Cardio (running, biking) tracks duration + distance. Yoga tracks duration only.
-  const exMuscle = exName ? EXERCISE_DB.find(e => e.name === exName)?.muscle : null;
+  const exMuscle = useMemo(() => exName ? EXERCISE_DB.find(e => e.name === exName)?.muscle : null, [exName]);
   const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
 
   // Barbell detection — show plate breakdown inline when this is a barbell move with a set weight
@@ -2433,13 +2773,13 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         {isCardio ? (
           <>
             <div style={{ position:"relative", width:70 }}>
-              <input type="number" inputMode="decimal" value={set.weight||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("weight"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
+              <input readOnly type="text" inputMode="none" value={set.weight||""} onClick={() => onFocusInput && onFocusInput("weight")} placeholder={prev?.w||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>min</span>
             </div>
             <div style={{ position:"relative", width:62 }}>
-              <input type="number" inputMode="decimal" value={set.reps||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("reps"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
+              <input readOnly type="text" inputMode="none" value={set.reps||""} onClick={() => onFocusInput && onFocusInput("reps")} placeholder={prev?.r||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
@@ -2448,14 +2788,14 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         ) : (
           <>
             <div style={{ position:"relative", width:70 }}>
-              <input type="number" inputMode="decimal" value={set.weight||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("weight"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({weight:e.target.value})} placeholder={prev?.w||"0"}
+              <input readOnly type="text" inputMode="none" value={set.weight||""} onClick={() => onFocusInput && onFocusInput("weight")} placeholder={prev?.w||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit}</span>
             </div>
 
             <div style={{ position:"relative", width:58 }}>
-              <input type="number" inputMode="numeric" value={set.reps||""} onFocus={e => { e.target.select(); onFocusInput && onFocusInput("reps"); }} onBlur={() => onBlurInput && onBlurInput()} onChange={e => onUpdate({reps:e.target.value})} placeholder={prev?.r||"0"}
+              <input readOnly type="text" inputMode="none" value={set.reps||""} onClick={() => onFocusInput && onFocusInput("reps")} placeholder={prev?.r||"0"}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
               />
               <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>reps</span>
@@ -4496,7 +4836,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         if (!p.workout) return p;
         if (p.workout.name !== sess.dayName) return p;
         // Match if posted around the same time as the workout finished
-        const finishedAt = sess.finishedAt || new Date(date).getTime();
+        const finishedAt = sess.finishedAt || new Date(date + "T12:00:00").getTime();
         if (Math.abs((p.createdAt || 0) - finishedAt) > 86400000) return p; // > 24h apart, not the same workout
         // Rebuild the post.workout.exercises to reflect new numbers
         const postEx = exercises.filter(e => e.name).map(ex => {
@@ -4522,7 +4862,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
           p.userId === currentUserId &&
           p.type === "workout" &&
           p.workout?.name === sess.dayName &&
-          Math.abs((p.createdAt || 0) - (sess.finishedAt || new Date(date).getTime())) < 86400000
+          Math.abs((p.createdAt || 0) - (sess.finishedAt || new Date(date + "T12:00:00").getTime())) < 86400000
         );
         if (match && !String(match.id).startsWith("hist_")) {
           // Recompute the workout payload to mirror local state
@@ -4552,7 +4892,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
     // so we match on user_id + workout name + a time window around when the workout finished.
     try {
       if (token) {
-        const finishedAt = sess.finishedAt || new Date(date).getTime();
+        const finishedAt = sess.finishedAt || new Date(date + "T12:00:00").getTime();
         const myGroups = (store.groups || []).filter(g =>
           (g.members || g.member_ids || []).includes(currentUserId)
         );
@@ -4614,7 +4954,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         <button onClick={handleSave} disabled={saving} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor: saving ? "default" : "pointer", fontFamily:F, opacity: saving ? 0.5 : 1 }}>{saving ? "..." : "Save"}</button>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px 32px" }}>
-        <div style={{ fontSize:11, color:C.sub, marginBottom:10, letterSpacing:0.4, fontWeight:600 }}>{sess.dayName} · {new Date(date).toLocaleDateString()}</div>
+        <div style={{ fontSize:11, color:C.sub, marginBottom:10, letterSpacing:0.4, fontWeight:600 }}>{sess.dayName} · {new Date(date + "T12:00:00").toLocaleDateString()}</div>
         {exercises.map((ex, ei) => (
           <div key={ei} style={{ marginBottom:18, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 12px 8px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
@@ -4721,8 +5061,13 @@ function InsightCards({ insights, C, big, onDismiss }) {
       const dismissedKey = insights[index]?.key;
       setDx(dir * 500);
       setTimeout(() => {
-        if (dismissedKey && onDismiss) onDismiss(dismissedKey);
-        setIndex(i => i + 1); setDx(0); setDragging(false); axis.current = null;
+        // Dismissing updates the parent's dismissedInsights, which re-filters this list so
+        // the swiped card is removed and the array reindexes. We therefore reset to 0 (the
+        // next card now occupies the current slot) instead of incrementing — incrementing on
+        // top of the reindex skipped a card and caused the flicker/jump.
+        if (dismissedKey && onDismiss) { onDismiss(dismissedKey); setIndex(0); }
+        else { setIndex(i => i + 1); }
+        setDx(0); setDragging(false); axis.current = null;
       }, 180);
     } else {
       setDx(0);
@@ -5122,6 +5467,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
   const unit = store.unit || "lbs";
   const prog = store.programs?.find(p => p.id === store.activeProgramId);
+  // Memoized so it doesn't recompute on every render (every keystroke, every 30s tick).
+  // Recomputes only when the inputs that actually affect insights change.
+  const memoInsights = useMemo(() => getProgressInsights(store, unit), [store.history, store.prs, store.workoutDates, store.dismissedInsights, store.weeklyTarget, unit]);
 
   useEffect(() => {
     clearInterval(elRef.current);
@@ -5169,6 +5517,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             // In-app toast only when the app is actually on screen
             if (document.visibilityState === "visible") {
               try { toast("Rest is up — go", "success"); } catch {}
+              // We handled it in-app — cancel the scheduled native notification so it doesn't
+              // also fire a redundant system alert a moment later.
+              try { cancelRestNotification(); } catch {}
             } else {
               // System notification only when the app is backgrounded / another app is in use.
               // (Note: iOS Safari/PWA only delivers these when the page is alive in the background;
@@ -5199,6 +5550,20 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     }
     return () => clearInterval(rtRef.current);
   }, [rest?.running, rest?.startedAt]);
+
+  // Schedule a NATIVE local notification when a rest period starts, so the "rest's up" alert
+  // fires even if the app is backgrounded or the phone is locked (a JS timer can't — iOS
+  // suspends the WebView). Cancel it whenever rest stops/changes. No-op on web / non-native.
+  useEffect(() => {
+    if (rest?.running && rest.startedAt && rest.total) {
+      const elapsed = Math.floor((Date.now() - rest.startedAt) / 1000);
+      const remaining = Math.max(0, rest.total - elapsed);
+      if (remaining >= 1) scheduleRestNotification(remaining);
+    } else {
+      cancelRestNotification();
+    }
+    return () => { cancelRestNotification(); };
+  }, [rest?.running, rest?.startedAt, rest?.total]);
 
   function startWorkout(day, progId) {
     const exs = day
@@ -5834,7 +6199,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
         )}
 
-        {rest && rest.minimized && (
+        {rest && rest.minimized && !focusedSet && (
           <div style={{ position:"fixed", left:12, right:12, bottom:14, zIndex:490, padding:"14px 16px", borderRadius:22, background:C.surface, border:`1px solid ${C.divider}`, boxShadow:"0 20px 40px rgba(0,0,0,0.14)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0, flex:1 }}>
               <div style={{ width:56, height:56, borderRadius:18, background:C.divider, display:"grid", placeItems:"center", fontSize:18, fontWeight:700, color:C.text, fontFamily:MONO }}>
@@ -5998,7 +6363,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   return (
                   <div key={set.id||si}>
                     <SetRow set={set} si={si} prevIndex={prevIndex} ei={ei} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
-                      onFocusInput={(field) => setFocusedSet({ ei, si, field })}
+                      onFocusInput={(field) => setFocusedSet(prev =>
+                        // Tapping the field that's already open toggles the pad closed;
+                        // otherwise open/switch the pad to the tapped field.
+                        (prev && prev.ei === ei && prev.si === si && prev.field === field) ? null : { ei, si, field }
+                      )}
                       onBlurInput={() => {
                         // small delay so a tap on the keyboard accessory button can register before clearing focused state
                         setTimeout(() => setFocusedSet(prev => (prev && prev.ei === ei && prev.si === si) ? null : prev), 100);
@@ -6387,11 +6756,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         // Share to feed AND any selected groups in one shot
                         onShareWorkout({ ...enrichedShareData, groupIds: selectedGroups, groupOnly: false });
                       }
-                      const text = progCode
-                        ? `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}\nTry my program: ${progCode}`
-                        : `${workoutSummary.dayName} on Seshd — ${workoutSummary.duration} · ${workoutSummary.sets} sets · ${workoutSummary.volume}`;
-                      if (navigator.share) navigator.share({ title:"Seshd Workout", text }).catch(()=>{});
-                      else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
+                      // (External/native share removed — it could only send plain text, not the
+                      // summary card, and any link has nowhere public to point yet. In-app feed +
+                      // groups is the real sharing path; external/public pages are a post-wrap item.)
                       setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
                     }} style={{ width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
@@ -6487,50 +6854,56 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           if (!ex || !set) return null;
           const exMuscle = ex.name ? EXERCISE_DB.find(e => e.name === ex.name)?.muscle : null;
           const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
-          // Single increment per type — clean and uncluttered. Reps are entered directly
-          // (the numeric keyboard / future custom pad handles them), so no rep steppers here.
-          const wStep = isCardio ? 1 : 2.5;
-          const applyWeight = (d) => {
-            const cur = parseFloat(set.weight) || 0;
-            updateSet(focusedSet.ei, focusedSet.si, { weight: String(Math.max(0, Math.round((cur + d) * 10) / 10)) });
-            haptic("tap");
+          const field = focusedSet.field || "weight";
+          const curVal = field === "weight" ? set.weight : set.reps;
+
+          // Type a digit / decimal / delete into the focused field
+          const onInput = (ch) => {
+            let v = String(curVal == null ? "" : curVal);
+            if (ch === "del") {
+              v = v.slice(0, -1);
+            } else if (ch === ".") {
+              if (v.includes(".")) return;        // one decimal only
+              if (v === "") v = "0.";             // leading-zero for ".5"
+              else v = v + ".";
+            } else {
+              // Cap length so a fat-fingered hold can't make a 12-digit number
+              if (v.replace(".", "").length >= 6) return;
+              v = v + ch;
+            }
+            updateSet(focusedSet.ei, focusedSet.si, field === "weight" ? { weight: v } : { reps: v });
           };
-          const curWeight = set.weight !== "" && set.weight != null ? set.weight : "—";
-          const stepBtn = {
-            width:40, height:36, borderRadius:9, cursor:"pointer",
-            background:C.isDark ? "rgba(255,255,255,0.06)" : C.bg,
-            border:`1px solid ${C.border}`, color:C.text,
-            fontSize:18, fontWeight:600, fontFamily:F,
-            display:"flex", alignItems:"center", justifyContent:"center",
+          // +/- stepper (reps step by 1, weight by 2.5 / cardio min by 1)
+          const onStep = (d) => {
+            const cur = parseFloat(curVal) || 0;
+            const next = field === "reps"
+              ? String(Math.max(0, Math.round(cur + d)))
+              : String(Math.max(0, Math.round((cur + d) * 10) / 10));
+            updateSet(focusedSet.ei, focusedSet.si, field === "weight" ? { weight: next } : { reps: next });
           };
+          // Next: weight → reps → (next set's weight). Jumps the pad along the row.
+          const onNext = () => {
+            haptic("light");
+            if (field === "weight") { setFocusedSet({ ei: focusedSet.ei, si: focusedSet.si, field: "reps" }); return; }
+            // field === reps → advance to next set in this exercise if it exists
+            const nextSi = focusedSet.si + 1;
+            if (ex.sets[nextSi]) setFocusedSet({ ei: focusedSet.ei, si: nextSi, field: "weight" });
+            else setFocusedSet(null);
+          };
+          const onClose = () => { haptic("tap"); setFocusedSet(null); };
+
           return (
-            <div
-              onMouseDown={(e) => e.preventDefault()}
-              onTouchStart={(e) => e.stopPropagation()}
-              style={{
-                position:"fixed", left:0, right:0,
-                bottom: kbOffset > 0 ? kbOffset + 44 : 0,
-                maxWidth:480, margin:"0 auto",
-                background:C.surface, borderTop:`1px solid ${C.border}`,
-                padding:"10px 14px calc(10px + env(safe-area-inset-bottom))",
-                zIndex:400, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-                boxShadow:"0 -4px 14px rgba(0,0,0,0.06)",
-                transition:"bottom 0.15s ease-out",
-              }}>
-              {/* Weight stepper — − [value unit] + */}
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <button onClick={() => applyWeight(-wStep)} style={stepBtn}>−</button>
-                <div style={{ minWidth:72, textAlign:"center" }}>
-                  <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{curWeight}</div>
-                  <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:0.8, marginTop:2 }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</div>
-                </div>
-                <button onClick={() => applyWeight(wStep)} style={stepBtn}>+</button>
-              </div>
-              <button onClick={() => { if (document.activeElement?.blur) document.activeElement.blur(); }} style={{
-                background:C.accent, border:"none", borderRadius:9, padding:"9px 18px",
-                color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0,
-              }}>Done</button>
-            </div>
+            <NumberPad
+              field={field}
+              value={curVal}
+              unit={unit}
+              isCardio={isCardio}
+              onInput={onInput}
+              onStep={onStep}
+              onNext={onNext}
+              onClose={onClose}
+              C={C}
+            />
           );
         })()}
 
@@ -6541,18 +6914,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
-              <button onClick={() => finishWorkout(true)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish & share"}</button>
-              {(() => {
-                const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
-                if (myGroups.length === 0) return null;
-                return (
-                  <button onClick={() => { setShowFinish(false); setSelectedGroupIds([]); setShowGroupShare(true); }} disabled={finishing} style={{ width:"100%", background:"transparent", color:C.text, border:`1px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Save & send to groups
-                  </button>
-                );
-              })()}
-              <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:"transparent", color:C.text, border:`1px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:600, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F }}>{finishing ? "…" : "Save only"}</button>
+              <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish workout"}</button>
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
             </div>
           </div>
@@ -6789,7 +7151,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {/* Proactive progress insights — swipeable stack (Robinhood-style). Sits below the
               tools so the action (Quick Start) and calculators come first, then the motivation. */}
           {(() => {
-            const insights = getProgressInsights(store, unit);
+            const insights = memoInsights;
             if (!insights.length) return null;
             return <InsightCards insights={insights} C={C} big onDismiss={(key) => setStore(p => ({ ...p, dismissedInsights: [...(p.dismissedInsights || []), key] }))}/>;
           })()}
@@ -7186,7 +7548,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => (
               <div key={date} data-history-date={date} style={{ marginBottom:16, scrollMarginTop:60 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
-                  {new Date(date).toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
+                  {new Date(date + "T12:00:00").toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
                 </div>
                 {Object.entries(sessions).map(([sid, sess], i) => {
                   const done = sess.exercises?.reduce((a,ex) => a+(ex.sets?.filter(s=>s.done).length||0),0)||0;
@@ -8588,16 +8950,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
     try {
       let imageUrl = null;
       if (img) {
-        const mime = img.match(/data:(.*?);/)?.[1] || "image/jpeg";
-        const upRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-image`, {
-          method:"POST",
-          headers:{ "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
-          body: JSON.stringify({ base64: img, mimeType: mime })
-        });
-        if (upRes.ok) {
-          const { url } = await upRes.json();
-          imageUrl = url || null;
-        }
+        imageUrl = await uploadImage(img, token, currentUserId);
       }
       const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
         method:"POST",
@@ -9251,13 +9604,13 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     "Barbell Back Squat": ["Back Squat","Low Bar Squat","High Bar Squat","Squat"],
                     "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift"],
                     "Overhead Press (Barbell)": ["Overhead Press","OHP","Standing Barbell OHP","Standing OHP","Standing Press","Strict Press","Military Press","Barbell OHP","Barbell Overhead Press"],
-                    "Barbell Row": ["Bent-Over Row","Bent Over Row","Pendlay Row","Yates Row"],
+                    "Barbell Row": ["Barbell Bent-Over Row","Barbell Bent Over Row","Bent-Over Row","Bent Over Row","Bent-Over Barbell Row","Bent Over Barbell Row","Pendlay Row","Yates Row"],
                     "Hip Thrust (Barbell)": ["Hip Thrust","Barbell Hip Thrust","Glute Bridge (Barbell)"],
                   };
                   // Resolve the best (max) PR from canonical name + any alias the user may have used
                   const bestPR = (prMap, canonical) => {
                     if (!prMap) return null;
-                    const candidates = [prMap[canonical], ...(LIFT_ALIASES[canonical] || []).map(a => prMap[a])].filter(v => v != null);
+                    const candidates = [prMap[canonical], ...(LIFT_ALIASES[canonical] || []).map(a => prMap[a])].filter(v => v != null && v > 0);
                     if (candidates.length === 0) return null;
                     return Math.max(...candidates);
                   };
@@ -9828,6 +10181,8 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
       }
       // Clear all local data so nothing lingers on-device regardless
       try { localStorage.clear(); } catch {}
+      // Also wipe the durable native store (localStorage.clear doesn't reach it).
+      try { nativePrefs()?.clear?.().catch(() => {}); } catch {}
       if (criticalFailed) {
         // Personal data may remain server-side — don't falsely tell the user it's all gone.
         setDeleting(false);
@@ -9843,10 +10198,16 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
     }
   }
 
-  const sharedWorkoutKeys = new Set((store.posts||[]).filter(p=>p.type==="workout"&&p.userId===userId).map(p=>p.workout?.name+p.createdAt));
+  // Dedup shared workouts vs. history items by DAY + workout name (not exact timestamp —
+  // a shared post's createdAt is the share time, while a history item's is the workout day,
+  // so timestamp-matching never lined up and the same workout showed up twice on the profile).
+  const sharedWorkoutKeys = new Set(
+    (store.posts||[]).filter(p=>p.type==="workout"&&p.userId===userId)
+      .map(p => `${p.workout?.name}|${dKey(new Date(p.createdAt))}`)
+  );
   const profileHistoryItems = isMe ? Object.entries(store.history||{}).flatMap(([date, sessions]) =>
     Object.values(sessions).map(sess => {
-      const key = sess.dayName + new Date(date).getTime();
+      const key = `${sess.dayName}|${date}`;
       if (sharedWorkoutKeys.has(key)) return null;
       const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
       return {
@@ -9855,8 +10216,12 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
         type: "workout",
         caption: "",
         unit: sess.unit || displayUnit || "lbs",
-        workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) },
+        // Exclude warmup sets from the displayed workout (they were showing up on the
+        // history-derived profile card).
+        workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done && s.type!=="warmup").map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) },
         kudos: [], comments: [],
+        // Local noon for the workout's date — avoids the UTC-midnight parse that pushed the
+        // displayed date a day earlier in negative-offset timezones (e.g. EST).
         createdAt: sess.finishedAt || new Date(date + "T12:00:00").getTime(),
         _isHistory: true,
       };
@@ -10040,6 +10405,29 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                 cursor:"pointer", fontFamily:F, whiteSpace:"nowrap"
               }}>Body</button>
             <button
+              onClick={() => {
+                if (store.isPublic !== true) {
+                  toast("Turn on 'Public profile' in Settings to share your link", "info");
+                  haptic("warn");
+                  return;
+                }
+                const link = `${window.location.origin}${window.location.pathname}#/u/${currentUserId}`;
+                try {
+                  if (navigator.share) { navigator.share({ title: "My Seshd profile", url: link }).catch(() => {}); }
+                  else if (navigator.clipboard) { navigator.clipboard.writeText(link); toast("Profile link copied", "success"); }
+                } catch {}
+                haptic("tap");
+              }}
+              aria-label="Share profile"
+              style={{
+                width:38, padding:"7px 0", background:"transparent",
+                border:`1px solid ${C.border}`, borderRadius:8,
+                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center"
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            </button>
+            <button
               onClick={() => setShowSettings(true)}
               aria-label="Settings"
               style={{
@@ -10202,6 +10590,37 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                 </div>
               </div>
 
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PRIVACY</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
+                  <div style={{ flex:1, paddingRight:12 }}>
+                    <div style={{ fontSize:14, color:C.text }}>Public profile</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>When on, anyone with your share link can view your profile and recent workouts. When off, your link shows nothing.</div>
+                  </div>
+                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1, flexShrink:0 }}>
+                    {[["On", true], ["Off", false]].map(([label, val]) => {
+                      const isPublic = store.isPublic === true; // default off (private) until opted in
+                      const active = isPublic === val;
+                      return (
+                        <button key={label} onClick={async () => {
+                          setStore(p => ({ ...p, isPublic: val }));
+                          const tok = token || loadSession()?.access_token;
+                          if (tok) {
+                            try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
+                            catch (e) { console.error("privacy save error:", e); }
+                          }
+                          haptic("tap");
+                        }} style={{
+                          padding:"6px 16px", background: active ? C.accent : "transparent",
+                          color: active ? "#fff" : C.sub, border:"none", borderRadius:20,
+                          fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+                        }}>{label}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>STREAK</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
@@ -10211,7 +10630,14 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                   </div>
                   <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
                     {[2, 3, 4, 5].map(n => (
-                      <button key={n} onClick={() => setStore(p => ({ ...p, weeklyTarget: n }))} style={{
+                      <button key={n} onClick={async () => {
+                        setStore(p => ({ ...p, weeklyTarget: n }));
+                        const tok = token || loadSession()?.access_token;
+                        if (tok) {
+                          try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n }) }, tok); }
+                          catch (e) { console.error("weekly_target save error:", e); }
+                        }
+                      }} style={{
                         padding:"6px 12px", background:(store.weeklyTarget||3)===n?C.accent:"transparent",
                         color:(store.weeklyTarget||3)===n?"#fff":C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, minWidth:32
@@ -10620,7 +11046,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
     return (
       <div style={{
         minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
-        paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 24px) + 20px)",
+        paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 40px) + 24px)",
         paddingLeft:24, paddingRight:24, position:"relative", overflow:"hidden",
       }}>
         {/* Soft ambient gradient — no generic blobs */}
@@ -10818,7 +11244,99 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
 // ═════════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ═════════════════════════════════════════════════════════════════════════════
-export default function App() {
+// ═════════════════════════════════════════════════════════════════════════════
+// PUBLIC PROFILE VIEW — read-only page reachable by URL (…/#/u/<userId>) that anyone can
+// open without an account. Fetches the profile + recent workouts using the public anon key.
+// Requires a Supabase RLS policy allowing anonymous SELECT on the relevant rows (see
+// PUBLIC_PAGES_SETUP.md). Degrades gracefully if the data isn't public / not found.
+// ═════════════════════════════════════════════════════════════════════════════
+function PublicProfileView({ userId, C, onOpenApp }) {
+  const [state, setState] = useState({ loading: true, profile: null, workouts: [], error: null });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
+        // Only profiles that opted into public sharing (is_public = true) are viewable here.
+        // A private profile returns no row → the "not found / private" state below.
+        const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&is_public=eq.true&select=id,username,name,bio,avatar_url`, { headers });
+        const profiles = pRes.ok ? await pRes.json() : [];
+        const profile = Array.isArray(profiles) ? profiles[0] : null;
+        if (!profile) { if (!cancelled) setState({ loading: false, profile: null, workouts: [], error: "not_found" }); return; }
+        let workouts = [];
+        try {
+          const wRes = await fetch(`${SUPABASE_URL}/rest/v1/workout_history?user_id=eq.${userId}&select=*&order=created_at.desc&limit=5`, { headers });
+          if (wRes.ok) workouts = await wRes.json();
+        } catch {}
+        if (!cancelled) setState({ loading: false, profile, workouts: Array.isArray(workouts) ? workouts : [], error: null });
+      } catch (e) {
+        if (!cancelled) setState({ loading: false, profile: null, workouts: [], error: "load_failed" });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const wrap = { minHeight:"100dvh", background:C.bg, color:C.text, fontFamily:F, display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(env(safe-area-inset-top) + 40px) 24px 40px" };
+  if (state.loading) {
+    return <div style={{ ...wrap, justifyContent:"center" }}><div style={{ color:C.sub, fontSize:14 }}>Loading…</div></div>;
+  }
+  if (!state.profile) {
+    return (
+      <div style={{ ...wrap, justifyContent:"center", textAlign:"center" }}>
+        <div style={{ fontSize:40, marginBottom:14 }}>💪</div>
+        <div style={{ fontSize:19, fontWeight:800, marginBottom:8 }}>This profile is private</div>
+        <div style={{ fontSize:14, color:C.sub, marginBottom:28, maxWidth:280 }}>This profile isn't shared publicly, or the link may be incorrect.</div>
+        <button onClick={onOpenApp} style={{ background:C.text, color:C.bg, border:"none", borderRadius:12, padding:"14px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>Open Seshd</button>
+      </div>
+    );
+  }
+  const p = state.profile;
+  const initial = (p.name || p.username || "?").trim().charAt(0).toUpperCase();
+  return (
+    <div style={wrap}>
+      <div style={{ width:"100%", maxWidth:420 }}>
+        {/* Header */}
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", marginBottom:28 }}>
+          {p.avatar_url
+            ? <img src={p.avatar_url} alt="" style={{ width:88, height:88, borderRadius:44, objectFit:"cover", marginBottom:14 }}/>
+            : <div style={{ width:88, height:88, borderRadius:44, background:`linear-gradient(135deg,${C.accent},${C.accent2||C.accent})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color:"#fff", marginBottom:14 }}>{initial}</div>}
+          <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{p.name || p.username}</div>
+          {p.username && <div style={{ fontSize:14, color:C.sub, marginTop:2 }}>@{p.username}</div>}
+          {p.bio && <div style={{ fontSize:14, color:C.text, marginTop:12, maxWidth:300, lineHeight:1.5 }}>{p.bio}</div>}
+        </div>
+        {/* Recent workouts */}
+        {state.workouts.length > 0 && (
+          <div style={{ marginBottom:28 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:10 }}>RECENT WORKOUTS</div>
+            {state.workouts.map((w, i) => {
+              // workout_history columns: day_name, exercises (JSON), workout_date, created_at.
+              const dateStr = w.workout_date || w.created_at;
+              let setCount = 0;
+              try { (w.exercises || []).forEach(ex => { setCount += (ex.sets || []).filter(s => s.done).length; }); } catch {}
+              return (
+              <div key={w.id || i} style={{ background:C.surface, border:`1px solid ${C.divider}`, borderRadius:14, padding:"14px 16px", marginBottom:8 }}>
+                <div style={{ fontSize:15, fontWeight:700 }}>{w.day_name || "Workout"}</div>
+                <div style={{ fontSize:12, color:C.sub, marginTop:3, fontFamily:MONO }}>
+                  {dateStr ? new Date(dateStr).toLocaleDateString("en", { month:"short", day:"numeric" }) : ""}
+                  {(w.exercises?.length) ? ` · ${w.exercises.length} exercises` : ""}
+                  {setCount ? ` · ${setCount} sets` : ""}
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        )}
+        {/* CTA */}
+        <button onClick={onOpenApp} style={{ width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2 }}>
+          Open Seshd
+        </button>
+        <div style={{ textAlign:"center", fontSize:12, color:C.muted, marginTop:14 }}>Track your lifts. Share your progress.</div>
+      </div>
+    </div>
+  );
+}
+
+function AppInner() {
   // ── Auth state ──────────────────────────────────────────────────
   const [session, setSession] = useState(loadSession);
   const [authLoading, setAuthLoading] = useState(true);
@@ -10834,6 +11352,12 @@ export default function App() {
   const [store, setStore] = useState(loadStore);
   const [dbReady, setDbReady] = useState(false);
 
+  // Safety net: make sure the durable-storage write mirror is installed even if the app entry
+  // (main.jsx) didn't call hydrateFromNative() for some reason. Hydration (restoring native →
+  // localStorage at launch) only happens in main.jsx before mount, but installing the mirror
+  // here too guarantees writes are still backed up natively. No-op on web / if already installed.
+  useEffect(() => { try { installStorageMirror(); } catch {} }, []);
+
   // Live tick for time-ago labels — re-renders every 30s so "1m" becomes "2m" etc.
   const [, setNowTick] = useState(0);
   useEffect(() => {
@@ -10848,7 +11372,43 @@ export default function App() {
   const currentUserId = session?.user?.id || (isGuest ? GUEST_ID : null);
 
   // ── All UI state — must be at top level before any returns ──
-  const [tab, setTab] = useState("feed");
+  // Open on the Workout (tracker) tab — training is the core action; social comes second
+  // ("Train first — make it social later", per the app's positioning).
+  const [tab, setTab] = useState("tracker");
+  // Offline detection — drives the "you're offline" indicator. Updates on connectivity change.
+  const [online, setOnline] = useState(true);
+  // Public share-page routing: detect …/#/u/<userId> in the URL (read-only public profile).
+  const [publicRoute, setPublicRoute] = useState(() => {
+    try {
+      const h = (typeof window !== "undefined") ? window.location.hash : "";
+      const m = h.match(/^#\/u\/([A-Za-z0-9_-]+)/);
+      if (m) return { type: "profile", id: m[1] };
+    } catch {}
+    return null;
+  });
+  useEffect(() => {
+    const onHash = () => {
+      try {
+        const m = window.location.hash.match(/^#\/u\/([A-Za-z0-9_-]+)/);
+        setPublicRoute(m ? { type: "profile", id: m[1] } : null);
+      } catch {}
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    const unsub = subscribeNetwork((isOnline) => {
+      setOnline(isOnline);
+      if (!isOnline) { wasOffline.current = true; }
+      else if (wasOffline.current) {
+        wasOffline.current = false;
+        // Reconnected after being offline — retry any queued workouts (existing mechanism).
+        try { if (typeof flushPendingWorkouts === "function") flushPendingWorkouts(); } catch {}
+      }
+    });
+    return unsub;
+  }, []);
   const [prevTab, setPrevTab] = useState(null);
   const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
   function switchTab(t) { if (t !== tab) haptic("tab"); setPrevTab(tab); setTab(t); }
@@ -11081,9 +11641,12 @@ export default function App() {
         theme: me?.theme || "light",
         defaultRestTime: me?.default_rest_time || 120,
         seenOnboarding: me?.seen_onboarding === true,
-        // weeklyTarget lives on-device (localStorage), not as a server column — carry the
-        // existing value through so a server refresh doesn't reset it back to the default.
-        weeklyTarget: prev.weeklyTarget || 3,
+        // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back
+        // to the on-device value, then the default. Persisted to profiles.weekly_target.
+        weeklyTarget: (me?.weekly_target != null ? me.weekly_target : (prev.weeklyTarget || 3)),
+        // Public-profile opt-in (controls whether the public share page shows anything).
+        // Defaults to private (false) until the user turns it on in Settings.
+        isPublic: me?.is_public === true,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
@@ -11956,6 +12519,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, currentActivityCount]);
 
+  // ── Public share page (no login required) ─────────────────────────
+  // A URL like  …/#/u/<userId>  renders a read-only public profile view that anyone can open
+  // (e.g. a friend you shared your profile with who doesn't have the app yet). Checked before
+  // the auth gate so it works logged-out. Requires a Supabase RLS policy allowing anonymous
+  // SELECT on profiles + that user's shared workouts (see PUBLIC_PAGES_SETUP.md).
+  if (publicRoute && publicRoute.type === "profile") {
+    return <PublicProfileView userId={publicRoute.id} C={C} onOpenApp={() => { window.location.hash = ""; setPublicRoute(null); }} />;
+  }
+
   // ── Show loading screen ───────────────────────────────────────
   if (authLoading) {
     return (
@@ -12038,7 +12610,7 @@ export default function App() {
   const sharedWorkoutIds = new Set((store.posts||[]).filter(p=>p.type==="workout"&&p.userId===currentUserId).map(p=>p.workout?.name+p.createdAt));
   const historyFeedItems = Object.entries(store.history||{}).flatMap(([date, sessions]) =>
     Object.entries(sessions).map(([sid, sess]) => {
-      const key = sess.dayName + new Date(date).getTime();
+      const key = sess.dayName + new Date(date + "T12:00:00").getTime();
       if (sharedWorkoutIds.has(key)) return null;
       // Only show a history workout in the FEED if the user explicitly shared it to feed.
       // Workouts that were only saved, or sent to groups only, stay out of the feed
@@ -12290,6 +12862,19 @@ export default function App() {
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
 
+      {/* OFFLINE INDICATOR — non-intrusive; auto-hides on reconnect */}
+      {!online && (
+        <div style={{
+          background:"#B45309", color:"#fff",
+          padding:"calc(env(safe-area-inset-top) + 6px) 16px 6px",
+          display:"flex", alignItems:"center", justifyContent:"center", gap:8, flexShrink:0,
+          fontSize:12, fontWeight:700, letterSpacing:0.2,
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          Offline — your workout is saved on this device
+        </div>
+      )}
+
       {/* GUEST BANNER */}
       {isGuest && (
         <div style={{
@@ -12495,7 +13080,17 @@ export default function App() {
 
               <div style={{ paddingTop:4 }}>
                 {feedPosts.length === 0 && !isRefreshing && !dataLoading && (
-                  isGuest ? (
+                  !online ? (
+                    <div style={{ textAlign:"center", padding:"60px 24px", color:C.sub }}>
+                      <div style={{ marginBottom:14, display:"flex", justifyContent:"center", opacity:0.6 }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                      </div>
+                      <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>You're offline</div>
+                      <div style={{ fontSize:13, lineHeight:1.5, maxWidth:260, margin:"0 auto" }}>
+                        Your feed will load when you're back online. Your workouts are saved and safe in the meantime.
+                      </div>
+                    </div>
+                  ) : isGuest ? (
                     <div style={{ textAlign:"center", padding:"60px 24px", color:C.sub }}>
                       <div style={{
                         width:80, height:80, borderRadius:24,
@@ -12512,7 +13107,7 @@ export default function App() {
                       </div>
                       <div style={{ fontSize:19, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.3 }}>Friends only feed</div>
                       <div style={{ fontSize:14, lineHeight:1.5, marginBottom:24, maxWidth:280, margin:"0 auto 24px" }}>
-                        Sign up to follow friends and see their workouts here. No strangers, no faking.
+                        Sign up to follow friends and see their workouts here.
                       </div>
                       <button onClick={() => setAuthPrompt({ reason: "Sign up to follow friends and unlock your feed" })} style={{
                         background:C.text, color:C.bg, border:"none", borderRadius:12,
@@ -12844,3 +13439,46 @@ export default function App() {
   );
 }
 
+
+// ── Error boundary ──────────────────────────────────────────────────────────
+// Without this, ANY uncaught render error blanks the whole app to a black screen
+// with no recovery. This catches it, shows a friendly screen, and offers a reload
+// plus a "reset local data" escape hatch in case persisted state is what's crashing.
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false, msg: "" }; }
+  static getDerivedStateFromError(error) { return { hasError: true, msg: String(error?.message || error || "Unknown error") }; }
+  componentDidCatch(error, info) { try { console.error("App crashed:", error, info); } catch {} }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    const reload = () => { try { window.location.reload(); } catch {} };
+    const resetData = () => {
+      // Last-resort: clear persisted app state (keeps nothing) and reload. Only the
+      // local cache is cleared — server data is untouched and reloads on next login.
+      try {
+        const keep = [];
+        Object.keys(localStorage).forEach(k => { if (!keep.includes(k)) localStorage.removeItem(k); });
+      } catch {}
+      // Clear the durable native store too, in case the crash happened before the
+      // localStorage write-mirror was installed (so the per-key removes above wouldn't reach it).
+      try { nativePrefs()?.clear?.().catch(() => {}); } catch {}
+      reload();
+    };
+    return (
+      <div style={{ minHeight:"100dvh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", background:"#0A0A0A", color:"#fff", fontFamily:"-apple-system, BlinkMacSystemFont, system-ui, sans-serif", textAlign:"center" }}>
+        <div style={{ fontSize:40, marginBottom:16 }}>💪</div>
+        <div style={{ fontSize:20, fontWeight:800, marginBottom:8, letterSpacing:-0.4 }}>Something went sideways</div>
+        <div style={{ fontSize:14, color:"#999", marginBottom:28, maxWidth:300, lineHeight:1.5 }}>The app hit an unexpected error. Reloading usually fixes it — your workouts are saved on the server.</div>
+        <button onClick={reload} style={{ width:"100%", maxWidth:280, background:"#fff", color:"#0A0A0A", border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:"pointer", marginBottom:10 }}>Reload</button>
+        <button onClick={resetData} style={{ width:"100%", maxWidth:280, background:"transparent", color:"#999", border:"1px solid #333", borderRadius:14, padding:"14px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Reload &amp; clear local cache</button>
+      </div>
+    );
+  }
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  );
+}
