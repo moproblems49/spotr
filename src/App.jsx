@@ -1007,11 +1007,11 @@ function isOneSidedBarbell(name) {
 
 function calcPlatesPerSide(totalWeight, unit, oneSided = false) {
   const t = parseFloat(totalWeight);
+  const plates = unit === "kg" ? PLATES_KG_LIST : PLATES_LBS_LIST;
   if (oneSided) {
     // No bar subtraction, no halving — the entered weight IS the plate weight on one end.
     if (!t || t <= 0) return null;
     let remaining = t;
-    const plates = unit === "kg" ? PLATES_KG_LIST : PLATES_LBS_LIST;
     const result = [];
     for (const p of plates) {
       const count = Math.floor(remaining / p);
@@ -1020,13 +1020,15 @@ function calcPlatesPerSide(totalWeight, unit, oneSided = false) {
         remaining = Math.round((remaining - p * count) * 1000) / 1000;
       }
     }
-    if (remaining > 0.01) return null;
+    if (!result.length) return null;
+    // Attach the un-loadable remainder (per side) so the UI can show "≈ closest" instead of
+    // silently giving nothing when the exact weight isn't achievable with standard plates.
+    result.leftover = remaining > 0.01 ? remaining : 0;
     return result;
   }
   const bar = unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS;
   if (!t || t <= bar) return null;
   let remaining = (t - bar) / 2;
-  const plates = unit === "kg" ? PLATES_KG_LIST : PLATES_LBS_LIST;
   const result = [];
   for (const p of plates) {
     const count = Math.floor(remaining / p);
@@ -1035,7 +1037,9 @@ function calcPlatesPerSide(totalWeight, unit, oneSided = false) {
       remaining = Math.round((remaining - p * count) * 1000) / 1000;
     }
   }
-  if (remaining > 0.01) return null;
+  if (!result.length) return null;
+  // leftover = weight per side that couldn't be made with standard plates (0 if exact).
+  result.leftover = remaining > 0.01 ? remaining : 0;
   return result;
 }
 // Generate warmup sets ramping up to a working weight.
@@ -1392,6 +1396,70 @@ function parseRepRange(reps) {
   const n = parseInt(s);
   if (!isNaN(n) && /^\d+$/.test(s)) return { low: n, high: n };
   return null;
+}
+
+// Returns the last `limit` working-set sessions for an exercise, newest first.
+// Each entry: { date, unit, sets:[{w,r}], daysSince, topWeight, topReps, volume }.
+function getExerciseSessions(store, exName, limit = 5) {
+  const dates = Object.keys(store.history || {}).sort().reverse();
+  const out = [];
+  const todayMs = new Date(dKey() + "T12:00:00").getTime();
+  for (const d of dates) {
+    const sessions = Object.values(store.history[d] || {});
+    for (const sess of sessions) {
+      const ex = sess.exercises?.find(e => e.name === exName);
+      if (!ex) continue;
+      const doneSets = (ex.sets || []).filter(s =>
+        s.type !== "warmup" &&
+        (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
+      );
+      if (!doneSets.length) continue;
+      const sets = doneSets.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 }));
+      const topWeight = Math.max(...sets.map(s => s.w));
+      const topReps = Math.max(...sets.filter(s => s.w === topWeight).map(s => s.r), 0);
+      const volume = sets.reduce((a, s) => a + s.w * s.r, 0);
+      const dMs = new Date(d + "T12:00:00").getTime();
+      out.push({
+        date: d, unit: sess.unit || "lbs", sets,
+        daysSince: Math.max(0, Math.floor((todayMs - dMs) / 86400000)),
+        topWeight, topReps, volume,
+      });
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+// Deload / stall detection. Looks at the last several sessions of an exercise and flags when
+// the lifter has plateaued — i.e. top working weight hasn't increased across 3+ sessions and
+// estimated 1RM is flat/declining. Returns { stalled, ... } or { stalled:false }. A planned
+// deload (back off ~10%, rebuild) is the standard fix for a stall.
+function detectDeloadNeeded(store, exName, unit) {
+  const sessions = getExerciseSessions(store, exName, 5);
+  if (sessions.length < 3) return { stalled: false };
+  const norm = sessions.map(s => ({
+    wU: cvt(s.topWeight, s.unit, unit),
+    e1rm: s.topWeight ? cvt(s.topWeight, s.unit, unit) * (1 + Math.min(s.topReps, 12) / 30) : 0,
+  }));
+  const recent = norm.slice(0, 3);
+  const topWeights = recent.map(s => s.wU);
+  const maxTop = Math.max(...topWeights);
+  const minTop = Math.min(...topWeights);
+  const weightFlat = (maxTop - minTop) < (unit === "lbs" ? 5 : 2.5);
+  const e1rms = recent.map(s => s.e1rm);
+  const e1rmNotProgressing = e1rms[0] <= Math.max(e1rms[1], e1rms[2]) + 0.01;
+  if (weightFlat && e1rmNotProgressing) {
+    const dl = unit === "lbs" ? Math.round((maxTop * 0.9) / 5) * 5 : Math.round((maxTop * 0.9) / 2.5) * 2.5;
+    return {
+      stalled: true,
+      sessions: recent.length,
+      topWeight: maxTop,
+      deloadWeight: dl,
+      reason: `Stalled at ${maxTop} ${unit} for ${recent.length} sessions`,
+      suggestion: `Try a deload: drop to ~${dl} ${unit} and rebuild with clean reps`,
+    };
+  }
+  return { stalled: false };
 }
 
 // Progressive overload — double progression model
@@ -2921,6 +2989,11 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 <span style={{ fontSize:10, color:C.sub, fontWeight:600, fontFamily:MONO }}>{p.count}×{p.p}</span>
               </div>
             ))}
+            {platesBreakdown.leftover > 0 && (
+              <span style={{ fontSize:10, color:C.muted, fontWeight:600, fontFamily:MONO, fontStyle:"italic" }}>
+                ≈ closest ({platesBreakdown.leftover}{unit}/side short)
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -3066,7 +3139,9 @@ function PlateCalcModal({ onClose, unit, C }) {
       const count = Math.floor(remaining / p);
       if (count > 0) { result.push({ p, count }); remaining = Math.round((remaining - p * count) * 1000) / 1000; }
     }
-    if (remaining > 0.01) return null;
+    if (!result.length) return null;
+    // Show the closest achievable load instead of refusing — note any per-side shortfall.
+    result.leftover = remaining > 0.01 ? remaining : 0;
     return result;
   }
 
@@ -3137,9 +3212,16 @@ function PlateCalcModal({ onClose, unit, C }) {
                 ))}
               </div>
               <div style={{ marginTop:10, padding:"10px 14px", background:C.divider, borderRadius:10, display:"flex", justifyContent:"space-between" }}>
-                <span style={{ fontSize:12, color:C.sub }}>Total</span>
-                <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>{target} {unit}</span>
+                <span style={{ fontSize:12, color:C.sub }}>{result.leftover > 0 ? "Closest" : "Total"}</span>
+                <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>
+                  {result.leftover > 0 ? (parseFloat(target) - result.leftover * 2) : target} {unit}
+                </span>
               </div>
+              {result.leftover > 0 && (
+                <div style={{ marginTop:6, fontSize:11, color:C.sub, textAlign:"center", fontStyle:"italic" }}>
+                  Exact {target} {unit} isn't loadable with standard plates — closest shown ({result.leftover}{unit}/side short)
+                </div>
+              )}
             </>
           )}
         </div>
@@ -5407,6 +5489,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const elRef = useRef(null);
   // Reorder mode — when on, exercises collapse to compact rows you can drag freely
   const [reorderMode, setReorderMode] = useState(false);
+  // Exercises whose plateau/deload banner the user dismissed this workout (per exercise name).
+  const [dismissedDeloads, setDismissedDeloads] = useState([]);
   // Exercise reordering during a workout now uses dnd-kit (same engine as day reorder)
   // for a consistent, smooth lift/slide/drop feel across the app.
   const exReorderSensors = useSensors(
@@ -6349,6 +6433,34 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <span style={{ fontSize:10, fontWeight:700, color:C.accent, letterSpacing:0.5 }}>SUPERSET — no rest, straight into next</span>
                   </div>
                 )}
+
+                {/* Deload suggestion — appears when this exercise has stalled across recent
+                    sessions. Dismissible per-exercise for this workout via local state. */}
+                {(() => {
+                  if (!ex.name || dismissedDeloads.includes(ex.name)) return null;
+                  const dl = detectDeloadNeeded(store, ex.name, unit);
+                  if (!dl.stalled) return null;
+                  return (
+                    <div style={{ margin:"0 14px 8px", padding:"10px 12px", borderRadius:10, background:C.isDark?"rgba(180,83,9,0.15)":"#FEF3C7", border:`1px solid ${C.isDark?"rgba(180,83,9,0.4)":"#FDE68A"}`, display:"flex", alignItems:"flex-start", gap:9 }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.isDark?"#FBBF24":"#B45309"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:1 }}><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12.5, fontWeight:700, color:C.isDark?"#FBBF24":"#B45309" }}>Plateau detected</div>
+                        <div style={{ fontSize:11.5, color:C.isDark?"#FCD34D":"#92400E", marginTop:2, lineHeight:1.4 }}>{dl.suggestion}.</div>
+                        <div style={{ display:"flex", gap:8, marginTop:7 }}>
+                          <button onClick={() => {
+                            // Apply the deload weight to this exercise's working sets
+                            setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=> i!==ei ? x : {
+                              ...x, sets: x.sets.map(s => s.type === "warmup" ? s : { ...s, weight: String(dl.deloadWeight) })
+                            }) }));
+                            setDismissedDeloads(d => [...d, ex.name]);
+                            haptic("tap");
+                          }} style={{ background:C.isDark?"#B45309":"#B45309", color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F }}>Deload to {dl.deloadWeight}</button>
+                          <button onClick={() => { setDismissedDeloads(d => [...d, ex.name]); haptic("tap"); }} style={{ background:"transparent", color:C.isDark?"#FCD34D":"#92400E", border:"none", borderRadius:7, padding:"5px 8px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Keep pushing</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Column headers */}
                 <div style={{ display:"grid", gridTemplateColumns:"32px 36px 1fr 76px 76px 36px", gap:4, padding:"0 14px 4px" }}>
@@ -11351,6 +11463,9 @@ function AppInner() {
   // ── App data state ──────────────────────────────────────────────
   const [store, setStore] = useState(loadStore);
   const [dbReady, setDbReady] = useState(false);
+  // Feed pagination
+  const [feedHasMore, setFeedHasMore] = useState(false);
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false);
 
   // Safety net: make sure the durable-storage write mirror is installed even if the app entry
   // (main.jsx) didn't call hydrateFromNative() for some reason. Hydration (restoring native →
@@ -11671,14 +11786,18 @@ function AppInner() {
     }
   }
 
-  async function loadFeed(tok, uid, profiles) {
+  const FEED_PAGE_SIZE = 30;
+  async function loadFeed(tok, uid, profiles, offset = 0) {
     try {
-      // Get all posts with kudos + comments counts
+      // Paginated: first page replaces, later pages append. range header would also work, but
+      // offset/limit is simplest with the existing query helper.
       const posts = await sb.query(
-        `posts?select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)&order=created_at.desc&limit=50`,
+        `posts?select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)&order=created_at.desc&offset=${offset}&limit=${FEED_PAGE_SIZE}`,
         {}, tok
       );
       if (!posts) return;
+      // If we got a full page back, there are probably more to load.
+      setFeedHasMore(posts.length >= FEED_PAGE_SIZE);
 
       // Read persisted own-post interactions (these survive page refresh via localStorage)
       const persistedInteractions = store.historyInteractions || {};
@@ -11720,10 +11839,18 @@ function AppInner() {
           const existing = (prev.posts || []).find(o => o.id === p.id);
           return existing?._localImage && !p.imageData ? { ...p, _localImage: existing._localImage } : p;
         });
-        // Carry forward ONLY very-recently-created local posts the server query hasn't
-        // surfaced yet (created in the last 2 min) — covers the just-posted-then-refreshed
-        // race. We deliberately do NOT carry arbitrary older posts, so a post deleted on the
-        // server is correctly removed rather than zombie-resurrected.
+        if (offset > 0) {
+          // Loading an older page — append to what's already shown, de-duped, keep order.
+          const haveIds = new Set((prev.posts || []).map(p => p.id));
+          const newOnes = merged.filter(p => !haveIds.has(p.id));
+          const all = [...(prev.posts || []), ...newOnes];
+          all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          return { ...prev, posts: all };
+        }
+        // First page (refresh/initial): carry forward ONLY very-recently-created local posts
+        // the server query hasn't surfaced yet (created in the last 2 min) — covers the
+        // just-posted-then-refreshed race. We deliberately do NOT carry arbitrary older posts,
+        // so a post deleted on the server is correctly removed rather than zombie-resurrected.
         const now = Date.now();
         const carried = (prev.posts || []).filter(o =>
           !incomingIds.has(o.id) && o.createdAt && (now - o.createdAt) < 120000
@@ -12366,6 +12493,19 @@ function AppInner() {
       // Reload so the synced workouts appear in history
       loadUserData?.();
     }
+  }
+
+  // Load the next page of older posts (pagination). Offset = how many we already have.
+  async function loadMoreFeed() {
+    if (feedLoadingMore || !feedHasMore) return;
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    if (!tok) return;
+    setFeedLoadingMore(true);
+    try {
+      const offset = (store.posts || []).length;
+      await loadFeed(tok, currentUserId, store.users || [], offset);
+    } catch (e) { console.error("loadMoreFeed error:", e); }
+    finally { setFeedLoadingMore(false); }
   }
 
   // Pull to refresh
@@ -13176,6 +13316,16 @@ function AppInner() {
                     />
                   </div>
                 ))}
+                {/* Pagination — load older posts on demand instead of capping at one page */}
+                {feedPosts.length > 0 && feedHasMore && !isGuest && (
+                  <div style={{ padding:"8px 16px 28px", display:"flex", justifyContent:"center" }}>
+                    <button onClick={loadMoreFeed} disabled={feedLoadingMore} style={{
+                      background:"transparent", color:C.sub, border:`1px solid ${C.border}`,
+                      borderRadius:20, padding:"9px 22px", fontSize:13, fontWeight:600,
+                      cursor: feedLoadingMore ? "default" : "pointer", fontFamily:F, opacity: feedLoadingMore ? 0.5 : 1,
+                    }}>{feedLoadingMore ? "Loading…" : "Load older posts"}</button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
