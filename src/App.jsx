@@ -653,6 +653,43 @@ function exEquipment(name) {
 // Suggest substitute exercises for a given exercise: same muscle group, excluding itself.
 // Orders by DIFFERENT equipment first (the common reason to swap — equipment unavailable),
 // then alphabetically. Returns up to `limit` names.
+// Resolve an exercise name to a muscle group, robustly. The exact-name lookup is brittle —
+// history/program exercises often differ in spacing, casing, or qualifiers like "(heavy)" or
+// "(finisher)". So: (1) exact match, (2) normalized match (strip punctuation/parentheticals),
+// (3) keyword inference (row→Back, pulldown→Back, raise→Shoulders, etc.). Returns muscle or null.
+const _muscleExact = {};
+const _muscleNorm = {};
+const _normName = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+EXERCISE_DB.forEach(e => {
+  _muscleExact[e.name] = e.muscle;
+  const nk = _normName(e.name);
+  if (nk && !_muscleNorm[nk]) _muscleNorm[nk] = e.muscle;
+});
+function resolveMuscle(name) {
+  if (!name) return null;
+  if (_muscleExact[name]) return _muscleExact[name];
+  const n = _normName(name);
+  if (_muscleNorm[n]) return _muscleNorm[n];
+  const has = (...ws) => ws.some(w => n.includes(w));
+  if (has("face pull")) return "Rear Delts";
+  if (has("rear delt", "reverse fly", "reverse pec")) return "Rear Delts";
+  if (has("lateral raise", "lat raise", "side raise", "lateral raises")) return "Shoulders";
+  if (has("shrug")) return "Traps";
+  if (has("curl") && !has("leg curl", "nordic")) return "Biceps";
+  if (has("pushdown", "tricep", "skull", "overhead extension", "kickback", "jm press", "tate", "dip")) return "Triceps";
+  if (has("pulldown", "pull down", "pull up", "pullup", "chin up", "row", "lat ", "pullover", "high row", "rack pull", "t bar", "t-bar")) return "Back";
+  if (has("ohp", "overhead press", "shoulder press", "military", "z press", "arnold", "landmine press", "viking")) return "Shoulders";
+  if (has("bench", "chest", "fly", "pec", "incline press", "decline press", "svend")) return "Chest";
+  if (has("squat", "leg press", "lunge", "leg extension", "step up", "hack", "sissy", "pendulum")) return "Quads";
+  if (has("deadlift", "rdl", "romanian", "leg curl", "good morning", "ham", "nordic", "back extension", "hex bar")) return "Hamstrings";
+  if (has("hip thrust", "glute", "bridge", "abduction", "frog pump")) return "Glutes";
+  if (has("calf", "calves")) return "Calves";
+  if (has("plank", "crunch", "ab ", "abs", "sit up", "leg raise", "russian twist", "rollout", "pallof", "dead bug", "toes to bar", "hanging")) return "Core";
+  if (has("run", "treadmill", "bike", "rowing machine", "row erg", "elliptical", "stair", "jump rope", "sled", "cardio", "assault")) return "Cardio";
+  if (has("press") || has("push up")) return "Chest";
+  return null;
+}
+
 function suggestExerciseSubstitutes(name, limit = 8) {
   const entry = EXERCISE_DB.find(e => e.name === name);
   if (!entry) return [];
@@ -1595,7 +1632,7 @@ function buildCoachContext(store, unit) {
     const sessions = Object.values(store.history[d] || {});
     for (const s of sessions) {
       for (const ex of (s.exercises || [])) {
-        const m = EXERCISE_DB.find(e => e.name === ex.name)?.muscle;
+        const m = resolveMuscle(ex.name);
         if (m && lastTrained[m] == null) {
           lastTrained[m] = Math.floor((todayMs - new Date(d + "T12:00:00").getTime()) / 86400000);
         }
@@ -2427,8 +2464,6 @@ function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
 function MuscleBalance({ store, C, days = 30 }) {
   const [expandedGroup, setExpandedGroup] = useState(null);
   const data = useMemo(() => {
-    const muscleByName = {};
-    EXERCISE_DB.forEach(e => { muscleByName[e.name] = e.muscle; });
     // Group granular muscles into readable categories.
     const GROUP = {
       Chest:"Push", Shoulders:"Push", Triceps:"Push",
@@ -2446,7 +2481,7 @@ function MuscleBalance({ store, C, days = 30 }) {
         for (const ex of (sess.exercises || [])) {
           const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
           if (!done) continue;
-          const muscle = muscleByName[ex.name] || "Other";
+          const muscle = resolveMuscle(ex.name) || "Other";
           const group = GROUP[muscle] || "Other";
           groupSets[group] = (groupSets[group] || 0) + done;
           muscleSets[muscle] = (muscleSets[muscle] || 0) + done;
@@ -6355,7 +6390,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const set = new Set();
         session.exercises.forEach(ex => {
           if (!ex.name || !ex.sets.some(s => s.done && s.type !== "warmup")) return;
-          const m = EXERCISE_DB.find(e => e.name === ex.name)?.muscle;
+          const m = resolveMuscle(ex.name);
           if (m && m !== "Cardio" && m !== "Yoga") set.add(m);
         });
         return Array.from(set);
@@ -11838,7 +11873,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
     return (
       <div style={{
         minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
-        paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 40px) + 24px)",
+        paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 34px) + 16px)",
         paddingLeft:24, paddingRight:24, position:"relative", overflow:"hidden",
       }}>
         {/* Soft ambient gradient — no generic blobs */}
@@ -11852,7 +11887,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         }}/>
 
         {/* Hero */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", position:"relative", zIndex:1, paddingBottom:"8vh" }}>
+        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", position:"relative", zIndex:1, paddingBottom:"3vh" }}>
           {promptReason && (
             <div style={{ marginBottom:24, padding:"14px 18px", borderRadius:14, background:C.surface, border:`1px solid ${C.accent}40` }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
