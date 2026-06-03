@@ -9059,7 +9059,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2000,
         system: sys,
         messages: [{ role: "user", content: "Build a program for this lifter:\n" + JSON.stringify(profile) }],
@@ -12193,7 +12193,7 @@ function AICoachSheet({ store, unit, C, onClose }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
+            model: "claude-sonnet-4-6",
             max_tokens: 1000,
             system: sys,
             messages: [{ role: "user", content: "Here is my training data as JSON:\n" + JSON.stringify(ctx) + "\n\nGive me my coaching summary." }],
