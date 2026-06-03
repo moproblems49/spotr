@@ -578,12 +578,99 @@ const EXERCISE_DB = [
   // Arms
   { name:"Preacher Curl Machine", muscle:"Biceps" },
   { name:"Dip Machine", muscle:"Triceps" },
+
+  // ── LIBRARY EXPANSION ──────────────────────────────────────────────────────
+  // Chest
+  { name:"Hammer Strength Chest Press", muscle:"Chest" },
+  { name:"Floor Press", muscle:"Chest" },
+  { name:"Dumbbell Pullover", muscle:"Chest" },
+  // Back
+  { name:"Seal Row", muscle:"Back" },
+  { name:"Kroc Row", muscle:"Back" },
+  { name:"Machine High Row", muscle:"Back" },
+  // Shoulders
+  { name:"Z Press", muscle:"Shoulders" },
+  { name:"Cable Lateral Raise", muscle:"Shoulders" },
+  { name:"Machine Lateral Raise", muscle:"Shoulders" },
+  { name:"Behind-the-Neck Press", muscle:"Shoulders" },
+  { name:"Viking Press", muscle:"Shoulders" },
+  // Rear Delts
+  { name:"Cable Rear Delt Fly", muscle:"Rear Delts" },
+  { name:"Bent-Over Dumbbell Reverse Fly", muscle:"Rear Delts" },
+  { name:"Face Pull (Rope)", muscle:"Rear Delts" },
+  // Biceps
+  { name:"Incline Dumbbell Curl", muscle:"Biceps" },
+  { name:"Cable Curl", muscle:"Biceps" },
+  { name:"Bayesian Cable Curl", muscle:"Biceps" },
+  // Triceps
+  { name:"Overhead Cable Extension", muscle:"Triceps" },
+  { name:"Skull Crusher", muscle:"Triceps" },
+  { name:"Cable Kickback", muscle:"Triceps" },
+  // Forearms
+  { name:"Barbell Wrist Curl", muscle:"Forearms" },
+  { name:"Reverse Barbell Curl", muscle:"Forearms" },
+  { name:"Farmer's Carry", muscle:"Forearms" },
+  // Traps
+  { name:"Barbell Shrug", muscle:"Traps" },
+  { name:"Dumbbell Shrug", muscle:"Traps" },
+  { name:"Cable Shrug", muscle:"Traps" },
+  { name:"Trap Bar Shrug", muscle:"Traps" },
+  { name:"Power Shrug", muscle:"Traps" },
+  // Quads
+  { name:"Walking Lunge", muscle:"Quads" },
+  { name:"Step-Up", muscle:"Quads" },
+  // Hamstrings
+  { name:"Seated Hamstring Curl (Cable)", muscle:"Hamstrings" },
+  { name:"Razor Curl", muscle:"Hamstrings" },
+  { name:"Back Extension", muscle:"Hamstrings" },
+  // Glutes
+  { name:"Hip Thrust", muscle:"Glutes" },
+  { name:"Barbell Glute Bridge", muscle:"Glutes" },
+  { name:"Cable Kickback (Glute)", muscle:"Glutes" },
+  { name:"Bulgarian Split Squat (Glute)", muscle:"Glutes" },
+  { name:"Hip Abduction Machine", muscle:"Glutes" },
+  { name:"Frog Pump", muscle:"Glutes" },
+  // Calves
+  // Core
+  // Cardio
+  { name:"Incline Treadmill Walk", muscle:"Cardio" },
+  { name:"Stair Climber", muscle:"Cardio" },
 ];
 
+// Detect equipment from an exercise name (rough, name-based) so substitutions can prefer a
+// DIFFERENT implement — e.g. swapping a barbell move when you only have dumbbells.
+function exEquipment(name) {
+  const n = (name || "").toLowerCase();
+  if (/\b(db|dumbbell)\b/.test(n)) return "dumbbell";
+  if (/barbell|\bbar\b/.test(n)) return "barbell";
+  if (/cable|rope|pulldown|pushdown/.test(n)) return "cable";
+  if (/machine|smith|hack|pec deck|leg press|leg extension|leg curl/.test(n)) return "machine";
+  if (/(^|\s)(push-?up|pull-?up|chin-?up|dip|plank|bodyweight|sit-?up|crunch|lunge|nordic|sissy)/.test(n)) return "bodyweight";
+  if (/kettlebell/.test(n)) return "kettlebell";
+  return "other";
+}
 
-// ═════════════════════════════════════════════════════════════════════════════
-// DESIGN TOKENS — Instagram-inspired: minimal, whitespace-forward
-// ═════════════════════════════════════════════════════════════════════════════
+// Suggest substitute exercises for a given exercise: same muscle group, excluding itself.
+// Orders by DIFFERENT equipment first (the common reason to swap — equipment unavailable),
+// then alphabetically. Returns up to `limit` names.
+function suggestExerciseSubstitutes(name, limit = 8) {
+  const entry = EXERCISE_DB.find(e => e.name === name);
+  if (!entry) return [];
+  const sameMuscle = EXERCISE_DB.filter(e => e.muscle === entry.muscle && e.name !== name);
+  const origEquip = exEquipment(name);
+  return sameMuscle
+    .map(e => ({ name: e.name, equip: exEquipment(e.name) }))
+    .sort((a, b) => {
+      const aDiff = a.equip !== origEquip ? 0 : 1;
+      const bDiff = b.equip !== origEquip ? 0 : 1;
+      if (aDiff !== bDiff) return aDiff - bDiff;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, limit)
+    .map(e => e.name);
+}
+
+
 const THEMES = {
   dark: {
     isDark: true,
@@ -1398,6 +1485,125 @@ function parseRepRange(reps) {
   return null;
 }
 
+// Strength score — rates the user's main lifts relative to bodyweight against population
+// standards, returning a level (Untrained→Elite) per lift plus an overall. Uses the same
+// Bodyweight-multiple thresholds (lower bound of each level), by sex. These are reasonable,
+// transparent population baselines for relative strength — not medical or competitive metrics.
+const STRENGTH_STANDARDS_BY_SEX = {
+  male: {
+    "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Advanced:1.25, Elite:1.75 },
+    "Barbell Back Squat":      { Novice:0.75, Intermediate:1.25, Advanced:1.75, Elite:2.5 },
+    "Deadlift":                { Novice:1.0, Intermediate:1.5, Advanced:2.25, Elite:3.0 },
+    "Overhead Press (Barbell)":{ Novice:0.35, Intermediate:0.55, Advanced:0.8, Elite:1.1 },
+  },
+  female: {
+    "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Advanced:0.8, Elite:1.1 },
+    "Barbell Back Squat":      { Novice:0.5, Intermediate:0.9, Advanced:1.35, Elite:1.9 },
+    "Deadlift":                { Novice:0.65, Intermediate:1.1, Advanced:1.75, Elite:2.5 },
+    "Overhead Press (Barbell)":{ Novice:0.2, Intermediate:0.35, Advanced:0.55, Elite:0.8 },
+  },
+};
+const STRENGTH_LIFT_ALIASES = {
+  "Barbell Bench Press": ["Bench Press","Flat Barbell Bench","Flat Bench"],
+  "Barbell Back Squat": ["Back Squat","Low Bar Squat","High Bar Squat","Squat"],
+  "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift"],
+  "Overhead Press (Barbell)": ["Overhead Press","OHP","Standing Barbell OHP","Standing OHP","Standing Press","Strict Press","Military Press","Barbell OHP","Barbell Overhead Press"],
+};
+const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Advanced","Elite"];
+
+function levelForRatio(standards, lift, ratio) {
+  const s = standards[lift];
+  if (!s) return "Untrained";
+  if (ratio >= s.Elite) return "Elite";
+  if (ratio >= s.Advanced) return "Advanced";
+  if (ratio >= s.Intermediate) return "Intermediate";
+  if (ratio >= s.Novice) return "Novice";
+  return "Untrained";
+}
+
+// sex: "male" | "female" (defaults to male if unset, but the UI prompts the user to pick).
+// Returns { overall, score (0-100), lifts:[{lift, best, ratio, level}], bodyweight, sex } or
+// { ready:false } if there isn't enough data (no bodyweight or no main-lift PRs).
+function computeStrengthScore(store, unit, sex = "male") {
+  const standards = STRENGTH_STANDARDS_BY_SEX[sex] || STRENGTH_STANDARDS_BY_SEX.male;
+  const bodyLog = [...(store.bodyLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const bw = bodyLog.length ? parseFloat(bodyLog[0].weight) : null;
+  if (!bw || bw <= 0) return { ready: false, reason: "no_bodyweight" };
+  const prs = store.prs || {};
+  const bestPR = (canonical) => {
+    const names = [canonical, ...(STRENGTH_LIFT_ALIASES[canonical] || [])];
+    const vals = names.map(n => prs[n]).filter(v => v != null && v > 0);
+    return vals.length ? Math.max(...vals) : null;
+  };
+  const lifts = [];
+  let levelSum = 0, counted = 0;
+  for (const lift of Object.keys(standards)) {
+    const best = bestPR(lift);
+    if (best == null) continue;
+    const ratio = best / bw; // both in the same unit, so the ratio is unit-independent
+    const level = levelForRatio(standards, lift, ratio);
+    lifts.push({ lift, best, ratio: Math.round(ratio * 100) / 100, level });
+    levelSum += STRENGTH_LEVELS.indexOf(level);
+    counted++;
+  }
+  if (!counted) return { ready: false, reason: "no_lifts" };
+  const avgIdx = levelSum / counted;
+  const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
+  const score = Math.round((avgIdx / (STRENGTH_LEVELS.length - 1)) * 100);
+  return { ready: true, overall, score, lifts, bodyweight: bw, counted, sex };
+}
+
+// Assembles a compact, structured snapshot of the user's training for the AI coach to reason
+// over. Deliberately summarized (not raw dumps) to keep the prompt small and focused: recent
+// sessions, top lifts + strength levels, stalls, consistency. All from data already stored.
+function buildCoachContext(store, unit) {
+  const sex = store.strengthSex || "male";
+  const ss = computeStrengthScore(store, unit, sex);
+  const streak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+  const dates = Object.keys(store.history || {}).sort().reverse();
+  const recent = [];
+  for (const d of dates) {
+    const sessions = Object.values(store.history[d] || {});
+    for (const s of sessions) {
+      const exs = (s.exercises || []).map(ex => {
+        const done = (ex.sets || []).filter(st => st.type !== "warmup" && (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)));
+        if (!done.length) return null;
+        const top = done.reduce((a, st) => (parseFloat(st.weight) || 0) > (parseFloat(a.weight) || 0) ? st : a, done[0]);
+        return { name: ex.name, sets: done.length, topWeight: parseFloat(top.weight) || 0, topReps: parseFloat(top.reps) || 0 };
+      }).filter(Boolean);
+      if (exs.length) recent.push({ date: d, name: s.dayName || s.name || "Workout", exercises: exs });
+    }
+    if (recent.length >= 8) break;
+  }
+  const lastTrained = {};
+  const todayMs = new Date(dKey() + "T12:00:00").getTime();
+  for (const d of dates) {
+    const sessions = Object.values(store.history[d] || {});
+    for (const s of sessions) {
+      for (const ex of (s.exercises || [])) {
+        const m = EXERCISE_DB.find(e => e.name === ex.name)?.muscle;
+        if (m && lastTrained[m] == null) {
+          lastTrained[m] = Math.floor((todayMs - new Date(d + "T12:00:00").getTime()) / 86400000);
+        }
+      }
+    }
+  }
+  const stalls = [];
+  ["Barbell Bench Press","Barbell Back Squat","Deadlift","Overhead Press (Barbell)"].forEach(l => {
+    const dl = detectDeloadNeeded(store, l, unit);
+    if (dl.stalled) stalls.push({ lift: l, detail: dl.reason });
+  });
+  return {
+    unit, sex,
+    strength: ss.ready ? { overall: ss.overall, score: ss.score, lifts: ss.lifts.map(l => ({ lift: l.lift, level: l.level, ratio: l.ratio })) } : null,
+    bodyweight: ss.ready ? ss.bodyweight : null,
+    consistency: { weeklyStreak: streak.count, thisWeek: streak.thisWeek, target: streak.target },
+    recentSessions: recent,
+    daysSinceMuscle: lastTrained,
+    stalls,
+  };
+}
+
 // Returns the last `limit` working-set sessions for an exercise, newest first.
 // Each entry: { date, unit, sets:[{w,r}], daysSince, topWeight, topReps, volume }.
 function getExerciseSessions(store, exName, limit = 5) {
@@ -2201,6 +2407,107 @@ function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // HEATMAP
 // ═════════════════════════════════════════════════════════════════════════════
+// Muscle-group balance — shows how training volume (completed sets) is distributed across
+// muscle groups over the last N days. Surfaces imbalances History can't (e.g. push >> pull).
+// Pairs with the AI coach, which reads the same kind of signal.
+function MuscleBalance({ store, C, days = 30 }) {
+  const data = useMemo(() => {
+    const muscleByName = {};
+    EXERCISE_DB.forEach(e => { muscleByName[e.name] = e.muscle; });
+    // Group granular muscles into readable categories.
+    const GROUP = {
+      Chest:"Push", Shoulders:"Push", Triceps:"Push",
+      Back:"Pull", Biceps:"Pull", Traps:"Pull", "Rear Delts":"Pull", Forearms:"Pull",
+      Quads:"Legs", Hamstrings:"Legs", Glutes:"Legs", Calves:"Legs",
+      Core:"Core", Neck:"Other", "Full Body":"Other", Cardio:"Cardio",
+    };
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days); cutoff.setHours(0,0,0,0);
+    const groupSets = {}; const muscleSets = {}; let total = 0;
+    const dates = Object.keys(store.history || {});
+    for (const d of dates) {
+      const dd = new Date(d + "T12:00:00");
+      if (dd < cutoff) continue;
+      for (const sess of Object.values(store.history[d] || {})) {
+        for (const ex of (sess.exercises || [])) {
+          const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
+          if (!done) continue;
+          const muscle = muscleByName[ex.name] || "Other";
+          const group = GROUP[muscle] || "Other";
+          groupSets[group] = (groupSets[group] || 0) + done;
+          muscleSets[muscle] = (muscleSets[muscle] || 0) + done;
+          total += done;
+        }
+      }
+    }
+    const groupOrder = ["Push","Pull","Legs","Core","Cardio","Other"];
+    const groups = groupOrder.filter(g => groupSets[g]).map(g => ({ name:g, sets:groupSets[g], pct: Math.round((groupSets[g]/total)*100) }));
+    const muscles = Object.entries(muscleSets).map(([name, sets]) => ({ name, sets, pct: Math.round((sets/total)*100) })).sort((a,b)=>b.sets-a.sets);
+    return { total, groups, muscles };
+  }, [store.history, days]);
+
+  const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#a78bfa", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
+
+  if (!data.total) {
+    return (
+      <div style={{ padding:"16px 0 8px" }}>
+        <div style={{ padding:"24px 16px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.5 }}>
+          Log some workouts to see how your training volume is distributed across muscle groups.
+        </div>
+      </div>
+    );
+  }
+
+  // Push/Pull balance insight
+  const push = data.groups.find(g => g.name === "Push")?.sets || 0;
+  const pull = data.groups.find(g => g.name === "Pull")?.sets || 0;
+  let balanceNote = null;
+  if (push && pull) {
+    const ratio = push / pull;
+    if (ratio >= 1.5) balanceNote = `You're training push ${ratio.toFixed(1)}× more than pull — consider more back/biceps work.`;
+    else if (ratio <= 0.67) balanceNote = `You're training pull ${(1/ratio).toFixed(1)}× more than push — balanced, or add pressing if that's not intended.`;
+    else balanceNote = "Your push/pull balance looks solid.";
+  }
+
+  return (
+    <div style={{ padding:"16px 0 8px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1 }}>MUSCLE BALANCE</div>
+        <div style={{ fontSize:11, color:C.sub }}>{data.total} sets · last {days}d</div>
+      </div>
+
+      {/* Group bars */}
+      {data.groups.map(g => (
+        <div key={g.name} style={{ marginBottom:9 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+            <span style={{ fontSize:12.5, color:C.text, fontWeight:600 }}>{g.name}</span>
+            <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}>{g.sets} sets · {g.pct}%</span>
+          </div>
+          <div style={{ height:7, borderRadius:4, background:C.divider, overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${g.pct}%`, background:GROUP_COLOR[g.name] || C.accent, borderRadius:4 }}/>
+          </div>
+        </div>
+      ))}
+
+      {balanceNote && (
+        <div style={{ marginTop:12, padding:"10px 12px", background:C.divider, borderRadius:10, fontSize:12, color:C.sub, lineHeight:1.45 }}>
+          {balanceNote}
+        </div>
+      )}
+
+      {/* Top muscles */}
+      <div style={{ marginTop:14, fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:8 }}>MOST TRAINED</div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+        {data.muscles.slice(0, 6).map(mu => (
+          <div key={mu.name} style={{ padding:"5px 10px", background:C.divider, borderRadius:20, fontSize:11.5, color:C.text }}>
+            {mu.name} <span style={{ color:C.sub, fontFamily:MONO }}>{mu.sets}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Heatmap — consistency view (kept available; profile now uses MuscleBalance by default).
 function Heatmap({ workoutDates, history, C, onDayTap }) {
   const [view, setView] = useState("heat"); // "heat" | "cal"
   const [calMonth, setCalMonth] = useState(() => {
@@ -3235,7 +3542,7 @@ function PlateCalcModal({ onClose, unit, C }) {
 function WrappedModal({ store, C, onClose, onPostToFeed }) {
   const unit = store.unit || "lbs";
   const weekAgo = Date.now() - 7*24*60*60*1000;
-  const weekHistory = Object.entries(store.history||{}).filter(([d]) => new Date(d).getTime() > weekAgo);
+  const weekHistory = Object.entries(store.history||{}).filter(([d]) => new Date(d + "T12:00:00").getTime() > weekAgo);
   const workouts = weekHistory.reduce((a,[,ss]) => a + Object.keys(ss).length, 0);
   // Volume: exclude warmups and convert each session's stored unit to the display unit,
   // matching how volume is computed everywhere else in the app.
@@ -4401,6 +4708,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   const [localProg, setLocalProg] = useState(() => JSON.parse(JSON.stringify(prog)));
   const [activeDay, setActiveDay] = useState(initialDayIdx);
   const [shareModal, setShareModal] = useState(null); // { code, generating } when open
+  const [confirmDelDay, setConfirmDelDay] = useState(false); // two-tap day-delete confirm
   const isActive = store.activeProgramId === prog.id;
 
   useEffect(() => { setLocalProg(JSON.parse(JSON.stringify(prog))); }, [prog.id]);
@@ -4555,7 +4863,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           const col = DAY_COLORS[di%7];
           const active = activeDay === di;
           return (
-            <button key={di} onClick={() => setActiveDay(di)} style={{
+            <button key={di} onClick={() => { setActiveDay(di); setConfirmDelDay(false); }} style={{
               padding:"8px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:F,
               fontSize:12, fontWeight:700, whiteSpace:"nowrap", flexShrink:0,
               background: active ? col : (isDark?"#1e1e1e":"#EEF2F7"),
@@ -4565,7 +4873,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           );
         })}
         <button onClick={() => {
-          const nd = { id:Date.now().toString(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
+          const nd = { id:uid(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
           patch({...localProg, days:[...(localProg.days||[]), nd]});
           setActiveDay((localProg.days||[]).length);
         }} style={{ padding:"8px 14px", borderRadius:20, border:`1.5px dashed ${isDark?"#333":"#CBD5E1"}`, background:"none", cursor:"pointer", fontFamily:F, fontSize:12, fontWeight:700, color:BLUE, whiteSpace:"nowrap", flexShrink:0 }}>+ Day</button>
@@ -4585,6 +4893,23 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               const ds = [...localProg.days]; [ds[activeDay], ds[activeDay+1]] = [ds[activeDay+1], ds[activeDay]];
               patch({ ...localProg, days: ds }); setActiveDay(activeDay+1); haptic("tap");
             }} disabled={activeDay === localProg.days.length-1} aria-label="Move day right" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color: activeDay === localProg.days.length-1 ? SUB : TXT, fontSize:13, cursor: activeDay === localProg.days.length-1 ? "default" : "pointer", fontFamily:F, opacity: activeDay === localProg.days.length-1 ? 0.4 : 1 }}>›</button>
+            {confirmDelDay ? (
+              <>
+                <button onClick={() => {
+                  const ds = localProg.days.filter((_, i) => i !== activeDay);
+                  const newIdx = Math.min(activeDay, ds.length - 1);
+                  patch({ ...localProg, days: ds });
+                  setActiveDay(newIdx);
+                  setConfirmDelDay(false);
+                  haptic("tap");
+                }} aria-label="Confirm delete day" style={{ background:"#EF4444", border:"1px solid #EF4444", borderRadius:8, padding:"9px 10px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F }}>Delete?</button>
+                <button onClick={() => setConfirmDelDay(false)} aria-label="Cancel delete day" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color:TXT, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>✕</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmDelDay(true)} aria-label="Delete day" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color:"#EF4444", fontSize:13, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            )}
           </div>
         )}
         <input value={day.name} onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, name:e.target.value})})}
@@ -4672,7 +4997,7 @@ const SESSION_KEY = "seshd_active_session";
 const WSTART_KEY = "seshd_wstart";
 
 // Inline code-redeem row used in the templates modal
-function CodeRedeemRow({ C, store, setStore, onClose, token, initialCode = null }) {
+function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, initialCode = null }) {
   const [open, setOpen] = useState(!!initialCode);
   const [code, setCode] = useState(initialCode || "");
   const [loading, setLoading] = useState(false);
@@ -4750,15 +5075,25 @@ function CodeRedeemRow({ C, store, setStore, onClose, token, initialCode = null 
     }));
     // Save to user's account
     if (token) {
-      sb.query("programs", {
-        method: "POST",
-        body: JSON.stringify({
-          id: newId,
-          name: imported.name,
-          days: imported.days,
-          is_active: true,
-        })
-      }, token).catch(e => console.error("save imported program:", e));
+      // Deactivate any currently-active program first — otherwise two rows end up with
+      // is_active=true and the next login's `.find(p => p.is_active)` may resolve to the OLD
+      // program, silently reverting the import. Mirror handleSaveProgram's behavior.
+      sb.query(`programs?user_id=eq.${currentUserId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: false })
+      }, token)
+        .catch(() => {})
+        .finally(() => {
+          sb.query("programs", {
+            method: "POST",
+            body: JSON.stringify({
+              id: newId,
+              name: imported.name,
+              days: imported.days,
+              is_active: true,
+            })
+          }, token).catch(e => console.error("save imported program:", e));
+        });
     }
     toast(isWorkout ? "Workout imported" : "Program imported", "success");
     setCode("");
@@ -5484,6 +5819,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
   const [restPickerEx, setRestPickerEx] = useState(null); // exercise index whose rest picker is open
+  const [swapEx, setSwapEx] = useState(null); // exercise index being swapped (substitution modal)
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
   const elRef = useRef(null);
@@ -5491,6 +5827,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [reorderMode, setReorderMode] = useState(false);
   // Exercises whose plateau/deload banner the user dismissed this workout (per exercise name).
   const [dismissedDeloads, setDismissedDeloads] = useState([]);
+  // History delete confirmation — holds the session id awaiting a confirm tap (prevents
+  // accidental deletes). Cleared on confirm/cancel.
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  // History cards collapse long exercise lists; this holds which session ids are expanded.
+  const [expandedSessions, setExpandedSessions] = useState({});
   // Exercise reordering during a workout now uses dnd-kit (same engine as day reorder)
   // for a consistent, smooth lift/slide/drop feel across the app.
   const exReorderSensors = useSensors(
@@ -6130,6 +6471,44 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             onClose={() => setViewingExercise(null)}
           />
         )}
+        {swapEx != null && session.exercises[swapEx] && (() => {
+          const cur = session.exercises[swapEx];
+          const subs = suggestExerciseSubstitutes(cur.name, 10);
+          const curEquip = exEquipment(cur.name);
+          return (
+            <div onClick={() => setSwapEx(null)} style={{ position:"fixed", inset:0, zIndex:480, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+              <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                  <div style={{ fontSize:17, fontWeight:800, color:C.text }}>Swap exercise</div>
+                  <button onClick={() => setSwapEx(null)} style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
+                </div>
+                <div style={{ fontSize:13, color:C.sub, marginBottom:14 }}>Alternatives for <span style={{ color:C.text, fontWeight:600 }}>{cur.name}</span> · same muscle group</div>
+                {subs.length === 0 ? (
+                  <div style={{ padding:"24px 6px", color:C.sub, fontSize:13, textAlign:"center" }}>No alternatives found for this exercise.</div>
+                ) : subs.map(name => {
+                  const diffEquip = exEquipment(name) !== curEquip;
+                  return (
+                    <button key={name} onClick={() => {
+                      // Replace the name; keep the logged sets so far (user is mid-swap, weights
+                      // may differ but they can adjust — clearing would lose progress).
+                      setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=> i!==swapEx ? x : { ...x, name }) }));
+                      setSwapEx(null);
+                      haptic("tap");
+                      toast(`Swapped to ${name}`, "success");
+                    }} style={{
+                      width:"100%", textAlign:"left", display:"flex", alignItems:"center", justifyContent:"space-between",
+                      gap:10, padding:"13px 14px", marginBottom:7, borderRadius:11, cursor:"pointer", fontFamily:F,
+                      background:C.surface, border:`1px solid ${C.divider}`,
+                    }}>
+                      <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>{name}</span>
+                      {diffEquip && <span style={{ fontSize:10, color:C.accent, fontWeight:700, background:C.accentSoft, borderRadius:6, padding:"3px 7px", flexShrink:0 }}>{exEquipment(name)}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
         {editingHistory && (
           <EditHistoryModal
             editing={editingHistory}
@@ -6390,6 +6769,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </button>
                     )}
                     {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
+                    {ex.name && <button onClick={() => setSwapEx(ei)} title="Swap exercise" style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></svg>
+                    </button>}
                     <button onClick={() => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); }} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
                 </div>
@@ -7697,14 +8079,36 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             background:"none", border:`1px solid ${C.border}`, borderRadius:8,
                             color:C.text, fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
                           }}>Edit</button>
-                          <button onClick={() => onDeleteHistory && onDeleteHistory(date, sid)} style={{
-                            background:"none", border:`1px solid ${C.border}`, borderRadius:8,
-                            color:"#EF4444", fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
-                          }}>Delete</button>
+                          {confirmDeleteId === sid ? (
+                            <>
+                              <button onClick={() => { onDeleteHistory && onDeleteHistory(date, sid); setConfirmDeleteId(null); }} style={{
+                                background:"#EF4444", border:"1px solid #EF4444", borderRadius:8,
+                                color:"#fff", fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:700
+                              }}>Delete?</button>
+                              <button onClick={() => setConfirmDeleteId(null)} style={{
+                                background:"none", border:`1px solid ${C.border}`, borderRadius:8,
+                                color:C.text, fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
+                              }}>Cancel</button>
+                            </>
+                          ) : (
+                            <button onClick={() => setConfirmDeleteId(sid)} style={{
+                              background:"none", border:`1px solid ${C.border}`, borderRadius:8,
+                              color:"#EF4444", fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
+                            }}>Delete</button>
+                          )}
                         </div>
                       </div>
                       <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                        {sess.exercises?.filter(e=>e.name).map((ex,j) => {
+                        {(() => {
+                          const named = sess.exercises?.filter(e=>e.name) || [];
+                          const withSets = named.filter(ex => (ex.sets||[]).some(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0))));
+                          const COLLAPSE_AT = 4;
+                          const isExpanded = expandedSessions[sid];
+                          const visible = isExpanded ? withSets : withSets.slice(0, COLLAPSE_AT);
+                          const hidden = withSets.length - visible.length;
+                          return (
+                            <>
+                              {visible.map((ex,j) => {
                           const doneSets = (ex.sets||[]).filter(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0)));
                           if (!doneSets.length) return null;
                           const isPR = (store.prs||{})[ex.name] && doneSets.some(s=>{
@@ -7727,7 +8131,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               </div>
                             </div>
                           );
-                        }).filter(Boolean)}
+                              }).filter(Boolean)}
+                              {(hidden > 0 || isExpanded) && withSets.length > COLLAPSE_AT && (
+                                <button onClick={() => setExpandedSessions(p => ({ ...p, [sid]: !isExpanded }))} style={{
+                                  alignSelf:"flex-start", marginTop:2, background:"none", border:"none",
+                                  color:C.accent, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"2px 0"
+                                }}>{isExpanded ? "Show less" : `+ ${hidden} more exercise${hidden>1?"s":""}`}</button>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -7766,7 +8179,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               </button>
 
               {/* Code redeem */}
-              <CodeRedeemRow C={C} store={store} setStore={setStore} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} token={token} initialCode={prefilledCode}/>
+              <CodeRedeemRow C={C} store={store} setStore={setStore} currentUserId={currentUserId} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} token={token} initialCode={prefilledCode}/>
 
               <div style={{ fontSize:10, color:C.sub, textAlign:"center", marginBottom:10, marginTop:10, letterSpacing:1, fontWeight:600 }}>OR PICK A TEMPLATE</div>
             </div>
@@ -7897,6 +8310,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       {showAICoach && (
         <AICoachModal
           C={C}
+          store={store}
           onClose={() => setShowAICoach(false)}
           onImport={(prog) => {
             if (onSaveProgram) onSaveProgram(prog);
@@ -8277,10 +8691,13 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   );
 }
 
-function AICoachModal({ C, onClose, onImport }) {
+function AICoachModal({ C, onClose, onImport, store }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
+  const [freeText, setFreeText] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState(null);
 
   const questions = [
     {
@@ -8328,8 +8745,9 @@ function AICoachModal({ C, onClose, onImport }) {
     },
   ];
 
-  // Program library — matched by goal/days/level
-  function buildProgram() {
+  // Program library — used as a FALLBACK if the AI generation fails, so the user is never
+  // left empty-handed (important given API availability can vary in production).
+  function buildProgramFallback() {
     const { goal, days, level, equipment, focus } = answers;
 
     // Define programs for key combinations
@@ -8540,6 +8958,70 @@ function AICoachModal({ C, onClose, onImport }) {
     };
   }
 
+  // AI program builder — sends the structured answers + the user's free-text description to
+  // Claude and asks for a custom program in the exact shape the app consumes. Falls back to the
+  // table version on any failure (bad/empty/non-JSON response, network/API error in production).
+  async function buildProgramAI() {
+    const { goal, days, level, equipment, focus } = answers;
+    const sys = "You are an expert strength coach building a workout program inside the Seshd app. " +
+      "Return ONLY valid JSON (no markdown, no prose) in EXACTLY this shape: " +
+      '{"name":"string","days":[{"name":"string","exercises":[{"name":"string","reps":"string like 4×8–10","note":"optional short cue"}]}]}. ' +
+      "Rules: the number of days must match the requested training days. Use real, common exercise " +
+      "names. reps format like '3×10' or '4×8–10'. Keep notes short or empty. Respect the user's " +
+      "equipment and experience. 4-7 exercises per day. No commentary outside the JSON.";
+    const profile = {
+      goal, daysPerWeek: days, experience: level, equipment, focusArea: focus,
+      description: freeText || "(none provided)",
+      unit: store?.unit || "lbs",
+    };
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        system: sys,
+        messages: [{ role: "user", content: "Build a program for this lifter:\n" + JSON.stringify(profile) }],
+      }),
+    });
+    if (!res.ok) throw new Error("api_" + res.status);
+    const data = await res.json();
+    let text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+    text = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(text); // throws on bad JSON → caught by caller → fallback
+    if (!parsed || !Array.isArray(parsed.days) || !parsed.days.length) throw new Error("bad_shape");
+    // Normalize into the app's program format (same as the fallback output).
+    return {
+      id: uid(),
+      name: parsed.name || "Custom AI Program",
+      days: parsed.days.map(d => ({
+        id: uid(),
+        name: d.name || "Day",
+        exercises: (d.exercises || []).map(ex => ({
+          name: typeof ex === "string" ? ex : (ex.name || "Exercise"),
+          reps: (ex && ex.reps) ? ex.reps : "8–12",
+          note: (ex && ex.note) ? ex.note : "",
+        })),
+      })),
+    };
+  }
+
+  // Generate: try AI first, fall back to the table version so the user always gets a program.
+  async function generateProgram() {
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const ai = await buildProgramAI();
+      setResult(ai);
+    } catch (e) {
+      console.warn("AI program gen failed, using fallback:", e);
+      setGenError("ai_unavailable");
+      setResult(buildProgramFallback());
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   const q = questions[step];
 
   return (
@@ -8550,7 +9032,7 @@ function AICoachModal({ C, onClose, onImport }) {
           <button onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
             {step > 0 ? "‹ Back" : "Cancel"}
           </button>
-          <div style={{ fontSize:12, color:C.sub }}>Step {step + 1} of {questions.length}</div>
+          <div style={{ fontSize:12, color:C.sub }}>{result ? "Review" : generating ? "" : `Step ${step + 1} of ${questions.length + 1}`}</div>
           <div style={{ width:60 }}/>
         </div>
 
@@ -8561,6 +9043,11 @@ function AICoachModal({ C, onClose, onImport }) {
               <div style={{ marginBottom:10, display:"flex", justifyContent:"center" }}><Icon name="check" size={36} color={C.accent}/></div>
               <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Your program is ready</div>
               <div style={{ fontSize:13, color:C.sub, marginTop:4 }}>{result.name}</div>
+              {genError === "ai_unavailable" && (
+                <div style={{ fontSize:11, color:C.sub, marginTop:8, padding:"8px 12px", background:C.divider, borderRadius:8, lineHeight:1.4 }}>
+                  AI was unavailable, so we built you a solid template-based program matching your answers.
+                </div>
+              )}
             </div>
             {result.days.map((d, i) => (
               <div key={i} style={{ padding:"10px 14px", background:C.divider, borderRadius:10, marginBottom:8 }}>
@@ -8574,12 +9061,46 @@ function AICoachModal({ C, onClose, onImport }) {
               fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, marginTop:12
             }}>Import & Set Active</button>
           </div>
+        ) : generating ? (
+          // Generating state
+          <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:40, gap:14 }}>
+            <div style={{ fontSize:34 }}>🧠</div>
+            <div style={{ fontSize:15, fontWeight:700, color:C.text }}>Building your program…</div>
+            <div style={{ fontSize:12, color:C.sub, textAlign:"center", maxWidth:240, lineHeight:1.5 }}>Designing a plan around your goals, equipment, and notes.</div>
+          </div>
+        ) : step >= questions.length ? (
+          // Free-text step — describe needs in your own words, then generate
+          <div style={{ overflowY:"auto", flex:1, padding:20 }}>
+            <div style={{ background:C.divider, borderRadius:4, height:4, marginBottom:20, overflow:"hidden" }}>
+              <div style={{ width:"100%", height:"100%", background:C.accent }}/>
+            </div>
+            <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Anything else? (optional)</div>
+            <div style={{ fontSize:13, color:C.sub, marginBottom:14, lineHeight:1.5 }}>
+              Tell the AI anything specific — injuries to work around, exercises you love or hate, a weak point to bring up, time limits per session. The more you say, the more tailored your program.
+            </div>
+            <textarea
+              value={freeText}
+              onChange={e => setFreeText(e.target.value)}
+              placeholder="e.g. Bad left shoulder so no flat barbell bench. Want bigger arms and a stronger deadlift. 45 min sessions max."
+              style={{
+                width:"100%", minHeight:110, resize:"vertical", borderRadius:12, padding:"12px 14px",
+                background:C.surface, border:`1px solid ${C.border}`, color:C.text, fontSize:14,
+                fontFamily:F, lineHeight:1.5, boxSizing:"border-box", marginBottom:16,
+              }}
+            />
+            <button onClick={generateProgram} style={{
+              width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+              color:"#fff", border:"none", borderRadius:12, padding:"14px",
+              fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
+              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+            }}><span style={{ fontSize:16 }}>🧠</span> Generate my program</button>
+          </div>
         ) : (
           // Show question
           <div style={{ overflowY:"auto", flex:1, padding:20 }}>
             {/* Progress bar */}
             <div style={{ background:C.divider, borderRadius:4, height:4, marginBottom:20, overflow:"hidden" }}>
-              <div style={{ width:`${((step) / questions.length) * 100}%`, height:"100%", background:C.accent, transition:"width 0.3s" }}/>
+              <div style={{ width:`${((step) / (questions.length + 1)) * 100}%`, height:"100%", background:C.accent, transition:"width 0.3s" }}/>
             </div>
             <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:16 }}>{q.label}</div>
             <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -8587,12 +9108,8 @@ function AICoachModal({ C, onClose, onImport }) {
                 <button key={opt.id} onClick={() => {
                   const newAnswers = { ...answers, [q.key]: opt.id };
                   setAnswers(newAnswers);
-                  if (step < questions.length - 1) {
-                    setStep(s => s + 1);
-                  } else {
-                    // All answers collected — build program
-                    setResult(buildProgram());
-                  }
+                  // Advance to the next question, or to the free-text step after the last one.
+                  setStep(s => s + 1);
                 }} style={{
                   background:answers[q.key] === opt.id ? C.accentSoft : C.divider,
                   border:`1.5px solid ${answers[q.key] === opt.id ? C.accent : "transparent"}`,
@@ -10227,11 +10744,56 @@ function BodyTrackingScreen({ store, setStore, unit, C, onClose }) {
   );
 }
 
-function ProfileScreen({ userId, store, setStore, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, onRefresh, token }) {
+function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, onRefresh, token, onPostKudos, onPostComment, onPostEditComment, onPostDeleteComment, onPostLikeComment, onPostEdit, onPostDelete }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
   const isFollowing = me?.following?.includes(userId);
+
+  // Export workout history as CSV (one row per set) — the format lifters expect for
+  // spreadsheet analysis, matching what Strong/others offer.
+  function exportCSV() {
+    try {
+      const esc = (v) => {
+        const s = String(v == null ? "" : v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const rows = [["Date", "Workout", "Exercise", "Set", "Type", "Weight", "Unit", "Reps", "RPE"]];
+      const unit = store.unit || "lbs";
+      const dates = Object.keys(store.history || {}).sort(); // chronological
+      for (const date of dates) {
+        const sessions = Object.values(store.history[date] || {});
+        for (const sess of sessions) {
+          const wName = sess.dayName || sess.name || "Workout";
+          (sess.exercises || []).forEach(ex => {
+            (ex.sets || []).forEach((s, i) => {
+              // Only export sets that were actually performed.
+              const done = s.done === true || (s.done === undefined && parseFloat(s.reps) > 0);
+              if (!done) return;
+              rows.push([
+                date, wName, ex.name || "", i + 1, s.type || "normal",
+                s.weight ?? "", sess.unit || unit, s.reps ?? "", s.rpe ?? "",
+              ].map(esc));
+            });
+          });
+        }
+      }
+      const csv = rows.map(r => r.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `seshd-workouts-${dKey()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      haptic("success");
+      toast("Workouts exported as CSV", "success");
+    } catch (e) {
+      toast("Couldn't export CSV — please try again", "error");
+    }
+  }
 
   // Export all of the user's data as a downloadable JSON file (App Store / GDPR friendly).
   function exportData() {
@@ -10559,7 +11121,71 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
 
       {isMe && (
         <div style={{ padding:"0 14px" }}>
-          <Heatmap workoutDates={store.workoutDates} C={C}/>
+          <MuscleBalance store={store} C={C}/>
+          {(() => {
+            const sex = store.strengthSex || "male";
+            const ss = computeStrengthScore(store, displayUnit || store.unit || "lbs", sex);
+            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#a78bfa", Elite:"#fbbf24" };
+            const SexToggle = () => (
+              <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
+                {[["Male","male"],["Female","female"]].map(([label,val]) => (
+                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); haptic("tap"); }} style={{
+                    padding:"4px 12px", background: sex===val ? C.accent : "transparent",
+                    color: sex===val ? "#fff" : C.sub, border:"none", borderRadius:12,
+                    fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
+                  }}>{label}</button>
+                ))}
+              </div>
+            );
+            if (!ss.ready) {
+              return (
+                <div style={{ marginTop:14, padding:"16px", borderRadius:14, background:C.surface, border:`1px solid ${C.divider}` }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1 }}>STRENGTH SCORE</div>
+                    <SexToggle/>
+                  </div>
+                  <div style={{ fontSize:13, color:C.sub, lineHeight:1.5 }}>
+                    {ss.reason === "no_bodyweight"
+                      ? "Log your bodyweight in Body tracking to unlock your strength score."
+                      : "Log a few main lifts (squat, bench, deadlift, overhead press) to see your strength score."}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div style={{ marginTop:14, padding:"16px", borderRadius:14, background:C.surface, border:`1px solid ${C.divider}` }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1 }}>STRENGTH SCORE</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <SexToggle/>
+                    <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+                      <span style={{ fontSize:22, fontWeight:800, color:C.text, fontFamily:MONO }}>{ss.score}</span>
+                      <span style={{ fontSize:12, fontWeight:700, color:LEVEL_COLOR[ss.overall] || C.sub }}>{ss.overall}</span>
+                    </div>
+                  </div>
+                </div>
+                {ss.lifts.map(l => (
+                  <div key={l.lift} style={{ marginBottom:8 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
+                      <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>{l.lift.replace(" (Barbell)","").replace("Barbell ","")}</span>
+                      <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}>{l.best} · {l.ratio}×BW · <span style={{ color:LEVEL_COLOR[l.level], fontWeight:700 }}>{l.level}</span></span>
+                    </div>
+                    <div style={{ height:5, borderRadius:3, background:C.divider, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${(STRENGTH_LEVELS.indexOf(l.level)/(STRENGTH_LEVELS.length-1))*100}%`, background:LEVEL_COLOR[l.level], borderRadius:3 }}/>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex} standards. General reference, not medical.</div>
+              </div>
+            );
+          })()}
+          <button onClick={() => onOpenCoach && onOpenCoach()} style={{
+            width:"100%", marginTop:10, padding:"13px", borderRadius:14, cursor:"pointer", fontFamily:F,
+            background:`linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent})`, color:"#fff",
+            border:"none", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+          }}>
+            <span style={{ fontSize:16 }}>🧠</span> Get AI coaching
+          </button>
         </div>
       )}
 
@@ -10585,13 +11211,14 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
             currentUserId={currentUserId}
             displayUnit={displayUnit}
             C={C}
-            onKudos={() => {}}
-            onComment={() => {}}
-            onEditComment={() => {}}
-            onDeleteComment={() => {}}
-            onUserClick={() => {}}
-            onEdit={() => {}}
-            onDelete={() => {}}
+            onKudos={onPostKudos || (() => {})}
+            onComment={onPostComment || (() => {})}
+            onEditComment={onPostEditComment || (() => {})}
+            onDeleteComment={onPostDeleteComment || (() => {})}
+            onUserClick={onUserClick || (() => {})}
+            onEdit={onPostEdit || (() => {})}
+            onDelete={onPostDelete || (() => {})}
+            onLikeComment={onPostLikeComment || (() => {})}
           />
         ))}
       </div>
@@ -10777,7 +11404,14 @@ function ProfileScreen({ userId, store, setStore, currentUserId, onBack, display
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
                   display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
                 }}>
-                  <div style={{ fontSize:14, color:C.text }}>Export my data</div>
+                  <div style={{ fontSize:14, color:C.text }}>Export my data <span style={{ fontSize:11, color:C.sub }}>(JSON)</span></div>
+                  <Icon name="share" size={15} color={C.sub}/>
+                </button>
+                <button onClick={exportCSV} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:C.text }}>Export workouts <span style={{ fontSize:11, color:C.sub }}>(CSV / spreadsheet)</span></div>
                   <Icon name="share" size={15} color={C.sub}/>
                 </button>
                 <button onClick={() => { setShowSettings(false); setTimeout(() => onSignOut && onSignOut(), 200); }} style={{
@@ -11448,6 +12082,89 @@ function PublicProfileView({ userId, C, onOpenApp }) {
   );
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// AI COACH — sends a compact summary of the user's training (strength score, recent
+// sessions, stalls, consistency, days-since-muscle) to Claude and shows personalized
+// guidance. The API call uses the in-context Anthropic endpoint (no key passed here).
+// NOTE: this call path works in the artifact/preview environment; in the deployed web app
+// and native wrap it may need routing through a serverless function with an API key — that's
+// the thing to verify in production. UI + data assembly are environment-independent.
+// ═════════════════════════════════════════════════════════════════════════════
+function AICoachSheet({ store, unit, C, onClose }) {
+  const [state, setState] = useState({ loading: true, text: "", error: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const ctx = buildCoachContext(store, unit);
+        // Not enough data to coach meaningfully
+        if (!ctx.recentSessions.length) {
+          if (!cancelled) setState({ loading: false, text: "", error: "no_data" });
+          return;
+        }
+        const sys = "You are a knowledgeable, encouraging strength coach inside the Seshd app. " +
+          "Give specific, actionable advice based ONLY on the user's data below. Be concise: " +
+          "3-5 short points. Reference their actual lifts and numbers. Cover what's going well, " +
+          "what to prioritize next, and flag any stalls or muscle groups they're neglecting. " +
+          "No medical claims. Use the user's units. Speak directly to the lifter ('you').";
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 1000,
+            system: sys,
+            messages: [{ role: "user", content: "Here is my training data as JSON:\n" + JSON.stringify(ctx) + "\n\nGive me my coaching summary." }],
+          }),
+        });
+        if (!res.ok) throw new Error("api_" + res.status);
+        const data = await res.json();
+        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+        if (!cancelled) setState({ loading: false, text: text || "Couldn't generate advice right now.", error: text ? null : "empty" });
+      } catch (e) {
+        if (!cancelled) setState({ loading: false, text: "", error: "failed" });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+            <span style={{ fontSize:22 }}>🧠</span>
+            <span style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>AI Coach</span>
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
+        </div>
+        {state.loading && (
+          <div style={{ padding:"40px 0", textAlign:"center", color:C.sub }}>
+            <div style={{ fontSize:13 }}>Analyzing your training…</div>
+          </div>
+        )}
+        {!state.loading && state.error === "no_data" && (
+          <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
+            Log a few workouts first — your coach needs some training history to give you useful advice.
+          </div>
+        )}
+        {!state.loading && (state.error === "failed" || state.error === "empty") && (
+          <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
+            Couldn't reach the coach right now. Please try again in a moment.
+          </div>
+        )}
+        {!state.loading && !state.error && (
+          <div style={{ fontSize:14.5, lineHeight:1.65, color:C.text, whiteSpace:"pre-wrap" }}>{state.text}</div>
+        )}
+        <div style={{ fontSize:10, color:C.muted, marginTop:20, lineHeight:1.4, textAlign:"center" }}>
+          AI-generated guidance based on your logged data. Not medical or professional training advice.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AppInner() {
   // ── Auth state ──────────────────────────────────────────────────
   const [session, setSession] = useState(loadSession);
@@ -11466,6 +12183,8 @@ function AppInner() {
   // Feed pagination
   const [feedHasMore, setFeedHasMore] = useState(false);
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
+  // AI coach modal
+  const [showCoach, setShowCoach] = useState(false);
 
   // Safety net: make sure the durable-storage write mirror is installed even if the app entry
   // (main.jsx) didn't call hydrateFromNative() for some reason. Hydration (restoring native →
@@ -12420,7 +13139,7 @@ function AppInner() {
     saveProgramDebounceRef.current[prog.id] = setTimeout(async () => {
       try {
         await sb.query(`programs?id=eq.${prog.id}`, {
-          method:"PATCH", body: JSON.stringify({ days: prog.days })
+          method:"PATCH", body: JSON.stringify({ name: prog.name, days: prog.days })
         }, tok);
       } catch (e) { console.error("program edit sync error:", e); }
     }, 1500);
@@ -12890,6 +13609,7 @@ function AppInner() {
           userId={profileUserId}
           store={store}
           setStore={setStore}
+          onOpenCoach={() => setShowCoach(true)}
           currentUserId={currentUserId}
           onBack={() => setProfileUserId(null)}
           displayUnit={unit}
@@ -12904,6 +13624,13 @@ function AppInner() {
           }}
           onUserClick={setProfileUserId}
           onFollow={handleFollow}
+          onPostKudos={handleKudos}
+          onPostComment={handleComment}
+          onPostEditComment={handleEditComment}
+          onPostDeleteComment={handleDeleteComment}
+          onPostLikeComment={handleLikeComment}
+          onPostEdit={(p)=>setEditingPost(p)}
+          onPostDelete={handleDelete}
           onRefresh={handleRefresh}
           token={token}
         />
@@ -12999,6 +13726,7 @@ function AppInner() {
         }
       `}</style>
       {prModal && <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>}
+      {showCoach && <AICoachSheet store={store} unit={unit} C={C} onClose={() => setShowCoach(false)}/>}
       {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
 
@@ -13442,6 +14170,7 @@ function AppInner() {
             userId={currentUserId}
             store={store}
             setStore={setStore}
+            onOpenCoach={() => setShowCoach(true)}
             currentUserId={currentUserId}
             displayUnit={unit}
             C={C}
@@ -13457,6 +14186,13 @@ function AppInner() {
             email={session?.user?.email || ""}
             onSignOut={handleSignOut}
             onFollow={handleFollow}
+            onPostKudos={handleKudos}
+            onPostComment={handleComment}
+            onPostEditComment={handleEditComment}
+            onPostDeleteComment={handleDeleteComment}
+            onPostLikeComment={handleLikeComment}
+            onPostEdit={(p)=>setEditingPost(p)}
+            onPostDelete={handleDelete}
             onRefresh={handleRefresh}
             token={token}
           />
