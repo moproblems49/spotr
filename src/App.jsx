@@ -1521,11 +1521,25 @@ function levelForRatio(standards, lift, ratio) {
   return "Untrained";
 }
 
-// sex: "male" | "female" (defaults to male if unset, but the UI prompts the user to pick).
+// sex: "male" | "female" | "other". Standards are physiological, so "other" uses the midpoint
+// of the male/female thresholds (a neutral baseline) rather than forcing a binary choice.
 // Returns { overall, score (0-100), lifts:[{lift, best, ratio, level}], bodyweight, sex } or
 // { ready:false } if there isn't enough data (no bodyweight or no main-lift PRs).
 function computeStrengthScore(store, unit, sex = "male") {
-  const standards = STRENGTH_STANDARDS_BY_SEX[sex] || STRENGTH_STANDARDS_BY_SEX.male;
+  let standards;
+  if (sex === "other") {
+    // Average the male & female thresholds per lift/level for a neutral baseline.
+    const m = STRENGTH_STANDARDS_BY_SEX.male, f = STRENGTH_STANDARDS_BY_SEX.female;
+    standards = {};
+    for (const lift of Object.keys(m)) {
+      standards[lift] = {};
+      for (const lvl of Object.keys(m[lift])) {
+        standards[lift][lvl] = (m[lift][lvl] + f[lift][lvl]) / 2;
+      }
+    }
+  } else {
+    standards = STRENGTH_STANDARDS_BY_SEX[sex] || STRENGTH_STANDARDS_BY_SEX.male;
+  }
   const bodyLog = [...(store.bodyLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const bw = bodyLog.length ? parseFloat(bodyLog[0].weight) : null;
   if (!bw || bw <= 0) return { ready: false, reason: "no_bodyweight" };
@@ -2411,6 +2425,7 @@ function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
 // muscle groups over the last N days. Surfaces imbalances History can't (e.g. push >> pull).
 // Pairs with the AI coach, which reads the same kind of signal.
 function MuscleBalance({ store, C, days = 30 }) {
+  const [expandedGroup, setExpandedGroup] = useState(null);
   const data = useMemo(() => {
     const muscleByName = {};
     EXERCISE_DB.forEach(e => { muscleByName[e.name] = e.muscle; });
@@ -2422,7 +2437,7 @@ function MuscleBalance({ store, C, days = 30 }) {
       Core:"Core", Neck:"Other", "Full Body":"Other", Cardio:"Cardio",
     };
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days); cutoff.setHours(0,0,0,0);
-    const groupSets = {}; const muscleSets = {}; let total = 0;
+    const groupSets = {}; const muscleSets = {}; const groupExercises = {}; let total = 0;
     const dates = Object.keys(store.history || {});
     for (const d of dates) {
       const dd = new Date(d + "T12:00:00");
@@ -2435,12 +2450,19 @@ function MuscleBalance({ store, C, days = 30 }) {
           const group = GROUP[muscle] || "Other";
           groupSets[group] = (groupSets[group] || 0) + done;
           muscleSets[muscle] = (muscleSets[muscle] || 0) + done;
+          // Track which exercises (and set counts) make up each group — powers the drill-down.
+          if (!groupExercises[group]) groupExercises[group] = {};
+          const exName = ex.name || "Unnamed";
+          groupExercises[group][exName] = (groupExercises[group][exName] || 0) + done;
           total += done;
         }
       }
     }
     const groupOrder = ["Push","Pull","Legs","Core","Cardio","Other"];
-    const groups = groupOrder.filter(g => groupSets[g]).map(g => ({ name:g, sets:groupSets[g], pct: Math.round((groupSets[g]/total)*100) }));
+    const groups = groupOrder.filter(g => groupSets[g]).map(g => ({
+      name:g, sets:groupSets[g], pct: Math.round((groupSets[g]/total)*100),
+      exercises: Object.entries(groupExercises[g] || {}).map(([n, s]) => ({ name:n, sets:s })).sort((a,b)=>b.sets-a.sets),
+    }));
     const muscles = Object.entries(muscleSets).map(([name, sets]) => ({ name, sets, pct: Math.round((sets/total)*100) })).sort((a,b)=>b.sets-a.sets);
     return { total, groups, muscles };
   }, [store.history, days]);
@@ -2476,17 +2498,41 @@ function MuscleBalance({ store, C, days = 30 }) {
       </div>
 
       {/* Group bars */}
-      {data.groups.map(g => (
+      {/* Group bars — tap to expand and see exactly which exercises are in each group */}
+      {data.groups.map(g => {
+        const isExp = expandedGroup === g.name;
+        return (
         <div key={g.name} style={{ marginBottom:9 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-            <span style={{ fontSize:12.5, color:C.text, fontWeight:600 }}>{g.name}</span>
-            <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}>{g.sets} sets · {g.pct}%</span>
+          <div onClick={() => setExpandedGroup(isExp ? null : g.name)} style={{ cursor:"pointer" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3, alignItems:"center" }}>
+              <span style={{ fontSize:12.5, color:C.text, fontWeight:600, display:"flex", alignItems:"center", gap:5 }}>
+                <span style={{ display:"inline-block", transform: isExp?"rotate(90deg)":"none", transition:"transform 0.15s", color:C.sub, fontSize:10 }}>▶</span>
+                {g.name}
+              </span>
+              <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}>{g.sets} sets · {g.pct}%</span>
+            </div>
+            <div style={{ height:7, borderRadius:4, background:C.divider, overflow:"hidden" }}>
+              <div style={{ height:"100%", width:`${g.pct}%`, background:GROUP_COLOR[g.name] || C.accent, borderRadius:4 }}/>
+            </div>
           </div>
-          <div style={{ height:7, borderRadius:4, background:C.divider, overflow:"hidden" }}>
-            <div style={{ height:"100%", width:`${g.pct}%`, background:GROUP_COLOR[g.name] || C.accent, borderRadius:4 }}/>
-          </div>
+          {isExp && (
+            <div style={{ marginTop:7, marginLeft:15, display:"flex", flexDirection:"column", gap:5 }}>
+              {g.exercises.map(ex => (
+                <div key={ex.name} style={{ display:"flex", justifyContent:"space-between", fontSize:11.5, color:C.sub }}>
+                  <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", paddingRight:8 }}>{ex.name}</span>
+                  <span style={{ fontFamily:MONO, flexShrink:0 }}>{ex.sets} set{ex.sets!==1?"s":""}</span>
+                </div>
+              ))}
+              {g.name === "Other" && (
+                <div style={{ fontSize:10.5, color:C.muted, marginTop:3, lineHeight:1.4, fontStyle:"italic" }}>
+                  "Other" includes yoga, full-body, and any exercises not matched to a specific muscle group.
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
 
       {balanceNote && (
         <div style={{ marginTop:12, padding:"10px 12px", background:C.divider, borderRadius:10, fontSize:12, color:C.sub, lineHeight:1.45 }}>
@@ -8974,7 +9020,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
       description: freeText || "(none provided)",
       unit: store?.unit || "lbs",
     };
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -11128,9 +11174,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#a78bfa", Elite:"#fbbf24" };
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
-                {[["Male","male"],["Female","female"]].map(([label,val]) => (
+                {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
                   <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); haptic("tap"); }} style={{
-                    padding:"4px 12px", background: sex===val ? C.accent : "transparent",
+                    padding:"4px 10px", background: sex===val ? C.accent : "transparent",
                     color: sex===val ? "#fff" : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
                   }}>{label}</button>
@@ -11175,7 +11221,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     </div>
                   </div>
                 ))}
-                <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex} standards. General reference, not medical.</div>
+                <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex === "other" ? "neutral" : sex} standards. General reference, not medical.</div>
               </div>
             );
           })()}
@@ -12108,7 +12154,7 @@ function AICoachSheet({ store, unit, C, onClose }) {
           "3-5 short points. Reference their actual lifts and numbers. Cover what's going well, " +
           "what to prioritize next, and flag any stalls or muscle groups they're neglecting. " +
           "No medical claims. Use the user's units. Speak directly to the lifter ('you').";
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await fetch("/api/ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
