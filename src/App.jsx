@@ -2779,19 +2779,23 @@ function Heatmap({ workoutDates, history, C, onDayTap }) {
 
   return (
     <div style={{ padding:"16px 0 8px" }}>
-      {/* Stats strip */}
-      <div style={{ display:"flex", gap:0, marginBottom:14 }}>
+      {/* Stats tiles — colored by meaning (sessions = accent, streak = flame) */}
+      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
         {[
-          ["Total", totalWorkouts, "sessions"],
-          ["This Month", thisMonth, "sessions"],
-          ["Streak", streak, "days"],
-        ].map(([label, val, unit2], i) => (
+          ["Total", totalWorkouts, "TOTAL", C.accent, "dumbbell"],
+          ["This Month", thisMonth, "THIS MONTH", C.accent, "calendar"],
+          ["Streak", streak, "DAY STREAK", "#f97316", "flame"],
+        ].map(([label, val, cap, color, icon]) => (
           <div key={label} style={{
-            flex:1, textAlign:"center",
-            borderRight: i < 2 ? `1px solid ${C.divider}` : "none"
+            flex:1, position:"relative", overflow:"hidden",
+            background:C.surface, border:`1px solid ${C.divider}`, borderRadius:14, padding:"12px 11px",
           }}>
-            <div style={{ fontSize:22, fontWeight:800, color:C.accent, fontFamily:MONO }}>{val}</div>
-            <div style={{ fontSize:10, color:C.sub, fontWeight:600, letterSpacing:0.5 }}>{label.toUpperCase()}</div>
+            <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:color }}/>
+            <div style={{ width:24, height:24, borderRadius:7, background:`${color}22`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:8 }}>
+              <Icon name={icon} size={13} color={color}/>
+            </div>
+            <div style={{ fontSize:22, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1 }}>{val}</div>
+            <div style={{ fontSize:9.5, color:C.sub, fontWeight:600, letterSpacing:0.5, marginTop:3 }}>{cap}</div>
           </div>
         ))}
       </div>
@@ -4471,6 +4475,14 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
   const isOwn = post.userId === currentUserId;
+  // Detect a share code in the caption (IGNITE-XXXX program / WO-XXXX workout). Computed once so
+  // the slim code block can render in the post body (above the action bar) while the caption text
+  // renders separately below, with the code suffix stripped out.
+  const _codeMatch = post.caption ? post.caption.match(/(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i) : null;
+  const postCode = _codeMatch ? _codeMatch[0].toUpperCase() : null;
+  const displayCaption = postCode
+    ? post.caption.replace(/\s*·?\s*Try my (program|workout):?\s*(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i, "").trim()
+    : (post.caption || "");
   const [showCmts, setShowCmts] = useState(false);
   const [cmtText, setCmtText] = useState("");
   const [mentionQuery, setMentionQuery] = useState(null); // active @query string, or null
@@ -4671,6 +4683,25 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         );
       })()}
 
+      {/* Share code (program/workout) — slim chip under the post body, above the action bar so
+          the import CTA reads as part of the content rather than floating among comments. */}
+      {postCode && (
+        <div style={{ padding:"0 12px 4px" }}>
+          <button onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-code", { detail: { code: postCode } }))} style={{
+            display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 10px",
+            background: C.isDark ? "#141414" : "#F4F6FA", border:`1px solid ${C.border}`,
+            borderRadius:10, cursor:"pointer", fontFamily:F, textAlign:"left",
+          }}>
+            <div style={{ width:24, height:24, borderRadius:7, background:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name={postCode.startsWith("WO-") ? "dumbbell" : "calendar"} size={12}/>
+            </div>
+            <span style={{ fontSize:9.5, letterSpacing:1, fontWeight:700, color:C.sub, flexShrink:0 }}>{postCode.startsWith("WO-") ? "WORKOUT" : "PROGRAM"}</span>
+            <span style={{ fontFamily:MONO, fontSize:12.5, fontWeight:700, color:C.text, letterSpacing:0.5, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{postCode}</span>
+            <span style={{ fontSize:11, fontWeight:700, color:C.accent, flexShrink:0 }}>Import</span>
+          </button>
+        </div>
+      )}
+
       {/* Actions */}
       <div style={{ display:"flex", alignItems:"center", gap:4, padding:"8px 12px 2px" }}>
         <button
@@ -4719,47 +4750,12 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {/* Caption + comments */}
       <div style={{ padding:"2px 16px 14px" }}>
-        {post.caption && (() => {
-          // Detect code in caption (IGNITE-XXXX or WO-XXXX)
-          const codeMatch = post.caption.match(/(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i);
-          const code = codeMatch ? codeMatch[0].toUpperCase() : null;
-          // Strip the "Try my program: CODE" suffix from display
-          const displayCaption = code
-            ? post.caption.replace(/\s*·?\s*Try my (program|workout):?\s*(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i, "").trim()
-            : post.caption;
-          return (
-            <>
-              {displayCaption && (
-                <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
-                  <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
-                  {displayCaption}
-                </div>
-              )}
-              {code && (
-                <button onClick={() => {
-                  // Dispatch an event to open the import flow with the code prefilled
-                  window.dispatchEvent(new CustomEvent("seshd:open-code", { detail: { code } }));
-                }} style={{
-                  display:"flex", alignItems:"center", gap:10,
-                  width:"100%", marginTop:6, marginBottom:5,
-                  padding:"10px 12px",
-                  background: C.isDark ? "#141414" : "#F4F6FA",
-                  border:`1px solid ${C.border}`, borderRadius:10, cursor:"pointer", fontFamily:F,
-                  textAlign:"left",
-                }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                    <Icon name={code.startsWith("WO-") ? "dumbbell" : "calendar"} size={14}/>
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:10, letterSpacing:1.2, fontWeight:700, color:C.sub }}>{code.startsWith("WO-") ? "WORKOUT CODE" : "PROGRAM CODE"}</div>
-                    <div style={{ fontFamily:MONO, fontSize:13, fontWeight:700, color:C.text, letterSpacing:1 }}>{code}</div>
-                  </div>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.accent }}>Import</div>
-                </button>
-              )}
-            </>
-          );
-        })()}
+        {displayCaption && (
+          <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
+            <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
+            {displayCaption}
+          </div>
+        )}
         {post.comments.length > 0 && !showCmts && (
           <div>
             {(() => {
@@ -11232,7 +11228,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   return (
     <PullToRefresh onRefresh={onRefresh} C={C}>
     <div style={{ paddingBottom:20 }}>
-      <div style={{ padding:"12px 14px" }}>
+      {/* Subtle identity banner — adds depth behind the profile header without disturbing the
+          avatar/stats/actions logic below it. */}
+      {!onBack && (
+        <div style={{ height:44, marginBottom:-22, background:`linear-gradient(120deg, ${C.accent}, ${C.accent2 || C.accent} 60%, ${C.accent})`, position:"relative", overflow:"hidden" }}>
+          <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>
+        </div>
+      )}
+      <div style={{ padding:"12px 14px", position:"relative" }}>
         {onBack && (
           <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", marginBottom:10, display:"block" }}>‹</button>
         )}
@@ -11363,30 +11366,44 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </div>
               );
             }
+            const lvlColor = LEVEL_COLOR[ss.overall] || C.sub;
+            // Soft tint of the level color for the hero zone (hex levels only; Untrained falls back).
+            const tint = (typeof lvlColor === "string" && lvlColor.startsWith("#"))
+              ? `${lvlColor}${C.isDark ? "2E" : "28"}`
+              : "transparent";
+            const tintFade = (typeof lvlColor === "string" && lvlColor.startsWith("#"))
+              ? `${lvlColor}08`
+              : "transparent";
             return (
-              <div style={{ marginTop:14, padding:"16px", borderRadius:14, background:C.surface, border:`1px solid ${C.divider}` }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1 }}>STRENGTH SCORE</div>
-                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                    <SexToggle/>
-                    <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-                      <span style={{ fontSize:22, fontWeight:800, color:C.text, fontFamily:MONO }}>{ss.score}</span>
-                      <span style={{ fontSize:12, fontWeight:700, color:LEVEL_COLOR[ss.overall] || C.sub }}>{ss.overall}</span>
+              <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.divider}`, overflow:"hidden" }}>
+                {/* Hero — score gets the spotlight, washed in the current level's color */}
+                <div style={{ padding:"18px 18px 16px", background:`linear-gradient(135deg, ${tint}, ${tintFade})`, borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:lvlColor, marginBottom:8 }}>STRENGTH SCORE</div>
+                      <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                        <span style={{ fontSize:46, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:0.9, letterSpacing:-1 }}>{ss.score}</span>
+                      </div>
+                      <div style={{ display:"inline-block", marginTop:10, padding:"4px 11px", borderRadius:999, background:lvlColor, color:"#0a0a0a", fontSize:12, fontWeight:800, letterSpacing:0.3 }}>{ss.overall.toUpperCase()}</div>
                     </div>
+                    <SexToggle/>
                   </div>
                 </div>
-                {ss.lifts.map(l => (
-                  <div key={l.lift} style={{ marginBottom:8 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
-                      <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>{l.lift.replace(" (Barbell)","").replace("Barbell ","")}</span>
-                      <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}>{l.best} · {l.ratio}×BW · <span style={{ color:LEVEL_COLOR[l.level], fontWeight:700 }}>{l.level}</span></span>
+                {/* Per-lift bars */}
+                <div style={{ padding:"14px 16px 12px" }}>
+                  {ss.lifts.map(l => (
+                    <div key={l.lift} style={{ marginBottom:13 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:5 }}>
+                        <span style={{ fontSize:13, color:C.text, fontWeight:700 }}>{l.lift.replace(" (Barbell)","").replace("Barbell ","")}</span>
+                        <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}><span style={{ color:C.text, fontWeight:700 }}>{l.best}</span> · {l.ratio}×BW</span>
+                      </div>
+                      <div style={{ height:8, borderRadius:5, background:C.divider, overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${(STRENGTH_LEVELS.indexOf(l.level)/(STRENGTH_LEVELS.length-1))*100}%`, background:LEVEL_COLOR[l.level], borderRadius:5 }}/>
+                      </div>
                     </div>
-                    <div style={{ height:5, borderRadius:3, background:C.divider, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${(STRENGTH_LEVELS.indexOf(l.level)/(STRENGTH_LEVELS.length-1))*100}%`, background:LEVEL_COLOR[l.level], borderRadius:3 }}/>
-                    </div>
-                  </div>
-                ))}
-                <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex === "other" ? "neutral" : sex} standards. General reference, not medical.</div>
+                  ))}
+                  <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex === "other" ? "neutral" : sex} standards. General reference, not medical.</div>
+                </div>
               </div>
             );
           })()}
@@ -12060,9 +12077,9 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           </div>
         </div>
 
-        {/* Flexible spacer — pushes CTAs toward the bottom on tall screens, collapses on short
-            ones (where the page scrolls instead). */}
-        <div style={{ flex:1, minHeight:24 }}/>
+        {/* Modest fixed gap — keeps the CTAs grouped just below the hero content near the top,
+            rather than a flex spacer that would shove them to the bottom of the screen. */}
+        <div style={{ height:32 }}/>
 
         {/* CTAs */}
         <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", gap:10 }}>
