@@ -1568,19 +1568,34 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Barbell Back Squat":      { Novice:0.75, Intermediate:1.25, Advanced:1.75, Elite:2.5 },
     "Deadlift":                { Novice:1.0, Intermediate:1.5, Advanced:2.25, Elite:3.0 },
     "Overhead Press (Barbell)":{ Novice:0.35, Intermediate:0.55, Advanced:0.8, Elite:1.1 },
+    "Incline Bench Press":     { Novice:0.4, Intermediate:0.6, Advanced:1.0, Elite:1.45 },
+    "Front Squat":             { Novice:0.55, Intermediate:0.95, Advanced:1.4, Elite:2.0 },
+    "Barbell Row":             { Novice:0.5, Intermediate:0.75, Advanced:1.1, Elite:1.5 },
+    "Romanian Deadlift":       { Novice:0.6, Intermediate:1.0, Advanced:1.6, Elite:2.2 },
+    "Hip Thrust":              { Novice:1.0, Intermediate:1.5, Advanced:2.25, Elite:3.0 },
   },
   female: {
     "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Advanced:0.8, Elite:1.1 },
     "Barbell Back Squat":      { Novice:0.5, Intermediate:0.9, Advanced:1.35, Elite:1.9 },
     "Deadlift":                { Novice:0.65, Intermediate:1.1, Advanced:1.75, Elite:2.5 },
     "Overhead Press (Barbell)":{ Novice:0.2, Intermediate:0.35, Advanced:0.55, Elite:0.8 },
+    "Incline Bench Press":     { Novice:0.25, Intermediate:0.4, Advanced:0.65, Elite:0.95 },
+    "Front Squat":             { Novice:0.4, Intermediate:0.7, Advanced:1.1, Elite:1.6 },
+    "Barbell Row":             { Novice:0.3, Intermediate:0.5, Advanced:0.75, Elite:1.1 },
+    "Romanian Deadlift":       { Novice:0.4, Intermediate:0.75, Advanced:1.2, Elite:1.7 },
+    "Hip Thrust":              { Novice:0.75, Intermediate:1.25, Advanced:1.9, Elite:2.6 },
   },
 };
 const STRENGTH_LIFT_ALIASES = {
   "Barbell Bench Press": ["Bench Press","Flat Barbell Bench","Flat Bench"],
   "Barbell Back Squat": ["Back Squat","Low Bar Squat","High Bar Squat","Squat"],
-  "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift"],
+  "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift","Hex Bar Deadlift"],
   "Overhead Press (Barbell)": ["Overhead Press","OHP","Standing Barbell OHP","Standing OHP","Standing Press","Strict Press","Military Press","Barbell OHP","Barbell Overhead Press"],
+  "Incline Bench Press": ["Incline Barbell Press","Incline Bench","Incline Press"],
+  "Front Squat": ["Barbell Front Squat"],
+  "Barbell Row": ["Bent-Over Row","Barbell Bent-Over Row","Pendlay Row","Bent Over Barbell Row","BB Row"],
+  "Romanian Deadlift": ["RDL","Barbell RDL","Stiff-Leg Deadlift","Stiff Leg Deadlift"],
+  "Hip Thrust": ["Barbell Hip Thrust","Glute Bridge","Barbell Glute Bridge"],
 };
 const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Advanced","Elite"];
 
@@ -1617,10 +1632,31 @@ function computeStrengthScore(store, unit, sex = "male") {
   const bw = bodyLog.length ? parseFloat(bodyLog[0].weight) : null;
   if (!bw || bw <= 0) return { ready: false, reason: "no_bodyweight" };
   const prs = store.prs || {};
+  // Normalize for tolerant matching — strips parentheticals like "(heavy)", punctuation, casing.
+  const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  // Keyword signatures so a PR logged under almost any sensible name still maps to a scored lift.
+  // Exclusions prevent double-counting (e.g. incline bench must not also count as flat bench).
+  const LIFT_KEYWORDS = {
+    "Barbell Bench Press": (n) => n.includes("bench") && !n.includes("incline") && !n.includes("decline") && !n.includes("close grip") && !n.includes("db") && !n.includes("dumbbell"),
+    "Barbell Back Squat": (n) => n.includes("squat") && !n.includes("front") && !n.includes("hack") && !n.includes("goblet") && !n.includes("split") && !n.includes("sissy") && !n.includes("bulgarian"),
+    "Deadlift": (n) => n.includes("deadlift") && !n.includes("romanian") && !n.includes("rdl") && !n.includes("stiff") && !n.includes("single"),
+    "Overhead Press (Barbell)": (n) => (n.includes("overhead press") || n.includes("ohp") || n.includes("military") || (n.includes("strict press")) || (n.includes("shoulder press") && n.includes("barbell"))) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("machine"),
+    "Incline Bench Press": (n) => n.includes("incline") && (n.includes("bench") || n.includes("press")) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("machine") && !n.includes("smith"),
+    "Front Squat": (n) => n.includes("front squat"),
+    "Barbell Row": (n) => (n.includes("barbell row") || n.includes("bent over row") || n.includes("bent-over row") || n.includes("pendlay") || (n.includes("bb row"))) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("cable") && !n.includes("machine") && !n.includes("seated"),
+    "Romanian Deadlift": (n) => n.includes("romanian") || n.includes("rdl") || n.includes("stiff leg") || n.includes("stiff-leg"),
+    "Hip Thrust": (n) => n.includes("hip thrust") || n.includes("glute bridge"),
+  };
   const bestPR = (canonical) => {
     const names = [canonical, ...(STRENGTH_LIFT_ALIASES[canonical] || [])];
-    const vals = names.map(n => prs[n]).filter(v => v != null && v > 0);
-    return vals.length ? Math.max(...vals) : null;
+    const exactVals = names.map(n => prs[n]).filter(v => v != null && v > 0);
+    // Also scan all PR keys by normalized name + keyword signature (catches "(heavy)" etc).
+    const kw = LIFT_KEYWORDS[canonical];
+    const fuzzyVals = kw ? Object.entries(prs)
+      .filter(([name, v]) => v != null && v > 0 && kw(norm(name)))
+      .map(([, v]) => v) : [];
+    const all = [...exactVals, ...fuzzyVals];
+    return all.length ? Math.max(...all) : null;
   };
   const lifts = [];
   let levelSum = 0, counted = 0;
@@ -2508,7 +2544,7 @@ function MuscleBalance({ store, C, days = 30 }) {
       Core:"Core", Neck:"Other", "Full Body":"Other", Cardio:"Cardio",
     };
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days); cutoff.setHours(0,0,0,0);
-    const groupSets = {}; const muscleSets = {}; const groupExercises = {}; let total = 0;
+    const groupSets = {}; const groupExercises = {}; let total = 0;
     const dates = Object.keys(store.history || {});
     for (const d of dates) {
       const dd = new Date(d + "T12:00:00");
@@ -2520,7 +2556,6 @@ function MuscleBalance({ store, C, days = 30 }) {
           const muscle = resolveMuscle(ex.name) || "Other";
           const group = GROUP[muscle] || "Other";
           groupSets[group] = (groupSets[group] || 0) + done;
-          muscleSets[muscle] = (muscleSets[muscle] || 0) + done;
           // Track which exercises (and set counts) make up each group — powers the drill-down.
           if (!groupExercises[group]) groupExercises[group] = {};
           const exName = ex.name || "Unnamed";
@@ -2534,8 +2569,7 @@ function MuscleBalance({ store, C, days = 30 }) {
       name:g, sets:groupSets[g], pct: Math.round((groupSets[g]/total)*100),
       exercises: Object.entries(groupExercises[g] || {}).map(([n, s]) => ({ name:n, sets:s })).sort((a,b)=>b.sets-a.sets),
     }));
-    const muscles = Object.entries(muscleSets).map(([name, sets]) => ({ name, sets, pct: Math.round((sets/total)*100) })).sort((a,b)=>b.sets-a.sets);
-    return { total, groups, muscles };
+    return { total, groups };
   }, [store.history, days]);
 
   const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#a78bfa", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
@@ -2610,11 +2644,37 @@ function MuscleBalance({ store, C, days = 30 }) {
           {balanceNote}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Top muscles */}
-      <div style={{ marginTop:14, fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:8 }}>MOST TRAINED</div>
+// "Most Trained" muscle pills — last-30-day set volume per muscle. Lives in the History tab
+// (moved out of the Muscle Balance card on Profile). Self-contained: computes from store.history
+// using the same robust resolveMuscle classification.
+function MostTrainedMuscles({ store, C, days = 30 }) {
+  const muscles = useMemo(() => {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days); cutoff.setHours(0,0,0,0);
+    const muscleSets = {};
+    for (const d of Object.keys(store.history || {})) {
+      if (new Date(d + "T12:00:00") < cutoff) continue;
+      for (const sess of Object.values(store.history[d] || {})) {
+        for (const ex of (sess.exercises || [])) {
+          const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
+          if (!done) continue;
+          const muscle = resolveMuscle(ex.name) || "Other";
+          muscleSets[muscle] = (muscleSets[muscle] || 0) + done;
+        }
+      }
+    }
+    return Object.entries(muscleSets).map(([name, sets]) => ({ name, sets })).sort((a, b) => b.sets - a.sets);
+  }, [store.history, days]);
+
+  if (!muscles.length) return null;
+  return (
+    <div style={{ padding:"4px 0 12px" }}>
+      <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:8 }}>MOST TRAINED · LAST {days}D</div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-        {data.muscles.slice(0, 6).map(mu => (
+        {muscles.slice(0, 8).map(mu => (
           <div key={mu.name} style={{ padding:"5px 10px", background:C.divider, borderRadius:20, fontSize:11.5, color:C.text }}>
             {mu.name} <span style={{ color:C.sub, fontFamily:MONO }}>{mu.sets}</span>
           </div>
@@ -8058,6 +8118,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 }
               }}
             />
+          </div>
+
+          <div style={{ padding:"4px 14px 0" }}>
+            <MostTrainedMuscles store={store} C={C}/>
           </div>
 
           {/* Volume chart - last 8 weeks */}
