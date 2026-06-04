@@ -1647,15 +1647,52 @@ function computeStrengthScore(store, unit, sex = "male") {
     "Romanian Deadlift": (n) => n.includes("romanian") || n.includes("rdl") || n.includes("stiff leg") || n.includes("stiff-leg"),
     "Hip Thrust": (n) => n.includes("hip thrust") || n.includes("glute bridge"),
   };
+  // Strength standards are defined against a 1-REP MAX. store.prs holds the heaviest raw weight
+  // lifted (any rep count), which understates strength for higher-rep PRs. So we estimate 1RM
+  // from the best set in history per lift (Epley via calc1RM), which is the correct comparison.
+  const histUnit = unit;
+  const liftBestE1RM = {}; // canonical lift -> best estimated 1RM (in display unit)
+  const scanMatch = (name) => {
+    for (const canonical of Object.keys(standards)) {
+      const kw = LIFT_KEYWORDS[canonical];
+      const aliasNames = [canonical, ...(STRENGTH_LIFT_ALIASES[canonical] || [])];
+      if (aliasNames.includes(name) || (kw && kw(norm(name)))) return canonical;
+    }
+    return null;
+  };
+  for (const d of Object.keys(store.history || {})) {
+    for (const sess of Object.values(store.history[d] || {})) {
+      const sUnit = sess.unit || histUnit;
+      for (const ex of (sess.exercises || [])) {
+        if (!ex.name) continue;
+        const canonical = scanMatch(ex.name);
+        if (!canonical) continue;
+        for (const s of (ex.sets || [])) {
+          if (s.type === "warmup") continue;
+          const done = s.done === true || (s.done === undefined && parseFloat(s.reps || s.r) > 0);
+          if (!done) continue;
+          const w = parseFloat(s.weight ?? s.w);
+          const r = parseInt(s.reps ?? s.r);
+          if (!w || !r || r < 1) continue;
+          const e1rmRaw = calc1RM(w, r);
+          if (!e1rmRaw) continue;
+          // Normalize to the display unit used for bodyweight comparison.
+          const e1rm = sUnit === unit ? e1rmRaw : cvt(e1rmRaw, sUnit, unit);
+          if (!liftBestE1RM[canonical] || e1rm > liftBestE1RM[canonical]) liftBestE1RM[canonical] = e1rm;
+        }
+      }
+    }
+  }
+  // Fallback: if history has no matching sets but a stored PR exists, use the raw PR (better than
+  // nothing — treats it as a 1RM, slightly conservative for high-rep PRs).
   const bestPR = (canonical) => {
+    if (liftBestE1RM[canonical]) return liftBestE1RM[canonical];
     const names = [canonical, ...(STRENGTH_LIFT_ALIASES[canonical] || [])];
     const exactVals = names.map(n => prs[n]).filter(v => v != null && v > 0);
-    // Also scan all PR keys by normalized name + keyword signature (catches "(heavy)" etc).
     const kw = LIFT_KEYWORDS[canonical];
-    const fuzzyVals = kw ? Object.entries(prs)
-      .filter(([name, v]) => v != null && v > 0 && kw(norm(name)))
-      .map(([, v]) => v) : [];
-    const all = [...exactVals, ...fuzzyVals];
+    const fuzzyVals = kw ? Object.entries(prs).filter(([name, v]) => v != null && v > 0 && kw(norm(name))).map(([, v]) => v) : [];
+    // prs are stored in lbs; convert to display unit if needed.
+    const all = [...exactVals, ...fuzzyVals].map(v => unit === "lbs" ? v : cvt(v, "lbs", unit));
     return all.length ? Math.max(...all) : null;
   };
   const lifts = [];
@@ -6840,33 +6877,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
 
         {rest && rest.minimized && !focusedSet && (
-          <div style={{ position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 14px)", zIndex:490, padding:"14px 16px", borderRadius:22, background:C.surface, border:`1px solid ${C.divider}`, boxShadow:"0 20px 40px rgba(0,0,0,0.14)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0, flex:1 }}>
-              <div style={{ width:56, height:56, borderRadius:18, background:C.divider, display:"grid", placeItems:"center", fontSize:18, fontWeight:700, color:C.text, fontFamily:MONO }}>
-                {fmtTime(rest.secs)}
-              </div>
-              <div style={{ minWidth:0 }}>
-                <div style={{ fontSize:12, color:C.sub, marginBottom:4 }}>{rest.running ? "Rest in progress" : "Paused rest"}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <div style={{ flex:1, height:6, background:C.divider, borderRadius:999, overflow:"hidden" }}>
-                    <div style={{ width:`${Math.round((rest.secs/rest.total)*100)}%`, height:"100%", background:C.accent }}/>
-                  </div>
-                </div>
-              </div>
+          <div style={{ position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 76px)", zIndex:490, padding:"8px 10px 8px 14px", borderRadius:16, background:C.surface, border:`1px solid ${rest.secs<=10 ? "#EF4444" : C.divider}`, boxShadow:"0 8px 24px rgba(0,0,0,0.16)", display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ fontSize:17, fontWeight:800, color: rest.secs<=10 ? "#EF4444" : C.text, fontFamily:MONO, minWidth:52 }}>
+              {fmtTime(rest.secs)}
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} style={{ padding:"10px 14px", borderRadius:14, background:C.surface, border:`1px solid ${C.divider}`, color:C.accent, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Expand</button>
-              <button onClick={() => setRest(p => {
-                if (!p) return null;
-                const newRunning = !p.running;
-                if (newRunning) {
-                  return { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) };
-                }
-                return { ...p, running: newRunning };
-              })} style={{ padding:"10px 14px", borderRadius:14, background:C.accent, border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
-                {rest.running ? "Pause" : "Resume"}
-              </button>
+            <div style={{ flex:1, height:5, background:C.divider, borderRadius:999, overflow:"hidden" }}>
+              <div style={{ width:`${Math.round((rest.secs/rest.total)*100)}%`, height:"100%", background: rest.secs<=10 ? "#EF4444" : C.accent, transition:"width 0.3s linear" }}/>
             </div>
+            <button onClick={() => setRest(p => {
+              if (!p) return null;
+              const newRunning = !p.running;
+              return newRunning ? { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) } : { ...p, running: newRunning };
+            })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:10, background:C.accent, border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
+              {rest.running ? "Pause" : "Resume"}
+            </button>
+            <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:10, background:"transparent", border:`1px solid ${C.divider}`, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
           </div>
         )}
 
@@ -11979,7 +12004,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       <div style={{
         minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
         paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 34px) + 16px)",
-        paddingLeft:24, paddingRight:24, position:"relative", overflow:"hidden",
+        paddingLeft:24, paddingRight:24, position:"relative", overflowY:"auto", overflowX:"hidden",
       }}>
         {/* Soft ambient gradient — no generic blobs */}
         <div style={{
@@ -11992,7 +12017,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         }}/>
 
         {/* Hero */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", position:"relative", zIndex:1, paddingTop:"6vh" }}>
+        <div style={{ display:"flex", flexDirection:"column", position:"relative", zIndex:1, paddingTop:"4vh" }}>
           {promptReason && (
             <div style={{ marginBottom:24, padding:"14px 18px", borderRadius:14, background:C.surface, border:`1px solid ${C.accent}40` }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
@@ -12034,6 +12059,10 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
             ))}
           </div>
         </div>
+
+        {/* Flexible spacer — pushes CTAs toward the bottom on tall screens, collapses on short
+            ones (where the page scrolls instead). */}
+        <div style={{ flex:1, minHeight:24 }}/>
 
         {/* CTAs */}
         <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", gap:10 }}>
