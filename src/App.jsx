@@ -1066,6 +1066,42 @@ const timeAgo = ts => {
 const fmtTime = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const fmtVol = (v, u) => v >= 1000 ? `${(v/1000).toFixed(1)}k ${u}` : `${v} ${u}`;
 
+// Small rest-timer chip for the top bar. Reads the active rest from localStorage ("seshd_rest")
+// — which WorkoutTracker writes — and recomputes the remaining seconds from startedAt so it's
+// accurate on any tab without touching WorkoutTracker's timer logic. Renders nothing unless a
+// rest is actively running. Tapping it calls onTap (used to jump back to the workout tab).
+function RestChip({ C, onTap }) {
+  const [secs, setSecs] = useState(null);
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = localStorage.getItem("seshd_rest");
+        if (!raw) { setSecs(null); return; }
+        const r = JSON.parse(raw);
+        if (!r?.running || !r?.startedAt || !r?.total) { setSecs(null); return; }
+        const remaining = Math.max(0, r.total - Math.floor((Date.now() - r.startedAt) / 1000));
+        setSecs(remaining > 0 ? remaining : null);
+      } catch { setSecs(null); }
+    };
+    read();
+    const id = setInterval(read, 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (secs == null) return null;
+  const low = secs <= 10;
+  return (
+    <button onClick={onTap} aria-label="Rest timer — tap to return to workout" style={{
+      display:"flex", alignItems:"center", gap:5, padding:"4px 9px", borderRadius:999,
+      background: low ? "#EF444418" : C.accentSoft || `${C.accent}18`, border:`1px solid ${low ? "#EF4444" : C.accent}55`,
+      color: low ? "#EF4444" : C.accent, fontSize:12, fontWeight:700, fontFamily:MONO, cursor:"pointer", lineHeight:1,
+    }}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4M12 2h0M9 2h6"/></svg>
+      {fmtTime(secs)}
+    </button>
+  );
+}
+
+
 // Split comment/caption text into React fragments, highlighting @username mentions
 // in the accent color when the username matches a known user. If onUserClick is provided,
 // the mention is clickable and opens the user's profile.
@@ -6744,7 +6780,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
 
         {rest && rest.minimized && !focusedSet && (
-          <div style={{ position:"fixed", left:12, right:12, bottom:14, zIndex:490, padding:"14px 16px", borderRadius:22, background:C.surface, border:`1px solid ${C.divider}`, boxShadow:"0 20px 40px rgba(0,0,0,0.14)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+          <div style={{ position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 14px)", zIndex:490, padding:"14px 16px", borderRadius:22, background:C.surface, border:`1px solid ${C.divider}`, boxShadow:"0 20px 40px rgba(0,0,0,0.14)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0, flex:1 }}>
               <div style={{ width:56, height:56, borderRadius:18, background:C.divider, display:"grid", placeItems:"center", fontSize:18, fontWeight:700, color:C.text, fontFamily:MONO }}>
                 {fmtTime(rest.secs)}
@@ -6755,7 +6791,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ flex:1, height:6, background:C.divider, borderRadius:999, overflow:"hidden" }}>
                     <div style={{ width:`${Math.round((rest.secs/rest.total)*100)}%`, height:"100%", background:C.accent }}/>
                   </div>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums", minWidth:32, textAlign:"right" }}>{Math.round((rest.secs/rest.total)*100)}%</div>
                 </div>
               </div>
             </div>
@@ -8253,7 +8288,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <Icon name="spark" size={20}/>
                 </div>
                 <div style={{ textAlign:"left", flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:C.bg, letterSpacing:-0.2 }}>Plan Builder</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.bg, letterSpacing:-0.2 }}>AI Program Builder</div>
                   <div style={{ fontSize:11, color:C.bg, opacity:0.65, marginTop:1 }}>Answer 5 questions, get a custom plan</div>
                 </div>
                 <Icon name="chevron-right" size={18} color={C.bg}/>
@@ -9145,7 +9180,6 @@ function AICoachModal({ C, onClose, onImport, store }) {
         ) : generating ? (
           // Generating state
           <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:40, gap:14 }}>
-            <div style={{ fontSize:34 }}>🧠</div>
             <div style={{ fontSize:15, fontWeight:700, color:C.text }}>Building your program…</div>
             <div style={{ fontSize:12, color:C.sub, textAlign:"center", maxWidth:240, lineHeight:1.5 }}>Designing a plan around your goals, equipment, and notes.</div>
           </div>
@@ -9174,7 +9208,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
               color:"#fff", border:"none", borderRadius:12, padding:"14px",
               fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
               display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-            }}><span style={{ fontSize:16 }}>🧠</span> Generate my program</button>
+            }}>Generate my program</button>
           </div>
         ) : (
           // Show question
@@ -10628,7 +10662,7 @@ const MEASURE_FIELDS = [
   { key:"bodyFat", label:"Body Fat %" },
 ];
 
-function BodyTrackingScreen({ store, setStore, unit, C, onClose }) {
+function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }) {
   const log = useMemo(() => [...(store.bodyLog || [])].sort((a, b) => a.date.localeCompare(b.date)), [store.bodyLog]);
   const [adding, setAdding] = useState(false);
   const [metricSel, setMetricSel] = useState("weight"); // user's selection; may not have data yet
@@ -10673,7 +10707,14 @@ function BodyTrackingScreen({ store, setStore, unit, C, onClose }) {
     setStore(p => {
       // Replace any existing entry for today, else append
       const existing = (p.bodyLog || []).filter(e => e.date !== entry.date);
-      return { ...p, bodyLog: [...existing, entry] };
+      const nextLog = [...existing, entry];
+      // Persist to the server so it survives re-login / new devices. Strip photoData (large).
+      const tok = (typeof loadSession === "function" && loadSession()?.access_token);
+      if (tok && currentUserId) {
+        sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok)
+          .catch(e => console.error("body_log save error:", e));
+      }
+      return { ...p, bodyLog: nextLog };
     });
     haptic("success");
     toast("Logged", "success");
@@ -10815,7 +10856,7 @@ function BodyTrackingScreen({ store, setStore, unit, C, onClose }) {
                   </div>
                 </div>
                 {e.photoData && <img src={e.photoData} alt="" style={{ width:36, height:48, objectFit:"cover", borderRadius:7 }}/>}
-                <button onClick={() => { setStore(p => ({ ...p, bodyLog: (p.bodyLog||[]).filter(x => x.id !== e.id) })); haptic("tap"); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
+                <button onClick={() => { setStore(p => { const nextLog = (p.bodyLog||[]).filter(x => x.id !== e.id); const tok = (typeof loadSession === "function" && loadSession()?.access_token); if (tok && currentUserId) { sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b=>({...b, photoData:null})) }) }, tok).catch(()=>{}); } return { ...p, bodyLog: nextLog }; }); haptic("tap"); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
               </div>
             ))}
           </>
@@ -11210,7 +11251,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
-                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); haptic("tap"); }} style={{
+                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} style={{
                     padding:"4px 10px", background: sex===val ? C.accent : "transparent",
                     color: sex===val ? "#fff" : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
@@ -11265,7 +11306,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             background:`linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent})`, color:"#fff",
             border:"none", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8,
           }}>
-            <span style={{ fontSize:16 }}>🧠</span> Get AI coaching
+            AI Coaching
           </button>
         </div>
       )}
@@ -11339,7 +11380,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       )}
 
       {/* Settings modal */}
-      {showBody && createPortal(<BodyTrackingScreen store={store} setStore={setStore} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>, document.body)}
+      {showBody && createPortal(<BodyTrackingScreen store={store} setStore={setStore} currentUserId={currentUserId} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>, document.body)}
 
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
       {showDelete && createPortal((
@@ -11887,7 +11928,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         }}/>
 
         {/* Hero */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", position:"relative", zIndex:1, paddingBottom:"3vh" }}>
+        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", position:"relative", zIndex:1, paddingTop:"6vh" }}>
           {promptReason && (
             <div style={{ marginBottom:24, padding:"14px 18px", borderRadius:14, background:C.surface, border:`1px solid ${C.accent}40` }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
@@ -12215,8 +12256,7 @@ function AICoachSheet({ store, unit, C, onClose }) {
       <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-            <span style={{ fontSize:22 }}>🧠</span>
-            <span style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>AI Coach</span>
+            <span style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>AI Coaching</span>
           </div>
           <button onClick={onClose} style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
         </div>
@@ -12469,6 +12509,133 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isGuest, currentUserId]);
 
+  // ── REAL-TIME FEED ─────────────────────────────────────────────────────────
+  // Subscribe to INSERTs on the posts table via Supabase Realtime (Phoenix channel
+  // protocol over a websocket — the app uses raw fetch elsewhere, so we speak the protocol
+  // directly rather than pulling in supabase-js). New posts are prepended live, deduped
+  // against what's already shown. Read-only: never blocks or alters the normal feed load.
+  useEffect(() => {
+    if (!token || isGuest || !SUPABASE_URL) return;
+    let ws, heartbeat, reclosed = false, ref = 0;
+    const nextRef = () => String(++ref);
+    const wsUrl = SUPABASE_URL.replace(/^https?:\/\//, "wss://") + `/realtime/v1/websocket?apikey=${SUPABASE_KEY}&vsn=1.0.0`;
+
+    function connect() {
+      try { ws = new WebSocket(wsUrl); } catch { return; }
+
+      ws.onopen = () => {
+        // Join the postgres_changes channel, filtered to INSERTs on public.posts.
+        ws.send(JSON.stringify({
+          topic: "realtime:public:social",
+          event: "phx_join",
+          payload: {
+            config: {
+              postgres_changes: [
+                { event: "INSERT", schema: "public", table: "posts" },
+                { event: "INSERT", schema: "public", table: "kudos" },
+                { event: "DELETE", schema: "public", table: "kudos" },
+                { event: "INSERT", schema: "public", table: "comments" },
+              ],
+            },
+          },
+          ref: nextRef(),
+        }));
+        // Heartbeat every 25s — Supabase drops idle sockets after ~30s without one.
+        heartbeat = setInterval(() => {
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: nextRef() }));
+          }
+        }, 25000);
+      };
+
+      ws.onmessage = (evt) => {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch { return; }
+        if (msg.event !== "postgres_changes") return;
+        const data = msg.payload?.data;
+        if (!data) return;
+        const table = data.table;
+        const changeType = data.type; // "INSERT" | "DELETE" | "UPDATE"
+        const rec = data.record;          // present on INSERT/UPDATE
+        const oldRec = data.old_record;   // present on DELETE
+
+        // ── NEW POST ──
+        if (table === "posts" && changeType === "INSERT" && rec?.id) {
+          const newPost = {
+            id: rec.id, userId: rec.user_id, type: rec.type, caption: rec.caption || "",
+            imageData: rec.image_url, location: rec.location, workout: rec.workout, run: rec.run,
+            yoga: rec.yoga, achievement: rec.achievement, unit: rec.unit || "lbs", isPR: rec.is_pr,
+            kudos: [], comments: [],
+            createdAt: rec.created_at ? new Date(rec.created_at).getTime() : Date.now(),
+          };
+          setStore(prev => {
+            if ((prev.posts || []).some(p => p.id === newPost.id)) return prev;
+            if (newPost.type === "story" || newPost.userId === currentUserId) return prev;
+            const all = [newPost, ...(prev.posts || [])];
+            all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            return { ...prev, posts: all };
+          });
+          return;
+        }
+
+        // ── KUDOS (like / unlike) ──
+        if (table === "kudos") {
+          const k = rec || oldRec;
+          if (!k?.post_id || !k?.user_id) return;
+          // Skip our own — already applied optimistically when we tapped.
+          if (k.user_id === currentUserId) return;
+          setStore(prev => ({
+            ...prev,
+            posts: (prev.posts || []).map(p => {
+              if (p.id !== k.post_id) return p;
+              const has = (p.kudos || []).includes(k.user_id);
+              if (changeType === "INSERT") {
+                return has ? p : { ...p, kudos: [...(p.kudos || []), k.user_id] };
+              } else { // DELETE
+                return has ? { ...p, kudos: (p.kudos || []).filter(id => id !== k.user_id) } : p;
+              }
+            }),
+          }));
+          return;
+        }
+
+        // ── NEW COMMENT ──
+        if (table === "comments" && changeType === "INSERT" && rec?.id) {
+          if (rec.user_id === currentUserId) return; // our own already shown
+          const newComment = {
+            id: rec.id, userId: rec.user_id, text: rec.text,
+            likes: rec.likes || [],
+            createdAt: rec.created_at ? new Date(rec.created_at).getTime() : Date.now(),
+          };
+          setStore(prev => ({
+            ...prev,
+            posts: (prev.posts || []).map(p => {
+              if (p.id !== rec.post_id) return p;
+              if ((p.comments || []).some(c => c.id === newComment.id)) return p;
+              return { ...p, comments: [...(p.comments || []), newComment] };
+            }),
+          }));
+          return;
+        }
+      };
+
+      ws.onclose = () => {
+        clearInterval(heartbeat);
+        // Auto-reconnect after a short delay unless we intentionally closed (logout/unmount).
+        if (!reclosed) setTimeout(() => { if (!reclosed) connect(); }, 4000);
+      };
+      ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+
+    connect();
+    return () => {
+      reclosed = true;
+      clearInterval(heartbeat);
+      try { if (ws) ws.close(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, isGuest, currentUserId]);
+
   async function loadUserData() {
     setDataLoading(true);
     try {
@@ -12562,6 +12729,12 @@ function AppInner() {
         // Public-profile opt-in (controls whether the public share page shows anything).
         // Defaults to private (false) until the user turns it on in Settings.
         isPublic: me?.is_public === true,
+        // Body tracking + onboarding answers + strength sex persist server-side
+        // (profiles.body_log / onboarding_answers / strength_sex) so they survive re-login and
+        // new devices. Prefer the server copy, fall back to whatever's on-device.
+        bodyLog: (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : (prev.bodyLog || []),
+        onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.onboardingAnswers || {}),
+        strengthSex: me?.strength_sex || prev.strengthSex || "male",
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
@@ -13677,7 +13850,7 @@ function AppInner() {
       // flag still prevents it showing again this session/device.
       const tok = tokenRef.current || loadSession()?.access_token;
       if (tok) {
-        try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true }) }, tok); }
+        try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target }) }, tok); }
         catch (e) { console.error("onboarding flag save error:", e); }
       }
     }}/>;
@@ -13854,6 +14027,7 @@ function AppInner() {
       }}>
         <SeshdLogo C={C}/>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <RestChip C={C} onTap={() => setTab("tracker")}/>
           {(streak > 0 || weeklyStreak.thisWeek > 0) && <div style={{ marginRight:4 }}><StreakBadge streak={streak} status={weeklyStreak.status} thisWeek={weeklyStreak.thisWeek} target={weeklyStreak.target} size="sm"/></div>}
           {tab === "feed" && (
             <button
