@@ -198,7 +198,73 @@ const sb = (() => {
     window.location.href = url;
   }
 
-  return { query, rpc, signUp, signIn, signOut, refreshToken, signInWithOAuth };
+  // ── UNIVERSAL WRITE-RETRY QUEUE ───────────────────────────────────────────
+  // Wraps a server write so that if it fails due to being OFFLINE (network error), the write is
+  // saved to a durable queue and replayed on reconnect — instead of being silently lost. Only
+  // idempotent "set" writes (PATCH / DELETE) are queued: replaying them is safe (last-write-wins),
+  // whereas replaying a POST could double-insert. Validation/auth errors (4xx) are NOT queued — the
+  // write is bad and would retry forever — they reject so the caller can handle them.
+  const WRITE_QUEUE_KEY = "seshd_write_queue";
+  const readQueue = () => { try { return JSON.parse(localStorage.getItem(WRITE_QUEUE_KEY) || "[]"); } catch { return []; } };
+  const writeQueue = (q) => { try { localStorage.setItem(WRITE_QUEUE_KEY, JSON.stringify(q.slice(-100))); } catch {} };
+
+  // A failed fetch (offline / DNS / connection) throws a TypeError; a 4xx/5xx comes back as an
+  // Error we threw with a message. We treat only the thrown-fetch case as "retryable offline".
+  async function queueWrite(path, opts = {}, token = null) {
+    const method = (opts.method || "GET").toUpperCase();
+    const retryable = method === "PATCH" || method === "DELETE" || method === "PUT";
+    try {
+      return await query(path, opts, token);
+    } catch (e) {
+      const offline = (typeof navigator !== "undefined" && navigator.onLine === false)
+        || (e && e.name === "TypeError"); // fetch failed = network down
+      if (offline && retryable) {
+        const q = readQueue();
+        // Same row (path) + PATCH: merge the partial bodies so changing two settings offline (e.g.
+        // theme AND unit) doesn't lose one — both fields end up in a single queued PATCH. For
+        // DELETE/PUT, last-write-wins replacement is correct.
+        const existingIdx = q.findIndex(item => item.path === path && item.method === method);
+        if (existingIdx >= 0 && method === "PATCH") {
+          try {
+            const merged = { ...JSON.parse(q[existingIdx].body || "{}"), ...JSON.parse(opts.body || "{}") };
+            q[existingIdx] = { ...q[existingIdx], body: JSON.stringify(merged), ts: Date.now() };
+            writeQueue(q);
+            return null;
+          } catch { /* fall through to replace if bodies aren't JSON */ }
+        }
+        const filtered = q.filter(item => !(item.path === path && item.method === method));
+        filtered.push({ path, method, body: opts.body || null, headers_extra: opts.headers_extra || null, ts: Date.now() });
+        writeQueue(filtered);
+        return null; // resolve gracefully — the optimistic local update already happened
+      }
+      throw e; // real error (validation/auth) — let the caller deal with it
+    }
+  }
+
+  // Replay queued writes in order. Called on reconnect. Stops on the first hard failure so order is
+  // preserved; offline failures re-queue. Token is resolved fresh by the caller.
+  async function flushWriteQueue(token) {
+    let q = readQueue();
+    if (!q.length || !token) return { flushed: 0, remaining: q.length };
+    let flushed = 0;
+    const remaining = [];
+    for (const item of q) {
+      try {
+        await query(item.path, { method: item.method, body: item.body, headers_extra: item.headers_extra }, token);
+        flushed++;
+      } catch (e) {
+        const offline = (typeof navigator !== "undefined" && navigator.onLine === false) || (e && e.name === "TypeError");
+        if (offline) { remaining.push(item); } // still offline — keep for next time
+        // else: hard error — drop it (a doomed write shouldn't block the queue forever)
+      }
+    }
+    writeQueue(remaining);
+    return { flushed, remaining: remaining.length };
+  }
+
+  const queuedCount = () => readQueue().length;
+
+  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth };
 })();
 
 // Upload image to Supabase Storage, return public URL
@@ -691,11 +757,32 @@ function resolveMuscle(name) {
 }
 
 function suggestExerciseSubstitutes(name, limit = 8) {
-  const entry = EXERCISE_DB.find(e => e.name === name);
-  if (!entry) return [];
-  const sameMuscle = EXERCISE_DB.filter(e => e.muscle === entry.muscle && e.name !== name);
+  if (!name) return [];
+  // Exact match first; then fuzzy — many logged exercises are custom or named slightly
+  // differently than the library (e.g. "Barbell Bent-Over Row" vs "Bent Over Row"), which used
+  // to yield zero alternatives. Fall back to normalized + keyword matching, then muscle inference.
+  const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  let entry = EXERCISE_DB.find(e => e.name === name);
+  if (!entry) entry = EXERCISE_DB.find(e => norm(e.name) === norm(name));
+  // Determine the target muscle. Prefer an exact/normalized DB entry; otherwise use resolveMuscle
+  // (keyword-based, reliable) rather than a fuzzy token match, which can mis-pick (e.g. "Bent Over
+  // Row" → a reverse fly). resolveMuscle understands rows→Back, press→Chest/Shoulders, etc.
+  let muscle = entry ? entry.muscle : (typeof resolveMuscle === "function" ? resolveMuscle(name) : null);
+  // If still nothing, last-ditch token overlap against the DB.
+  if (!muscle) {
+    const toks = new Set(norm(name).split(" ").filter(w => w.length > 2));
+    let best = null, bestScore = 0;
+    for (const e of EXERCISE_DB) {
+      const et = norm(e.name).split(" ").filter(w => w.length > 2);
+      const overlap = et.filter(w => toks.has(w)).length;
+      if (overlap > bestScore) { bestScore = overlap; best = e; }
+    }
+    if (bestScore >= 1 && best) muscle = best.muscle;
+  }
+  if (!muscle || muscle === "Other") return [];
   const origEquip = exEquipment(name);
-  return sameMuscle
+  return EXERCISE_DB
+    .filter(e => e.muscle === muscle && norm(e.name) !== norm(name))
     .map(e => ({ name: e.name, equip: exEquipment(e.name) }))
     .sort((a, b) => {
       const aDiff = a.equip !== origEquip ? 0 : 1;
@@ -793,6 +880,63 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
 
 // ─── Muscle group icon (replaces emoji) ──────────────────────────────────────
 // Anatomical SVG icons — stylized body silhouettes with the target muscle highlighted
+// 2D anatomical body-map — licensed Adobe Stock vector (per-muscle highlight, front + back).
+// The artwork data (body + per-figure highlight paths) lives in a separate JSON that loads lazily
+// the first time an exercise detail is opened, so it doesn't bloat the main bundle. The body is
+// recolored to the theme and the worked muscle highlights in the app accent (light + dark aware).
+const MUSCLE_FIGURE = {
+  // app muscle value -> figure key in the body-map data
+  "Chest":"Chest", "Back":"Back", "Lats":"Back", "Rear Delts":"Shoulders", "Shoulders":"Shoulders",
+  "Traps":"Back", "Biceps":"Arms", "Triceps":"Arms", "Quads":"Quadriceps", "Hamstrings":"Hamstring",
+  "Glutes":"Glutes", "Calves":"Calves", "Core":"Abs", "Abs":"Abs", "Forearms":"Forearm",
+  // Neck / Full Body / Cardio / Yoga have no single-muscle figure → plain body (no highlight)
+};
+
+// Module-level cache + in-flight promise so the data loads once per session.
+let _bodyMapData = null;
+let _bodyMapPromise = null;
+function loadBodyMapData() {
+  if (_bodyMapData) return Promise.resolve(_bodyMapData);
+  if (_bodyMapPromise) return _bodyMapPromise;
+  _bodyMapPromise = fetch("/bodymap_data.json")
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { _bodyMapData = d; return d; })
+    .catch(() => null);
+  return _bodyMapPromise;
+}
+
+function BodyMap({ muscle = "", C, size = 160 }) {
+  const [data, setData] = useState(_bodyMapData);
+  useEffect(() => {
+    if (data) return;
+    let alive = true;
+    loadBodyMapData().then(d => { if (alive) setData(d); });
+    return () => { alive = false; };
+  }, [data]);
+
+  const figKey = MUSCLE_FIGURE[muscle] || MUSCLE_FIGURE[(muscle || "").split("/")[0].trim()] || null;
+  const bodyCol = C?.isDark ? "#cbced6" : "#3a3a42";
+  const accent = C?.accent || "#7c3aed";
+
+  // While loading (or if the asset is unavailable), reserve the space quietly.
+  if (!data) {
+    return <div style={{ height:size, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ width:18, height:18, border:`2px solid ${C?.divider||"#ccc"}`, borderTopColor:C?.accent||"#7c3aed", borderRadius:"50%", animation:"seshd-spin 0.7s linear infinite" }}/>
+    </div>;
+  }
+  const fig = figKey && data[figKey];
+  // If we have no figure for this muscle, fall back to ANY body (Chest) with no highlight.
+  const baseFig = fig || data["Chest"];
+  if (!baseFig) return null;
+  const vb = (baseFig.vb || [0, 0, 600, 500]).join(" ");
+
+  return (
+    <svg viewBox={vb} width={size} height={Math.round(size * (baseFig.vb ? baseFig.vb[3] / baseFig.vb[2] : 415/450))} style={{ display:"block", margin:"0 auto" }}>
+      {baseFig.body.map((d, i) => <path key={"b"+i} d={d} fill={bodyCol}/>)}
+      {fig && fig.hl.map((d, i) => <path key={"h"+i} d={d} fill={accent}/>)}
+    </svg>
+  );
+}
 function MuscleIcon({ muscle = "", size = 28, C }) {
   const m = (muscle || "").toLowerCase().split("/")[0].trim();
   const colors = {
@@ -2289,7 +2433,11 @@ function loadStore() {
       const d = JSON.parse(r);
       // Merge over defaults so a store saved by an OLDER app version (missing newer keys
       // like bodyLog/weeklyTarget) never has undefined collections that could crash.
-      return { ...defaults, ...d, posts: [] }; // never load cached posts — always fetch fresh from DB
+      // Restore the cached feed so the app shows the last-loaded posts immediately (and offline),
+      // then a fresh fetch replaces them when online. Avoids a blank feed with no connection.
+      let cachedFeed = [];
+      try { cachedFeed = JSON.parse(localStorage.getItem("seshd_feed_cache") || "[]") || []; } catch {}
+      return { ...defaults, ...d, posts: cachedFeed };
     }
   } catch {}
   return defaults;
@@ -2743,7 +2891,9 @@ function Heatmap({ workoutDates, history, C, onDayTap }) {
     const now = new Date();
     return d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear() && d.active;
   }).length;
-  const streak = calcStreak(workoutDates||{});
+  // Weekly "active week" streak — respects rest days (lifters don't train daily), unlike a raw
+  // day streak. Uses the same model as the profile streak badge.
+  const weeklyStreak = calcWeeklyStreak(workoutDates || {});
 
   // Month labels
   const monthLabels = [];
@@ -2784,7 +2934,7 @@ function Heatmap({ workoutDates, history, C, onDayTap }) {
         {[
           ["Total", totalWorkouts, "TOTAL", C.accent, "dumbbell"],
           ["This Month", thisMonth, "THIS MONTH", C.accent, "calendar"],
-          ["Streak", streak, "DAY STREAK", "#f97316", "flame"],
+          ["Streak", weeklyStreak.count, "WEEK STREAK", "#f97316", "flame"],
         ].map(([label, val, cap, color, icon]) => (
           <div key={label} style={{
             flex:1, position:"relative", overflow:"hidden",
@@ -3062,15 +3212,15 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   const step = (field === "reps" || isCardio) ? 1 : 2.5;
   const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22 }) => (
     <button
-      onMouseDown={(e) => { e.preventDefault(); }}
-      onClick={() => { onPress(); haptic("tap"); }}
+      onPointerDown={(e) => { e.preventDefault(); onPress(); haptic("tap"); }}
+      onClick={(e) => e.preventDefault()}
       style={{
         flex, height:52, margin:3, borderRadius:11, cursor:"pointer",
         background: bg || (C.isDark ? "rgba(255,255,255,0.07)" : "#fff"),
         border:`1px solid ${C.border}`, color: color || C.text,
         fontSize, fontWeight:700, fontFamily:F,
         display:"flex", alignItems:"center", justifyContent:"center",
-        userSelect:"none", WebkitUserSelect:"none",
+        userSelect:"none", WebkitUserSelect:"none", touchAction:"manipulation",
       }}
     >{label}</button>
   );
@@ -3097,12 +3247,12 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
       </div>
       {/* Current field indicator + steppers */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"2px 8px 8px" }}>
-        <button onMouseDown={(e)=>e.preventDefault()} onClick={() => { onStep(-step); haptic("tap"); }} style={{ width:46, height:34, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>−</button>
+        <button onPointerDown={(e)=>{e.preventDefault(); onStep(-step); haptic("tap");}} onClick={(e)=>e.preventDefault()} style={{ width:46, height:34, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>−</button>
         <div style={{ textAlign:"center", minWidth:90 }}>
           <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{value !== "" && value != null ? value : "—"}</div>
           <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, marginTop:3 }}>{fieldLabel}</div>
         </div>
-        <button onMouseDown={(e)=>e.preventDefault()} onClick={() => { onStep(step); haptic("tap"); }} style={{ width:46, height:34, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>+</button>
+        <button onPointerDown={(e)=>{e.preventDefault(); onStep(step); haptic("tap");}} onClick={(e)=>e.preventDefault()} style={{ width:46, height:34, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>+</button>
       </div>
       {/* Digit grid */}
       <div style={{ display:"flex" }}>
@@ -6000,6 +6150,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [editingHistory, setEditingHistory] = useState(null); // { date, sid, sess }
   // Keyboard accessory bar — tracks which set input is focused so we can show quick +/- buttons above the keyboard
   const [focusedSet, setFocusedSet] = useState(null); // { ei, si, field: "weight"|"reps", isCardio }
+  // True right after a field is focused; the next digit typed replaces the value (select-all). The
+  // NumberPad's onInput clears it after the first keystroke.
+  const freshFocusRef = useRef(true);
   const [prBurst, setPrBurst] = useState(0); // increment to trigger a fresh confetti burst (used as key)
   // Clear the burst after its animation finishes so the DOM doesn't grow indefinitely.
   // Burst duration is ~1.3s max (0.9 + 0.4 random delay), give it 2s of buffer.
@@ -7054,11 +7207,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   return (
                   <div key={set.id||si}>
                     <SetRow set={set} si={si} prevIndex={prevIndex} ei={ei} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
-                      onFocusInput={(field) => setFocusedSet(prev =>
+                      onFocusInput={(field) => { freshFocusRef.current = true; setFocusedSet(prev =>
                         // Tapping the field that's already open toggles the pad closed;
                         // otherwise open/switch the pad to the tapped field.
                         (prev && prev.ei === ei && prev.si === si && prev.field === field) ? null : { ei, si, field }
-                      )}
+                      ); }}
                       onBlurInput={() => {
                         // small delay so a tap on the keyboard accessory button can register before clearing focused state
                         setTimeout(() => setFocusedSet(prev => (prev && prev.ei === ei && prev.si === si) ? null : prev), 100);
@@ -7548,12 +7701,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const field = focusedSet.field || "weight";
           const curVal = field === "weight" ? set.weight : set.reps;
 
-          // Type a digit / decimal / delete into the focused field
+          // Type a digit / decimal / delete into the focused field.
+          // "Select-all on tap": the first digit typed after focusing replaces the existing value
+          // instead of appending (tap a 135, type 1 → 1, not 1351). freshFocusRef is set when the
+          // pad opens/switches fields and cleared on first input.
           const onInput = (ch) => {
-            let v = String(curVal == null ? "" : curVal);
+            const fresh = freshFocusRef.current;
             if (ch === "del") {
-              v = v.slice(0, -1);
-            } else if (ch === ".") {
+              freshFocusRef.current = false;
+              const v = String(curVal == null ? "" : curVal).slice(0, -1);
+              updateSet(focusedSet.ei, focusedSet.si, field === "weight" ? { weight: v } : { reps: v });
+              return;
+            }
+            let v = fresh ? "" : String(curVal == null ? "" : curVal);
+            if (fresh) freshFocusRef.current = false;
+            if (ch === ".") {
               if (v.includes(".")) return;        // one decimal only
               if (v === "") v = "0.";             // leading-zero for ".5"
               else v = v + ".";
@@ -7564,17 +7726,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             }
             updateSet(focusedSet.ei, focusedSet.si, field === "weight" ? { weight: v } : { reps: v });
           };
-          // +/- stepper (reps step by 1, weight by 2.5 / cardio min by 1)
+          // +/- stepper (reps step by 1, weight by 2.5 / cardio min by 1).
+          // When the field is empty, start stepping from the shadow/previous value shown as the
+          // placeholder (so +1 on an empty field that shows "8" gives 9, not 1).
           const onStep = (d) => {
-            const cur = parseFloat(curVal) || 0;
+            freshFocusRef.current = false;
+            let base = parseFloat(curVal);
+            if (isNaN(base)) {
+              const prevSet = (set.type !== "warmup" && ex.name)
+                ? getPrev(store, ex.name, ex.sets.slice(0, focusedSet.si).filter(s => s.type !== "warmup").length, unit)
+                : null;
+              base = prevSet ? (parseFloat(field === "weight" ? prevSet.w : prevSet.r) || 0) : 0;
+            }
             const next = field === "reps"
-              ? String(Math.max(0, Math.round(cur + d)))
-              : String(Math.max(0, Math.round((cur + d) * 10) / 10));
+              ? String(Math.max(0, Math.round(base + d)))
+              : String(Math.max(0, Math.round((base + d) * 10) / 10));
             updateSet(focusedSet.ei, focusedSet.si, field === "weight" ? { weight: next } : { reps: next });
           };
           // Next: weight → reps → (next set's weight). Jumps the pad along the row.
           const onNext = () => {
             haptic("light");
+            freshFocusRef.current = true;
             if (field === "weight") { setFocusedSet({ ei: focusedSet.ei, si: focusedSet.si, field: "reps" }); return; }
             // field === reps → advance to next set in this exercise if it exists
             const nextSi = focusedSet.si + 1;
@@ -9543,6 +9715,41 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   // Last 3 sessions for the mini-recent list (newest first)
   const recentSessions = historyData.slice(-3).reverse();
 
+  // AI "How to" — generates exercise-specific cues on demand for any movement (especially the
+  // ~290 without a hand-written guide). Cached in localStorage so repeat views are free.
+  const aiCacheKey = `seshd_ai_howto_${name}`;
+  const [aiGuide, setAiGuide] = useState(() => {
+    try { const c = localStorage.getItem(aiCacheKey); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(false);
+  async function fetchAiHowTo() {
+    setAiLoading(true); setAiError(false);
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 700,
+          system: "You are a strength coach. For the given exercise, return ONLY JSON with this shape: " +
+            '{"steps":["..."],"cues":["..."],"mistakes":["..."]}. steps = 3-5 short numbered how-to-perform steps. ' +
+            "cues = 3-4 short technique cues. mistakes = 3-4 common mistakes. Each item under 12 words. No commentary outside JSON.",
+          messages: [{ role: "user", content: `Exercise: ${name} (primary muscle: ${exInfo.muscle})` }],
+        }),
+      });
+      if (!res.ok) throw new Error("api_" + res.status);
+      const data = await res.json();
+      let text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+      text = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(text);
+      if (!parsed || !Array.isArray(parsed.steps)) throw new Error("bad_shape");
+      setAiGuide(parsed);
+      try { localStorage.setItem(aiCacheKey, JSON.stringify(parsed)); } catch {}
+    } catch (e) { setAiError(true); }
+    finally { setAiLoading(false); }
+  }
+
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
       {/* Header */}
@@ -9567,7 +9774,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
           padding:"28px 20px", background:C.surface,
           borderBottom:`1px solid ${C.divider}`,
         }}>
-          <MuscleIcon muscle={exInfo.muscle} size={96} C={C}/>
+          <BodyMap muscle={exInfo.muscle} size={150} C={C}/>
         </div>
 
         {/* Stats strip — 2x2 grid of key metrics */}
@@ -9656,7 +9863,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
 
         {/* How To */}
         <div style={{ margin:"0 16px 16px" }}>
-          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>TIPS</div>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>TIPS & HOW TO</div>
           <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
             {cueData.cues.map((cue, i) => (
               <div key={i} style={{
@@ -9698,6 +9905,72 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
             <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{cueData.breathe}</div>
           </div>
         )}
+
+        {/* AI How-To — generates exercise-specific steps/cues/mistakes on demand */}
+        <div style={{ margin:"0 16px 24px" }}>
+          {!aiGuide && (
+            <button
+              onClick={fetchAiHowTo}
+              disabled={aiLoading}
+              style={{
+                width:"100%", padding:"13px 16px", borderRadius:12, cursor:aiLoading?"default":"pointer",
+                background: aiLoading ? C.surface : C.accent, color: aiLoading ? C.sub : "#fff",
+                border:`1px solid ${aiLoading ? C.border : C.accent}`, fontSize:13, fontWeight:700, fontFamily:F,
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              }}
+            >
+              {aiLoading ? "Generating form guide…" : (
+                <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
+                Get AI form guide for {name.length > 22 ? "this exercise" : name}</>
+              )}
+            </button>
+          )}
+          {aiError && !aiLoading && (
+            <div style={{ marginTop:8, fontSize:12, color:C.sub, textAlign:"center" }}>Couldn't reach the coach — tap to retry.</div>
+          )}
+          {aiGuide && (
+            <div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text, letterSpacing:0.3, display:"flex", alignItems:"center", gap:6 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
+                  AI FORM GUIDE
+                </div>
+                <button onClick={fetchAiHowTo} disabled={aiLoading} style={{ background:"none", border:"none", color:C.accent, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F }}>{aiLoading ? "…" : "↻ Regenerate"}</button>
+              </div>
+              {Array.isArray(aiGuide.steps) && aiGuide.steps.length > 0 && (
+                <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:12 }}>
+                  {aiGuide.steps.map((s, i) => (
+                    <div key={i} style={{ display:"flex", gap:12, padding:"11px 14px", borderBottom: i < aiGuide.steps.length-1 ? `1px solid ${C.divider}` : "none", alignItems:"flex-start" }}>
+                      <div style={{ width:20, height:20, borderRadius:"50%", background:C.accent, color:"#fff", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>{i+1}</div>
+                      <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{s}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {Array.isArray(aiGuide.cues) && aiGuide.cues.length > 0 && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.5, marginBottom:6 }}>KEY CUES</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {aiGuide.cues.map((c, i) => (
+                      <span key={i} style={{ fontSize:12, color:C.text, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 10px" }}>{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {Array.isArray(aiGuide.mistakes) && aiGuide.mistakes.length > 0 && (
+                <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:8 }}>
+                  {aiGuide.mistakes.map((m, i) => (
+                    <div key={i} style={{ display:"flex", gap:12, padding:"11px 14px", borderBottom: i < aiGuide.mistakes.length-1 ? `1px solid ${C.divider}` : "none", alignItems:"flex-start" }}>
+                      <div style={{ color:"#ef4444", fontSize:16, flexShrink:0, lineHeight:1.3 }}>✕</div>
+                      <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{m}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize:10, color:C.muted, textAlign:"center", marginTop:6 }}>AI-generated · always prioritize safe form</div>
+            </div>
+          )}
+        </div>
 
         {/* Previous sessions */}
         {historyData.length > 0 && (
@@ -10796,7 +11069,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
       // Persist to the server so it survives re-login / new devices. Strip photoData (large).
       const tok = (typeof loadSession === "function" && loadSession()?.access_token);
       if (tok && currentUserId) {
-        sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok)
+        sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok)
           .catch(e => console.error("body_log save error:", e));
       }
       return { ...p, bodyLog: nextLog };
@@ -10941,7 +11214,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
                   </div>
                 </div>
                 {e.photoData && <img src={e.photoData} alt="" style={{ width:36, height:48, objectFit:"cover", borderRadius:7 }}/>}
-                <button onClick={() => { setStore(p => { const nextLog = (p.bodyLog||[]).filter(x => x.id !== e.id); const tok = (typeof loadSession === "function" && loadSession()?.access_token); if (tok && currentUserId) { sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b=>({...b, photoData:null})) }) }, tok).catch(()=>{}); } return { ...p, bodyLog: nextLog }; }); haptic("tap"); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
+                <button onClick={() => { setStore(p => { const nextLog = (p.bodyLog||[]).filter(x => x.id !== e.id); const tok = (typeof loadSession === "function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b=>({...b, photoData:null})) }) }, tok).catch(()=>{}); } return { ...p, bodyLog: nextLog }; }); haptic("tap"); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
               </div>
             ))}
           </>
@@ -11343,7 +11616,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
-                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} style={{
+                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} style={{
                     padding:"4px 10px", background: sex===val ? C.accent : "transparent",
                     color: sex===val ? "#fff" : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
@@ -11544,7 +11817,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         setStore(p => ({ ...p, unit: u }));
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
-                          try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ unit: u }) }, tok); }
+                          try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ unit: u }) }, tok); }
                           catch (e) { console.error("unit save error:", e); }
                         }
                       }} style={{
@@ -11573,7 +11846,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           setStore(p => ({ ...p, isPublic: val }));
                           const tok = token || loadSession()?.access_token;
                           if (tok) {
-                            try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
+                            try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
                             catch (e) { console.error("privacy save error:", e); }
                           }
                           haptic("tap");
@@ -11601,7 +11874,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         setStore(p => ({ ...p, weeklyTarget: n }));
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
-                          try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n }) }, tok); }
+                          try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n }) }, tok); }
                           catch (e) { console.error("weekly_target save error:", e); }
                         }
                       }} style={{
@@ -12442,6 +12715,29 @@ function AppInner() {
   const [tab, setTab] = useState("tracker");
   // Offline detection — drives the "you're offline" indicator. Updates on connectivity change.
   const [online, setOnline] = useState(true);
+  // Register the service worker so the app cold-starts offline (gym dead zones). The SW uses a
+  // network-first strategy for the document, so an online launch always gets the freshest build —
+  // it never traps users on a stale version. When a new SW installs, activate it promptly.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    if (!/^https?:$/.test(window.location.protocol)) return;
+    const onLoad = () => {
+      navigator.serviceWorker.register("/sw.js").then((reg) => {
+        reg.addEventListener("updatefound", () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener("statechange", () => {
+            if (nw.state === "installed" && navigator.serviceWorker.controller) {
+              nw.postMessage("SKIP_WAITING");
+            }
+          });
+        });
+      }).catch(() => {});
+    };
+    if (document.readyState === "complete") onLoad();
+    else window.addEventListener("load", onLoad);
+    return () => window.removeEventListener("load", onLoad);
+  }, []);
   // Public share-page routing: detect …/#/u/<userId> in the URL (read-only public profile).
   const [publicRoute, setPublicRoute] = useState(() => {
     try {
@@ -12468,8 +12764,12 @@ function AppInner() {
       if (!isOnline) { wasOffline.current = true; }
       else if (wasOffline.current) {
         wasOffline.current = false;
-        // Reconnected after being offline — retry any queued workouts (existing mechanism).
+        // Reconnected after being offline — retry any queued workouts AND queued profile writes.
         try { if (typeof flushPendingWorkouts === "function") flushPendingWorkouts(); } catch {}
+        try {
+          const tok = tokenRef.current || loadSession()?.access_token;
+          if (tok) sb.flushWriteQueue(tok).then(r => { if (r.flushed > 0) console.log(`Synced ${r.flushed} queued change(s)`); }).catch(()=>{});
+        } catch {}
       }
     });
     return unsub;
@@ -12578,8 +12878,9 @@ function AppInner() {
   useEffect(() => {
     if (!token || isGuest) return;
     loadUserData().then(() => {
-      // After data loads, retry any workouts that failed to sync earlier
+      // After data loads, retry any workouts AND queued profile writes that failed to sync earlier
       flushPendingWorkouts();
+      try { const tok = tokenRef.current || token; if (tok) sb.flushWriteQueue(tok).catch(()=>{}); } catch {}
     });
   }, [token, currentUserId, isGuest]);
 
@@ -12940,6 +13241,11 @@ function AppInner() {
         );
         const all = [...merged, ...carried];
         all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        // Cache the feed (sans heavy image blobs) so it's viewable offline. Capped to 40 posts.
+        try {
+          const slim = all.slice(0, 40).map(p => ({ ...p, imageData: p.imageData && p.imageData.startsWith("data:") ? null : p.imageData }));
+          localStorage.setItem("seshd_feed_cache", JSON.stringify(slim));
+        } catch {}
         return { ...prev, posts: all };
       });
     } catch (e) {
@@ -13660,6 +13966,7 @@ function AppInner() {
         button { transition: transform 0.06s ease-out, opacity 0.12s ease-out; touch-action: manipulation; }
         button:active { transform: scale(0.95); }
 
+        @keyframes seshd-spin { to { transform: rotate(360deg); } }
         @keyframes seshd-press { 0%{transform:scale(1)} 50%{transform:scale(0.96)} 100%{transform:scale(1)} }
         @keyframes seshd-fade-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
         @keyframes seshd-count-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
@@ -13960,7 +14267,7 @@ function AppInner() {
       // flag still prevents it showing again this session/device.
       const tok = tokenRef.current || loadSession()?.access_token;
       if (tok) {
-        try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target }) }, tok); }
+        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target }) }, tok); }
         catch (e) { console.error("onboarding flag save error:", e); }
       }
     }}/>;
@@ -13982,7 +14289,7 @@ function AppInner() {
             setStore(p => ({ ...p, theme: t }));
             const tok = tokenRef.current || loadSession()?.access_token;
             if (tok) {
-              try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
+              try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
               catch (e) { console.error("theme save error:", e); }
             }
           }}
@@ -14181,6 +14488,15 @@ function AppInner() {
           </button>
         </div>
       </div>
+
+      {/* Global offline banner — persistent trust signal so users always know their state and
+          that nothing is lost. Cached data stays readable; changes queue and sync on reconnect. */}
+      {!online && !isGuest && (
+        <div style={{ background: C.isDark ? "rgba(180,83,9,0.22)" : "#FEF3C7", borderBottom:`1px solid ${C.isDark ? "rgba(180,83,9,0.4)" : "#FDE68A"}`, padding:"7px 14px", display:"flex", alignItems:"center", justifyContent:"center", gap:7, flexShrink:0 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.isDark ? "#FBBF24" : "#B45309"} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          <span style={{ fontSize:12, fontWeight:700, color: C.isDark ? "#FCD34D" : "#92400E" }}>Offline — viewing saved data, changes sync when you reconnect</span>
+        </div>
+      )}
 
       {/* CONTENT — single tab visible at a time with slide transition */}
       {(() => {
@@ -14543,7 +14859,7 @@ function AppInner() {
               setStore(p => ({ ...p, theme: t }));
               const tok = tokenRef.current || loadSession()?.access_token;
               if (tok) {
-                try { await sb.query(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
+                try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
                 catch (e) { console.error("theme save error:", e); }
               }
             }}
