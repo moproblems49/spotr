@@ -168,8 +168,17 @@ const sb = (() => {
       headers,
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
-    if (data.error || data.error_description) throw new Error(data.error_description || data.error || "Sign in failed");
+    const data = await res.json().catch(() => ({}));
+    // Supabase returns auth errors in several shapes (error_description / error / msg / error_code)
+    // and a non-2xx status. Catch all of them, and require an access_token, so a failed login
+    // surfaces as a clear error instead of falling through to a hung "setting up" screen.
+    if (!res.ok || data.error || data.error_description || data.msg || !data.access_token) {
+      const raw = data.error_description || data.msg || data.error || "";
+      const friendly = /invalid login credentials/i.test(raw)
+        ? "Incorrect email or password."
+        : (raw || "Sign in failed. Please try again.");
+      throw new Error(friendly);
+    }
     return data; // { access_token, refresh_token, user }
   }
 
@@ -13262,6 +13271,11 @@ function AppInner() {
 
   // ── Auth handlers ─────────────────────────────────────────────
   function handleAuth(data) {
+    // Defensive: never establish a session without a real access token. A malformed auth response
+    // here is what previously left the app stuck on "setting up your account".
+    if (!data || !data.access_token) {
+      throw new Error("Sign in failed. Please check your credentials and try again.");
+    }
     saveSession(data);
     setSession(data);
   }
