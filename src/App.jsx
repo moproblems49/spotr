@@ -895,22 +895,24 @@ const MUSCLE_FIGURE = {
 // Module-level cache + in-flight promise so the data loads once per session.
 let _bodyMapData = null;
 let _bodyMapPromise = null;
+let _bodyMapFailed = false;
 function loadBodyMapData() {
   if (_bodyMapData) return Promise.resolve(_bodyMapData);
   if (_bodyMapPromise) return _bodyMapPromise;
   _bodyMapPromise = fetch("/bodymap_data.json")
-    .then(r => r.ok ? r.json() : null)
+    .then(r => r.ok ? r.json() : Promise.reject(new Error("http_" + r.status)))
     .then(d => { _bodyMapData = d; return d; })
-    .catch(() => null);
+    .catch(() => { _bodyMapFailed = true; _bodyMapPromise = null; return null; });
   return _bodyMapPromise;
 }
 
 function BodyMap({ muscle = "", C, size = 160 }) {
   const [data, setData] = useState(_bodyMapData);
+  const [failed, setFailed] = useState(_bodyMapFailed);
   useEffect(() => {
     if (data) return;
     let alive = true;
-    loadBodyMapData().then(d => { if (alive) setData(d); });
+    loadBodyMapData().then(d => { if (alive) { setData(d); if (!d) setFailed(true); } });
     return () => { alive = false; };
   }, [data]);
 
@@ -918,7 +920,12 @@ function BodyMap({ muscle = "", C, size = 160 }) {
   const bodyCol = C?.isDark ? "#cbced6" : "#3a3a42";
   const accent = C?.accent || "#7c3aed";
 
-  // While loading (or if the asset is unavailable), reserve the space quietly.
+  // If the asset genuinely couldn't load, fall back to the simple muscle icon instead of an
+  // endless spinner — the screen still works, just without the full anatomical figure.
+  if (failed || (!data && _bodyMapFailed)) {
+    return <MuscleIcon muscle={muscle} size={Math.round(size * 0.62)} C={C}/>;
+  }
+  // While loading, reserve the space with a quiet spinner.
   if (!data) {
     return <div style={{ height:size, display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ width:18, height:18, border:`2px solid ${C?.divider||"#ccc"}`, borderTopColor:C?.accent||"#7c3aed", borderRadius:"50%", animation:"seshd-spin 0.7s linear infinite" }}/>
