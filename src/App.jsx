@@ -895,7 +895,7 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
 // recolored to the theme and the worked muscle highlights in the app accent (light + dark aware).
 const MUSCLE_FIGURE = {
   // app muscle value -> figure key in the body-map data
-  "Chest":"Chest", "Back":"Back", "Lats":"Back", "Rear Delts":"Shoulders", "Shoulders":"Shoulders",
+  "Chest":"Chest", "Back":"Back", "Lats":"Back", "Rear Delts":"Back", "Shoulders":"Shoulders",
   "Traps":"Back", "Biceps":"Arms", "Triceps":"Arms", "Quads":"Quadriceps", "Hamstrings":"Hamstring",
   "Glutes":"Glutes", "Calves":"Calves", "Core":"Abs", "Abs":"Abs", "Forearms":"Forearm",
   // Neck / Full Body / Cardio / Yoga have no single-muscle figure → plain body (no highlight)
@@ -3201,8 +3201,9 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   const step = (field === "reps" || isCardio) ? 1 : 2.5;
   const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22 }) => (
     <button
-      onPointerDown={(e) => { e.preventDefault(); onPress(); haptic("tap"); }}
-      onClick={(e) => e.preventDefault()}
+      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onPress(); haptic("tap"); }}
+      onPointerUp={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
       style={{
         flex, height:52, margin:3, borderRadius:11, cursor:"pointer",
         background: bg || (C.isDark ? "rgba(255,255,255,0.07)" : "#fff"),
@@ -3360,11 +3361,13 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   const exMuscle = useMemo(() => exName ? EXERCISE_DB.find(e => e.name === exName)?.muscle : null, [exName]);
   const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
 
-  // Barbell detection — show plate breakdown inline when this is a barbell move with a set weight
-  // Match common barbell movement names; exclude dumbbell/kettlebell/machine/cable variants
+  // Barbell detection — show plate breakdown inline ONLY for true barbell-loaded movements.
+  // The previous regex matched bare "curl"/"row"/"press", which wrongly flagged machine moves like
+  // "Seated Leg Curl" and "Leg Press". Now: require an explicit barbell-loaded movement, and
+  // exclude machine/dumbbell/cable/leg-curl/leg-press/etc.
   const isBarbell = exName ? (
-    /\bbarbell\b|\bbench press\b|\bsquat\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bhip thrust\b|\blandmine\b|\bt-?bar\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo\b|\bconventional\b|\boverhead press\b|\bohp\b|\bpush press\b|\bjerk\b|\bclean\b|\bsnatch\b|\btrap bar\b|\brow\b|\bpress\b|\bcurl\b/i.test(exName)
-    && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|tricep|chest fly|fly|lateral|raise/i.test(exName)
+    /\bbarbell\b|\bbench press\b|\bback squat\b|\bfront squat\b|\bhigh bar\b|\blow bar\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bbarbell hip thrust\b|\bhip thrust \(barbell\)\b|\blandmine\b|\bt-?bar row\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo deadlift\b|\boverhead press \(barbell\)\b|\bbarbell row\b|\bpower clean\b|\bhang clean\b|\bclean and jerk\b|\bsnatch\b|\btrap bar\b|\brack pull\b|\bbarbell curl\b|\bez bar curl\b|\bbarbell shrug\b|\bpush press\b|\bz press\b|\bbradford\b|\bseated ohp\b|\bclose-grip bench\b|\bjm press\b|\bskull crusher\b|\bbarbell glute bridge\b|\bfront raises \(plate\)\b/i.test(exName)
+    && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|leg curl|leg press|leg extension|pec deck|pulldown|pushdown|\bfly\b|lateral raise|pec|seated calf|assisted/i.test(exName)
   ) : false;
   const oneSided = exName ? isOneSidedBarbell(exName) : false;
   const platesBreakdown = useMemo(() => {
