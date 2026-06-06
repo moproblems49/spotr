@@ -926,211 +926,58 @@ function BodyMap({ muscle = "", C, size = 160 }) {
     </svg>
   );
 }
+// Muscle icon — a clean mini body glyph with the worked muscle highlighted in the app accent on a
+// tinted tile. Cohesive single-color design, legible from ~20px up. Cardio = heart, Yoga = lotus,
+// Full Body = filled figure. Replaces the older multi-color silhouette + overlay set.
+const _MI_TORSO = "M7.6 4c0-.7.6-1.2 1.3-1.2h6.2c.7 0 1.3.5 1.3 1.2l-.35 3.5 2.4 1.5c.5.3.7.9.5 1.4l-1.1 2.6c-.2.5-.7.7-1.2.55l-1.4-.45.55 8.2c0 .6-.45 1.1-1.1 1.1h-2.2l-.35-5.3h-.9l-.35 5.3h-2.2c-.65 0-1.1-.5-1.1-1.1l.55-8.2-1.4.45c-.5.15-1-.05-1.2-.55l-1.1-2.6c-.2-.5 0-1.1.5-1.4l2.4-1.5z";
+const _MI_HEAD = { cx:12, cy:2.1, r:1.75 };
+const _MI_HL = {
+  chest:'<ellipse cx="9.5" cy="6.8" rx="2.5" ry="2"/><ellipse cx="14.5" cy="6.8" rx="2.5" ry="2"/>',
+  back:'<path d="M8.8 5.2l-1 4.8 2.2.7.5-5zM15.2 5.2l1 4.8-2.2.7-.5-5z"/><rect x="10.4" y="5.3" width="3.2" height="5" rx="0.5" opacity="0.6"/>',
+  shoulders:'<circle cx="7.4" cy="5.7" r="2.4"/><circle cx="16.6" cy="5.7" r="2.4"/>',
+  "rear delts":'<circle cx="7.4" cy="5.9" r="2.3"/><circle cx="16.6" cy="5.9" r="2.3"/>',
+  traps:'<path d="M9 3.1h6l1.9 2.7c-3.1-1-6.7-1-9.8 0z"/>',
+  biceps:'<ellipse cx="6.1" cy="9.2" rx="1.8" ry="2.9"/><ellipse cx="17.9" cy="9.2" rx="1.8" ry="2.9"/>',
+  triceps:'<ellipse cx="5.7" cy="9.6" rx="1.7" ry="2.9"/><ellipse cx="18.3" cy="9.6" rx="1.7" ry="2.9"/>',
+  forearms:'<path d="M5.3 12.2l-.8 3.8 1.9.4.7-3.9zM18.7 12.2l.8 3.8-1.9.4-.7-3.9z"/>',
+  core:'<rect x="10" y="9" width="4" height="2.1" rx="0.4"/><rect x="10" y="11.4" width="4" height="2.1" rx="0.4"/><rect x="9.9" y="13.8" width="4.2" height="2.2" rx="0.4"/>',
+  abs:'<rect x="10" y="9" width="4" height="2.1" rx="0.4"/><rect x="10" y="11.4" width="4" height="2.1" rx="0.4"/><rect x="9.9" y="13.8" width="4.2" height="2.2" rx="0.4"/>',
+  quads:'<path d="M8.8 16.2l-.7 5h2.5l.7-5zM15.2 16.2l.7 5h-2.5l-.7-5z"/>',
+  hamstrings:'<path d="M8.9 16.2l-.6 4.8h2.3l.6-4.8zM15.1 16.2l.6 4.8h-2.3l-.6-4.8z"/>',
+  glutes:'<ellipse cx="10.2" cy="15.6" rx="2.1" ry="1.9"/><ellipse cx="13.8" cy="15.6" rx="2.1" ry="1.9"/>',
+  calves:'<path d="M8.9 19.4l-.4 2.7h1.9l.3-2.7zM15.1 19.4l.4 2.7h-1.9l-.3-2.7z"/>',
+  lats:'<path d="M8.8 5.2l-1 4.8 2.2.7.5-5zM15.2 5.2l1 4.8-2.2.7-.5-5z"/>',
+};
 function MuscleIcon({ muscle = "", size = 28, C }) {
   const m = (muscle || "").toLowerCase().split("/")[0].trim();
-  const colors = {
-    chest:"#ef4444", back:"#3b82f6", shoulders:"#8b5cf6", biceps:"#f59e0b",
-    triceps:"#f97316", quads:"#10b981", hamstrings:"#14b8a6", glutes:"#ec4899",
-    calves:"#06b6d4", core:"#84cc16", abs:"#84cc16", traps:"#6366f1", forearms:"#eab308",
-    "full body":"#2563eb", "rear delts":"#8b5cf6", "shoulders/traps":"#8b5cf6",
-    "chest/tris":"#ef4444", "quads/glutes":"#10b981",
-    cardio:"#ef4444", yoga:"#a855f7", // duration-based exercises
-  };
-  const color = colors[m] || C?.accent || "#2563eb";
   const isDark = C?.isDark ?? (C?.bg === "#0a0a0c");
-  const bodyFill = isDark ? "#2a2a2e" : "#e8ecf0";
-  const bodyStroke = isDark ? "#3a3a3e" : "#cbd5e1";
+  const accent = isDark ? (C?.accent || "#8b5cf6") : (C?.accent || "#7c3aed");
+  const bodyCol = isDark ? "#3b3b44" : "#d3d8e0";
+  const tint = isDark ? "rgba(139,92,246,0.16)" : "rgba(124,58,237,0.10)";
+  const ring = isDark ? "rgba(139,92,246,0.30)" : "rgba(124,58,237,0.20)";
+  const glyphSize = "72%";
 
-  // Front-view body for chest, abs, arms, quads, etc.
-  // Back-view body for back, hamstrings, glutes, calves, traps
-  const isBackView = ["back","hamstrings","glutes","calves","traps","rear delts"].includes(m);
-
+  let inner;
+  if (m === "cardio") {
+    inner = <svg width="60%" height="60%" viewBox="0 0 24 24" fill={accent}><path d="M12 20.5s-7.2-4.7-7.2-9.7C4.8 7.9 6.8 6 9.1 6c1.5 0 2.5.8 2.9 1.5C12.4 6.8 13.4 6 14.9 6c2.3 0 4.3 1.9 4.3 4.8 0 5-7.2 9.7-7.2 9.7z"/></svg>;
+  } else if (m === "yoga") {
+    inner = <svg width="60%" height="60%" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="6.8" r="2.6"/><path d="M5.5 18.5c2.2-3.2 4.7-4.3 6.5-4.3s4.3 1.1 6.5 4.3M4.8 18.5h14.4"/></svg>;
+  } else if (m === "full body" || m === "") {
+    inner = <svg width={glyphSize} height={glyphSize} viewBox="0 0 24 24" fill={accent}><path d={_MI_TORSO}/><circle cx={_MI_HEAD.cx} cy={_MI_HEAD.cy} r={_MI_HEAD.r}/></svg>;
+  } else {
+    const hl = _MI_HL[m] || null;
+    inner = <svg width={glyphSize} height={glyphSize} viewBox="0 0 24 24" fill="none">
+      <g fill={bodyCol}><path d={_MI_TORSO}/><circle cx={_MI_HEAD.cx} cy={_MI_HEAD.cy} r={_MI_HEAD.r}/></g>
+      {hl && <g fill={accent} dangerouslySetInnerHTML={{ __html: hl }}/>}
+    </svg>;
+  }
   return (
     <div style={{
-      width:size, height:size, borderRadius:Math.round(size*0.28),
-      background: isDark ? "#161618" : "#f8fafc",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      flexShrink:0, border:`1px solid ${isDark ? "#252528" : "#e8ecf0"}`,
-      overflow:"hidden",
-    }}>
-      <svg width={size*0.85} height={size*0.85} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Body silhouette */}
-        {isBackView ? (
-          <BodyBack baseFill={bodyFill} stroke={bodyStroke}/>
-        ) : (
-          <BodyFront baseFill={bodyFill} stroke={bodyStroke}/>
-        )}
-        {/* Highlighted muscle overlay */}
-        <MuscleOverlay muscle={m} color={color}/>
-      </svg>
-    </div>
+      width:size, height:size, borderRadius:Math.round(size*0.3),
+      background:tint, border:`1px solid ${ring}`,
+      display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, overflow:"hidden",
+    }}>{inner}</div>
   );
-}
-
-function BodyFront({ baseFill, stroke }) {
-  return (
-    <g fill={baseFill} stroke={stroke} strokeWidth="0.7" strokeLinejoin="round">
-      {/* Head */}
-      <ellipse cx="24" cy="8.5" rx="3.6" ry="4.2"/>
-      {/* Neck */}
-      <rect x="22.5" y="12" width="3" height="2" rx="0.5"/>
-      {/* Torso/shoulders */}
-      <path d="M14 16 Q14 14 16 13.5 L21.5 13 L26.5 13 L32 13.5 Q34 14 34 16 L33 28 Q32 30 30 30 L18 30 Q16 30 15 28 Z"/>
-      {/* Arms upper */}
-      <path d="M14 16 Q12 17 11.5 19 L10.5 25 Q10.3 27 11 28 L13 28.3 Q14 28 14 26 Z"/>
-      <path d="M34 16 Q36 17 36.5 19 L37.5 25 Q37.7 27 37 28 L35 28.3 Q34 28 34 26 Z"/>
-      {/* Forearms */}
-      <path d="M11 28 L10 35 Q10 36.5 11 36.7 L13 36.7 Q14 36.5 14 35.3 L13.5 28.3 Z"/>
-      <path d="M37 28 L38 35 Q38 36.5 37 36.7 L35 36.7 Q34 36.5 34 35.3 L34.5 28.3 Z"/>
-      {/* Waist/hips */}
-      <path d="M16 30 L17 35 L18 38 L23 38 L25 38 L30 38 L31 35 L32 30 Z"/>
-      {/* Quads */}
-      <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
-      <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
-    </g>
-  );
-}
-
-function BodyBack({ baseFill, stroke }) {
-  return (
-    <g fill={baseFill} stroke={stroke} strokeWidth="0.7" strokeLinejoin="round">
-      {/* Head */}
-      <ellipse cx="24" cy="8.5" rx="3.6" ry="4.2"/>
-      {/* Neck */}
-      <rect x="22.5" y="12" width="3" height="2" rx="0.5"/>
-      {/* Back/shoulders */}
-      <path d="M14 16 Q14 14 16 13.5 L21.5 13 L26.5 13 L32 13.5 Q34 14 34 16 L33 28 Q32 30 30 30 L18 30 Q16 30 15 28 Z"/>
-      {/* Arms upper */}
-      <path d="M14 16 Q12 17 11.5 19 L10.5 25 Q10.3 27 11 28 L13 28.3 Q14 28 14 26 Z"/>
-      <path d="M34 16 Q36 17 36.5 19 L37.5 25 Q37.7 27 37 28 L35 28.3 Q34 28 34 26 Z"/>
-      {/* Forearms */}
-      <path d="M11 28 L10 35 Q10 36.5 11 36.7 L13 36.7 Q14 36.5 14 35.3 L13.5 28.3 Z"/>
-      <path d="M37 28 L38 35 Q38 36.5 37 36.7 L35 36.7 Q34 36.5 34 35.3 L34.5 28.3 Z"/>
-      {/* Hips */}
-      <path d="M16 30 L17 35 L18 38 L23 38 L25 38 L30 38 L31 35 L32 30 Z"/>
-      {/* Hamstrings/glutes area */}
-      <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
-      <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
-    </g>
-  );
-}
-
-function MuscleOverlay({ muscle, color }) {
-  const m = muscle;
-  // Each overlay is a colored path that sits ON TOP of the base body
-  if (m === "chest" || m === "chest/tris") {
-    return (
-      <g fill={color} opacity="0.92">
-        <path d="M16.5 14.5 Q17 17.5 19 20 Q21 22 23.5 22 L24.5 22 Q27 22 29 20 Q31 17.5 31.5 14.5 Q28 14 24 14 Q20 14 16.5 14.5 Z"/>
-      </g>
-    );
-  }
-  if (m === "back") {
-    return (
-      <g fill={color} opacity="0.92">
-        {/* Lats */}
-        <path d="M15.5 16 L14.5 25 Q15 27 17 28 L20 27 L20 18 Q18 16.5 15.5 16 Z"/>
-        <path d="M32.5 16 L33.5 25 Q33 27 31 28 L28 27 L28 18 Q30 16.5 32.5 16 Z"/>
-        {/* Mid back */}
-        <path d="M20 17 L20 27 L28 27 L28 17 Z" opacity="0.7"/>
-      </g>
-    );
-  }
-  if (m === "shoulders" || m === "shoulders/traps" || m === "rear delts") {
-    return (
-      <g fill={color} opacity="0.92">
-        <ellipse cx="14.5" cy="17" rx="3.2" ry="2.5"/>
-        <ellipse cx="33.5" cy="17" rx="3.2" ry="2.5"/>
-      </g>
-    );
-  }
-  if (m === "biceps") {
-    return (
-      <g fill={color} opacity="0.92">
-        <ellipse cx="12" cy="22.5" rx="2" ry="3.5"/>
-        <ellipse cx="36" cy="22.5" rx="2" ry="3.5"/>
-      </g>
-    );
-  }
-  if (m === "triceps") {
-    return (
-      <g fill={color} opacity="0.92">
-        <ellipse cx="11.5" cy="24" rx="1.8" ry="3.5"/>
-        <ellipse cx="36.5" cy="24" rx="1.8" ry="3.5"/>
-      </g>
-    );
-  }
-  if (m === "forearms") {
-    return (
-      <g fill={color} opacity="0.92">
-        <path d="M11 28 L10 35 Q10 36.5 11 36.7 L13 36.7 Q14 36.5 14 35.3 L13.5 28.3 Z"/>
-        <path d="M37 28 L38 35 Q38 36.5 37 36.7 L35 36.7 Q34 36.5 34 35.3 L34.5 28.3 Z"/>
-      </g>
-    );
-  }
-  if (m === "core" || m === "abs") {
-    return (
-      <g fill={color} opacity="0.92">
-        {/* Six pack blocks */}
-        <rect x="21.5" y="22" width="5" height="3" rx="0.6"/>
-        <rect x="21.5" y="25.5" width="5" height="3" rx="0.6"/>
-        <rect x="21" y="29" width="6" height="3" rx="0.6"/>
-      </g>
-    );
-  }
-  if (m === "quads") {
-    return (
-      <g fill={color} opacity="0.92">
-        <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
-        <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
-      </g>
-    );
-  }
-  if (m === "hamstrings" || m === "quads/glutes") {
-    return (
-      <g fill={color} opacity="0.92">
-        <path d="M17.5 39 L16.5 45 L21 45 L22 39 Z"/>
-        <path d="M30.5 39 L31.5 45 L27 45 L26 39 Z"/>
-      </g>
-    );
-  }
-  if (m === "glutes") {
-    return (
-      <g fill={color} opacity="0.92">
-        <ellipse cx="20.5" cy="34" rx="3.5" ry="3"/>
-        <ellipse cx="27.5" cy="34" rx="3.5" ry="3"/>
-      </g>
-    );
-  }
-  if (m === "calves") {
-    return (
-      <g fill={color} opacity="0.92">
-        {/* Approximate calves at bottom of body */}
-        <ellipse cx="19" cy="44" rx="2" ry="2"/>
-        <ellipse cx="29" cy="44" rx="2" ry="2"/>
-      </g>
-    );
-  }
-  if (m === "traps") {
-    return (
-      <g fill={color} opacity="0.92">
-        {/* Upper traps - between shoulders and neck */}
-        <path d="M19 13.5 Q22 13 24 13 Q26 13 29 13.5 L28 16 Q26 15.5 24 15.5 Q22 15.5 20 16 Z"/>
-      </g>
-    );
-  }
-  if (m === "full body") {
-    // Highlight the whole figure subtly
-    return (
-      <g fill={color} opacity="0.35">
-        <path d="M14 16 Q14 14 16 13.5 L21.5 13 L26.5 13 L32 13.5 Q34 14 34 16 L33 28 Q32 30 30 30 L18 30 Q16 30 15 28 Z"/>
-        <path d="M16 30 L17 35 L18 38 L23 38 L25 38 L30 38 L31 35 L32 30 Z"/>
-        <path d="M17 38 L16 46 L21 46 L22.5 38 Z"/>
-        <path d="M31 38 L32 46 L27 46 L25.5 38 Z"/>
-      </g>
-    );
-  }
-  return null;
 }
 
 let _setToast = null;
