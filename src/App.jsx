@@ -765,6 +765,40 @@ function resolveMuscle(name) {
   return null;
 }
 
+// Custom-exercise registry — kept in sync with store.customExercises by the app so any module-level
+// helper (getMuscle, pickers) can see user-created exercises without prop-drilling. Each entry:
+// { id, name, muscle, equipment }.
+let _customExercises = [];
+function setCustomExerciseRegistry(list) { _customExercises = Array.isArray(list) ? list : []; }
+// Muscle groups offered when creating a custom exercise (matches the body-map / MUSCLE_FIGURE set).
+const CUSTOM_MUSCLE_GROUPS = ["Chest","Back","Shoulders","Rear Delts","Traps","Biceps","Triceps","Forearms","Quads","Hamstrings","Glutes","Calves","Core","Cardio","Full Body"];
+const CUSTOM_EQUIPMENT = ["Barbell","Dumbbell","Machine","Cable","Bodyweight","Kettlebell","Bands","Other"];
+const _exNorm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+// Resolve an exercise's library/custom entry by name (exact, then normalized). Custom exercises
+// win when present so a user's chosen muscle is authoritative.
+function getExEntry(name) {
+  if (!name) return null;
+  let e = _customExercises.find(x => x.name === name);
+  if (e) return e;
+  e = EXERCISE_DB.find(x => x.name === name);
+  if (e) return e;
+  const n = _exNorm(name);
+  e = _customExercises.find(x => _exNorm(x.name) === n);
+  if (e) return e;
+  e = EXERCISE_DB.find(x => _exNorm(x.name) === n);
+  return e || null;
+}
+
+// THE single source of truth for "what muscle does this exercise work?". Order: stored entry
+// (custom first, then DB), then keyword inference. Used everywhere so custom/renamed exercises
+// resolve consistently instead of silently falling back to "Full Body".
+function getMuscle(name) {
+  const e = getExEntry(name);
+  if (e && e.muscle) return e.muscle;
+  return resolveMuscle(name);
+}
+
 function suggestExerciseSubstitutes(name, limit = 8) {
   if (!name) return [];
   // Exact match first; then fuzzy — many logged exercises are custom or named slightly
@@ -1516,7 +1550,7 @@ function getProgressInsight(store, unit, returnAll = false) {
           // Only count if there were real working sets
           const worked = (ex.sets || []).some(s => s.type !== "warmup" && (s.done === true || parseFloat(s.reps) > 0));
           if (!worked) return;
-          const m = (EXERCISE_DB.find(e => e.name === ex.name)?.muscle) || "";
+          const m = (getMuscle(ex.name)) || "";
           if (m && m !== "Cardio" && m !== "Yoga") musclesThisSession.add(m);
         });
         musclesThisSession.forEach(m => { muscleHits[m] = (muscleHits[m] || 0) + 1; });
@@ -2376,6 +2410,7 @@ function loadStore() {
     dismissedInsights: [], // keys of insight cards the user swiped away (persisted)
     seenOnboarding: false,
     bodyLog: [], // body tracking entries: { id, date, weight, measurements:{}, photoData }
+    customExercises: [], // user-created exercises: { id, name, muscle, equipment }
   };
   try {
     const r = localStorage.getItem(SK);
@@ -3046,7 +3081,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
         (selectedCategory === "All" || e.muscle === selectedCategory)
       ).slice(0, 10)
     : selectedCategory === "All" && recent.length > 0
-      ? recent.map(name => EXERCISE_DB.find(e => e.name === name) || { name, muscle: "" }).filter(Boolean)
+      ? recent.map(name => getExEntry(name) || { name, muscle: getMuscle(name) || "" }).filter(Boolean)
       : EXERCISE_DB.filter(e => selectedCategory === "All" || e.muscle === selectedCategory).slice(0, 10);
 
   function select(ex) {
@@ -4334,7 +4369,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
 
         {/* Exercise cards */}
         {activeDay.exercises.map((ex, ei) => {
-          const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+          const exInfo = getExEntry(ex.name);
           return (
             <div key={ei} style={{ background:inputBg, border:`1px solid ${border}`, borderRadius:16, padding:"14px", marginBottom:12, boxShadow: isDark ? "none" : "0 1px 4px rgba(0,0,0,0.06)" }}>
               {/* Exercise name row */}
@@ -5240,7 +5275,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           </div>
         ) : (
           day.exercises.map((ex, ei) => {
-            const exInfo = EXERCISE_DB?.find(e => e.name === ex.name);
+            const exInfo = getExEntry(ex.name);
             const sets = Math.max(1, parseInt(ex.sets) || 3);
             const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#8B5CF6",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
             const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
@@ -5488,6 +5523,77 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
 // ═════════════════════════════════════════════════════════════════════════════
 // EDIT HISTORY MODAL — fix wrong numbers in an already-saved workout
 // ═════════════════════════════════════════════════════════════════════════════
+// Persist a new custom exercise into the store + sync to the profile (profiles.custom_exercises).
+// Returns the created entry. Dedupes by normalized name (won't create a duplicate).
+function saveCustomExercise({ name, muscle, equipment }, store, setStore, currentUserId, token) {
+  const nm = (name || "").trim();
+  if (!nm) return null;
+  const existing = (store.customExercises || []).find(e => _exNorm(e.name) === _exNorm(nm))
+    || EXERCISE_DB.find(e => _exNorm(e.name) === _exNorm(nm));
+  if (existing) return existing;
+  const entry = { id: uid(), name: nm, muscle: muscle || "Full Body", equipment: equipment || "Other" };
+  const next = [...(store.customExercises || []), entry];
+  setStore(p => ({ ...p, customExercises: next }));
+  setCustomExerciseRegistry(next);
+  // Best-effort server sync (mirrors the body_log pattern). Works once profiles.custom_exercises exists.
+  const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
+  if (tok && currentUserId) {
+    try {
+      sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(() => {});
+    } catch (e) { /* offline / column missing — local copy still saved */ }
+  }
+  return entry;
+}
+
+// Reusable inline "create custom exercise" panel: shows a muscle-group picker (and optional
+// equipment) for a typed name, then calls onCreate(entry). Used wherever exercises are added.
+function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, onCreate, onCancel }) {
+  const [muscle, setMuscle] = useState("");
+  const [equip, setEquip] = useState("");
+  const F = "inherit";
+  return (
+    <div style={{ marginTop: 8, padding: 12, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+        Create "{name}"
+      </div>
+      <div style={{ fontSize: 11, color: C.sub, fontWeight: 600, marginBottom: 6 }}>MUSCLE GROUP</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+        {CUSTOM_MUSCLE_GROUPS.map(m => (
+          <button key={m} onClick={() => { setMuscle(m); haptic("tap"); }} style={{
+            padding: "7px 11px", borderRadius: 16, cursor: "pointer", fontFamily: F, fontSize: 12, fontWeight: 600,
+            background: muscle === m ? C.accent : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
+            color: muscle === m ? "#fff" : C.text, border: `1px solid ${muscle === m ? C.accent : C.border}`,
+          }}>{m}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: C.sub, fontWeight: 600, marginBottom: 6 }}>EQUIPMENT (optional)</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+        {CUSTOM_EQUIPMENT.map(eq => (
+          <button key={eq} onClick={() => { setEquip(equip === eq ? "" : eq); haptic("tap"); }} style={{
+            padding: "6px 10px", borderRadius: 16, cursor: "pointer", fontFamily: F, fontSize: 11, fontWeight: 600,
+            background: equip === eq ? C.accent : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
+            color: equip === eq ? "#fff" : C.sub, border: `1px solid ${equip === eq ? C.accent : C.border}`,
+          }}>{eq}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button disabled={!muscle} onClick={() => {
+          const entry = saveCustomExercise({ name, muscle, equipment: equip }, store, setStore, currentUserId, token);
+          haptic("success");
+          if (entry && onCreate) onCreate(entry);
+        }} style={{
+          flex: 1, padding: "10px", borderRadius: 10, border: "none", fontFamily: F, fontSize: 13, fontWeight: 700,
+          background: muscle ? C.accent : C.divider, color: muscle ? "#fff" : C.muted, cursor: muscle ? "pointer" : "default",
+        }}>Create & add</button>
+        <button onClick={onCancel} style={{
+          padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}`, fontFamily: F, fontSize: 13, fontWeight: 600,
+          background: "transparent", color: C.sub, cursor: "pointer",
+        }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setStore, onClose }) {
   const { date, sid, sess } = editing;
   const [exercises, setExercises] = useState(() => JSON.parse(JSON.stringify(sess.exercises || [])));
@@ -5529,8 +5635,11 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
 
   // Autocomplete suggestions from the exercise DB
   const exSuggestions = newExName.trim().length >= 1
-    ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(newExName.trim().toLowerCase())).slice(0, 6)
+    ? [...(store.customExercises || []), ...EXERCISE_DB].filter(e => e.name.toLowerCase().includes(newExName.trim().toLowerCase())).slice(0, 6)
     : [];
+  // Whether the typed name matches nothing in the library or custom list (offer to create it).
+  const exactMatch = newExName.trim().length >= 1 && [...(store.customExercises || []), ...EXERCISE_DB].some(e => _exNorm(e.name) === _exNorm(newExName));
+  const [showCreateEx, setShowCreateEx] = useState(false);
 
   async function handleSave() {
     if (saving) return;
@@ -5751,6 +5860,22 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
                 </button>
               ))}
             </div>
+          )}
+          {/* Offer to create a custom exercise (with muscle) when the name isn't in the library */}
+          {newExName.trim().length >= 2 && !exactMatch && !showCreateEx && (
+            <button onClick={() => { setShowCreateEx(true); setShowExSuggest(false); haptic("tap"); }} style={{
+              marginTop:6, width:"100%", textAlign:"left", padding:"10px 12px", borderRadius:10,
+              background: C.isDark ? "rgba(124,58,237,0.12)" : "rgba(124,58,237,0.07)",
+              border:`1px dashed ${C.accent}`, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F,
+            }}>+ Create "{newExName.trim()}" as a custom exercise</button>
+          )}
+          {showCreateEx && (
+            <CreateExercisePicker
+              name={newExName.trim()} C={C} store={store} setStore={setStore}
+              currentUserId={currentUserId} token={token}
+              onCreate={(entry) => { setShowCreateEx(false); addExercise(entry.name); }}
+              onCancel={() => setShowCreateEx(false)}
+            />
           )}
         </div>
       </div>
@@ -5985,7 +6110,7 @@ function DayCardList({ prog, store, C, onPreview, onEdit, onStart, onReorder }) 
 // One sortable exercise row for the in-workout "Reorder exercises" screen (dnd-kit).
 function SortableExerciseRow({ id, ex, C }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+  const exInfo = getExEntry(ex.name);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -7015,7 +7140,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
           )}
           {session.exercises.map((ex, ei) => {
-            const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+            const exInfo = getExEntry(ex.name);
             return (
               <div key={ex.id || ei}>
                 {/* Exercise header */}
@@ -7649,7 +7774,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const ex = session.exercises?.[focusedSet.ei];
           const set = ex?.sets?.[focusedSet.si];
           if (!ex || !set) return null;
-          const exMuscle = ex.name ? EXERCISE_DB.find(e => e.name === ex.name)?.muscle : null;
+          const exMuscle = ex.name ? getMuscle(ex.name) : null;
           const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
           const field = focusedSet.field || "weight";
           const curVal = field === "weight" ? set.weight : set.reps;
@@ -7794,6 +7919,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       s.exercises?.forEach(e => e.name && allEx.add(e.name))
     )
   );
+  // Include user-created custom exercises so they're browsable even before being logged.
+  (store.customExercises || []).forEach(e => e.name && allEx.add(e.name));
 
   return (
     <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:viewingProgram||showBuilder?0:20, position:"relative" }}>
@@ -8194,11 +8321,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           )}
           {Array.from(allEx).sort().filter(name => {
             const matchSearch = !exerciseSearch || name.toLowerCase().includes(exerciseSearch.toLowerCase());
-            const matchFilter = exerciseFilter === "All" || (EXERCISE_DB.find(e => e.name === name)?.muscle || "").toLowerCase().includes(exerciseFilter.toLowerCase());
+            const matchFilter = exerciseFilter === "All" || (getMuscle(name) || "").toLowerCase().includes(exerciseFilter.toLowerCase());
             return matchSearch && matchFilter;
           }).map(name => {
             const pr = store.prs?.[name];
-            const exInfo = EXERCISE_DB.find(e => e.name === name);
+            const exInfo = getExEntry(name);
             return (
               <button key={name} onClick={() => setViewingExercise(name)} style={{
                 width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`,
@@ -8938,7 +9065,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
       <div style={{ flex:1, overflowY:"auto", padding:"12px 16px", paddingBottom: editMode ? 120 : 100 }}>
         {!editMode ? (
           editDay.exercises.map((ex, i) => {
-            const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+            const exInfo = getExEntry(ex.name);
             const pr = store.prs?.[ex.name];
             const muscleColor = {
               chest:"#EF4444",back:"#3B82F6",shoulders:"#8B5CF6",biceps:"#F59E0B",
@@ -8966,7 +9093,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
         ) : (
           <>
             {editDay.exercises.map((ex, i) => {
-              const exInfo = EXERCISE_DB.find(e => e.name === ex.name);
+              const exInfo = getExEntry(ex.name);
               return (
                 <div key={i} style={{ background:CARD, borderRadius:14, padding:"14px", marginBottom:10, border:`1px solid ${BORD}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
@@ -9551,7 +9678,7 @@ function ExerciseVolumeChart({ data, unit, C }) {
 }
 
 function ExerciseDetail({ name, store, unit, C, onClose }) {
-  const exInfo = EXERCISE_DB.find(e => e.name === name) || { name, muscle: (typeof resolveMuscle === "function" ? resolveMuscle(name) : null) || "Full Body" };
+  const exInfo = getExEntry(name) || { name, muscle: getMuscle(name) || "Full Body" };
   const cueData = getCues(name, exInfo.muscle);
   const pr = store.prs?.[name];
   const [chartMode, setChartMode] = useState("weight"); // "weight" | "volume"
@@ -13044,6 +13171,17 @@ function AppInner() {
         // (profiles.body_log / onboarding_answers / strength_sex) so they survive re-login and
         // new devices. Prefer the server copy, fall back to whatever's on-device.
         bodyLog: (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : (prev.bodyLog || []),
+        // Custom exercises persist on the profile (profiles.custom_exercises). Merge server + local
+        // by id/name so nothing is lost if either side has entries the other doesn't.
+        customExercises: (() => {
+          const srv = Array.isArray(me?.custom_exercises) ? me.custom_exercises : [];
+          const loc = Array.isArray(prev.customExercises) ? prev.customExercises : [];
+          const byKey = new Map();
+          for (const e of [...loc, ...srv]) {
+            if (e && e.name) byKey.set((e.id || e.name).toString(), e);
+          }
+          return Array.from(byKey.values());
+        })(),
         onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.onboardingAnswers || {}),
         strengthSex: me?.strength_sex || prev.strengthSex || "male",
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
@@ -13815,6 +13953,9 @@ function AppInner() {
 
   // Persist non-Supabase store changes to localStorage as fallback
   useEffect(() => { saveStore(store); }, [store]);
+  // Keep the module-level custom-exercise registry in sync so getMuscle/getExEntry and the pickers
+  // see user-created exercises everywhere.
+  useEffect(() => { setCustomExerciseRegistry(store.customExercises || []); }, [store.customExercises]);
 
   // ── Lock document scroll ──────────────────────────────────────
   useEffect(() => {
