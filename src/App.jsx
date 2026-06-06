@@ -907,12 +907,19 @@ const BODYMAP_DATA = {"Calves":{"body":["M 256 78 C 255 75 253 74 252 75 C 253 7
 const _bodyMapData = BODYMAP_DATA;
 const _bodyMapFailed = false;
 
-function BodyMap({ muscle = "", C, size = 160 }) {
+function BodyMap({ muscle = "", name = "", C, size = 160 }) {
   const data = _bodyMapData; // inlined, always available
-  const figKey = MUSCLE_FIGURE[muscle] || MUSCLE_FIGURE[(muscle || "").split("/")[0].trim()] || null;
-  const bodyCol = C?.isDark ? "#cbced6" : "#3a3a42";
+  // Resolve the muscle: use the given value, but if it's empty or doesn't map to a figure, infer it
+  // from the exercise name (handles custom/slightly-renamed exercises that don't exact-match the DB).
+  let m = muscle;
+  let figKey = MUSCLE_FIGURE[m] || MUSCLE_FIGURE[(m || "").split("/")[0].trim()] || null;
+  if (!figKey && name && typeof resolveMuscle === "function") {
+    const inferred = resolveMuscle(name);
+    if (inferred) { m = inferred; figKey = MUSCLE_FIGURE[inferred] || null; }
+  }
+  const bodyCol = C?.isDark ? "#4a4a55" : "#c7ccd4";
   const accent = C?.accent || "#7c3aed";
-  if (!data) return <MuscleIcon muscle={muscle} size={Math.round(size * 0.62)} C={C}/>;
+  if (!data) return <MuscleIcon muscle={m} size={Math.round(size * 0.62)} C={C}/>;
   const fig = figKey && data[figKey];
   // If we have no figure for this muscle, fall back to ANY body (Chest) with no highlight.
   const baseFig = fig || data["Chest"];
@@ -926,54 +933,68 @@ function BodyMap({ muscle = "", C, size = 160 }) {
     </svg>
   );
 }
-// Muscle icon — a clean mini body glyph with the worked muscle highlighted in the app accent on a
-// tinted tile. Cohesive single-color design, legible from ~20px up. Cardio = heart, Yoga = lotus,
-// Full Body = filled figure. Replaces the older multi-color silhouette + overlay set.
-const _MI_TORSO = "M7.6 4c0-.7.6-1.2 1.3-1.2h6.2c.7 0 1.3.5 1.3 1.2l-.35 3.5 2.4 1.5c.5.3.7.9.5 1.4l-1.1 2.6c-.2.5-.7.7-1.2.55l-1.4-.45.55 8.2c0 .6-.45 1.1-1.1 1.1h-2.2l-.35-5.3h-.9l-.35 5.3h-2.2c-.65 0-1.1-.5-1.1-1.1l.55-8.2-1.4.45c-.5.15-1-.05-1.2-.55l-1.1-2.6c-.2-.5 0-1.1.5-1.4l2.4-1.5z";
-const _MI_HEAD = { cx:12, cy:2.1, r:1.75 };
+// Muscle icon — a detailed anatomical figure (with muscle-separation lines) on a tinted tile, the
+// worked muscle group highlighted in the app accent. Cardio = heart, Yoga = lotus, Full Body =
+// filled figure. Legible from ~20px up; works in light and dark.
+const _MI_BODY = (fill, stroke) => (
+  <g fill={fill} stroke={stroke} strokeWidth="0.5" strokeLinejoin="round">
+    <circle cx="20" cy="5" r="3.5"/>
+    <path d="M16.5 9.5c1 .6 2.2 .9 3.5 .9s2.5-.3 3.5-.9c2.4 .5 4.3 1.4 5 3.2.5 1.4.2 3-.6 4.3-.7 1.1-1 2.4-1 3.7v1.5c-2-1-4.4-1.5-6.9-1.5s-4.9.5-6.9 1.5v-1.5c0-1.3-.3-2.6-1-3.7-.8-1.3-1.1-2.9-.6-4.3.7-1.8 2.6-2.7 5-3.2z"/>
+    <path d="M11.5 13c-1.6.5-2.8 1.6-3.4 3.3l-1.6 5.2c-.3 1 .3 2 1.3 2.2l1.8.3 1.4-7.5z"/>
+    <path d="M28.5 13c1.6.5 2.8 1.6 3.4 3.3l1.6 5.2c.3 1-.3 2-1.3 2.2l-1.8.3-1.4-7.5z"/>
+    <path d="M8.4 24.3l-1.3 7.8c-.2 1 .5 1.7 1.4 1.6l1.6-.2 1.3-9z"/>
+    <path d="M31.6 24.3l1.3 7.8c.2 1-.5 1.7-1.4 1.6l-1.6-.2-1.3-9z"/>
+    <path d="M13 21c2-1 4.4-1.5 7-1.5s5 .5 7 1.5l-.4 7c-.2 2.5-1 5-1.3 7.5l-.5 3.5h-9.6l-.5-3.5c-.3-2.5-1.1-5-1.3-7.5z"/>
+    <path d="M14.8 39h4.3l-.3 8c-.1 2.8-.6 5.6-1 8.4h-2.4c-.5-3-1-6-1.1-9z"/>
+    <path d="M25.2 39h-4.3l.3 8c.1 2.8.6 5.6 1 8.4h2.4c.5-3 1-6 1.1-9z"/>
+    <path d="M16.5 19.5h7" strokeWidth="0.4" fill="none" opacity="0.6"/>
+    <path d="M20 10.5v9.5" strokeWidth="0.4" fill="none" opacity="0.5"/>
+    <path d="M15.5 24h9M15.8 27.5h8.4M16.2 31h7.6" strokeWidth="0.35" fill="none" opacity="0.45"/>
+  </g>
+);
 const _MI_HL = {
-  chest:'<ellipse cx="9.5" cy="6.8" rx="2.5" ry="2"/><ellipse cx="14.5" cy="6.8" rx="2.5" ry="2"/>',
-  back:'<path d="M8.8 5.2l-1 4.8 2.2.7.5-5zM15.2 5.2l1 4.8-2.2.7-.5-5z"/><rect x="10.4" y="5.3" width="3.2" height="5" rx="0.5" opacity="0.6"/>',
-  shoulders:'<circle cx="7.4" cy="5.7" r="2.4"/><circle cx="16.6" cy="5.7" r="2.4"/>',
-  "rear delts":'<circle cx="7.4" cy="5.9" r="2.3"/><circle cx="16.6" cy="5.9" r="2.3"/>',
-  traps:'<path d="M9 3.1h6l1.9 2.7c-3.1-1-6.7-1-9.8 0z"/>',
-  biceps:'<ellipse cx="6.1" cy="9.2" rx="1.8" ry="2.9"/><ellipse cx="17.9" cy="9.2" rx="1.8" ry="2.9"/>',
-  triceps:'<ellipse cx="5.7" cy="9.6" rx="1.7" ry="2.9"/><ellipse cx="18.3" cy="9.6" rx="1.7" ry="2.9"/>',
-  forearms:'<path d="M5.3 12.2l-.8 3.8 1.9.4.7-3.9zM18.7 12.2l.8 3.8-1.9.4-.7-3.9z"/>',
-  core:'<rect x="10" y="9" width="4" height="2.1" rx="0.4"/><rect x="10" y="11.4" width="4" height="2.1" rx="0.4"/><rect x="9.9" y="13.8" width="4.2" height="2.2" rx="0.4"/>',
-  abs:'<rect x="10" y="9" width="4" height="2.1" rx="0.4"/><rect x="10" y="11.4" width="4" height="2.1" rx="0.4"/><rect x="9.9" y="13.8" width="4.2" height="2.2" rx="0.4"/>',
-  quads:'<path d="M8.8 16.2l-.7 5h2.5l.7-5zM15.2 16.2l.7 5h-2.5l-.7-5z"/>',
-  hamstrings:'<path d="M8.9 16.2l-.6 4.8h2.3l.6-4.8zM15.1 16.2l.6 4.8h-2.3l-.6-4.8z"/>',
-  glutes:'<ellipse cx="10.2" cy="15.6" rx="2.1" ry="1.9"/><ellipse cx="13.8" cy="15.6" rx="2.1" ry="1.9"/>',
-  calves:'<path d="M8.9 19.4l-.4 2.7h1.9l.3-2.7zM15.1 19.4l.4 2.7h-1.9l-.3-2.7z"/>',
-  lats:'<path d="M8.8 5.2l-1 4.8 2.2.7.5-5zM15.2 5.2l1 4.8-2.2.7-.5-5z"/>',
+  chest:'<path d="M16.5 11.5c1 .7 2.2 1 3.5 1s2.5-.3 3.5-1c1.4.3 2.6.9 3.2 2 .3 1.5-.4 3-1.6 3.8-1.3.8-3.2 1.1-5.1 1.1s-3.8-.3-5.1-1.1c-1.2-.8-1.9-2.3-1.6-3.8.6-1.1 1.8-1.7 3.2-2z"/>',
+  shoulders:'<path d="M11.5 13c-1.6.5-2.8 1.6-3.4 3.3l-.9 2.9c1.6.6 3.4.8 5.1.5l1.1-6z"/><path d="M28.5 13c1.6.5 2.8 1.6 3.4 3.3l.9 2.9c-1.6.6-3.4.8-5.1.5l-1.1-6z"/>',
+  "rear delts":'<path d="M11.5 13c-1.6.5-2.8 1.6-3.4 3.3l-.9 2.9c1.6.6 3.4.8 5.1.5l1.1-6z"/><path d="M28.5 13c1.6.5 2.8 1.6 3.4 3.3l.9 2.9c-1.6.6-3.4.8-5.1.5l-1.1-6z"/>',
+  traps:'<path d="M16.5 9.5c1 .6 2.2 .9 3.5 .9s2.5-.3 3.5-.9c1.8.4 3.3 1 4.3 2.1-2.5-.7-5.1-1-7.8-1s-5.3.3-7.8 1c1-1.1 2.5-1.7 4.3-2.1z"/>',
+  biceps:'<path d="M11.5 13c-1.6.5-2.8 1.6-3.4 3.3l-1.6 5.2c-.3 1 .3 2 1.3 2.2l1.8.3 1.4-7.5z"/><path d="M28.5 13c1.6.5 2.8 1.6 3.4 3.3l1.6 5.2c.3 1-.3 2-1.3 2.2l-1.8.3-1.4-7.5z"/>',
+  triceps:'<path d="M11 14.5c-1.3.7-2.2 1.7-2.7 3l-1.4 4.5c-.2 1 .3 1.8 1.2 2l1.6.3 1.2-6.8z"/><path d="M29 14.5c1.3.7 2.2 1.7 2.7 3l1.4 4.5c.2 1-.3 1.8-1.2 2l-1.6.3-1.2-6.8z"/>',
+  forearms:'<path d="M8.4 24.3l-1.3 7.8c-.2 1 .5 1.7 1.4 1.6l1.6-.2 1.3-9z"/><path d="M31.6 24.3l1.3 7.8c.2 1-.5 1.7-1.4 1.6l-1.6-.2-1.3-9z"/>',
+  core:'<path d="M15.5 22.5h9l-.3 5c-.15 2.3-.9 4.6-1.2 6.9l-.3 2.1h-4.4l-.3-2.1c-.3-2.3-1.05-4.6-1.2-6.9z"/>',
+  abs:'<path d="M15.5 22.5h9l-.3 5c-.15 2.3-.9 4.6-1.2 6.9l-.3 2.1h-4.4l-.3-2.1c-.3-2.3-1.05-4.6-1.2-6.9z"/>',
+  back:'<path d="M13 21c2-1 4.4-1.5 7-1.5s5 .5 7 1.5l-.4 7c-.2 2.5-1 5-1.3 7.5l-.5 3.5h-9.6l-.5-3.5c-.3-2.5-1.1-5-1.3-7.5z"/>',
+  lats:'<path d="M13 21c2-1 4.4-1.5 7-1.5s5 .5 7 1.5l-.4 7c-.2 2.5-1 5-1.3 7.5l-.5 3.5h-9.6l-.5-3.5c-.3-2.5-1.1-5-1.3-7.5z"/>',
+  quads:'<path d="M14.8 39h4.3l-.3 8c-.1 2.8-.6 5.6-1 8.4h-2.4c-.5-3-1-6-1.1-9z"/><path d="M25.2 39h-4.3l.3 8c.1 2.8.6 5.6 1 8.4h2.4c.5-3 1-6 1.1-9z"/>',
+  hamstrings:'<path d="M14.8 39.5h4.2l-.25 7.5c-.1 2.6-.55 5.2-.95 7.8h-2.2c-.45-2.8-.9-5.6-1-8.4z"/><path d="M25.2 39.5h-4.2l.25 7.5c.1 2.6.55 5.2.95 7.8h2.2c.45-2.8.9-5.6 1-8.4z"/>',
+  glutes:'<path d="M14.5 37.5c1.3-.8 2.9-1.2 4.4-1.2.6 0 1.1.5 1.1 1.1v3.2c0 1-.8 1.8-1.8 1.8h-2c-1.4 0-2.5-1.1-2.5-2.5 0-.9.4-1.7 1-2.2z"/><path d="M25.5 37.5c-1.3-.8-2.9-1.2-4.4-1.2-.6 0-1.1.5-1.1 1.1v3.2c0 1 .8 1.8 1.8 1.8h2c1.4 0 2.5-1.1 2.5-2.5 0-.9-.4-1.7-1-2.2z"/>',
+  calves:'<path d="M15.3 47.5h3.3l-.2 4.5c-.05 1.3-.3 2.6-.5 3.9h-1.7c-.3-1.5-.55-3-.65-4.5z"/><path d="M24.7 47.5h-3.3l.2 4.5c.05 1.3.3 2.6.5 3.9h1.7c.3-1.5.55-3 .65-4.5z"/>',
 };
 function MuscleIcon({ muscle = "", size = 28, C }) {
   const m = (muscle || "").toLowerCase().split("/")[0].trim();
   const isDark = C?.isDark ?? (C?.bg === "#0a0a0c");
   const accent = isDark ? (C?.accent || "#8b5cf6") : (C?.accent || "#7c3aed");
-  const bodyCol = isDark ? "#3b3b44" : "#d3d8e0";
-  const tint = isDark ? "rgba(139,92,246,0.16)" : "rgba(124,58,237,0.10)";
-  const ring = isDark ? "rgba(139,92,246,0.30)" : "rgba(124,58,237,0.20)";
-  const glyphSize = "72%";
+  const bodyFill = isDark ? "#3d3d46" : "#c5cad3";
+  const stroke = isDark ? "#2b2b32" : "#aab1bd";
+  const tint = isDark ? "rgba(139,92,246,0.14)" : "rgba(124,58,237,0.08)";
+  const ring = isDark ? "rgba(139,92,246,0.28)" : "rgba(124,58,237,0.18)";
 
   let inner;
   if (m === "cardio") {
-    inner = <svg width="60%" height="60%" viewBox="0 0 24 24" fill={accent}><path d="M12 20.5s-7.2-4.7-7.2-9.7C4.8 7.9 6.8 6 9.1 6c1.5 0 2.5.8 2.9 1.5C12.4 6.8 13.4 6 14.9 6c2.3 0 4.3 1.9 4.3 4.8 0 5-7.2 9.7-7.2 9.7z"/></svg>;
+    inner = <svg width="58%" viewBox="0 0 40 56" fill={accent}><path d="M20 44s-13-8.5-13-18C7 20 10.5 16 15 16c2.6 0 4.4 1.4 5 2.7.6-1.3 2.4-2.7 5-2.7 4.5 0 8 4 8 10 0 9.5-13 18-13 18z"/></svg>;
   } else if (m === "yoga") {
-    inner = <svg width="60%" height="60%" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="6.8" r="2.6"/><path d="M5.5 18.5c2.2-3.2 4.7-4.3 6.5-4.3s4.3 1.1 6.5 4.3M4.8 18.5h14.4"/></svg>;
+    inner = <svg width="58%" viewBox="0 0 40 56" fill="none" stroke={accent} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="20" cy="16" r="4.5"/><path d="M9 42c4-6 8-8 11-8s7 2 11 8M8 42h24"/></svg>;
   } else if (m === "full body" || m === "") {
-    inner = <svg width={glyphSize} height={glyphSize} viewBox="0 0 24 24" fill={accent}><path d={_MI_TORSO}/><circle cx={_MI_HEAD.cx} cy={_MI_HEAD.cy} r={_MI_HEAD.r}/></svg>;
+    inner = <svg width="80%" viewBox="0 0 40 56">{_MI_BODY(accent, accent)}</svg>;
   } else {
     const hl = _MI_HL[m] || null;
-    inner = <svg width={glyphSize} height={glyphSize} viewBox="0 0 24 24" fill="none">
-      <g fill={bodyCol}><path d={_MI_TORSO}/><circle cx={_MI_HEAD.cx} cy={_MI_HEAD.cy} r={_MI_HEAD.r}/></g>
+    inner = <svg width="80%" viewBox="0 0 40 56">
+      {_MI_BODY(bodyFill, stroke)}
       {hl && <g fill={accent} dangerouslySetInnerHTML={{ __html: hl }}/>}
     </svg>;
   }
   return (
     <div style={{
-      width:size, height:size, borderRadius:Math.round(size*0.3),
+      width:size, height:size, borderRadius:Math.round(size*0.28),
       background:tint, border:`1px solid ${ring}`,
       display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, overflow:"hidden",
     }}>{inner}</div>
@@ -1741,6 +1762,7 @@ function buildCoachContext(store, unit) {
     recentSessions: recent,
     daysSinceMuscle: lastTrained,
     stalls,
+    recovery: store.recovery || null,
   };
 }
 
@@ -1989,6 +2011,98 @@ function nativeLocalNotifs() {
   const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
   if (Cap?.isNativePlatform?.() && Cap.Plugins?.LocalNotifications) return Cap.Plugins.LocalNotifications;
   return null;
+}
+
+// API base — on the web the serverless function is served at a relative path; inside a native
+// Capacitor build there's no local server, so AI calls must hit the deployed origin in full.
+const API_BASE = (() => {
+  const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+  return Cap?.isNativePlatform?.() ? "https://spotr-drab.vercel.app" : "";
+})();
+function aiEndpoint() { return API_BASE + "/api/ai"; }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HEALTHKIT — recovery signals (iOS only, native build). Reads HRV, resting heart
+// rate, and last night's sleep so the AI coach can factor recovery into advice.
+// Uses the @capgo/capacitor-health plugin (Capacitor 8, SPM). Reached through the
+// runtime Capacitor global so the web bundle stays clean and degrades gracefully.
+// ═════════════════════════════════════════════════════════════════════════════
+function nativeHealth() {
+  const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+  if (Cap?.isNativePlatform?.() && Cap.Plugins?.Health) return Cap.Plugins.Health;
+  return null;
+}
+function healthKitAvailable() { return !!nativeHealth(); }
+
+const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep"];
+
+async function requestHealthPermission() {
+  const H = nativeHealth();
+  if (!H) return false;
+  try {
+    const avail = await H.isAvailable();
+    if (avail && avail.available === false) return false;
+    await H.requestAuthorization({ read: HK_READ, write: [] });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Pull the most recent recovery snapshot. Returns null on web or if unavailable/denied.
+// Shape: { hrv: number|null, restingHr: number|null, sleepHours: number|null, capturedAt: iso }
+async function readRecovery() {
+  const H = nativeHealth();
+  if (!H) return null;
+  // Must request authorization before reading, or HealthKit silently returns nothing (no popup).
+  try {
+    const avail = await H.isAvailable();
+    if (avail && avail.available === false) return null;
+    await H.requestAuthorization({ read: HK_READ, write: [] });
+  } catch (e) { /* if the user denies, the reads below just come back empty */ }
+  const now = new Date();
+  const endIso = now.toISOString();
+  const startIso = new Date(now.getTime() - 1000 * 60 * 60 * 36).toISOString(); // last 36h
+
+  async function read(dataType) {
+    try {
+      const r = await H.readSamples({ dataType, startDate: startIso, endDate: endIso, limit: 200 });
+      return (r && r.samples) ? r.samples : [];
+    } catch (e) { return []; }
+  }
+
+  const out = { hrv: null, restingHr: null, sleepHours: null, capturedAt: endIso };
+
+  // HRV (ms) — average the window
+  const hrv = await read("heartRateVariability");
+  if (hrv.length) {
+    const vals = hrv.map(s => parseFloat(s.value)).filter(v => !isNaN(v));
+    if (vals.length) out.hrv = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  }
+  // Resting HR (bpm) — most recent
+  const rhr = await read("restingHeartRate");
+  if (rhr.length) {
+    const v = parseFloat(rhr[0].value);
+    if (!isNaN(v)) out.restingHr = Math.round(v);
+  }
+  // Sleep — sum asleep states from the most recent night (samples are in minutes)
+  const sleep = await read("sleep");
+  if (sleep.length) {
+    let mins = 0;
+    for (const s of sleep) {
+      const st = (s.sleepState || "").toLowerCase();
+      const asleep = st === "asleep" || st === "rem" || st === "deep" || st === "light";
+      if (asleep) {
+        const v = parseFloat(s.value);
+        if (!isNaN(v)) mins += v;                       // value is minutes
+        else if (s.startDate && s.endDate) mins += (new Date(s.endDate) - new Date(s.startDate)) / 60000;
+      }
+    }
+    if (mins > 0) out.sleepHours = Math.round((mins / 60) * 10) / 10;
+  }
+
+  if (out.hrv == null && out.restingHr == null && out.sleepHours == null) return null;
+  return out;
 }
 const REST_NOTIF_ID = 7711; // fixed id so we can reliably cancel/replace the rest notification
 let __notifPermAsked = false;
@@ -9186,7 +9300,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
       description: freeText || "(none provided)",
       unit: store?.unit || "lbs",
     };
-    const res = await fetch("/api/ai", {
+    const res = await fetch(aiEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -9437,7 +9551,7 @@ function ExerciseVolumeChart({ data, unit, C }) {
 }
 
 function ExerciseDetail({ name, store, unit, C, onClose }) {
-  const exInfo = EXERCISE_DB.find(e => e.name === name) || { name, muscle:"Full Body" };
+  const exInfo = EXERCISE_DB.find(e => e.name === name) || { name, muscle: (typeof resolveMuscle === "function" ? resolveMuscle(name) : null) || "Full Body" };
   const cueData = getCues(name, exInfo.muscle);
   const pr = store.prs?.[name];
   const [chartMode, setChartMode] = useState("weight"); // "weight" | "volume"
@@ -9501,7 +9615,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   async function fetchAiHowTo() {
     setAiLoading(true); setAiError(false);
     try {
-      const res = await fetch("/api/ai", {
+      const res = await fetch(aiEndpoint(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -9549,7 +9663,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
           padding:"28px 20px", background:C.surface,
           borderBottom:`1px solid ${C.divider}`,
         }}>
-          <BodyMap muscle={exInfo.muscle} size={150} C={C}/>
+          <BodyMap muscle={exInfo.muscle} name={name} size={150} C={C}/>
         </div>
 
         {/* Stats strip — 2x2 grid of key metrics */}
@@ -12377,6 +12491,12 @@ function AICoachSheet({ store, unit, C, onClose }) {
     let cancelled = false;
     (async () => {
       try {
+        // Pull a fresh recovery snapshot (HRV/resting HR/sleep) on native iOS so the coach can
+        // factor recovery in. No-op on web — readRecovery() returns null.
+        try {
+          const rec = await readRecovery();
+          if (rec) store.recovery = rec;
+        } catch (e) { /* recovery is best-effort */ }
         const ctx = buildCoachContext(store, unit);
         // Not enough data to coach meaningfully
         if (!ctx.recentSessions.length) {
@@ -12387,8 +12507,13 @@ function AICoachSheet({ store, unit, C, onClose }) {
           "Give specific, actionable advice based ONLY on the user's data below. Be concise: " +
           "3-5 short points. Reference their actual lifts and numbers. Cover what's going well, " +
           "what to prioritize next, and flag any stalls or muscle groups they're neglecting. " +
+          "If a 'recovery' object is present (HRV, resting heart rate, sleep hours), factor it in: " +
+          "when HRV is low relative to a typical baseline, resting HR is elevated, or sleep was short " +
+          "(under ~6.5h), suggest moderating intensity or prioritizing recovery; when recovery looks " +
+          "strong, it's fine to encourage pushing. Mention recovery only when the data is present. " +
+          "Be supportive and never alarmist; you are not giving medical advice. " +
           "No medical claims. Use the user's units. Speak directly to the lifter ('you').";
-        const res = await fetch("/api/ai", {
+        const res = await fetch(aiEndpoint(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -13783,6 +13908,21 @@ function AppInner() {
   // C needs to be available for loading screens
   const C = THEMES[(store.theme || "light")];
   const unit = store.unit || "lbs";
+
+  // Keep the native iOS status bar in sync with the app theme. Without this it can render as a
+  // blank black bar (overlay mode) — instead, match the bar text to the theme and put content
+  // below it (no overlay) so nothing hides behind the clock/battery.
+  useEffect(() => {
+    const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+    const SB = (Cap?.isNativePlatform?.() && Cap.Plugins?.StatusBar) ? Cap.Plugins.StatusBar : null;
+    if (!SB) return;
+    try {
+      // Dark theme → light text; light theme → dark text. (Style.Dark = light content.)
+      SB.setStyle({ style: C.isDark ? "DARK" : "LIGHT" });
+      SB.setOverlaysWebView?.({ overlay: false });
+      if (SB.setBackgroundColor) SB.setBackgroundColor({ color: C.bg }).catch(() => {});
+    } catch (e) { /* status bar styling is best-effort */ }
+  }, [store.theme, C.isDark, C.bg]);
 
   // HOOKS — must be before any early returns (React rules of hooks)
   // Stores the timestamp of the last time the user "checked" their notifications.
