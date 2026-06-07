@@ -1,5 +1,5 @@
-// v1778305358100
-// PATCHED v13 - BUILD 2026-05-11 - share filter, edit workout redesign, builder sets/rest/notes
+// v178084364800
+// PATCHED v16 - BUILD 2026-06-07 - weekly muscle heatmap (front+back, last 7 days) with male/female body-type toggle
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter, DragOverlay } from "@dnd-kit/core";
@@ -941,32 +941,248 @@ const BODYMAP_DATA = {"Calves":{"body":["M 256 78 C 255 75 253 74 252 75 C 253 7
 const _bodyMapData = BODYMAP_DATA;
 const _bodyMapFailed = false;
 
-function BodyMap({ muscle = "", name = "", C, size = 160 }) {
-  const data = _bodyMapData; // inlined, always available
-  // Resolve the muscle: use the given value, but if it's empty or doesn't map to a figure, infer it
-  // from the exercise name (handles custom/slightly-renamed exercises that don't exact-match the DB).
-  let m = muscle;
-  let figKey = MUSCLE_FIGURE[m] || MUSCLE_FIGURE[(m || "").split("/")[0].trim()] || null;
-  if (!figKey && name && typeof resolveMuscle === "function") {
-    const inferred = resolveMuscle(name);
-    if (inferred) { m = inferred; figKey = MUSCLE_FIGURE[inferred] || null; }
+// Two-shade anatomical body map. Primary muscle in the app accent, secondary muscles in a lighter
+// tint, on male front + back figures side by side. Region paths are traced from a licensed anatomy
+// chart (BODYMAP_MALE); per-exercise secondary muscles come from EXERCISE_SECONDARIES.
+const BODYMAP_MALE = {"front":{"Traps":"M130.7,128.0 L130.7,128.5 L132.7,128.5 L134.1,128.8 L135.1,129.5 L135.3,130.2 L135.8,130.2 L136.3,129.3 L137.0,128.8 L138.4,128.5 L140.5,128.5 L140.5,128.0 L138.8,126.9 L137.1,125.3 L136.5,124.4 L135.8,123.1 L135.3,123.1 L134.2,125.1 L133.1,126.3 L131.8,127.4 Z M98.1,82.2 L121.4,88.7 L132.7,89.6 L134.5,93.6 L135.4,106.4 L136.7,93.0 L138.4,89.6 L149.7,88.7 L173.0,82.6 L166.5,80.8 L163.4,82.8 L159.2,83.1 L152.8,80.1 L153.0,85.1 L151.5,85.4 L144.6,79.1 L138.2,89.0 L133.8,89.5 L126.5,79.1 L119.7,85.4 L118.2,85.1 L118.3,80.2 L111.8,83.1 L107.4,82.7 L104.6,80.8 Z","Shoulders":"M153.7,88.8 L164.4,92.5 L173.0,97.5 L176.4,101.4 L176.4,105.7 L181.2,108.3 L184.8,111.4 L190.0,120.9 L191.0,111.1 L189.6,99.3 L187.8,93.7 L183.4,88.1 L179.3,85.0 L175.5,83.5 Z M117.5,88.8 L95.6,83.5 L92.0,84.9 L87.6,88.2 L83.7,93.1 L81.3,100.5 L80.1,111.2 L81.1,120.9 L86.5,111.2 L89.8,108.4 L94.7,105.7 L94.7,101.5 L98.1,97.5 L107.6,92.0 Z","Chest":"M139.6,90.6 L137.9,94.0 L136.4,120.7 L137.8,123.8 L141.0,126.7 L145.1,128.3 L160.8,129.0 L160.8,130.3 L151.0,130.4 L156.7,134.3 L163.5,134.9 L166.2,134.1 L171.7,126.9 L171.2,118.3 L170.0,118.0 L171.3,111.7 L175.3,104.4 L174.7,101.4 L168.5,96.0 L158.0,91.5 L148.4,89.9 Z M131.7,90.7 L122.8,89.9 L112.7,91.6 L102.9,95.9 L96.4,101.4 L95.8,104.3 L99.6,111.1 L101.1,118.0 L99.9,118.4 L99.4,126.8 L104.8,134.0 L107.8,134.9 L114.4,134.3 L120.1,130.4 L110.4,130.3 L110.4,129.0 L126.1,128.3 L130.9,126.2 L133.6,123.5 L134.9,119.7 L133.2,93.9 Z","Biceps":"M171.6,130.8 L171.2,130.8 L168.5,134.1 L166.3,135.6 L163.6,136.2 L155.9,135.7 L154.7,136.7 L154.3,137.5 L154.1,138.8 L154.7,139.9 L156.7,142.2 L158.0,142.7 L162.1,142.5 L165.4,141.4 L167.4,139.6 L170.3,135.0 Z M99.5,130.8 L100.7,134.6 L102.2,137.5 L103.8,139.7 L105.9,141.5 L109.8,142.7 L113.7,142.5 L114.9,141.8 L116.6,139.6 L117.0,138.9 L116.9,137.5 L116.5,136.8 L115.2,135.7 L110.5,136.2 L105.6,135.8 L103.5,134.9 L99.9,130.8 Z M175.5,107.0 L174.7,109.9 L173.7,110.0 L171.9,114.6 L173.1,126.5 L175.3,126.5 L176.8,136.2 L179.7,144.7 L183.4,149.4 L186.4,150.5 L186.6,149.7 L188.7,149.3 L190.8,146.7 L192.7,141.9 L193.7,136.4 L194.8,136.3 L193.2,119.0 L191.9,116.3 L190.9,125.2 L189.7,125.3 L184.8,113.7 L180.6,109.6 Z M95.6,107.0 L91.2,109.2 L86.5,113.5 L81.4,125.3 L80.2,125.2 L79.2,116.3 L78.0,118.7 L76.3,136.2 L77.4,136.3 L78.2,141.0 L80.2,146.4 L82.3,149.2 L84.6,149.7 L84.7,150.5 L88.3,148.8 L91.6,144.4 L94.5,135.3 L95.8,126.5 L98.0,126.4 L99.2,114.6 L97.5,110.0 L96.4,109.9 Z","Forearms":"M199.9,208.2 L199.7,208.2 L198.9,211.9 L196.7,215.7 L196.1,218.0 L196.2,219.6 L196.9,221.6 L197.3,226.0 L198.0,227.3 L198.7,227.3 L199.0,227.0 L199.2,225.7 L199.9,225.6 Z M194.6,139.7 L192.3,149.4 L190.7,149.3 L187.0,151.8 L180.9,149.8 L183.2,154.5 L182.3,155.7 L182.8,160.2 L185.7,172.6 L190.1,182.4 L191.9,182.7 L198.2,196.7 L197.4,198.6 L199.9,205.1 L199.9,200.9 L199.0,200.5 L199.9,199.3 L199.9,157.2 L196.3,151.5 Z M76.5,139.6 L74.8,151.7 L69.7,162.5 L65.5,205.4 L58.1,220.9 L61.0,228.3 L67.0,236.6 L63.1,224.5 L67.2,219.6 L70.6,218.3 L72.0,226.7 L73.7,226.3 L75.0,218.0 L71.3,207.9 L73.7,198.6 L72.8,197.0 L85.6,172.0 L88.7,157.8 L87.8,154.6 L90.2,149.9 L84.1,151.8 L78.8,149.3 Z","Abs":"M130.4,129.6 L121.5,132.6 L118.6,141.6 L116.3,142.4 L119.9,159.1 L120.4,180.5 L122.3,177.8 L119.5,200.3 L122.0,208.3 L132.9,223.5 L136.4,224.3 L151.2,203.0 L148.8,176.9 L150.7,180.5 L151.3,158.4 L154.8,142.4 L152.5,141.7 L149.4,132.4 L139.5,129.6 L136.7,131.9 L137.3,140.3 L151.7,146.3 L137.1,143.8 L136.6,153.3 L134.5,153.2 L134.0,143.8 L119.5,146.3 L134.1,139.8 L134.1,130.7 Z","Obliques":"M167.7,141.8 L162.2,143.8 L156.0,143.6 L154.7,150.4 L158.3,151.1 L158.4,152.3 L155.6,152.4 L152.5,159.5 L152.8,161.1 L154.5,161.3 L154.4,162.5 L153.0,162.6 L151.9,168.5 L151.9,179.4 L152.7,179.5 L152.7,180.6 L151.8,181.5 L152.7,202.4 L161.7,189.8 L165.1,181.8 L165.6,176.6 L164.7,168.3 L163.7,168.2 L165.5,160.2 L165.5,155.0 L164.6,154.9 L166.3,149.8 L165.5,146.9 Z M103.4,141.7 L105.6,146.9 L104.8,149.5 L106.6,154.8 L105.6,154.9 L105.6,160.0 L107.4,168.2 L106.4,168.3 L105.5,176.7 L106.0,181.7 L108.9,189.1 L118.4,202.4 L119.5,181.5 L118.4,180.6 L118.4,179.5 L119.2,179.4 L119.2,168.1 L118.2,162.5 L116.7,162.5 L116.6,161.3 L118.4,161.0 L118.6,159.2 L115.7,152.5 L112.7,152.3 L112.8,151.1 L116.4,150.4 L115.1,143.6 L108.9,143.8 Z","Quads":"M165.6,184.7 L161.4,192.8 L160.1,204.7 L158.2,197.6 L144.9,224.9 L141.0,246.3 L147.9,295.1 L152.3,296.0 L154.8,294.4 L155.2,276.3 L159.5,280.7 L164.9,279.3 L164.7,293.3 L168.8,298.4 L175.5,262.7 L175.9,234.1 L174.2,230.6 L175.8,229.1 L175.8,219.1 L172.8,201.5 Z M105.5,184.6 L98.5,200.9 L95.3,219.6 L95.3,229.2 L96.9,230.5 L95.2,235.2 L95.7,263.6 L102.3,298.5 L106.4,293.4 L106.2,279.3 L111.7,280.7 L115.9,276.3 L116.4,294.6 L123.3,295.1 L127.0,273.6 L125.6,271.3 L127.4,272.3 L130.2,243.1 L125.4,223.0 L113.1,197.7 L113.1,200.8 L109.9,202.1 L109.7,192.7 Z","Calves":"M155.9,280.3 L156.1,294.9 L153.4,297.2 L148.2,296.8 L149.8,302.5 L144.6,322.6 L151.8,356.4 L153.7,352.5 L149.6,386.2 L156.5,391.3 L162.8,406.8 L179.5,407.6 L184.9,403.3 L174.4,393.2 L167.5,377.7 L165.0,377.3 L167.0,376.3 L171.3,329.9 L170.6,322.0 L168.6,332.8 L168.7,299.9 L163.6,294.6 L163.4,281.6 Z M115.2,280.3 L107.9,281.6 L107.5,294.7 L102.4,299.9 L102.5,332.6 L100.5,321.7 L99.8,329.3 L104.1,376.3 L106.1,377.3 L103.6,377.8 L96.8,393.1 L86.2,403.4 L91.6,407.6 L108.6,406.6 L114.3,391.9 L121.5,386.3 L117.4,352.1 L119.3,356.5 L126.5,322.5 L121.3,302.7 L122.9,296.8 L117.3,297.1 L114.9,294.4 Z","_body":"M134.7,11.9 L124.2,15.5 L118.7,24.5 L121.5,72.3 L92.4,82.8 L81.2,94.6 L56.6,221.4 L68.6,238.0 L64.9,224.7 L70.1,221.2 L71.0,228.3 L75.0,227.4 L73.0,204.8 L98.6,133.3 L104.9,170.1 L94.3,213.1 L93.7,252.1 L100.9,298.6 L98.3,327.0 L103.0,373.9 L84.7,404.6 L91.4,409.1 L108.6,408.5 L122.9,387.2 L120.4,358.7 L128.0,325.4 L123.7,301.6 L132.8,225.9 L138.2,225.8 L147.4,301.5 L143.1,325.0 L150.8,359.8 L148.2,387.1 L161.5,407.9 L178.9,409.2 L186.4,402.7 L173.9,389.5 L168.1,373.7 L172.8,328.3 L170.3,297.3 L177.5,253.1 L176.8,213.0 L166.2,170.0 L172.4,133.4 L198.2,204.7 L197.5,228.9 L199.9,152.6 L189.5,93.6 L179.0,82.9 L149.7,72.4 L152.5,24.9 L146.0,14.9 Z"},"back":{"Traps":"M106.1,52.7 L100.6,55.8 L94.9,62.5 L94.7,75.7 L81.3,82.4 L91.1,82.6 L92.9,84.0 L93.9,91.1 L93.1,93.8 L90.3,94.6 L92.2,105.3 L90.1,113.0 L105.5,139.1 L108.1,141.0 L124.9,113.1 L122.7,104.8 L124.8,94.6 L121.4,92.9 L122.0,84.3 L123.9,82.6 L133.7,82.0 L120.4,75.9 L120.1,62.5 L112.7,55.0 Z","Rear Delts":"M123.4,84.7 L122.6,92.0 L126.1,94.1 L124.0,102.9 L125.7,111.0 L128.2,111.8 L128.5,113.0 L133.7,114.7 L143.0,116.0 L147.1,112.7 L149.1,105.0 L150.2,104.9 L155.9,110.9 L162.0,114.5 L159.5,97.3 L156.9,92.6 L152.1,88.0 L145.9,84.7 L140.5,83.0 L124.8,83.8 Z M91.5,84.4 L74.5,83.0 L67.1,85.5 L61.8,88.9 L58.2,92.5 L55.6,97.1 L53.0,114.5 L59.0,111.0 L64.7,104.9 L65.9,105.0 L68.0,112.8 L72.0,116.0 L82.1,114.5 L86.5,113.0 L87.8,110.9 L89.3,110.9 L90.9,102.5 L88.9,94.1 L92.4,92.1 L92.6,88.6 Z","Lats":"M145.8,116.6 L138.5,117.2 L126.2,113.7 L108.3,143.0 L108.5,201.1 L111.5,200.0 L116.2,185.4 L126.4,179.3 L126.3,172.8 L136.2,166.8 L137.9,147.6 L144.6,127.5 Z M68.9,116.4 L70.1,127.0 L77.1,147.5 L78.8,166.6 L88.8,172.8 L88.5,179.1 L98.5,185.0 L103.3,199.7 L106.4,201.1 L106.7,143.0 L88.9,113.7 L76.4,117.2 Z","Triceps":"M64.8,107.8 L59.8,112.2 L59.0,114.4 L57.2,113.9 L52.2,116.6 L50.6,122.2 L49.9,129.6 L50.6,132.8 L49.6,133.6 L48.8,147.2 L47.5,153.5 L50.8,161.6 L50.7,167.9 L54.9,162.3 L61.7,156.4 L61.8,154.9 L59.6,155.0 L59.5,153.8 L62.1,153.2 L67.0,137.1 L68.8,125.6 L67.9,118.2 L66.7,118.0 L67.2,114.3 Z M150.1,107.6 L147.9,114.1 L148.1,117.4 L147.0,117.5 L145.9,126.1 L147.8,136.0 L153.5,153.6 L153.3,156.4 L159.7,161.7 L164.2,167.9 L164.1,161.7 L167.6,153.0 L166.4,148.9 L165.3,133.6 L164.4,132.8 L165.2,130.8 L164.0,120.7 L162.6,116.5 L157.7,113.9 L156.0,114.3 L155.1,112.1 Z","Forearms":"M0.0,159.0 L0.0,200.1 L0.9,200.4 L0.0,201.6 L0.0,218.5 L3.3,219.1 L8.0,224.5 L4.2,236.6 L10.5,227.5 L13.0,220.8 L6.9,206.2 L5.6,205.4 L6.3,203.7 L2.5,170.3 Z M168.2,155.1 L165.2,163.5 L166.8,175.0 L159.3,163.6 L153.6,159.2 L157.3,174.2 L170.2,203.1 L170.0,209.2 L166.7,216.9 L167.9,224.5 L169.5,225.5 L171.1,217.0 L174.2,218.1 L178.4,223.1 L174.9,234.8 L181.1,225.4 L183.2,219.2 L175.4,201.1 L172.0,163.1 Z M46.7,155.0 L42.7,164.8 L38.8,198.9 L39.8,200.9 L31.8,219.4 L34.3,226.1 L40.4,234.9 L36.5,223.2 L40.7,218.2 L43.9,217.0 L45.4,225.5 L46.8,225.1 L48.2,216.7 L45.0,209.1 L44.8,203.3 L57.7,174.3 L61.4,159.5 L55.8,163.4 L48.1,175.1 L49.8,163.3 Z","LowerBack":"M136.0,169.1 L135.6,169.1 L130.6,172.7 L127.7,174.0 L128.1,177.8 L128.8,178.2 L128.8,179.3 L127.9,179.4 L127.0,180.8 L125.1,181.9 L125.1,182.3 L127.5,182.2 L132.6,182.7 L135.5,183.4 L137.0,184.6 L137.5,184.6 L136.8,182.3 L137.0,176.9 Z M79.3,169.1 L78.9,169.1 L78.8,171.2 L78.0,175.9 L77.9,178.3 L78.2,181.2 L80.0,181.0 L82.7,180.2 L86.8,177.8 L87.3,174.0 L83.8,172.4 Z","Glutes":"M131.7,183.8 L122.0,183.7 L118.4,185.1 L115.9,189.2 L112.5,201.2 L110.7,202.4 L108.3,202.4 L108.2,221.5 L109.2,225.8 L115.2,233.3 L122.6,237.0 L127.4,236.0 L133.9,230.7 L137.3,222.2 L139.8,212.4 L140.2,203.6 L139.1,200.9 L140.1,200.8 L139.6,193.6 L136.0,185.7 Z M83.4,183.8 L80.3,184.6 L78.6,186.1 L75.3,193.6 L75.0,200.7 L76.0,200.8 L74.8,203.7 L75.2,212.8 L77.5,221.8 L81.1,230.7 L87.0,235.7 L92.4,237.0 L99.6,233.4 L106.0,225.4 L106.9,219.3 L106.7,202.4 L104.3,202.4 L102.5,201.3 L99.0,188.8 L96.7,185.3 L93.1,183.7 Z","Hamstrings":"M109.7,229.9 L110.4,253.0 L115.3,271.3 L117.2,294.4 L120.8,307.6 L125.7,301.7 L126.7,295.4 L128.8,295.5 L128.5,298.1 L131.8,302.3 L136.6,295.1 L140.5,302.9 L139.6,288.5 L141.1,273.5 L138.6,246.5 L134.3,233.2 L128.3,237.1 L130.3,258.2 L129.1,259.4 L127.2,237.7 L121.1,238.6 Z M69.3,225.3 L70.8,256.5 L74.3,270.1 L74.5,302.9 L78.4,295.1 L83.1,302.4 L86.2,295.4 L88.3,295.3 L89.0,301.1 L94.1,307.9 L97.8,294.6 L99.6,271.3 L104.4,254.7 L105.3,230.0 L93.9,238.5 L87.8,237.9 L85.7,260.8 L86.6,237.1 L80.8,233.0 L76.5,245.5 L73.6,267.6 L74.9,247.8 Z","Calves":"M135.7,297.6 L133.3,301.4 L132.7,307.3 L127.8,300.2 L121.6,309.5 L122.8,337.9 L124.8,349.2 L133.3,371.4 L135.1,404.9 L136.7,407.3 L140.6,407.9 L145.9,404.3 L148.5,391.4 L144.1,388.9 L144.8,329.4 L140.4,306.7 Z M79.2,297.6 L74.6,306.8 L70.2,328.8 L70.9,388.9 L66.6,391.0 L69.4,405.0 L74.4,407.9 L78.2,407.4 L79.9,405.0 L81.6,371.6 L90.1,349.6 L92.1,338.2 L93.3,309.5 L87.3,300.2 L82.3,306.9 L81.6,301.2 Z","_body":"M106.2,15.5 L96.4,18.9 L90.7,28.4 L93.7,74.4 L63.8,85.4 L54.1,96.6 L30.2,220.3 L42.0,236.3 L38.4,223.3 L43.5,219.9 L44.2,226.7 L48.5,225.4 L46.3,203.6 L71.3,134.3 L77.4,170.3 L67.3,219.1 L73.9,289.1 L68.2,335.3 L69.3,387.6 L65.0,390.9 L67.5,404.7 L74.6,409.4 L81.3,405.7 L83.0,372.4 L92.4,347.1 L94.4,312.0 L108.6,250.3 L122.6,346.9 L132.2,374.1 L133.6,405.2 L140.6,409.4 L146.9,406.1 L149.9,393.2 L145.7,387.6 L146.8,334.6 L141.1,292.7 L147.6,219.1 L137.6,170.1 L143.6,134.1 L168.7,203.5 L166.6,225.6 L170.7,226.7 L171.5,219.9 L176.6,223.3 L173.0,236.3 L184.7,219.0 L178.1,202.6 L160.8,96.3 L150.6,85.1 L121.4,74.5 L124.0,27.3 L117.5,18.1 Z"}};
+const EXERCISE_SECONDARIES = {"Barbell Bench Press":["Triceps","Shoulders"],"Incline Barbell Press":["Triceps","Shoulders"],"Decline Barbell Press":["Triceps","Shoulders"],"Incline DB Press":["Triceps","Shoulders"],"Flat DB Press":["Triceps","Shoulders"],"Decline DB Press":["Triceps","Shoulders"],"Cable Fly (Low-to-High)":["Shoulders"],"Cable Fly (High-to-Low)":["Shoulders"],"Cable Fly (Neutral)":["Shoulders"],"Pec Deck Machine":["Shoulders"],"DB Fly":["Shoulders"],"Incline DB Fly":["Shoulders"],"Dips":["Triceps","Shoulders"],"Weighted Dips":["Triceps","Shoulders"],"Push-Ups":["Triceps","Shoulders","Abs"],"Weighted Push-Ups":["Triceps","Shoulders","Abs"],"Wide-Grip Push-Ups":["Triceps","Shoulders","Abs"],"Archer Push-Ups":["Triceps","Shoulders","Abs"],"DB Pullover":["Shoulders","Back"],"Machine Chest Press":["Triceps","Shoulders"],"Smith Machine Bench Press":["Triceps","Shoulders"],"Smith Machine Incline Press":["Triceps","Shoulders"],"Landmine Press":["Triceps","Shoulders"],"Svend Press":["Shoulders"],"Barbell Row":["Biceps","RearDelts","Forearms","Traps"],"Pendlay Row":["Biceps","RearDelts","Forearms","Traps"],"T-Bar Row":["Biceps","RearDelts","Forearms","Traps"],"T-Bar Row (Landmine)":["Biceps","RearDelts","Forearms","Traps"],"Seated Cable Row (Wide)":["Biceps","RearDelts","Forearms","Traps"],"Seated Cable Row (Narrow)":["Biceps","RearDelts","Forearms","Traps"],"Single-Arm DB Row":["Biceps","RearDelts","Forearms","Traps"],"Single-Arm Cable Row":["Biceps","RearDelts","Forearms","Traps"],"Chest-Supported Row":["Biceps","RearDelts","Forearms","Traps"],"Chest-Supported DB Row":["Biceps","RearDelts","Forearms","Traps"],"Incline DB Row":["Biceps","RearDelts","Forearms","Traps"],"Pull-Ups":["Biceps","RearDelts","Forearms"],"Weighted Pull-Ups":["Biceps","RearDelts","Forearms"],"Chin-Ups":["Biceps","RearDelts","Forearms"],"Neutral-Grip Pull-Ups":["Biceps","RearDelts","Forearms"],"Lat Pulldown (Wide)":["Biceps","RearDelts","Forearms"],"Lat Pulldown (Underhand)":["Biceps","RearDelts","Forearms"],"Lat Pulldown (Neutral)":["Biceps","RearDelts","Forearms"],"Single-Arm Lat Pulldown":["Biceps","RearDelts","Forearms"],"Straight-Arm Pulldown":["RearDelts","Forearms"],"Iso-Lateral Row (Machine)":["Biceps","RearDelts","Forearms","Traps"],"Hammer Strength Row":["Biceps","RearDelts","Forearms","Traps"],"Meadows Row":["Biceps","RearDelts","Forearms","Traps"],"Rack Pull":["RearDelts","Forearms","Hamstrings","Glutes","Traps","LowerBack"],"Inverted Row":["Biceps","RearDelts","Forearms","Traps"],"Cable Pullover":["RearDelts","Forearms"],"Face Pulls":["Traps","Back"],"Rear Delt Fly (Cable)":["Traps"],"Rear Delt Fly (DB)":["Traps"],"Rear Delt Fly (Machine)":["Traps"],"Band Pull-Apart":["Traps"],"Prone Y-Raise":["Traps"],"Overhead Press (Barbell)":["Triceps","Traps"],"Seated OHP (Barbell)":["Triceps","Traps"],"Seated DB Shoulder Press":["Triceps","Traps"],"Standing DB Shoulder Press":["Triceps","Traps"],"Arnold Press":["Triceps","Traps"],"Lateral Raises (DB)":["Traps"],"Lateral Raises (Cable)":["Traps"],"Lateral Raises (Machine)":["Traps"],"Seated Lateral Raises":["Traps"],"Front Raises (DB)":["Traps"],"Front Raises (Plate)":["Traps"],"Front Raises (Cable)":["Traps"],"Upright Row":["Traps","Biceps"],"Machine Shoulder Press":["Triceps","Traps"],"Smith Machine OHP":["Triceps","Traps"],"Push Press":["Triceps","Traps"],"Bradford Press":["Triceps","Traps"],"Lu Raises":["Traps"],"Barbell Shrugs":["Shoulders","Forearms"],"DB Shrugs":["Shoulders","Forearms"],"Cable Shrugs":["Shoulders","Forearms"],"Behind-the-Back Shrugs":["Shoulders","Forearms"],"Rack Pull (Traps focus)":["Shoulders","Back","Forearms"],"Farmer's Walk":["Shoulders","Forearms"],"Barbell Curl":["Forearms"],"EZ Bar Curl":["Forearms"],"Dumbbell Curl":["Forearms"],"Alternating DB Curl":["Forearms"],"Incline DB Curl":["Forearms"],"Hammer Curl":["Forearms"],"Cross-Body Hammer Curl":["Forearms"],"Preacher Curl (EZ Bar)":["Forearms"],"Preacher Curl (DB)":["Forearms"],"Cable Curl (Single Arm)":["Forearms"],"Cable Curl (Both Arms)":["Forearms"],"Concentration Curl":["Forearms"],"Reverse Curl":["Forearms"],"Spider Curl":["Forearms"],"Drag Curl":["Forearms"],"21s (Barbell Curl)":["Forearms"],"Machine Curl":["Forearms","Back"],"Skull Crushers (EZ Bar)":[],"Skull Crushers (DB)":[],"Skull Crushers (Cable)":[],"Tricep Rope Pushdown":[],"Tricep Bar Pushdown":[],"Tricep Straight Bar Pushdown":[],"Single-Arm Tricep Pushdown":[],"Overhead Tricep Extension (DB)":[],"Overhead Tricep Extension (Cable)":[],"Overhead Tricep Extension (EZ Bar)":[],"Close-Grip Bench Press":["Chest","Shoulders"],"Tricep Dips":["Chest","Shoulders"],"Diamond Push-Ups":[],"JM Press":["Chest","Shoulders"],"Tate Press":[],"Machine Tricep Extension":[],"Barbell Back Squat":["Glutes","Hamstrings","Calves"],"Low Bar Squat":["Glutes","Hamstrings","Calves"],"High Bar Squat":["Glutes","Hamstrings","Calves"],"Front Squat":["Glutes","Hamstrings","Calves"],"Leg Press":["Glutes","Hamstrings","Calves"],"Leg Press (Single Leg)":["Glutes","Hamstrings","Calves"],"Hack Squat":["Glutes","Hamstrings","Calves"],"Bulgarian Split Squat":["Glutes","Hamstrings","Calves"],"Walking Lunges":["Glutes","Hamstrings","Calves"],"Reverse Lunges":["Glutes","Hamstrings","Calves"],"Lateral Lunges":["Glutes","Hamstrings","Calves"],"Leg Extension":[],"Leg Extension (Single)":[],"Step-Ups":["Glutes","Hamstrings","Calves"],"Goblet Squat":["Glutes","Hamstrings","Calves"],"Smith Machine Squat":["Glutes","Hamstrings","Calves"],"Sissy Squat":[],"Cyclist Squat":[],"Deadlift":["Glutes","LowerBack","Back"],"Sumo Deadlift":["Glutes","LowerBack","Back"],"Romanian Deadlift":["Glutes","LowerBack","Back"],"Stiff-Leg Deadlift":["Glutes","LowerBack","Back"],"Single-Leg RDL":["Glutes","LowerBack","Back"],"Lying Leg Curl":["Calves"],"Seated Leg Curl":["Calves"],"Standing Leg Curl":["Calves"],"Nordic Curl":["Calves"],"Good Morning":["Glutes","LowerBack","Back"],"Glute Ham Raise":["Calves"],"Hip Thrust (Barbell)":["Hamstrings"],"Hip Thrust (Machine)":["Hamstrings"],"Hip Thrust (DB)":["Hamstrings"],"Single-Leg Hip Thrust":["Hamstrings"],"Glute Kickback (Cable)":[],"Glute Kickback (Machine)":[],"Abduction Machine":[],"Cable Abduction":[],"Donkey Kicks":[],"Frog Pumps":[],"Clamshells":[],"45° Back Extension":["Hamstrings"],"Standing Calf Raise":[],"Seated Calf Raise":[],"Leg Press Calf Raise":[],"Single-Leg Calf Raise":[],"Smith Machine Calf Raise":[],"Donkey Calf Raise":[],"Tibialis Raise":[],"Plank":[],"Side Plank":["Obliques"],"Cable Crunch":[],"Hanging Leg Raise":["Obliques"],"Hanging Knee Raise":["Obliques"],"Ab Wheel Rollout":["Obliques"],"Decline Crunch":[],"Decline Sit-Up":[],"Russian Twist":["Obliques"],"Landmine Rotation":["Obliques"],"Cable Woodchop":["Obliques"],"Pallof Press":["Obliques"],"Dragon Flag":["Obliques"],"Toes-to-Bar":[],"Reverse Crunch":[],"V-Up":[],"Hollow Body Hold":[],"Dead Bug":[],"Wrist Curl":[],"Reverse Wrist Curl":[],"Wrist Roller":[],"Plate Pinch":[],"Farmers Carry":["Traps"],"Gripper":[],"Neck Extension":[],"Neck Flexion":[],"Neck Lateral Flexion":[],"Neck Harness":[],"Power Clean":["Traps","Quads","Hamstrings","Glutes","Shoulders"],"Hang Clean":["Traps","Quads","Hamstrings","Glutes","Shoulders"],"Clean and Jerk":["Traps","Quads","Hamstrings","Glutes","Shoulders"],"Snatch":["Traps","Quads","Hamstrings","Glutes","Shoulders"],"Hang Snatch":["Traps","Quads","Hamstrings","Glutes","Shoulders"],"Kettlebell Swing":["Glutes","Hamstrings","Back"],"Kettlebell Clean":["Traps","Quads","Hamstrings","Glutes","Shoulders"],"Kettlebell Snatch":["Traps","Quads","Hamstrings","Glutes","Shoulders"],"Trap Bar Deadlift":[],"Sled Push":["Quads","Glutes","Calves"],"Sled Pull":["Quads","Glutes","Calves"],"Battle Ropes":["Shoulders"],"Tire Flip":["Back","Quads"],"Box Jump":["Quads","Glutes","Calves"],"Broad Jump":["Quads","Glutes","Calves"],"Thruster":["Quads","Shoulders","Triceps"],"Wall Ball":["Quads","Shoulders"],"Bear Complex":["Quads","Shoulders"],"Treadmill Run":[],"Stationary Bike":[],"Rowing Machine":[],"Stair Master":[],"Elliptical":[],"Jump Rope":[],"Assault Bike":[],"Ski Erg":[],"Incline Walk":[],"Vinyasa Flow":[],"Hatha Yoga":[],"Ashtanga Yoga":[],"Yin Yoga":[],"Restorative Yoga":[],"Power Yoga":[],"Bikram / Hot Yoga":[],"Iyengar Yoga":[],"Kundalini Yoga":[],"Sivananda Yoga":[],"Acro Yoga":[],"Yoga Nidra":[],"Prenatal Yoga":[],"Chair Yoga":[],"Sun Salutation":[],"Pilates":[],"Mobility Flow":[],"Stretching":[],"Meditation":[],"High Row (Machine)":["Biceps","RearDelts","Forearms","Traps"],"Low Row (Machine)":["Biceps","RearDelts","Forearms","Traps"],"Plate-Loaded Row":["Biceps","RearDelts","Forearms","Traps"],"Assisted Pull-Up (Machine)":["Biceps","RearDelts","Forearms"],"Pullover Machine":["RearDelts","Forearms"],"Back Extension (Machine)":["Biceps","RearDelts","Forearms"],"Incline Chest Press (Machine)":["Triceps","Shoulders"],"Decline Chest Press (Machine)":["Triceps","Shoulders"],"Plate-Loaded Chest Press":["Triceps","Shoulders"],"Assisted Dip (Machine)":["Triceps","Shoulders"],"Plate-Loaded Shoulder Press":["Triceps","Traps"],"Reverse Pec Deck":["Traps"],"Adduction Machine":[],"Hack Squat (Machine)":["Glutes","Hamstrings","Calves"],"Pendulum Squat":["Glutes","Hamstrings","Calves"],"Belt Squat":["Glutes","Hamstrings","Calves"],"Glute Drive (Machine)":["Hamstrings"],"Reverse Hyperextension":["Hamstrings"],"Standing Calf Raise (Machine)":[],"Seated Calf Raise (Machine)":[],"Crunch Machine":[],"Ab Coaster":[],"Preacher Curl Machine":["Forearms","Back"],"Dip Machine":["Chest","Shoulders"],"Hammer Strength Chest Press":["Triceps","Shoulders"],"Floor Press":["Triceps","Shoulders"],"Dumbbell Pullover":["Shoulders","Back"],"Seal Row":["Biceps","RearDelts","Forearms","Traps"],"Kroc Row":["Biceps","RearDelts","Forearms","Traps"],"Machine High Row":["Biceps","RearDelts","Forearms","Traps"],"Z Press":["Triceps","Traps"],"Cable Lateral Raise":["Traps"],"Machine Lateral Raise":["Traps"],"Behind-the-Neck Press":["Triceps","Traps"],"Viking Press":["Triceps","Traps"],"Cable Rear Delt Fly":["Traps"],"Bent-Over Dumbbell Reverse Fly":["Traps"],"Face Pull (Rope)":["Traps","Back"],"Incline Dumbbell Curl":["Forearms"],"Cable Curl":["Forearms"],"Bayesian Cable Curl":["Forearms"],"Overhead Cable Extension":[],"Skull Crusher":[],"Cable Kickback":[],"Barbell Wrist Curl":[],"Reverse Barbell Curl":[],"Farmer's Carry":["Traps"],"Barbell Shrug":["Shoulders","Forearms"],"Dumbbell Shrug":["Shoulders","Forearms"],"Cable Shrug":["Shoulders","Forearms"],"Trap Bar Shrug":["Shoulders","Forearms"],"Power Shrug":["Shoulders","Forearms"],"Walking Lunge":["Glutes","Hamstrings","Calves"],"Step-Up":["Glutes","Hamstrings","Calves"],"Seated Hamstring Curl (Cable)":["Calves"],"Razor Curl":["Calves"],"Back Extension":["Glutes"],"Hip Thrust":["Hamstrings"],"Barbell Glute Bridge":["Hamstrings"],"Cable Kickback (Glute)":[],"Bulgarian Split Squat (Glute)":["Hamstrings","Quads"],"Hip Abduction Machine":[],"Frog Pump":[],"Incline Treadmill Walk":[],"Stair Climber":[]};
+// Map a muscle name to the body-map region(s) it lights up. Some muscles (traps/forearms/calves)
+// live on both views; aliases "Back"->Lats and "RearDelts"->Rear Delts are handled here.
+const MUSCLE_REGION_MAP = {
+  Chest:[["front","Chest"]],
+  Back:[["back","Lats"]], Lats:[["back","Lats"]],
+  Shoulders:[["front","Shoulders"]], "Front Delts":[["front","Shoulders"]],
+  "Rear Delts":[["back","Rear Delts"]], RearDelts:[["back","Rear Delts"]],
+  Traps:[["front","Traps"],["back","Traps"]],
+  Biceps:[["front","Biceps"]],
+  Triceps:[["back","Triceps"]],
+  Forearms:[["front","Forearms"],["back","Forearms"]],
+  Quads:[["front","Quads"]], Quadriceps:[["front","Quads"]],
+  Hamstrings:[["back","Hamstrings"]], Hamstring:[["back","Hamstrings"]],
+  Glutes:[["back","Glutes"]],
+  Calves:[["front","Calves"],["back","Calves"]],
+  Core:[["front","Abs"],["front","Obliques"]], Abs:[["front","Abs"]],
+  Obliques:[["front","Obliques"]],
+  "Lower Back":[["back","LowerBack"]], LowerBack:[["back","LowerBack"]],
+};
+function _regionsFor(muscle) {
+  if (!muscle) return [];
+  return MUSCLE_REGION_MAP[muscle] || MUSCLE_REGION_MAP[(muscle || "").split("/")[0].trim()] || [];
+}
+function BodyMap({ muscle = "", name = "", C, size = 150 }) {
+  const data = BODYMAP_MALE;
+  // Primary muscle: explicit prop, else inferred from the exercise name (handles custom names).
+  let primary = muscle;
+  if (!_regionsFor(primary).length && name) {
+    const inferred = (typeof getMuscle === "function" && getMuscle(name)) || (typeof resolveMuscle === "function" && resolveMuscle(name));
+    if (inferred) primary = inferred;
   }
-  const bodyCol = C?.isDark ? "#4a4a55" : "#c7ccd4";
-  const accent = C?.accent || "#7c3aed";
-  if (!data) return <MuscleIcon muscle={m} size={Math.round(size * 0.62)} C={C}/>;
-  const fig = figKey && data[figKey];
-  // If we have no figure for this muscle, fall back to ANY body (Chest) with no highlight.
-  const baseFig = fig || data["Chest"];
-  if (!baseFig) return null;
-  const vb = (baseFig.vb || [0, 0, 600, 500]).join(" ");
+  const secNames = (EXERCISE_SECONDARIES && EXERCISE_SECONDARIES[name]) || [];
+  const accent = {}, light = {};
+  const primRegions = _regionsFor(primary);
+  if (primRegions.length) {
+    primRegions.forEach(([v, r]) => { accent[v + ":" + r] = true; });
+    secNames.forEach(mn => _regionsFor(mn).forEach(([v, r]) => { const k = v + ":" + r; if (!accent[k]) light[k] = true; }));
+  } else {
+    // No mappable primary (e.g. Full Body / Olympic lifts): paint the worked muscles in accent.
+    secNames.forEach(mn => _regionsFor(mn).forEach(([v, r]) => { accent[v + ":" + r] = true; }));
+  }
+  const hasPrimary = Object.keys(accent).length > 0;
+  const hasSecondary = Object.keys(light).length > 0;
+  if (!data || (!hasPrimary && !hasSecondary)) {
+    // Cardio / Yoga / Neck / unmappable -> fall back to the icon (heart / lotus / generic figure).
+    return <MuscleIcon muscle={primary} size={Math.round(size * 0.7)} C={C}/>;
+  }
+
+  const bodyCol = C?.isDark ? "#3f4049" : "#cdd1d8";
+  const accentCol = C?.accent || "#7c3aed";
+  const lightCol = C?.isDark ? "#6d5bb0" : "#c9b3ee";
+  const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
+  const figW = Math.round(size * 0.58);
+  const ratio = 408 / 160;
+  const figH = Math.round(figW * ratio);
+  const VB = { front: "46 6 160 408", back: "26 6 160 408" };
+
+  const Fig = ({ view }) => {
+    const f = data[view];
+    if (!f) return null;
+    const muscles = Object.keys(f).filter(k => k !== "_body");
+    return (
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
+        <svg viewBox={VB[view]} width={figW} height={figH} style={{ display:"block" }}>
+          {f._body && <path d={f._body} fill={bodyCol}/>}
+          {muscles.map(mk => {
+            const k = view + ":" + mk;
+            const fill = accent[k] ? accentCol : light[k] ? lightCol : bodyCol;
+            return <path key={mk} d={f[mk]} fill={fill} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>;
+          })}
+        </svg>
+        <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
+      </div>
+    );
+  };
 
   return (
-    <svg viewBox={vb} width={size} height={Math.round(size * (baseFig.vb ? baseFig.vb[3] / baseFig.vb[2] : 415/450))} style={{ display:"block", margin:"0 auto" }}>
-      {baseFig.body.map((d, i) => <path key={"b"+i} d={d} fill={bodyCol}/>)}
-      {fig && fig.hl.map((d, i) => <path key={"h"+i} d={d} fill={accent}/>)}
-    </svg>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+      <div style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
+        <Fig view="front"/>
+        <Fig view="back"/>
+      </div>
+      <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+        {hasPrimary && (
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <span style={{ width:10, height:10, borderRadius:3, background:accentCol, display:"inline-block" }}/>
+            <span style={{ fontSize:10, color:C.sub, fontWeight:600 }}>Primary</span>
+          </div>
+        )}
+        {hasSecondary && (
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <span style={{ width:10, height:10, borderRadius:3, background:lightCol, display:"inline-block" }}/>
+            <span style={{ fontSize:10, color:C.sub, fontWeight:600 }}>Secondary</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
+
+// Female body map — not yet extracted. Until it exists, the female view falls back to the male
+// figure; the preference is still recorded so it switches automatically once female art is added.
+const BODYMAP_FEMALE = null;
+const BODYMAPS = { male: BODYMAP_MALE, female: BODYMAP_FEMALE };
+
+// Weighted weekly training volume per body-map region. Each completed working set credits its
+// exercise's primary muscle fully and each secondary muscle at half. Returns { "view:Region": sets }
+// plus the total and a per-muscle summary used for the "most trained" caption.
+function weeklyMuscleVolume(store, days = 7) {
+  const cutoff = new Date(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate() - (days - 1));
+  const region = {}; const byMuscle = {}; let totalSets = 0;
+  const add = (mn, w) => {
+    const regs = _regionsFor(mn);
+    regs.forEach(([v, r]) => { const k = v + ":" + r; region[k] = (region[k] || 0) + w; });
+    if (regs.length) byMuscle[mn] = (byMuscle[mn] || 0) + w;
+  };
+  const hist = store.history || {};
+  for (const d of Object.keys(hist)) {
+    if (new Date(d + "T12:00:00") < cutoff) continue;
+    for (const sess of Object.values(hist[d] || {})) {
+      for (const ex of (sess.exercises || [])) {
+        const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
+        if (!done) continue;
+        totalSets += done;
+        const primary = (typeof getMuscle === "function" && getMuscle(ex.name)) || (typeof resolveMuscle === "function" && resolveMuscle(ex.name)) || "";
+        add(primary, done);
+        const secs = (EXERCISE_SECONDARIES && EXERCISE_SECONDARIES[ex.name]) || [];
+        secs.forEach(mn => add(mn, done * 0.5));
+      }
+    }
+  }
+  let max = 0; for (const k in region) max = Math.max(max, region[k]);
+  return { region, byMuscle, totalSets, max };
+}
+
+// Interpolate grey -> light accent -> deep accent by normalized intensity (0..1).
+function _heatColor(t, C) {
+  if (t <= 0) return C?.isDark ? "#3f4049" : "#cdd1d8";
+  const stops = C?.isDark
+    ? [[120,110,150],[124,58,237],[91,33,182]]
+    : [[201,179,238],[124,58,237],[76,29,149]];
+  const seg = t < 0.5 ? 0 : 1; const lt = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
+  const a = stops[seg], b = stops[seg + 1];
+  const mix = a.map((v, i) => Math.round(v + (b[i] - v) * lt));
+  return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
+}
+
+// Weekly muscle heatmap — anatomical front+back view shaded by how much each muscle was trained
+// over the last 7 days. Switches between male/female figures via the body-type preference.
+function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
+  const sex = (store.bodyType === "female" || store.bodyType === "male")
+    ? store.bodyType
+    : (store.strengthSex === "female" ? "female" : "male");
+  const data = BODYMAPS[sex] || BODYMAP_MALE;
+  const fallback = sex === "female" && !BODYMAP_FEMALE;
+  const { region, byMuscle, totalSets, max } = useMemo(() => weeklyMuscleVolume(store, 7), [store.history]);
+
+  const setSex = (val) => {
+    setStore && setStore(p => ({ ...p, bodyType: val }));
+    const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
+    if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_type: val }) }, tok).catch(()=>{}); } catch(e){} }
+    haptic("tap");
+  };
+
+  const figW = 96, figH = Math.round(figW * 408 / 160);
+  const VB = { front: "46 6 160 408", back: "26 6 160 408" };
+  const bodyCol = C?.isDark ? "#3f4049" : "#cdd1d8";
+  const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
+
+  const Fig = ({ view }) => {
+    const f = data[view]; if (!f) return null;
+    const muscles = Object.keys(f).filter(k => k !== "_body");
+    return (
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
+        <svg viewBox={VB[view]} width={figW} height={figH} style={{ display:"block" }}>
+          {f._body && <path d={f._body} fill={bodyCol}/>}
+          {muscles.map(mk => {
+            const t = max > 0 ? (region[view + ":" + mk] || 0) / max : 0;
+            return <path key={mk} d={f[mk]} fill={_heatColor(t, C)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>;
+          })}
+        </svg>
+        <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
+      </div>
+    );
+  };
+
+  const topMuscle = Object.entries(byMuscle).sort((a, b) => b[1] - a[1])[0];
+
+  return (
+    <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.divider}`, overflow:"hidden" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px 6px" }}>
+        <div>
+          <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.muted }}>THIS WEEK</div>
+          <div style={{ fontSize:15, fontWeight:800, color:C.text, marginTop:2 }}>Muscles Trained</div>
+        </div>
+        <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
+          {[["Male","male"],["Female","female"]].map(([label, val]) => (
+            <button key={val} onClick={() => setSex(val)} style={{
+              padding:"4px 11px", background: sex === val ? C.accent : "transparent",
+              color: sex === val ? "#fff" : C.sub, border:"none", borderRadius:12,
+              fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
+            }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {totalSets === 0 ? (
+        <div style={{ padding:"10px 16px 22px", fontSize:13, color:C.sub, lineHeight:1.5 }}>
+          No working sets logged in the last 7 days. Train and complete some sets to light up your muscle map.
+        </div>
+      ) : (
+        <>
+          <div style={{ display:"flex", justifyContent:"center", gap:16, padding:"6px 12px 4px" }}>
+            <Fig view="front"/>
+            <Fig view="back"/>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
+            <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Less</span>
+            <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
+              {[0.12,0.37,0.62,0.82,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_heatColor(t, C), display:"inline-block" }}/>))}
+            </div>
+            <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>More</span>
+          </div>
+          <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub }}>
+            {totalSets} working set{totalSets === 1 ? "" : "s"} this week{topMuscle ? ` · most volume: ${topMuscle[0]}` : ""}
+          </div>
+          {fallback && (
+            <div style={{ padding:"0 16px 14px", textAlign:"center", fontSize:10, color:C.muted }}>
+              Female figure coming soon — showing the male reference for now.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // Muscle icon — a detailed anatomical figure (with muscle-separation lines) on a tinted tile, the
 // worked muscle group highlighted in the app accent. Cardio = heart, Yoga = lotus, Full Body =
 // filled figure. Legible from ~20px up; works in light and dark.
@@ -3051,11 +3267,14 @@ function Heatmap({ workoutDates, history, C, onDayTap }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // EXERCISE SEARCH INPUT
 // ═════════════════════════════════════════════════════════════════════════════
-const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentExercises }) {
+const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentExercises, store, setStore, currentUserId, token }) {
   const [q, setQ] = useState(value || "");
   const [open, setOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [creating, setCreating] = useState(false);
   const ref = useRef(null);
+  // Creation is offered only where the caller wired in store access (e.g. the live workout).
+  const canCreate = !!(store && setStore);
 
   useEffect(() => {
     function handler(e) {
@@ -3089,6 +3308,11 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
     onChange(ex.name);
     setOpen(false);
   }
+
+  // Is the typed name already a known exercise (DB or custom)? If not, we offer to create it.
+  const trimmedQ = q.trim();
+  const exactMatch = !trimmedQ || !!(typeof getExEntry === "function" && getExEntry(trimmedQ));
+  const showCreateOption = canCreate && trimmedQ.length >= 2 && !exactMatch;
 
   return (
     <div ref={ref} style={{ position:"relative", flex:1 }}>
@@ -3152,7 +3376,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
             {q.length === 0 && selectedCategory === "All" && recent.length > 0 && (
               <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1 }}>RECENT</div>
             )}
-            {filteredResults.length === 0 && (
+            {filteredResults.length === 0 && !showCreateOption && (
               <div style={{ padding:"16px", fontSize:14, color:C.sub, textAlign:"center" }}>No exercises found</div>
             )}
             {filteredResults.map((ex, i) => (
@@ -3174,6 +3398,24 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
                 </div>
               </div>
             ))}
+            {/* Create a custom exercise when the typed name isn't in the library */}
+            {showCreateOption && !creating && (
+              <button onClick={() => { setCreating(true); haptic("tap"); }} style={{
+                width:"100%", textAlign:"left", padding:"12px 16px", borderTop:`1px solid ${C.divider}`,
+                background: C.isDark ? "rgba(124,58,237,0.12)" : "rgba(124,58,237,0.07)",
+                border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
+              }}>+ Create "{trimmedQ}" as a custom exercise</button>
+            )}
+            {showCreateOption && creating && (
+              <div style={{ padding:"4px 12px 12px" }}>
+                <CreateExercisePicker
+                  name={trimmedQ} C={C} store={store} setStore={setStore}
+                  currentUserId={currentUserId} token={token}
+                  onCreate={(entry) => { setCreating(false); select(entry); }}
+                  onCancel={() => setCreating(false)}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3195,6 +3437,15 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   const decimalAllowed = field === "weight"; // reps are whole numbers
   // Reps step by 1; weight by 2.5 (the common micro-plate jump); cardio fields by 1.
   const step = (field === "reps" || isCardio) ? 1 : 2.5;
+  // Closing happens on pointerdown, which unmounts the pad synchronously — so the
+  // browser's follow-up click lands on whatever is now under the finger (the bottom
+  // tab bar → Profile). Swallow that one ghost click at the document capture level.
+  const closePad = () => {
+    const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); document.removeEventListener("click", swallow, true); };
+    document.addEventListener("click", swallow, true);
+    setTimeout(() => document.removeEventListener("click", swallow, true), 500);
+    onClose();
+  };
   const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22 }) => (
     <button
       onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onPress(); haptic("tap"); }}
@@ -3216,7 +3467,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   return (
     <>
       {/* Tap-anywhere-above backdrop to dismiss — so you're never trapped if Done is covered. */}
-      <div onClick={onClose} onTouchStart={(e) => { e.preventDefault(); onClose(); }} style={{ position:"fixed", inset:0, zIndex:449, background:"transparent" }}/>
+      <div onClick={closePad} onTouchStart={(e) => { e.preventDefault(); closePad(); }} style={{ position:"fixed", inset:0, zIndex:449, background:"transparent" }}/>
     <div
       onMouseDown={(e) => e.preventDefault()}
       onTouchStart={(e) => e.stopPropagation()}
@@ -3228,7 +3479,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
       }}
     >
       {/* Grab handle — tap to dismiss (visual affordance for closing the pad). */}
-      <div onClick={onClose} style={{ display:"flex", justifyContent:"center", padding:"4px 0 8px", cursor:"pointer" }}>
+      <div onClick={closePad} style={{ display:"flex", justifyContent:"center", padding:"4px 0 8px", cursor:"pointer" }}>
         <div style={{ width:40, height:5, borderRadius:3, background:C.border }}/>
       </div>
       {/* Current field indicator + steppers */}
@@ -3261,7 +3512,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
         {/* Right action column */}
         <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
           <Key label="Next" onPress={onNext} bg={C.accent} color="#fff" fontSize={15} flex={3} />
-          <Key label="Done" onPress={onClose} fontSize={14} />
+          <Key label="Done" onPress={closePad} fontSize={14} />
         </div>
       </div>
     </div>
@@ -7152,7 +7403,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <ExerciseInput value={ex.name}
                         onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v}) }))}
-                        C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
+                        C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}
+                        store={store} setStore={setStore} currentUserId={currentUserId} token={token}/>
                     </div>
                     {exInfo?.muscle && (
                       <div style={{ fontSize:11, color:C.sub, marginTop:1, display:"flex", alignItems:"center", gap:6 }}>
@@ -11625,6 +11877,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {isMe && (
         <div style={{ padding:"0 14px" }}>
           <MuscleBalance store={store} C={C}/>
+          <MuscleHeatmap store={store} setStore={setStore} currentUserId={currentUserId} token={token} C={C}/>
           {(() => {
             const sex = store.strengthSex || "male";
             const ss = computeStrengthScore(store, displayUnit || store.unit || "lbs", sex);
@@ -11910,6 +12163,37 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ fontSize:13, color:C.sub }}>1.0 (beta)</div>
                 </div>
               </div>
+
+              {(store.customExercises || []).length > 0 && (
+                <>
+                  <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>CUSTOM EXERCISES</div>
+                  <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                    {(store.customExercises || []).map((ex) => (
+                      <div key={ex.id || ex.name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                        <div style={{ minWidth:0, paddingRight:12 }}>
+                          <div style={{ fontSize:14, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ex.name}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.muscle}{ex.equipment && ex.equipment !== "Other" ? ` · ${ex.equipment}` : ""}</div>
+                        </div>
+                        <button onClick={() => {
+                          const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
+                          setStore(p => ({ ...p, customExercises: next }));
+                          setCustomExerciseRegistry(next);
+                          const tok = token || loadSession()?.access_token;
+                          if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
+                          haptic("tap");
+                        }} style={{ flexShrink:0, background:"none", border:"none", color:"#ef4444", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Remove</button>
+                      </div>
+                    ))}
+                    <button onClick={() => {
+                      setStore(p => ({ ...p, customExercises: [] }));
+                      setCustomExerciseRegistry([]);
+                      const tok = token || loadSession()?.access_token;
+                      if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: [] }) }, tok).catch(()=>{}); } catch(e){} }
+                      haptic("success");
+                    }} style={{ width:"100%", background:"none", border:"none", padding:"13px 14px", textAlign:"left", fontSize:13, color:"#ef4444", fontWeight:600, cursor:"pointer", fontFamily:F }}>Clear all custom exercises</button>
+                  </div>
+                </>
+              )}
 
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ACCOUNT</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
@@ -13184,6 +13468,7 @@ function AppInner() {
         })(),
         onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.onboardingAnswers || {}),
         strengthSex: me?.strength_sex || prev.strengthSex || "male",
+        bodyType: me?.body_type || prev.bodyType || undefined,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
