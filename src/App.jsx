@@ -1,5 +1,5 @@
-// v178084364800
-// PATCHED v16 - BUILD 2026-06-07 - weekly muscle heatmap (front+back, last 7 days) with male/female body-type toggle
+// v178084887400
+// PATCHED v18 - BUILD 2026-06-07 - merge exercise tool: also retag pending (unsynced) workouts
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter, DragOverlay } from "@dnd-kit/core";
@@ -5796,6 +5796,97 @@ function saveCustomExercise({ name, muscle, equipment }, store, setStore, curren
   return entry;
 }
 
+// Merge/rename an exercise everywhere: retag all history sets, programs, and PRs from oldName to
+// newName so a slightly-misnamed lift's progress and PRs consolidate with the canonical exercise.
+// Updates local state immediately and best-effort syncs the affected server rows. Returns the
+// number of workout sessions touched.
+function mergeExerciseName(oldName, newName, store, setStore, currentUserId, token) {
+  if (!oldName || !newName || oldName === newName) return 0;
+  const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
+
+  // 1. History — retag matching exercises, tracking which session rows changed (sid = server row id).
+  const hist = store.history || {};
+  const newHist = {};
+  const affected = []; // { sid, exercises }
+  for (const date of Object.keys(hist)) {
+    newHist[date] = {};
+    for (const [sid, sess] of Object.entries(hist[date] || {})) {
+      let changed = false;
+      const exs = (sess.exercises || []).map(ex => {
+        if (ex.name === oldName) { changed = true; return { ...ex, name: newName }; }
+        return ex;
+      });
+      newHist[date][sid] = changed ? { ...sess, exercises: exs } : sess;
+      if (changed) affected.push({ sid, exercises: exs });
+    }
+  }
+
+  // 2. PRs — merge into the canonical name (keep the heavier), drop the old key.
+  const prs = { ...(store.prs || {}) };
+  const hadOldPR = prs[oldName] != null;
+  let mergedPR = null;
+  if (hadOldPR) {
+    mergedPR = Math.max(prs[oldName], prs[newName] || 0);
+    prs[newName] = mergedPR;
+    delete prs[oldName];
+  }
+
+  // 3. Programs — retag, tracking which programs changed.
+  const affectedPrograms = [];
+  const newPrograms = (store.programs || []).map(p => {
+    let changed = false;
+    const days = (p.days || []).map(d => ({
+      ...d,
+      exercises: (d.exercises || []).map(ex => {
+        if (ex.name === oldName) { changed = true; return { ...ex, name: newName }; }
+        return ex;
+      })
+    }));
+    if (changed) { const np = { ...p, days }; affectedPrograms.push(np); return np; }
+    return p;
+  });
+
+  // 4. Drop the old name from the custom registry if it lived there (it's now merged).
+  const hadCustom = (store.customExercises || []).some(e => e.name === oldName);
+  const customExercises = (store.customExercises || []).filter(e => e.name !== oldName);
+
+  // Apply locally first so the UI updates instantly.
+  setStore(prev => ({ ...prev, history: newHist, prs, programs: newPrograms, customExercises }));
+  setCustomExerciseRegistry(customExercises);
+
+  // Also retag any unsynced ("pending") workouts cached in localStorage, so a failed-sync workout
+  // can't reintroduce the old name when it's re-hydrated on next login.
+  try {
+    const raw = localStorage.getItem("seshd_pending_workouts");
+    if (raw) {
+      const pending = JSON.parse(raw);
+      let touched = false;
+      pending.forEach(item => {
+        (item?.data?.exercises || []).forEach(ex => { if (ex.name === oldName) { ex.name = newName; touched = true; } });
+      });
+      if (touched) localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
+    }
+  } catch (e) {}
+
+  // 5. Best-effort server sync (mirrors existing patterns; queued/retried where supported).
+  if (tok && currentUserId) {
+    affected.forEach(({ sid, exercises }) => {
+      try { sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ exercises }) }, tok).catch(() => {}); } catch (e) {}
+    });
+    if (hadOldPR) {
+      try { sb.queueWrite(`personal_records`, { method: "POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: newName, weight_lbs: mergedPR }) }, tok).catch(() => {}); } catch (e) {}
+      try { sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(oldName)}`, { method: "DELETE" }, tok).catch(() => {}); } catch (e) {}
+    }
+    affectedPrograms.forEach(p => {
+      try { sb.queueWrite(`programs?id=eq.${p.id}`, { method: "PATCH", body: JSON.stringify({ days: p.days }) }, tok).catch(() => {}); } catch (e) {}
+    });
+    if (hadCustom) {
+      try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ custom_exercises: customExercises }) }, tok).catch(() => {}); } catch (e) {}
+    }
+  }
+  return affected.length;
+}
+
 // Reusable inline "create custom exercise" panel: shows a muscle-group picker (and optional
 // equipment) for a typed name, then calls onCreate(entry). Used wherever exercises are added.
 function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, onCreate, onCancel }) {
@@ -5842,6 +5933,99 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
         }}>Cancel</button>
       </div>
     </div>
+  );
+}
+
+// Settings tool: finds exercise names in your history that aren't in the library (free-typed or
+// near-duplicates of standard lifts) and lets you merge each into a canonical exercise, so progress
+// charts and PRs consolidate instead of splitting across "Bench Press" vs "Barbell Bench Press".
+function ExerciseMergeTool({ store, setStore, currentUserId, token, C }) {
+  const [targets, setTargets] = useState({}); // oldName -> chosen canonical name
+  const [confirming, setConfirming] = useState(null);
+
+  // Count working sets per exercise name across all history; flag names not in the library.
+  const candidates = useMemo(() => {
+    const counts = {};
+    const hist = store.history || {};
+    for (const date of Object.keys(hist)) {
+      for (const sess of Object.values(hist[date] || {})) {
+        for (const ex of (sess.exercises || [])) {
+          if (!ex.name) continue;
+          const sets = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
+          if (!counts[ex.name]) counts[ex.name] = { sets: 0, sessions: 0 };
+          counts[ex.name].sets += sets;
+          counts[ex.name].sessions += 1;
+        }
+      }
+    }
+    // A name is a merge candidate if it's not an exact library exercise.
+    const inDB = (nm) => EXERCISE_DB.some(e => e.name === nm);
+    const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    return Object.entries(counts)
+      .filter(([nm]) => !inDB(nm))
+      .map(([nm, c]) => {
+        // Suggest a canonical target by normalized match, else by resolved-muscle + token overlap.
+        let suggestion = EXERCISE_DB.find(e => norm(e.name) === norm(nm))?.name || "";
+        if (!suggestion) {
+          const subs = (typeof suggestExerciseSubstitutes === "function") ? suggestExerciseSubstitutes(nm, 1) : [];
+          if (subs && subs[0]) suggestion = subs[0].name;
+        }
+        return { name: nm, sets: c.sets, sessions: c.sessions, suggestion };
+      })
+      .sort((a, b) => b.sets - a.sets);
+  }, [store.history]);
+
+  if (!candidates.length) return null;
+
+  return (
+    <>
+      <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:6 }}>TIDY UP EXERCISE NAMES</div>
+      <div style={{ fontSize:11, color:C.sub, lineHeight:1.45, marginBottom:10 }}>
+        These names in your history aren't in the library. Merge one into a standard exercise to combine its progress and PRs.
+      </div>
+      <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+        {candidates.map((c, i) => {
+          const target = targets[c.name] !== undefined ? targets[c.name] : c.suggestion;
+          const isConfirm = confirming === c.name;
+          return (
+            <div key={c.name} style={{ padding:"12px 14px", borderBottom: i < candidates.length-1 ? `1px solid ${C.divider}` : "none" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:14, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.name}</div>
+                  <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{c.sets} set{c.sets===1?"":"s"} · {c.sessions} session{c.sessions===1?"":"s"}</div>
+                </div>
+                <div style={{ fontSize:18, color:C.muted, flexShrink:0 }}>→</div>
+              </div>
+              <div style={{ marginTop:8, display:"flex", gap:8, alignItems:"center" }}>
+                <div style={{ flex:1, border:`1.5px solid ${C.divider}`, borderRadius:10, padding:"2px 10px", background:C.bg }}>
+                  <ExerciseInput
+                    key={`merge-${c.name}`}
+                    value={target}
+                    onChange={(v) => setTargets(t => ({ ...t, [c.name]: v }))}
+                    C={C}
+                    recentExercises={[]}
+                  />
+                </div>
+                <button
+                  disabled={!target || !target.trim() || target.trim() === c.name}
+                  onClick={() => { if (isConfirm) { const n = mergeExerciseName(c.name, target.trim(), store, setStore, currentUserId, token); setConfirming(null); haptic("success"); if (typeof toast === "function") toast(`Merged into "${target.trim()}"`, "success"); } else { setConfirming(c.name); } }}
+                  style={{
+                    flexShrink:0, padding:"9px 13px", borderRadius:10, border:"none", fontFamily:F, fontSize:13, fontWeight:700,
+                    background: (!target || !target.trim() || target.trim() === c.name) ? C.divider : (isConfirm ? "#ef4444" : C.accent),
+                    color: (!target || !target.trim() || target.trim() === c.name) ? C.muted : "#fff",
+                    cursor: (!target || !target.trim() || target.trim() === c.name) ? "default" : "pointer",
+                  }}>{isConfirm ? "Confirm" : "Merge"}</button>
+              </div>
+              {isConfirm && (
+                <div style={{ fontSize:11, color:C.sub, marginTop:7, lineHeight:1.4 }}>
+                  Move all {c.sets} set{c.sets===1?"":"s"} of "{c.name}" into "{target.trim()}"? This updates your history, programs, and PRs. <span onClick={() => setConfirming(null)} style={{ color:C.accent, fontWeight:700, cursor:"pointer" }}>Cancel</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -12163,6 +12347,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ fontSize:13, color:C.sub }}>1.0 (beta)</div>
                 </div>
               </div>
+
+              <ExerciseMergeTool store={store} setStore={setStore} currentUserId={currentUserId} token={token} C={C}/>
 
               {(store.customExercises || []).length > 0 && (
                 <>
