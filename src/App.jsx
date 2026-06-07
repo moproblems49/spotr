@@ -1,5 +1,5 @@
-// v178086572700
-// PATCHED v22 - BUILD 2026-06-07 - MuscleIcon resolves muscle from exercise name (fixes icons for non-DB/variant exercises)
+// v178086816400
+// PATCHED v23 - BUILD 2026-06-07 - recovery-aware Training Readiness body-map mode (This Week / Readiness toggle)
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter, DragOverlay } from "@dnd-kit/core";
@@ -1093,15 +1093,76 @@ function _heatColor(t, C) {
   return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
 }
 
+// Per-region recovery readiness (0 = just trained / fatigued, 1 = fully recovered / ready), based on
+// time since the muscle was last trained and that session's volume, lightly modified by recent sleep
+// (poor sleep slows recovery). Regions with no recent training are treated as fully ready.
+function muscleReadiness(store) {
+  const now = Date.now();
+  const last = {}; // "view:region" -> { ts, vol }
+  const add = (mn, ts, w) => {
+    _regionsFor(mn).forEach(([v, r]) => {
+      const k = v + ":" + r;
+      if (!last[k] || ts > last[k].ts) last[k] = { ts, vol: w };
+      else if (ts === last[k].ts) last[k].vol += w;
+    });
+  };
+  const hist = store.history || {};
+  for (const d of Object.keys(hist)) {
+    const ts = new Date(d + "T12:00:00").getTime();
+    if (isNaN(ts) || now - ts > 14 * 864e5) continue;
+    for (const sess of Object.values(hist[d] || {})) {
+      for (const ex of (sess.exercises || [])) {
+        const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
+        if (!done) continue;
+        const primary = (typeof getMuscle === "function" && getMuscle(ex.name)) || (typeof resolveMuscle === "function" && resolveMuscle(ex.name)) || "";
+        add(primary, ts, done);
+        const secs = (EXERCISE_SECONDARIES && EXERCISE_SECONDARIES[ex.name]) || [];
+        secs.forEach(mn => add(mn, ts, done * 0.5));
+      }
+    }
+  }
+  let recMod = 1;
+  const rec = store.recovery;
+  if (rec && typeof rec.sleepHours === "number") {
+    if (rec.sleepHours < 6) recMod = 0.82;
+    else if (rec.sleepHours >= 8) recMod = 1.12;
+  }
+  const readiness = {};
+  for (const k in last) {
+    const { ts, vol } = last[k];
+    const hoursSince = (now - ts) / 36e5;
+    const recoveryHours = (40 + Math.min(vol, 20) * 2.2) / recMod;
+    readiness[k] = Math.max(0, Math.min(1, hoursSince / recoveryHours));
+  }
+  return { readiness, recMod, rec, anyData: Object.keys(last).length > 0 };
+}
+
+// Readiness ramp: 0 = recovering (red), 0.5 = amber, 1 = ready (green).
+function _readyColor(t) {
+  const stops = [[239,68,68],[245,158,11],[34,197,94]];
+  const seg = t < 0.5 ? 0 : 1; const lt = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
+  const a = stops[seg], b = stops[seg + 1];
+  const mix = a.map((v, i) => Math.round(v + (b[i] - v) * lt));
+  return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
+}
+
+// Pretty region label for captions.
+function _regionLabel(k) {
+  const r = k.split(":")[1] || k;
+  return ({ Lats: "Back", LowerBack: "Lower back", "Rear Delts": "Rear delts" })[r] || r;
+}
+
 // Weekly muscle heatmap — anatomical front+back view shaded by how much each muscle was trained
 // over the last 7 days. Switches between male/female figures via the body-type preference.
 function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
+  const [mode, setMode] = useState("volume"); // "volume" | "readiness"
   const sex = (store.bodyType === "female" || store.bodyType === "male")
     ? store.bodyType
     : (store.strengthSex === "female" ? "female" : "male");
   const data = BODYMAPS[sex] || BODYMAP_MALE;
   const fallback = sex === "female" && !BODYMAP_FEMALE;
   const { region, byMuscle, totalSets, max } = useMemo(() => weeklyMuscleVolume(store, 7), [store.history]);
+  const { readiness, rec, anyData } = useMemo(() => muscleReadiness(store), [store.history, store.recovery]);
 
   const setSex = (val) => {
     setStore && setStore(p => ({ ...p, bodyType: val }));
@@ -1115,6 +1176,15 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
   const bodyCol = C?.isDark ? "#3f4049" : "#cdd1d8";
   const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
 
+  const fillFor = (key) => {
+    if (mode === "readiness") {
+      const t = key in readiness ? readiness[key] : 1; // untrained = fully ready
+      return _readyColor(t);
+    }
+    const t = max > 0 ? (region[key] || 0) / max : 0;
+    return _heatColor(t, C);
+  };
+
   const Fig = ({ view }) => {
     const f = data[view]; if (!f) return null;
     const muscles = Object.keys(f).filter(k => k !== "_body");
@@ -1122,10 +1192,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
         <svg viewBox={VB[view]} width={figW} height={figH} style={{ display:"block" }}>
           {f._body && <path d={f._body} fill={bodyCol}/>}
-          {muscles.map(mk => {
-            const t = max > 0 ? (region[view + ":" + mk] || 0) / max : 0;
-            return <path key={mk} d={f[mk]} fill={_heatColor(t, C)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>;
-          })}
+          {muscles.map(mk => (
+            <path key={mk} d={f[mk]} fill={fillFor(view + ":" + mk)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>
+          ))}
         </svg>
         <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
       </div>
@@ -1133,13 +1202,27 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
   };
 
   const topMuscle = Object.entries(byMuscle).sort((a, b) => b[1] - a[1])[0];
+  const recoveringUniq = [...new Set(
+    Object.entries(readiness).filter(([, v]) => v < 0.6).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
+  )];
+
+  const Tab = ({ id, label }) => (
+    <button onClick={() => { setMode(id); haptic("tap"); }} style={{
+      flex:1, padding:"7px 0", background: mode === id ? C.accent : "transparent",
+      color: mode === id ? "#fff" : C.sub, border:"none", borderRadius:11,
+      fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F
+    }}>{label}</button>
+  );
+
+  const title = mode === "readiness" ? "Training Readiness" : "Muscles Trained";
+  const kicker = mode === "readiness" ? "TODAY" : "THIS WEEK";
 
   return (
     <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.divider}`, overflow:"hidden" }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px 6px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px 8px" }}>
         <div>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.muted }}>THIS WEEK</div>
-          <div style={{ fontSize:15, fontWeight:800, color:C.text, marginTop:2 }}>Muscles Trained</div>
+          <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.muted }}>{kicker}</div>
+          <div style={{ fontSize:15, fontWeight:800, color:C.text, marginTop:2 }}>{title}</div>
         </div>
         <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
           {[["Male","male"],["Female","female"]].map(([label, val]) => (
@@ -1152,7 +1235,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
         </div>
       </div>
 
-      {totalSets === 0 ? (
+      <div style={{ display:"flex", margin:"0 16px 4px", background:C.divider, borderRadius:13, padding:2 }}>
+        <Tab id="volume" label="This Week"/>
+        <Tab id="readiness" label="Readiness"/>
+      </div>
+
+      {mode === "volume" && totalSets === 0 ? (
         <div style={{ padding:"10px 16px 22px", fontSize:13, color:C.sub, lineHeight:1.5 }}>
           No working sets logged in the last 7 days. Train and complete some sets to light up your muscle map.
         </div>
@@ -1162,16 +1250,38 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
             <Fig view="front"/>
             <Fig view="back"/>
           </div>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
-            <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Less</span>
-            <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
-              {[0.12,0.37,0.62,0.82,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_heatColor(t, C), display:"inline-block" }}/>))}
-            </div>
-            <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>More</span>
-          </div>
-          <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub }}>
-            {totalSets} working set{totalSets === 1 ? "" : "s"} this week{topMuscle ? ` · most volume: ${topMuscle[0]}` : ""}
-          </div>
+
+          {mode === "volume" ? (
+            <>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
+                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Less</span>
+                <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
+                  {[0.12,0.37,0.62,0.82,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_heatColor(t, C), display:"inline-block" }}/>))}
+                </div>
+                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>More</span>
+              </div>
+              <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub }}>
+                {totalSets} working set{totalSets === 1 ? "" : "s"} this week{topMuscle ? ` · most volume: ${topMuscle[0]}` : ""}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
+                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Recovering</span>
+                <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
+                  {[0,0.25,0.5,0.75,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_readyColor(t), display:"inline-block" }}/>))}
+                </div>
+                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Ready</span>
+              </div>
+              <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
+                {recoveringUniq.length
+                  ? <>Still recovering: <span style={{ color:C.text, fontWeight:600 }}>{recoveringUniq.slice(0, 3).join(", ")}</span>{recoveringUniq.length > 3 ? "…" : ""}. Everything else is ready.</>
+                  : (anyData ? "All muscles recovered — ready to train anything." : "No recent training logged — everything's fresh.")}
+                {rec && typeof rec.sleepHours === "number" && rec.sleepHours < 6 ? " Low recent sleep is slowing recovery." : ""}
+              </div>
+            </>
+          )}
+
           {fallback && (
             <div style={{ padding:"0 16px 14px", textAlign:"center", fontSize:10, color:C.muted }}>
               Female figure coming soon — showing the male reference for now.
