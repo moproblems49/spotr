@@ -1,5 +1,5 @@
-// v178088139500
-// PATCHED v26 - BUILD 2026-06-07 - female body map (front+back) live across heatmap, recap, exercise detail
+// v178091716400
+// PATCHED v29 - BUILD 2026-06-08 - HRV/RHR recovery vs 60-day baseline drives readiness + Recovery% chip
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter, DragOverlay } from "@dnd-kit/core";
@@ -1048,7 +1048,7 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
 
 // Female body map — not yet extracted. Until it exists, the female view falls back to the male
 // figure; the preference is still recorded so it switches automatically once female art is added.
-const BODYMAP_FEMALE = {"front": {"Traps": "M 132.0 116.0 L 132.0 129.0 L 145.0 137.0 L 145.0 126.0 Z", "Shoulders": "M 154.0 80.0 L 163.0 86.0 L 174.0 112.0 L 177.0 100.0 L 174.0 81.0 L 166.0 76.0 Z M 105.0 80.0 L 93.0 76.0 L 85.0 81.0 L 80.0 122.0 L 83.0 113.0 L 91.0 101.0 L 95.0 87.0 Z", "Chest": "M 97.0 88.0 L 100.0 94.0 L 97.0 108.0 L 98.0 125.0 L 100.0 127.0 L 109.0 128.0 L 114.0 134.0 L 114.0 137.0 L 128.0 127.0 L 128.0 117.0 L 126.0 113.0 L 131.0 111.0 L 136.0 115.0 L 140.0 115.0 L 141.0 119.0 L 146.0 122.0 L 148.0 134.0 L 152.0 135.0 L 163.0 130.0 L 168.0 141.0 L 172.0 142.0 L 175.0 139.0 L 179.0 126.0 L 165.0 99.0 L 162.0 88.0 L 158.0 84.0 L 142.0 82.0 L 136.0 84.0 L 131.0 92.0 L 128.0 92.0 L 124.0 85.0 L 117.0 82.0 L 106.0 82.0 Z", "Biceps": "M 160.0 133.0 L 151.0 138.0 L 151.0 144.0 L 159.0 138.0 Z M 96.0 90.0 L 94.0 99.0 L 80.0 125.0 L 83.0 155.0 L 92.0 145.0 L 95.0 133.0 L 98.0 133.0 L 104.0 142.0 L 109.0 143.0 L 108.0 136.0 L 110.0 131.0 L 97.0 128.0 L 95.0 123.0 Z", "Forearms": "M 181.0 131.0 L 178.0 158.0 L 191.0 189.0 L 187.0 154.0 Z M 78.0 130.0 L 71.0 160.0 L 68.0 193.0 L 59.0 215.0 L 62.0 224.0 L 69.0 233.0 L 65.0 220.0 L 68.0 216.0 L 74.0 214.0 L 75.0 222.0 L 77.0 223.0 L 79.0 214.0 L 75.0 206.0 L 75.0 198.0 L 84.0 179.0 L 91.0 148.0 L 85.0 155.0 L 81.0 154.0 Z", "Abs": "M 129.0 129.0 L 119.0 138.0 L 113.0 139.0 L 112.0 135.0 L 110.0 136.0 L 109.0 154.0 L 113.0 160.0 L 113.0 168.0 L 109.0 169.0 L 100.0 159.0 L 98.0 171.0 L 113.0 192.0 L 123.0 211.0 L 126.0 214.0 L 135.0 215.0 L 136.0 239.0 L 139.0 227.0 L 154.0 197.0 L 158.0 184.0 L 156.0 179.0 L 161.0 171.0 L 161.0 164.0 L 158.0 158.0 L 159.0 140.0 L 154.0 145.0 L 149.0 145.0 L 149.0 137.0 L 147.0 135.0 L 147.0 138.0 L 143.0 139.0 Z", "Obliques": "M 163.0 168.0 L 162.0 174.0 L 157.0 181.0 L 165.0 176.0 Z M 100.0 141.0 L 101.0 157.0 L 111.0 168.0 L 108.0 148.0 Z", "Quads": "M 98.0 182.0 L 98.0 198.0 L 91.0 217.0 L 91.0 239.0 L 100.0 295.0 L 106.0 291.0 L 108.0 280.0 L 118.0 281.0 L 119.0 293.0 L 122.0 295.0 L 123.0 258.0 L 121.0 250.0 L 124.0 215.0 L 119.0 207.0 L 116.0 206.0 L 114.0 198.0 L 106.0 186.0 Z M 166.0 177.0 L 160.0 182.0 L 155.0 200.0 L 143.0 223.0 L 137.0 241.0 L 137.0 249.0 L 138.0 241.0 L 143.0 241.0 L 142.0 277.0 L 145.0 280.0 L 152.0 281.0 L 153.0 291.0 L 159.0 295.0 L 161.0 275.0 L 167.0 249.0 L 167.0 238.0 L 170.0 235.0 L 172.0 225.0 L 172.0 204.0 Z", "Calves": "M 150.0 281.0 L 143.0 281.0 L 142.0 293.0 L 137.0 297.0 L 144.0 318.0 L 143.0 380.0 L 139.0 386.0 L 139.0 403.0 L 144.0 409.0 L 160.0 407.0 L 152.0 396.0 L 152.0 379.0 L 161.0 338.0 L 162.0 315.0 L 160.0 314.0 L 159.0 297.0 L 151.0 291.0 Z M 109.0 281.0 L 108.0 291.0 L 100.0 297.0 L 99.0 314.0 L 97.0 315.0 L 97.0 331.0 L 106.0 373.0 L 107.0 395.0 L 99.0 407.0 L 115.0 409.0 L 120.0 403.0 L 118.0 370.0 L 122.0 331.0 L 120.0 316.0 L 122.0 297.0 L 117.0 293.0 L 116.0 281.0 Z", "_body": "M 128.0 12.0 L 118.0 15.0 L 112.0 24.0 L 111.0 49.0 L 117.0 57.0 L 117.0 64.0 L 111.0 69.0 L 90.0 74.0 L 82.0 81.0 L 80.0 92.0 L 80.0 113.0 L 69.0 158.0 L 66.0 190.0 L 57.0 213.0 L 57.0 218.0 L 67.0 233.0 L 70.0 233.0 L 70.0 223.0 L 76.0 223.0 L 78.0 219.0 L 85.0 220.0 L 98.0 289.0 L 98.0 300.0 L 95.0 312.0 L 95.0 332.0 L 104.0 373.0 L 104.0 395.0 L 97.0 407.0 L 115.0 409.0 L 120.0 403.0 L 118.0 371.0 L 122.0 334.0 L 120.0 304.0 L 123.0 294.0 L 122.0 239.0 L 124.0 230.0 L 124.0 215.0 L 133.0 215.0 L 133.0 231.0 L 135.0 240.0 L 135.0 336.0 L 139.0 380.0 L 137.0 384.0 L 137.0 403.0 L 140.0 408.0 L 143.0 409.0 L 160.0 407.0 L 153.0 395.0 L 153.0 372.0 L 162.0 331.0 L 162.0 313.0 L 159.0 301.0 L 160.0 280.0 L 172.0 221.0 L 179.0 220.0 L 181.0 223.0 L 187.0 223.0 L 187.0 233.0 L 190.0 233.0 L 196.0 225.0 L 199.0 225.0 L 199.0 203.0 L 195.0 202.0 L 191.0 190.0 L 188.0 158.0 L 177.0 113.0 L 177.0 93.0 L 175.0 81.0 L 166.0 74.0 L 146.0 69.0 L 140.0 64.0 L 140.0 58.0 L 145.0 52.0 L 147.0 44.0 L 145.0 23.0 L 139.0 15.0 Z"}, "back": {"Traps": "M 111.0 55.0 L 101.0 57.0 L 97.0 61.0 L 98.0 65.0 L 95.0 68.0 L 86.0 71.0 L 99.0 74.0 L 104.0 78.0 L 100.0 97.0 L 92.0 108.0 L 95.0 115.0 L 106.0 128.0 L 108.0 135.0 L 125.0 108.0 L 117.0 97.0 L 113.0 78.0 L 118.0 74.0 L 131.0 72.0 L 122.0 68.0 L 119.0 65.0 L 119.0 60.0 Z", "Rear Delts": "M 116.0 77.0 L 115.0 82.0 L 117.0 84.0 L 118.0 93.0 L 125.0 106.0 L 143.0 106.0 L 148.0 119.0 L 150.0 117.0 L 152.0 104.0 L 155.0 104.0 L 160.0 110.0 L 160.0 90.0 L 158.0 82.0 L 154.0 78.0 L 138.0 73.0 Z M 101.0 77.0 L 79.0 73.0 L 63.0 78.0 L 59.0 82.0 L 57.0 90.0 L 57.0 110.0 L 62.0 104.0 L 65.0 104.0 L 67.0 117.0 L 69.0 119.0 L 74.0 106.0 L 92.0 106.0 L 99.0 93.0 L 100.0 84.0 L 102.0 82.0 Z", "Lats": "M 76.0 108.0 L 68.0 135.0 L 69.0 142.0 L 71.0 132.0 L 75.0 131.0 L 78.0 139.0 L 79.0 154.0 L 74.0 166.0 L 84.0 165.0 L 86.0 173.0 L 104.0 190.0 L 111.0 191.0 L 131.0 173.0 L 133.0 165.0 L 143.0 166.0 L 138.0 154.0 L 139.0 139.0 L 142.0 131.0 L 146.0 132.0 L 148.0 142.0 L 149.0 140.0 L 143.0 111.0 L 141.0 108.0 L 127.0 109.0 L 113.0 129.0 L 111.0 136.0 L 107.0 137.0 L 103.0 127.0 L 94.0 117.0 L 90.0 109.0 Z", "Triceps": "M 153.0 104.0 L 152.0 118.0 L 148.0 121.0 L 151.0 133.0 L 149.0 146.0 L 160.0 156.0 L 160.0 147.0 L 167.0 139.0 L 161.0 113.0 Z M 64.0 104.0 L 56.0 113.0 L 50.0 139.0 L 57.0 147.0 L 57.0 156.0 L 68.0 146.0 L 66.0 134.0 L 69.0 121.0 L 65.0 118.0 Z", "Forearms": "M 167.0 142.0 L 162.0 148.0 L 161.0 156.0 L 158.0 156.0 L 150.0 150.0 L 157.0 177.0 L 168.0 198.0 L 168.0 202.0 L 163.0 211.0 L 165.0 219.0 L 167.0 220.0 L 169.0 211.0 L 172.0 211.0 L 178.0 216.0 L 178.0 221.0 L 173.0 229.0 L 175.0 229.0 L 184.0 217.0 L 185.0 212.0 L 177.0 196.0 L 172.0 156.0 Z M 50.0 142.0 L 45.0 156.0 L 40.0 196.0 L 32.0 213.0 L 42.0 229.0 L 44.0 229.0 L 39.0 221.0 L 39.0 216.0 L 45.0 211.0 L 48.0 211.0 L 50.0 213.0 L 50.0 220.0 L 52.0 219.0 L 54.0 211.0 L 49.0 199.0 L 60.0 177.0 L 67.0 150.0 L 57.0 155.0 L 54.0 146.0 Z", "LowerBack": "M 131.0 176.0 L 138.0 172.0 L 146.0 171.0 L 144.0 168.0 L 134.0 166.0 Z M 86.0 176.0 L 83.0 166.0 L 73.0 168.0 L 71.0 171.0 L 76.0 171.0 Z", "Glutes": "M 78.0 181.0 L 69.0 191.0 L 72.0 219.0 L 81.0 223.0 L 92.0 223.0 L 95.0 236.0 L 102.0 249.0 L 104.0 216.0 L 106.0 213.0 L 110.0 213.0 L 113.0 216.0 L 115.0 249.0 L 122.0 236.0 L 124.0 224.0 L 136.0 223.0 L 145.0 219.0 L 148.0 191.0 L 139.0 181.0 L 128.0 179.0 L 111.0 193.0 L 105.0 193.0 L 89.0 179.0 Z", "Hamstrings": "M 137.0 224.0 L 126.0 225.0 L 122.0 243.0 L 115.0 252.0 L 114.0 292.0 L 118.0 310.0 L 121.0 299.0 L 125.0 298.0 L 127.0 300.0 L 132.0 293.0 L 135.0 293.0 L 140.0 300.0 L 141.0 285.0 L 145.0 270.0 L 143.0 259.0 L 143.0 229.0 Z M 62.0 213.0 L 62.0 225.0 L 71.0 265.0 L 73.0 266.0 L 72.0 270.0 L 76.0 285.0 L 77.0 300.0 L 82.0 293.0 L 85.0 293.0 L 90.0 300.0 L 95.0 298.0 L 100.0 312.0 L 99.0 304.0 L 101.0 303.0 L 103.0 293.0 L 102.0 252.0 L 95.0 243.0 L 91.0 225.0 L 80.0 224.0 L 76.0 226.0 L 73.0 231.0 L 70.0 231.0 Z", "Calves": "M 134.0 295.0 L 128.0 302.0 L 125.0 302.0 L 123.0 299.0 L 117.0 316.0 L 116.0 341.0 L 120.0 373.0 L 120.0 384.0 L 117.0 390.0 L 117.0 405.0 L 121.0 409.0 L 140.0 404.0 L 132.0 397.0 L 132.0 385.0 L 142.0 343.0 L 144.0 318.0 L 141.0 304.0 Z M 83.0 295.0 L 76.0 304.0 L 73.0 318.0 L 77.0 349.0 L 82.0 349.0 L 88.0 344.0 L 91.0 344.0 L 95.0 349.0 L 100.0 350.0 L 100.0 316.0 L 94.0 299.0 L 92.0 302.0 L 89.0 302.0 Z", "_body": "M 106.0 16.0 L 95.0 19.0 L 89.0 27.0 L 87.0 48.0 L 89.0 55.0 L 93.0 59.0 L 93.0 66.0 L 81.0 71.0 L 63.0 75.0 L 57.0 80.0 L 54.0 98.0 L 54.0 114.0 L 43.0 154.0 L 38.0 194.0 L 31.0 208.0 L 30.0 214.0 L 41.0 229.0 L 44.0 229.0 L 45.0 220.0 L 58.0 219.0 L 60.0 221.0 L 74.0 286.0 L 74.0 305.0 L 71.0 316.0 L 71.0 331.0 L 83.0 385.0 L 83.0 395.0 L 75.0 404.0 L 93.0 409.0 L 100.0 406.0 L 100.0 388.0 L 97.0 382.0 L 101.0 343.0 L 100.0 304.0 L 103.0 293.0 L 102.0 237.0 L 104.0 230.0 L 112.0 231.0 L 112.0 293.0 L 115.0 304.0 L 114.0 342.0 L 118.0 382.0 L 115.0 388.0 L 115.0 406.0 L 123.0 409.0 L 140.0 404.0 L 132.0 395.0 L 132.0 385.0 L 144.0 331.0 L 144.0 316.0 L 141.0 305.0 L 141.0 286.0 L 155.0 221.0 L 157.0 219.0 L 170.0 220.0 L 171.0 229.0 L 175.0 229.0 L 182.0 220.0 L 185.0 211.0 L 177.0 194.0 L 173.0 159.0 L 161.0 114.0 L 161.0 97.0 L 158.0 80.0 L 152.0 75.0 L 134.0 71.0 L 121.0 65.0 L 121.0 59.0 L 126.0 53.0 L 125.0 28.0 L 119.0 19.0 Z"}};
+const BODYMAP_FEMALE = {"front": {"Traps": "M 129.0 114.0 L 129.0 126.0 L 141.0 135.0 L 140.0 122.0 Z", "Shoulders": "M 148.0 78.0 L 155.0 81.0 L 159.0 86.0 L 162.0 99.0 L 168.0 111.0 L 170.0 98.0 L 168.0 80.0 L 161.0 74.0 Z M 106.0 78.0 L 95.0 74.0 L 87.0 78.0 L 84.0 90.0 L 85.0 103.0 L 82.0 119.0 L 92.0 98.0 L 96.0 84.0 L 100.0 80.0 Z", "Chest": "M 98.0 85.0 L 100.0 91.0 L 98.0 122.0 L 101.0 125.0 L 108.0 125.0 L 113.0 131.0 L 113.0 135.0 L 125.0 126.0 L 125.0 111.0 L 129.0 110.0 L 138.0 114.0 L 138.0 117.0 L 143.0 124.0 L 144.0 132.0 L 157.0 128.0 L 161.0 138.0 L 166.0 139.0 L 168.0 137.0 L 172.0 124.0 L 160.0 99.0 L 156.0 85.0 L 153.0 82.0 L 143.0 79.0 L 137.0 80.0 L 128.0 88.0 L 125.0 88.0 L 123.0 84.0 L 117.0 80.0 L 105.0 80.0 Z", "Biceps": "M 155.0 130.0 L 147.0 134.0 L 146.0 142.0 L 154.0 135.0 Z M 97.0 88.0 L 93.0 101.0 L 82.0 123.0 L 85.0 152.0 L 93.0 142.0 L 95.0 133.0 L 99.0 133.0 L 103.0 139.0 L 108.0 141.0 L 107.0 133.0 L 110.0 131.0 L 107.0 127.0 L 101.0 127.0 L 96.0 122.0 Z", "Forearms": "M 173.0 128.0 L 171.0 156.0 L 183.0 187.0 L 179.0 152.0 Z M 80.0 128.0 L 74.0 156.0 L 71.0 191.0 L 63.0 212.0 L 63.0 216.0 L 71.0 230.0 L 73.0 230.0 L 68.0 218.0 L 73.0 212.0 L 76.0 212.0 L 79.0 221.0 L 81.0 211.0 L 77.0 203.0 L 77.0 197.0 L 88.0 169.0 L 92.0 145.0 L 87.0 152.0 L 83.0 151.0 Z", "Abs": "M 127.0 125.0 L 117.0 136.0 L 112.0 136.0 L 111.0 133.0 L 109.0 134.0 L 109.0 152.0 L 113.0 166.0 L 109.0 167.0 L 100.0 157.0 L 98.0 166.0 L 99.0 171.0 L 113.0 191.0 L 122.0 210.0 L 132.0 213.0 L 133.0 236.0 L 136.0 223.0 L 149.0 195.0 L 153.0 181.0 L 151.0 176.0 L 155.0 170.0 L 156.0 163.0 L 153.0 157.0 L 153.0 139.0 L 150.0 142.0 L 145.0 143.0 L 145.0 134.0 L 143.0 133.0 L 141.0 137.0 L 137.0 137.0 Z", "Obliques": "M 157.0 166.0 L 157.0 170.0 L 152.0 178.0 L 159.0 174.0 Z M 100.0 138.0 L 101.0 155.0 L 110.0 165.0 L 107.0 144.0 Z", "Quads": "M 99.0 179.0 L 100.0 192.0 L 98.0 193.0 L 92.0 214.0 L 92.0 236.0 L 100.0 292.0 L 105.0 289.0 L 108.0 277.0 L 117.0 278.0 L 117.0 289.0 L 120.0 292.0 L 121.0 256.0 L 119.0 247.0 L 122.0 212.0 L 114.0 202.0 L 108.0 187.0 Z M 160.0 175.0 L 155.0 179.0 L 149.0 201.0 L 139.0 221.0 L 134.0 238.0 L 134.0 245.0 L 135.0 237.0 L 140.0 237.0 L 138.0 263.0 L 139.0 276.0 L 147.0 278.0 L 147.0 285.0 L 153.0 292.0 L 161.0 246.0 L 161.0 236.0 L 163.0 235.0 L 166.0 219.0 L 166.0 206.0 Z", "Calves": "M 139.0 278.0 L 138.0 292.0 L 134.0 294.0 L 135.0 303.0 L 140.0 314.0 L 139.0 379.0 L 135.0 386.0 L 136.0 401.0 L 139.0 406.0 L 154.0 405.0 L 147.0 389.0 L 149.0 364.0 L 156.0 331.0 L 156.0 310.0 L 153.0 294.0 L 147.0 290.0 L 145.0 279.0 Z M 108.0 278.0 L 108.0 287.0 L 100.0 294.0 L 97.0 316.0 L 98.0 333.0 L 105.0 365.0 L 107.0 389.0 L 106.0 394.0 L 99.0 404.0 L 115.0 406.0 L 118.0 401.0 L 119.0 386.0 L 117.0 379.0 L 115.0 378.0 L 115.0 372.0 L 117.0 371.0 L 119.0 348.0 L 120.0 294.0 L 118.0 294.0 L 115.0 289.0 L 115.0 278.0 Z", "_body": "M 124.0 10.0 L 116.0 13.0 L 111.0 22.0 L 110.0 47.0 L 116.0 55.0 L 116.0 61.0 L 109.0 67.0 L 89.0 73.0 L 83.0 81.0 L 82.0 110.0 L 72.0 155.0 L 69.0 190.0 L 61.0 211.0 L 61.0 215.0 L 70.0 230.0 L 73.0 230.0 L 73.0 221.0 L 87.0 221.0 L 98.0 282.0 L 98.0 300.0 L 95.0 321.0 L 96.0 333.0 L 104.0 371.0 L 104.0 392.0 L 97.0 404.0 L 114.0 406.0 L 118.0 401.0 L 119.0 385.0 L 117.0 380.0 L 117.0 360.0 L 120.0 331.0 L 119.0 298.0 L 121.0 291.0 L 120.0 237.0 L 122.0 213.0 L 130.0 213.0 L 130.0 228.0 L 132.0 239.0 L 131.0 293.0 L 133.0 299.0 L 132.0 335.0 L 135.0 363.0 L 135.0 380.0 L 133.0 386.0 L 134.0 401.0 L 138.0 406.0 L 154.0 404.0 L 154.0 401.0 L 148.0 393.0 L 148.0 370.0 L 156.0 331.0 L 154.0 281.0 L 165.0 219.0 L 172.0 218.0 L 174.0 221.0 L 178.0 221.0 L 179.0 230.0 L 182.0 230.0 L 190.0 217.0 L 190.0 208.0 L 183.0 191.0 L 179.0 150.0 L 170.0 111.0 L 169.0 82.0 L 164.0 74.0 L 145.0 68.0 L 137.0 63.0 L 136.0 55.0 L 142.0 48.0 L 141.0 21.0 L 136.0 13.0 Z"}, "back": {"Traps": "M 105.0 49.0 L 97.0 55.0 L 98.0 60.0 L 95.0 63.0 L 87.0 66.0 L 96.0 67.0 L 103.0 71.0 L 100.0 92.0 L 94.0 104.0 L 103.0 119.0 L 106.0 128.0 L 108.0 128.0 L 108.0 125.0 L 120.0 104.0 L 114.0 92.0 L 111.0 71.0 L 118.0 67.0 L 127.0 66.0 L 116.0 60.0 L 116.0 54.0 L 114.0 52.0 Z", "Rear Delts": "M 114.0 71.0 L 112.0 75.0 L 116.0 92.0 L 120.0 100.0 L 124.0 102.0 L 135.0 101.0 L 140.0 114.0 L 143.0 100.0 L 146.0 100.0 L 150.0 105.0 L 149.0 81.0 L 147.0 75.0 L 140.0 70.0 L 130.0 67.0 Z M 100.0 71.0 L 84.0 67.0 L 74.0 70.0 L 67.0 75.0 L 65.0 81.0 L 64.0 105.0 L 68.0 100.0 L 71.0 100.0 L 74.0 114.0 L 79.0 101.0 L 90.0 102.0 L 95.0 98.0 L 102.0 75.0 Z", "Lats": "M 79.0 104.0 L 74.0 127.0 L 74.0 136.0 L 76.0 126.0 L 81.0 126.0 L 83.0 139.0 L 82.0 153.0 L 79.0 161.0 L 87.0 160.0 L 90.0 171.0 L 104.0 186.0 L 109.0 186.0 L 123.0 172.0 L 127.0 160.0 L 135.0 161.0 L 131.0 148.0 L 134.0 125.0 L 138.0 126.0 L 140.0 135.0 L 135.0 104.0 L 122.0 103.0 L 110.0 128.0 L 105.0 129.0 L 102.0 121.0 L 95.0 112.0 L 92.0 103.0 Z", "Triceps": "M 144.0 100.0 L 143.0 113.0 L 140.0 116.0 L 142.0 136.0 L 140.0 139.0 L 141.0 143.0 L 149.0 150.0 L 150.0 140.0 L 155.0 133.0 L 150.0 108.0 Z M 70.0 99.0 L 63.0 111.0 L 59.0 133.0 L 65.0 143.0 L 65.0 150.0 L 73.0 143.0 L 74.0 139.0 L 72.0 136.0 L 74.0 116.0 L 71.0 113.0 Z", "Forearms": "M 155.0 137.0 L 151.0 143.0 L 151.0 149.0 L 147.0 150.0 L 142.0 146.0 L 146.0 169.0 L 156.0 193.0 L 156.0 198.0 L 152.0 206.0 L 153.0 213.0 L 155.0 215.0 L 155.0 209.0 L 157.0 207.0 L 160.0 207.0 L 164.0 211.0 L 164.0 218.0 L 161.0 225.0 L 168.0 215.0 L 170.0 208.0 L 163.0 190.0 L 159.0 149.0 Z M 59.0 137.0 L 54.0 155.0 L 51.0 190.0 L 44.0 208.0 L 47.0 217.0 L 53.0 225.0 L 50.0 218.0 L 50.0 211.0 L 54.0 207.0 L 57.0 207.0 L 59.0 215.0 L 61.0 213.0 L 62.0 206.0 L 58.0 198.0 L 58.0 193.0 L 68.0 168.0 L 72.0 149.0 L 71.0 146.0 L 67.0 150.0 L 64.0 150.0 L 63.0 143.0 Z", "LowerBack": "M 127.0 170.0 L 134.0 166.0 L 138.0 166.0 L 137.0 164.0 L 128.0 161.0 Z M 77.0 164.0 L 76.0 166.0 L 80.0 166.0 L 88.0 171.0 L 86.0 168.0 L 86.0 161.0 Z", "Glutes": "M 82.0 176.0 L 74.0 187.0 L 76.0 213.0 L 82.0 218.0 L 94.0 220.0 L 96.0 232.0 L 101.0 244.0 L 103.0 211.0 L 109.0 209.0 L 111.0 211.0 L 113.0 244.0 L 117.0 235.0 L 120.0 220.0 L 132.0 218.0 L 137.0 215.0 L 140.0 188.0 L 132.0 176.0 L 125.0 174.0 L 122.0 175.0 L 110.0 188.0 L 104.0 188.0 L 90.0 174.0 Z", "Hamstrings": "M 131.0 220.0 L 122.0 221.0 L 118.0 240.0 L 112.0 250.0 L 112.0 293.0 L 115.0 305.0 L 117.0 296.0 L 121.0 295.0 L 122.0 297.0 L 126.0 290.0 L 129.0 290.0 L 133.0 297.0 L 134.0 278.0 L 137.0 266.0 L 135.0 252.0 L 135.0 223.0 Z M 68.0 207.0 L 69.0 223.0 L 76.0 261.0 L 78.0 262.0 L 77.0 266.0 L 80.0 279.0 L 81.0 297.0 L 84.0 291.0 L 88.0 290.0 L 92.0 297.0 L 93.0 295.0 L 97.0 296.0 L 99.0 306.0 L 99.0 299.0 L 101.0 298.0 L 102.0 292.0 L 101.0 247.0 L 96.0 240.0 L 92.0 221.0 L 82.0 220.0 L 78.0 226.0 L 75.0 226.0 Z", "Calves": "M 128.0 291.0 L 124.0 296.0 L 119.0 295.0 L 114.0 312.0 L 113.0 336.0 L 117.0 375.0 L 114.0 387.0 L 114.0 402.0 L 117.0 406.0 L 132.0 402.0 L 126.0 394.0 L 126.0 383.0 L 135.0 337.0 L 136.0 314.0 L 134.0 301.0 Z M 86.0 291.0 L 80.0 301.0 L 78.0 313.0 L 81.0 346.0 L 93.0 342.0 L 100.0 347.0 L 100.0 312.0 L 95.0 296.0 L 90.0 296.0 Z", "_body": "M 103.0 10.0 L 97.0 12.0 L 93.0 16.0 L 90.0 25.0 L 89.0 42.0 L 90.0 48.0 L 94.0 53.0 L 94.0 60.0 L 90.0 63.0 L 72.0 68.0 L 64.0 75.0 L 62.0 90.0 L 62.0 109.0 L 52.0 153.0 L 49.0 188.0 L 43.0 203.0 L 43.0 212.0 L 51.0 225.0 L 54.0 225.0 L 54.0 215.0 L 65.0 215.0 L 67.0 217.0 L 78.0 278.0 L 79.0 298.0 L 76.0 311.0 L 76.0 328.0 L 86.0 383.0 L 85.0 395.0 L 79.0 401.0 L 81.0 403.0 L 92.0 406.0 L 98.0 405.0 L 100.0 401.0 L 100.0 386.0 L 97.0 379.0 L 101.0 332.0 L 101.0 236.0 L 102.0 227.0 L 110.0 227.0 L 110.0 292.0 L 112.0 299.0 L 111.0 334.0 L 115.0 379.0 L 112.0 386.0 L 112.0 402.0 L 114.0 405.0 L 120.0 406.0 L 131.0 403.0 L 133.0 401.0 L 127.0 395.0 L 126.0 382.0 L 136.0 327.0 L 136.0 312.0 L 133.0 299.0 L 134.0 277.0 L 145.0 216.0 L 158.0 215.0 L 158.0 225.0 L 161.0 225.0 L 169.0 212.0 L 169.0 203.0 L 163.0 189.0 L 160.0 154.0 L 150.0 109.0 L 148.0 76.0 L 142.0 69.0 L 122.0 63.0 L 117.0 59.0 L 117.0 53.0 L 121.0 48.0 L 120.0 20.0 L 114.0 12.0 Z"}};
 const BODYMAPS = { male: BODYMAP_MALE, female: BODYMAP_FEMALE };
 
 // Weighted weekly training volume per body-map region. Each completed working set credits its
@@ -1098,12 +1098,12 @@ function _heatColor(t, C) {
 // (poor sleep slows recovery). Regions with no recent training are treated as fully ready.
 function muscleReadiness(store) {
   const now = Date.now();
-  const last = {}; // "view:region" -> { ts, vol }
-  const add = (mn, ts, w) => {
+  const last = {}; // "view:region" -> { ts, vol, rpeSum, rpeN }
+  const add = (mn, ts, w, rpeSum, rpeN) => {
     _regionsFor(mn).forEach(([v, r]) => {
       const k = v + ":" + r;
-      if (!last[k] || ts > last[k].ts) last[k] = { ts, vol: w };
-      else if (ts === last[k].ts) last[k].vol += w;
+      if (!last[k] || ts > last[k].ts) last[k] = { ts, vol: w, rpeSum, rpeN };
+      else if (ts === last[k].ts) { last[k].vol += w; last[k].rpeSum += rpeSum; last[k].rpeN += rpeN; }
     });
   };
   const hist = store.history || {};
@@ -1112,29 +1112,42 @@ function muscleReadiness(store) {
     if (isNaN(ts) || now - ts > 14 * 864e5) continue;
     for (const sess of Object.values(hist[d] || {})) {
       for (const ex of (sess.exercises || [])) {
-        const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
+        const working = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
+        const done = working.length;
         if (!done) continue;
+        let rpeSum = 0, rpeN = 0;
+        working.forEach(s => { const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; } });
         const primary = (typeof getMuscle === "function" && getMuscle(ex.name)) || (typeof resolveMuscle === "function" && resolveMuscle(ex.name)) || "";
-        add(primary, ts, done);
+        add(primary, ts, done, rpeSum, rpeN);
         const secs = (EXERCISE_SECONDARIES && EXERCISE_SECONDARIES[ex.name]) || [];
-        secs.forEach(mn => add(mn, ts, done * 0.5));
+        secs.forEach(mn => add(mn, ts, done * 0.5, rpeSum, rpeN));
       }
     }
   }
   let recMod = 1;
   const rec = store.recovery;
-  if (rec && typeof rec.sleepHours === "number") {
+  if (rec && typeof rec.recoveryScore === "number") {
+    recMod = 0.8 + 0.4 * rec.recoveryScore; // 0.8 (drained) .. 1.2 (peaked) vs your baseline
+  } else if (rec && typeof rec.sleepHours === "number") {
     if (rec.sleepHours < 6) recMod = 0.82;
     else if (rec.sleepHours >= 8) recMod = 1.12;
   }
+  // Larger muscles recover slower than small ones (multiplier on recovery time).
+  const RATE = { Quads:1.3, Hamstrings:1.3, Glutes:1.3, Lats:1.3, LowerBack:1.25, Traps:1.15, Chest:1.0, Shoulders:1.0, "Rear Delts":0.95, Biceps:0.8, Triceps:0.8, Forearms:0.75, Calves:0.8, Abs:0.8, Obliques:0.8 };
   const readiness = {};
+  let usedRpe = false;
   for (const k in last) {
-    const { ts, vol } = last[k];
+    const { ts, vol, rpeSum, rpeN } = last[k];
+    const region = k.split(":")[1];
+    const rate = RATE[region] || 1;
+    const avgRpe = rpeN > 0 ? rpeSum / rpeN : null;
+    if (avgRpe) usedRpe = true;
+    const rpeMult = avgRpe ? Math.max(0.85, Math.min(1.25, 0.6 + 0.06 * avgRpe)) : 1; // hard sets fatigue more
     const hoursSince = (now - ts) / 36e5;
-    const recoveryHours = (40 + Math.min(vol, 20) * 2.2) / recMod;
+    const recoveryHours = (40 + Math.min(vol, 20) * 2.2) * rate * rpeMult / recMod;
     readiness[k] = Math.max(0, Math.min(1, hoursSince / recoveryHours));
   }
-  return { readiness, recMod, rec, anyData: Object.keys(last).length > 0 };
+  return { readiness, recMod, rec, usedRpe, anyData: Object.keys(last).length > 0 };
 }
 
 // Readiness ramp: 0 = recovering (red), 0.5 = amber, 1 = ready (green).
@@ -1276,6 +1289,17 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             </>
           ) : mode === "readiness" ? (
             <>
+              {rec && typeof rec.recoveryScore === "number" && (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"2px 16px 6px" }}>
+                  <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 11px", borderRadius:999, background:C.divider, fontSize:11, fontWeight:700, color:C.text }}>
+                    <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(rec.recoveryScore) }}/>
+                    Recovery {Math.round(rec.recoveryScore * 100)}%
+                  </span>
+                  {rec.hrv != null && rec.hrvBaseline ? (
+                    <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>HRV {rec.hrv} vs {Math.round(rec.hrvBaseline)} baseline</span>
+                  ) : null}
+                </div>
+              )}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
                 <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Recovering</span>
                 <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
@@ -1287,7 +1311,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 {recoveringUniq.length
                   ? <>Still recovering: <span style={{ color:C.text, fontWeight:600 }}>{recoveringUniq.slice(0, 3).join(", ")}</span>{recoveringUniq.length > 3 ? "…" : ""}. Everything else is ready.</>
                   : (anyData ? "All muscles recovered — ready to train anything." : "No recent training logged — everything's fresh.")}
-                {rec && typeof rec.sleepHours === "number" && rec.sleepHours < 6 ? " Low recent sleep is slowing recovery." : ""}
+                {rec && typeof rec.recoveryScore === "number" && rec.recoveryScore < 0.45
+                  ? " Your recovery is below baseline today — easing off helps."
+                  : (rec && typeof rec.recoveryScore !== "number" && typeof rec.sleepHours === "number" && rec.sleepHours < 6 ? " Low recent sleep is slowing recovery." : "")}
               </div>
             </>
           ) : (
@@ -1305,6 +1331,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     {weakUniq.length
                       ? <>Lagging: <span style={{ color:C.text, fontWeight:600 }}>{weakUniq.slice(0, 3).join(", ")}</span>{weakUniq.length > 3 ? "…" : ""}. Overall: {strength.overall}.</>
                       : <>Well-balanced — overall: {strength.overall}.</>}
+                    {strength.imbalances && strength.imbalances.length
+                      ? <><br/><span style={{ color:"#f59e0b", fontWeight:600 }}>{strength.imbalances.join(" · ")}.</span></>
+                      : null}
                     {" "}Grey = no strength standard for that muscle.
                   </div>
                 </>
@@ -2161,7 +2190,18 @@ function muscleStrength(store, unit, sex) {
     lifts.forEach(lift => { if (liftLevel[lift] != null) best = Math.max(best == null ? -1 : best, liftLevel[lift]); });
     if (best != null) regionFrac[region] = best / denom;
   }
-  return { ready: true, regionFrac, overall: ss.overall, score: ss.score };
+  // Imbalance checks (only when both sides have data). Flags meaningful gaps (>~1 level).
+  const avg = (keys) => { const vs = keys.map(k => regionFrac[k]).filter(v => v != null); return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null; };
+  const imbalances = [];
+  const push = avg(["Chest", "Shoulders", "Triceps"]), pull = avg(["Lats", "Biceps"]);
+  if (push != null && pull != null && Math.abs(push - pull) >= 0.2) {
+    imbalances.push(push > pull ? "Pull is lagging your push" : "Push is lagging your pull");
+  }
+  const quad = regionFrac["Quads"], post = avg(["Hamstrings", "Glutes"]);
+  if (quad != null && post != null && Math.abs(quad - post) >= 0.2) {
+    imbalances.push(quad > post ? "Hamstrings/glutes lag your quads" : "Quads lag your hamstrings/glutes");
+  }
+  return { ready: true, regionFrac, overall: ss.overall, score: ss.score, imbalances };
 }
 
 // Assembles a compact, structured snapshot of the user's training for the AI coach to reason
@@ -2549,6 +2589,42 @@ async function readRecovery() {
       }
     }
     if (mins > 0) out.sleepHours = Math.round((mins / 60) * 10) / 10;
+  }
+
+  // ── Personal baselines from the last 60 days (HRV + resting HR) ──
+  // A reading only means something relative to YOUR normal, so we compare today to a 60-day median.
+  const baseStartIso = new Date(now.getTime() - 1000 * 60 * 60 * 24 * 60).toISOString();
+  async function readRange(dataType) {
+    try {
+      const r = await H.readSamples({ dataType, startDate: baseStartIso, endDate: endIso, limit: 1000 });
+      return (r && r.samples) ? r.samples.map(s => parseFloat(s.value)).filter(v => !isNaN(v)) : [];
+    } catch (e) { return []; }
+  }
+  const median = (arr) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const hrvHist = await readRange("heartRateVariability");
+  const rhrHist = await readRange("restingHeartRate");
+  out.hrvBaseline = median(hrvHist);
+  out.rhrBaseline = median(rhrHist);
+  out.baselineDays = Math.max(hrvHist.length, rhrHist.length);
+
+  // Recovery score 0..1 from whatever signals are available, weighted toward HRV.
+  const comps = [];
+  if (out.hrv != null && out.hrvBaseline) {
+    const ratio = out.hrv / out.hrvBaseline;                  // <1 = HRV suppressed = under-recovered
+    comps.push([Math.max(0, Math.min(1, (ratio - 0.85) / 0.30)), 0.5]);
+  }
+  if (out.restingHr != null && out.rhrBaseline) {
+    const ratio = out.restingHr / out.rhrBaseline;            // >1 = elevated RHR = under-recovered
+    comps.push([Math.max(0, Math.min(1, (1.05 - ratio) / 0.10)), 0.25]);
+  }
+  if (out.sleepHours != null) {
+    const sh = out.sleepHours;
+    const sf = sh >= 8 ? 1 : sh >= 7 ? 0.78 : sh >= 6 ? 0.5 : sh >= 5 ? 0.28 : 0.12;
+    comps.push([sf, 0.25]);
+  }
+  if (comps.length) {
+    const wsum = comps.reduce((a, [, w]) => a + w, 0);
+    out.recoveryScore = Math.round((comps.reduce((a, [v, w]) => a + v * w, 0) / wsum) * 100) / 100;
   }
 
   if (out.hrv == null && out.restingHr == null && out.sleepHours == null) return null;
@@ -4350,7 +4426,7 @@ function PlateCalcModal({ onClose, unit, C }) {
 // Builds a self-contained 1080×1350 share-card SVG (dark, branded) with the week's trained-muscle
 // body map, headline stats, and new PRs. Self-contained (paths + text only) so it rasterizes to a
 // clean PNG via canvas without external fonts or images.
-function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, prList, weekLabel }) {
+function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta }) {
   const W = 1080, H = 1350;
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const data = (BODYMAPS && BODYMAPS[sex]) || BODYMAP_MALE;
@@ -4400,6 +4476,14 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
     + `<g opacity="0.04">${g}</g>`
     + `<text x="80" y="110" fill="#a78bfa" font-size="30" font-weight="700" letter-spacing="8">SESHD WRAPPED</text>`
     + `<text x="80" y="158" fill="#8a8a93" font-size="26" font-weight="600" letter-spacing="3">${esc(weekLabel)}</text>`
+    + (() => {
+        const parts = [];
+        if (volDeltaPct != null) parts.push(`${volDeltaPct >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(volDeltaPct)}% volume`);
+        if (woDelta) parts.push(`${woDelta > 0 ? "+" : ""}${woDelta} workout${Math.abs(woDelta) === 1 ? "" : "s"}`);
+        if (!parts.length) return "";
+        const col = volDeltaPct != null ? (volDeltaPct >= 0 ? "#34d399" : "#f87171") : "#8a8a93";
+        return `<text x="80" y="196" fill="${col}" font-size="23" font-weight="600">${esc(parts.join("   \u00b7   "))} <tspan fill="#6a6a73">vs last week</tspan></text>`;
+      })()
     + fig("front", 300, 205, 230) + fig("back", 560, 205, 230)
     + `<text x="${W/2}" y="835" fill="#6a6a73" font-size="22" text-anchor="middle" letter-spacing="2">MUSCLES TRAINED THIS WEEK</text>`
     + statSvg
@@ -4484,6 +4568,20 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
     ? store.bodyType
     : (store.strengthSex === "female" ? "female" : "male");
   const weekLabel = `WEEK OF ${new Date().toLocaleDateString("en", { month: "short", day: "numeric" }).toUpperCase()}`;
+  // Week-over-week: the prior 7-day window (7–14 days ago) for trend deltas.
+  const twoWeeksAgo = Date.now() - 14*24*60*60*1000;
+  const volOf = (hist) => hist.reduce((a,[,ss]) => a + Object.values(ss).reduce((b,s) => {
+    const su = s.unit || "lbs";
+    return b + (s.exercises||[]).reduce((c,ex) => c + (ex.sets||[]).reduce((d2,s2) => {
+      const done = s2.done === true || (s2.done === undefined && parseFloat(s2.reps) > 0);
+      if (!done || s2.type === "warmup") return d2;
+      return d2 + cvt(parseFloat(s2.weight)||0, su, unit) * (parseFloat(s2.reps)||0);
+    }, 0), 0); }, 0), 0);
+  const prevHistory = Object.entries(store.history||{}).filter(([d]) => { const t = new Date(d + "T12:00:00").getTime(); return t > twoWeeksAgo && t <= weekAgo; });
+  const prevWorkouts = prevHistory.reduce((a,[,ss]) => a + Object.keys(ss).length, 0);
+  const prevVolume = volOf(prevHistory);
+  const volDeltaPct = prevVolume > 0 ? Math.round((volume - prevVolume) / prevVolume * 100) : null;
+  const woDelta = workouts - prevWorkouts;
   // Named PRs set this week (for the share card), reusing the same detection as the count above.
   const prList = (() => {
     const prs = store.prs || {};
@@ -4587,8 +4685,21 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
             ))}
           </div>
 
+          {(volDeltaPct != null || prevWorkouts > 0) && (
+            <div style={{ textAlign:"center", marginBottom:16, fontSize:12, fontWeight:600 }}>
+              {volDeltaPct != null && (
+                <span style={{ color: volDeltaPct >= 0 ? "#34d399" : "#f87171" }}>
+                  {volDeltaPct >= 0 ? "▲" : "▼"} {Math.abs(volDeltaPct)}% volume
+                </span>
+              )}
+              {volDeltaPct != null && woDelta !== 0 ? <span style={{ color:"rgba(255,255,255,0.4)" }}> · </span> : null}
+              {woDelta !== 0 && <span style={{ color: woDelta > 0 ? "#34d399" : "#f87171" }}>{woDelta > 0 ? "+" : ""}{woDelta} workout{Math.abs(woDelta) === 1 ? "" : "s"}</span>}
+              <span style={{ color:"rgba(255,255,255,0.4)" }}> vs last week</span>
+            </div>
+          )}
+
           <button onClick={async () => {
-            const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel });
+            const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta });
             const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd");
             if (!ok) {
               const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PRs · ${streak} day streak`;
@@ -4606,6 +4717,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
           </button>
           {onPostToFeed && (
             <button onClick={() => {
+              const { region, max } = weeklyMuscleVolume(store, 7);
               onPostToFeed({
                 type: "achievement",
                 caption: "",
@@ -4616,6 +4728,11 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
                   weekPRs,
                   streak,
                   unit,
+                  sex,
+                  muscles: region,
+                  muscleMax: max,
+                  volDeltaPct,
+                  woDelta,
                 },
               });
               toast("Posted to your feed", "success");
@@ -5325,6 +5442,41 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             <div style={{ position:"relative", zIndex:1 }}>
               <div style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:3, marginBottom:4 }}>SESHD</div>
               <div style={{ fontSize:18, fontWeight:800, letterSpacing:-0.5, marginBottom:20 }}>My week</div>
+              {w.muscles && w.muscleMax > 0 && (() => {
+                const dm = (typeof BODYMAPS !== "undefined" && BODYMAPS[w.sex]) || BODYMAP_MALE;
+                const heat = (t) => {
+                  if (t <= 0) return "#26262e";
+                  const st = [[120,110,150],[124,58,237],[91,33,182]];
+                  const sg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
+                  const a = st[sg], b = st[sg+1]; const mm = a.map((v,i)=>Math.round(v+(b[i]-v)*lt));
+                  return `rgb(${mm[0]},${mm[1]},${mm[2]})`;
+                };
+                const Fig = ({ view }) => {
+                  const f = dm[view]; if (!f) return null;
+                  const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
+                  return (
+                    <svg viewBox={vb} width={92} height={Math.round(92*408/160)} style={{ display:"block" }}>
+                      <path d={f._body} fill="#34343e"/>
+                      {Object.keys(f).filter(k=>k!=="_body").map(mk => (
+                        <path key={mk} d={f[mk]} fill={heat((w.muscles[view+":"+mk]||0)/w.muscleMax)} stroke="#0A0A0A" strokeWidth={0.6}/>
+                      ))}
+                    </svg>
+                  );
+                };
+                return (
+                  <div style={{ display:"flex", justifyContent:"center", gap:18, marginBottom:20 }}>
+                    <Fig view="front"/><Fig view="back"/>
+                  </div>
+                );
+              })()}
+              {(w.volDeltaPct != null || w.woDelta) ? (
+                <div style={{ marginBottom:16, fontSize:12, fontWeight:600 }}>
+                  {w.volDeltaPct != null && <span style={{ color: w.volDeltaPct >= 0 ? "#34d399" : "#f87171" }}>{w.volDeltaPct >= 0 ? "▲" : "▼"} {Math.abs(w.volDeltaPct)}% volume</span>}
+                  {w.volDeltaPct != null && w.woDelta ? <span style={{ color:"rgba(255,255,255,0.4)" }}>  ·  </span> : null}
+                  {w.woDelta ? <span style={{ color: w.woDelta > 0 ? "#34d399" : "#f87171" }}>{w.woDelta > 0 ? "+" : ""}{w.woDelta} workout{Math.abs(w.woDelta) === 1 ? "" : "s"}</span> : null}
+                  <span style={{ color:"rgba(255,255,255,0.4)" }}> vs last week</span>
+                </div>
+              ) : null}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18 }}>
                 {stats.map(([v, l], i) => (
                   <div key={i}>
