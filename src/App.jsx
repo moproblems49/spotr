@@ -1,5 +1,5 @@
-// v178086816400
-// PATCHED v23 - BUILD 2026-06-07 - recovery-aware Training Readiness body-map mode (This Week / Readiness toggle)
+// v178087906800
+// PATCHED v25 - BUILD 2026-06-07 - shareable Wrapped recap (body map + stats + PRs) as an image
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter, DragOverlay } from "@dnd-kit/core";
@@ -1154,8 +1154,8 @@ function _regionLabel(k) {
 
 // Weekly muscle heatmap — anatomical front+back view shaded by how much each muscle was trained
 // over the last 7 days. Switches between male/female figures via the body-type preference.
-function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
-  const [mode, setMode] = useState("volume"); // "volume" | "readiness"
+function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C }) {
+  const [mode, setMode] = useState("volume"); // "volume" | "readiness" | "strength"
   const sex = (store.bodyType === "female" || store.bodyType === "male")
     ? store.bodyType
     : (store.strengthSex === "female" ? "female" : "male");
@@ -1163,6 +1163,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
   const fallback = sex === "female" && !BODYMAP_FEMALE;
   const { region, byMuscle, totalSets, max } = useMemo(() => weeklyMuscleVolume(store, 7), [store.history]);
   const { readiness, rec, anyData } = useMemo(() => muscleReadiness(store), [store.history, store.recovery]);
+  const strength = useMemo(() => muscleStrength(store, unit, store.strengthSex || sex), [store.history, store.prs, store.bodyLog, store.strengthSex, unit]);
 
   const setSex = (val) => {
     setStore && setStore(p => ({ ...p, bodyType: val }));
@@ -1180,6 +1181,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
     if (mode === "readiness") {
       const t = key in readiness ? readiness[key] : 1; // untrained = fully ready
       return _readyColor(t);
+    }
+    if (mode === "strength") {
+      const r = key.split(":")[1];
+      if (!strength.ready || strength.regionFrac[r] == null) return bodyCol; // no standard -> no data
+      return _readyColor(strength.regionFrac[r]); // weak (red) -> strong (green)
     }
     const t = max > 0 ? (region[key] || 0) / max : 0;
     return _heatColor(t, C);
@@ -1205,6 +1211,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
   const recoveringUniq = [...new Set(
     Object.entries(readiness).filter(([, v]) => v < 0.6).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
   )];
+  const weakUniq = strength.ready ? [...new Set(
+    Object.entries(strength.regionFrac).filter(([, v]) => v < 0.5).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
+  )] : [];
 
   const Tab = ({ id, label }) => (
     <button onClick={() => { setMode(id); haptic("tap"); }} style={{
@@ -1214,8 +1223,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
     }}>{label}</button>
   );
 
-  const title = mode === "readiness" ? "Training Readiness" : "Muscles Trained";
-  const kicker = mode === "readiness" ? "TODAY" : "THIS WEEK";
+  const title = mode === "readiness" ? "Training Readiness" : mode === "strength" ? "Strength Map" : "Muscles Trained";
+  const kicker = mode === "readiness" ? "TODAY" : mode === "strength" ? "VS STANDARDS" : "THIS WEEK";
 
   return (
     <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.divider}`, overflow:"hidden" }}>
@@ -1236,8 +1245,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
       </div>
 
       <div style={{ display:"flex", margin:"0 16px 4px", background:C.divider, borderRadius:13, padding:2 }}>
-        <Tab id="volume" label="This Week"/>
+        <Tab id="volume" label="Volume"/>
         <Tab id="readiness" label="Readiness"/>
+        <Tab id="strength" label="Strength"/>
       </div>
 
       {mode === "volume" && totalSets === 0 ? (
@@ -1264,7 +1274,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
                 {totalSets} working set{totalSets === 1 ? "" : "s"} this week{topMuscle ? ` · most volume: ${topMuscle[0]}` : ""}
               </div>
             </>
-          ) : (
+          ) : mode === "readiness" ? (
             <>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
                 <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Recovering</span>
@@ -1279,6 +1289,30 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, C }) {
                   : (anyData ? "All muscles recovered — ready to train anything." : "No recent training logged — everything's fresh.")}
                 {rec && typeof rec.sleepHours === "number" && rec.sleepHours < 6 ? " Low recent sleep is slowing recovery." : ""}
               </div>
+            </>
+          ) : (
+            <>
+              {strength.ready ? (
+                <>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
+                    <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Weaker</span>
+                    <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
+                      {[0,0.25,0.5,0.75,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_readyColor(t), display:"inline-block" }}/>))}
+                    </div>
+                    <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Stronger</span>
+                  </div>
+                  <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
+                    {weakUniq.length
+                      ? <>Lagging: <span style={{ color:C.text, fontWeight:600 }}>{weakUniq.slice(0, 3).join(", ")}</span>{weakUniq.length > 3 ? "…" : ""}. Overall: {strength.overall}.</>
+                      : <>Well-balanced — overall: {strength.overall}.</>}
+                    {" "}Grey = no strength standard for that muscle.
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding:"8px 18px 18px", textAlign:"center", fontSize:12, color:C.sub, lineHeight:1.5 }}>
+                  Log your bodyweight and a few main lifts (bench, squat, deadlift, overhead press, row) to map your strength against standards.
+                </div>
+              )}
             </>
           )}
 
@@ -2094,6 +2128,40 @@ function computeStrengthScore(store, unit, sex = "male") {
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
   const score = Math.round((avgIdx / (STRENGTH_LEVELS.length - 1)) * 100);
   return { ready: true, overall, score, lifts, bodyweight: bw, counted, sex };
+}
+
+// Maps each body-map region to the scored lift(s) that best represent its strength. Regions with no
+// standard lift (calves, forearms, abs, etc.) are intentionally absent — they render as "no data".
+// A few are proxies (biceps via rows, triceps via pressing) since there's no isolation standard.
+const MUSCLE_STRENGTH_LIFTS = {
+  Chest: ["Barbell Bench Press", "Incline Bench Press"],
+  Shoulders: ["Overhead Press (Barbell)"],
+  Quads: ["Barbell Back Squat", "Front Squat"],
+  Lats: ["Barbell Row", "Deadlift"],
+  Hamstrings: ["Romanian Deadlift", "Deadlift"],
+  Glutes: ["Hip Thrust", "Barbell Back Squat", "Deadlift", "Romanian Deadlift"],
+  Triceps: ["Barbell Bench Press", "Overhead Press (Barbell)"],
+  Biceps: ["Barbell Row"],
+  Traps: ["Deadlift", "Barbell Row"],
+  LowerBack: ["Deadlift", "Romanian Deadlift"],
+  "Rear Delts": ["Barbell Row"],
+};
+
+// Per-region strength fraction (0 = Untrained, 1 = Elite) vs bodyweight standards, for the weakness
+// map. Returns { ready, regionFrac:{Region:0..1}, overall, score } or { ready:false, reason }.
+function muscleStrength(store, unit, sex) {
+  const ss = computeStrengthScore(store, unit, sex);
+  if (!ss.ready) return { ready: false, reason: ss.reason };
+  const liftLevel = {};
+  ss.lifts.forEach(l => { liftLevel[l.lift] = STRENGTH_LEVELS.indexOf(l.level); });
+  const denom = STRENGTH_LEVELS.length - 1;
+  const regionFrac = {};
+  for (const [region, lifts] of Object.entries(MUSCLE_STRENGTH_LIFTS)) {
+    let best = null;
+    lifts.forEach(lift => { if (liftLevel[lift] != null) best = Math.max(best == null ? -1 : best, liftLevel[lift]); });
+    if (best != null) regionFrac[region] = best / denom;
+  }
+  return { ready: true, regionFrac, overall: ss.overall, score: ss.score };
 }
 
 // Assembles a compact, structured snapshot of the user's training for the AI coach to reason
@@ -4278,6 +4346,103 @@ function PlateCalcModal({ onClose, unit, C }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // WRAPPED MODAL
 // ═════════════════════════════════════════════════════════════════════════════
+
+// Builds a self-contained 1080×1350 share-card SVG (dark, branded) with the week's trained-muscle
+// body map, headline stats, and new PRs. Self-contained (paths + text only) so it rasterizes to a
+// clean PNG via canvas without external fonts or images.
+function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, prList, weekLabel }) {
+  const W = 1080, H = 1350;
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const data = (BODYMAPS && BODYMAPS[sex]) || BODYMAP_MALE;
+  const { region, max } = weeklyMuscleVolume(store, 7);
+  const heat = (t) => {
+    if (t <= 0) return "#26262e";
+    const s = [[120,110,150],[124,58,237],[91,33,182]];
+    const sg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
+    const a = s[sg], b = s[sg+1];
+    const m = a.map((v,i)=>Math.round(v+(b[i]-v)*lt));
+    return `rgb(${m[0]},${m[1]},${m[2]})`;
+  };
+  const fig = (view, x, y, w) => {
+    const f = data[view]; if (!f) return "";
+    const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
+    const h = Math.round(w * 408 / 160);
+    let s = `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="${vb}">`;
+    s += `<path d="${f._body}" fill="#34343e"/>`;
+    for (const mk of Object.keys(f).filter(k => k !== "_body")) {
+      const t = max > 0 ? (region[view + ":" + mk] || 0) / max : 0;
+      s += `<path d="${f[mk]}" fill="${heat(t)}" stroke="#0A0A0A" stroke-width="0.6"/>`;
+    }
+    return s + "</svg>";
+  };
+  let g = "";
+  for (let x = 0; x <= W; x += 48) g += `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="#fff" stroke-width="1"/>`;
+  for (let y = 0; y <= H; y += 48) g += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#fff" stroke-width="1"/>`;
+  const stats = [["WORKOUTS", String(workouts)], ["VOLUME", fmtVol(volume, unit).replace(/\s\w+$/, "")], ["PRS", String(weekPRs)], ["STREAK", `${streak}d`]];
+  const sw = (W - 160) / 4;
+  let statSvg = "";
+  stats.forEach((st, i) => {
+    const cx = 80 + sw * i + sw / 2;
+    statSvg += `<text x="${cx}" y="960" fill="#fff" font-size="60" font-weight="700" text-anchor="middle" font-family="monospace">${esc(st[1])}</text>`;
+    statSvg += `<text x="${cx}" y="1000" fill="#8a8a93" font-size="20" font-weight="700" text-anchor="middle" letter-spacing="2">${st[0]}</text>`;
+  });
+  let prSvg = "";
+  if (prList && prList.length) {
+    prSvg += `<text x="80" y="1108" fill="#a78bfa" font-size="22" font-weight="700" letter-spacing="2">NEW PRs</text>`;
+    prList.slice(0, 3).forEach((p, i) => {
+      prSvg += `<text x="80" y="${1158 + i * 46}" fill="#e8e8ea" font-size="30" font-weight="600">${esc(p.name)} \u00b7 ${esc(p.weight)} ${unit}</text>`;
+    });
+  } else {
+    prSvg += `<text x="80" y="1140" fill="#8a8a93" font-size="26" font-weight="500">Another week in the books \uD83D\uDCAA</text>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif">`
+    + `<rect width="${W}" height="${H}" fill="#0A0A0A"/>`
+    + `<g opacity="0.04">${g}</g>`
+    + `<text x="80" y="110" fill="#a78bfa" font-size="30" font-weight="700" letter-spacing="8">SESHD WRAPPED</text>`
+    + `<text x="80" y="158" fill="#8a8a93" font-size="26" font-weight="600" letter-spacing="3">${esc(weekLabel)}</text>`
+    + fig("front", 300, 205, 230) + fig("back", 560, 205, 230)
+    + `<text x="${W/2}" y="835" fill="#6a6a73" font-size="22" text-anchor="middle" letter-spacing="2">MUSCLES TRAINED THIS WEEK</text>`
+    + statSvg
+    + `<line x1="80" y1="1050" x2="${W-80}" y2="1050" stroke="#222" stroke-width="2"/>`
+    + prSvg
+    + `<text x="${W/2}" y="1322" fill="#5a5a63" font-size="24" text-anchor="middle" font-weight="700" letter-spacing="4">seshd</text>`
+    + `</svg>`;
+}
+
+// Rasterizes an SVG string to a PNG and shares it via the native share sheet (files), falling back
+// to a download. Returns true on success, false if rasterization/sharing failed (caller can text-share).
+async function shareSvgCard(svg, filename, title) {
+  try {
+    const blob = await new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas"); c.width = 1080; c.height = 1350;
+          c.getContext("2d").drawImage(img, 0, 0, 1080, 1350);
+          URL.revokeObjectURL(url);
+          c.toBlob(b => b ? resolve(b) : reject(new Error("toBlob")), "image/png");
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("svg load")); };
+      img.src = url;
+    });
+    const file = new File([blob], filename, { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title });
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      if (typeof toast === "function") toast("Saved recap image", "success");
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function WrappedModal({ store, C, onClose, onPostToFeed }) {
   const unit = store.unit || "lbs";
   const weekAgo = Date.now() - 7*24*60*60*1000;
@@ -4315,6 +4480,30 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
     return seen.size;
   })();
   const streak = calcStreak(store.workoutDates);
+  const sex = (store.bodyType === "female" || store.bodyType === "male")
+    ? store.bodyType
+    : (store.strengthSex === "female" ? "female" : "male");
+  const weekLabel = `WEEK OF ${new Date().toLocaleDateString("en", { month: "short", day: "numeric" }).toUpperCase()}`;
+  // Named PRs set this week (for the share card), reusing the same detection as the count above.
+  const prList = (() => {
+    const prs = store.prs || {};
+    const seen = new Set(); const out = [];
+    weekHistory.forEach(([, ss]) => Object.values(ss).forEach(s => {
+      const su = s.unit || "lbs";
+      (s.exercises || []).forEach(ex => {
+        if (!ex.name || !prs[ex.name] || seen.has(ex.name)) return;
+        const maxLbs = Math.max(0, ...(ex.sets || [])
+          .filter(st => (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)) && st.type !== "warmup")
+          .map(st => { const w = parseFloat(st.weight) || 0; return su === "lbs" ? w : cvt(w, "kg", "lbs"); }));
+        if (maxLbs > 0 && maxLbs >= prs[ex.name] * 0.999) {
+          seen.add(ex.name);
+          const disp = unit === "lbs" ? Math.round(prs[ex.name]) : Math.round(cvt(prs[ex.name], "lbs", "kg"));
+          out.push({ name: ex.name, weight: disp });
+        }
+      });
+    }));
+    return out.slice(0, 3);
+  })();
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
@@ -4344,6 +4533,38 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
             {(() => { const d = new Date(); return `Week of ${d.toLocaleDateString("en",{month:"short",day:"numeric"}).toUpperCase()}`; })()}
           </div>
 
+          {/* Trained-muscle map (matches the shared image) */}
+          {(() => {
+            const { region, max } = weeklyMuscleVolume(store, 7);
+            if (!max) return null;
+            const dataMap = (BODYMAPS && BODYMAPS[sex]) || BODYMAP_MALE;
+            const heat = (t) => {
+              if (t <= 0) return "#26262e";
+              const s = [[120,110,150],[124,58,237],[91,33,182]];
+              const sg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
+              const a = s[sg], b = s[sg+1]; const m = a.map((v,i)=>Math.round(v+(b[i]-v)*lt));
+              return `rgb(${m[0]},${m[1]},${m[2]})`;
+            };
+            const Fig = ({ view }) => {
+              const f = dataMap[view]; if (!f) return null;
+              const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
+              return (
+                <svg viewBox={vb} width={88} height={Math.round(88*408/160)} style={{ display:"block" }}>
+                  <path d={f._body} fill="#34343e"/>
+                  {Object.keys(f).filter(k=>k!=="_body").map(mk => {
+                    const t = max>0 ? (region[view+":"+mk]||0)/max : 0;
+                    return <path key={mk} d={f[mk]} fill={heat(t)} stroke="#0A0A0A" strokeWidth={0.6}/>;
+                  })}
+                </svg>
+              );
+            };
+            return (
+              <div style={{ display:"flex", justifyContent:"center", gap:18, marginBottom:18 }}>
+                <Fig view="front"/><Fig view="back"/>
+              </div>
+            );
+          })()}
+
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:0, marginBottom:24 }}>
             {[
               ["WORKOUTS", workouts, "activity"],
@@ -4366,10 +4587,14 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
             ))}
           </div>
 
-          <button onClick={() => {
-            const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PRs · ${streak} day streak`;
-            if (navigator.share) navigator.share({ title:"Seshd Wrapped", text }).catch(()=>{});
-            else if (navigator.clipboard) { navigator.clipboard.writeText(text); toast("Copied to clipboard", "success"); }
+          <button onClick={async () => {
+            const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel });
+            const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd");
+            if (!ok) {
+              const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PRs · ${streak} day streak`;
+              if (navigator.share) navigator.share({ title:"Seshd Wrapped", text }).catch(()=>{});
+              else if (navigator.clipboard) { navigator.clipboard.writeText(text); if (typeof toast === "function") toast("Copied to clipboard", "success"); }
+            }
           }} style={{
             width:"100%", background:"#fff", color:"#0A0A0A", border:"none",
             borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
@@ -12193,7 +12418,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {isMe && (
         <div style={{ padding:"0 14px" }}>
           <MuscleBalance store={store} C={C}/>
-          <MuscleHeatmap store={store} setStore={setStore} currentUserId={currentUserId} token={token} C={C}/>
+          <MuscleHeatmap store={store} setStore={setStore} currentUserId={currentUserId} token={token} unit={displayUnit} C={C}/>
           {(() => {
             const sex = store.strengthSex || "male";
             const ss = computeStrengthScore(store, displayUnit || store.unit || "lbs", sex);
