@@ -1,4 +1,4 @@
-// v178091716402
+// v178091716403
 // PATCHED v29 - BUILD 2026-06-08 - HRV/RHR recovery vs 60-day baseline drives readiness + Recovery% chip
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
@@ -12333,7 +12333,16 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         unit: sess.unit || displayUnit || "lbs",
         // Exclude warmup sets from the displayed workout (they were showing up on the
         // history-derived profile card).
-        workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done && s.type!=="warmup").map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) },
+        workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>{
+          const doneSets = (ex.sets||[]).filter(s=>s.done && s.type!=="warmup").map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0}));
+          // PR badge — same heuristic as the friends-activity cards: a top set within 2% of the
+          // stored PR (kept in lbs) marks this as the PR session for that exercise.
+          const isPR = !!(store.prs||{})[ex.name] && doneSets.some(s=>{
+            const wLbs = (sess.unit||"lbs")==="kg" ? s.w*2.205 : s.w;
+            return wLbs > 0 && wLbs >= ((store.prs[ex.name]||0)*0.98);
+          });
+          return { name:ex.name, sets:doneSets, isPR };
+        }) },
         kudos: [], comments: [],
         // Local noon for the workout's date — avoids the UTC-midnight parse that pushed the
         // displayed date a day earlier in negative-offset timezones (e.g. EST).
@@ -12342,6 +12351,39 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       };
     }).filter(Boolean)
   ) : [];
+  // Fetch this profile's posts directly. The global feed only ever holds the latest page,
+  // so a user's posts silently vanish from their profile once they fall off it (or if RLS
+  // filters them from the unscoped feed query). Merged into store.posts, deduped by id.
+  useEffect(() => {
+    if (!userId) return;
+    const tok = token || loadSession()?.access_token;
+    if (!tok) return;
+    let alive = true;
+    (async () => {
+      try {
+        const rows = await sb.query(
+          `posts?user_id=eq.${userId}&select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)&order=created_at.desc&limit=50`,
+          {}, tok
+        );
+        if (!alive || !Array.isArray(rows) || rows.length === 0) return;
+        const mapped = rows.map(p => ({
+          id: p.id, userId: p.user_id, type: p.type, caption: p.caption || "",
+          imageData: p.image_url, location: p.location, workout: p.workout,
+          run: p.run, yoga: p.yoga, achievement: p.achievement,
+          unit: p.unit || "lbs", isPR: p.is_pr,
+          kudos: (p.kudos || []).map(k => k.user_id),
+          comments: (p.comments || []).map(c => ({ id: c.id, userId: c.user_id, text: c.text, likes: c.likes || [], createdAt: new Date(c.created_at).getTime() })),
+          createdAt: new Date(p.created_at).getTime(),
+        }));
+        setStore(prev => {
+          const have = new Set((prev.posts || []).map(p => p.id));
+          const add = mapped.filter(p => !have.has(p.id));
+          return add.length ? { ...prev, posts: [...prev.posts, ...add] } : prev;
+        });
+      } catch (e) { /* offline / RLS — profile falls back to feed page + history items */ }
+    })();
+    return () => { alive = false; };
+  }, [userId]);
   const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
   const weeklyStreak = isMe ? calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3) : { count: 0, thisWeek: 0, target: 3, status: "lost" };
