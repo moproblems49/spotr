@@ -1,0 +1,42 @@
+SESHD — iOS SETUP NOTES (for the Mac / Xcode side)
+====================================================
+
+1) Info.plist — add these keys (ios/App/App/Info.plist):
+---------------------------------------------------------
+<key>NSHealthShareUsageDescription</key>
+<string>Seshd reads your heart rate variability and resting heart rate to estimate daily recovery and muscle readiness. This data stays on your device and is never uploaded or shared.</string>
+
+(No NSHealthUpdateUsageDescription needed — the app only reads, never writes.
+Don't add it; declaring write access you don't use can trigger review questions.)
+
+2) PrivacyInfo.xcprivacy
+---------------------------------------------------------
+- Place the provided PrivacyInfo.xcprivacy file at: ios/App/App/PrivacyInfo.xcprivacy
+- In Xcode: right-click the "App" group → "Add Files to App…" → select it →
+  make sure "App" target is checked. It must be a member of the app target
+  or it does nothing.
+
+3) Capabilities (Xcode → App target → Signing & Capabilities)
+---------------------------------------------------------
+- Add capability: HealthKit (no background delivery / clinical records needed)
+- This also needs HealthKit enabled on the App ID in the Apple Developer
+  portal — Xcode usually does this automatically with automatic signing.
+
+4) App Store Connect — App Privacy questionnaire (answers that match
+   the privacy manifest + policy):
+---------------------------------------------------------
+- Data collected: Email Address, Name, Fitness (workout data),
+  Other User Content (posts/photos) — all "Linked to user",
+  all "App Functionality", none used for tracking.
+- Health data (HRV/resting HR): NOT collected — it never leaves the device.
+  Do NOT check "Health" in the questionnaire; checking it implies it's
+  transmitted off-device.
+- Tracking: No.
+- Privacy Policy URL: https://spotr-drab.vercel.app/privacy.html
+  (or your custom domain once you have one)
+
+5) Misc
+---------------------------------------------------------
+- Xcode 26 + Capacitor 8: friend should run `npx cap sync ios` after
+  pulling, then build/archive as usual.
+- Before submitting: replace CONTACT_EMAIL_HERE in privacy.html (2 places).
