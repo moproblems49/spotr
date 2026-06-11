@@ -1,4 +1,4 @@
-// v178091716403
+// v178091716413
 // PATCHED v29 - BUILD 2026-06-08 - HRV/RHR recovery vs 60-day baseline drives readiness + Recovery% chip
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
@@ -1098,18 +1098,24 @@ function _heatColor(t, C) {
 // (poor sleep slows recovery). Regions with no recent training are treated as fully ready.
 function muscleReadiness(store) {
   const now = Date.now();
-  const last = {}; // "view:region" -> { ts, vol, rpeSum, rpeN }
-  const add = (mn, ts, w, rpeSum, rpeN) => {
+  // v2 model: every recent session contributes fatigue that decays EXPONENTIALLY
+  // (fast recovery early, slower tail), instead of only counting the most recent
+  // session with a linear ramp. Two leg days close together now stack fatigue.
+  const hits = {};   // "view:region" -> array of { ts, vol, rpeSum, rpeN } (merged per day)
+  const freq28 = {}; // "view:region" -> distinct training days in the last 28 days
+  const add = (mn, ts, w, rpeSum, rpeN, intMult) => {
     _regionsFor(mn).forEach(([v, r]) => {
       const k = v + ":" + r;
-      if (!last[k] || ts > last[k].ts) last[k] = { ts, vol: w, rpeSum, rpeN };
-      else if (ts === last[k].ts) { last[k].vol += w; last[k].rpeSum += rpeSum; last[k].rpeN += rpeN; }
+      const arr = hits[k] || (hits[k] = []);
+      const same = arr.find(h => h.ts === ts);
+      if (same) { same.vol += w; same.rpeSum += rpeSum; same.rpeN += rpeN; same.intSum += (intMult || 1) * w; same.intN += w; }
+      else arr.push({ ts, vol: w, rpeSum, rpeN, intSum: (intMult || 1) * w, intN: w });
     });
   };
   const hist = store.history || {};
   for (const d of Object.keys(hist)) {
     const ts = new Date(d + "T12:00:00").getTime();
-    if (isNaN(ts) || now - ts > 14 * 864e5) continue;
+    if (isNaN(ts) || now - ts > 28 * 864e5) continue;
     for (const sess of Object.values(hist[d] || {})) {
       for (const ex of (sess.exercises || [])) {
         const working = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
@@ -1117,10 +1123,26 @@ function muscleReadiness(store) {
         if (!done) continue;
         let rpeSum = 0, rpeN = 0;
         working.forEach(s => { const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; } });
+        // Intensity proxy for lifters who don't log RPE: low-rep heavy work is more
+        // fatiguing per set than high-rep pump work, and sets near your PR cost more.
+        let repSum = 0, repN = 0, topW = 0;
+        working.forEach(s => {
+          const rr = parseFloat(s.reps); if (!isNaN(rr) && rr > 0) { repSum += rr; repN++; }
+          const ww = parseFloat(s.weight); if (!isNaN(ww) && ww > topW) topW = ww;
+        });
+        const avgReps = repN ? repSum / repN : null;
+        let intMult = avgReps == null ? 1 : avgReps <= 5 ? 1.10 : avgReps <= 8 ? 1.05 : avgReps <= 12 ? 1.0 : 0.95;
+        const prLbs = (store.prs || {})[ex.name];
+        if (prLbs > 0 && topW > 0) {
+          const topLbs = (sess.unit === "kg") ? topW * 2.205 : topW;
+          const ratio = topLbs / prLbs;
+          if (ratio >= 0.92) intMult += 0.08; else if (ratio >= 0.85) intMult += 0.04; else if (ratio < 0.6) intMult -= 0.05;
+        }
+        intMult = Math.max(0.9, Math.min(1.2, intMult));
         const primary = (typeof getMuscle === "function" && getMuscle(ex.name)) || (typeof resolveMuscle === "function" && resolveMuscle(ex.name)) || "";
-        add(primary, ts, done, rpeSum, rpeN);
+        add(primary, ts, done, rpeSum, rpeN, intMult);
         const secs = (EXERCISE_SECONDARIES && EXERCISE_SECONDARIES[ex.name]) || [];
-        secs.forEach(mn => add(mn, ts, done * 0.5, rpeSum, rpeN));
+        secs.forEach(mn => add(mn, ts, done * 0.5, rpeSum, rpeN, intMult));
       }
     }
   }
@@ -1136,18 +1158,28 @@ function muscleReadiness(store) {
   const RATE = { Quads:1.3, Hamstrings:1.3, Glutes:1.3, Lats:1.3, LowerBack:1.25, Traps:1.15, Chest:1.0, Shoulders:1.0, "Rear Delts":0.95, Biceps:0.8, Triceps:0.8, Forearms:0.75, Calves:0.8, Abs:0.8, Obliques:0.8 };
   const readiness = {};
   let usedRpe = false;
-  for (const k in last) {
-    const { ts, vol, rpeSum, rpeN } = last[k];
+  for (const k in hits) {
     const region = k.split(":")[1];
     const rate = RATE[region] || 1;
-    const avgRpe = rpeN > 0 ? rpeSum / rpeN : null;
-    if (avgRpe) usedRpe = true;
-    const rpeMult = avgRpe ? Math.max(0.85, Math.min(1.25, 0.6 + 0.06 * avgRpe)) : 1; // hard sets fatigue more
-    const hoursSince = (now - ts) / 36e5;
-    const recoveryHours = (40 + Math.min(vol, 20) * 2.2) * rate * rpeMult / recMod;
-    readiness[k] = Math.max(0, Math.min(1, hoursSince / recoveryHours));
+    // Repeated-bout effect: muscles trained often recover faster.
+    const freq = (freq28[k] = hits[k].length);
+    const freqMult = freq >= 8 ? 0.85 : freq >= 5 ? 0.92 : 1;
+    let residual = 0;
+    for (const { ts, vol, rpeSum, rpeN, intSum, intN } of hits[k]) {
+      const avgRpe = rpeN > 0 ? rpeSum / rpeN : null;
+      if (avgRpe) usedRpe = true;
+      // With RPE: explicit effort. Without: the rep-range + PR-proximity proxy.
+      const rpeMult = avgRpe ? Math.max(0.85, Math.min(1.25, 0.6 + 0.06 * avgRpe)) : (intN > 0 ? intSum / intN : 1);
+      const hoursSince = (now - ts) / 36e5;
+      // Same volume->hours scaling as v1, converted to an exponential time constant
+      // (~95% recovered at the old "fully recovered" mark).
+      const tau = ((40 + Math.min(vol, 20) * 2.2) * rate * freqMult * rpeMult / recMod) / 3;
+      const fatigue0 = Math.min(1.4, 0.45 + vol / 14) * rpeMult;
+      residual += fatigue0 * Math.exp(-hoursSince / tau);
+    }
+    readiness[k] = Math.max(0, Math.min(1, 1 - residual));
   }
-  return { readiness, recMod, rec, usedRpe, anyData: Object.keys(last).length > 0 };
+  return { readiness, recMod, rec, usedRpe, anyData: Object.keys(hits).length > 0 };
 }
 
 // Readiness ramp: 0 = recovering (red), 0.5 = amber, 1 = ready (green).
@@ -1192,7 +1224,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
 
   const fillFor = (key) => {
     if (mode === "readiness") {
-      const t = key in readiness ? readiness[key] : 1; // untrained = fully ready
+      const raw = key in readiness ? readiness[key] : 1; // untrained = fully ready
+      // ~85%+ recovered is "ready to train again" — at a normal 2x/week cadence a muscle
+      // sits at 85-95% on its next session day, and that should read GREEN, not amber.
+      const t = Math.min(1, raw / 0.85);
       return _readyColor(t);
     }
     if (mode === "strength") {
@@ -1992,6 +2027,36 @@ function getProgressInsights(store, unit) {
 }
 
 // Parse rep range like "8-12" or "8–12" or "5,3,1" or "8" → { low, high }
+const APP_BUILD = "2026-06-11";
+// Crash/error reporter — writes to the client_errors table (insert-only RLS).
+// Throttled to 5 unique errors per session so a render loop can't flood the table.
+const _reportedErrors = new Set();
+function reportError(message, stack, source) {
+  try {
+    const key = String(message).slice(0, 120);
+    if (_reportedErrors.has(key) || _reportedErrors.size >= 5) return;
+    _reportedErrors.add(key);
+    const uid_ = (() => { try { return loadSession()?.user?.id || null; } catch { return null; } })();
+    fetch(`${SUPABASE_URL}/rest/v1/client_errors`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      body: JSON.stringify({
+        user_id: uid_,
+        message: String(message).slice(0, 1000),
+        stack: String(stack || "").slice(0, 4000),
+        source: source || "unknown",
+        app_version: APP_BUILD,
+        ua: (typeof navigator !== "undefined" ? navigator.userAgent : "").slice(0, 300),
+      }),
+    }).catch(() => {});
+  } catch (e) { /* never let the reporter itself throw */ }
+}
+if (typeof window !== "undefined" && !window.__seshdErrHooked) {
+  window.__seshdErrHooked = true;
+  window.addEventListener("error", e => reportError(e.message, e.error?.stack, "window.onerror"));
+  window.addEventListener("unhandledrejection", e => reportError(e.reason?.message || String(e.reason), e.reason?.stack, "unhandledrejection"));
+}
+
 function parseRepRange(reps) {
   if (!reps) return null;
   const s = String(reps).replace(/\s/g,"");
@@ -2120,10 +2185,16 @@ function computeStrengthScore(store, unit, sex = "male") {
           const w = parseFloat(s.weight ?? s.w);
           const r = parseInt(s.reps ?? s.r);
           if (!w || !r || r < 1) continue;
-          const e1rmRaw = calc1RM(w, r);
+          // Epley is unreliable past ~10 reps (a 20-rep set wildly inflates e1RM), so cap
+          // the rep input — high-rep sets still count, just conservatively.
+          const e1rmRaw = calc1RM(w, Math.min(r, 10));
           if (!e1rmRaw) continue;
           // Normalize to the display unit used for bodyweight comparison.
-          const e1rm = sUnit === unit ? e1rmRaw : cvt(e1rmRaw, sUnit, unit);
+          let e1rm = sUnit === unit ? e1rmRaw : cvt(e1rmRaw, sUnit, unit);
+          // A max from 8 months ago overstates current strength after a layoff — decay
+          // bests older than 4 months by ~1.2%/month, floored at 85%.
+          const ageDays = (Date.now() - new Date(d + "T12:00:00").getTime()) / 864e5;
+          if (ageDays > 120) e1rm *= Math.max(0.85, 1 - (ageDays - 120) * 0.0004);
           if (!liftBestE1RM[canonical] || e1rm > liftBestE1RM[canonical]) liftBestE1RM[canonical] = e1rm;
         }
       }
@@ -2244,8 +2315,15 @@ function buildCoachContext(store, unit) {
     const dl = detectDeloadNeeded(store, l, unit);
     if (dl.stalled) stalls.push({ lift: l, detail: dl.reason });
   });
+  const mr = muscleReadiness(store);
+  const fatiguedMuscles = Object.entries(mr.readiness || {})
+    .filter(([, v]) => v < 0.7).sort((a, b) => a[1] - b[1]).slice(0, 5)
+    .map(([k, v]) => ({ muscle: _regionLabel(k), recoveredPct: Math.round(v * 100) }));
+  const ms = muscleStrength(store, unit, sex);
   return {
     unit, sex,
+    fatiguedMuscles,
+    imbalances: ms.ready ? (ms.imbalances || []) : [],
     strength: ss.ready ? { overall: ss.overall, score: ss.score, lifts: ss.lifts.map(l => ({ lift: l.lift, level: l.level, ratio: l.ratio })) } : null,
     bodyweight: ss.ready ? ss.bodyweight : null,
     consistency: { weeklyStreak: streak.count, thisWeek: streak.thisWeek, target: streak.target },
@@ -2378,15 +2456,19 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
         reason: `Hit ${range.high} on this set — add ${inc} ${unit}`,
       };
     } else {
-      // Same weight, push for more reps (within the range)
-      const target = Math.min(range.high, Math.max(lastReps + 1, range.low));
+      // Same weight, push for more reps — but never suggest a jump of more than 2 reps
+      // over last session ("did 8 → do 14" isn't progression advice). If the program's
+      // range starts far above what they did, build toward it gradually.
+      const target = Math.min(range.high, Math.max(range.low, lastReps + 1), lastReps + 2);
       return {
         type: "reps",
         weight: lastWeight,
         reps: target,
         note: `same weight`,
         deltaReps: target - lastReps,
-        reason: target > lastReps ? `Push for ${target} reps` : `Match last session`,
+        reason: target > lastReps
+          ? (target < range.low ? `Build toward ${range.low} — aim for ${target}` : `Push for ${target} reps`)
+          : `Match last session`,
       };
     }
   }
@@ -2951,7 +3033,7 @@ function SeshdLogo({ C, big = false }) {
 function Avatar({ user, size = 36, onClick, C, ring = false }) {
   const imgSrc = user?.avatarUrl || user?.profileImage;
   const content = imgSrc
-    ? <img src={imgSrc} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
+    ? <img src={imgSrc} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
     : <span>{user?.avatar || "👤"}</span>;
 
   const innerStyle = {
@@ -3597,6 +3679,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
         onChange={e => { setQ(e.target.value); onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder="Search exercises..."
+        autoCapitalize="words"
         style={{
           width:"100%", background:"transparent", border:"none",
           padding:"8px 0", fontSize:16, fontWeight:600,
@@ -4067,8 +4150,11 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           color:isDone?"#fff":C.muted, cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"center",
           transition:"all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          animation: isDone ? "seshdPop 0.32s cubic-bezier(0.34, 1.8, 0.64, 1)" : "none",
         }}>
-          <Icon name="check" size={16} color={isDone?"#fff":C.muted} strokeWidth={2.8}/>
+          <span key={isDone ? "y" : "n"} style={{ display:"flex", animation: isDone ? "seshdPop 0.32s cubic-bezier(0.34, 1.8, 0.64, 1)" : "none" }}>
+            <Icon name="check" size={16} color={isDone?"#fff":C.muted} strokeWidth={2.8}/>
+          </span>
         </button>
       </div>
 
@@ -5814,6 +5900,19 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 // ═════════════════════════════════════════════════════════════════════════════
 function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, onProgramEdited, startWorkout, initialDayIdx = 0, token }) {
   const [localProg, setLocalProg] = useState(() => JSON.parse(JSON.stringify(prog)));
+  const [editorReorder, setEditorReorder] = useState(false);
+  const editorSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+  );
+  function handleEditorDragEnd({ active, over }) {
+    if (!over || active.id === over.id) return;
+    const from = parseInt(String(active.id).split("-")[1]);
+    const to = parseInt(String(over.id).split("-")[1]);
+    if (isNaN(from) || isNaN(to)) return;
+    haptic("light");
+    patch({ ...localProg, days: localProg.days.map((d, di) => di !== activeDay ? d : { ...d, exercises: arrayMove(d.exercises, from, to) }) });
+  }
   const [activeDay, setActiveDay] = useState(initialDayIdx);
   const [shareModal, setShareModal] = useState(null); // { code, generating } when open
   const [confirmDelDay, setConfirmDelDay] = useState(false); // two-tap day-delete confirm
@@ -5885,7 +5984,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           }} aria-label="Share program" style={{ width:36, height:36, borderRadius:10, background:"transparent", border:`1px solid ${BORD}`, cursor:"pointer", fontFamily:F, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <Icon name="share" size={16} color={TXT}/>
           </button>
-          <button onClick={() => { if (!onSaveProgram) return; haptic("success"); toast("Program saved", "success"); onSaveProgram(localProg); }} style={{ background:BLUE, border:"none", borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
+          <button onClick={() => { if (!onSaveProgram) return; haptic("success"); toast("Program saved", "success"); onSaveProgram(localProg); onBack && onBack(); }} style={{ background:BLUE, border:"none", borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
         </div>
       </div>
 
@@ -5965,27 +6064,6 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
         </div>
       )}
 
-      {/* Day selector tabs */}
-      <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"10px 16px", display:"flex", gap:6, overflowX:"auto", flexShrink:0 }}>
-        {(localProg.days||[]).map((d,di) => {
-          const col = DAY_COLORS[di%7];
-          const active = activeDay === di;
-          return (
-            <button key={di} onClick={() => { setActiveDay(di); setConfirmDelDay(false); }} style={{
-              padding:"8px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:F,
-              fontSize:12, fontWeight:700, whiteSpace:"nowrap", flexShrink:0,
-              background: active ? col : (isDark?"#1e1e1e":"#EEF2F7"),
-              color: active ? "#fff" : SUB,
-              boxShadow: active ? `0 4px 12px ${col}55` : "none",
-            }}>{d.name||`Day ${di+1}`}</button>
-          );
-        })}
-        <button onClick={() => {
-          const nd = { id:uid(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
-          patch({...localProg, days:[...(localProg.days||[]), nd]});
-          setActiveDay((localProg.days||[]).length);
-        }} style={{ padding:"8px 14px", borderRadius:20, border:`1.5px dashed ${isDark?"#333":"#CBD5E1"}`, background:"none", cursor:"pointer", fontFamily:F, fontSize:12, fontWeight:700, color:BLUE, whiteSpace:"nowrap", flexShrink:0 }}>+ Day</button>
-      </div>
 
       {/* Day name + Start */}
       <div style={{ background:isDark?"#111":"#fff", borderBottom:`1px solid ${BORD}`, padding:"12px 18px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
@@ -6027,6 +6105,9 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 
       {/* Exercise list */}
       <div style={{ flex:1, overflowY:"auto", padding:"12px 16px 100px" }}>
+        {(day.exercises||[]).length > 1 && (
+          <button onClick={() => setEditorReorder(true)} style={{ display:"block", marginLeft:"auto", marginBottom:10, background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"6px 12px", fontSize:11, fontWeight:700, letterSpacing:0.5, color:SUB, cursor:"pointer", fontFamily:F }}>REORDER</button>
+        )}
         {(day.exercises||[]).length === 0 ? (
           <div style={{ padding:"40px 20px", borderRadius:20, background:CARD, color:SUB, textAlign:"center", marginTop:8, border:`1px solid ${BORD}` }}>
             <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="barbell" size={30} color="currentColor"/></div>
@@ -6040,15 +6121,14 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
             const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#8B5CF6",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
             const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
             return (
-              <div key={ei} style={{ marginBottom:12, background:CARD, borderRadius:16, overflow:"hidden", border:`1px solid ${BORD}`, boxShadow:isDark?"none":"0 1px 4px rgba(0,0,0,0.05)" }}>
+              <div key={ei} style={{ marginBottom:12, background:CARD, borderRadius:16, overflow:"visible", border:`1px solid ${BORD}`, boxShadow:isDark?"none":"0 1px 4px rgba(0,0,0,0.05)" }}>
                 {/* Exercise header */}
                 <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderLeft:`4px solid ${mColor}` }}>
                   <div style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                     <MuscleIcon muscle={exInfo?.muscle||""} size={22} name={ex.name} C={C}/>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <input value={ex.name} onChange={e => updateEx(ei,{name:e.target.value})} placeholder="Exercise name"
-                      style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:14, fontWeight:700, color:TXT, fontFamily:F }} />
+                    <ExerciseInput value={ex.name} onChange={name => updateEx(ei,{name})} C={C} store={store} token={token}/>
                     {exInfo?.muscle && <div style={{ fontSize:11, color:SUB, marginTop:1 }}>{exInfo.muscle}</div>}
                   </div>
                   <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"4px 6px", lineHeight:1 }}>×</button>
@@ -6093,6 +6173,31 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
         )}
 
         <button onClick={addEx} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${isDark?"#2563eb44":"#BFDBFE"}`, borderRadius:16, color:BLUE, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
+        <button onClick={() => {
+          const nd = { id:uid(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
+          patch({...localProg, days:[...(localProg.days||[]), nd]});
+          setActiveDay((localProg.days||[]).length);
+        }} style={{ width:"100%", marginTop:10, padding:"13px", background:"none", border:`1.5px dashed ${isDark?"#333":"#CBD5E1"}`, borderRadius:16, color:SUB, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Day</button>
+
+        {editorReorder && (
+          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:400, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column" }}>
+            <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
+              <button onClick={() => setEditorReorder(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:BLUE, cursor:"pointer", fontFamily:F }}>Done</button>
+              <div style={{ fontSize:15, fontWeight:700, color:TXT, letterSpacing:-0.2 }}>Reorder exercises</div>
+              <div style={{ width:48 }}/>
+            </div>
+            <div style={{ fontSize:11, color:SUB, padding:"10px 16px 4px", letterSpacing:0.4, fontWeight:600 }}>DRAG TO MOVE</div>
+            <div style={{ padding:"6px 12px 24px", overflowY:"auto", flex:1 }}>
+              <DndContext sensors={editorSensors} collisionDetection={closestCenter} onDragEnd={handleEditorDragEnd} onDragStart={() => haptic("medium")}>
+                <SortableContext items={day.exercises.map((_, ei) => `eed-${ei}`)} strategy={verticalListSortingStrategy}>
+                  {day.exercises.map((ex, ei) => (
+                    <SortableExerciseRow key={`eed-${ei}`} id={`eed-${ei}`} ex={ex} C={C}/>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -7070,7 +7175,7 @@ function SortableExerciseRow({ id, ex, C }) {
       <MuscleIcon muscle={exInfo?.muscle||""} size={32} name={ex.name} C={C}/>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ex.name || "Unnamed"}</div>
-        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.sets?.length || 0} sets · {exInfo?.muscle || ""}</div>
+        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{Array.isArray(ex.sets) ? ex.sets.length : (parseInt(ex.sets) || 0)} sets · {exInfo?.muscle || ""}</div>
       </div>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}>
         <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
@@ -7162,6 +7267,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [subTab, setSubTab] = useState("workout");
+  const [histQuery, setHistQuery] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
   const [prefilledCode, setPrefilledCode] = useState(null);
   const [showAICoach, setShowAICoach] = useState(false);
@@ -7374,6 +7480,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     }
     return () => { cancelRestNotification(); };
   }, [rest?.running, rest?.startedAt, rest?.total]);
+
+  // Keep the screen awake while a workout is in progress so the phone doesn't lock
+  // mid-set. Re-acquires when the app returns to the foreground (the OS releases wake
+  // locks on background). No-ops silently on unsupported browsers.
+  useEffect(() => {
+    if (!session) return;
+    let lock = null, alive = true;
+    async function acquire() {
+      try { if (alive && navigator.wakeLock) lock = await navigator.wakeLock.request("screen"); } catch (e) {}
+    }
+    function onVis() { if (document.visibilityState === "visible") acquire(); }
+    acquire();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { alive = false; document.removeEventListener("visibilitychange", onVis); try { lock && lock.release(); } catch (e) {} };
+  }, [!!session]);
 
   function startWorkout(day, progId) {
     const exs = day
@@ -7794,6 +7915,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         },
       });
       setShowWorkoutSummary(true);
+      haptic("success");
 
       // Save to DB and verify it landed. The local store already has the workout
       // (via setStore above), and that's persisted to localStorage — but the DB is
@@ -8352,6 +8474,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {showWorkoutSummary && workoutSummary && (
           <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+            <Confetti duration={2.5}/>
             <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"90dvh", display:"flex", flexDirection:"column" }}>
               <div style={{ overflowY:"auto", flex:1, padding:"24px 18px 0" }}>
                 {/* Shareable card — magazine-quality art piece */}
@@ -8613,15 +8736,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   const groupLabel = selectedGroups.length > 0 ? ` + ${selectedGroups.length} group${selectedGroups.length>1?"s":""}` : "";
                   return (
                     <button onClick={() => {
-                      // Find active program's share code to append to caption
-                      const activeProg = (store.programs||[]).find(p => p.id === store.activeProgramId);
-                      const progCode = activeProg?.shareCode || null;
                       if (workoutSummary.shareData) {
-                        const enrichedShareData = progCode
-                          ? { ...workoutSummary.shareData, caption: `${workoutSummary.shareData.caption} · Try my program: ${progCode}` }
-                          : workoutSummary.shareData;
-                        // Share to feed AND any selected groups in one shot
-                        onShareWorkout({ ...enrichedShareData, groupIds: selectedGroups, groupOnly: false });
+                        // Share to feed AND any selected groups in one shot (no auto-appended
+                        // program code — people can share their program deliberately instead).
+                        onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, groupOnly: false });
                       }
                       // (External/native share removed — it could only send plain text, not the
                       // summary card, and any link has nowhere public to point yet. In-app feed +
@@ -8944,67 +9062,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })()}
 
-          {/* "On this day" — surfaces a comparable past workout for context */}
-          {(() => {
-            const today = new Date(); today.setHours(0,0,0,0);
-            const candidates = [
-              { months: 12, label: "1 year ago" },
-              { months: 6, label: "6 months ago" },
-              { months: 3, label: "3 months ago" },
-              { months: 1, label: "1 month ago" },
-            ];
-            let match = null;
-            for (const c of candidates) {
-              const target = new Date(today);
-              target.setMonth(target.getMonth() - c.months);
-              // Allow a ±3 day window around the target date
-              for (let offset = -3; offset <= 3; offset++) {
-                const probe = new Date(target);
-                probe.setDate(probe.getDate() + offset);
-                const k = dKey(probe);
-                const day = store.history?.[k];
-                if (day && Object.keys(day).length > 0) {
-                  const session = Object.values(day)[0];
-                  match = { label: c.label, session, date: k, daysAway: Math.abs(offset) };
-                  break;
-                }
-              }
-              if (match) break;
-            }
-            if (!match) return null;
-
-            const vol = (match.session.exercises||[]).reduce((a, ex) => a + (ex.sets||[]).filter(s => s.done).reduce((b, s) => b + (parseFloat(s.weight)||0)*(parseFloat(s.reps)||0), 0), 0);
-            const setCount = (match.session.exercises||[]).reduce((a, ex) => a + (ex.sets||[]).filter(s => s.done).length, 0);
-
-            return (
-              <div style={{
-                background:C.surface, border:`1px solid ${C.border}`, borderRadius:14,
-                padding:"12px 14px", marginBottom:12,
-                display:"flex", alignItems:"center", gap:12,
-              }}>
-                <div style={{
-                  width:36, height:36, borderRadius:10, background:C.divider,
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  flexShrink:0, color:C.sub,
-                }}>
-                  <Icon name="clock" size={16}/>
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:10, fontWeight:600, color:C.sub, letterSpacing:0.6, marginBottom:1 }}>
-                    {match.label.toUpperCase()}
-                  </div>
-                  <div style={{ fontSize:13, color:C.text, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {match.session.dayName || "Workout"}
-                  </div>
-                  <div style={{ fontSize:11, color:C.sub, fontFamily:MONO, marginTop:1 }}>
-                    {setCount} sets · {Math.round(vol)} {match.session.unit || "lbs"}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Quick Start */}
+            {/* Quick Start */}
           <button onClick={() => startWorkout(null)} style={{
             width:"100%", background:C.text, color:C.bg,
             border:"none", borderRadius:16, padding:"18px",
@@ -9041,7 +9099,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {(() => {
             const insights = memoInsights;
             if (!insights.length) return null;
-            return <InsightCards insights={insights} C={C} big onDismiss={(key) => setStore(p => ({ ...p, dismissedInsights: [...(p.dismissedInsights || []), key] }))}/>;
+            return <InsightCards insights={insights} C={C} big onDismiss={(key) => setStore(p => {
+              const next = [...(p.dismissedInsights || []), key];
+              try {
+                const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
+                if (tok && currentUserId) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ dismissed_insights: next }) }, tok).catch(() => {});
+              } catch (e) {}
+              return { ...p, dismissedInsights: next };
+            })}/>;
           })()}
 
           {prog ? (
@@ -9408,6 +9473,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {/* Workout list */}
           <div style={{ padding:"14px 14px 0" }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
+            {Object.keys(store.history || {}).length > 0 && (
+              <div style={{ marginBottom:14 }}>
+                <input value={histQuery} onChange={e => setHistQuery(e.target.value)}
+                  placeholder="Search by exercise or day…" autoCapitalize="none"
+                  style={{ width:"100%", boxSizing:"border-box", padding:"10px 14px", borderRadius:12,
+                    border:`1px solid ${C.border}`, background:C.surface, color:C.text,
+                    fontSize:14, outline:"none", fontFamily:F }}/>
+              </div>
+            )}
             {!Object.keys(store.history || {}).length && dataLoading && (
               // Loading — show skeleton rows instead of flashing the empty state to returning users
               <div>
@@ -9437,7 +9511,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 }}>Go to workouts</button>
               </div>
             )}
-            {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => (
+            {Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).map(([date, sessions]) => {
+              const q = histQuery.trim().toLowerCase();
+              if (q) {
+                const filtered = Object.fromEntries(Object.entries(sessions).filter(([, s]) =>
+                  (s.dayName || "").toLowerCase().includes(q) ||
+                  (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
+                ));
+                if (!Object.keys(filtered).length) return null;
+                sessions = filtered;
+              }
+              return (
               <div key={date} data-history-date={date} style={{ marginBottom:16, scrollMarginTop:60 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
                   {new Date(date + "T12:00:00").toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
@@ -9544,7 +9628,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })}
               </div>
-            ))}
+            );})}
           </div>
         </div>
         </PullToRefresh>
@@ -12185,7 +12269,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
   );
 }
 
-function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, onRefresh, token, onPostKudos, onPostComment, onPostEditComment, onPostDeleteComment, onPostLikeComment, onPostEdit, onPostDelete }) {
+function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, onRefresh, token, onPostKudos, onPostComment, onPostEditComment, onPostDeleteComment, onPostLikeComment, onPostEdit, onPostDelete, onMessage }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
@@ -12386,6 +12470,27 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   }, [userId]);
   const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
+  const coverRef = useRef(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  async function submitFeedback() {
+    const text = feedbackText.trim();
+    if (!text || feedbackSending) return;
+    setFeedbackSending(true);
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${token || loadSession()?.access_token || SUPABASE_KEY}` },
+        body: JSON.stringify({ user_id: (loadSession()?.user?.id === currentUserId ? currentUserId : null), text: text.slice(0, 4000), app_version: APP_BUILD }),
+      });
+      toast("Thanks for the feedback!", "success");
+      setFeedbackText(""); setShowFeedback(false);
+    } catch (e) {
+      toast("Couldn't send — try again", "error");
+    }
+    setFeedbackSending(false);
+  }
   const weeklyStreak = isMe ? calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3) : { count: 0, thisWeek: 0, target: 3, status: "lost" };
   const streak = weeklyStreak.count;
   const followers = store.users.find(u => u.id === userId)?.followers?.length || 0;
@@ -12501,20 +12606,53 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     r.readAsDataURL(file);
   }
 
+  async function handleCover(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const tok = token || loadSession()?.access_token;
+    const r = new FileReader();
+    r.onload = async ev => {
+      const dataUrl = ev.target.result;
+      // Instant local preview
+      setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: dataUrl } : u) }));
+      if (tok) {
+        try {
+          const uploadedUrl = await uploadImage(dataUrl, tok, currentUserId);
+          if (uploadedUrl && !uploadedUrl.startsWith("data:")) {
+            await sb.query(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ cover_url: uploadedUrl }) }, tok);
+            setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: uploadedUrl } : u) }));
+            toast("Cover photo updated!", "success");
+          } else {
+            toast("Upload failed — preview only", "error");
+          }
+        } catch (err) {
+          toast("Couldn't save cover", "error");
+        }
+      }
+    };
+    r.readAsDataURL(file);
+  }
+
   return (
     <PullToRefresh onRefresh={onRefresh} C={C}>
     <div style={{ paddingBottom:20 }}>
-      {/* Subtle identity banner — adds depth behind the profile header without disturbing the
-          avatar/stats/actions logic below it. */}
-      {!onBack && (
-        <div style={{ height:44, marginBottom:-22, background:`linear-gradient(120deg, ${C.accent}, ${C.accent2 || C.accent} 60%, ${C.accent})`, position:"relative", overflow:"hidden" }}>
-          <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>
-        </div>
-      )}
-      <div style={{ padding:"12px 14px", position:"relative" }}>
+      {/* Cover photo — user image with gradient fallback. Tap "Edit cover" (own profile) to change. */}
+      <div style={{ height:110, marginBottom:-26, background:`linear-gradient(120deg, ${C.accent}, ${C.accent2 || C.accent} 60%, ${C.accent})`, position:"relative", overflow:"hidden" }}>
+        {user?.coverUrl
+          ? <img src={user.coverUrl} alt="" style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+          : <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>}
+        <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))" }}/>
         {onBack && (
-          <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", marginBottom:10, display:"block" }}>‹</button>
+          <button onClick={onBack} style={{ position:"absolute", top:8, left:10, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, fontSize:17, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
         )}
+        {isMe && (
+          <>
+            <input ref={coverRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleCover}/>
+            <button onClick={() => coverRef.current?.click()} style={{ position:"absolute", top:8, right:10, background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, padding:"5px 11px", fontSize:11, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Edit cover</button>
+          </>
+        )}
+      </div>
+      <div style={{ padding:"12px 14px", position:"relative" }}>
         <div style={{ display:"flex", alignItems:"center", gap:20, marginBottom:14 }}>
           <div style={{ position:"relative" }}>
             <Avatar user={user} size={76} C={C} onClick={isMe ? () => avatarRef.current?.click() : undefined}/>
@@ -12546,12 +12684,22 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           {user?.bio && <div style={{ fontSize:13, color:C.text, marginTop:4 }}>{user.bio}</div>}
         </div>
         {!isMe ? (
-          <button onClick={toggleFollow} style={{
-            width:"100%", padding:"8px", background:isFollowing?"transparent":C.accent,
-            border:`1px solid ${isFollowing?C.border:C.accent}`, borderRadius:8,
-            fontSize:13, fontWeight:600, color:isFollowing?C.text:"#fff",
-            cursor:"pointer", fontFamily:F
-          }}>{isFollowing ? "Following" : "Follow"}</button>
+          <div style={{ display:"flex", gap:6 }}>
+            <button onClick={toggleFollow} style={{
+              flex:1, padding:"8px", background:isFollowing?"transparent":C.accent,
+              border:`1px solid ${isFollowing?C.border:C.accent}`, borderRadius:8,
+              fontSize:13, fontWeight:600, color:isFollowing?C.text:"#fff",
+              cursor:"pointer", fontFamily:F
+            }}>{isFollowing ? "Following" : "Follow"}</button>
+            {onMessage && (
+              <button onClick={() => onMessage(userId)} style={{
+                flex:1, padding:"8px", background:"transparent",
+                border:`1px solid ${C.border}`, borderRadius:8,
+                fontSize:13, fontWeight:600, color:C.text,
+                cursor:"pointer", fontFamily:F
+              }}>Message</button>
+            )}
+          </div>
         ) : (
           <div style={{ display:"flex", gap:6 }}>
             <button onClick={() => setShowEdit(true)} style={{
@@ -12765,6 +12913,22 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {/* Settings modal */}
       {showBody && createPortal(<BodyTrackingScreen store={store} setStore={setStore} currentUserId={currentUserId} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>, document.body)}
 
+      {/* Feedback modal */}
+      {showFeedback && (
+        <div onClick={() => setShowFeedback(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+            <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>Send feedback</div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>Bug, idea, or anything else — it goes straight to the developer.</div>
+            <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} rows={4} placeholder="What's on your mind?"
+              style={{ width:"100%", boxSizing:"border-box", padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:C.card || "transparent", color:C.text, fontSize:14, outline:"none", fontFamily:F, resize:"none" }}/>
+            <div style={{ display:"flex", gap:8, marginTop:12 }}>
+              <button onClick={() => setShowFeedback(false)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
+              <button onClick={submitFeedback} disabled={!feedbackText.trim() || feedbackSending} style={{ flex:1, padding:"12px", background:feedbackText.trim() ? C.accent : C.border, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>{feedbackSending ? "Sending…" : "Send"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
       {showDelete && createPortal((
         <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
@@ -12949,6 +13113,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 }}>
                   <div style={{ fontSize:14, color:C.text }}>Export workouts <span style={{ fontSize:11, color:C.sub }}>(CSV / spreadsheet)</span></div>
                   <Icon name="share" size={15} color={C.sub}/>
+                </button>
+                <button onClick={() => { setShowSettings(false); setShowFeedback(true); }} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Send feedback</div>
+                  <span style={{ fontSize:14, color:C.sub }}>💬</span>
                 </button>
                 <button onClick={() => { setShowSettings(false); setTimeout(() => onSignOut && onSignOut(), 200); }} style={{
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
@@ -13715,6 +13887,171 @@ function AICoachSheet({ store, unit, C, onClose }) {
   );
 }
 
+
+// ─── Direct Messages ──────────────────────────────────────────────────────────
+// v1: simple polled DMs. One `messages` table; conversations are derived by peer.
+// No realtime — the thread polls every 5s while open, unread count every 30s.
+function fmtMsgTime(ts) {
+  const d = new Date(ts), now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const days = Math.floor((now - d) / 86400000);
+  if (days < 7) return d.toLocaleDateString([], { weekday: "short" });
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) {
+  const [rows, setRows] = useState(null); // null = loading
+  const aliveRef = useRef(true);
+  const load = useCallback(async () => {
+    const tok = token || loadSession()?.access_token;
+    if (!tok) { setRows([]); return; }
+    try {
+      const ms = await sb.query(`messages?or=(sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId})&order=created_at.desc&limit=300`, {}, tok);
+      if (aliveRef.current) setRows(Array.isArray(ms) ? ms : []);
+    } catch (e) { if (aliveRef.current) setRows(r => (r === null ? [] : r)); }
+  }, [currentUserId, token]);
+  useEffect(() => {
+    aliveRef.current = true;
+    load();
+    const t = setInterval(load, 10000);
+    return () => { aliveRef.current = false; clearInterval(t); };
+  }, [load]);
+
+  const convos = useMemo(() => {
+    const byPeer = new Map();
+    for (const m of rows || []) {
+      const peer = m.sender_id === currentUserId ? m.recipient_id : m.sender_id;
+      if (!byPeer.has(peer)) byPeer.set(peer, { peer, last: m, unread: 0 });
+      if (m.recipient_id === currentUserId && !m.read_at) byPeer.get(peer).unread++;
+    }
+    return [...byPeer.values()];
+  }, [rows, currentUserId]);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+        <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
+        <div style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:F }}>Messages</div>
+      </div>
+      <PullToRefresh onRefresh={load} C={C}>
+      <div>
+        {rows === null && <div style={{ padding:24, textAlign:"center", color:C.sub, fontSize:13 }}>Loading…</div>}
+        {rows !== null && convos.length === 0 && (
+          <div style={{ padding:"48px 24px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.6 }}>
+            No messages yet.<br/>Open someone's profile and tap <b>Message</b> to start a chat.
+          </div>
+        )}
+        {convos.map(c => {
+          const u = (store.users || []).find(x => x.id === c.peer);
+          return (
+            <div key={c.peer} onClick={() => onOpenChat(c.peer)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", cursor:"pointer", borderBottom:`1px solid ${C.divider}` }}>
+              <Avatar user={u || { name:"?", username:"unknown" }} size={46} C={C}/>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:8 }}>
+                  <div style={{ fontSize:14, fontWeight:c.unread ? 800 : 600, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u?.name || u?.username || "User"}</div>
+                  <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{fmtMsgTime(c.last.created_at)}</div>
+                </div>
+                <div style={{ fontSize:13, color:c.unread ? C.text : C.sub, fontWeight:c.unread ? 600 : 400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginTop:2 }}>
+                  {c.last.sender_id === currentUserId ? "You: " : ""}{c.last.text}
+                </div>
+              </div>
+              {c.unread > 0 && <span style={{ background:C.accent, color:"#fff", borderRadius:10, minWidth:18, height:18, padding:"0 5px", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>{c.unread}</span>}
+            </div>
+          );
+        })}
+      </div>
+      </PullToRefresh>
+    </div>
+  );
+}
+
+function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
+  const [msgs, setMsgs] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+  const peer = (store.users || []).find(u => u.id === peerId);
+  const tok = token || loadSession()?.access_token;
+
+  async function load() {
+    if (!tok) return;
+    try {
+      const ms = await sb.query(`messages?or=(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerId}),and(sender_id.eq.${peerId},recipient_id.eq.${currentUserId}))&order=created_at.asc&limit=300`, {}, tok);
+      if (Array.isArray(ms)) setMsgs(ms);
+      // Mark incoming as read (best-effort)
+      sb.query(`messages?sender_id=eq.${peerId}&recipient_id=eq.${currentUserId}&read_at=is.null`, { method:"PATCH", body: JSON.stringify({ read_at: new Date().toISOString() }) }, tok)
+        .then(() => onRead && onRead()).catch(() => {});
+    } catch (e) { setMsgs(m => (m === null ? [] : m)); }
+  }
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block:"end" }); }, [msgs?.length]);
+
+  async function send() {
+    const text = draft.trim();
+    if (!text || sending || !tok) return;
+    setSending(true);
+    const tmp = { id: "tmp_" + Date.now(), sender_id: currentUserId, recipient_id: peerId, text, created_at: new Date().toISOString(), _tmp: true };
+    setMsgs(m => [...(m || []), tmp]);
+    setDraft("");
+    try {
+      const res = await sb.query("messages", { method:"POST", body: JSON.stringify({ sender_id: currentUserId, recipient_id: peerId, text }) }, tok);
+      const row = Array.isArray(res) ? res[0] : null;
+      if (row) setMsgs(m => (m || []).map(x => x.id === tmp.id ? row : x));
+      haptic("light");
+    } catch (e) {
+      setMsgs(m => (m || []).filter(x => x.id !== tmp.id));
+      setDraft(text);
+      toast("Couldn't send — check connection", "error");
+    }
+    setSending(false);
+  }
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+        <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
+        <Avatar user={peer || { name:"?" }} size={32} C={C}/>
+        <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:F }}>{peer?.name || peer?.username || "User"}</div>
+      </div>
+      <div style={{ flex:1, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:6 }}>
+        {msgs === null && <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:24 }}>Loading…</div>}
+        {msgs !== null && msgs.length === 0 && <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:24 }}>Say hi 👋</div>}
+        {(msgs || []).map((m, i) => {
+          const mine = m.sender_id === currentUserId;
+          const prev = (msgs || [])[i-1];
+          const gap = prev && (new Date(m.created_at) - new Date(prev.created_at) > 20*60000);
+          return (
+            <div key={m.id}>
+              {(!prev || gap) && <div style={{ textAlign:"center", fontSize:10, color:C.sub, margin:"8px 0 4px" }}>{fmtMsgTime(m.created_at)}</div>}
+              <div style={{ display:"flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
+                <div style={{ maxWidth:"78%", padding:"8px 12px", borderRadius:16, borderBottomRightRadius: mine ? 5 : 16, borderBottomLeftRadius: mine ? 16 : 5,
+                  background: mine ? C.accent : (C.card || C.tabBg), color: mine ? "#fff" : C.text,
+                  fontSize:14, lineHeight:1.45, whiteSpace:"pre-wrap", wordBreak:"break-word", opacity: m._tmp ? 0.6 : 1 }}>
+                  {m.text}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef}/>
+      </div>
+      <div style={{ display:"flex", gap:8, alignItems:"flex-end", padding:"8px 12px calc(env(safe-area-inset-bottom) + 10px)", borderTop:`1px solid ${C.divider}`, flexShrink:0, background:C.bg }}>
+        <input value={draft} onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+          placeholder="Message…" enterKeyHint="send"
+          style={{ flex:1, padding:"11px 14px", borderRadius:22, border:`1px solid ${C.border}`, background:C.card || "transparent", color:C.text, fontSize:15, outline:"none", fontFamily:F }}/>
+        <button onClick={send} disabled={!draft.trim() || sending} aria-label="Send"
+          style={{ width:40, height:40, borderRadius:20, border:"none", background: draft.trim() ? C.accent : C.border, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AppInner() {
   // ── Auth state ──────────────────────────────────────────────────
   const [session, setSession] = useState(loadSession);
@@ -13850,6 +14187,33 @@ function AppInner() {
   const [prModal, setPrModal] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Match the iOS status bar / browser chrome to the app background — big "native" feel
+  // win for the PWA and the Capacitor shell, costs nothing. (Reads THEMES directly:
+  // `C` isn't declared until later in this component, so referencing it here would TDZ-crash.)
+  useEffect(() => {
+    try {
+      let meta = document.querySelector('meta[name="theme-color"]');
+      if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; document.head.appendChild(meta); }
+      meta.content = THEMES[(store.theme || "light")].bg;
+    } catch (e) {}
+  }, [store.theme]);
+  const [showMessages, setShowMessages] = useState(false);
+  const [chatPeerId, setChatPeerId] = useState(null);
+  const [msgUnread, setMsgUnread] = useState(0);
+  const refreshMsgUnread = useCallback(async () => {
+    if (isGuest || !currentUserId) return;
+    const tok = tokenRef.current || loadSession()?.access_token;
+    if (!tok) return;
+    try {
+      const rows = await sb.query(`messages?recipient_id=eq.${currentUserId}&read_at=is.null&select=id&limit=100`, {}, tok);
+      if (Array.isArray(rows)) setMsgUnread(rows.length);
+    } catch (e) { /* table may not exist yet — badge just stays at 0 */ }
+  }, [isGuest, currentUserId]);
+  useEffect(() => {
+    refreshMsgUnread();
+    const t = setInterval(refreshMsgUnread, 30000);
+    return () => clearInterval(t);
+  }, [refreshMsgUnread]);
   const [storyIndex, setStoryIndex] = useState(null);
   const [pullDist, setPullDist] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -14167,6 +14531,7 @@ function AppInner() {
         users: (profiles || []).map(p => ({
           id: p.id, username: p.username, name: p.name,
           bio: p.bio, avatar: p.avatar_emoji, avatarUrl: p.avatar_url,
+          coverUrl: p.cover_url,
           unit: p.unit, theme: p.theme,
           followers: [], following: [] // loaded separately
         })),
@@ -14203,9 +14568,28 @@ function AppInner() {
         })(),
         onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.onboardingAnswers || {}),
         strengthSex: me?.strength_sex || prev.strengthSex || "male",
+        // Insight dismissals persist server-side (profiles.dismissed_insights) so they
+        // survive re-login and new devices. Union with whatever is on-device.
+        dismissedInsights: Array.from(new Set([
+          ...(Array.isArray(me?.dismissed_insights) ? me.dismissed_insights : []),
+          ...(prev.dismissedInsights || []),
+        ])),
         bodyType: me?.body_type || prev.bodyType || undefined,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
+
+      // Activity badge: profiles.seen_activity_count is the server copy of how much
+      // activity the user has already seen. Take the max so a re-login or a new device
+      // doesn't resurrect old kudos/comments as "new".
+      try {
+        if (me?.seen_activity_count != null) {
+          const local = parseInt(localStorage.getItem("seshd_seen_activity_count") || "0");
+          if (me.seen_activity_count > local) {
+            localStorage.setItem("seshd_seen_activity_count", String(me.seen_activity_count));
+            setSeenActivityCount(me.seen_activity_count);
+          }
+        }
+      } catch (e) {}
 
       // Load follows
       const follows = await sb.query(`follows?select=follower_id,following_id`, {}, tok);
@@ -15031,6 +15415,7 @@ function AppInner() {
         * { -webkit-tap-highlight-color: transparent; }
         button { transition: transform 0.06s ease-out, opacity 0.12s ease-out; touch-action: manipulation; }
         button:active { transform: scale(0.95); }
+        @keyframes seshdPop { 0% { transform: scale(0.6); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
 
         @keyframes seshd-spin { to { transform: rotate(360deg); } }
         @keyframes seshd-press { 0%{transform:scale(1)} 50%{transform:scale(0.96)} 100%{transform:scale(1)} }
@@ -15101,8 +15486,9 @@ function AppInner() {
 
   // Current total of activity items on the user's own posts
   const currentActivityCount = (() => {
+    const ACTIVITY_WINDOW = Date.now() - 30 * 86400000; // 30 days
     let count = (store.posts || [])
-      .filter(p => p.userId === currentUserId)
+      .filter(p => p.userId === currentUserId && (p.createdAt || 0) > ACTIVITY_WINDOW)
       .reduce((a, pt) => {
         const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId).length;
         const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId).length;
@@ -15110,7 +15496,7 @@ function AppInner() {
       }, 0);
     // @mentions of me in comments on others' posts
     (store.posts || []).forEach(p => {
-      if (p.userId === currentUserId) return; // already counted above
+      if (p.userId === currentUserId || (p.createdAt || 0) <= ACTIVITY_WINDOW) return; // already counted above
       (p.comments || []).filter(c => c.userId !== currentUserId).forEach(c => {
         if (extractMentions(c.text, store.users).includes(currentUserId)) count++;
       });
@@ -15123,6 +15509,10 @@ function AppInner() {
   function markActivitySeen() {
     setSeenActivityCount(currentActivityCount);
     try { localStorage.setItem("seshd_seen_activity_count", String(currentActivityCount)); } catch {}
+    try {
+      const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+      if (tok && currentUserId) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_activity_count: currentActivityCount }) }, tok).catch(() => {});
+    } catch (e) {}
   }
   // Clear the unread badge whenever the activity tab becomes active
   useEffect(() => {
@@ -15354,6 +15744,25 @@ function AppInner() {
     }}/>;
   }
 
+  if (chatPeerId) {
+    return (
+      <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
+        <ChatView peerId={chatPeerId} store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
+          onBack={() => { setChatPeerId(null); refreshMsgUnread(); }} onRead={refreshMsgUnread}/>
+      </div>
+    );
+  }
+
+  if (showMessages) {
+    return (
+      <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
+        <MessagesScreen store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
+          onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
+          onOpenChat={(uid_) => setChatPeerId(uid_)}/>
+      </div>
+    );
+  }
+
   if (profileUserId) {
     return (
       <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
@@ -15364,6 +15773,7 @@ function AppInner() {
           onOpenCoach={() => setShowCoach(true)}
           currentUserId={currentUserId}
           onBack={() => setProfileUserId(null)}
+          onMessage={isGuest ? undefined : (uid_) => { setChatPeerId(uid_); }}
           displayUnit={unit}
           C={C}
           onToggleTheme={async (t) => {
@@ -15554,6 +15964,21 @@ function AppInner() {
               <line x1="16" y1="20" x2="16" y2="9"/>
               <line x1="22" y1="20" x2="2" y2="20"/>
             </svg>
+          </button>
+          <button
+            onClick={() => {
+              if (requireAuth("Sign up to send and receive messages")) return;
+              setShowMessages(true);
+            }}
+            aria-label="Messages"
+            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+            </svg>
+            {msgUnread > 0 && (
+              <span style={{ position:"absolute", top:2, right:2, background:C.red, color:"#fff", borderRadius:"50%", minWidth:16, height:16, padding:"0 4px", fontSize:10, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, border:`2px solid ${C.bg}` }}>{msgUnread > 9 ? "9+" : msgUnread}</span>
+            )}
           </button>
           <button
             onClick={() => { markActivitySeen(); setTab("activity"); }}
@@ -16095,7 +16520,10 @@ function AppInner() {
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, msg: "" }; }
   static getDerivedStateFromError(error) { return { hasError: true, msg: String(error?.message || error || "Unknown error") }; }
-  componentDidCatch(error, info) { try { console.error("App crashed:", error, info); } catch {} }
+  componentDidCatch(error, info) {
+    try { console.error("App crashed:", error, info); } catch {}
+    try { reportError(error?.message || String(error), (error?.stack || "") + "\n--component stack--" + (info?.componentStack || ""), "ErrorBoundary"); } catch {}
+  }
   render() {
     if (!this.state.hasError) return this.props.children;
     const reload = () => { try { window.location.reload(); } catch {} };
