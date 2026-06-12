@@ -1,4 +1,4 @@
-// v178091716413
+// v178091716423
 // PATCHED v29 - BUILD 2026-06-08 - HRV/RHR recovery vs 60-day baseline drives readiness + Recovery% chip
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
@@ -107,6 +107,12 @@ async function hydrateFromNative() {
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// ── OAuth provider flags ──────────────────────────────────────────────────────
+// Flip a provider to true ONLY after it's fully configured in Supabase
+// (Auth → Providers). An unconfigured provider renders a login button that fails
+// on tap — App Review taps every button, and a dead login is a rejection.
+const OAUTH_ENABLED = { apple: false, google: false };
 
 // Lightweight Supabase client — no npm package needed
 const sb = (() => {
@@ -848,9 +854,10 @@ const THEMES = {
     card: "#1c1c22",
     border: "#33333d",      // brighter borders so card edges read clearly
     divider: "#26262d",     // hairline separators within surfaces
-    accent: "#8b5cf6",
-    accentSoft: "rgba(139,92,246,0.16)",
-    accent2: "#7c3aed",
+    accent: "#c8f135",          // volt — matches the app icon's green
+    accentSoft: "rgba(200,241,53,0.12)",
+    accent2: "#a8d426",
+    onAccent: "#0d0d10",        // text/icons ON volt surfaces (volt is light — dark ink)
     orange: "#fb923c",
     green: "#34d399",
     gold: "#fbbf24",
@@ -871,11 +878,12 @@ const THEMES = {
     card: "#ffffff",
     border: "#e7e4df",      // warm hairline, visible against white cards
     divider: "#eeece8",     // softer separator within cards
-    accent: "#7c3aed",
-    accentSoft: "rgba(124,58,237,0.07)",
-    accent2: "#6d28d9",
+    accent: "#65a30d",          // volt's daylight form — lime-600, readable on white
+    accentSoft: "rgba(101,163,13,0.11)",
+    accent2: "#4d7c0f",
+    onAccent: "#ffffff",
     orange: "#ea580c",
-    green: "#16a34a",
+    green: "#059669",           // success shifted bluer (emerald) so it never reads as the accent
     gold: "#ca8a04",
     red: "#e11d48",
     text: "#1c1b1a",        // deep warm near-black for crisp reading
@@ -1048,7 +1056,8 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
 
 // Female body map — not yet extracted. Until it exists, the female view falls back to the male
 // figure; the preference is still recorded so it switches automatically once female art is added.
-const BODYMAP_FEMALE = {"front": {"Traps": "M130.5,128.0 L130.5,128.5 L132.2,128.5 L133.5,128.8 L134.4,129.5 L134.6,130.2 L135.0,130.2 L135.5,129.3 L136.1,128.8 L137.4,128.5 L139.3,128.5 L139.3,128.0 L137.7,126.9 L136.2,125.3 L135.6,124.4 L135.0,123.1 L134.6,123.1 L133.6,125.1 L132.6,126.3 L131.4,127.4 Z M101.1,82.2 L122.2,88.7 L132.2,89.6 L133.7,93.6 L134.5,106.4 L135.6,93.0 L137.2,89.6 L147.2,88.7 L168.6,82.6 L162.9,80.8 L159.9,82.8 L156.1,83.1 L150.5,80.1 L150.4,85.1 L149.0,85.4 L143.1,79.1 L137.1,89.0 L133.2,89.5 L126.7,79.1 L120.6,85.4 L119.3,85.1 L119.2,80.2 L113.4,83.1 L109.5,82.7 L106.8,80.8 Z", "Shoulders": "M150.8,88.8 L159.9,92.5 L167.3,97.5 L170.4,101.4 L170.6,105.7 L174.9,108.3 L178.2,111.4 L183.3,120.9 L183.7,111.1 L181.9,99.3 L180.3,93.7 L177.2,88.1 L173.9,85.0 L170.7,83.5 Z M118.7,88.8 L98.9,83.5 L95.8,84.9 L92.2,88.2 L89.3,93.1 L87.2,100.5 L85.7,111.2 L86.2,120.9 L91.3,111.2 L94.4,108.4 L98.8,105.7 L98.9,101.5 L102.0,97.5 L110.1,92.0 Z", "Chest": "M138.2,90.6 L136.7,94.0 L135.5,120.7 L136.8,123.8 L139.7,126.7 L143.4,128.3 L157.5,129.0 L157.5,130.3 L148.7,130.4 L153.7,134.3 L159.7,134.9 L162.2,134.1 L167.2,126.9 L166.5,118.3 L165.4,118.0 L166.3,111.7 L169.6,104.4 L168.9,101.4 L163.3,96.0 L154.4,91.5 L146.0,89.9 Z M131.3,90.7 L123.4,89.9 L114.6,91.6 L106.2,95.9 L100.4,101.4 L99.8,104.3 L102.9,111.1 L104.1,118.0 L103.0,118.4 L102.4,126.8 L107.3,134.0 L110.0,134.9 L115.9,134.3 L120.9,130.4 L112.2,130.3 L112.2,129.0 L126.3,128.3 L130.6,126.2 L133.0,123.5 L134.2,119.7 L132.6,93.9 Z", "Biceps": "M167.2,130.8 L166.9,130.8 L164.2,134.1 L162.2,135.6 L159.7,136.2 L152.9,135.7 L151.8,136.7 L151.4,137.5 L151.2,138.8 L151.6,139.9 L153.3,142.2 L154.4,142.7 L158.1,142.5 L161.0,141.4 L162.9,139.6 L165.8,135.0 Z M102.4,130.8 L103.7,134.6 L105.1,137.5 L106.6,139.7 L108.5,141.5 L112.0,142.7 L115.4,142.5 L116.5,141.8 L117.9,139.6 L118.3,138.9 L118.2,137.5 L117.8,136.8 L116.6,135.7 L112.4,136.2 L108.1,135.8 L106.2,134.9 L102.8,130.8 Z M169.8,107.0 L169.3,109.9 L168.4,110.0 L167.0,114.6 L168.5,126.5 L170.5,126.5 L171.5,136.2 L173.4,144.7 L176.2,149.4 L178.7,150.5 L179.0,149.7 L180.8,149.3 L182.9,146.7 L185.1,141.9 L186.5,136.4 L187.5,136.3 L186.1,119.0 L184.8,116.3 L184.4,125.2 L183.3,125.3 L178.4,113.7 L174.4,109.6 Z M99.5,107.0 L95.6,109.2 L91.3,113.5 L86.3,125.3 L85.2,125.2 L84.7,116.3 L83.5,118.7 L82.0,136.2 L83.0,136.3 L84.1,141.0 L86.2,146.4 L88.3,149.2 L90.3,149.7 L90.4,150.5 L93.5,148.8 L96.1,144.4 L98.2,135.3 L99.1,126.5 L101.1,126.4 L102.5,114.6 L101.1,110.0 L100.1,109.9 Z", "Forearms": "M202.7,208.2 L202.5,208.2 L203.1,211.9 L200.5,215.7 L199.7,218.0 L199.7,219.6 L200.3,221.6 L200.3,226.0 L200.9,227.3 L201.7,227.3 L202.0,227.0 L202.3,225.7 L203.1,225.6 Z M187.0,139.7 L184.0,149.4 L182.6,149.3 L179.1,151.8 L174.0,149.8 L175.6,154.5 L174.7,155.7 L174.8,160.2 L176.4,172.6 L183.5,182.4 L185.2,182.7 L196.4,196.7 L196.3,198.6 L201.4,205.1 L199.7,200.9 L198.7,200.5 L199.1,199.3 L189.7,157.2 L187.2,151.5 Z M82.4,139.6 L81.9,151.7 L78.5,162.5 L64.1,205.4 L54.6,220.9 L58.2,228.3 L65.1,236.6 L60.1,224.5 L64.1,219.6 L67.6,218.3 L69.6,226.7 L71.3,226.3 L72.2,218.0 L69.2,207.9 L74.5,198.6 L74.2,197.0 L92.6,172.0 L94.4,157.8 L93.4,154.6 L95.2,149.9 L90.0,151.8 L85.2,149.3 Z", "Abs": "M130.2,129.6 L122.2,132.6 L119.7,141.6 L117.7,142.4 L121.1,159.1 L121.3,180.5 L123.1,177.8 L119.6,200.3 L121.8,208.3 L133.1,223.5 L136.8,224.3 L151.4,203.0 L146.0,176.9 L148.1,180.5 L148.0,158.4 L151.6,142.4 L149.6,141.7 L147.2,132.4 L138.4,129.6 L135.8,131.9 L136.3,140.3 L148.8,146.3 L136.0,143.8 L135.5,153.3 L133.7,153.2 L133.3,143.8 L120.6,146.3 L133.4,139.8 L133.5,130.7 Z", "Obliques": "M163.0,141.8 L158.1,143.8 L152.6,143.6 L151.2,150.4 L154.3,151.1 L154.3,152.3 L151.9,152.4 L149.0,159.5 L149.2,161.1 L150.6,161.3 L150.5,162.5 L149.3,162.6 L148.1,168.5 L149.0,179.4 L149.7,179.5 L149.8,180.6 L149.2,181.5 L152.8,202.4 L159.5,189.8 L161.1,181.8 L160.4,176.6 L158.9,168.3 L158.1,168.2 L160.0,160.2 L160.3,155.0 L159.6,154.9 L161.3,149.8 L160.8,146.9 Z M106.3,141.7 L108.5,146.9 L107.9,149.5 L109.6,154.8 L108.7,154.9 L108.9,160.0 L110.7,168.2 L109.9,168.3 L108.7,176.7 L108.5,181.7 L110.2,189.1 L118.3,202.4 L120.5,181.5 L119.5,180.6 L119.6,179.5 L120.3,179.4 L120.6,168.1 L119.7,162.5 L118.4,162.5 L118.3,161.3 L119.9,161.0 L120.0,159.2 L117.4,152.5 L114.8,152.3 L114.8,151.1 L118.0,150.4 L116.7,143.6 L111.2,143.8 Z", "Quads": "M162.1,184.7 L159.8,192.8 L160.7,204.7 L157.6,197.6 L145.6,224.9 L141.3,246.3 L147.2,295.1 L151.5,296.0 L153.9,294.4 L154.8,276.3 L158.9,280.7 L164.3,279.3 L163.5,293.3 L167.3,298.4 L175.6,262.7 L177.5,234.1 L176.0,230.6 L177.7,229.1 L178.3,219.1 L172.8,201.5 Z M107.6,184.6 L98.6,200.9 L93.6,219.6 L94.0,229.2 L95.7,230.5 L94.1,235.2 L95.7,263.6 L103.3,298.5 L107.1,293.4 L106.6,279.3 L112.0,280.7 L116.1,276.3 L116.8,294.6 L123.5,295.1 L127.0,273.6 L125.6,271.3 L127.4,272.3 L130.2,243.1 L125.3,223.0 L113.4,197.7 L113.1,200.8 L109.8,202.1 L110.6,192.7 Z", "Calves": "M155.4,280.3 L155.2,294.9 L152.5,297.2 L147.5,296.8 L148.9,302.5 L143.7,322.6 L150.4,356.4 L152.2,352.5 L148.2,386.2 L154.7,391.3 L160.5,406.8 L176.0,407.6 L181.1,403.3 L171.4,393.2 L165.1,377.7 L162.7,377.3 L164.6,376.3 L169.0,329.9 L168.4,322.0 L166.4,332.8 L167.1,299.9 L162.4,294.6 L162.7,281.6 Z M115.4,280.3 L108.3,281.6 L108.2,294.7 L103.4,299.9 L103.9,332.6 L101.9,321.7 L101.3,329.3 L105.6,376.3 L107.5,377.3 L105.1,377.8 L98.8,393.1 L89.0,403.4 L94.1,407.6 L109.9,406.6 L115.2,391.9 L121.9,386.3 L118.0,352.1 L119.8,356.5 L126.6,322.5 L121.6,302.7 L123.1,296.8 L117.7,297.1 L115.3,294.4 Z", "_body": "M134.5,11.9 L124.3,15.5 L119.0,24.5 L122.0,72.3 L96.0,82.8 L87.3,94.6 L53.1,221.4 L66.8,238.0 L62.0,224.7 L67.2,221.2 L68.7,228.3 L72.8,227.4 L71.9,204.8 L101.7,133.3 L108.7,170.1 L92.3,213.1 L93.2,252.1 L101.9,298.6 L99.9,327.0 L104.6,373.9 L87.6,404.6 L93.9,409.1 L109.9,408.5 L123.2,387.2 L120.9,358.7 L128.0,325.4 L123.9,301.6 L133.0,225.9 L138.6,225.8 L146.6,301.5 L142.3,325.0 L149.5,359.8 L146.9,387.1 L159.2,407.9 L175.5,409.2 L182.5,402.7 L171.0,389.5 L165.6,373.7 L170.4,328.3 L168.2,297.3 L177.2,253.1 L179.7,213.0 L160.1,170.0 L167.8,133.4 L199.5,204.7 L200.3,228.9 L190.2,152.6 L181.8,93.6 L173.9,82.9 L148.1,72.4 L151.8,24.9 L145.5,14.9 Z"}, "back": {"Traps": "M106.1,52.7 L100.9,55.8 L95.6,62.5 L95.7,75.7 L83.9,82.4 L92.7,82.6 L94.4,84.0 L95.5,91.1 L94.9,93.8 L92.5,94.6 L94.0,105.3 L92.1,113.0 L105.7,139.1 L108.0,141.0 L122.9,113.1 L120.8,104.8 L122.6,94.6 L119.7,92.9 L120.5,84.3 L122.3,82.6 L131.1,82.0 L119.3,75.9 L119.4,62.5 L112.5,55.0 Z", "Rear Delts": "M121.7,84.7 L120.7,92.0 L123.7,94.1 L122.0,102.9 L123.6,111.0 L125.8,111.8 L126.1,113.0 L130.7,114.7 L139.0,116.0 L142.5,112.7 L144.0,105.0 L145.0,104.9 L150.3,110.9 L155.8,114.5 L152.8,97.3 L150.8,92.6 L147.1,88.0 L141.9,84.7 L137.2,83.0 L123.0,83.8 Z M93.2,84.4 L77.8,83.0 L71.4,85.5 L67.0,88.9 L64.3,92.5 L62.2,97.1 L59.2,114.5 L64.6,111.0 L69.9,104.9 L70.9,105.0 L72.5,112.8 L76.0,116.0 L85.0,114.5 L88.9,113.0 L90.1,110.9 L91.4,110.9 L92.9,102.5 L91.3,94.1 L94.2,92.1 L94.3,88.6 Z", "Lats": "M141.5,116.6 L135.1,117.2 L124.1,113.7 L108.2,143.0 L108.5,201.1 L111.5,200.0 L115.4,185.4 L124.1,179.3 L123.3,172.8 L131.7,166.8 L134.0,147.6 L140.8,127.5 Z M73.2,116.4 L73.9,127.0 L81.0,147.5 L83.3,166.6 L91.8,172.8 L90.9,179.1 L99.3,185.0 L103.3,199.7 L106.4,201.1 L106.8,143.0 L91.0,113.7 L79.8,117.2 Z", "Triceps": "M69.9,107.8 L65.3,112.2 L64.5,114.4 L62.9,113.9 L58.4,116.6 L56.7,122.2 L55.7,129.6 L56.5,132.8 L55.7,133.6 L56.2,147.2 L55.7,153.5 L59.2,161.6 L59.7,167.9 L62.8,162.3 L68.1,156.4 L68.1,154.9 L66.2,155.0 L66.1,153.8 L68.3,153.2 L71.5,137.1 L72.8,125.6 L72.3,118.2 L71.2,118.0 L71.8,114.3 Z M145.0,107.6 L143.3,114.1 L143.6,117.4 L142.6,117.5 L141.9,126.1 L143.4,136.0 L147.2,153.6 L146.8,156.4 L151.9,161.7 L155.2,167.9 L155.7,161.7 L159.4,153.0 L158.8,148.9 L159.2,133.6 L158.5,132.8 L159.4,130.8 L157.9,120.7 L156.4,116.5 L152.0,113.9 L150.5,114.3 L149.6,112.1 Z", "Forearms": "M15.6,159.0 L0.7,200.1 L1.5,200.4 L-0.2,201.6 L-5.6,218.5 L-2.1,219.1 L3.5,224.5 L1.0,236.6 L6.4,227.5 L8.3,220.8 L4.1,206.2 L3.3,205.4 L5.0,203.7 L19.5,170.3 Z M159.8,155.1 L156.4,163.5 L158.0,175.0 L151.4,163.6 L146.9,159.2 L149.7,174.2 L170.8,203.1 L172.8,209.2 L169.9,216.9 L170.6,224.5 L172.2,225.5 L174.5,217.0 L177.7,218.1 L181.7,223.1 L177.2,234.8 L184.4,225.4 L187.1,219.2 L175.3,201.1 L162.2,163.1 Z M55.1,155.0 L52.7,164.8 L39.7,198.9 L40.0,200.9 L27.9,219.4 L31.1,226.1 L38.2,234.9 L33.2,223.2 L37.2,218.2 L40.5,217.0 L42.7,225.5 L44.1,225.1 L45.0,216.7 L42.3,209.1 L44.1,203.3 L65.3,174.3 L68.1,159.5 L63.6,163.4 L56.9,175.1 L58.5,163.3 Z", "LowerBack": "M131.4,169.1 L131.1,169.1 L126.9,172.7 L124.6,174.0 L125.4,177.8 L126.0,178.2 L126.2,179.3 L125.4,179.4 L124.7,180.8 L123.2,181.9 L123.2,182.3 L125.3,182.2 L130.0,182.7 L132.7,183.4 L134.2,184.6 L134.7,184.6 L133.7,182.3 L132.9,176.9 Z M83.8,169.1 L83.5,169.1 L83.5,171.2 L82.2,175.9 L81.7,178.3 L81.5,181.2 L83.1,181.0 L85.6,180.2 L89.5,177.8 L90.4,174.0 L87.6,172.4 Z", "Glutes": "M129.3,183.8 L120.6,183.7 L117.4,185.1 L115.3,189.2 L112.5,201.2 L110.7,202.4 L108.3,202.4 L108.2,221.5 L109.3,225.8 L115.5,233.3 L123.1,237.0 L128.0,236.0 L134.9,230.7 L138.7,222.2 L141.7,212.4 L140.6,203.6 L139.0,200.9 L140.0,200.8 L138.2,193.6 L133.5,185.7 Z M85.8,183.8 L82.9,184.6 L81.1,186.1 L76.7,193.6 L75.1,200.7 L76.1,200.8 L74.4,203.7 L73.3,212.8 L76.0,221.8 L80.1,230.7 L86.3,235.7 L91.9,237.0 L99.3,233.4 L105.9,225.4 L106.9,219.3 L106.7,202.4 L104.3,202.4 L102.5,201.3 L99.6,188.8 L97.7,185.3 L94.5,183.7 Z", "Hamstrings": "M109.8,229.9 L110.4,253.0 L115.2,271.3 L116.9,294.4 L120.2,307.6 L125.0,301.7 L126.0,295.4 L128.1,295.5 L127.7,298.1 L130.8,302.3 L135.6,295.1 L139.1,302.9 L138.7,288.5 L140.8,273.5 L139.2,246.5 L135.2,233.2 L128.9,237.1 L130.4,258.2 L129.2,259.4 L127.8,237.7 L121.5,238.6 Z M67.6,225.3 L70.5,256.5 L74.5,270.1 L75.9,302.9 L79.4,295.1 L84.1,302.4 L86.9,295.4 L89.0,295.3 L89.7,301.1 L94.7,307.9 L98.1,294.6 L99.7,271.3 L104.4,254.7 L105.2,230.0 L93.5,238.5 L87.2,237.9 L85.6,260.8 L86.0,237.1 L79.9,233.0 L75.8,245.5 L73.7,267.6 L74.3,247.8 Z", "Calves": "M134.7,297.6 L132.3,301.4 L131.5,307.3 L127.0,300.2 L120.9,309.5 L122.0,337.9 L123.8,349.2 L131.7,371.4 L133.2,404.9 L134.7,407.3 L138.4,407.9 L143.3,404.3 L145.8,391.4 L141.7,388.9 L142.8,329.4 L138.9,306.7 Z M80.2,297.6 L76.1,306.8 L72.2,328.8 L73.3,388.9 L69.2,391.0 L72.0,405.0 L76.6,407.9 L80.2,407.4 L81.8,405.0 L83.2,371.6 L91.1,349.6 L92.9,338.2 L94.0,309.5 L88.1,300.2 L83.5,306.9 L82.6,301.2 Z", "_body": "M106.2,15.5 L96.7,18.9 L91.2,28.4 L94.8,74.4 L68.4,85.4 L61.0,96.6 L26.3,220.3 L39.9,236.3 L35.2,223.3 L40.3,219.9 L41.5,226.7 L45.9,225.4 L45.5,203.6 L75.2,134.3 L82.3,170.3 L66.2,219.1 L75.4,289.1 L70.3,335.3 L71.7,387.6 L67.7,390.9 L70.2,404.7 L76.8,409.4 L83.1,405.7 L84.5,372.4 L93.3,347.1 L95.1,312.0 L108.6,250.3 L121.7,346.9 L130.7,374.1 L131.8,405.2 L138.3,409.4 L144.2,406.1 L147.1,393.2 L143.2,387.6 L144.7,334.6 L139.4,292.7 L148.7,219.1 L132.7,170.1 L139.8,134.1 L169.4,203.5 L169.2,225.6 L173.4,226.7 L174.8,219.9 L179.8,223.3 L175.1,236.3 L188.7,219.0 L178.6,202.6 L153.9,96.3 L146.1,85.1 L120.3,74.5 L123.5,27.3 L117.2,18.1 Z"}};
+// Female body map removed pending a redesign — BodyMap falls back to the male map.
+const BODYMAP_FEMALE = null;
 const BODYMAPS = { male: BODYMAP_MALE, female: BODYMAP_FEMALE };
 
 // Weighted weekly training volume per body-map region. Each completed working set credits its
@@ -1266,7 +1275,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   const Tab = ({ id, label }) => (
     <button onClick={() => { setMode(id); haptic("tap"); }} style={{
       flex:1, padding:"7px 0", background: mode === id ? C.accent : "transparent",
-      color: mode === id ? "#fff" : C.sub, border:"none", borderRadius:11,
+      color: mode === id ? C.onAccent : C.sub, border:"none", borderRadius:11,
       fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F
     }}>{label}</button>
   );
@@ -1285,7 +1294,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           {[["Male","male"],["Female","female"]].map(([label, val]) => (
             <button key={val} onClick={() => setSex(val)} style={{
               padding:"4px 11px", background: sex === val ? C.accent : "transparent",
-              color: sex === val ? "#fff" : C.sub, border:"none", borderRadius:12,
+              color: sex === val ? C.onAccent : C.sub, border:"none", borderRadius:12,
               fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
             }}>{label}</button>
           ))}
@@ -2084,6 +2093,7 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Barbell Row":             { Novice:0.5, Intermediate:0.75, Advanced:1.1, Elite:1.5 },
     "Romanian Deadlift":       { Novice:0.6, Intermediate:1.0, Advanced:1.6, Elite:2.2 },
     "Hip Thrust":              { Novice:1.0, Intermediate:1.5, Advanced:2.25, Elite:3.0 },
+    "Standing Calf Raise":     { Novice:1.0, Intermediate:1.7, Advanced:2.5, Elite:3.4 },
   },
   female: {
     "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Advanced:0.8, Elite:1.1 },
@@ -2095,6 +2105,7 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Barbell Row":             { Novice:0.3, Intermediate:0.5, Advanced:0.75, Elite:1.1 },
     "Romanian Deadlift":       { Novice:0.4, Intermediate:0.75, Advanced:1.2, Elite:1.7 },
     "Hip Thrust":              { Novice:0.75, Intermediate:1.25, Advanced:1.9, Elite:2.6 },
+    "Standing Calf Raise":     { Novice:0.6, Intermediate:1.15, Advanced:1.85, Elite:2.7 },
   },
 };
 const STRENGTH_LIFT_ALIASES = {
@@ -2157,6 +2168,8 @@ function computeStrengthScore(store, unit, sex = "male") {
     "Barbell Row": (n) => (n.includes("barbell row") || n.includes("bent over row") || n.includes("bent-over row") || n.includes("pendlay") || (n.includes("bb row"))) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("cable") && !n.includes("machine") && !n.includes("seated"),
     "Romanian Deadlift": (n) => n.includes("romanian") || n.includes("rdl") || n.includes("stiff leg") || n.includes("stiff-leg"),
     "Hip Thrust": (n) => n.includes("hip thrust") || n.includes("glute bridge"),
+    // Standing/smith calf raises only — seated and leg-press variants load very differently.
+    "Standing Calf Raise": (n) => n.includes("calf") && (n.includes("raise") || n.includes("press")) && !n.includes("seated") && !n.includes("leg press") && !n.includes("single") && !n.includes("donkey"),
   };
   // Strength standards are defined against a 1-REP MAX. store.prs holds the heaviest raw weight
   // lifted (any rep count), which understates strength for higher-rep PRs. So we estimate 1RM
@@ -2245,6 +2258,7 @@ const MUSCLE_STRENGTH_LIFTS = {
   Traps: ["Deadlift", "Barbell Row"],
   LowerBack: ["Deadlift", "Romanian Deadlift"],
   "Rear Delts": ["Barbell Row"],
+  Calves: ["Standing Calf Raise"],
 };
 
 // Per-region strength fraction (0 = Untrained, 1 = Elite) vs bodyweight standards, for the weakness
@@ -2738,7 +2752,7 @@ async function scheduleRestNotification(seconds) {
       notifications: [{
         id: REST_NOTIF_ID,
         title: "Rest's up — back to work",
-        body: "Go hit your next set 💪",
+        body: "Go hit your next set",
         schedule: { at: new Date(Date.now() + seconds * 1000) },
         sound: "default",
       }],
@@ -3034,13 +3048,15 @@ function Avatar({ user, size = 36, onClick, C, ring = false }) {
   const imgSrc = user?.avatarUrl || user?.profileImage;
   const content = imgSrc
     ? <img src={imgSrc} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
-    : <span>{user?.avatar || "👤"}</span>;
+    : (user?.avatar
+        ? <span>{user.avatar}</span>
+        : <span style={{ fontWeight:800, fontSize: Math.max(11, size * 0.42), letterSpacing:0.5 }}>{((user?.name || user?.username || "?").trim()[0] || "?").toUpperCase()}</span>);
 
   const innerStyle = {
     width: size,
     height: size,
     borderRadius: "50%",
-    background: `linear-gradient(135deg,${C.accent},#60a5fa)`,
+    background: C.accent,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -3600,7 +3616,7 @@ function Heatmap({ workoutDates, history, C, onDayTap }) {
                     aspectRatio:"1 / 1",
                     border:"none",
                     background: cell.active ? C.accent : C.divider,
-                    color: cell.active ? "#fff" : (cell.isFuture ? C.muted : C.sub),
+                    color: cell.active ? C.onAccent : (cell.isFuture ? C.muted : C.sub),
                     opacity: cell.isFuture ? 0.35 : 1,
                     fontSize:13, fontWeight: cell.isToday ? 800 : 600,
                     fontFamily:MONO,
@@ -3716,7 +3732,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
                 style={{
                   padding: "6px 12px",
                   background: selectedCategory === cat ? C.accent : "transparent",
-                  color: selectedCategory === cat ? "#fff" : C.sub,
+                  color: selectedCategory === cat ? C.onAccent : C.sub,
                   border: `1px solid ${selectedCategory === cat ? C.accent : C.border}`,
                   borderRadius: 20,
                   fontSize: 12,
@@ -3870,7 +3886,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
         </div>
         {/* Right action column */}
         <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
-          <Key label="Next" onPress={onNext} bg={C.accent} color="#fff" fontSize={15} flex={3} />
+          <Key label="Next" onPress={onNext} bg={C.accent} color={C.onAccent} fontSize={15} flex={3} />
           <Key label="Done" onPress={closePad} fontSize={14} />
         </div>
       </div>
@@ -4205,7 +4221,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 {[6,7,8,9,10].map(v => (
                   <button key={v} onClick={() => { onUpdate({ rpe: set.rpe === v ? null : v }); setShowRpe(false); haptic("tap"); }}
                     style={{
-                      background: set.rpe === v ? C.accent : C.divider, color: set.rpe === v ? "#fff" : C.sub,
+                      background: set.rpe === v ? C.accent : C.divider, color: set.rpe === v ? C.onAccent : C.sub,
                       border:"none", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700,
                       cursor:"pointer", fontFamily:MONO, minWidth:22,
                     }}>{v}</button>
@@ -4370,7 +4386,7 @@ function OneRMModal({ onClose, unit, C }) {
           </div>
           {oneRM && (
             <>
-              <div style={{ background:`linear-gradient(135deg,${C.accent},${C.accent2})`, borderRadius:14, padding:"18px", textAlign:"center", marginBottom:14 }}>
+              <div style={{ background:C.accent, borderRadius:14, padding:"18px", textAlign:"center", marginBottom:14 }}>
                 <div style={{ fontSize:10, color:"rgba(255,255,255,0.8)", fontWeight:700, letterSpacing:2, marginBottom:4 }}>ESTIMATED 1RM</div>
                 <div style={{ fontSize:52, fontWeight:800, color:"#fff", fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
                 <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", marginTop:4 }}>{unit}</div>
@@ -4579,17 +4595,28 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
     + `</svg>`;
 }
 
+// Wraps a 1080×1350 card SVG in a 1080×1920 story-format frame (IG/TikTok stories):
+// card centered on the dark canvas with a small wordmark at the bottom.
+function wrapStorySVG(cardSvg) {
+  const inner = cardSvg.replace(/^<svg /, '<svg y="220" ');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">`
+    + `<rect width="1080" height="1920" fill="#0A0A0A"/>`
+    + inner
+    + `<text x="540" y="1782" fill="#5a5a64" font-family="Helvetica, Arial" font-size="30" font-weight="700" letter-spacing="10" text-anchor="middle">SESHD</text>`
+    + `</svg>`;
+}
+
 // Rasterizes an SVG string to a PNG and shares it via the native share sheet (files), falling back
 // to a download. Returns true on success, false if rasterization/sharing failed (caller can text-share).
-async function shareSvgCard(svg, filename, title) {
+async function shareSvgCard(svg, filename, title, outW = 1080, outH = 1350) {
   try {
     const blob = await new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
       img.onload = () => {
         try {
-          const c = document.createElement("canvas"); c.width = 1080; c.height = 1350;
-          c.getContext("2d").drawImage(img, 0, 0, 1080, 1350);
+          const c = document.createElement("canvas"); c.width = outW; c.height = outH;
+          c.getContext("2d").drawImage(img, 0, 0, outW, outH);
           URL.revokeObjectURL(url);
           c.toBlob(b => b ? resolve(b) : reject(new Error("toBlob")), "image/png");
         } catch (e) { URL.revokeObjectURL(url); reject(e); }
@@ -4797,10 +4824,18 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
             borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
             cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2,
             display:"flex", alignItems:"center", justifyContent:"center", gap:8
-          }}>
+          }} data-share-main>
             <Icon name="share" size={16} color="#0A0A0A"/>
             Share my week
           </button>
+          <button onClick={async () => {
+            const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta });
+            await shareSvgCard(wrapStorySVG(svg), "seshd-story.png", "My week on Seshd", 1080, 1920);
+          }} style={{
+            width:"100%", background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.18)",
+            borderRadius:12, padding:"13px", fontSize:13, fontWeight:700,
+            cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2
+          }}>Share as Story (9:16)</button>
           {onPostToFeed && (
             <button onClick={() => {
               const { region, max } = weeklyMuscleVolume(store, 7);
@@ -5012,7 +5047,7 @@ function Onboarding({ C, onComplete }) {
           </>
         ) : inClosing ? (
           <div key="closing" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ width:88, height:88, borderRadius:24, background:C.accent, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28, marginLeft:"auto", marginRight:"auto" }}>
+            <div style={{ width:88, height:88, borderRadius:24, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28, marginLeft:"auto", marginRight:"auto" }}>
               <Icon name="check" size={42} color="#fff" strokeWidth={2}/>
             </div>
             <div style={{ fontSize:28, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.6, lineHeight:1.15 }}>You're all set</div>
@@ -5031,7 +5066,7 @@ function Onboarding({ C, onComplete }) {
                     width:"100%", padding:"16px 18px", borderRadius:14, cursor:"pointer", fontFamily:F,
                     background: selected ? C.accent : C.surface,
                     border:`1.5px solid ${selected ? C.accent : C.border}`,
-                    color: selected ? "#fff" : C.text,
+                    color: selected ? C.onAccent : C.text,
                     fontSize:15, fontWeight:600, textAlign:"left", transition:"all 0.15s",
                   }}>{opt.label}</button>
                 );
@@ -5054,7 +5089,7 @@ function Onboarding({ C, onComplete }) {
         )}
         {inClosing && (
           <button onClick={() => onComplete(answers)} style={{
-            width:"100%", background:C.accent, color:"#fff", border:"none", borderRadius:14, padding:"16px",
+            width:"100%", background:C.accent, color:C.onAccent, border:"none", borderRadius:14, padding:"16px",
             fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
           }}>
             Let's go
@@ -5139,7 +5174,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
           placeholder="Program name..."
           style={{ flex:1, margin:"0 14px", background:"transparent", border:"none", fontSize:16, fontWeight:700, color:bodyClr, outline:"none", fontFamily:F, textAlign:"center" }}
         />
-        <button onClick={save} style={{ fontSize:14, fontWeight:700, color:"#fff", background:C.accent, border:"none", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:F }}>Save</button>
+        <button onClick={save} style={{ fontSize:14, fontWeight:700, color:C.onAccent, background:C.accent, border:"none", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:F }}>Save</button>
       </div>
 
       {/* Day tabs */}
@@ -5149,7 +5184,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
             padding:"7px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:F,
             fontSize:12, fontWeight:600, whiteSpace:"nowrap", flexShrink:0,
             background: activeDayIdx === i ? C.accent : (isDark ? C.divider : "#EEF2F7"),
-            color: activeDayIdx === i ? "#fff" : labelClr,
+            color: activeDayIdx === i ? C.onAccent : labelClr,
           }}>{d.name}</button>
         ))}
         <button onClick={addDay} style={{
@@ -5182,7 +5217,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
         {activeDay.exercises.map((ex, ei) => {
           const exInfo = getExEntry(ex.name);
           return (
-            <div key={ei} style={{ background:inputBg, border:`1px solid ${border}`, borderRadius:16, padding:"14px", marginBottom:12, boxShadow: isDark ? "none" : "0 1px 4px rgba(0,0,0,0.06)" }}>
+            <div key={ei} style={{ background:inputBg, border:`1px solid ${border}`, borderRadius:16, padding:"14px", marginBottom:12, boxShadow: isDark ? "none" : "0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)" }}>
               {/* Exercise name row */}
               <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
                 <div style={{ width:36, height:36, borderRadius:10, background: isDark ? "#252525" : "#EEF2F7", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -5377,8 +5412,8 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
           {post?.imageData ? (
             <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
           ) : (
-            <div style={{ width:"100%", height:"100%", background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
-              <div style={{ fontSize:60, marginBottom:16 }}>{user.avatar || "💪"}</div>
+            <div style={{ width:"100%", height:"100%", background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
+              <div style={{ fontSize:60, marginBottom:16, fontWeight:900 }}>{user.avatar || ((user.name || user.username || "?").trim()[0] || "?").toUpperCase()}</div>
               <div style={{ fontSize:24, fontWeight:700, color:"#fff", marginBottom:8 }}>{user.name}</div>
               <div style={{ fontSize:14, color:"rgba(255,255,255,0.9)", lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
             </div>
@@ -5608,7 +5643,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
       )}
 
       {post.type === "yoga" && post.yoga && (
-        <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#7c3aed,#a78bfa)", borderRadius:12, padding:"18px 18px", display:"flex", alignItems:"center", gap:14 }}>
+        <div style={{ margin:"0 14px", background:"#1c1c22", border:"1px solid #33333d", borderRadius:12, padding:"18px 18px", display:"flex", alignItems:"center", gap:14 }}>
           <span style={{ display:"flex" }}><Icon name="spark" size={36} color="#fff"/></span>
           <div>
             <div style={{ fontSize:16, fontWeight:700, color:"#fff", textTransform:"capitalize" }}>{post.yoga.style} Yoga</div>
@@ -5951,7 +5986,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               style={{ width:"100%", background:"transparent", border:"none", outline:"none", fontSize:18, fontWeight:800, color:TXT, fontFamily:F }} />
             <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:2 }}>
               <span style={{ fontSize:11, color:SUB }}>{localProg.days?.length||0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</span>
-              {isActive && <span style={{ fontSize:9, background:C.accent, color:"#fff", borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
+              {isActive && <span style={{ fontSize:9, background:C.accent, color:C.onAccent, borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
             </div>
           </div>
           <button onClick={async () => {
@@ -6121,7 +6156,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
             const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#8B5CF6",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
             const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
             return (
-              <div key={ei} style={{ marginBottom:12, background:CARD, borderRadius:16, overflow:"visible", border:`1px solid ${BORD}`, boxShadow:isDark?"none":"0 1px 4px rgba(0,0,0,0.05)" }}>
+              <div key={ei} style={{ marginBottom:12, background:CARD, borderRadius:16, overflow:"visible", border:`1px solid ${BORD}`, boxShadow:isDark?"none":"0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)" }}>
                 {/* Exercise header */}
                 <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderLeft:`4px solid ${mColor}` }}>
                   <div style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -6518,7 +6553,7 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
           <button key={m} onClick={() => { setMuscle(m); haptic("tap"); }} style={{
             padding: "7px 11px", borderRadius: 16, cursor: "pointer", fontFamily: F, fontSize: 12, fontWeight: 600,
             background: muscle === m ? C.accent : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
-            color: muscle === m ? "#fff" : C.text, border: `1px solid ${muscle === m ? C.accent : C.border}`,
+            color: muscle === m ? C.onAccent : C.text, border: `1px solid ${muscle === m ? C.accent : C.border}`,
           }}>{m}</button>
         ))}
       </div>
@@ -6528,7 +6563,7 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
           <button key={eq} onClick={() => { setEquip(equip === eq ? "" : eq); haptic("tap"); }} style={{
             padding: "6px 10px", borderRadius: 16, cursor: "pointer", fontFamily: F, fontSize: 11, fontWeight: 600,
             background: equip === eq ? C.accent : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
-            color: equip === eq ? "#fff" : C.sub, border: `1px solid ${equip === eq ? C.accent : C.border}`,
+            color: equip === eq ? C.onAccent : C.sub, border: `1px solid ${equip === eq ? C.accent : C.border}`,
           }}>{eq}</button>
         ))}
       </div>
@@ -6539,7 +6574,7 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
           if (entry && onCreate) onCreate(entry);
         }} style={{
           flex: 1, padding: "10px", borderRadius: 10, border: "none", fontFamily: F, fontSize: 13, fontWeight: 700,
-          background: muscle ? C.accent : C.divider, color: muscle ? "#fff" : C.muted, cursor: muscle ? "pointer" : "default",
+          background: muscle ? C.accent : C.divider, color: muscle ? C.onAccent : C.muted, cursor: muscle ? "pointer" : "default",
         }}>Create & add</button>
         <button onClick={onCancel} style={{
           padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}`, fontFamily: F, fontSize: 13, fontWeight: 600,
@@ -6890,7 +6925,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
               style={{ flex:1, background:C.bg, border:`1.5px solid ${C.divider}`, borderRadius:10, padding:"10px 12px", fontSize:14, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box" }}
             />
             <button onClick={() => addExercise()} disabled={!newExName.trim()} style={{
-              background: newExName.trim() ? C.accent : C.divider, color: newExName.trim() ? "#fff" : C.muted,
+              background: newExName.trim() ? C.accent : C.divider, color: newExName.trim() ? C.onAccent : C.muted,
               border:"none", borderRadius:10, padding:"10px 16px", fontSize:14, fontWeight:700,
               cursor: newExName.trim() ? "pointer" : "default", fontFamily:F, flexShrink:0,
             }}>Add</button>
@@ -7012,7 +7047,7 @@ function InsightCards({ insights, C, big, onDismiss }) {
           cursor: dragging ? "grabbing" : "grab", userSelect:"none",
         }}
       >
-        <div style={{ width: big ? 44 : 38, height: big ? 44 : 38, borderRadius: big ? 13 : 11, flexShrink:0, background:C.accent, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ width: big ? 44 : 38, height: big ? 44 : 38, borderRadius: big ? 13 : 11, flexShrink:0, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <Icon name={insight.icon === "flame" ? "flame" : insight.icon === "trophy" ? "trophy" : "trending-up"} size={big ? 22 : 19} color="#fff"/>
         </div>
         <div style={{ flex:1, minWidth:0 }}>
@@ -7207,7 +7242,7 @@ function SortableProgramRow({ p, C, isActive, onOpen }) {
       <button onClick={onOpen} style={{ flex:1, minWidth:0, background:"none", border:"none", textAlign:"left", cursor:"pointer", fontFamily:F, padding:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
           <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-          {isActive && <span style={{ fontSize:9, background:C.accent, color:"#fff", padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>}
+          {isActive && <span style={{ fontSize:9, background:C.accent, color:C.onAccent, padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>}
         </div>
         <div style={{ fontSize:11, color:C.sub }}>
           {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
@@ -7916,6 +7951,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       });
       setShowWorkoutSummary(true);
       haptic("success");
+      // App Store review prompt — native only, once, after the 10th finished workout,
+      // delayed so it never competes with the summary confetti.
+      try {
+        const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+        const IAR = Cap?.isNativePlatform?.() ? (Cap.Plugins?.InAppReview || Cap.Plugins?.RateApp) : null;
+        const totalWorkouts = Object.values(store.history || {}).reduce((a, s) => a + Object.keys(s || {}).length, 0) + 1;
+        if (IAR && totalWorkouts >= 10 && !localStorage.getItem("seshd_review_asked")) {
+          localStorage.setItem("seshd_review_asked", "1");
+          setTimeout(() => { try { (IAR.requestReview || IAR.requestInAppReview || (() => {})).call(IAR); } catch (e) {} }, 3000);
+        }
+      } catch (e) {}
 
       // Save to DB and verify it landed. The local store already has the workout
       // (via setStore above), and that's persisted to localStorage — but the DB is
@@ -8036,14 +8082,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
             <div style={{ fontSize:28, fontWeight:800, color:C.accent, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
           </div>
-          <button onClick={() => setShowFinish(true)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
+          <button onClick={() => setShowFinish(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
         </div>
 
         {/* Progress + tools */}
         <div style={{ background:C.surface, padding:"8px 14px 10px", borderBottom:`1px solid ${C.divider}` }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
             <span style={{ fontSize:11, color:C.sub, fontWeight:600 }}>
-              {done} / {total} sets ·{" "}
+              <span style={{ fontFamily:MONO, fontWeight:700 }}>{done}/{total}</span> sets ·{" "}
               <AnimatedNumber
                 value={runningVolume}
                 style={{ fontWeight:700, color:C.text, fontFamily:MONO }}
@@ -8119,7 +8165,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       padding:"12px 0", borderRadius:14, fontSize:12, fontWeight:700, fontFamily:MONO,
                       background: rest.total===s ? C.accent : C.surface,
                       border: `2px solid ${rest.total===s ? C.accent : C.divider}`,
-                      color: rest.total===s ? "#fff" : C.text,
+                      color: rest.total===s ? C.onAccent : C.text,
                       cursor:"pointer"
                     }}
                   >
@@ -8181,7 +8227,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               if (!p) return null;
               const newRunning = !p.running;
               return newRunning ? { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) } : { ...p, running: newRunning };
-            })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:10, background:C.accent, border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
+            })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:10, background:C.accent, border:"none", color:C.onAccent, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
               {rest.running ? "Pause" : "Resume"}
             </button>
             <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:10, background:"transparent", border:`1px solid ${C.divider}`, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
@@ -8297,7 +8343,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         }} style={{
                           padding:"6px 11px", borderRadius:8, cursor:"pointer", fontFamily:MONO, fontSize:12, fontWeight:700,
                           background: active ? C.accent : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
-                          border:`1px solid ${active ? C.accent : C.border}`, color: active ? "#fff" : C.text,
+                          border:`1px solid ${active ? C.accent : C.border}`, color: active ? C.onAccent : C.text,
                         }}>{secs >= 60 ? `${secs/60}`.replace(/\.5/,"½") + "m" : `${secs}s`}</button>
                       );
                     })}
@@ -8397,7 +8443,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       <div style={{ margin:"10px 14px 0", padding:"12px", border:`1px solid ${C.divider}`, borderRadius:18, background:C.surface, display:"grid", gap:10 }}>
                         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:8 }}>
                           {[{s:90,label:"1.5m"},{s:120,label:"2m"},{s:180,label:"3m"},{s:300,label:"5m"}].map(({s,label}) => (
-                            <button key={s} onClick={() => { updateSet(ei, si, { restTime: s }); setRestEditor(null); }} style={{ padding:"10px 0", borderRadius:14, border:`1px solid ${Number(set.restTime)===s ? C.accent : C.divider}`, background:Number(set.restTime)===s ? C.accent : C.bg, color:Number(set.restTime)===s ? "#fff" : C.text, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                            <button key={s} onClick={() => { updateSet(ei, si, { restTime: s }); setRestEditor(null); }} style={{ padding:"10px 0", borderRadius:14, border:`1px solid ${Number(set.restTime)===s ? C.accent : C.divider}`, background:Number(set.restTime)===s ? C.accent : C.bg, color:Number(set.restTime)===s ? C.onAccent : C.text, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                               {label}
                             </button>
                           ))}
@@ -8680,7 +8726,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         setWorkoutSummary(prev => ({ ...prev, programUpdated: true }));
                         haptic("success");
                         toast("Program updated", "success");
-                      }} style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:C.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                      }} style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:C.accent, color:C.onAccent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                         Update program
                       </button>
                       <button onClick={() => setWorkoutSummary(prev => ({ ...prev, programChange: null }))}
@@ -9201,7 +9247,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:4 }}>No active program</div>
               <div style={{ fontSize:12, color:C.sub, marginBottom:16 }}>Import a template to get started</div>
               <button onClick={() => setShowTemplates(true)} style={{
-                background:C.accent, color:"#fff", border:"none", borderRadius:10,
+                background:C.accent, color:C.onAccent, border:"none", borderRadius:10,
                 padding:"10px 22px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
               }}>Browse Templates</button>
             </div>
@@ -9213,7 +9259,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         <div style={{ padding:"16px 14px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
             <button onClick={() => setShowBuilder(true)} style={{
-              background:`linear-gradient(135deg,${C.accent},${C.accent2})`, color:"#fff", border:"none",
+              background:C.accent, color:C.onAccent, border:"none",
               borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
             }}>
               <div style={{ marginBottom:6, display:"flex", justifyContent:"center" }}><Icon name="spark" size={18} color="currentColor"/></div>
@@ -9319,7 +9365,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <button key={f} onClick={() => setExerciseFilter(f)} style={{
                 padding:"5px 12px", background: exerciseFilter===f ? C.accent : C.divider,
                 border:"none", borderRadius:20, fontSize:11, fontWeight:600,
-                color: exerciseFilter===f ? "#fff" : C.sub, cursor:"pointer", fontFamily:F, flexShrink:0
+                color: exerciseFilter===f ? C.onAccent : C.sub, cursor:"pointer", fontFamily:F, flexShrink:0
               }}>{f}</button>
             ))}
           </div>
@@ -9505,7 +9551,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   Your completed sessions will show up here. Track your first one to start building your history.
                 </div>
                 <button onClick={() => setSubTab("workout")} style={{
-                  background:C.accent, color:"#fff", border:"none", borderRadius:10,
+                  background:C.accent, color:C.onAccent, border:"none", borderRadius:10,
                   padding:"10px 22px", fontSize:13, fontWeight:700,
                   cursor:"pointer", fontFamily:F
                 }}>Go to workouts</button>
@@ -10102,7 +10148,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
               calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB",
             }[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
             return (
-              <div key={i} style={{ background:CARD, borderRadius:14, padding:"14px 16px", marginBottom:10, display:"flex", alignItems:"center", gap:14, boxShadow: isDark?"none":"0 1px 4px rgba(0,0,0,0.06)", borderLeft:`4px solid ${muscleColor}` }}>
+              <div key={i} style={{ background:CARD, borderRadius:14, padding:"14px 16px", marginBottom:10, display:"flex", alignItems:"center", gap:14, boxShadow: isDark?"none":"0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)", borderLeft:`4px solid ${muscleColor}` }}>
                 <div style={{ width:42, height:42, borderRadius:10, background:`${muscleColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                   <MuscleIcon muscle={exInfo?.muscle||""} size={26} name={ex.name} C={C}/>
                 </div>
@@ -10538,7 +10584,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
               </div>
             ))}
             <button onClick={() => onImport(result)} style={{
-              width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+              width:"100%", background:C.accent,
               color:"#fff", border:"none", borderRadius:12, padding:"14px",
               fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, marginTop:12
             }}>Import & Set Active</button>
@@ -10570,7 +10616,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
               }}
             />
             <button onClick={generateProgram} style={{
-              width:"100%", background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+              width:"100%", background:C.accent,
               color:"#fff", border:"none", borderRadius:12, padding:"14px",
               fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
               display:"flex", alignItems:"center", justifyContent:"center", gap:8,
@@ -10896,7 +10942,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
                 <button key={m} onClick={() => setChartMode(m)} style={{
                   padding:"4px 10px", borderRadius:14, border:"none",
                   background: chartMode===m ? C.accent : "transparent",
-                  color: chartMode===m ? "#fff" : C.sub,
+                  color: chartMode===m ? C.onAccent : C.sub,
                   fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
                 }}>{label}</button>
               ))}
@@ -10959,7 +11005,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
               disabled={aiLoading}
               style={{
                 width:"100%", padding:"13px 16px", borderRadius:12, cursor:aiLoading?"default":"pointer",
-                background: aiLoading ? C.surface : C.accent, color: aiLoading ? C.sub : "#fff",
+                background: aiLoading ? C.surface : C.accent, color: aiLoading ? C.sub : C.onAccent,
                 border:`1px solid ${aiLoading ? C.border : C.accent}`, fontSize:13, fontWeight:700, fontFamily:F,
                 display:"flex", alignItems:"center", justifyContent:"center", gap:8,
               }}
@@ -10986,7 +11032,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
                 <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:12 }}>
                   {aiGuide.steps.map((s, i) => (
                     <div key={i} style={{ display:"flex", gap:12, padding:"11px 14px", borderBottom: i < aiGuide.steps.length-1 ? `1px solid ${C.divider}` : "none", alignItems:"flex-start" }}>
-                      <div style={{ width:20, height:20, borderRadius:"50%", background:C.accent, color:"#fff", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>{i+1}</div>
+                      <div style={{ width:20, height:20, borderRadius:"50%", background:C.accent, color:C.onAccent, fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>{i+1}</div>
                       <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{s}</div>
                     </div>
                   ))}
@@ -11048,6 +11094,10 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
 function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
   const [tab, setTab] = useState("feed");
   const [posts, setPosts] = useState([]);
+  const [postMenu, setPostMenu] = useState(null);        // post whose ··· menu is open
+  const [menuConfirm, setMenuConfirm] = useState(false); // delete needs a second tap
+  const [editingPost, setEditingPost] = useState(null);  // post id being caption-edited
+  const [editText, setEditText] = useState("");
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [caption, setCaption] = useState("");
@@ -11164,7 +11214,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                 <button onClick={() => setShowWorkoutPicker(true)} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
               </div>
               <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
-                background:(caption.trim()||img)?C.accent:C.divider, color:(caption.trim()||img)?"#fff":C.sub,
+                background:(caption.trim()||img)?C.accent:C.divider, color:(caption.trim()||img)?C.onAccent:C.sub,
                 border:"none", borderRadius:16, padding:"6px 16px", fontSize:12, fontWeight:700,
                 cursor:(caption.trim()||img)?"pointer":"default", fontFamily:F
               }}>{posting?"...":"Post"}</button>
@@ -11195,21 +11245,33 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                           <span style={{ fontSize:11, color:C.muted }}>{timeAgo(new Date(post.created_at).getTime())}</span>
                         </div>
                         {isMyPost && (
-                          <button onClick={async () => {
-                            if (!token) return;
-                            try {
-                              await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
-                                method:"DELETE", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}` }
-                              });
-                              setPosts(p => p.filter(x => x.id !== post.id));
-                            } catch (e) {
-                              console.error("group post delete failed:", e);
-                              toast("Couldn't delete post — check connection", "error");
-                            }
-                          }} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:"0 2px" }}>×</button>
+                          <button onClick={() => { setPostMenu(post); setMenuConfirm(false); }} aria-label="Post options"
+                            style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:"0 6px", letterSpacing:1, fontWeight:700 }}>···</button>
                         )}
                       </div>
-                      {post.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.5, marginBottom:6 }}>{post.caption}</div>}
+                      {editingPost === post.id ? (
+                        <div style={{ marginBottom:8 }}>
+                          <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={3} autoFocus
+                            style={{ width:"100%", boxSizing:"border-box", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.accent}`, background:C.surface, color:C.text, fontSize:14, outline:"none", fontFamily:F, resize:"none" }}/>
+                          <div style={{ display:"flex", gap:6, marginTop:6, justifyContent:"flex-end" }}>
+                            <button onClick={() => setEditingPost(null)} style={{ padding:"7px 14px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, fontSize:12, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
+                            <button onClick={async () => {
+                              const t = editText.trim();
+                              setEditingPost(null);
+                              if (t === (post.caption || "").trim() || !token) return;
+                              setPosts(p => p.map(x => x.id === post.id ? { ...x, caption: t } : x));
+                              try {
+                                await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
+                                  method:"PATCH", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
+                                  body: JSON.stringify({ caption: t })
+                                });
+                              } catch (e) { toast("Couldn't save edit — check connection", "error"); }
+                            }} style={{ padding:"7px 14px", background:C.accent, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:C.onAccent, cursor:"pointer", fontFamily:F }}>Save</button>
+                          </div>
+                        </div>
+                      ) : (
+                        post.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.5, marginBottom:6 }}>{post.caption}</div>
+                      )}
                       {(post.image_url || post._localImage) && (
                         <img src={post._localImage || post.image_url} alt="" loading="lazy" decoding="async" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>
                       )}
@@ -11334,7 +11396,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                     <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                   </div>
                   <button onClick={() => onUpdateMembers(g.id, [...(g.members||[]), u.id])} style={{
-                    background:C.accent, color:"#fff", border:"none", borderRadius:6,
+                    background:C.accent, color:C.onAccent, border:"none", borderRadius:6,
                     padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
                   }}>Invite</button>
                 </div>
@@ -11410,6 +11472,39 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
           </div>
         );
       })()}
+
+      {/* Post options sheet: edit caption / confirm-then-delete */}
+      {postMenu && (
+        <div onClick={() => setPostMenu(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:600, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"10px 14px calc(env(safe-area-inset-bottom) + 14px)", fontFamily:F }}>
+            <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 12px" }}/>
+            <button onClick={() => { setEditingPost(postMenu.id); setEditText(postMenu.caption || ""); setPostMenu(null); }}
+              style={{ width:"100%", padding:"14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F, marginBottom:8 }}>
+              Edit caption
+            </button>
+            <button onClick={async () => {
+              if (!menuConfirm) { setMenuConfirm(true); haptic("medium"); return; }
+              const id_ = postMenu.id;
+              setPostMenu(null);
+              if (!token) return;
+              try {
+                await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${id_}`, {
+                  method:"DELETE", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}` }
+                });
+                setPosts(p => p.filter(x => x.id !== id_));
+                toast("Post deleted", "success");
+              } catch (e) { toast("Couldn't delete post — check connection", "error"); }
+            }}
+              style={{ width:"100%", padding:"14px", background: menuConfirm ? C.red : C.surface, border:`1px solid ${menuConfirm ? C.red : C.border}`, borderRadius:12, fontSize:14, fontWeight:700, color: menuConfirm ? "#fff" : C.red, cursor:"pointer", fontFamily:F, marginBottom:8, transition:"all 0.15s ease" }}>
+              {menuConfirm ? "Tap again to confirm delete" : "Delete post"}
+            </button>
+            <button onClick={() => setPostMenu(null)}
+              style={{ width:"100%", padding:"14px", background:"transparent", border:"none", fontSize:14, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -11479,7 +11574,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
         {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Groups</div>
         <button onClick={() => setShowCreate(true)} style={{
-          background:C.accent, color:"#fff", border:"none", borderRadius:6,
+          background:C.accent, color:C.onAccent, border:"none", borderRadius:6,
           padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
         }}>+ New</button>
       </div>
@@ -11496,7 +11591,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
           <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>No groups yet</div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Create one for your gym crew or team</div>
           <button onClick={() => setShowCreate(true)} style={{
-            background:C.accent, color:"#fff", border:"none", borderRadius:8,
+            background:C.accent, color:C.onAccent, border:"none", borderRadius:8,
             padding:"9px 18px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
           }}>Create Group</button>
         </div>
@@ -11535,7 +11630,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
             />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={() => setShowCreate(false)} style={{ flex:1, padding:"11px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borRadius:8, borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
+              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borRadius:8, borderRadius:8, color:C.onAccent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
             </div>
           </div>
         </div>
@@ -12143,7 +12238,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
         <div style={{ flex:1, fontSize:16, fontWeight:700, color:C.text }}>Body</div>
-        {!adding && <button onClick={() => setAdding(true)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:9, padding:"7px 14px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Log</button>}
+        {!adding && <button onClick={() => setAdding(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"7px 14px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Log</button>}
       </div>
 
       <div style={{ flex:1, overflowY:"auto", padding:"16px", overscrollBehavior:"contain" }}>
@@ -12182,7 +12277,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
             </div>
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={() => { setAdding(false); setDraftWeight(""); setDraftMeasures({}); setDraftPhoto(null); }} style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, color:C.sub, borderRadius:10, padding:"11px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={saveEntry} style={{ flex:2, background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"11px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>Save entry</button>
+              <button onClick={saveEntry} style={{ flex:2, background:C.accent, color:C.onAccent, border:"none", borderRadius:10, padding:"11px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>Save entry</button>
             </div>
           </div>
         ) : log.length === 0 ? (
@@ -12190,7 +12285,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
             <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="trending-up" size={40} color="currentColor"/></div>
             <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Track your body</div>
             <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>Log your weight, measurements, and progress photos to see how your body changes over time.</div>
-            <button onClick={() => setAdding(true)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Log your first entry</button>
+            <button onClick={() => setAdding(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Log your first entry</button>
           </div>
         ) : (
           <>
@@ -12220,7 +12315,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
                 return (
                   <button key={m.key} onClick={() => setMetric(m.key)} style={{
                     flexShrink:0, padding:"6px 13px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F,
-                    background: metric === m.key ? C.accent : C.surface, color: metric === m.key ? "#fff" : C.sub,
+                    background: metric === m.key ? C.accent : C.surface, color: metric === m.key ? C.onAccent : C.sub,
                     border:`1px solid ${metric === m.key ? C.accent : C.border}`,
                   }}>{m.label}</button>
                 );
@@ -12471,6 +12566,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
   const coverRef = useRef(null);
+  const [coverDraft, setCoverDraft] = useState(null);   // dataURL pending position+upload
+  const [coverPosDraft, setCoverPosDraft] = useState(50);
+  const [coverSaving, setCoverSaving] = useState(false);
+  const [showCoverView, setShowCoverView] = useState(false);
+  const coverDragRef = useRef(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSending, setFeedbackSending] = useState(false);
@@ -12606,42 +12706,55 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     r.readAsDataURL(file);
   }
 
-  async function handleCover(e) {
+  function handleCover(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const tok = token || loadSession()?.access_token;
+    e.target.value = "";
     const r = new FileReader();
-    r.onload = async ev => {
-      const dataUrl = ev.target.result;
-      // Instant local preview
-      setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: dataUrl } : u) }));
-      if (tok) {
-        try {
-          const uploadedUrl = await uploadImage(dataUrl, tok, currentUserId);
-          if (uploadedUrl && !uploadedUrl.startsWith("data:")) {
-            await sb.query(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ cover_url: uploadedUrl }) }, tok);
-            setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: uploadedUrl } : u) }));
-            toast("Cover photo updated!", "success");
-          } else {
-            toast("Upload failed — preview only", "error");
-          }
-        } catch (err) {
-          toast("Couldn't save cover", "error");
-        }
-      }
-    };
+    r.onload = ev => { setCoverPosDraft(50); setCoverDraft(ev.target.result); };
     r.readAsDataURL(file);
+  }
+  async function saveCover() {
+    const dataUrl = coverDraft;
+    const pos = Math.round(coverPosDraft);
+    setCoverDraft(null);
+    const tok = token || loadSession()?.access_token;
+    // Instant local preview
+    setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: dataUrl, coverPos: pos } : u) }));
+    if (!tok) return;
+    setCoverSaving(true);
+    try {
+      const uploadedUrl = await uploadImage(dataUrl, tok, currentUserId);
+      if (uploadedUrl && !uploadedUrl.startsWith("data:")) {
+        await sb.query(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ cover_url: uploadedUrl, cover_pos: pos }) }, tok);
+        setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: uploadedUrl, coverPos: pos } : u) }));
+        toast("Cover photo updated!", "success");
+      } else {
+        toast("Upload failed — preview only", "error");
+      }
+    } catch (err) {
+      toast("Couldn't save cover", "error");
+    }
+    setCoverSaving(false);
+  }
+  function coverDragStart(clientY) { coverDragRef.current = { y: clientY, pos: coverPosDraft }; }
+  function coverDragMove(clientY) {
+    if (!coverDragRef.current) return;
+    const dy = clientY - coverDragRef.current.y;
+    // Dragging down reveals the upper part of the photo (objectPosition % decreases).
+    setCoverPosDraft(Math.max(0, Math.min(100, coverDragRef.current.pos - dy * 0.45)));
   }
 
   return (
     <PullToRefresh onRefresh={onRefresh} C={C}>
     <div style={{ paddingBottom:20 }}>
       {/* Cover photo — user image with gradient fallback. Tap "Edit cover" (own profile) to change. */}
-      <div style={{ height:110, marginBottom:-26, background:`linear-gradient(120deg, ${C.accent}, ${C.accent2 || C.accent} 60%, ${C.accent})`, position:"relative", overflow:"hidden" }}>
+      <div style={{ height:110, marginBottom:-26, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
         {user?.coverUrl
-          ? <img src={user.coverUrl} alt="" style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+          ? <img src={user.coverUrl} alt="" onClick={() => setShowCoverView(true)}
+              style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${user?.coverPos ?? 50}%`, cursor:"pointer" }}/>
           : <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>}
-        <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))" }}/>
+        <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))", pointerEvents:"none" }}/>
         {onBack && (
           <button onClick={onBack} style={{ position:"absolute", top:8, left:10, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, fontSize:17, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
         )}
@@ -12659,18 +12772,18 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {isMe && (
               <>
                 <input ref={avatarRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatar}/>
-                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", cursor:"pointer" }}><Icon name="plus" size={12} color="#fff"/></div>
+                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color:C.onAccent, cursor:"pointer" }}><Icon name="plus" size={12} color={C.onAccent}/></div>
               </>
             )}
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
+            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
             <button onClick={() => setListModal("followers")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}><AnimatedNumber value={followers} duration={500}/></div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>Followers</div>
             </button>
             <button onClick={() => setListModal("following")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontVariantNumeric:"tabular-nums" }}><AnimatedNumber value={following2} duration={500}/></div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={following2} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>Following</div>
             </button>
           </div>
@@ -12723,7 +12836,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   haptic("warn");
                   return;
                 }
-                const link = `${window.location.origin}${window.location.pathname}#/u/${currentUserId}`;
+                const link = `${window.location.origin}/u/${currentUserId}`;
                 try {
                   if (navigator.share) { navigator.share({ title: "My Seshd profile", url: link }).catch(() => {}); }
                   else if (navigator.clipboard) { navigator.clipboard.writeText(link); toast("Profile link copied", "success"); }
@@ -12770,7 +12883,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
                   <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} style={{
                     padding:"4px 10px", background: sex===val ? C.accent : "transparent",
-                    color: sex===val ? "#fff" : C.sub, border:"none", borderRadius:12,
+                    color: sex===val ? C.onAccent : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
                   }}>{label}</button>
                 ))}
@@ -12834,7 +12947,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           })()}
           <button onClick={() => onOpenCoach && onOpenCoach()} style={{
             width:"100%", marginTop:10, padding:"13px", borderRadius:14, cursor:"pointer", fontFamily:F,
-            background:`linear-gradient(135deg, ${C.accent}, ${C.accent2 || C.accent})`, color:"#fff",
+            background:C.accent, color:C.onAccent,
             border:"none", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8,
           }}>
             AI Coaching
@@ -12913,6 +13026,42 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {/* Settings modal */}
       {showBody && createPortal(<BodyTrackingScreen store={store} setStore={setStore} currentUserId={currentUserId} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>, document.body)}
 
+      {/* Cover position sheet — drag the photo to choose what shows */}
+      {coverDraft && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div style={{ width:"100%", maxWidth:440, background:C.bg, borderRadius:18, overflow:"hidden", fontFamily:F }}>
+            <div style={{ padding:"14px 16px 10px" }}>
+              <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Position your cover</div>
+              <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>Drag the photo up or down to choose what shows</div>
+            </div>
+            <div
+              onTouchStart={e => coverDragStart(e.touches[0].clientY)}
+              onTouchMove={e => { e.preventDefault(); coverDragMove(e.touches[0].clientY); }}
+              onTouchEnd={() => { coverDragRef.current = null; }}
+              onMouseDown={e => { e.preventDefault(); coverDragStart(e.clientY); }}
+              onMouseMove={e => { if (e.buttons === 1) coverDragMove(e.clientY); }}
+              onMouseUp={() => { coverDragRef.current = null; }}
+              style={{ height:110, position:"relative", overflow:"hidden", touchAction:"none", cursor:"grab", background:"#000" }}>
+              <img src={coverDraft} alt="" draggable={false}
+                style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${coverPosDraft}%`, userSelect:"none", pointerEvents:"none" }}/>
+              <div style={{ position:"absolute", inset:0, border:`2px solid ${C.accent}`, pointerEvents:"none" }}/>
+            </div>
+            <div style={{ display:"flex", gap:8, padding:"14px 16px calc(env(safe-area-inset-bottom) + 14px)" }}>
+              <button onClick={() => setCoverDraft(null)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
+              <button onClick={saveCover} style={{ flex:1, padding:"12px", background:C.accent, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:C.onAccent, cursor:"pointer", fontFamily:F }}>Use photo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-screen cover viewer */}
+      {showCoverView && user?.coverUrl && (
+        <div onClick={() => setShowCoverView(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <img src={user.coverUrl} alt="" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }}/>
+          <button onClick={() => setShowCoverView(false)} style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 12px)", right:14, width:34, height:34, borderRadius:17, background:"rgba(255,255,255,0.12)", border:"none", color:"#fff", fontSize:17, cursor:"pointer", fontFamily:F }}>×</button>
+        </div>
+      )}
+
       {/* Feedback modal */}
       {showFeedback && (
         <div onClick={() => setShowFeedback(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
@@ -12923,7 +13072,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               style={{ width:"100%", boxSizing:"border-box", padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:C.card || "transparent", color:C.text, fontSize:14, outline:"none", fontFamily:F, resize:"none" }}/>
             <div style={{ display:"flex", gap:8, marginTop:12 }}>
               <button onClick={() => setShowFeedback(false)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={submitFeedback} disabled={!feedbackText.trim() || feedbackSending} style={{ flex:1, padding:"12px", background:feedbackText.trim() ? C.accent : C.border, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>{feedbackSending ? "Sending…" : "Send"}</button>
+              <button onClick={submitFeedback} disabled={!feedbackText.trim() || feedbackSending} style={{ flex:1, padding:"12px", background:feedbackText.trim() ? C.accent : C.border, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:feedbackText.trim() ? C.onAccent : "#fff", cursor:"pointer", fontFamily:F }}>{feedbackSending ? "Sending…" : "Send"}</button>
             </div>
           </div>
         </div>
@@ -12971,7 +13120,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     {["light","dark"].map(th => (
                       <button key={th} onClick={() => onToggleTheme(th)} style={{
                         padding:"6px 14px", background:(store.theme||"light")===th?C.accent:"transparent",
-                        color:(store.theme||"light")===th?"#fff":C.sub, border:"none", borderRadius:20,
+                        color:(store.theme||"light")===th?C.onAccent:C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                       }}>{th==="light"?"Light":"Dark"}</button>
                     ))}
@@ -12990,7 +13139,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         }
                       }} style={{
                         padding:"6px 16px", background:(store.unit||"lbs")===u?C.accent:"transparent",
-                        color:(store.unit||"lbs")===u?"#fff":C.sub, border:"none", borderRadius:20,
+                        color:(store.unit||"lbs")===u?C.onAccent:C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                       }}>{u.toUpperCase()}</button>
                     ))}
@@ -13020,7 +13169,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           haptic("tap");
                         }} style={{
                           padding:"6px 16px", background: active ? C.accent : "transparent",
-                          color: active ? "#fff" : C.sub, border:"none", borderRadius:20,
+                          color: active ? C.onAccent : C.sub, border:"none", borderRadius:20,
                           fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                         }}>{label}</button>
                       );
@@ -13047,7 +13196,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         }
                       }} style={{
                         padding:"6px 12px", background:(store.weeklyTarget||3)===n?C.accent:"transparent",
-                        color:(store.weeklyTarget||3)===n?"#fff":C.sub, border:"none", borderRadius:20,
+                        color:(store.weeklyTarget||3)===n?C.onAccent:C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, minWidth:32
                       }}>{n}</button>
                     ))}
@@ -13120,7 +13269,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   cursor:"pointer", fontFamily:F
                 }}>
                   <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Send feedback</div>
-                  <span style={{ fontSize:14, color:C.sub }}>💬</span>
+                  <span style={{ fontSize:14, color:C.sub }}>›</span>
                 </button>
                 <button onClick={() => { setShowSettings(false); setTimeout(() => onSignOut && onSignOut(), 200); }} style={{
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
@@ -13443,7 +13592,7 @@ function EditPostModal({ C, post, onSave, onClose }) {
           style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", marginBottom:14, fontFamily:F }}/>
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={onClose} style={{ flex:1, padding:"10px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-          <button onClick={() => onSave(post.id, cap)} style={{ flex:1, padding:"10px", background:C.accent, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Save</button>
+          <button onClick={() => onSave(post.id, cap)} style={{ flex:1, padding:"10px", background:C.accent, border:"none", borderRadius:8, color:C.onAccent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Save</button>
         </div>
       </div>
     </div>
@@ -13650,13 +13799,16 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         </button>
 
         {/* OAuth divider */}
+        {(OAUTH_ENABLED.apple || OAUTH_ENABLED.google) && (
         <div style={{ display:"flex", alignItems:"center", gap:12, margin:"6px 0 14px" }}>
           <div style={{ flex:1, height:1, background:C.border }}/>
           <div style={{ fontSize:11, color:C.muted, fontWeight:600, letterSpacing:1 }}>OR</div>
           <div style={{ flex:1, height:1, background:C.border }}/>
         </div>
+        )}
 
         {/* OAuth buttons */}
+        {OAUTH_ENABLED.apple && (
         <button onClick={() => sb.signInWithOAuth("apple")} disabled={loading} style={{
           width:"100%", background:"#000", color:"#fff",
           border:"none", borderRadius:12, padding:"14px",
@@ -13669,6 +13821,8 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           </svg>
           Continue with Apple
         </button>
+        )}
+        {OAUTH_ENABLED.google && (
         <button onClick={() => sb.signInWithOAuth("google")} disabled={loading} style={{
           width:"100%", background:"#fff", color:"#1f1f1f",
           border:`1px solid ${C.border}`, borderRadius:12, padding:"14px",
@@ -13684,6 +13838,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           </svg>
           Continue with Google
         </button>
+        )}
 
         <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
           width:"100%", background:"none", border:"none", color:C.sub,
@@ -13741,7 +13896,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
   if (!state.profile) {
     return (
       <div style={{ ...wrap, justifyContent:"center", textAlign:"center" }}>
-        <div style={{ fontSize:40, marginBottom:14 }}>💪</div>
+        <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="barbell" size={40} color="currentColor"/></div>
         <div style={{ fontSize:19, fontWeight:800, marginBottom:8 }}>This profile is private</div>
         <div style={{ fontSize:14, color:C.sub, marginBottom:28, maxWidth:280 }}>This profile isn't shared publicly, or the link may be incorrect.</div>
         <button onClick={onOpenApp} style={{ background:C.text, color:C.bg, border:"none", borderRadius:12, padding:"14px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>Open Seshd</button>
@@ -13757,7 +13912,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", marginBottom:28 }}>
           {p.avatar_url
             ? <img src={p.avatar_url} alt="" style={{ width:88, height:88, borderRadius:44, objectFit:"cover", marginBottom:14 }}/>
-            : <div style={{ width:88, height:88, borderRadius:44, background:`linear-gradient(135deg,${C.accent},${C.accent2||C.accent})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color:"#fff", marginBottom:14 }}>{initial}</div>}
+            : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color:C.onAccent, marginBottom:14 }}>{initial}</div>}
           <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{p.name || p.username}</div>
           {p.username && <div style={{ fontSize:14, color:C.sub, marginTop:2 }}>@{p.username}</div>}
           {p.bio && <div style={{ fontSize:14, color:C.text, marginTop:12, maxWidth:300, lineHeight:1.5 }}>{p.bio}</div>}
@@ -13956,7 +14111,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
                   {c.last.sender_id === currentUserId ? "You: " : ""}{c.last.text}
                 </div>
               </div>
-              {c.unread > 0 && <span style={{ background:C.accent, color:"#fff", borderRadius:10, minWidth:18, height:18, padding:"0 5px", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>{c.unread}</span>}
+              {c.unread > 0 && <span style={{ background:C.accent, color:C.onAccent, borderRadius:10, minWidth:18, height:18, padding:"0 5px", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>{c.unread}</span>}
             </div>
           );
         })}
@@ -14018,7 +14173,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:6 }}>
         {msgs === null && <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:24 }}>Loading…</div>}
-        {msgs !== null && msgs.length === 0 && <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:24 }}>Say hi 👋</div>}
+        {msgs !== null && msgs.length === 0 && <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:24 }}>Say hi</div>}
         {(msgs || []).map((m, i) => {
           const mine = m.sender_id === currentUserId;
           const prev = (msgs || [])[i-1];
@@ -14028,7 +14183,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
               {(!prev || gap) && <div style={{ textAlign:"center", fontSize:10, color:C.sub, margin:"8px 0 4px" }}>{fmtMsgTime(m.created_at)}</div>}
               <div style={{ display:"flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
                 <div style={{ maxWidth:"78%", padding:"8px 12px", borderRadius:16, borderBottomRightRadius: mine ? 5 : 16, borderBottomLeftRadius: mine ? 16 : 5,
-                  background: mine ? C.accent : (C.card || C.tabBg), color: mine ? "#fff" : C.text,
+                  background: mine ? C.accent : (C.card || C.tabBg), color: mine ? C.onAccent : C.text,
                   fontSize:14, lineHeight:1.45, whiteSpace:"pre-wrap", wordBreak:"break-word", opacity: m._tmp ? 0.6 : 1 }}>
                   {m.text}
                 </div>
@@ -14044,8 +14199,8 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
           placeholder="Message…" enterKeyHint="send"
           style={{ flex:1, padding:"11px 14px", borderRadius:22, border:`1px solid ${C.border}`, background:C.card || "transparent", color:C.text, fontSize:15, outline:"none", fontFamily:F }}/>
         <button onClick={send} disabled={!draft.trim() || sending} aria-label="Send"
-          style={{ width:40, height:40, borderRadius:20, border:"none", background: draft.trim() ? C.accent : C.border, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          style={{ width:40, height:40, borderRadius:20, border:"none", background: draft.trim() ? C.accent : C.border, color: draft.trim() ? C.onAccent : "#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={draft.trim() ? C.onAccent : "#fff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
     </div>
@@ -14187,6 +14342,50 @@ function AppInner() {
   const [prModal, setPrModal] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // ── Native shell wiring (no-ops on web): push token registration, deep links ──
+  useEffect(() => {
+    const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+    if (!Cap?.isNativePlatform?.()) return;
+    let removeUrlListener = null;
+    // Deep links: https://spotr-drab.vercel.app/u/{id} and share codes open in-app.
+    try {
+      const AppPlugin = Cap.Plugins?.App;
+      if (AppPlugin?.addListener) {
+        AppPlugin.addListener("appUrlOpen", ({ url }) => {
+          try {
+            const u = new URL(url);
+            const mU = u.pathname.match(/^\/u\/([\w-]+)/) || (u.hash || "").match(/^#\/u\/([\w-]+)/);
+            if (mU) { setProfileUserId(mU[1]); return; }
+            const code = u.searchParams.get("code") || (u.pathname.match(/^\/p\/([\w-]+)/) || [])[1];
+            if (code) window.dispatchEvent(new CustomEvent("seshd:open-code-internal", { detail: { code } }));
+          } catch (e) {}
+        }).then(h => { removeUrlListener = h; });
+      }
+    } catch (e) {}
+    return () => { try { removeUrlListener?.remove?.(); } catch (e) {} };
+  }, []);
+  // Push notifications: register and store the APNs token on the profile. Sending
+  // (messages/kudos) comes later via an edge function — tokens are collected from day one.
+  useEffect(() => {
+    const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+    const PN = Cap?.isNativePlatform?.() ? Cap.Plugins?.PushNotifications : null;
+    if (!PN || !currentUserId || isGuest) return;
+    let regListener = null;
+    (async () => {
+      try {
+        const perm = await PN.requestPermissions();
+        if (perm?.receive !== "granted") return;
+        regListener = await PN.addListener("registration", (t) => {
+          try {
+            const tok = tokenRef.current || loadSession()?.access_token;
+            if (tok && t?.value) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ push_token: t.value }) }, tok).catch(() => {});
+          } catch (e) {}
+        });
+        await PN.register();
+      } catch (e) {}
+    })();
+    return () => { try { regListener?.remove?.(); } catch (e) {} };
+  }, [currentUserId, isGuest]);
   // Match the iOS status bar / browser chrome to the app background — big "native" feel
   // win for the PWA and the Capacitor shell, costs nothing. (Reads THEMES directly:
   // `C` isn't declared until later in this component, so referencing it here would TDZ-crash.)
@@ -14200,6 +14399,43 @@ function AppInner() {
   const [showMessages, setShowMessages] = useState(false);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [msgUnread, setMsgUnread] = useState(0);
+  // Monday recap: last completed Mon-Sun week's totals, shown on the feed until dismissed.
+  const weeklyRecap = useMemo(() => {
+    try {
+      const unit = store.unit || "lbs"; // AppInner's `unit` const is declared later — avoid TDZ
+      const now = new Date();
+      const dow = (now.getDay() + 6) % 7; // 0 = Monday
+      const thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+      const lastMon = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7);
+      const key = "recap:" + lastMon.toISOString().slice(0, 10);
+      if ((store.dismissedInsights || []).includes(key)) return null;
+      let workouts = 0, volume = 0; const muscleSets = {};
+      for (const [d, sessions] of Object.entries(store.history || {})) {
+        const ts = new Date(d + "T12:00:00");
+        if (ts < lastMon || ts >= thisMon) continue;
+        for (const sess of Object.values(sessions || {})) {
+          workouts++;
+          const mult = (sess.unit || "lbs") === unit ? 1 : (sess.unit === "kg" ? 2.205 : 1 / 2.205);
+          for (const ex of (sess.exercises || [])) {
+            const done = (ex.sets || []).filter(s => s.done && s.type !== "warmup");
+            volume += done.reduce((a, s) => a + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0) * mult;
+            const m = getMuscle(ex.name);
+            if (m && done.length) muscleSets[m] = (muscleSets[m] || 0) + done.length;
+          }
+        }
+      }
+      if (!workouts) return null;
+      const topMuscle = Object.entries(muscleSets).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+      return { key, workouts, volume: Math.round(volume), topMuscle };
+    } catch (e) { return null; }
+  }, [store.history, store.dismissedInsights, store.unit]);
+  const dismissRecap = (key) => {
+    setStore(p => ({ ...p, dismissedInsights: [...(p.dismissedInsights || []), key] }));
+    try {
+      const tok = tokenRef.current || loadSession()?.access_token;
+      if (tok && currentUserId && !isGuest) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ dismissed_insights: [...(store.dismissedInsights || []), key] }) }, tok).catch(() => {});
+    } catch (e) {}
+  };
   const refreshMsgUnread = useCallback(async () => {
     if (isGuest || !currentUserId) return;
     const tok = tokenRef.current || loadSession()?.access_token;
@@ -14532,6 +14768,7 @@ function AppInner() {
           id: p.id, username: p.username, name: p.name,
           bio: p.bio, avatar: p.avatar_emoji, avatarUrl: p.avatar_url,
           coverUrl: p.cover_url,
+          coverPos: p.cover_pos,
           unit: p.unit, theme: p.theme,
           followers: [], following: [] // loaded separately
         })),
@@ -16091,6 +16328,20 @@ function AppInner() {
             <style>{`@keyframes spotrSpin { to { transform: rotate(360deg); } }`}</style>
 
             <div style={{ paddingTop: pullDist }}>
+              {/* Monday recap — last week's numbers, dismissible, shares via Wrapped */}
+              {weeklyRecap && (
+                <div style={{ margin:"12px 14px 0", padding:"14px 16px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, position:"relative" }}>
+                  <button onClick={() => dismissRecap(weeklyRecap.key)} aria-label="Dismiss recap"
+                    style={{ position:"absolute", top:8, right:10, background:"none", border:"none", color:C.muted, fontSize:15, cursor:"pointer", padding:4 }}>×</button>
+                  <div style={{ fontSize:10, fontWeight:800, letterSpacing:1.5, color:C.accent, marginBottom:6 }}>LAST WEEK</div>
+                  <div style={{ display:"flex", gap:18, alignItems:"baseline", marginBottom:10 }}>
+                    <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{weeklyRecap.workouts}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>workout{weeklyRecap.workouts===1?"":"s"}</span></div>
+                    <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{fmtVol(weeklyRecap.volume, unit)}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>{unit}</span></div>
+                    {weeklyRecap.topMuscle && <div style={{ fontSize:11, color:C.sub }}>most trained: <span style={{ color:C.text, fontWeight:700 }}>{weeklyRecap.topMuscle}</span></div>}
+                  </div>
+                  <button onClick={() => setShowWrapped(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Share recap</button>
+                </div>
+              )}
               {/* Stories */}
               <div style={{ display:"flex", gap:14, padding:"12px 14px", overflowX:"auto", overflowY:"hidden", borderBottom:`1px solid ${C.divider}` }}>
                 {/* My story */}
@@ -16111,11 +16362,11 @@ function AppInner() {
                     }}>
                       {myStoryPost?.imageData
                         ? <img src={myStoryPost.imageData} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-                        : <span style={{ fontSize:26 }}>{me?.avatar || "💪"}</span>
+                        : <span style={{ fontSize:26, fontWeight:900 }}>{me?.avatar || ((me?.name || me?.username || "?").trim()[0] || "?").toUpperCase()}</span>
                       }
                     </div>
                     {!myStoryPost && (
-                      <div style={{ position:"absolute", bottom:-2, right:-2, width:20, height:20, borderRadius:"50%", background:C.accent, color:"#fff", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
+                      <div style={{ position:"absolute", bottom:-2, right:-2, width:20, height:20, borderRadius:"50%", background:C.accent, color:C.onAccent, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
                     )}
                   </div>
                   <div style={{ fontSize:11, color:C.text }}>Your story</div>
@@ -16178,7 +16429,7 @@ function AppInner() {
                         Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
                       </div>
                       <button onClick={() => switchTab("tracker")} style={{
-                        background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+                        background:C.accent,
                         color:"#fff", border:"none", borderRadius:10,
                         padding:"11px 22px", fontSize:13, fontWeight:700,
                         cursor:"pointer", fontFamily:F
@@ -16541,7 +16792,7 @@ class ErrorBoundary extends Component {
     };
     return (
       <div style={{ minHeight:"100dvh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", background:"#0A0A0A", color:"#fff", fontFamily:"-apple-system, BlinkMacSystemFont, system-ui, sans-serif", textAlign:"center" }}>
-        <div style={{ fontSize:40, marginBottom:16 }}>💪</div>
+        <div style={{ marginBottom:16, fontSize:34, fontWeight:900, letterSpacing:-1 }}>S</div>
         <div style={{ fontSize:20, fontWeight:800, marginBottom:8, letterSpacing:-0.4 }}>Something went sideways</div>
         <div style={{ fontSize:14, color:"#999", marginBottom:28, maxWidth:300, lineHeight:1.5 }}>The app hit an unexpected error. Reloading usually fixes it — your workouts are saved on the server.</div>
         <button onClick={reload} style={{ width:"100%", maxWidth:280, background:"#fff", color:"#0A0A0A", border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:"pointer", marginBottom:10 }}>Reload</button>
