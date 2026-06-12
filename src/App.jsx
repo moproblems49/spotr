@@ -1,4 +1,4 @@
-// v178091716423
+// v178091716427
 // PATCHED v29 - BUILD 2026-06-08 - HRV/RHR recovery vs 60-day baseline drives readiness + Recovery% chip
 import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
 import { createPortal } from "react-dom";
@@ -895,6 +895,9 @@ const THEMES = {
 };
 
 const F = "'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
+// Display face for headline moments only (wordmark, screen titles, Wrapped). Body text
+// stays Inter — the condensed athletic face is seasoning, not the whole meal.
+const DISPLAY = "'Barlow Condensed','Inter',-apple-system,sans-serif";
 const MONO = "'JetBrains Mono','SF Mono',Menlo,monospace";
 
 // ─── Premium icon system — line icons, single accent ──────────────────────────
@@ -1003,7 +1006,7 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
   }
 
   const bodyCol = C?.isDark ? "#3f4049" : "#cdd1d8";
-  const accentCol = C?.accent || "#7c3aed";
+  const accentCol = C?.accent || "#c8f135";
   const lightCol = C?.isDark ? "#6d5bb0" : "#c9b3ee";
   const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
   const figW = Math.round(size * 0.58);
@@ -1333,6 +1336,28 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             </>
           ) : mode === "readiness" ? (
             <>
+              {(() => {
+                const bb = computeBodyBattery(store);
+                const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
+                const parts = [];
+                if (bb.workoutDrain) parts.push(`−${bb.workoutDrain} training`);
+                if (bb.activityDrain) parts.push(`−${bb.activityDrain} activity`);
+                if (bb.baselineDrain) parts.push(`−${bb.baselineDrain} day`);
+                return (
+                  <div style={{ margin:"2px 16px 10px", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:7 }}>
+                      <span style={{ fontSize:11, fontWeight:700, letterSpacing:1.2, color:C.sub, fontFamily:DISPLAY }}>BODY BATTERY</span>
+                      <span style={{ fontFamily:MONO, fontSize:20, fontWeight:800, color:fill, letterSpacing:-0.5 }}>{bb.level}<span style={{ fontSize:11, color:C.sub, fontWeight:600 }}>/100</span></span>
+                    </div>
+                    <div style={{ height:8, borderRadius:4, background:C.divider, overflow:"hidden" }}>
+                      <div style={{ width:`${bb.level}%`, height:"100%", borderRadius:4, background:fill, transition:"width 0.5s ease" }}/>
+                    </div>
+                    <div style={{ marginTop:7, fontSize:10, color:C.muted, fontWeight:600 }}>
+                      {bb.hasRecovery ? `Woke at ${bb.charge0}` : `Est. start ${bb.charge0}`}{parts.length ? ` · ${parts.join(" · ")}` : ""}
+                    </div>
+                  </div>
+                );
+              })()}
               {rec && typeof rec.recoveryScore === "number" && (
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"2px 16px 6px" }}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 11px", borderRadius:999, background:C.divider, fontSize:11, fontWeight:700, color:C.text }}>
@@ -1453,19 +1478,19 @@ function MuscleIcon({ muscle = "", name = "", size = 28, C }) {
   // Use the polished illustration icon when this muscle has one.
   const rasterSrc = (typeof MUSCLE_ICONS !== "undefined") && MUSCLE_ICONS[m];
   if (rasterSrc) {
-    const ringR = isDark ? "rgba(139,92,246,0.28)" : "rgba(124,58,237,0.18)";
-    const tintR = isDark ? "rgba(139,92,246,0.14)" : "rgba(124,58,237,0.08)";
+    const ringR = isDark ? "rgba(200,241,53,0.22)" : "rgba(101,163,13,0.20)";
+    const tintR = isDark ? "rgba(200,241,53,0.10)" : "rgba(101,163,13,0.08)";
     return (
       <div style={{ width:size, height:size, borderRadius:Math.round(size*0.28), background:tintR, border:`1px solid ${ringR}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, overflow:"hidden" }}>
         <img src={rasterSrc} alt={muscle} style={{ width:"86%", height:"86%", objectFit:"contain" }}/>
       </div>
     );
   }
-  const accent = isDark ? (C?.accent || "#8b5cf6") : (C?.accent || "#7c3aed");
+  const accent = isDark ? (C?.accent || "#c8f135") : (C?.accent || "#65a30d");
   const bodyFill = isDark ? "#3d3d46" : "#c5cad3";
   const stroke = isDark ? "#2b2b32" : "#aab1bd";
-  const tint = isDark ? "rgba(139,92,246,0.14)" : "rgba(124,58,237,0.08)";
-  const ring = isDark ? "rgba(139,92,246,0.28)" : "rgba(124,58,237,0.18)";
+  const tint = isDark ? "rgba(200,241,53,0.10)" : "rgba(101,163,13,0.08)";
+  const ring = isDark ? "rgba(200,241,53,0.22)" : "rgba(101,163,13,0.20)";
 
   let inner;
   if (m === "cardio") {
@@ -1503,7 +1528,7 @@ function ToastHost() {
     return () => clearTimeout(id);
   }, [t?.id]);
   if (!t) return null;
-  const bg = t.type === "error" ? "#ef4444" : t.type === "success" ? "#22c55e" : "#6d28d9";
+  const bg = t.type === "error" ? "#ef4444" : t.type === "success" ? "#22c55e" : "#26262d";
   return (
     <div style={{
       position:"fixed", bottom:90, left:"50%", transform:"translateX(-50%)",
@@ -2613,6 +2638,57 @@ function aiEndpoint() { return API_BASE + "/api/ai"; }
 // Uses the @capgo/capacitor-health plugin (Capacitor 8, SPM). Reached through the
 // runtime Capacitor global so the web bundle stays clean and degrades gracefully.
 // ═════════════════════════════════════════════════════════════════════════════
+// ── Body battery (v1) ─────────────────────────────────────────────────────────
+// A Garmin-style 0-100 energy estimate, honest about what an iPhone can know:
+//   charge:   morning level from the recovery score (HRV/RHR/sleep vs baseline)
+//   drain:    logged workouts (volume + intensity), today's steps/active energy,
+//             and a small baseline awake drain
+// No all-day heart-rate stream (that needs a watch), so no intra-day stress drain.
+function computeBodyBattery(store) {
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const rec = store.recovery;
+  const hasRecovery = rec && typeof rec.recoveryScore === "number";
+  const charge0 = hasRecovery
+    ? Math.round(55 + rec.recoveryScore * 45)
+    : (rec && typeof rec.sleepHours === "number"
+        ? Math.max(55, Math.min(95, Math.round(40 + rec.sleepHours * 6)))
+        : 82);
+  // Baseline awake drain: ~0.9/h since 7am, capped.
+  const awakeHours = Math.max(0, (now - new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7)) / 36e5);
+  const baselineDrain = Math.min(14, Math.round(awakeHours * 0.9));
+  // Workout drain from today's logged sessions.
+  let workoutDrain = 0;
+  for (const sess of Object.values((store.history || {})[todayKey] || {})) {
+    let sets = 0, rpeSum = 0, rpeN = 0;
+    for (const ex of (sess.exercises || [])) {
+      for (const s of (ex.sets || [])) {
+        if (s.type === "warmup") continue;
+        if (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) {
+          sets++;
+          const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
+        }
+      }
+    }
+    if (!sets) continue;
+    const avgRpe = rpeN ? rpeSum / rpeN : null;
+    workoutDrain += Math.max(5, Math.min(30, Math.round(6 + sets * 0.9 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
+  }
+  workoutDrain = Math.min(45, workoutDrain);
+  // Activity drain from steps/active energy (dampened when a workout is logged,
+  // since the workout's own energy is already counted above).
+  let activityDrain = 0, hasActivity = false;
+  const act = store.activity;
+  if (act && act.date === todayKey && (act.steps || act.activeKcal)) {
+    hasActivity = true;
+    activityDrain = (act.steps ? act.steps / 1800 : 0) + (act.activeKcal ? act.activeKcal / 90 : 0);
+    if (workoutDrain > 0) activityDrain *= 0.6;
+    activityDrain = Math.min(18, Math.round(activityDrain));
+  }
+  const level = Math.max(5, Math.min(100, charge0 - baselineDrain - workoutDrain - activityDrain));
+  return { level, charge0, baselineDrain, workoutDrain, activityDrain, hasRecovery, hasActivity };
+}
+
 function nativeHealth() {
   const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
   if (Cap?.isNativePlatform?.() && Cap.Plugins?.Health) return Cap.Plugins.Health;
@@ -2633,6 +2709,36 @@ async function requestHealthPermission() {
   } catch (e) {
     return false;
   }
+}
+
+// Today's movement (steps + active energy) for the body battery's activity drain.
+// Tries the common dataType spellings across capacitor health plugins; returns what sticks.
+// Shape: { date: "YYYY-MM-DD", steps: number|null, activeKcal: number|null }
+async function readTodayActivity() {
+  const H = nativeHealth();
+  if (!H) return null;
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startIso = dayStart.toISOString(), endIso = now.toISOString();
+  // Authorization for the extra types is best-effort and separate, so a strict plugin
+  // rejecting unknown types can't break the core HRV/RHR/sleep permission.
+  try { await H.requestAuthorization({ read: ["steps", "activeEnergyBurned", "activeCalories", "calories"], write: [] }); } catch (e) {}
+  async function sum(types) {
+    for (const dataType of types) {
+      try {
+        const r = await H.readSamples({ dataType, startDate: startIso, endDate: endIso, limit: 1000 });
+        const samples = (r && r.samples) || [];
+        if (!samples.length) continue;
+        const total = samples.reduce((a, s) => a + (parseFloat(s.value) || 0), 0);
+        if (total > 0) return Math.round(total);
+      } catch (e) { /* try next spelling */ }
+    }
+    return null;
+  }
+  const steps = await sum(["steps", "stepCount"]);
+  const activeKcal = await sum(["activeEnergyBurned", "activeCalories", "calories"]);
+  if (steps == null && activeKcal == null) return null;
+  return { date: `${dayStart.getFullYear()}-${String(dayStart.getMonth()+1).padStart(2,"0")}-${String(dayStart.getDate()).padStart(2,"0")}`, steps, activeKcal };
 }
 
 // Pull the most recent recovery snapshot. Returns null on web or if unavailable/denied.
@@ -3035,7 +3141,7 @@ function SeshdLogo({ C, big = false }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap: big ? 10 : 7 }}>
       <img src="/icon-192.png" width={sz} height={sz} style={{ borderRadius: sz * 0.22, objectFit:"cover" }} alt="Seshd"/>
-      <span style={{ fontSize:big?26:17, fontWeight:800, letterSpacing:-0.5, color:C.text, lineHeight:1, fontFamily:F }}>Seshd</span>
+      <span style={{ fontSize:big?28:19, fontWeight:700, letterSpacing:0.6, color:C.text, lineHeight:1, fontFamily:DISPLAY, textTransform:"uppercase" }}>Seshd</span>
     </div>
   );
 }
@@ -3332,7 +3438,7 @@ function MuscleBalance({ store, C, days = 30 }) {
     return { total, groups };
   }, [store.history, days]);
 
-  const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#a78bfa", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
+  const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#c8f135", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
 
   if (!data.total) {
     return (
@@ -3777,7 +3883,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
             {showCreateOption && !creating && (
               <button onClick={() => { setCreating(true); haptic("tap"); }} style={{
                 width:"100%", textAlign:"left", padding:"12px 16px", borderTop:`1px solid ${C.divider}`,
-                background: C.isDark ? "rgba(124,58,237,0.12)" : "rgba(124,58,237,0.07)",
+                background: C.accentSoft,
                 border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
               }}>+ Create "{trimmedQ}" as a custom exercise</button>
             )}
@@ -4319,7 +4425,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
 // ═════════════════════════════════════════════════════════════════════════════
 function Confetti({ origin = "top", duration = 2 }) {
   // origin: "top" (PR modal full-screen) | "set" (centered around the checkmark)
-  const colors = ["#7c3aed","#f97316","#eab308","#30d158","#a855f7","#ec4899","#3b82f6"];
+  const colors = ["#c8f135","#f97316","#eab308","#30d158","#a3e635","#ec4899","#3b82f6"];
   const count = origin === "set" ? 24 : 36;
   const topPos = origin === "set" ? "45%" : "25%";
   return (
@@ -4566,7 +4672,7 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
   });
   let prSvg = "";
   if (prList && prList.length) {
-    prSvg += `<text x="80" y="1108" fill="#a78bfa" font-size="22" font-weight="700" letter-spacing="2">NEW PRs</text>`;
+    prSvg += `<text x="80" y="1108" fill="#c8f135" font-size="22" font-weight="700" letter-spacing="2">NEW PRs</text>`;
     prList.slice(0, 3).forEach((p, i) => {
       prSvg += `<text x="80" y="${1158 + i * 46}" fill="#e8e8ea" font-size="30" font-weight="600">${esc(p.name)} \u00b7 ${esc(p.weight)} ${unit}</text>`;
     });
@@ -4640,10 +4746,13 @@ async function shareSvgCard(svg, filename, title, outW = 1080, outH = 1350) {
   }
 }
 
-function WrappedModal({ store, C, onClose, onPostToFeed }) {
+function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
   const unit = store.unit || "lbs";
   const weekAgo = Date.now() - 7*24*60*60*1000;
-  const weekHistory = Object.entries(store.history||{}).filter(([d]) => new Date(d + "T12:00:00").getTime() > weekAgo);
+  const rangeStart = range?.start ?? weekAgo;
+  const rangeEnd = range?.end ?? Date.now();
+  const inRange = (d) => { const t = new Date(d + "T12:00:00").getTime(); return t > rangeStart && t <= rangeEnd; };
+  const weekHistory = Object.entries(store.history||{}).filter(([d]) => inRange(d));
   const workouts = weekHistory.reduce((a,[,ss]) => a + Object.keys(ss).length, 0);
   // Volume: exclude warmups and convert each session's stored unit to the display unit,
   // matching how volume is computed everywhere else in the app.
@@ -4680,9 +4789,8 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
   const sex = (store.bodyType === "female" || store.bodyType === "male")
     ? store.bodyType
     : (store.strengthSex === "female" ? "female" : "male");
-  const weekLabel = `WEEK OF ${new Date().toLocaleDateString("en", { month: "short", day: "numeric" }).toUpperCase()}`;
+  const weekLabel = range?.label || `WEEK OF ${new Date().toLocaleDateString("en", { month: "short", day: "numeric" }).toUpperCase()}`;
   // Week-over-week: the prior 7-day window (7–14 days ago) for trend deltas.
-  const twoWeeksAgo = Date.now() - 14*24*60*60*1000;
   const volOf = (hist) => hist.reduce((a,[,ss]) => a + Object.values(ss).reduce((b,s) => {
     const su = s.unit || "lbs";
     return b + (s.exercises||[]).reduce((c,ex) => c + (ex.sets||[]).reduce((d2,s2) => {
@@ -4690,7 +4798,8 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
       if (!done || s2.type === "warmup") return d2;
       return d2 + cvt(parseFloat(s2.weight)||0, su, unit) * (parseFloat(s2.reps)||0);
     }, 0), 0); }, 0), 0);
-  const prevHistory = Object.entries(store.history||{}).filter(([d]) => { const t = new Date(d + "T12:00:00").getTime(); return t > twoWeeksAgo && t <= weekAgo; });
+  const prevStart = rangeStart - (rangeEnd - rangeStart), prevEnd = rangeStart;
+  const prevHistory = Object.entries(store.history||{}).filter(([d]) => { const t = new Date(d + "T12:00:00").getTime(); return t > prevStart && t <= prevEnd; });
   const prevWorkouts = prevHistory.reduce((a,[,ss]) => a + Object.keys(ss).length, 0);
   const prevVolume = volOf(prevHistory);
   const volDeltaPct = prevVolume > 0 ? Math.round((volume - prevVolume) / prevVolume * 100) : null;
@@ -4739,7 +4848,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
         </button>
 
         <div style={{ position:"relative", zIndex:1 }}>
-          <div style={{ fontSize:11, letterSpacing:4, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:8 }}>SESHD WRAPPED</div>
+          <div style={{ fontSize:14, letterSpacing:5, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:8, fontFamily:DISPLAY }}>SESHD WRAPPED</div>
           <div style={{ fontSize:13, letterSpacing:1.5, fontWeight:600, color:"rgba(255,255,255,0.4)", marginBottom:28 }}>
             {(() => { const d = new Date(); return `Week of ${d.toLocaleDateString("en",{month:"short",day:"numeric"}).toUpperCase()}`; })()}
           </div>
@@ -4835,7 +4944,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed }) {
             width:"100%", background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.18)",
             borderRadius:12, padding:"13px", fontSize:13, fontWeight:700,
             cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2
-          }}>Share as Story (9:16)</button>
+          }}>Share as Story</button>
           {onPostToFeed && (
             <button onClick={() => {
               const { region, max } = weeklyMuscleVolume(store, 7);
@@ -6153,7 +6262,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           day.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             const sets = Math.max(1, parseInt(ex.sets) || 3);
-            const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#8B5CF6",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
+            const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#c8f135",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
             const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
             return (
               <div key={ei} style={{ marginBottom:12, background:CARD, borderRadius:16, overflow:"visible", border:`1px solid ${BORD}`, boxShadow:isDark?"none":"0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)" }}>
@@ -6218,7 +6327,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:400, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setEditorReorder(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:BLUE, cursor:"pointer", fontFamily:F }}>Done</button>
-              <div style={{ fontSize:15, fontWeight:700, color:TXT, letterSpacing:-0.2 }}>Reorder exercises</div>
+              <div style={{ fontSize:18, fontWeight:700, color:TXT, letterSpacing:0.5, fontFamily:DISPLAY, textTransform:"uppercase" }}>Reorder exercises</div>
               <div style={{ width:48 }}/>
             </div>
             <div style={{ fontSize:11, color:SUB, padding:"10px 16px 4px", letterSpacing:0.4, fontWeight:600 }}>DRAG TO MOVE</div>
@@ -6949,7 +7058,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
           {newExName.trim().length >= 2 && !exactMatch && !showCreateEx && (
             <button onClick={() => { setShowCreateEx(true); setShowExSuggest(false); haptic("tap"); }} style={{
               marginTop:6, width:"100%", textAlign:"left", padding:"10px 12px", borderRadius:10,
-              background: C.isDark ? "rgba(124,58,237,0.12)" : "rgba(124,58,237,0.07)",
+              background: C.accentSoft,
               border:`1px dashed ${C.accent}`, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F,
             }}>+ Create "{newExName.trim()}" as a custom exercise</button>
           )}
@@ -7071,7 +7180,7 @@ function InsightCards({ insights, C, big, onDismiss }) {
 // drag vertically; other cards slide out of the way; release to drop. Falls back gracefully
 // (the handle only appears with >1 day). Kept self-contained so the drag state can't leak
 // into the rest of the workout tab.
-const DAY_CARD_COLORS = ["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#7c3aed","#7c3aed"];
+const DAY_CARD_COLORS = ["#c8f135","#0891b2","#059669","#d97706","#dc2626","#0891b2","#059669"];
 
 // One sortable day card. Uses dnd-kit's useSortable so the lift/slide/drop motion is
 // hardware-accelerated and the other cards animate out of the way automatically.
@@ -10143,7 +10252,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             const exInfo = getExEntry(ex.name);
             const pr = store.prs?.[ex.name];
             const muscleColor = {
-              chest:"#EF4444",back:"#3B82F6",shoulders:"#8B5CF6",biceps:"#F59E0B",
+              chest:"#EF4444",back:"#3B82F6",shoulders:"#c8f135",biceps:"#F59E0B",
               triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",
               calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB",
             }[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
@@ -12749,7 +12858,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     <PullToRefresh onRefresh={onRefresh} C={C}>
     <div style={{ paddingBottom:20 }}>
       {/* Cover photo — user image with gradient fallback. Tap "Edit cover" (own profile) to change. */}
-      <div style={{ height:110, marginBottom:-26, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
+      <div style={{ height:132, marginBottom:-28, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
         {user?.coverUrl
           ? <img src={user.coverUrl} alt="" onClick={() => setShowCoverView(true)}
               style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${user?.coverPos ?? 50}%`, cursor:"pointer" }}/>
@@ -13028,20 +13137,21 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
 
       {/* Cover position sheet — drag the photo to choose what shows */}
       {coverDraft && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+        <div onTouchStart={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
           <div style={{ width:"100%", maxWidth:440, background:C.bg, borderRadius:18, overflow:"hidden", fontFamily:F }}>
             <div style={{ padding:"14px 16px 10px" }}>
               <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Position your cover</div>
               <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>Drag the photo up or down to choose what shows</div>
             </div>
             <div
-              onTouchStart={e => coverDragStart(e.touches[0].clientY)}
-              onTouchMove={e => { e.preventDefault(); coverDragMove(e.touches[0].clientY); }}
-              onTouchEnd={() => { coverDragRef.current = null; }}
+              onTouchStart={e => { e.stopPropagation(); coverDragStart(e.touches[0].clientY); }}
+              onTouchMove={e => { e.stopPropagation(); coverDragMove(e.touches[0].clientY); }}
+              onTouchEnd={e => { e.stopPropagation(); coverDragRef.current = null; }}
               onMouseDown={e => { e.preventDefault(); coverDragStart(e.clientY); }}
               onMouseMove={e => { if (e.buttons === 1) coverDragMove(e.clientY); }}
               onMouseUp={() => { coverDragRef.current = null; }}
-              style={{ height:110, position:"relative", overflow:"hidden", touchAction:"none", cursor:"grab", background:"#000" }}>
+              style={{ height:132, position:"relative", overflow:"hidden", touchAction:"none", cursor:"grab", background:"#000" }}>
               <img src={coverDraft} alt="" draggable={false}
                 style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${coverPosDraft}%`, userSelect:"none", pointerEvents:"none" }}/>
               <div style={{ position:"absolute", inset:0, border:`2px solid ${C.accent}`, pointerEvents:"none" }}/>
@@ -14056,6 +14166,18 @@ function fmtMsgTime(ts) {
 }
 
 function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) {
+  // Edge swipe-to-go-back (iOS convention): start near the left edge, swipe right.
+  const swipeRef = useRef(null);
+  const swipeHandlers = {
+    onTouchStart: (e) => { const t = e.touches[0]; swipeRef.current = t.clientX < 32 ? { x: t.clientX, y: t.clientY } : null; },
+    onTouchMove: (e) => {
+      if (!swipeRef.current) return;
+      const t = e.touches[0];
+      const dx = t.clientX - swipeRef.current.x, dy = Math.abs(t.clientY - swipeRef.current.y);
+      if (dx > 70 && dy < 60) { swipeRef.current = null; haptic("light"); onBack(); }
+    },
+    onTouchEnd: () => { swipeRef.current = null; },
+  };
   const [rows, setRows] = useState(null); // null = loading
   const aliveRef = useRef(true);
   const load = useCallback(async () => {
@@ -14084,10 +14206,10 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   }, [rows, currentUserId]);
 
   return (
-    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+    <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
-        <div style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:F }}>Messages</div>
+        <div style={{ fontSize:19, fontWeight:700, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Messages</div>
       </div>
       <PullToRefresh onRefresh={load} C={C}>
       <div>
@@ -14122,6 +14244,18 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
 }
 
 function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
+  // Edge swipe-to-go-back (iOS convention): start near the left edge, swipe right.
+  const swipeRef = useRef(null);
+  const swipeHandlers = {
+    onTouchStart: (e) => { const t = e.touches[0]; swipeRef.current = t.clientX < 32 ? { x: t.clientX, y: t.clientY } : null; },
+    onTouchMove: (e) => {
+      if (!swipeRef.current) return;
+      const t = e.touches[0];
+      const dx = t.clientX - swipeRef.current.x, dy = Math.abs(t.clientY - swipeRef.current.y);
+      if (dx > 70 && dy < 60) { swipeRef.current = null; haptic("light"); onBack(); }
+    },
+    onTouchEnd: () => { swipeRef.current = null; },
+  };
   const [msgs, setMsgs] = useState(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -14165,7 +14299,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   }
 
   return (
-    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+    <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
         <Avatar user={peer || { name:"?" }} size={32} C={C}/>
@@ -14399,6 +14533,28 @@ function AppInner() {
   const [showMessages, setShowMessages] = useState(false);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [msgUnread, setMsgUnread] = useState(0);
+  // Native: refresh the HealthKit recovery snapshot + today's activity on open and on
+  // returning to the foreground, so readiness and the body battery stay current
+  // (previously recovery only refreshed when the coach opened).
+  const healthSyncRef = useRef(0);
+  useEffect(() => {
+    if (!healthKitAvailable()) return;
+    let cancelled = false;
+    async function sync() {
+      if (Date.now() - healthSyncRef.current < 15 * 60 * 1000) return;
+      healthSyncRef.current = Date.now();
+      try {
+        const [rec, act] = await Promise.all([readRecovery(), readTodayActivity()]);
+        if (cancelled) return;
+        if (rec || act) setStore(p => ({ ...p, recovery: rec || p.recovery, activity: act || p.activity }));
+      } catch (e) {}
+    }
+    sync();
+    const onVis = () => { if (document.visibilityState === "visible") sync(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { cancelled = true; document.removeEventListener("visibilitychange", onVis); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Monday recap: last completed Mon-Sun week's totals, shown on the feed until dismissed.
   const weeklyRecap = useMemo(() => {
     try {
@@ -14417,7 +14573,7 @@ function AppInner() {
           workouts++;
           const mult = (sess.unit || "lbs") === unit ? 1 : (sess.unit === "kg" ? 2.205 : 1 / 2.205);
           for (const ex of (sess.exercises || [])) {
-            const done = (ex.sets || []).filter(s => s.done && s.type !== "warmup");
+            const done = (ex.sets || []).filter(s => (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) && s.type !== "warmup");
             volume += done.reduce((a, s) => a + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0) * mult;
             const m = getMuscle(ex.name);
             if (m && done.length) muscleSets[m] = (muscleSets[m] || 0) + done.length;
@@ -14426,7 +14582,11 @@ function AppInner() {
       }
       if (!workouts) return null;
       const topMuscle = Object.entries(muscleSets).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-      return { key, workouts, volume: Math.round(volume), topMuscle };
+      return {
+        key, workouts, volume: Math.round(volume), topMuscle,
+        start: lastMon.getTime(), end: thisMon.getTime(),
+        label: `WEEK OF ${lastMon.toLocaleDateString("en", { month: "short", day: "numeric" }).toUpperCase()}`,
+      };
     } catch (e) { return null; }
   }, [store.history, store.dismissedInsights, store.unit]);
   const dismissRecap = (key) => {
@@ -15630,7 +15790,7 @@ function AppInner() {
       const fonts = document.createElement("link");
       fonts.id = "seshd-fonts";
       fonts.rel = "stylesheet";
-      fonts.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap";
+      fonts.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Barlow+Condensed:wght@600;700&display=swap";
       document.head.appendChild(fonts);
     }
 
@@ -16126,7 +16286,7 @@ function AppInner() {
       `}</style>
       {prModal && <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>}
       {showCoach && <AICoachSheet store={store} unit={unit} C={C} onClose={() => setShowCoach(false)}/>}
-      {showWrapped && <WrappedModal store={store} C={C} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
+      {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
 
       {/* OFFLINE INDICATOR — non-intrusive; auto-hides on reconnect */}
@@ -16339,7 +16499,7 @@ function AppInner() {
                     <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{fmtVol(weeklyRecap.volume, unit)}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>{unit}</span></div>
                     {weeklyRecap.topMuscle && <div style={{ fontSize:11, color:C.sub }}>most trained: <span style={{ color:C.text, fontWeight:700 }}>{weeklyRecap.topMuscle}</span></div>}
                   </div>
-                  <button onClick={() => setShowWrapped(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Share recap</button>
+                  <button onClick={() => setShowWrapped({ start: weeklyRecap.start, end: weeklyRecap.end, label: weeklyRecap.label })} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Share recap</button>
                 </div>
               )}
               {/* Stories */}
