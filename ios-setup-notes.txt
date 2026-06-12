@@ -39,4 +39,21 @@ Don't add it; declaring write access you don't use can trigger review questions.
 ---------------------------------------------------------
 - Xcode 26 + Capacitor 8: friend should run `npx cap sync ios` after
   pulling, then build/archive as usual.
-- Before submitting: replace CONTACT_EMAIL_HERE in privacy.html (2 places).
+- Privacy policy contact email: mohaggagz@gmail.com (already filled in).
+
+── ADDED (native shell round 2) ──
+Plugins to install on the PC before syncing (then npx cap sync ios):
+  npm install @capacitor/local-notifications @capacitor/push-notifications @capacitor/app @capacitor/haptics @capacitor/splash-screen
+  npm install -D @capacitor/assets
+  npx capacitor-assets generate --ios     (uses assets/icon-only.png + assets/splash.png)
+  Optional (App Store review prompt): npm install @capacitor-community/in-app-review
+
+Xcode side:
+- Push Notifications capability + (Apple Developer portal) APNs key. App only REGISTERS tokens for now; sending comes later via a server function.
+- Associated Domains capability: applinks:spotr-drab.vercel.app
+- Replace TEAMID in public/.well-known/apple-app-site-association with the real Team ID (file must be served as application/json, no extension — Vercel does this automatically).
+- Background notification for rest timer + deep links need no extra entitlements.
+- Live Activities (Dynamic Island rest timer): future native work — requires a WidgetKit extension target; not in this round.
+
+capacitor.config addition (merge into capacitor.config.json/ts):
+  "plugins": { "SplashScreen": { "launchShowDuration": 800, "backgroundColor": "#0b0b0e", "launchAutoHide": true } }
