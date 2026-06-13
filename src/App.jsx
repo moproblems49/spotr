@@ -1,4 +1,6 @@
-// v178091716428
+// v178091716429
+// PATCHED v31 - BUILD 2026-06-13 - coach memory (coachLog) + actionable checklist, recovery chip
+//   transparency (verdict label + HRV/RHR/sleep drivers)
 // PATCHED v30 - BUILD 2026-06-13 - polish pass: unit constant unified (LBS_PER_KG), local date-key fix,
 //   body-log input validation (posNum), post-delete failure toast+revert, messages empty-state icon,
 //   numberpad steppers 44px tap target, exercise library browse-all capped (perf), dead helper removed
@@ -1195,6 +1197,16 @@ function _readyColor(t) {
   return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
 }
 
+// Plain-language verdict for a 0..1 recovery score. The scale is intentionally conservative
+// (a solid day lands ~0.70–0.85; 0.90+ means well above your own baseline), so a low-80s reading
+// is "Strong", not mediocre — the label exists to communicate that.
+function recoveryVerdict(t) {
+  if (t >= 0.78) return "Ready to push";
+  if (t >= 0.62) return "Ready";
+  if (t >= 0.45) return "Moderate";
+  return "Take it easy";
+}
+
 // Pretty region label for captions.
 function _regionLabel(k) {
   const r = k.split(":")[1] || k;
@@ -1351,14 +1363,21 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 );
               })()}
               {rec && typeof rec.recoveryScore === "number" && (
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"2px 16px 6px" }}>
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"2px 16px 6px" }}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 11px", borderRadius:999, background:C.divider, fontSize:11, fontWeight:700, color:C.text }}>
                     <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(rec.recoveryScore) }}/>
                     Recovery {Math.round(rec.recoveryScore * 100)}%
+                    <span style={{ color:_readyColor(rec.recoveryScore) }}>· {recoveryVerdict(rec.recoveryScore)}</span>
                   </span>
-                  {rec.hrv != null && rec.hrvBaseline ? (
-                    <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>HRV {rec.hrv} vs {Math.round(rec.hrvBaseline)} baseline</span>
-                  ) : null}
+                  {(() => {
+                    const drivers = [];
+                    if (rec.hrv != null && rec.hrvBaseline) drivers.push(`HRV ${rec.hrv} vs ${Math.round(rec.hrvBaseline)}`);
+                    if (rec.restingHr != null && rec.rhrBaseline) drivers.push(`RHR ${rec.restingHr} vs ${Math.round(rec.rhrBaseline)}`);
+                    if (rec.sleepHours != null) drivers.push(`${rec.sleepHours}h sleep`);
+                    return drivers.length ? (
+                      <span style={{ fontSize:10, color:C.muted, fontWeight:600, textAlign:"center" }}>{drivers.join(" · ")}</span>
+                    ) : null;
+                  })()}
                 </div>
               )}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
@@ -14107,8 +14126,9 @@ function PublicProfileView({ userId, C, onOpenApp }) {
 // and native wrap it may need routing through a serverless function with an API key — that's
 // the thing to verify in production. UI + data assembly are environment-independent.
 // ═════════════════════════════════════════════════════════════════════════════
-function AICoachSheet({ store, unit, C, onClose }) {
+function AICoachSheet({ store, setStore, unit, C, onClose }) {
   const [state, setState] = useState({ loading: true, text: "", error: null });
+  const [actions, setActions] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -14121,6 +14141,13 @@ function AICoachSheet({ store, unit, C, onClose }) {
           if (rec) store.recovery = rec;
         } catch (e) { /* recovery is best-effort */ }
         const ctx = buildCoachContext(store, unit);
+        // #1 Memory: feed the last couple of coaching sessions back in so the coach builds on its
+        // own advice (and can note follow-through) instead of starting cold every time.
+        ctx.priorCoaching = (store.coachLog || []).slice(0, 2).map(e => ({
+          date: e.date,
+          summary: e.summary,
+          actionsGiven: (e.actions || []).map(a => ({ text: a.text, done: !!a.done })),
+        }));
         // Not enough data to coach meaningfully
         if (!ctx.recentSessions.length) {
           if (!cancelled) setState({ loading: false, text: "", error: "no_data" });
@@ -14134,8 +14161,13 @@ function AICoachSheet({ store, unit, C, onClose }) {
           "when HRV is low relative to a typical baseline, resting HR is elevated, or sleep was short " +
           "(under ~6.5h), suggest moderating intensity or prioritizing recovery; when recovery looks " +
           "strong, it's fine to encourage pushing. Mention recovery only when the data is present. " +
+          "If 'priorCoaching' is present, briefly acknowledge what you advised before and whether they " +
+          "followed through (based on actionsGiven.done and their recent sessions) — build on it, don't repeat it. " +
           "Be supportive and never alarmist; you are not giving medical advice. " +
-          "No medical claims. Use the user's units. Speak directly to the lifter ('you').";
+          "No medical claims. Use the user's units. Speak directly to the lifter ('you'). " +
+          "After your summary, output a line containing exactly 'ACTIONS:' on its own, then 2-4 concrete " +
+          "action items — one per line, each starting with '- ' — that are specific and doable in the next " +
+          "session or two (e.g. '- Add 2.5kg to your bench press next session'). No other text after ACTIONS:.";
         const res = await fetch(aiEndpoint(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -14148,8 +14180,27 @@ function AICoachSheet({ store, unit, C, onClose }) {
         });
         if (!res.ok) throw new Error("api_" + res.status);
         const data = await res.json();
-        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
-        if (!cancelled) setState({ loading: false, text: text || "Couldn't generate advice right now.", error: text ? null : "empty" });
+        const raw = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+        // #2 Actionable: split the prose summary from the ACTIONS: checklist.
+        let summary = raw, parsedActions = [];
+        const m = raw.split(/\n?\s*ACTIONS:\s*\n?/i);
+        if (m.length > 1) {
+          summary = m[0].trim();
+          parsedActions = m[1].split("\n")
+            .map(l => l.replace(/^[\s\-•*]+/, "").trim())
+            .filter(Boolean)
+            .slice(0, 4)
+            .map((text, i) => ({ id: `${Date.now()}_${i}`, text, done: false }));
+        }
+        if (!cancelled) {
+          setActions(parsedActions);
+          setState({ loading: false, text: summary || "Couldn't generate advice right now.", error: summary ? null : "empty" });
+          // Persist this session so the coach remembers it next time (keep last 6, newest first).
+          if (summary && setStore) {
+            const entry = { date: dKey(), summary, actions: parsedActions };
+            setStore(p => ({ ...p, coachLog: [entry, ...((p.coachLog || []).slice(0, 5))] }));
+          }
+        }
       } catch (e) {
         if (!cancelled) setState({ loading: false, text: "", error: "failed" });
       }
@@ -14183,6 +14234,33 @@ function AICoachSheet({ store, unit, C, onClose }) {
         )}
         {!state.loading && !state.error && (
           <div style={{ fontSize:14.5, lineHeight:1.65, color:C.text, whiteSpace:"pre-wrap" }}>{state.text}</div>
+        )}
+        {!state.loading && !state.error && actions.length > 0 && (
+          <div style={{ marginTop:18 }}>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.sub, marginBottom:10 }}>ACTION ITEMS</div>
+            {actions.map(a => (
+              <button key={a.id} onClick={() => {
+                setActions(prev => prev.map(x => x.id === a.id ? { ...x, done: !x.done } : x));
+                if (setStore) setStore(p => {
+                  const log = [...(p.coachLog || [])];
+                  if (log[0]) log[0] = { ...log[0], actions: (log[0].actions || []).map(x => x.id === a.id ? { ...x, done: !x.done } : x) };
+                  return { ...p, coachLog: log };
+                });
+                haptic("tap");
+              }} style={{
+                width:"100%", display:"flex", alignItems:"flex-start", gap:10, textAlign:"left",
+                background:"none", border:"none", padding:"9px 0", cursor:"pointer", fontFamily:F,
+                borderBottom:`1px solid ${C.divider}`
+              }}>
+                <span style={{
+                  flexShrink:0, width:20, height:20, borderRadius:6, marginTop:1,
+                  border:`2px solid ${a.done ? C.accent : C.border}`, background:a.done ? C.accent : "transparent",
+                  display:"flex", alignItems:"center", justifyContent:"center", color:C.onAccent, fontSize:12, fontWeight:800
+                }}>{a.done ? "✓" : ""}</span>
+                <span style={{ fontSize:13.5, lineHeight:1.5, color:a.done ? C.muted : C.text, textDecoration:a.done ? "line-through" : "none" }}>{a.text}</span>
+              </button>
+            ))}
+          </div>
         )}
         <div style={{ fontSize:10, color:C.muted, marginTop:20, lineHeight:1.4, textAlign:"center" }}>
           AI-generated guidance based on your logged data. Not medical or professional training advice.
@@ -16332,7 +16410,7 @@ function AppInner() {
         }
       `}</style>
       {prModal && <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>}
-      {showCoach && <AICoachSheet store={store} unit={unit} C={C} onClose={() => setShowCoach(false)}/>}
+      {showCoach && <AICoachSheet store={store} setStore={setStore} unit={unit} C={C} onClose={() => setShowCoach(false)}/>}
       {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
 
