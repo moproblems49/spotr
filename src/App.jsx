@@ -1,6 +1,9 @@
-// v178091716429
-// PATCHED v31 - BUILD 2026-06-13 - coach memory (coachLog) + actionable checklist, recovery chip
-//   transparency (verdict label + HRV/RHR/sleep drivers)
+// v178091716432
+// PATCHED v32 - BUILD 2026-06-13 - recovery reads overnight HRV (10pm-9am) for today AND the 60-day
+//   baseline, with a JOINT window choice (both use overnight only when both have it, else both fall
+//   back to all samples) so the ratio is always apples-to-apples. RHR/sleep unchanged.
+// PATCHED v31 - BUILD 2026-06-13 - coach memory (coachLog) + actionable checklist (robust ACTIONS
+//   parsing), recovery chip transparency (verdict label + HRV/RHR/sleep drivers)
 // PATCHED v30 - BUILD 2026-06-13 - polish pass: unit constant unified (LBS_PER_KG), local date-key fix,
 //   body-log input validation (posNum), post-delete failure toast+revert, messages empty-state icon,
 //   numberpad steppers 44px tap target, exercise library browse-all capped (perf), dead helper removed
@@ -2775,6 +2778,11 @@ async function readRecovery() {
   const now = new Date();
   const endIso = now.toISOString();
   const startIso = new Date(now.getTime() - 1000 * 60 * 60 * 36).toISOString(); // last 36h
+  // Overnight window for HRV: samples taken roughly during sleep (10pm–9am local) are the cleanest
+  // recovery signal — daytime HRV is noisier (movement, stress, caffeine), which is why Whoop/Garmin/
+  // Oura read it overnight. We isolate overnight HRV for BOTH today and the 60-day baseline so the
+  // ratio stays apples-to-apples. If nothing is tagged overnight, we fall back to all samples.
+  const isOvernight = (t) => { if (t == null) return false; const h = new Date(t).getHours(); return h >= 22 || h < 9; };
 
   async function read(dataType) {
     try {
@@ -2785,11 +2793,13 @@ async function readRecovery() {
 
   const out = { hrv: null, restingHr: null, sleepHours: null, capturedAt: endIso };
 
-  // HRV (ms) — average the window
+  // HRV (ms) — collect samples now; we decide the overnight-vs-all window JOINTLY with the baseline
+  // below so today and the baseline always use the SAME window (never daytime-today vs overnight-baseline).
+  let hrvAll = [], hrvNightToday = [];
   const hrv = await read("heartRateVariability");
   if (hrv.length) {
-    const vals = hrv.map(s => parseFloat(s.value)).filter(v => !isNaN(v));
-    if (vals.length) out.hrv = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    hrvAll = hrv.map(s => ({ v: parseFloat(s.value), t: s.startDate ? new Date(s.startDate).getTime() : null })).filter(s => !isNaN(s.v));
+    hrvNightToday = hrvAll.filter(s => isOvernight(s.t));
   }
   // Resting HR (bpm) — most recent
   const rhr = await read("restingHeartRate");
@@ -2819,14 +2829,22 @@ async function readRecovery() {
   async function readRange(dataType) {
     try {
       const r = await H.readSamples({ dataType, startDate: baseStartIso, endDate: endIso, limit: 1000 });
-      return (r && r.samples) ? r.samples.map(s => parseFloat(s.value)).filter(v => !isNaN(v)) : [];
+      return (r && r.samples) ? r.samples.map(s => ({ v: parseFloat(s.value), t: s.startDate ? new Date(s.startDate).getTime() : null })).filter(s => !isNaN(s.v)) : [];
     } catch (e) { return []; }
   }
   const median = (arr) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
   const hrvHist = await readRange("heartRateVariability");
   const rhrHist = await readRange("restingHeartRate");
-  out.hrvBaseline = median(hrvHist);
-  out.rhrBaseline = median(rhrHist);
+  const hrvHistNight = hrvHist.filter(s => isOvernight(s.t));
+  // Use overnight HRV for BOTH today and baseline only when BOTH have overnight samples; otherwise
+  // fall back to all samples on BOTH sides. This guarantees the ratio is always apples-to-apples
+  // (e.g. a night you didn't wear the watch won't compare daytime HRV against an overnight baseline).
+  const useNight = hrvNightToday.length > 0 && hrvHistNight.length > 0;
+  const todayPool = useNight ? hrvNightToday : hrvAll;
+  const basePool = useNight ? hrvHistNight : hrvHist;
+  if (todayPool.length) out.hrv = Math.round(todayPool.reduce((a, b) => a + b.v, 0) / todayPool.length);
+  out.hrvBaseline = median(basePool.map(s => s.v));
+  out.rhrBaseline = median(rhrHist.map(s => s.v));
   out.baselineDays = Math.max(hrvHist.length, rhrHist.length);
 
   // Recovery score 0..1 from whatever signals are available, weighted toward HRV.
@@ -14183,11 +14201,13 @@ function AICoachSheet({ store, setStore, unit, C, onClose }) {
         const raw = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
         // #2 Actionable: split the prose summary from the ACTIONS: checklist.
         let summary = raw, parsedActions = [];
-        const m = raw.split(/\n?\s*ACTIONS:\s*\n?/i);
+        // Tolerate markdown around the header (**ACTIONS:**, ### ACTIONS, missing colon, etc.),
+        // anchored to line start so "take actions" mid-sentence never false-matches.
+        const m = raw.split(/(?:^|\n)\s*\**#*\s*ACTIONS\s*:?\s*\**\s*(?:\n|$)/i);
         if (m.length > 1) {
           summary = m[0].trim();
-          parsedActions = m[1].split("\n")
-            .map(l => l.replace(/^[\s\-•*]+/, "").trim())
+          parsedActions = m.slice(1).join("\n").split("\n")
+            .map(l => l.replace(/^\s*(?:[-•*]\s*|\d+[.)]\s+)/, "").trim())
             .filter(Boolean)
             .slice(0, 4)
             .map((text, i) => ({ id: `${Date.now()}_${i}`, text, done: false }));
