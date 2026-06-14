@@ -1,4 +1,7 @@
-// v178091716434
+// v178091716435
+// PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
+//   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
+//   headings from muted->sub for contrast. Internal divider separators untouched.
 // PATCHED v34 - BUILD 2026-06-13 - branded Spinner replaces plain "Loading..." across 5 loading states;
 //   stray all-transitions given spring easing (PR celebration / motion / haptics were already premium).
 // PATCHED v33 - BUILD 2026-06-13 - de-duplicated 8 near-duplicate library exercises (alias map keeps
@@ -1312,7 +1315,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   const kicker = mode === "readiness" ? "TODAY" : mode === "strength" ? "VS STANDARDS" : "THIS WEEK";
 
   return (
-    <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.divider}`, overflow:"hidden" }}>
+    <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.border}`, overflow:"hidden" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px 8px" }}>
         <div>
           <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.muted }}>{kicker}</div>
@@ -3533,7 +3536,7 @@ function MuscleBalance({ store, C, days = 30 }) {
   return (
     <div style={{ padding:"16px 0 8px" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-        <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1 }}>MUSCLE BALANCE</div>
+        <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>MUSCLE BALANCE</div>
         <div style={{ fontSize:11, color:C.sub }}>{data.total} sets · last {days}d</div>
       </div>
 
@@ -3607,7 +3610,7 @@ function MostTrainedMuscles({ store, C, days = 30 }) {
   if (!muscles.length) return null;
   return (
     <div style={{ padding:"4px 0 12px" }}>
-      <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:8 }}>MOST TRAINED · LAST {days}D</div>
+      <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:8 }}>MOST TRAINED · LAST {days}D</div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
         {muscles.slice(0, 8).map(mu => (
           <div key={mu.name} style={{ padding:"5px 10px", background:C.divider, borderRadius:20, fontSize:11.5, color:C.text }}>
@@ -3688,7 +3691,7 @@ function Heatmap({ workoutDates, history, C, onDayTap }) {
         ].map(([label, val, cap, color, icon]) => (
           <div key={label} style={{
             flex:1, position:"relative", overflow:"hidden",
-            background:C.surface, border:`1px solid ${C.divider}`, borderRadius:14, padding:"12px 11px",
+            background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 11px",
           }}>
             <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:color }}/>
             <div style={{ width:24, height:24, borderRadius:7, background:`${color}22`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:8 }}>
@@ -8230,7 +8233,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     }} style={{
                       width:"100%", textAlign:"left", display:"flex", alignItems:"center", justifyContent:"space-between",
                       gap:10, padding:"13px 14px", marginBottom:7, borderRadius:11, cursor:"pointer", fontFamily:F,
-                      background:C.surface, border:`1px solid ${C.divider}`,
+                      background:C.surface, border:`1px solid ${C.border}`,
                     }}>
                       <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>{name}</span>
                       {diffEquip && <span style={{ fontSize:10, color:C.accent, fontWeight:700, background:C.accentSoft, borderRadius:6, padding:"3px 7px", flexShrink:0 }}>{exEquipment(name)}</span>}
@@ -8409,7 +8412,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:10, background:C.accent, border:"none", color:C.onAccent, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
               {rest.running ? "Pause" : "Resume"}
             </button>
-            <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:10, background:"transparent", border:`1px solid ${C.divider}`, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
+            <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:10, background:"transparent", border:`1px solid ${C.border}`, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
           </div>
         )}
 
@@ -8619,7 +8622,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
                     </div>
                     {restEditor?.ei === ei && restEditor?.si === si && (
-                      <div style={{ margin:"10px 14px 0", padding:"12px", border:`1px solid ${C.divider}`, borderRadius:18, background:C.surface, display:"grid", gap:10 }}>
+                      <div style={{ margin:"10px 14px 0", padding:"12px", border:`1px solid ${C.border}`, borderRadius:18, background:C.surface, display:"grid", gap:10 }}>
                         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:8 }}>
                           {[{s:90,label:"1.5m"},{s:120,label:"2m"},{s:180,label:"3m"},{s:300,label:"5m"}].map(({s,label}) => (
                             <button key={s} onClick={() => { updateSet(ei, si, { restTime: s }); setRestEditor(null); }} style={{ padding:"10px 0", borderRadius:14, border:`1px solid ${Number(set.restTime)===s ? C.accent : C.divider}`, background:Number(set.restTime)===s ? C.accent : C.bg, color:Number(set.restTime)===s ? C.onAccent : C.text, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
@@ -8639,7 +8642,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                                 }
                               }
                             }}
-                            style={{ flex:1, minWidth:0, padding:"10px 12px", border:`1px solid ${C.divider}`, borderRadius:14, background:C.bg, color:C.text, fontSize:12, outline:"none", fontFamily:F }}
+                            style={{ flex:1, minWidth:0, padding:"10px 12px", border:`1px solid ${C.border}`, borderRadius:14, background:C.bg, color:C.text, fontSize:12, outline:"none", fontFamily:F }}
                           />
                           <button onClick={() => setRestEditor(null)} style={{ padding:"10px 14px", borderRadius:14, border:"1px solid transparent", background:C.divider, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Close</button>
                         </div>
@@ -8650,7 +8653,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })}
 
                 <div style={{ display:"flex", padding:"8px 14px 12px", borderBottom:`1px solid ${C.divider}`, gap:8, flexWrap:"wrap" }}>
-                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
+                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
                   {(() => {
                     // Warmup button — only on compound barbell lifts, when a working weight exists and no warmups present yet
                     const exName = ex.name || "";
@@ -8684,7 +8687,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </button>
                     );
                   })()}
-                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.divider}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
+                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
                 </div>
               </div>
             );
@@ -8692,7 +8695,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
           <button onClick={() => setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name:"",reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }))} style={{
             width:"calc(100% - 28px)", margin:"14px 14px 0", padding:"13px",
-            background:C.bg, border:`1px solid ${C.divider}`,
+            background:C.bg, border:`1px solid ${C.border}`,
             borderRadius:16, fontSize:13, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F
           }}>+ Add Exercise</button>
         </div>
@@ -13101,9 +13104,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             );
             if (!ss.ready) {
               return (
-                <div style={{ marginTop:14, padding:"16px", borderRadius:14, background:C.surface, border:`1px solid ${C.divider}` }}>
+                <div style={{ marginTop:14, padding:"16px", borderRadius:14, background:C.surface, border:`1px solid ${C.border}` }}>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1 }}>STRENGTH SCORE</div>
+                    <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>STRENGTH SCORE</div>
                     <SexToggle/>
                   </div>
                   <div style={{ fontSize:13, color:C.sub, lineHeight:1.5 }}>
@@ -13123,7 +13126,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               ? `${lvlColor}08`
               : "transparent";
             return (
-              <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.divider}`, overflow:"hidden" }}>
+              <div style={{ marginTop:14, borderRadius:18, background:C.surface, border:`1px solid ${C.border}`, overflow:"hidden" }}>
                 {/* Hero — score gets the spotlight, washed in the current level's color */}
                 <div style={{ padding:"18px 18px 16px", background:`linear-gradient(135deg, ${tint}, ${tintFade})`, borderBottom:`1px solid ${C.divider}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
@@ -14145,7 +14148,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
               let setCount = 0;
               try { (w.exercises || []).forEach(ex => { setCount += (ex.sets || []).filter(s => s.done).length; }); } catch {}
               return (
-              <div key={w.id || i} style={{ background:C.surface, border:`1px solid ${C.divider}`, borderRadius:14, padding:"14px 16px", marginBottom:8 }}>
+              <div key={w.id || i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px 16px", marginBottom:8 }}>
                 <div style={{ fontSize:15, fontWeight:700 }}>{w.day_name || "Workout"}</div>
                 <div style={{ fontSize:12, color:C.sub, marginTop:3, fontFamily:MONO }}>
                   {dateStr ? new Date(dateStr).toLocaleDateString("en", { month:"short", day:"numeric" }) : ""}
