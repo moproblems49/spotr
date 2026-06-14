@@ -1,4 +1,9 @@
-// v178091716432
+// v178091716434
+// PATCHED v34 - BUILD 2026-06-13 - branded Spinner replaces plain "Loading..." across 5 loading states;
+//   stray all-transitions given spring easing (PR celebration / motion / haptics were already premium).
+// PATCHED v33 - BUILD 2026-06-13 - de-duplicated 8 near-duplicate library exercises (alias map keeps
+//   old logged names resolving to canonical); dev-only logging for compressImage failures; write-queue
+//   cap 100->200 with dev warning on drop.
 // PATCHED v32 - BUILD 2026-06-13 - recovery reads overnight HRV (10pm-9am) for today AND the 60-day
 //   baseline, with a JOINT window choice (both use overnight only when both have it, else both fall
 //   back to all samples) so the ratio is always apples-to-apples. RHR/sleep unchanged.
@@ -104,6 +109,7 @@ async function hydrateFromNative() {
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const IS_DEV = !!(import.meta.env && import.meta.env.DEV); // true in `vite dev`, false in production builds
 
 // ── OAuth provider flags ──────────────────────────────────────────────────────
 // Flip a provider to true ONLY after it's fully configured in Supabase
@@ -217,8 +223,14 @@ const sb = (() => {
   // whereas replaying a POST could double-insert. Validation/auth errors (4xx) are NOT queued — the
   // write is bad and would retry forever — they reject so the caller can handle them.
   const WRITE_QUEUE_KEY = "seshd_write_queue";
+  const WRITE_QUEUE_CAP = 200; // small idempotent PATCH/DELETE bodies; 200 is ample headroom
   const readQueue = () => { try { return JSON.parse(localStorage.getItem(WRITE_QUEUE_KEY) || "[]"); } catch { return []; } };
-  const writeQueue = (q) => { try { localStorage.setItem(WRITE_QUEUE_KEY, JSON.stringify(q.slice(-100))); } catch {} };
+  const writeQueue = (q) => {
+    try {
+      if (q.length > WRITE_QUEUE_CAP && IS_DEV) console.warn(`writeQueue: dropping ${q.length - WRITE_QUEUE_CAP} oldest unsynced write(s) over cap ${WRITE_QUEUE_CAP}`);
+      localStorage.setItem(WRITE_QUEUE_KEY, JSON.stringify(q.slice(-WRITE_QUEUE_CAP)));
+    } catch {}
+  };
 
   // A failed fetch (offline / DNS / connection) throws a TypeError; a 4xx/5xx comes back as an
   // Error we threw with a message. We treat only the thrown-fetch case as "retryable offline".
@@ -304,11 +316,11 @@ function compressImage(base64DataUrl, maxDim = 1200, quality = 0.8) {
           // JPEG drops transparency (fine for photos/avatars) and compresses well.
           const out = canvas.toDataURL("image/jpeg", quality);
           resolve(out && out.length > 20 ? out : base64DataUrl);
-        } catch { resolve(base64DataUrl); }
+        } catch (err) { if (IS_DEV) console.warn("compressImage: canvas/encode failed, using original", err); resolve(base64DataUrl); }
       };
-      img.onerror = () => resolve(base64DataUrl);
+      img.onerror = (err) => { if (IS_DEV) console.warn("compressImage: image failed to load (CORS/format?), using original", err); resolve(base64DataUrl); };
       img.src = base64DataUrl;
-    } catch { resolve(base64DataUrl); }
+    } catch (err) { if (IS_DEV) console.warn("compressImage: unexpected failure, using original", err); resolve(base64DataUrl); }
   });
 }
 
@@ -448,9 +460,6 @@ const EXERCISE_DB = [
   { name:"Bradford Press", muscle:"Shoulders" },
   { name:"Lu Raises", muscle:"Shoulders" },
   // ── TRAPS ──────────────────────────────────────────────────────────────────
-  { name:"Barbell Shrugs", muscle:"Traps" },
-  { name:"DB Shrugs", muscle:"Traps" },
-  { name:"Cable Shrugs", muscle:"Traps" },
   { name:"Behind-the-Back Shrugs", muscle:"Traps" },
   { name:"Rack Pull (Traps focus)", muscle:"Traps" },
   { name:"Farmer's Walk", muscle:"Traps" },
@@ -498,12 +507,10 @@ const EXERCISE_DB = [
   { name:"Leg Press (Single Leg)", muscle:"Quads" },
   { name:"Hack Squat", muscle:"Quads" },
   { name:"Bulgarian Split Squat", muscle:"Quads" },
-  { name:"Walking Lunges", muscle:"Quads" },
   { name:"Reverse Lunges", muscle:"Quads" },
   { name:"Lateral Lunges", muscle:"Quads" },
   { name:"Leg Extension", muscle:"Quads" },
   { name:"Leg Extension (Single)", muscle:"Quads" },
-  { name:"Step-Ups", muscle:"Quads" },
   { name:"Goblet Squat", muscle:"Quads" },
   { name:"Smith Machine Squat", muscle:"Quads" },
   { name:"Sissy Squat", muscle:"Quads" },
@@ -530,7 +537,6 @@ const EXERCISE_DB = [
   { name:"Abduction Machine", muscle:"Glutes" },
   { name:"Cable Abduction", muscle:"Glutes" },
   { name:"Donkey Kicks", muscle:"Glutes" },
-  { name:"Frog Pumps", muscle:"Glutes" },
   { name:"Clamshells", muscle:"Glutes" },
   { name:"45° Back Extension", muscle:"Glutes" },
   // ── CALVES ─────────────────────────────────────────────────────────────────
@@ -661,7 +667,6 @@ const EXERCISE_DB = [
   // Chest
   { name:"Hammer Strength Chest Press", muscle:"Chest" },
   { name:"Floor Press", muscle:"Chest" },
-  { name:"Dumbbell Pullover", muscle:"Chest" },
   // Back
   { name:"Seal Row", muscle:"Back" },
   { name:"Kroc Row", muscle:"Back" },
@@ -677,7 +682,6 @@ const EXERCISE_DB = [
   { name:"Bent-Over Dumbbell Reverse Fly", muscle:"Rear Delts" },
   { name:"Face Pull (Rope)", muscle:"Rear Delts" },
   // Biceps
-  { name:"Incline Dumbbell Curl", muscle:"Biceps" },
   { name:"Cable Curl", muscle:"Biceps" },
   { name:"Bayesian Cable Curl", muscle:"Biceps" },
   // Triceps
@@ -778,10 +782,24 @@ const CUSTOM_MUSCLE_GROUPS = ["Chest","Back","Shoulders","Rear Delts","Traps","B
 const CUSTOM_EQUIPMENT = ["Barbell","Dumbbell","Machine","Cable","Bodyweight","Kettlebell","Bands","Other"];
 const _exNorm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 
+// Canonical names for de-duplicated library exercises. The old (removed) spellings still appear in
+// some users' logged history, so we resolve them to the canonical entry here — nothing orphans.
+const EXERCISE_ALIASES = {
+  "Barbell Shrugs": "Barbell Shrug",
+  "Cable Shrugs": "Cable Shrug",
+  "DB Shrugs": "Dumbbell Shrug",
+  "Dumbbell Pullover": "DB Pullover",
+  "Incline Dumbbell Curl": "Incline DB Curl",
+  "Walking Lunges": "Walking Lunge",
+  "Step-Ups": "Step-Up",
+  "Frog Pumps": "Frog Pump",
+};
+
 // Resolve an exercise's library/custom entry by name (exact, then normalized). Custom exercises
 // win when present so a user's chosen muscle is authoritative.
 function getExEntry(name) {
   if (!name) return null;
+  name = EXERCISE_ALIASES[name] || name; // map de-duplicated old spellings to the canonical entry
   let e = _customExercises.find(x => x.name === name);
   if (e) return e;
   e = EXERCISE_DB.find(x => x.name === name);
@@ -3174,6 +3192,19 @@ function saveStore(d) {
 // ═════════════════════════════════════════════════════════════════════════════
 // LOGO — Fyra flame icon + Spotr wordmark
 // ═════════════════════════════════════════════════════════════════════════════
+// Branded loading spinner — volt accent ring on a track. Reuses the global `seshd-spin` keyframe.
+function Spinner({ C, size = 22 }) {
+  return (
+    <div role="status" aria-label="Loading" style={{
+      width: size, height: size, borderRadius: "50%",
+      border: `${Math.max(2, Math.round(size / 11))}px solid ${C.border}`,
+      borderTopColor: C.accent,
+      animation: "seshd-spin 0.7s linear infinite",
+      margin: "0 auto",
+    }} />
+  );
+}
+
 function SeshdLogo({ C, big = false }) {
   const sz = big ? 44 : 30;
   return (
@@ -5214,7 +5245,7 @@ function Onboarding({ C, onComplete }) {
                     background: selected ? C.accent : C.surface,
                     border:`1.5px solid ${selected ? C.accent : C.border}`,
                     color: selected ? C.onAccent : C.text,
-                    fontSize:15, fontWeight:600, textAlign:"left", transition:"all 0.15s",
+                    fontSize:15, fontWeight:600, textAlign:"left", transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
                   }}>{opt.label}</button>
                 );
               })}
@@ -5224,7 +5255,7 @@ function Onboarding({ C, onComplete }) {
       </div>
       <div style={{ padding:"0 32px 44px" }}>
         <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:24 }}>
-          {Array.from({ length: totalSteps }).map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s" }}/>)}
+          {Array.from({ length: totalSteps }).map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s cubic-bezier(0.22, 1, 0.36, 1)" }}/>)}
         </div>
         {inIntro && (
           <button onClick={next} style={{
@@ -11390,7 +11421,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
           </div>
           {/* Feed */}
           <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
-            {loading && <div style={{ textAlign:"center", padding:40, color:C.sub }}>Loading...</div>}
+            {loading && <div style={{ padding:40 }}><Spinner C={C}/></div>}
             {!loading && posts.length === 0 && (
               <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
                 <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="users" size={36} color="currentColor"/></div>
@@ -14078,7 +14109,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
 
   const wrap = { minHeight:"100dvh", background:C.bg, color:C.text, fontFamily:F, display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(env(safe-area-inset-top) + 40px) 24px 40px" };
   if (state.loading) {
-    return <div style={{ ...wrap, justifyContent:"center" }}><div style={{ color:C.sub, fontSize:14 }}>Loading…</div></div>;
+    return <div style={{ ...wrap, justifyContent:"center" }}><Spinner C={C} size={30}/></div>;
   }
   if (!state.profile) {
     return (
@@ -14351,7 +14382,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
       </div>
       <PullToRefresh onRefresh={load} C={C}>
       <div>
-        {rows === null && <div style={{ padding:24, textAlign:"center", color:C.sub, fontSize:13 }}>Loading…</div>}
+        {rows === null && <div style={{ padding:24 }}><Spinner C={C}/></div>}
         {rows !== null && convos.length === 0 && (
           <div style={{ padding:"48px 24px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.6 }}>
             <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="users" size={36} color={C.sub}/></div>
@@ -14446,7 +14477,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
         <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:F }}>{peer?.name || peer?.username || "User"}</div>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:6 }}>
-        {msgs === null && <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:24 }}>Loading…</div>}
+        {msgs === null && <div style={{ padding:24 }}><Spinner C={C}/></div>}
         {msgs !== null && msgs.length === 0 && <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:24 }}>Say hi</div>}
         {(msgs || []).map((m, i) => {
           const mine = m.sender_id === currentUserId;
@@ -16076,7 +16107,7 @@ function AppInner() {
     return (
       <div style={{ height:"100dvh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, flexDirection:"column", gap:16 }}>
         <SeshdLogo C={C} big/>
-        <div style={{ fontSize:13, color:C.sub }}>Loading...</div>
+        <Spinner C={C} size={20}/>
       </div>
     );
   }
