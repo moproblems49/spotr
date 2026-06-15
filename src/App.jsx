@@ -1,4 +1,4 @@
-// v178091716436
+// v178091716438
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1240,7 +1240,7 @@ function _regionLabel(k) {
 // Weekly muscle heatmap — anatomical front+back view shaded by how much each muscle was trained
 // over the last 7 days. Switches between male/female figures via the body-type preference.
 function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C }) {
-  const [mode, setMode] = useState("volume"); // "volume" | "readiness" | "strength"
+  const [mode, setMode] = useState("readiness"); // "readiness" | "volume" | "strength"
   const sex = (store.bodyType === "female" || store.bodyType === "male")
     ? store.bodyType
     : (store.strengthSex === "female" ? "female" : "male");
@@ -1333,8 +1333,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
       </div>
 
       <div style={{ display:"flex", margin:"0 16px 4px", background:C.divider, borderRadius:13, padding:2 }}>
-        <Tab id="volume" label="Volume"/>
         <Tab id="readiness" label="Readiness"/>
+        <Tab id="volume" label="Volume"/>
         <Tab id="strength" label="Strength"/>
       </div>
 
@@ -2693,14 +2693,26 @@ function computeBodyBattery(store) {
   const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
   const rec = store.recovery;
   const hasRecovery = rec && typeof rec.recoveryScore === "number";
-  const charge0 = hasRecovery
-    ? Math.round(55 + rec.recoveryScore * 45)
-    : (rec && typeof rec.sleepHours === "number"
-        ? Math.max(55, Math.min(95, Math.round(40 + rec.sleepHours * 6)))
-        : 82);
+  let charge0;
+  if (hasRecovery) {
+    charge0 = Math.round(55 + rec.recoveryScore * 45);
+    // Apply sleep modifier on top of HRV recovery: <6h costs up to −10, ≥8h adds up to +5.
+    if (rec.sleepHours != null) {
+      const sleepMod = rec.sleepHours < 5 ? -10 : rec.sleepHours < 6 ? -7 : rec.sleepHours < 7 ? -3 : rec.sleepHours >= 8 ? 5 : 0;
+      charge0 = Math.max(10, Math.min(100, charge0 + sleepMod));
+    }
+  } else if (rec && typeof rec.sleepHours === "number") {
+    charge0 = Math.max(40, Math.min(90, Math.round(40 + rec.sleepHours * 6)));
+  } else {
+    charge0 = 75; // unknown — neutral, not "great"
+  }
   // Baseline awake drain: ~0.9/h since 7am, capped.
-  const awakeHours = Math.max(0, (now - new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7)) / 36e5);
-  const baselineDrain = Math.min(14, Math.round(awakeHours * 0.9));
+  // If it's before 7am, the "day" started at yesterday's 7am — so awakeHours
+  // rolls over rather than resetting, giving an honest late-night reading.
+  const sevenAm = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
+  if (now < sevenAm) sevenAm.setDate(sevenAm.getDate() - 1); // yesterday's 7am
+  const awakeHours = Math.max(0, (now - sevenAm) / 36e5);
+  const baselineDrain = Math.min(18, Math.round(awakeHours * 0.9));
   // Workout drain from today's logged sessions.
   let workoutDrain = 0;
   for (const sess of Object.values((store.history || {})[todayKey] || {})) {
@@ -13845,7 +13857,13 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         if (data.access_token) {
           onAuth(data);
         } else {
-          setError("Check your email to confirm your account, then sign in.");
+          // Email confirmation is on — try signing in immediately in case it went through,
+          // otherwise prompt them to check email.
+          try {
+            const signInData = await sb.signIn(email, password);
+            if (signInData.access_token) { onAuth(signInData); return; }
+          } catch (e2) {}
+          setError("Account created! Check your email to confirm, then sign in.");
           setMode("signin");
         }
       } else {
