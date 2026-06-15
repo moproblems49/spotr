@@ -1,4 +1,4 @@
-// v178091716439
+// v178091716445
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1127,9 +1127,10 @@ function weeklyMuscleVolume(store, days = 7) {
 // Interpolate grey -> light accent -> deep accent by normalized intensity (0..1).
 function _heatColor(t, C) {
   if (t <= 0) return C?.isDark ? "#3f4049" : "#cdd1d8";
+  // Volt ramp: faint grey-green → volt → deep olive (dark), or pale → lime → forest (light).
   const stops = C?.isDark
-    ? [[120,110,150],[124,58,237],[91,33,182]]
-    : [[201,179,238],[124,58,237],[76,29,149]];
+    ? [[60,70,45],[200,241,53],[120,150,30]]
+    : [[214,229,160],[101,163,13],[54,83,20]];
   const seg = t < 0.5 ? 0 : 1; const lt = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
   const a = stops[seg], b = stops[seg + 1];
   const mix = a.map((v, i) => Math.round(v + (b[i] - v) * lt));
@@ -1174,7 +1175,7 @@ function muscleReadiness(store) {
           const ww = parseFloat(s.weight); if (!isNaN(ww) && ww > topW) topW = ww;
         });
         const avgReps = repN ? repSum / repN : null;
-        let intMult = avgReps == null ? 1 : avgReps <= 5 ? 1.10 : avgReps <= 8 ? 1.05 : avgReps <= 12 ? 1.0 : 0.95;
+        let intMult = avgReps == null ? 1 : avgReps <= 3 ? 1.15 : avgReps <= 5 ? 1.10 : avgReps <= 8 ? 1.05 : avgReps <= 12 ? 1.0 : avgReps <= 20 ? 0.95 : 0.9;
         const prLbs = (store.prs || {})[ex.name];
         if (prLbs > 0 && topW > 0) {
           const topLbs = (sess.unit === "kg") ? topW * LBS_PER_KG : topW;
@@ -1385,9 +1386,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 if (bb.activityDrain) parts.push(`−${bb.activityDrain} activity`);
                 if (bb.baselineDrain) parts.push(`−${bb.baselineDrain} day`);
                 return (
-                  <div style={{ margin:"2px 16px 10px", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14 }}>
+                  <div onClick={() => setShowBatteryDetail(true)} style={{ margin:"2px 16px 10px", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, cursor:"pointer" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:7 }}>
                       <span style={{ fontSize:11, fontWeight:700, letterSpacing:1.2, color:C.sub, fontFamily:DISPLAY }}>BODY BATTERY</span>
+                      <span style={{ fontSize:12, color:C.muted }}>›</span>
                       <span style={{ fontFamily:MONO, fontSize:20, fontWeight:800, color:fill, letterSpacing:-0.5 }}>{bb.level}<span style={{ fontSize:11, color:C.sub, fontWeight:600 }}>/100</span></span>
                     </div>
                     <div style={{ height:8, borderRadius:4, background:C.divider, overflow:"hidden" }}>
@@ -2361,12 +2363,18 @@ function muscleStrength(store, unit, sex) {
   const avg = (keys) => { const vs = keys.map(k => regionFrac[k]).filter(v => v != null); return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null; };
   const imbalances = [];
   const push = avg(["Chest", "Shoulders", "Triceps"]), pull = avg(["Lats", "Biceps"]);
-  if (push != null && pull != null && Math.abs(push - pull) >= 0.2) {
+  if (push != null && pull != null && Math.abs(push - pull) >= 0.15) {
     imbalances.push(push > pull ? "Pull is lagging your push" : "Push is lagging your pull");
   }
   const quad = regionFrac["Quads"], post = avg(["Hamstrings", "Glutes"]);
-  if (quad != null && post != null && Math.abs(quad - post) >= 0.2) {
+  if (quad != null && post != null && Math.abs(quad - post) >= 0.15) {
     imbalances.push(quad > post ? "Hamstrings/glutes lag your quads" : "Quads lag your hamstrings/glutes");
+  }
+  // Lower body vs upper body — a common neglect pattern worth surfacing.
+  const upper = avg(["Chest", "Shoulders", "Lats", "Biceps", "Triceps"]);
+  const lower = avg(["Quads", "Hamstrings", "Glutes"]);
+  if (upper != null && lower != null && Math.abs(upper - lower) >= 0.2) {
+    imbalances.push(upper > lower ? "Legs are lagging your upper body" : "Upper body lags your legs");
   }
   return { ready: true, regionFrac, overall: ss.overall, score: ss.score, imbalances };
 }
@@ -2766,6 +2774,7 @@ function nativeHealth() {
 function healthKitAvailable() { return !!nativeHealth(); }
 
 const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep"];
+const HK_WRITE = ["workoutType", "activeEnergyBurned", "distanceWalkingRunning"];
 
 async function requestHealthPermission() {
   const H = nativeHealth();
@@ -2773,7 +2782,7 @@ async function requestHealthPermission() {
   try {
     const avail = await H.isAvailable();
     if (avail && avail.available === false) return false;
-    await H.requestAuthorization({ read: HK_READ, write: [] });
+    await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
     return true;
   } catch (e) {
     return false;
@@ -2783,6 +2792,23 @@ async function requestHealthPermission() {
 // Today's movement (steps + active energy) for the body battery's activity drain.
 // Tries the common dataType spellings across capacitor health plugins; returns what sticks.
 // Shape: { date: "YYYY-MM-DD", steps: number|null, activeKcal: number|null }
+// Write a finished workout to Apple Health so it shows in Fitness app + Activity rings.
+async function writeWorkoutToHealth(startMs, durationSecs, totalVolumeLbs) {
+  const H = nativeHealth();
+  if (!H) return;
+  try {
+    await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
+    const startDate = new Date(startMs).toISOString();
+    const endDate = new Date(startMs + durationSecs * 1000).toISOString();
+    const kcal = Math.round(totalVolumeLbs * 0.045);
+    if (H.writeWorkout) {
+      await H.writeWorkout({ workoutType: "traditionalStrengthTraining", startDate, endDate, totalEnergyBurned: kcal, totalEnergyBurnedUnit: "kilocalorie" }).catch(() => {});
+    } else if (H.saveWorkout) {
+      await H.saveWorkout({ activityType: "HKWorkoutActivityTypeTraditionalStrengthTraining", startDate, endDate, energyBurned: kcal }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
 async function readTodayActivity() {
   const H = nativeHealth();
   if (!H) return null;
@@ -2819,7 +2845,7 @@ async function readRecovery() {
   try {
     const avail = await H.isAvailable();
     if (avail && avail.available === false) return null;
-    await H.requestAuthorization({ read: HK_READ, write: [] });
+    await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
   } catch (e) { /* if the user denies, the reads below just come back empty */ }
   const now = new Date();
   const endIso = now.toISOString();
@@ -4738,7 +4764,7 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
   const { region, max } = weeklyMuscleVolume(store, 7);
   const heat = (t) => {
     if (t <= 0) return "#26262e";
-    const s = [[120,110,150],[124,58,237],[91,33,182]];
+    const s = [[60,70,45],[200,241,53],[120,150,30]];
     const sg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
     const a = s[sg], b = s[sg+1];
     const m = a.map((v,i)=>Math.round(v+(b[i]-v)*lt));
@@ -4957,7 +4983,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
             const dataMap = (BODYMAPS && BODYMAPS[sex]) || BODYMAP_MALE;
             const heat = (t) => {
               if (t <= 0) return "#26262e";
-              const s = [[120,110,150],[124,58,237],[91,33,182]];
+              const s = [[60,70,45],[200,241,53],[120,150,30]];
               const sg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
               const a = s[sg], b = s[sg+1]; const m = a.map((v,i)=>Math.round(v+(b[i]-v)*lt));
               return `rgb(${m[0]},${m[1]},${m[2]})`;
@@ -5773,7 +5799,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 const dm = (typeof BODYMAPS !== "undefined" && BODYMAPS[w.sex]) || BODYMAP_MALE;
                 const heat = (t) => {
                   if (t <= 0) return "#26262e";
-                  const st = [[120,110,150],[124,58,237],[91,33,182]];
+                  const st = [[60,70,45],[200,241,53],[120,150,30]];
                   const sg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
                   const a = st[sg], b = st[sg+1]; const mm = a.map((v,i)=>Math.round(v+(b[i]-v)*lt));
                   return `rgb(${mm[0]},${mm[1]},${mm[2]})`;
@@ -7478,6 +7504,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     } catch { return null; }
   });
   const REST_KEY = "seshd_rest";
+  const LA = (() => { try { return (typeof window !== "undefined" && window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.SeshdLiveActivity) || null; } catch { return null; } })();
   const [rest, setRest] = useState(() => {
     try {
       const raw = localStorage.getItem(REST_KEY);
@@ -7849,13 +7876,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         // Rest time cascade: per-set override → exercise default → user's setting → 90s safety fallback.
         // Superset exercises skip rest entirely — you go straight into the next movement.
         if (currentExercise?.superset) {
+          try { LA?.end({}); } catch (e) {}
           setRest(null);
         } else {
           const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || store.defaultRestTime || 90) || 90;
           setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
+          try { LA?.start?.({ totalSeconds: restSecs, exerciseName: currentExercise?.name || "Rest", setsDone: ei + 1, setsTotal: session?.exercises?.length || 1 }); } catch (e) {}
         }
       } else {
         haptic("undo");
+        try { LA?.end({}); } catch (e) {}
         setRest(null);
       }
 
@@ -8158,6 +8188,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       });
       setShowWorkoutSummary(true);
       haptic("success");
+      try {
+        const volLbs = unit === "lbs" ? (workoutSummary?.volumeRaw || 0) : cvt(workoutSummary?.volumeRaw || 0, "kg", "lbs");
+        writeWorkoutToHealth(wStart || (Date.now() - recordedDuration * 1000), recordedDuration, volLbs);
+      } catch (e) {}
       // App Store review prompt — native only, once, after the 10th finished workout,
       // delayed so it never competes with the summary confetti.
       try {
@@ -12698,6 +12732,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         [`workout_history?user_id=eq.${uid_}`, true],
         [`personal_records?user_id=eq.${uid_}`, true],
         [`programs?user_id=eq.${uid_}`, true],
+        [`messages?sender_id=eq.${uid_}`, false],
+        [`messages?recipient_id=eq.${uid_}`, false],
         [`follows?follower_id=eq.${uid_}`, false],
         [`follows?following_id=eq.${uid_}`, false],
         [`profiles?id=eq.${uid_}`, true],
@@ -12717,6 +12753,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         toast("Some data couldn't be removed. Sign out and contact support to finish.", "error");
         return;
       }
+      // Delete the auth user itself — without this, re-signing up with the same
+      // email reactivates the old account rather than starting fresh.
+      try {
+        await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}` },
+        });
+      } catch (e) { /* best-effort — data is already gone */ }
       haptic("success");
       toast("Your account has been deleted", "success");
       setTimeout(() => onSignOut && onSignOut(), 600);
@@ -14707,6 +14751,24 @@ function AppInner() {
   const [prModal, setPrModal] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Widget shared data: write streak + next-workout to native UserDefaults for WidgetKit.
+  // Note: reads streak from store directly (streak const is declared later in this component).
+  useEffect(() => {
+    try {
+      const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+      const Pref = Cap?.isNativePlatform?.() ? Cap.Plugins?.Preferences : null;
+      if (!Pref) return;
+      const wStreak = typeof calcWeeklyStreak === "function" ? calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count : 0;
+      const nextDay = (() => {
+        const prog = (store.programs || []).find(p => p.id === store.activeProgramId);
+        if (!prog?.days?.length) return null;
+        const idx = store.lastCompletedDayIndex != null ? (store.lastCompletedDayIndex + 1) % prog.days.length : 0;
+        return prog.days[idx]?.name || null;
+      })();
+      Pref.set({ key: "seshd_widget_data", value: JSON.stringify({ streak: wStreak, nextWorkout: nextDay, weeklyTarget: store.weeklyTarget || 3 }) }).catch(() => {});
+    } catch (e) {}
+  }, [store.workoutDates, store.activeProgramId, store.programs, store.weeklyTarget]);
+
   // ── Native shell wiring (no-ops on web): push token registration, deep links ──
   useEffect(() => {
     const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
