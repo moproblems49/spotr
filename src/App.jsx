@@ -1,4 +1,4 @@
-// v178091716438
+// v178091716439
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -174,7 +174,20 @@ const sb = (() => {
     return data;
   }
 
-  async function signIn(email, password) {
+  async function signIn(emailOrUsername, password) {
+    // Username login: look up email from profiles table (we store it there for this purpose).
+    let email = emailOrUsername.trim();
+    if (!email.includes("@")) {
+      try {
+        const rows = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?username=eq.${encodeURIComponent(email.toLowerCase())}&select=email`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        ).then(r => r.json());
+        const found = rows?.[0]?.email;
+        if (!found) throw new Error("No account found with that username.");
+        email = found;
+      } catch (e) { throw e; }
+    }
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers,
@@ -13855,10 +13868,36 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       if (mode === "signup") {
         const data = await sb.signUp(email, password, username.toLowerCase().replace(/\s/g,""), name || username);
         if (data.access_token) {
+          // Explicitly upsert the profile row — never rely on a DB trigger that may not exist.
+          try {
+            const userId = data.user?.id;
+            const uname = username.toLowerCase().replace(/\s/g,"");
+            if (userId) {
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "apikey": SUPABASE_KEY,
+                  "Authorization": `Bearer ${data.access_token}`,
+                  "Prefer": "resolution=merge-duplicates",
+                },
+                body: JSON.stringify({
+                  id: userId,
+                  username: uname,
+                  name: name || uname,
+                  bio: "",
+                  unit: "lbs",
+                  theme: "dark",
+                  is_public: true,
+                  email: email,
+                  seen_onboarding: false,
+                }),
+              });
+            }
+          } catch (profErr) { console.warn("profile upsert:", profErr); }
           onAuth(data);
         } else {
-          // Email confirmation is on — try signing in immediately in case it went through,
-          // otherwise prompt them to check email.
+          // Email confirmation is on — try signing in immediately in case it went through.
           try {
             const signInData = await sb.signIn(email, password);
             if (signInData.access_token) { onAuth(signInData); return; }
@@ -14016,7 +14055,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           </>
         )}
         <input value={email} onChange={e => setEmail(e.target.value)}
-          placeholder="Email" type="email" style={inputStyle}
+          placeholder="Email or username" type="email" style={inputStyle}
           autoCapitalize="none" autoCorrect="off" autoComplete="email"/>
         <input value={password} onChange={e => setPassword(e.target.value)}
           placeholder="Password" type="password" style={inputStyle}
