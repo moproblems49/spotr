@@ -1,4 +1,4 @@
-// v178091716435
+// v178091716436
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4754,7 +4754,7 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif">`
     + `<rect width="${W}" height="${H}" fill="#0A0A0A"/>`
     + `<g opacity="0.04">${g}</g>`
-    + `<text x="80" y="110" fill="#a78bfa" font-size="30" font-weight="700" letter-spacing="8">SESHD WRAPPED</text>`
+    + `<text x="80" y="110" fill="#c8f135" font-size="30" font-weight="700" letter-spacing="8">SESHD WRAPPED</text>`
     + `<text x="80" y="158" fill="#8a8a93" font-size="26" font-weight="600" letter-spacing="3">${esc(weekLabel)}</text>`
     + (() => {
         const parts = [];
@@ -13090,7 +13090,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           {(() => {
             const sex = store.strengthSex || "male";
             const ss = computeStrengthScore(store, displayUnit || store.unit || "lbs", sex);
-            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#a78bfa", Elite:"#fbbf24" };
+            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#c8f135", Elite:"#fbbf24" };
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
