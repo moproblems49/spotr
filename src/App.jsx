@@ -1,4 +1,4 @@
-// v178091716445
+// v178091716460
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1190,14 +1190,48 @@ function muscleReadiness(store) {
       }
     }
   }
-  let recMod = 1;
+  // Adaptive recovery: learn from whether the lifter holds performance on short rest.
+  // recoverFast > 1 means they bounce back quicker than default; < 1 means slower.
+  const adaptiveRecovery = (() => {
+    try {
+      const sessions = [];
+      for (const d of Object.keys(hist)) {
+        const ts = new Date(d + "T12:00:00").getTime();
+        if (isNaN(ts) || now - ts > 28 * 864e5) continue;
+        for (const sess of Object.values(hist[d] || {})) {
+          for (const ex of (sess.exercises || [])) {
+            const w = Math.max(0, ...(ex.sets || []).filter(s => s.type !== "warmup" && s.done).map(s => parseFloat(s.weight) || 0));
+            if (w > 0 && ex.name) sessions.push({ ts, name: ex.name, w });
+          }
+        }
+      }
+      sessions.sort((a, b) => a.ts - b.ts);
+      // For each exercise repeated within 72h, did the weight hold or rise?
+      let holds = 0, drops = 0;
+      const byName = {};
+      for (const s of sessions) {
+        const prev = byName[s.name];
+        if (prev && (s.ts - prev.ts) < 72 * 36e5 && (s.ts - prev.ts) > 12 * 36e5) {
+          if (s.w >= prev.w * 0.97) holds++; else drops++;
+        }
+        byName[s.name] = s;
+      }
+      const total = holds + drops;
+      if (total < 4) return 1; // not enough signal — stay at default
+      const holdRate = holds / total;
+      // 80%+ hold rate → recovers ~15% faster; 40% → ~15% slower.
+      return Math.max(0.85, Math.min(1.15, 0.7 + holdRate * 0.55));
+    } catch (e) { return 1; }
+  })();
+  let recMod = adaptiveRecovery;
   const rec = store.recovery;
   if (rec && typeof rec.recoveryScore === "number") {
-    recMod = 0.8 + 0.4 * rec.recoveryScore; // 0.8 (drained) .. 1.2 (peaked) vs your baseline
+    recMod *= (0.8 + 0.4 * rec.recoveryScore); // HRV recovery layered on the adaptive base
   } else if (rec && typeof rec.sleepHours === "number") {
-    if (rec.sleepHours < 6) recMod = 0.82;
-    else if (rec.sleepHours >= 8) recMod = 1.12;
+    if (rec.sleepHours < 6) recMod *= 0.9;
+    else if (rec.sleepHours >= 8) recMod *= 1.08;
   }
+  recMod = Math.max(0.7, Math.min(1.35, recMod));
   // Larger muscles recover slower than small ones (multiplier on recovery time).
   const RATE = { Quads:1.3, Hamstrings:1.3, Glutes:1.3, Lats:1.3, LowerBack:1.25, Traps:1.15, Chest:1.0, Shoulders:1.0, "Rear Delts":0.95, Biceps:0.8, Triceps:0.8, Forearms:0.75, Calves:0.8, Abs:0.8, Obliques:0.8 };
   const readiness = {};
@@ -1255,6 +1289,7 @@ function _regionLabel(k) {
 // over the last 7 days. Switches between male/female figures via the body-type preference.
 function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C }) {
   const [mode, setMode] = useState("readiness"); // "readiness" | "volume" | "strength"
+  const [showBatteryDetail, setShowBatteryDetail] = useState(false);
   const sex = (store.bodyType === "female" || store.bodyType === "male")
     ? store.bodyType
     : (store.strengthSex === "female" ? "female" : "male");
@@ -1397,6 +1432,46 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     </div>
                     <div style={{ marginTop:7, fontSize:10, color:C.muted, fontWeight:600 }}>
                       {bb.hasRecovery ? `Woke at ${bb.charge0}` : `Est. start ${bb.charge0}`}{parts.length ? ` · ${parts.join(" · ")}` : ""}
+                    </div>
+                  </div>
+                );
+              })()}
+              {showBatteryDetail && (() => {
+                const bb = computeBodyBattery(store);
+                const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
+                const rows = [
+                  { label: "Morning charge", value: `${bb.charge0}`, detail: bb.hasRecovery ? "From your HRV + sleep" : "Estimated from recent training" },
+                  bb.baselineDrain ? { label: "Awake drain", value: `−${bb.baselineDrain}`, detail: "Normal energy use through the day" } : null,
+                  bb.workoutDrain ? { label: "Training drain", value: `−${bb.workoutDrain}`, detail: "Today's sets and effort" } : null,
+                  bb.activityDrain ? { label: "Activity drain", value: `−${bb.activityDrain}`, detail: "Steps and active energy" } : null,
+                ].filter(Boolean);
+                const tip = bb.level >= 80 ? "Well recovered — a great day to push hard." : bb.level >= 60 ? "Decent energy. Train smart, warm up well." : bb.level >= 40 ? "Moderate fatigue — consider a lighter session." : "Low battery. Prioritise sleep and recovery today.";
+                return (
+                  <div onClick={() => setShowBatteryDetail(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+                      <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+                        <span style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Body Battery</span>
+                        <span style={{ fontFamily:MONO, fontSize:32, fontWeight:900, color:fill, letterSpacing:-1 }}>{bb.level}<span style={{ fontSize:14, color:C.sub, fontWeight:600 }}>/100</span></span>
+                      </div>
+                      <div style={{ height:10, borderRadius:5, background:C.divider, overflow:"hidden", marginBottom:18 }}>
+                        <div style={{ width:`${bb.level}%`, height:"100%", borderRadius:5, background:fill }}/>
+                      </div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:16 }}>
+                        {rows.map((r, i) => (
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", paddingBottom:12, borderBottom: i < rows.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                            <div>
+                              <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{r.label}</div>
+                              <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{r.detail}</div>
+                            </div>
+                            <div style={{ fontFamily:MONO, fontSize:15, fontWeight:800, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent, flexShrink:0, marginLeft:12 }}>{r.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize:11, color:C.muted, lineHeight:1.6, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
+                        {!bb.hasRecovery && "Connect Apple Health on iPhone for readings based on your real HRV, resting heart rate, and sleep. "}{tip}
+                      </div>
+                      <button onClick={() => setShowBatteryDetail(false)} style={{ marginTop:14, width:"100%", padding:"13px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
                     </div>
                   </div>
                 );
@@ -2171,6 +2246,7 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Advanced:1.25, Elite:1.75 },
     "Barbell Back Squat":      { Novice:0.75, Intermediate:1.25, Advanced:1.75, Elite:2.5 },
     "Deadlift":                { Novice:1.0, Intermediate:1.5, Advanced:2.25, Elite:3.0 },
+    "Sumo Deadlift":           { Novice:1.0, Intermediate:1.5, Advanced:2.2, Elite:2.9 },
     "Overhead Press (Barbell)":{ Novice:0.35, Intermediate:0.55, Advanced:0.8, Elite:1.1 },
     "Incline Bench Press":     { Novice:0.4, Intermediate:0.6, Advanced:1.0, Elite:1.45 },
     "Front Squat":             { Novice:0.55, Intermediate:0.95, Advanced:1.4, Elite:2.0 },
@@ -2183,6 +2259,7 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Advanced:0.8, Elite:1.1 },
     "Barbell Back Squat":      { Novice:0.5, Intermediate:0.9, Advanced:1.35, Elite:1.9 },
     "Deadlift":                { Novice:0.65, Intermediate:1.1, Advanced:1.75, Elite:2.5 },
+    "Sumo Deadlift":           { Novice:0.65, Intermediate:1.1, Advanced:1.7, Elite:2.45 },
     "Overhead Press (Barbell)":{ Novice:0.2, Intermediate:0.35, Advanced:0.55, Elite:0.8 },
     "Incline Bench Press":     { Novice:0.25, Intermediate:0.4, Advanced:0.65, Elite:0.95 },
     "Front Squat":             { Novice:0.4, Intermediate:0.7, Advanced:1.1, Elite:1.6 },
@@ -2195,7 +2272,8 @@ const STRENGTH_STANDARDS_BY_SEX = {
 const STRENGTH_LIFT_ALIASES = {
   "Barbell Bench Press": ["Bench Press","Flat Barbell Bench","Flat Bench"],
   "Barbell Back Squat": ["Back Squat","Low Bar Squat","High Bar Squat","Squat"],
-  "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift","Hex Bar Deadlift"],
+  "Deadlift": ["Conventional Deadlift","Trap Bar Deadlift","Hex Bar Deadlift"],
+  "Sumo Deadlift": ["Sumo Pull","Sumo DL"],
   "Overhead Press (Barbell)": ["Overhead Press","OHP","Standing Barbell OHP","Standing OHP","Standing Press","Strict Press","Military Press","Barbell OHP","Barbell Overhead Press"],
   "Incline Bench Press": ["Incline Barbell Press","Incline Bench","Incline Press"],
   "Front Squat": ["Barbell Front Squat"],
@@ -2205,13 +2283,41 @@ const STRENGTH_LIFT_ALIASES = {
 };
 const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Advanced","Elite"];
 
-function levelForRatio(standards, lift, ratio) {
+// Movement patterns: lifts that compete for the SAME slot in the score. The strongest
+// lift in each pattern represents you — so front + back squat don't both drag the average
+// (your best squat counts), and incline vs flat bench pick the better one.
+const STRENGTH_PATTERNS = {
+  "Squat":    ["Barbell Back Squat", "Front Squat"],
+  "Bench":    ["Barbell Bench Press", "Incline Bench Press"],
+  "Deadlift": ["Deadlift", "Sumo Deadlift"],
+  "Press":    ["Overhead Press (Barbell)"],
+  "Row":      ["Barbell Row"],
+  "RDL":      ["Romanian Deadlift"],
+  "Hinge":    ["Hip Thrust"],
+  "Calf":     ["Standing Calf Raise"],
+};
+
+// Age multiplier on strength standards. Strength peaks ~20-30; after 35 it declines ~1%/yr,
+// accelerating past 50. Below 18, standards are slightly lower too. We DIVIDE the thresholds
+// by this factor so an older lifter reaches each level at a proportionally lower ratio —
+// i.e. age-fair scoring rather than comparing a 55-year-old to a 25-year-old's numbers.
+function ageStrengthFactor(age) {
+  if (!age || age < 1) return 1;
+  if (age < 18) return 0.92 + (age - 14) * 0.02;        // 14→0.92 .. 18→1.0
+  if (age <= 30) return 1;                               // prime
+  if (age <= 35) return 1 - (age - 30) * 0.005;          // gentle
+  if (age <= 50) return 0.975 - (age - 35) * 0.01;       // ~1%/yr
+  return Math.max(0.6, 0.825 - (age - 50) * 0.014);      // steeper past 50
+}
+
+function levelForRatio(standards, lift, ratio, ageFactor = 1) {
   const s = standards[lift];
   if (!s) return "Untrained";
-  if (ratio >= s.Elite) return "Elite";
-  if (ratio >= s.Advanced) return "Advanced";
-  if (ratio >= s.Intermediate) return "Intermediate";
-  if (ratio >= s.Novice) return "Novice";
+  const f = ageFactor || 1;
+  if (ratio >= s.Elite * f) return "Elite";
+  if (ratio >= s.Advanced * f) return "Advanced";
+  if (ratio >= s.Intermediate * f) return "Intermediate";
+  if (ratio >= s.Novice * f) return "Novice";
   return "Untrained";
 }
 
@@ -2245,7 +2351,8 @@ function computeStrengthScore(store, unit, sex = "male") {
   const LIFT_KEYWORDS = {
     "Barbell Bench Press": (n) => n.includes("bench") && !n.includes("incline") && !n.includes("decline") && !n.includes("close grip") && !n.includes("db") && !n.includes("dumbbell"),
     "Barbell Back Squat": (n) => n.includes("squat") && !n.includes("front") && !n.includes("hack") && !n.includes("goblet") && !n.includes("split") && !n.includes("sissy") && !n.includes("bulgarian"),
-    "Deadlift": (n) => n.includes("deadlift") && !n.includes("romanian") && !n.includes("rdl") && !n.includes("stiff") && !n.includes("single"),
+    "Deadlift": (n) => n.includes("deadlift") && !n.includes("romanian") && !n.includes("rdl") && !n.includes("stiff") && !n.includes("single") && !n.includes("sumo"),
+    "Sumo Deadlift": (n) => n.includes("sumo") && n.includes("deadlift"),
     "Overhead Press (Barbell)": (n) => (n.includes("overhead press") || n.includes("ohp") || n.includes("military") || (n.includes("strict press")) || (n.includes("shoulder press") && n.includes("barbell"))) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("machine"),
     "Incline Bench Press": (n) => n.includes("incline") && (n.includes("bench") || n.includes("press")) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("machine") && !n.includes("smith"),
     "Front Squat": (n) => n.includes("front squat"),
@@ -2309,22 +2416,49 @@ function computeStrengthScore(store, unit, sex = "male") {
     const all = [...exactVals, ...fuzzyVals].map(v => unit === "lbs" ? v : cvt(v, "lbs", unit));
     return all.length ? Math.max(...all) : null;
   };
+  // Age-fair scaling: scale standards by the user's age (if known).
+  const age = (() => {
+    const a = parseInt(store.age || store.profileAge);
+    if (a > 0 && a < 100) return a;
+    if (store.birthYear) { const y = new Date().getFullYear() - parseInt(store.birthYear); if (y > 0 && y < 100) return y; }
+    return null;
+  })();
+  const ageFactor = ageStrengthFactor(age);
+  // Score each MOVEMENT PATTERN by its best-performing lift, so logging a light variant
+  // (e.g. a few easy front squats) never drags down a strong main lift.
   const lifts = [];
   let levelSum = 0, counted = 0;
-  for (const lift of Object.keys(standards)) {
-    const best = bestPR(lift);
-    if (best == null) continue;
-    const ratio = best / bw; // both in the same unit, so the ratio is unit-independent
-    const level = levelForRatio(standards, lift, ratio);
-    lifts.push({ lift, best, ratio: Math.round(ratio * 100) / 100, level });
-    levelSum += STRENGTH_LEVELS.indexOf(level);
-    counted++;
+  const usedLifts = new Set();
+  for (const [pattern, candidates] of Object.entries(STRENGTH_PATTERNS)) {
+    let winner = null;
+    for (const lift of candidates) {
+      if (!standards[lift]) continue;
+      const best = bestPR(lift);
+      if (best == null) continue;
+      const ratio = best / bw;
+      const lvlIdx = STRENGTH_LEVELS.indexOf(levelForRatio(standards, lift, ratio, ageFactor));
+      // "Best" = highest level achieved; tiebreak by ratio-within-standard.
+      const score = lvlIdx + Math.min(0.99, ratio / (standards[lift].Elite * (ageFactor || 1)));
+      if (!winner || score > winner.score) {
+        winner = { lift, best, ratio: Math.round(ratio * 100) / 100, level: levelForRatio(standards, lift, ratio, ageFactor), lvlIdx, score, pattern };
+      }
+    }
+    if (winner) {
+      lifts.push({ lift: winner.lift, best: winner.best, ratio: winner.ratio, level: winner.level, pattern: winner.pattern });
+      usedLifts.add(winner.lift);
+      levelSum += winner.lvlIdx;
+      counted++;
+    }
   }
   if (!counted) return { ready: false, reason: "no_lifts" };
   const avgIdx = levelSum / counted;
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
   const score = Math.round((avgIdx / (STRENGTH_LEVELS.length - 1)) * 100);
-  return { ready: true, overall, score, lifts, bodyweight: bw, counted, sex };
+  // Surface any individual Elite/Advanced lifts so single big lifts get recognised even
+  // when the rounded overall is lower.
+  const topLifts = lifts.filter(l => l.level === "Elite" || l.level === "Advanced")
+    .sort((a, b) => STRENGTH_LEVELS.indexOf(b.level) - STRENGTH_LEVELS.indexOf(a.level));
+  return { ready: true, overall, score, lifts, bodyweight: bw, counted, sex, age, ageFactor, topLifts };
 }
 
 // Maps each body-map region to the scored lift(s) that best represent its strength. Regions with no
@@ -2725,7 +2859,16 @@ function computeBodyBattery(store) {
   } else if (rec && typeof rec.sleepHours === "number") {
     charge0 = Math.max(40, Math.min(90, Math.round(40 + rec.sleepHours * 6)));
   } else {
-    charge0 = 75; // unknown — neutral, not "great"
+    // No health data: infer from recent training. Rest days raise the floor.
+    const daysSinceWorkout = (() => {
+      const now_ = Date.now();
+      for (let d = 0; d < 14; d++) {
+        const k = new Date(now_ - d * 864e5).toISOString().slice(0, 10);
+        if (Object.keys((store.history || {})[k] || {}).length > 0) return d;
+      }
+      return 14;
+    })();
+    charge0 = Math.min(88, 70 + Math.min(daysSinceWorkout, 2) * 4 + (daysSinceWorkout >= 3 ? 4 : 0));
   }
   // Baseline awake drain: ~0.9/h since 7am, capped.
   // If it's before 7am, the "day" started at yesterday's 7am — so awakeHours
@@ -4217,7 +4360,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   // "Seated Leg Curl" and "Leg Press". Now: require an explicit barbell-loaded movement, and
   // exclude machine/dumbbell/cable/leg-curl/leg-press/etc.
   const isBarbell = exName ? (
-    /\bbarbell\b|\bbench press\b|\bback squat\b|\bfront squat\b|\bhigh bar\b|\blow bar\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bbarbell hip thrust\b|\bhip thrust \(barbell\)\b|\blandmine\b|\bt-?bar row\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo deadlift\b|\boverhead press \(barbell\)\b|\bbarbell row\b|\bpower clean\b|\bhang clean\b|\bclean and jerk\b|\bsnatch\b|\btrap bar\b|\brack pull\b|\bbarbell curl\b|\bez bar curl\b|\bbarbell shrug\b|\bpush press\b|\bz press\b|\bbradford\b|\bseated ohp\b|\bclose-grip bench\b|\bjm press\b|\bskull crusher\b|\bbarbell glute bridge\b|\bfront raises \(plate\)\b/i.test(exName)
+    /\bbarbell\b|\bbench press\b|\bback squat\b|\bfront squat\b|\bhigh bar\b|\blow bar\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bbarbell hip thrust\b|\bhip thrust \(barbell\)\b|\blandmine\b|\bt-?bar row\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo deadlift\b|\boverhead press \(barbell\)\b|\bbarbell row\b|\bpower clean\b|\bhang clean\b|\bclean and jerk\b|\bsnatch\b|\btrap bar\b|\brack pull\b|\bbarbell shrug\b|\bpush press\b|\bz press\b|\bbradford\b|\bseated ohp\b|\bclose-grip bench\b|\bjm press\b|\bskull crusher\b|\bbarbell glute bridge\b|\bfront raises \(plate\)\b/i.test(exName)
     && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|leg curl|leg press|leg extension|pec deck|pulldown|pushdown|\bfly\b|lateral raise|pec|seated calf|assisted/i.test(exName)
   ) : false;
   const oneSided = exName ? isOneSidedBarbell(exName) : false;
@@ -5229,6 +5372,7 @@ function Onboarding({ C, onComplete }) {
       { v:4, label:"4 days" },
       { v:5, label:"5+ days" },
     ]},
+    { key:"profile", q:"A bit about you", profile:true },
   ];
   // step layout: [intro screens][questions][closing]
   const totalSteps = introScreens.length + questions.length + 1;
@@ -5287,6 +5431,29 @@ function Onboarding({ C, onComplete }) {
               We'll tailor things around {goalLabel}, {dpw} days a week. Start your first workout whenever you're ready — your progress builds from here.
             </div>
           </div>
+        ) : (inQuestions && question.profile) ? (
+          <div key="profile" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
+            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
+            <div style={{ fontSize:14, color:C.sub, marginBottom:24, lineHeight:1.4 }}>This tailors your strength standards and recovery estimates. You can change it later.</div>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Biological sex</div>
+            <div style={{ display:"flex", gap:10, marginBottom:24 }}>
+              {[["male","Male"],["female","Female"]].map(([v,label]) => {
+                const sel = answers.sex === v;
+                return (
+                  <button key={v} onClick={() => setAnswers(a => ({ ...a, sex: v }))} style={{
+                    flex:1, padding:"16px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                    background: sel ? C.accent : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
+                    color: sel ? C.onAccent : C.text, fontSize:15, fontWeight:600,
+                  }}>{label}</button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Age <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
+            <input type="number" inputMode="numeric" placeholder="e.g. 28" min="14" max="99"
+              value={answers.age || ""}
+              onChange={e => { const a = parseInt(e.target.value); setAnswers(p => ({ ...p, age: (a > 0 && a < 100) ? a : null })); }}
+              style={{ width:"100%", padding:"15px 16px", borderRadius:14, border:`1.5px solid ${C.border}`, background:C.surface, color:C.text, fontSize:15, fontWeight:600, fontFamily:F, outline:"none", boxSizing:"border-box" }}/>
+          </div>
         ) : (
           <div key={step} className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
             <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:24, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
@@ -5315,6 +5482,15 @@ function Onboarding({ C, onComplete }) {
           <button onClick={next} style={{
             width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
             fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
+          }}>
+            Continue
+          </button>
+        )}
+        {inQuestions && question.profile && (
+          <button onClick={next} disabled={!answers.sex} style={{
+            width:"100%", background: answers.sex ? C.text : C.surface, color: answers.sex ? C.bg : C.muted,
+            border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700,
+            cursor: answers.sex ? "pointer" : "not-allowed", fontFamily:F, letterSpacing:-0.2
           }}>
             Continue
           </button>
@@ -11064,6 +11240,37 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
     if (days < 30) return `${Math.floor(days/7)}w ago`;
     return `${Math.floor(days/30)}mo ago`;
   })();
+
+  // First→latest e1RM improvement over the logged window, for the progression card.
+  const firstE1RM = historyData.length ? (historyData.find(p => p.e1rm > 0)?.e1rm || 0) : 0;
+  const improvePct = firstE1RM > 0 && bestE1RM > 0 ? Math.round(((bestE1RM - firstE1RM) / firstE1RM) * 100) : 0;
+
+  async function shareProgress() {
+    // Build a 1080×1350 progression card: title, current PR, improvement %, and an e1RM sparkline.
+    const pts = historyData.filter(p => p.e1rm > 0).map(p => p.e1rm);
+    const W = 1080, H = 1350, pad = 110;
+    const minV = Math.min(...pts), maxV = Math.max(...pts), range = maxV - minV || 1;
+    const gx = (i) => pad + (i / Math.max(1, pts.length - 1)) * (W - pad * 2);
+    const gy = (v) => 760 - ((v - minV) / range) * 300;
+    const line = pts.map((v, i) => `${i === 0 ? "M" : "L"} ${gx(i).toFixed(0)} ${gy(v).toFixed(0)}`).join(" ");
+    const area = pts.length > 1 ? `${line} L ${gx(pts.length-1).toFixed(0)} 760 L ${pad} 760 Z` : "";
+    const dots = pts.map((v, i) => `<circle cx="${gx(i).toFixed(0)}" cy="${gy(v).toFixed(0)}" r="7" fill="#c8f135"/>`).join("");
+    const prDisp = pr ? `${cvt(pr,"lbs",unit)} ${unit}` : (bestE1RM > 0 ? `${Math.round(bestE1RM)} ${unit}` : "—");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+      + `<rect width="${W}" height="${H}" fill="#0A0A0A"/>`
+      + `<text x="${pad}" y="150" fill="rgba(255,255,255,0.5)" font-size="26" font-weight="700" letter-spacing="6" font-family="Arial">SESHD</text>`
+      + `<text x="${pad}" y="240" fill="#fff" font-size="68" font-weight="800" font-family="Arial">${name.replace(/&/g,"&amp;").replace(/</g,"&lt;").slice(0,22)}</text>`
+      + `<text x="${pad}" y="300" fill="rgba(255,255,255,0.6)" font-size="30" font-family="Arial">${exInfo.muscle}</text>`
+      + (area ? `<path d="${area}" fill="#c8f135" opacity="0.12"/>` : "")
+      + (pts.length > 1 ? `<path d="${line}" stroke="#c8f135" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : "")
+      + dots
+      + `<text x="${pad}" y="900" fill="rgba(255,255,255,0.5)" font-size="28" font-weight="700" letter-spacing="3" font-family="Arial">CURRENT PR</text>`
+      + `<text x="${pad}" y="990" fill="#c8f135" font-size="92" font-weight="800" font-family="Arial">${prDisp}</text>`
+      + (improvePct > 0 ? `<text x="${pad}" y="1080" fill="#fff" font-size="38" font-weight="700" font-family="Arial">▲ ${improvePct}% since you started</text>` : "")
+      + `<text x="${pad}" y="1270" fill="rgba(255,255,255,0.35)" font-size="26" font-family="Arial">${sessions} sessions logged · seshd</text>`
+      + `</svg>`;
+    try { await shareSvgCard(svg, "seshd-progress.png", `My ${name} progress`, W, H); } catch (e) {}
+  }
   // Last 3 sessions for the mini-recent list (newest first)
   const recentSessions = historyData.slice(-3).reverse();
 
@@ -11116,6 +11323,14 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
             <div style={{ fontSize:9, color:C.accent, fontWeight:700, letterSpacing:1 }}>PR</div>
             <div style={{ fontSize:13, fontWeight:700, color:C.accent, fontFamily:MONO }}>{cvt(pr,"lbs",unit)} {unit}</div>
           </div>
+        )}
+        {sessions >= 2 && (
+          <button onClick={shareProgress} aria-label="Share progress" style={{ background:"none", border:"none", cursor:"pointer", padding:6, color:C.text, display:"flex", alignItems:"center" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/>
+            </svg>
+          </button>
         )}
       </div>
 
@@ -13160,6 +13375,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             const sex = store.strengthSex || "male";
             const ss = computeStrengthScore(store, displayUnit || store.unit || "lbs", sex);
             const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#c8f135", Elite:"#fbbf24" };
+            const setAge = (v) => {
+              const a = parseInt(v);
+              setStore(p => ({ ...p, age: (a > 0 && a < 100) ? a : null }));
+              const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
+              if (tok && currentUserId) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ age: (a > 0 && a < 100) ? a : null }) }, tok).catch(() => {});
+            };
+            const AgeInput = () => (
+              <input key={`age-${store.age || "none"}`} type="number" inputMode="numeric" placeholder="Age" defaultValue={store.age || ""}
+                onBlur={e => setAge(e.target.value)} min="14" max="99"
+                style={{ width:54, padding:"4px 8px", borderRadius:10, border:`1px solid ${C.border}`, background:C.bg, color:C.text, fontSize:12, fontWeight:700, textAlign:"center", fontFamily:F, outline:"none" }}/>
+            );
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
@@ -13206,15 +13432,23 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       </div>
                       <div style={{ display:"inline-block", marginTop:10, padding:"4px 11px", borderRadius:999, background:lvlColor, color:"#0a0a0a", fontSize:12, fontWeight:800, letterSpacing:0.3 }}>{ss.overall.toUpperCase()}</div>
                     </div>
-                    <SexToggle/>
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+                      <SexToggle/>
+                      <AgeInput/>
+                    </div>
                   </div>
+                  {ss.topLifts && ss.topLifts.length > 0 && (
+                    <div style={{ marginTop:12, fontSize:11, color:C.text, fontWeight:600 }}>
+                      💪 {ss.topLifts[0].level} on {ss.topLifts[0].lift.replace(" (Barbell)","").replace("Barbell ","")}{ss.topLifts.length > 1 ? ` +${ss.topLifts.length - 1} more` : ""}
+                    </div>
+                  )}
                 </div>
                 {/* Per-lift bars */}
                 <div style={{ padding:"14px 16px 12px" }}>
                   {ss.lifts.map(l => (
                     <div key={l.lift} style={{ marginBottom:13 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:5 }}>
-                        <span style={{ fontSize:13, color:C.text, fontWeight:700 }}>{l.lift.replace(" (Barbell)","").replace("Barbell ","")}</span>
+                        <span style={{ fontSize:13, color:C.text, fontWeight:700 }}>{l.lift.replace(" (Barbell)","").replace("Barbell ","")} <span style={{ fontSize:10, color:LEVEL_COLOR[l.level], fontWeight:700 }}>{l.level !== "Untrained" ? l.level : ""}</span></span>
                         <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}><span style={{ color:C.text, fontWeight:700 }}>{l.best}</span> · {l.ratio}×BW</span>
                       </div>
                       <div style={{ height:8, borderRadius:5, background:C.divider, overflow:"hidden" }}>
@@ -13222,7 +13456,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       </div>
                     </div>
                   ))}
-                  <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex === "other" ? "neutral" : sex} standards. General reference, not medical.</div>
+                  <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex === "other" ? "neutral" : sex} standards{ss.age ? `, age ${ss.age}` : ""}. General reference, not medical.</div>
                 </div>
               </div>
             );
@@ -15265,6 +15499,7 @@ function AppInner() {
           ...(prev.dismissedInsights || []),
         ])),
         bodyType: me?.body_type || prev.bodyType || undefined,
+        age: me?.age != null ? me.age : prev.age,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
 
@@ -16427,13 +16662,17 @@ function AppInner() {
     return <Onboarding C={C} onComplete={async (answers) => {
       const target = answers?.daysPerWeek ? Math.min(7, Math.max(1, parseInt(answers.daysPerWeek))) : 3;
       try { localStorage.setItem("seshd_onboarded", "1"); } catch {}
-      setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {} }));
+      const oSex = answers?.sex === "female" ? "female" : answers?.sex === "male" ? "male" : undefined;
+      const oAge = (answers?.age > 0 && answers?.age < 100) ? answers.age : undefined;
+      setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {},
+        ...(oSex ? { strengthSex: oSex, bodyType: oSex } : {}),
+        ...(oAge ? { age: oAge } : {}) }));
       // Persist seen-onboarding to the profile so it doesn't reappear after a reload or
       // on another device. Best-effort: if the column doesn't exist yet the local store
       // flag still prevents it showing again this session/device.
       const tok = tokenRef.current || loadSession()?.access_token;
       if (tok) {
-        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target }) }, tok); }
+        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target, ...(answers?.sex ? { strength_sex: answers.sex, body_type: answers.sex } : {}), ...((answers?.age > 0 && answers?.age < 100) ? { age: answers.age } : {}) }) }, tok); }
         catch (e) { console.error("onboarding flag save error:", e); }
       }
     }}/>;
@@ -16648,18 +16887,6 @@ function AppInner() {
               </svg>
             </button>
           )}
-          <button
-            onClick={() => setShowWrapped(true)}
-            aria-label="Stats"
-            style={{ background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="20" x2="4" y2="12"/>
-              <line x1="10" y1="20" x2="10" y2="4"/>
-              <line x1="16" y1="20" x2="16" y2="9"/>
-              <line x1="22" y1="20" x2="2" y2="20"/>
-            </svg>
-          </button>
           <button
             onClick={() => {
               if (requireAuth("Sign up to send and receive messages")) return;
