@@ -1,4 +1,4 @@
-// v178091716476
+// v178091716478
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1646,6 +1646,43 @@ const MuscleIcon = memo(function MuscleIcon({ muscle = "", name = "", size = 28,
 let _setToast = null;
 function toast(msg, type = "info") {
   if (_setToast) _setToast({ msg, type, id: Date.now() });
+}
+
+// Native-feeling confirmation sheet — replaces window.confirm so destructive actions
+// match the app's premium look instead of popping the browser's default dialog.
+let _setConfirm = null;
+function confirmAction({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", destructive = false, icon = "warn", onConfirm }) {
+  if (_setConfirm) _setConfirm({ title, message, confirmLabel, cancelLabel, destructive, icon, onConfirm, id: Date.now() });
+}
+function ConfirmHost({ C }) {
+  const [cf, setCf] = useState(null);
+  _setConfirm = setCf;
+  useEffect(() => {
+    if (!cf) return;
+    const onKey = (e) => { if (e.key === "Escape") setCf(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cf?.id]);
+  if (!cf) return null;
+  const accent = cf.destructive ? "#ef4444" : (C.accent || "#65a30d");
+  const close = () => setCf(null);
+  return createPortal((
+    <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"seshd-cf-fade 0.15s ease" }}>
+      <style>{`@keyframes seshd-cf-fade{from{opacity:0}to{opacity:1}}@keyframes seshd-cf-pop{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}`}</style>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}`, animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
+        <div style={{ width:46, height:46, borderRadius:13, background:`${accent}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
+          <Icon name={cf.icon} size={22} color={accent}/>
+        </div>
+        <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.3 }}>{cf.title}</div>
+        {cf.message && <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:18 }}>{cf.message}</div>}
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={close} style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, color:C.text, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>{cf.cancelLabel}</button>
+          <button onClick={() => { close(); try { cf.onConfirm && cf.onConfirm(); } catch (e) {} }}
+            style={{ flex:1, background:accent, color:"#fff", border:"none", borderRadius:11, padding:"12px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>{cf.confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  ), document.body);
 }
 function ToastHost() {
   const [t, setT] = useState(null);
@@ -5210,13 +5247,19 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
             </div>
           )}
 
-          <button onClick={async () => {
-            const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta });
-            const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd");
-            if (!ok) {
-              const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PRs · ${streak} day streak`;
-              if (navigator.share) navigator.share({ title:"Seshd Wrapped", text }).catch(()=>{});
-              else if (navigator.clipboard) { navigator.clipboard.writeText(text); if (typeof toast === "function") toast("Copied to clipboard", "success"); }
+          <button onClick={async (e) => {
+            e.preventDefault();
+            if (e.currentTarget.dataset.sharing === "1") return; // guard against double-fire
+            e.currentTarget.dataset.sharing = "1";
+            try {
+              const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta });
+              const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd");
+              if (!ok) {
+                const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PRs · ${streak} day streak`;
+                if (navigator.clipboard) { await navigator.clipboard.writeText(text); if (typeof toast === "function") toast("Copied to clipboard", "success"); }
+              }
+            } finally {
+              e.currentTarget && (e.currentTarget.dataset.sharing = "0");
             }
           }} style={{
             width:"100%", background:"#fff", color:"#0A0A0A", border:"none",
@@ -5225,16 +5268,23 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
             display:"flex", alignItems:"center", justifyContent:"center", gap:8
           }} data-share-main>
             <Icon name="share" size={16} color="#0A0A0A"/>
-            Share my week
+            Share as image
           </button>
-          <button onClick={async () => {
-            const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta });
-            await shareSvgCard(wrapStorySVG(svg), "seshd-story.png", "My week on Seshd", 1080, 1920);
+          <button onClick={async (e) => {
+            e.preventDefault();
+            if (e.currentTarget.dataset.sharing === "1") return; // guard against double-fire
+            e.currentTarget.dataset.sharing = "1";
+            try {
+              const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta });
+              await shareSvgCard(wrapStorySVG(svg), "seshd-story.png", "My week on Seshd", 1080, 1920);
+            } finally {
+              e.currentTarget && (e.currentTarget.dataset.sharing = "0");
+            }
           }} style={{
             width:"100%", background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.18)",
             borderRadius:12, padding:"13px", fontSize:13, fontWeight:700,
             cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2
-          }}>Share as Story</button>
+          }}>Share as Story (9:16)</button>
           {onPostToFeed && (
             <button onClick={() => {
               const { region, max } = weeklyMuscleVolume(store, 7);
@@ -6279,11 +6329,12 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                         {isOwn && (
                           <>
                             <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.text); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Edit</button>
-                            <button onClick={() => {
-                              if (window.confirm("Delete this comment?")) {
-                                onDeleteComment && onDeleteComment(post.id, c.id);
-                              }
-                            }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Delete</button>
+                            <button onClick={() => confirmAction({
+                              title: "Delete comment?",
+                              message: "This comment will be permanently removed.",
+                              confirmLabel: "Delete", destructive: true, icon: "trash",
+                              onConfirm: () => onDeleteComment && onDeleteComment(post.id, c.id),
+                            })} style={{ background:"none", border:"none", color:C.muted, fontSize:11, cursor:"pointer", padding:0, fontFamily:F, fontWeight:600 }}>Delete</button>
                           </>
                         )}
                       </div>
@@ -11731,7 +11782,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                 <div style={{ fontSize:13 }}>Be the first to post something to the group.</div>
               </div>
             )}
-            {posts.map(post => {
+            {posts.filter(post => !(store.blockedUsers || []).includes(post.user_id)).map(post => {
               const author = store.users.find(u => u.id === post.user_id);
               const isMyPost = post.user_id === currentUserId;
               const myReaction = (post._reactions||{})[currentUserId];
@@ -12349,12 +12400,17 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift"],
                     "Overhead Press (Barbell)": ["Overhead Press","OHP","Standing Barbell OHP","Standing OHP","Standing Press","Strict Press","Military Press","Barbell OHP","Barbell Overhead Press"],
                     "Barbell Row": ["Barbell Bent-Over Row","Barbell Bent Over Row","Bent-Over Row","Bent Over Row","Bent-Over Barbell Row","Bent Over Barbell Row","Pendlay Row","Yates Row"],
-                    "Hip Thrust (Barbell)": ["Hip Thrust","Barbell Hip Thrust","Glute Bridge (Barbell)"],
+                    "Hip Thrust (Barbell)": ["Hip Thrust","Barbell Hip Thrust","Glute Bridge (Barbell)","Hip Thrust (Machine)","Hip Thrust (machine)","Machine Hip Thrust","Smith Machine Hip Thrust","Hip Thrust Machine"],
                   };
-                  // Resolve the best (max) PR from canonical name + any alias the user may have used
+                  // Resolve the best (max) PR from canonical name + any alias the user may have used.
+                  // Case-insensitive so "(machine)" vs "(Machine)" and other casings all match.
                   const bestPR = (prMap, canonical) => {
                     if (!prMap) return null;
-                    const candidates = [prMap[canonical], ...(LIFT_ALIASES[canonical] || []).map(a => prMap[a])].filter(v => v != null && v > 0);
+                    const wanted = [canonical, ...(LIFT_ALIASES[canonical] || [])].map(s => s.toLowerCase());
+                    const candidates = Object.keys(prMap)
+                      .filter(k => wanted.includes(k.toLowerCase()))
+                      .map(k => prMap[k])
+                      .filter(v => v != null && v > 0);
                     if (candidates.length === 0) return null;
                     return Math.max(...candidates);
                   };
@@ -13054,16 +13110,16 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   // filters them from the unscoped feed query). Merged into store.posts, deduped by id.
   useEffect(() => {
     if (!userId) return;
-    const tok = token || loadSession()?.access_token;
-    if (!tok) return;
     let alive = true;
     (async () => {
+      const tok = token || loadSession()?.access_token;
+      if (!tok) return;
       try {
         const rows = await sb.query(
           `posts?user_id=eq.${userId}&select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)&order=created_at.desc&limit=50`,
           {}, tok
         );
-        if (!alive || !Array.isArray(rows) || rows.length === 0) return;
+        if (!alive || !Array.isArray(rows)) return;
         const mapped = rows.map(p => ({
           id: p.id, userId: p.user_id, type: p.type, caption: p.caption || "",
           imageData: p.image_url, location: p.location, workout: p.workout,
@@ -13073,15 +13129,19 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           comments: (p.comments || []).map(c => ({ id: c.id, userId: c.user_id, text: c.text, likes: c.likes || [], createdAt: new Date(c.created_at).getTime() })),
           createdAt: new Date(p.created_at).getTime(),
         }));
+        // Merge: replace existing posts of THIS user with the fresh server copy (so edits/
+        // kudos update), keep everyone else's posts untouched, and add any new ones.
         setStore(prev => {
-          const have = new Set((prev.posts || []).map(p => p.id));
-          const add = mapped.filter(p => !have.has(p.id));
-          return add.length ? { ...prev, posts: [...prev.posts, ...add] } : prev;
+          const freshIds = new Set(mapped.map(p => p.id));
+          const others = (prev.posts || []).filter(p => p.userId !== userId || !freshIds.has(p.id));
+          // Posts of this user not returned by the server (e.g. still syncing) are kept too.
+          const kept = others;
+          return { ...prev, posts: [...kept, ...mapped] };
         });
       } catch (e) { /* offline / RLS — profile falls back to feed page + history items */ }
     })();
     return () => { alive = false; };
-  }, [userId]);
+  }, [userId, token]);
   const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
   const coverRef = useRef(null);
@@ -13341,7 +13401,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               }}>Message</button>
             )}
             {onBlock && (
-              <button onClick={() => { if (window.confirm(`Block @${user?.username}? They won't be able to follow you, and you'll unfollow each other.`)) { onBlock(userId); if (onBack) onBack(); } }} aria-label="Block user" style={{
+              <button onClick={() => confirmAction({
+                title: `Block @${user?.username}?`,
+                message: "They won't be able to follow you, and you'll unfollow each other.",
+                confirmLabel: "Block", destructive: true, icon: "warn",
+                onConfirm: () => { onBlock(userId); if (onBack) onBack(); },
+              })} aria-label="Block user" style={{
                 padding:"8px 11px", background:"transparent",
                 border:`1px solid ${C.border}`, borderRadius:8,
                 fontSize:13, fontWeight:600, color:C.danger || "#ef4444",
@@ -13898,7 +13963,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         <div style={{ display:"flex", gap:6, flexShrink:0 }}>
                           {/* On my OWN followers list, allow removing/blocking this follower */}
                           {userId === currentUserId && listModal === "followers" && (
-                            <button onClick={() => { if (window.confirm(`Remove ${u.username} from your followers?`)) onRemoveFollower && onRemoveFollower(u.id); }} style={{
+                            <button onClick={() => confirmAction({
+                              title: `Remove ${u.username}?`,
+                              message: "They'll be removed from your followers. They can follow you again later.",
+                              confirmLabel: "Remove", destructive: true, icon: "warn",
+                              onConfirm: () => onRemoveFollower && onRemoveFollower(u.id),
+                            })} style={{
                               padding:"7px 12px", borderRadius:8, fontSize:12, fontWeight:600,
                               background:"transparent", color:C.text, border:`1px solid ${C.border}`,
                               cursor:"pointer", fontFamily:F
@@ -15205,6 +15275,7 @@ function AppInner() {
   const touchStartY = useRef(0);
   const pullScrollRef = useRef(null);
   const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
+  const swipeDX = useRef(0); // synchronous live drag distance — source of truth for end decision
   const [swipeX, setSwipeX] = useState(0);
   // Co-move release animation: when set, the track glides to completion before switching.
   const [settle, setSettle] = useState(null); // null | { dir:'next'|'prev' }
@@ -16865,6 +16936,7 @@ function AppInner() {
         if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
         const t = e.touches[0];
         swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now(), type: null };
+        swipeDX.current = 0;
         setSwipeX(0);
       }}
       onTouchMove={(e) => {
@@ -16885,22 +16957,28 @@ function AppInner() {
         const canRight = idx < TABS_ORDER.length - 1;
         if ((dx > 0 && !canLeft && !profileUserId) || (dx < 0 && !canRight)) return;
         e.preventDefault();
+        swipeDX.current = dx;        // synchronous — survives even if state lags
         setSwipeX(dx);
       }}
       onTouchEnd={() => {
-        if (!swipeStart.current.type || swipeStart.current.type === "vertical") {
+        const type = swipeStart.current.type;
+        const startT = swipeStart.current.t;
+        const dx = swipeDX.current;  // read the ref, not the async state
+        if (!type || type === "vertical") {
           swipeStart.current = { x:0, y:0, t:0, type:null };
+          swipeDX.current = 0;
           setSwipeX(0);
           return;
         }
-        const dx = swipeX;
-        const dt = Date.now() - swipeStart.current.t;
+        const dt = Math.max(1, Date.now() - startT);
         const velocity = Math.abs(dx) / dt;
         const vw = window.innerWidth || 390;
         swipeStart.current = { x:0, y:0, t:0, type:null };
+        swipeDX.current = 0;
 
-        // Trigger if fast flick OR dragged past 35% of screen
-        const passed = velocity > 0.3 || Math.abs(dx) > vw * 0.35;
+        // Trigger if a flick (any reasonable speed) OR dragged past 25% of screen.
+        // Lower bars than before — medium deliberate swipes were snapping back.
+        const passed = velocity > 0.18 || Math.abs(dx) > vw * 0.25;
         const idx = TABS_ORDER.indexOf(tab);
 
         // Back-swipe on a nested user profile is handled separately (no co-move track).
@@ -16911,22 +16989,22 @@ function AppInner() {
         }
 
         const canGo = dx > 0 ? idx > 0 : idx < TABS_ORDER.length - 1;
-        if (!passed || !canGo) {
+        if (!passed || !canGo || dx === 0) {
           // Snap back: glide the track home, no tab change.
           setSettle({ dir: dx > 0 ? "prev" : "next", cancel: true });
-          setTimeout(() => { setSettle(null); setSwipeX(0); }, 260);
+          setTimeout(() => { setSettle(null); setSwipeX(0); }, 220);
           return;
         }
         // Commit: glide the track to completion, then switch tab.
         const goPrev = dx > 0;
+        const destTab = goPrev ? TABS_ORDER[idx - 1] : TABS_ORDER[idx + 1];
         setSettle({ dir: goPrev ? "prev" : "next", cancel: false });
         setTimeout(() => {
           justCoMoved.current = true; // track already animated; skip enter keyframe
-          if (goPrev) switchTab(TABS_ORDER[idx - 1]);
-          else switchTab(TABS_ORDER[idx + 1]);
+          switchTab(destTab);
           setSettle(null);
           setSwipeX(0);
-        }, 260);
+        }, 220);
       }}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
     >
@@ -16958,6 +17036,7 @@ function AppInner() {
       {showCoach && <AICoachSheet store={store} setStore={setStore} unit={unit} C={C} onClose={() => setShowCoach(false)}/>}
       {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
+      <ConfirmHost C={C}/>
 
       {/* OFFLINE INDICATOR — non-intrusive; auto-hides on reconnect */}
       {!online && (
