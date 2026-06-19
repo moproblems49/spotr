@@ -1,4 +1,4 @@
-// v178091716496
+// v178091716497
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6832,27 +6832,22 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
       programs: [...(p.programs || []), imported],
       activeProgramId: newId,
     }));
-    // Save to user's account
+    // Save to user's account — the active program is a single FK on the profile row,
+    // so activating the import is one atomic write (no deactivate-then-activate race).
     if (token) {
-      // Deactivate any currently-active program first — otherwise two rows end up with
-      // is_active=true and the next login's `.find(p => p.is_active)` may resolve to the OLD
-      // program, silently reverting the import. Mirror handleSaveProgram's behavior.
-      sb.query(`programs?user_id=eq.${currentUserId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ is_active: false })
+      sb.query("programs", {
+        method: "POST",
+        body: JSON.stringify({
+          id: newId,
+          name: imported.name,
+          days: imported.days,
+        })
       }, token)
-        .catch(() => {})
-        .finally(() => {
-          sb.query("programs", {
-            method: "POST",
-            body: JSON.stringify({
-              id: newId,
-              name: imported.name,
-              days: imported.days,
-              is_active: true,
-            })
-          }, token).catch(e => console.error("save imported program:", e));
-        });
+        .then(() => sb.query(`profiles?id=eq.${currentUserId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ active_program_id: newId })
+        }, token))
+        .catch(e => console.error("save imported program:", e));
     }
     toast(isWorkout ? "Workout imported" : "Program imported", "success");
     setCode("");
@@ -15687,7 +15682,7 @@ function AppInner() {
       ]);
 
       const me = profiles?.find(p => p.id === currentUserId);
-      const activeProgram = programs?.find(p => p.is_active) || programs?.[0];
+      const activeProgram = programs?.find(p => p.id === me?.active_program_id) || programs?.[0];
 
       // Convert DB programs to app format
       const appPrograms = (programs || []).map(p => ({
@@ -15943,11 +15938,18 @@ function AppInner() {
           await sb.query("programs", {
             method: "POST",
             body: JSON.stringify({
-              id: prog.id, user_id: newUserId, name: prog.name,
-              days: prog.days, is_active: store.activeProgramId === prog.id,
+              id: prog.id, user_id: newUserId, name: prog.name, days: prog.days,
             })
           }, tok);
         } catch (e) { console.error("migrate program:", e); }
+      }
+      // Active program is a single FK on the profile row.
+      if (store.activeProgramId) {
+        try {
+          await sb.query(`profiles?id=eq.${newUserId}`, {
+            method: "PATCH", body: JSON.stringify({ active_program_id: store.activeProgramId })
+          }, tok);
+        } catch (e) { console.error("migrate active program:", e); }
       }
       // Upload PRs
       for (const [exName, weightLbs] of Object.entries(store.prs || {})) {
@@ -16425,39 +16427,39 @@ function AppInner() {
     }
     try {
       if (program._deactivate) {
-        // Just deactivate all — no new active
-        await sb.query(`programs?user_id=eq.${currentUserId}`, {
-          method:"PATCH", body: JSON.stringify({ is_active: false })
+        // Active program is a single FK on the profile row — one atomic write, no race.
+        await sb.query(`profiles?id=eq.${currentUserId}`, {
+          method:"PATCH", body: JSON.stringify({ active_program_id: null })
         }, tok);
         setStore(prev => ({ ...prev, activeProgramId: null }));
         return;
       }
       // Silent save (e.g. persisting a per-exercise rest tweak): just patch the days,
-      // no deactivate/reactivate churn, no active-program change.
+      // no active-program change.
       if (program._silent && program.id && store.programs.find(p => p.id === program.id)) {
         setStore(prev => ({ ...prev, programs: prev.programs.map(p => p.id === program.id ? { ...program, _silent: undefined } : p) }));
         try { await sb.query(`programs?id=eq.${program.id}`, { method:"PATCH", body: JSON.stringify({ days: program.days }) }, tok); }
         catch (e) { console.error("silent program save error:", e); }
         return;
       }
-      // Deactivate all others
-      await sb.query(`programs?user_id=eq.${currentUserId}`, {
-        method:"PATCH", body: JSON.stringify({ is_active: false })
-      }, tok);
       // Check if existing or new
       const existing = store.programs.find(p => p.id === program.id);
       if (existing && program.id) {
         await sb.query(`programs?id=eq.${program.id}`, {
-          method:"PATCH", body: JSON.stringify({ name: program.name, days: program.days, is_active: true })
+          method:"PATCH", body: JSON.stringify({ name: program.name, days: program.days })
         }, tok);
       } else {
         const result = await sb.query("programs", {
           method:"POST",
-          body: JSON.stringify({ user_id: currentUserId, name: program.name, days: program.days, is_active: true })
+          body: JSON.stringify({ user_id: currentUserId, name: program.name, days: program.days })
         }, tok);
         const newProg = Array.isArray(result) ? result[0] : result;
         if (newProg) program = { ...program, id: newProg.id };
       }
+      // Active program is a single FK on the profile row — one atomic write, no race.
+      await sb.query(`profiles?id=eq.${currentUserId}`, {
+        method:"PATCH", body: JSON.stringify({ active_program_id: program.id })
+      }, tok);
       setStore(prev => ({
         ...prev,
         programs: prev.programs.find(p => p.id === program.id)
