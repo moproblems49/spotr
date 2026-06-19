@@ -15284,9 +15284,6 @@ function AppInner() {
   const justCoMoved = useRef(false); // suppress the enter keyframe right after a co-move settle
   gestureConfig.current = { tab, profileUserId, showNewPost, editingPost, prModal, showWrapped, storyIndex };
   useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
     function handleTouchStart(e) {
       const cfg = gestureConfig.current;
       if (cfg.showNewPost || cfg.editingPost || cfg.prModal || cfg.showWrapped || cfg.storyIndex !== null) return;
@@ -15362,15 +15359,16 @@ function AppInner() {
       }, 260);
     }
 
-    root.addEventListener("touchstart", handleTouchStart, { passive: true, capture: true });
-    root.addEventListener("touchmove", handleTouchMove, { passive: false, capture: true });
-    root.addEventListener("touchend", handleTouchEnd, { passive: true, capture: true });
-    root.addEventListener("touchcancel", handleTouchEnd, { passive: true, capture: true });
+    const target = document;
+    target.addEventListener("touchstart", handleTouchStart, { passive: true, capture: true });
+    target.addEventListener("touchmove", handleTouchMove, { passive: false, capture: true });
+    target.addEventListener("touchend", handleTouchEnd, { passive: true, capture: true });
+    target.addEventListener("touchcancel", handleTouchEnd, { passive: true, capture: true });
     return () => {
-      root.removeEventListener("touchstart", handleTouchStart, { capture: true });
-      root.removeEventListener("touchmove", handleTouchMove, { capture: true });
-      root.removeEventListener("touchend", handleTouchEnd, { capture: true });
-      root.removeEventListener("touchcancel", handleTouchEnd, { capture: true });
+      target.removeEventListener("touchstart", handleTouchStart, { capture: true });
+      target.removeEventListener("touchmove", handleTouchMove, { capture: true });
+      target.removeEventListener("touchend", handleTouchEnd, { capture: true });
+      target.removeEventListener("touchcancel", handleTouchEnd, { capture: true });
     };
   }, []);
   useEffect(() => {
@@ -17021,7 +17019,7 @@ function AppInner() {
   }
 
   return (
-    <div ref={rootRef} style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"pan-y" }}>
+    <div ref={rootRef} style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"none" }}>
       {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
       <style>{`
         button, [role="button"], .seshd-tappable {
