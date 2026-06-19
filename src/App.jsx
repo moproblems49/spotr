@@ -1,4 +1,4 @@
-// v178091716484
+// v178091716485
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5284,7 +5284,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
             width:"100%", background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.18)",
             borderRadius:12, padding:"13px", fontSize:13, fontWeight:700,
             cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2
-          }}>Share as Story (9:16)</button>
+          }}>Share to Story</button>
           {onPostToFeed && (
             <button onClick={() => {
               const { region, max } = weeklyMuscleVolume(store, 7);
