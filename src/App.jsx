@@ -1,4 +1,4 @@
-// v178091716492
+// v178091716493
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15233,7 +15233,10 @@ function AppInner() {
   }, []);
   const [prevTab, setPrevTab] = useState(null);
   const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
-  function switchTab(t) { if (t !== tab) haptic("tab"); setPrevTab(tab); setTab(t); }
+  // "swipe" source skips the slide-in keyframe on the next render — the drag/glide already
+  // animated the transition, so replaying the keyframe caused a visible double-animation.
+  const tabSwitchSourceRef = useRef("tap");
+  function switchTab(t, source = "tap") { if (t !== tab) haptic("tab"); tabSwitchSourceRef.current = source; setPrevTab(tab); setTab(t); }
 
   // When user taps an Import button on a feed code, switch to tracker and re-dispatch
   useEffect(() => {
@@ -17168,7 +17171,7 @@ function AppInner() {
   const vwNow = window.innerWidth || 390;
   setSwipeRelease({ toPx: goPrev ? vwNow : -vwNow });
   setTimeout(() => {
-    switchTab(destTab);
+    switchTab(destTab, "swipe");
     setSwipeRelease(null);
     setSwipeX(0);
   }, 240);
@@ -17729,7 +17732,7 @@ function AppInner() {
               {/* CENTER (current tab) — always mounted; this is the touched node */}
               <div key={animKey} style={{
                 width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
-                animation: (prevTab && swipeX === 0 && !swipeRelease)
+                animation: (prevTab && swipeX === 0 && !swipeRelease && tabSwitchSourceRef.current !== "swipe")
                   ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.25,0.46,0.45,0.94)` : "none",
               }}>
                 {TabBody(tab)}
