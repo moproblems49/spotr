@@ -1,4 +1,4 @@
-// v178091716480
+// v178091716482
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15281,27 +15281,6 @@ function AppInner() {
   const [settle, setSettle] = useState(null); // null | { dir:'next'|'prev' }
   const justCoMoved = useRef(false); // suppress the enter keyframe right after a co-move settle
   const swipeContainerRef = useRef(null);
-  // Attach swipe handlers as NON-PASSIVE native listeners so e.preventDefault() works on iOS
-  // (React's synthetic touch listeners are passive → preventDefault is a no-op → the browser
-  // hijacks the gesture and the drag freezes after a few px). Re-runs each render so the
-  // handlers always close over fresh state. Defined as function declarations below (hoisted).
-  useEffect(() => {
-    const el = swipeContainerRef.current;
-    if (!el) return;
-    const start = (e) => handleSwipeStart(e);
-    const move = (e) => handleSwipeMove(e);
-    const end = (e) => handleSwipeEnd(e);
-    el.addEventListener("touchstart", start, { passive: false });
-    el.addEventListener("touchmove", move, { passive: false });
-    el.addEventListener("touchend", end, { passive: false });
-    el.addEventListener("touchcancel", end, { passive: false });
-    return () => {
-      el.removeEventListener("touchstart", start);
-      el.removeEventListener("touchmove", move);
-      el.removeEventListener("touchend", end);
-      el.removeEventListener("touchcancel", end);
-    };
-  });
   useEffect(() => {
     async function init() {
       // Check for OAuth callback (Supabase redirects with #access_token=... in URL hash)
@@ -17034,6 +17013,10 @@ function AppInner() {
   return (
     <div
       ref={swipeContainerRef}
+      onTouchStart={handleSwipeStart}
+      onTouchMove={handleSwipeMove}
+      onTouchEnd={handleSwipeEnd}
+      onTouchCancel={handleSwipeEnd}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"pan-y" }}
     >
       {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
