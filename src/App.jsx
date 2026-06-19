@@ -1,4 +1,4 @@
-// v178091716494
+// v178091716495
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15423,7 +15423,8 @@ function AppInner() {
   const pullScrollRef = useRef(null);
   const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
   const swipeDX = useRef(0); // synchronous live drag distance — source of truth for end decision
-  const [swipeX, setSwipeX] = useState(0);
+  const swipeTrackRef = useRef(null); // the 300%-wide track div — written to directly during drag
+  const [swipeX, setSwipeX] = useState(0); // 0 = idle, 1 = dragging (boundary flag, not the live px)
   // Co-move release glide: { toPx } animates the track to a neighbor slot before switching.
   const [swipeRelease, setSwipeRelease] = useState(null);
   // Co-move release animation: when set, the track glides to completion before switching.
@@ -17114,6 +17115,9 @@ function AppInner() {
   if (!swipeStart.current.type) {
     if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
     swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.7 ? "horizontal" : "vertical";
+    // One state update for the whole gesture (not per move) — mounts the neighbor panels so
+    // they're ready to receive the live drag below.
+    if (swipeStart.current.type === "horizontal") setSwipeX(1);
   }
   if (swipeStart.current.type === "vertical") return;
 
@@ -17126,7 +17130,12 @@ function AppInner() {
   const vw = window.innerWidth || 390;
   const clamped = Math.max(-vw, Math.min(vw, dx));
   swipeDX.current = clamped;   // synchronous — survives even if state lags
-  setSwipeX(clamped);
+  // Write the transform straight to the DOM instead of through setState — at touchmove
+  // frequency (60-120/sec on iOS), routing every frame through React re-rendered the whole
+  // screen and made the drag feel laggy. The ref write below is instant and 1:1 with the finger.
+  if (swipeTrackRef.current) {
+    swipeTrackRef.current.style.transform = `translateX(calc(-33.3333% + ${clamped}px))`;
+  }
   }
   // Expose the latest move handler to the non-passive native listener wired via setSwipeContainer.
   swipeMoveRef.current = handleSwipeMove;
@@ -17711,7 +17720,10 @@ function AppInner() {
         const isActive = (isDragging && swipeX !== 0) || swipeRelease;
         const leftTab = curIdx > 0 ? TABS_ORDER[curIdx - 1] : null;
         const rightTab = curIdx < TABS_ORDER.length - 1 ? TABS_ORDER[curIdx + 1] : null;
-        const dragPx = swipeRelease ? swipeRelease.toPx : (isDragging ? swipeX : 0);
+        // Read the live drag from the ref (not the boolean swipeX state) so that if React
+        // re-renders mid-gesture for an unrelated reason (e.g. a timer tick), the track stays
+        // at its actual position instead of snapping to a stale value.
+        const dragPx = swipeRelease ? swipeRelease.toPx : (isDragging ? swipeDX.current : 0);
         return (
           <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative", background:C.bg }}>
             <style>{`
@@ -17719,6 +17731,7 @@ function AppInner() {
               @keyframes slideInRight { from { transform:translateX(-100%);} to { transform:translateX(0);} }
             `}</style>
             <div
+              ref={swipeTrackRef}
               style={{
                 flex:1, display:"flex", width:"300%", height:"100%",
                 transform: `translateX(calc(-33.3333% + ${dragPx}px))`,
