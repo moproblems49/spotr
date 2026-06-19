@@ -16947,10 +16947,16 @@ function AppInner() {
 
         // Classify gesture type once enough movement
         if (!swipeStart.current.type) {
-          if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-          swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.5 ? "horizontal" : "vertical";
+          if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+          swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.3 ? "horizontal" : "vertical";
+          if (swipeStart.current.type === "horizontal") {
+            e.preventDefault();
+          }
         }
         if (swipeStart.current.type === "vertical") return;
+        if (swipeStart.current.type === "horizontal") {
+          e.preventDefault();
+        }
 
         const idx = TABS_ORDER.indexOf(tab);
         const canLeft = idx > 0;
@@ -16959,7 +16965,6 @@ function AppInner() {
         const canSwipeRight = canLeft || profileUserId;  // right swipe goes to prev tab or closes profile
         const canSwipeLeft = canRight;  // left swipe goes to next tab
         if (!((dx > 0 && canSwipeRight) || (dx < 0 && canSwipeLeft))) return;
-        e.preventDefault();
         swipeDX.current = dx;        // synchronous — survives even if state lags
         setSwipeX(dx);
       }}
@@ -17026,8 +17031,8 @@ function AppInner() {
           user-select: text;
           -webkit-touch-callout: default;
         }
-        /* Avoid double-tap zoom on iOS */
-        body, html { touch-action: manipulation; }
+        /* Allow swipe gestures on root */
+        body, html { touch-action: none; }
         /* Disable native long-press text selection on commonly-tapped content */
         [data-tap-only] {
           -webkit-user-select: none;
