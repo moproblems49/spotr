@@ -16947,16 +16947,18 @@ function AppInner() {
 
         // Classify gesture type once enough movement
         if (!swipeStart.current.type) {
-          if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-          swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.7 ? "horizontal" : "vertical";
+          if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+          swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.5 ? "horizontal" : "vertical";
         }
         if (swipeStart.current.type === "vertical") return;
 
         const idx = TABS_ORDER.indexOf(tab);
         const canLeft = idx > 0;
         const canRight = idx < TABS_ORDER.length - 1;
-        // Allow swipe if: (right swipe and can go left) OR (right swipe and in profile) OR (left swipe and can go right)
-        if (!((dx > 0 && (canLeft || profileUserId)) || (dx < 0 && canRight))) return;
+        // Allow swipe in the direction that makes sense
+        const canSwipeRight = canLeft || profileUserId;  // right swipe goes to prev tab or closes profile
+        const canSwipeLeft = canRight;  // left swipe goes to next tab
+        if (!((dx > 0 && canSwipeRight) || (dx < 0 && canSwipeLeft))) return;
         e.preventDefault();
         swipeDX.current = dx;        // synchronous — survives even if state lags
         setSwipeX(dx);
