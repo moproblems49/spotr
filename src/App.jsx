@@ -15274,12 +15274,108 @@ function AppInner() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
   const pullScrollRef = useRef(null);
+  const rootRef = useRef(null);
+  const gestureConfig = useRef({});
   const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
   const swipeDX = useRef(0); // synchronous live drag distance — source of truth for end decision
   const [swipeX, setSwipeX] = useState(0);
   // Co-move release animation: when set, the track glides to completion before switching.
   const [settle, setSettle] = useState(null); // null | { dir:'next'|'prev' }
   const justCoMoved = useRef(false); // suppress the enter keyframe right after a co-move settle
+  gestureConfig.current = { tab, profileUserId, showNewPost, editingPost, prModal, showWrapped, storyIndex };
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    function handleTouchStart(e) {
+      const cfg = gestureConfig.current;
+      if (cfg.showNewPost || cfg.editingPost || cfg.prModal || cfg.showWrapped || cfg.storyIndex !== null) return;
+      const target = e.target;
+      if (target && target.closest && target.closest("[data-no-tab-swipe]")) return;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      const t = e.touches[0];
+      swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now(), type: null };
+      swipeDX.current = 0;
+      setSwipeX(0);
+    }
+
+    function handleTouchMove(e) {
+      const s = swipeStart.current;
+      if (!s.t) return;
+      const t = e.touches[0];
+      const dx = t.clientX - s.x;
+      const dy = t.clientY - s.y;
+      if (!s.type) {
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+        s.type = Math.abs(dx) > Math.abs(dy) * 0.4 ? "horizontal" : "vertical";
+      }
+      if (s.type === "vertical") return;
+      const cfg = gestureConfig.current;
+      const idx = TABS_ORDER.indexOf(cfg.tab);
+      const canLeft = idx > 0;
+      const canRight = idx < TABS_ORDER.length - 1;
+      const canSwipeRight = canLeft || cfg.profileUserId;
+      const canSwipeLeft = canRight;
+      if (!((dx > 0 && canSwipeRight) || (dx < 0 && canSwipeLeft))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      swipeDX.current = dx;
+      s.dx = dx;
+      setSwipeX(dx);
+    }
+
+    function handleTouchEnd() {
+      const s = swipeStart.current;
+      const dx = swipeDX.current;
+      if (!s.type || s.type === "vertical") {
+        swipeStart.current = { x: 0, y: 0, t: 0, type: null };
+        swipeDX.current = 0;
+        setSwipeX(0);
+        return;
+      }
+      const dt = Math.max(1, Date.now() - s.t);
+      const velocity = Math.abs(dx) / dt;
+      const vw = window.innerWidth || 390;
+      swipeStart.current = { x: 0, y: 0, t: 0, type: null };
+      swipeDX.current = 0;
+      const passed = velocity > 0.18 || Math.abs(dx) > vw * 0.25;
+      const idx = TABS_ORDER.indexOf(gestureConfig.current.tab);
+      if (dx > 0 && gestureConfig.current.profileUserId) {
+        setSwipeX(0);
+        if (passed) setProfileUserId(null);
+        return;
+      }
+      const canGo = dx > 0 ? idx > 0 : idx < TABS_ORDER.length - 1;
+      if (!passed || !canGo || dx === 0) {
+        setSettle({ dir: dx > 0 ? "prev" : "next", cancel: true });
+        setTimeout(() => { setSettle(null); setSwipeX(0); }, 260);
+        return;
+      }
+      const goPrev = dx > 0;
+      const destTab = goPrev ? TABS_ORDER[idx - 1] : TABS_ORDER[idx + 1];
+      setSettle({ dir: goPrev ? "prev" : "next", cancel: false });
+      setTimeout(() => {
+        justCoMoved.current = true;
+        switchTab(destTab);
+        setSettle(null);
+        setSwipeX(0);
+      }, 260);
+    }
+
+    root.addEventListener("touchstart", handleTouchStart, { passive: true, capture: true });
+    root.addEventListener("touchmove", handleTouchMove, { passive: false, capture: true });
+    root.addEventListener("touchend", handleTouchEnd, { passive: true, capture: true });
+    root.addEventListener("touchcancel", handleTouchEnd, { passive: true, capture: true });
+    return () => {
+      root.removeEventListener("touchstart", handleTouchStart, { capture: true });
+      root.removeEventListener("touchmove", handleTouchMove, { capture: true });
+      root.removeEventListener("touchend", handleTouchEnd, { capture: true });
+      root.removeEventListener("touchcancel", handleTouchEnd, { capture: true });
+    };
+  }, []);
+  useEffect(() => {
+    gestureConfig.current = { tab, profileUserId, showNewPost, editingPost, prModal, showWrapped, storyIndex };
+  });
   useEffect(() => {
     async function init() {
       // Check for OAuth callback (Supabase redirects with #access_token=... in URL hash)
@@ -16925,102 +17021,7 @@ function AppInner() {
   }
 
   return (
-    <div
-      onTouchStartCapture={(e) => {
-        if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null) return;
-        // Skip tab swipe if the touch started on an interactive element that has its own swipe behavior
-        // (e.g. SetRow, story carousel, horizontal scroller), or on a text input where the user may
-        // be trying to select/edit text.
-        const target = e.target;
-        if (target && target.closest && target.closest("[data-no-tab-swipe]")) return;
-        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-        const t = e.touches[0];
-        swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now(), type: null };
-        swipeDX.current = 0;
-        setSwipeX(0);
-      }}
-      onTouchMoveCapture={(e) => {
-        if (!swipeStart.current.t) return;
-        const t = e.touches[0];
-        const dx = t.clientX - swipeStart.current.x;
-        const dy = t.clientY - swipeStart.current.y;
-
-        // Classify gesture type once enough movement
-        if (!swipeStart.current.type) {
-          if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
-          swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.3 ? "horizontal" : "vertical";
-          if (swipeStart.current.type === "horizontal") {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        }
-        if (swipeStart.current.type === "vertical") return;
-        if (swipeStart.current.type === "horizontal") {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-
-        const idx = TABS_ORDER.indexOf(tab);
-        const canLeft = idx > 0;
-        const canRight = idx < TABS_ORDER.length - 1;
-        // Allow swipe in the direction that makes sense
-        const canSwipeRight = canLeft || profileUserId;  // right swipe goes to prev tab or closes profile
-        const canSwipeLeft = canRight;  // left swipe goes to next tab
-        if (!((dx > 0 && canSwipeRight) || (dx < 0 && canSwipeLeft))) return;
-        swipeDX.current = dx;        // synchronous — survives even if state lags
-        setSwipeX(dx);
-      }}
-      onTouchEndCapture={(e) => {
-        if (swipeStart.current.type === "horizontal") {
-          e.stopPropagation();
-        }
-        const type = swipeStart.current.type;
-        const startT = swipeStart.current.t;
-        const dx = swipeDX.current;  // read the ref, not the async state
-        if (!type || type === "vertical") {
-          swipeStart.current = { x:0, y:0, t:0, type:null };
-          swipeDX.current = 0;
-          setSwipeX(0);
-          return;
-        }
-        const dt = Math.max(1, Date.now() - startT);
-        const velocity = Math.abs(dx) / dt;
-        const vw = window.innerWidth || 390;
-        swipeStart.current = { x:0, y:0, t:0, type:null };
-        swipeDX.current = 0;
-
-        // Trigger if a flick (any reasonable speed) OR dragged past 25% of screen.
-        // Lower bars than before — medium deliberate swipes were snapping back.
-        const passed = velocity > 0.18 || Math.abs(dx) > vw * 0.25;
-        const idx = TABS_ORDER.indexOf(tab);
-
-        // Back-swipe on a nested user profile is handled separately (no co-move track).
-        if (dx > 0 && profileUserId) {
-          setSwipeX(0);
-          if (passed) setProfileUserId(null);
-          return;
-        }
-
-        const canGo = dx > 0 ? idx > 0 : idx < TABS_ORDER.length - 1;
-        if (!passed || !canGo || dx === 0) {
-          // Snap back: glide the track home, no tab change.
-          setSettle({ dir: dx > 0 ? "prev" : "next", cancel: true });
-          setTimeout(() => { setSettle(null); setSwipeX(0); }, 260);
-          return;
-        }
-        // Commit: glide the track to completion, then switch tab.
-        const goPrev = dx > 0;
-        const destTab = goPrev ? TABS_ORDER[idx - 1] : TABS_ORDER[idx + 1];
-        setSettle({ dir: goPrev ? "prev" : "next", cancel: false });
-        setTimeout(() => {
-          justCoMoved.current = true; // track already animated; skip enter keyframe
-          switchTab(destTab);
-          setSettle(null);
-          setSwipeX(0);
-        }, 260);
-      }}
-      style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"none" }}
-    >
+    <div ref={rootRef} style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"pan-y" }}>
       {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
       <style>{`
         button, [role="button"], .seshd-tappable {
@@ -17036,8 +17037,8 @@ function AppInner() {
           user-select: text;
           -webkit-touch-callout: default;
         }
-        /* Allow swipe gestures on root */
-        body, html { touch-action: none; }
+        /* Allow vertical scroll and custom horizontal swipe gestures */
+        body, html { touch-action: pan-y; }
         /* Disable native long-press text selection on commonly-tapped content */
         [data-tap-only] {
           -webkit-user-select: none;
