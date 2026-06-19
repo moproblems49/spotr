@@ -17183,16 +17183,29 @@ function AppInner() {
               } else {
                 touchStartY.current = 0;
               }
+              // Also track start position for detecting horizontal swipes
+              if (!window.__feedTouchStartX) {
+                window.__feedTouchStartX = e.touches[0].clientX;
+              }
             }}
             onTouchMove={(e) => {
               if (touchStartY.current === 0 || isRefreshing) return;
-              const dist = e.touches[0].clientY - touchStartY.current;
+              const t = e.touches[0];
+              const dx = t.clientX - (window.__feedTouchStartX || t.clientX);
+              const dy = t.clientY - touchStartY.current;
+              // If this is a horizontal swipe (dx > dy), don't handle pull-to-refresh
+              if (Math.abs(dx) > Math.abs(dy)) {
+                touchStartY.current = 0;
+                return;
+              }
+              const dist = dy;
               const scrollTop = pullScrollRef.current?.scrollTop || 0;
               if (dist > 0 && scrollTop <= 5) {
                 setPullDist(Math.min(dist * 0.5, 100));
               }
             }}
             onTouchEnd={() => {
+              window.__feedTouchStartX = null;
               if (pullDist > 60 && !isRefreshing) {
                 setIsRefreshing(true);
                 setPullDist(50);
