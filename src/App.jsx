@@ -1,4 +1,4 @@
-// v178091716485
+// v178091716487
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5073,6 +5073,24 @@ async function shareSvgCard(svg, filename, title, outW = 1080, outH = 1350) {
   }
 }
 
+// Rasterize an SVG card to a PNG data URL (for posting in-app, not via the share sheet).
+async function svgToDataURL(svg, outW = 1080, outH = 1920) {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas"); c.width = outW; c.height = outH;
+        c.getContext("2d").drawImage(img, 0, 0, outW, outH);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL("image/png"));
+      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("svg load")); };
+    img.src = url;
+  });
+}
+
 function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
   const unit = store.unit || "lbs";
   const weekAgo = Date.now() - 7*24*60*60*1000;
@@ -5274,11 +5292,18 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
             e.preventDefault();
             if (e.currentTarget.dataset.sharing === "1") return; // guard against double-fire
             e.currentTarget.dataset.sharing = "1";
+            const btn = e.currentTarget;
             try {
+              if (!onPostToFeed) return;
               const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta });
-              await shareSvgCard(wrapStorySVG(svg), "seshd-story.png", "My week on Seshd", 1080, 1920);
+              const imageData = await svgToDataURL(wrapStorySVG(svg), 1080, 1920);
+              onPostToFeed({ type: "story", caption: "", imageData });
+              toast("Posted to your story", "success");
+              onClose();
+            } catch (err) {
+              toast("Couldn't post story", "error");
             } finally {
-              e.currentTarget && (e.currentTarget.dataset.sharing = "0");
+              btn && (btn.dataset.sharing = "0");
             }
           }} style={{
             width:"100%", background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.18)",
@@ -15277,6 +15302,8 @@ function AppInner() {
   const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
   const swipeDX = useRef(0); // synchronous live drag distance — source of truth for end decision
   const [swipeX, setSwipeX] = useState(0);
+  // Co-move release glide: { toPx } animates the track to a neighbor slot before switching.
+  const [swipeRelease, setSwipeRelease] = useState(null);
   // Co-move release animation: when set, the track glides to completion before switching.
   const swipeContainerRef = useRef(null);
   useEffect(() => {
@@ -16995,15 +17022,21 @@ function AppInner() {
 
   const canGo = dx > 0 ? idx > 0 : idx < TABS_ORDER.length - 1;
   if (!passed || !canGo || dx === 0) {
-    // Didn't pass threshold — snap the panel back to center.
-    setSwipeX(0);
+    // Didn't pass threshold — glide the track back to center, no tab change.
+    setSwipeRelease({ toPx: 0 });
+    setTimeout(() => { setSwipeRelease(null); setSwipeX(0); }, 240);
     return;
   }
-  // Passed — switch tabs. Clearing swipeX first lets the new tab's slide-in keyframe play.
+  // Passed — glide the track to the neighbor slot, then switch tabs and re-center.
   const goPrev = dx > 0;
   const destTab = goPrev ? TABS_ORDER[idx - 1] : TABS_ORDER[idx + 1];
-  setSwipeX(0);
-  switchTab(destTab);
+  const vwNow = window.innerWidth || 390;
+  setSwipeRelease({ toPx: goPrev ? vwNow : -vwNow });
+  setTimeout(() => {
+    switchTab(destTab);
+    setSwipeRelease(null);
+    setSwipeX(0);
+  }, 240);
   }
   return (
     <div
@@ -17532,21 +17565,45 @@ function AppInner() {
         // structure mid-gesture (the old co-move did, which orphaned the touch on iOS and
         // froze the drag). On release the handler switches the tab; the new tab plays the
         // slide-in keyframe. No two-panel track, no settle state.
-        const liveDragPx = (isDragging && swipeX !== 0) ? swipeX : 0;
+        // CO-MOVE TRACK — a 3-wide row [prev | current | next], shifted so the CURRENT
+        // tab is centered. The center panel (the node your finger is on) is always mounted
+        // and never changes during a gesture, so iOS never orphans the touch. Side panels
+        // fill with neighbor content only while dragging/releasing (cheap, and it doesn't
+        // touch the center node). During drag the whole track follows the finger; on release
+        // it glides to a neighbor slot, then the tab switches and the track re-centers.
+        const isActive = (isDragging && swipeX !== 0) || swipeRelease;
+        const leftTab = curIdx > 0 ? TABS_ORDER[curIdx - 1] : null;
+        const rightTab = curIdx < TABS_ORDER.length - 1 ? TABS_ORDER[curIdx + 1] : null;
+        const dragPx = swipeRelease ? swipeRelease.toPx : (isDragging ? swipeX : 0);
         return (
           <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative", background:C.bg }}>
             <style>{`
               @keyframes slideInLeft { from { transform:translateX(100%);} to { transform:translateX(0);} }
               @keyframes slideInRight { from { transform:translateX(-100%);} to { transform:translateX(0);} }
             `}</style>
-            <div key={animKey} style={{
-              flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
-              transform: liveDragPx !== 0 ? `translateX(${liveDragPx}px)` : undefined,
-              transition: liveDragPx !== 0 ? "none" : "transform 0.2s ease-out",
-              animation: (prevTab && swipeX === 0)
-                ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.25,0.46,0.45,0.94)` : "none",
-            }}>
-              {TabBody(tab)}
+            <div
+              style={{
+                flex:1, display:"flex", width:"300%", height:"100%",
+                transform: `translateX(calc(-33.3333% + ${dragPx}px))`,
+                transition: swipeRelease ? "transform 0.24s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
+              }}
+            >
+              {/* LEFT (prev tab) — only populated while a swipe is active */}
+              <div style={{ width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg }}>
+                {isActive && leftTab ? TabBody(leftTab) : null}
+              </div>
+              {/* CENTER (current tab) — always mounted; this is the touched node */}
+              <div key={animKey} style={{
+                width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
+                animation: (prevTab && swipeX === 0 && !swipeRelease)
+                  ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.25,0.46,0.45,0.94)` : "none",
+              }}>
+                {TabBody(tab)}
+              </div>
+              {/* RIGHT (next tab) — only populated while a swipe is active */}
+              <div style={{ width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg }}>
+                {isActive && rightTab ? TabBody(rightTab) : null}
+              </div>
             </div>
           </div>
         );
