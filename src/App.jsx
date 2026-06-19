@@ -16992,7 +16992,7 @@ function AppInner() {
         if (!passed || !canGo || dx === 0) {
           // Snap back: glide the track home, no tab change.
           setSettle({ dir: dx > 0 ? "prev" : "next", cancel: true });
-          setTimeout(() => { setSettle(null); setSwipeX(0); }, 220);
+          setTimeout(() => { setSettle(null); setSwipeX(0); }, 260);
           return;
         }
         // Commit: glide the track to completion, then switch tab.
@@ -17004,7 +17004,7 @@ function AppInner() {
           switchTab(destTab);
           setSettle(null);
           setSwipeX(0);
-        }, 220);
+        }, 260);
       }}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
     >
