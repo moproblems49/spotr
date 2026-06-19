@@ -1,4 +1,4 @@
-// v178091716489
+// v178091716490
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2651,19 +2651,21 @@ function getExerciseSessions(store, exName, limit = 5) {
 // estimated 1RM is flat/declining. Returns { stalled, ... } or { stalled:false }. A planned
 // deload (back off ~10%, rebuild) is the standard fix for a stall.
 function detectDeloadNeeded(store, exName, unit) {
-  const sessions = getExerciseSessions(store, exName, 5);
-  if (sessions.length < 3) return { stalled: false };
+  // Require 4 flat sessions (not 3) so the plateau banner only fires on a genuine, sustained
+  // stall — fewer false positives, less nagging.
+  const sessions = getExerciseSessions(store, exName, 6);
+  if (sessions.length < 4) return { stalled: false };
   const norm = sessions.map(s => ({
     wU: cvt(s.topWeight, s.unit, unit),
     e1rm: s.topWeight ? cvt(s.topWeight, s.unit, unit) * (1 + Math.min(s.topReps, 12) / 30) : 0,
   }));
-  const recent = norm.slice(0, 3);
+  const recent = norm.slice(0, 4);
   const topWeights = recent.map(s => s.wU);
   const maxTop = Math.max(...topWeights);
   const minTop = Math.min(...topWeights);
   const weightFlat = (maxTop - minTop) < (unit === "lbs" ? 5 : 2.5);
   const e1rms = recent.map(s => s.e1rm);
-  const e1rmNotProgressing = e1rms[0] <= Math.max(e1rms[1], e1rms[2]) + 0.01;
+  const e1rmNotProgressing = e1rms[0] <= Math.max(...e1rms.slice(1)) + 0.01;
   if (weightFlat && e1rmNotProgressing) {
     const dl = unit === "lbs" ? Math.round((maxTop * 0.9) / 5) * 5 : Math.round((maxTop * 0.9) / 2.5) * 2.5;
     return {
@@ -7862,7 +7864,28 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // Reorder mode — when on, exercises collapse to compact rows you can drag freely
   const [reorderMode, setReorderMode] = useState(false);
   // Exercises whose plateau/deload banner the user dismissed this workout (per exercise name).
-  const [dismissedDeloads, setDismissedDeloads] = useState([]);
+  // Persisted to localStorage so a "Keep pushing" dismissal survives the WorkoutTracker
+  // unmounting on tab switch (it's only mounted while the tracker tab is active). Cleared when
+  // the workout ends (session === null) so a fresh workout starts clean.
+  const DISMISSED_DELOADS_KEY = "seshd_dismissed_deloads";
+  const [dismissedDeloads, setDismissedDeloads] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DISMISSED_DELOADS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  // Reset dismissals when the workout ends so the next one starts clean.
+  useEffect(() => {
+    if (!session) {
+      try { localStorage.removeItem(DISMISSED_DELOADS_KEY); } catch {}
+      setDismissedDeloads(d => d.length ? [] : d);
+    }
+  }, [session]);
+  // Persist dismissals across tab-switch unmounts while a workout is active.
+  useEffect(() => {
+    if (!session) return;
+    try { localStorage.setItem(DISMISSED_DELOADS_KEY, JSON.stringify(dismissedDeloads)); } catch {}
+  }, [dismissedDeloads, session]);
   // History delete confirmation — holds the session id awaiting a confirm tap (prevents
   // accidental deletes). Cleared on confirm/cancel.
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
