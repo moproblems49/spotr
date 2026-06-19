@@ -17009,7 +17009,7 @@ function AppInner() {
           setSwipeX(0);
         }, 260);
       }}
-      style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
+      style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"none" }}
     >
       {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
       <style>{`
@@ -17201,7 +17201,7 @@ function AppInner() {
                 touchStartY.current = 0;
               }
             }}
-            style={{ overflowY:"auto", flex:1, position:"relative" }}
+            style={{ overflowY:"auto", flex:1, position:"relative", touchAction:"pan-y" }}
           >
             <div style={{
               position:"absolute", top:0, left:0, right:0,
