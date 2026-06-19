@@ -16951,11 +16951,13 @@ function AppInner() {
           swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.3 ? "horizontal" : "vertical";
           if (swipeStart.current.type === "horizontal") {
             e.preventDefault();
+            e.stopPropagation();
           }
         }
         if (swipeStart.current.type === "vertical") return;
         if (swipeStart.current.type === "horizontal") {
           e.preventDefault();
+          e.stopPropagation();
         }
 
         const idx = TABS_ORDER.indexOf(tab);
@@ -16969,6 +16971,9 @@ function AppInner() {
         setSwipeX(dx);
       }}
       onTouchEndCapture={(e) => {
+        if (swipeStart.current.type === "horizontal") {
+          e.stopPropagation();
+        }
         const type = swipeStart.current.type;
         const startT = swipeStart.current.t;
         const dx = swipeDX.current;  // read the ref, not the async state
