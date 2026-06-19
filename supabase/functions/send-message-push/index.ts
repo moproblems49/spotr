@@ -67,11 +67,13 @@ Deno.serve(async (req) => {
 
     // Recipient's device token + sender's display name, in parallel.
     const [recipRows, senderRows] = await Promise.all([
-      sbGet(`profiles?id=eq.${record.recipient_id}&select=push_token`),
+      sbGet(`profiles?id=eq.${record.recipient_id}&select=push_token,notification_prefs`),
       sbGet(`profiles?id=eq.${record.sender_id}&select=name,username`),
     ]);
-    const token = recipRows?.[0]?.push_token;
+    const recip = recipRows?.[0];
+    const token = recip?.push_token;
     if (!token) return new Response("no token", { status: 200 });
+    if (recip?.notification_prefs?.messages === false) return new Response("muted", { status: 200 });
     const sender = senderRows?.[0];
     const title = sender?.name || (sender?.username ? `@${sender.username}` : "New message");
 

@@ -1,4 +1,4 @@
-// v178091716497
+// v178091716498
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3391,6 +3391,7 @@ function loadStore() {
     prs: {},
     programs: [],
     activeProgramId: null,
+    notificationPrefs: { messages: true, kudos: true, comments: true, follows: true },
     defaultRestTime: 120,
     unit: "lbs",
     theme: "light",
@@ -13959,6 +13960,45 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </div>
               </div>
 
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>NOTIFICATIONS</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                {[
+                  ["messages", "Messages"],
+                  ["kudos", "Kudos"],
+                  ["comments", "Comments"],
+                  ["follows", "New followers"],
+                ].map(([key, label], i) => {
+                  const prefs = store.notificationPrefs || {};
+                  const on = prefs[key] !== false;
+                  return (
+                    <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom: i < 3 ? `1px solid ${C.divider}` : "none" }}>
+                      <div style={{ fontSize:14, color:C.text }}>{label}</div>
+                      <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
+                        {[["On", true], ["Off", false]].map(([btnLabel, val]) => {
+                          const active = on === val;
+                          return (
+                            <button key={btnLabel} onClick={async () => {
+                              const nextPrefs = { ...prefs, [key]: val };
+                              setStore(p => ({ ...p, notificationPrefs: nextPrefs }));
+                              const tok = token || loadSession()?.access_token;
+                              if (tok) {
+                                try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
+                                catch (e) { console.error("notification_prefs save error:", e); }
+                              }
+                              haptic("tap");
+                            }} style={{
+                              padding:"6px 14px", background: active ? C.accent : "transparent",
+                              color: active ? C.onAccent : C.sub, border:"none", borderRadius:20,
+                              fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
+                            }}>{btnLabel}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>STREAK</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
@@ -15757,6 +15797,7 @@ function AppInner() {
         theme: me?.theme || "light",
         defaultRestTime: me?.default_rest_time || 120,
         seenOnboarding: me?.seen_onboarding === true,
+        notificationPrefs: { messages: true, kudos: true, comments: true, follows: true, ...(me?.notification_prefs || {}) },
         // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back
         // to the on-device value, then the default. Persisted to profiles.weekly_target.
         weeklyTarget: (me?.weekly_target != null ? me.weekly_target : (prev.weeklyTarget || 3)),
