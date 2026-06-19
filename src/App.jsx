@@ -1,4 +1,4 @@
-// v178091716482
+// v178091716484
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15278,8 +15278,6 @@ function AppInner() {
   const swipeDX = useRef(0); // synchronous live drag distance — source of truth for end decision
   const [swipeX, setSwipeX] = useState(0);
   // Co-move release animation: when set, the track glides to completion before switching.
-  const [settle, setSettle] = useState(null); // null | { dir:'next'|'prev' }
-  const justCoMoved = useRef(false); // suppress the enter keyframe right after a co-move settle
   const swipeContainerRef = useRef(null);
   useEffect(() => {
     async function init() {
@@ -16961,8 +16959,11 @@ function AppInner() {
   const canRight = idx < TABS_ORDER.length - 1;
   if ((dx > 0 && !canLeft && !profileUserId) || (dx < 0 && !canRight)) return;
   e.preventDefault();
-  swipeDX.current = dx;        // synchronous — survives even if state lags
-  setSwipeX(dx);
+  // Clamp so the page can't be dragged more than ~one screen, with a little give.
+  const vw = window.innerWidth || 390;
+  const clamped = Math.max(-vw, Math.min(vw, dx));
+  swipeDX.current = clamped;   // synchronous — survives even if state lags
+  setSwipeX(clamped);
   }
   function handleSwipeEnd(e) {
   const type = swipeStart.current.type;
@@ -16994,21 +16995,15 @@ function AppInner() {
 
   const canGo = dx > 0 ? idx > 0 : idx < TABS_ORDER.length - 1;
   if (!passed || !canGo || dx === 0) {
-    // Snap back: glide the track home, no tab change.
-    setSettle({ dir: dx > 0 ? "prev" : "next", cancel: true });
-    setTimeout(() => { setSettle(null); setSwipeX(0); }, 220);
+    // Didn't pass threshold — snap the panel back to center.
+    setSwipeX(0);
     return;
   }
-  // Commit: glide the track to completion, then switch tab.
+  // Passed — switch tabs. Clearing swipeX first lets the new tab's slide-in keyframe play.
   const goPrev = dx > 0;
   const destTab = goPrev ? TABS_ORDER[idx - 1] : TABS_ORDER[idx + 1];
-  setSettle({ dir: goPrev ? "prev" : "next", cancel: false });
-  setTimeout(() => {
-    justCoMoved.current = true; // track already animated; skip enter keyframe
-    switchTab(destTab);
-    setSettle(null);
-    setSwipeX(0);
-  }, 220);
+  setSwipeX(0);
+  switchTab(destTab);
   }
   return (
     <div
@@ -17149,31 +17144,16 @@ function AppInner() {
         </div>
       )}
 
-      {/* CONTENT — true iOS co-move: current + incoming page rendered side by side,
-          both translating together with the finger. */}
+      {/* CONTENT — single persistent panel that follows the finger during a horizontal
+          swipe (no DOM swap mid-gesture, which is what broke the old co-move on iOS). */}
       {(() => {
         const prevIdx = TABS_ORDER.indexOf(prevTab);
         const curIdx = TABS_ORDER.indexOf(tab);
         const dir = prevIdx < curIdx ? "left" : "right";
         const animKey = tab + "_" + (prevTab || "");
         const isDragging = swipeStart.current.type === "horizontal";
-        const vw = (typeof window !== "undefined" && window.innerWidth) || 390;
-        const dragPct = isDragging ? (swipeX / vw) * 100 : 0;
 
-        // Direction is driven by the live drag, or by a release-settle in progress.
-        const settleNext = settle && settle.dir === "next";
-        const settlePrev = settle && settle.dir === "prev";
-        const goingNext = settle ? settleNext : dragPct < 0;   // toward next tab (incoming from right)
-        const goingPrev = settle ? settlePrev : dragPct > 0;   // toward prev tab (incoming from left)
-        const nextTab = TABS_ORDER[Math.min(TABS_ORDER.length - 1, curIdx + 1)];
-        const prevTabName = TABS_ORDER[Math.max(0, curIdx - 1)];
-        const incomingTab = goingNext
-          ? (curIdx < TABS_ORDER.length - 1 ? nextTab : null)
-          : (goingPrev ? (curIdx > 0 ? prevTabName : null) : null);
-        const showCoMove = (!!settle || (isDragging && dragPct !== 0)) && incomingTab && !profileUserId;
-
-        // TabBody renders the content for a given tab. Only the active + incoming
-        // tabs are ever mounted, so we never render more than two at once.
+        // TabBody renders the content for a given tab.
         const TabBody = (which) => (
           <>
         {which === "feed" && (
@@ -17547,53 +17527,26 @@ function AppInner() {
           </>
         );
 
-        // Single-panel (no active drag): just the current tab, with the
-        // enter animation after a tab switch.
-        if (!showCoMove) {
-          return (
-            <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative", background:C.bg }}>
-              <style>{`
-                @keyframes slideInLeft { from { transform:translateX(100%);} to { transform:translateX(0);} }
-                @keyframes slideInRight { from { transform:translateX(-100%);} to { transform:translateX(0);} }
-              `}</style>
-              <div key={animKey} style={{
-                flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
-                animation: (prevTab && swipeX === 0 && !justCoMoved.current)
-                  ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.25,0.46,0.45,0.94)` : "none",
-              }}>
-                {(() => { if (justCoMoved.current) { justCoMoved.current = false; } return null; })()}
-                {TabBody(tab)}
-              </div>
-            </div>
-          );
-        }
-
-        // Co-move: render current + incoming side by side in a 200%-wide track,
-        // translate the whole track with the finger so both pages move in lockstep.
-        // NEXT: incoming on the right → track 0 → -50%. PREV: incoming on the left → -50% → 0.
-        const leftTab = goingNext ? tab : incomingTab;
-        const rightTab = goingNext ? incomingTab : tab;
-        let trackShift;
-        if (settle) {
-          // Glide to completion (committed) or back to start (cancelled).
-          if (settle.cancel) trackShift = goingNext ? 0 : -50;
-          else trackShift = goingNext ? -50 : 0;
-        } else {
-          trackShift = goingNext ? (dragPct / 2) : (-50 + dragPct / 2);
-        }
+        // SIMPLE, RELIABLE SWIPE — the content panel is ONE persistent DOM node whose CSS
+        // transform follows the finger during a horizontal drag. We never swap the DOM
+        // structure mid-gesture (the old co-move did, which orphaned the touch on iOS and
+        // froze the drag). On release the handler switches the tab; the new tab plays the
+        // slide-in keyframe. No two-panel track, no settle state.
+        const liveDragPx = (isDragging && swipeX !== 0) ? swipeX : 0;
         return (
-          <div style={{ flex:1, overflow:"hidden", position:"relative", background:C.bg }}>
-            <div style={{
-              display:"flex", width:"200%", height:"100%",
-              transform:`translateX(${trackShift}%)`,
-              transition: settle ? "transform 0.26s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
+          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative", background:C.bg }}>
+            <style>{`
+              @keyframes slideInLeft { from { transform:translateX(100%);} to { transform:translateX(0);} }
+              @keyframes slideInRight { from { transform:translateX(-100%);} to { transform:translateX(0);} }
+            `}</style>
+            <div key={animKey} style={{
+              flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
+              transform: liveDragPx !== 0 ? `translateX(${liveDragPx}px)` : undefined,
+              transition: liveDragPx !== 0 ? "none" : "transform 0.2s ease-out",
+              animation: (prevTab && swipeX === 0)
+                ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.25,0.46,0.45,0.94)` : "none",
             }}>
-              <div style={{ width:"50%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg, boxShadow:"2px 0 18px rgba(0,0,0,0.12)" }}>
-                {TabBody(leftTab)}
-              </div>
-              <div style={{ width:"50%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg, boxShadow:"-2px 0 18px rgba(0,0,0,0.12)" }}>
-                {TabBody(rightTab)}
-              </div>
+              {TabBody(tab)}
             </div>
           </div>
         );
