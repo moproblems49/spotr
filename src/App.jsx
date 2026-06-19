@@ -16926,7 +16926,7 @@ function AppInner() {
 
   return (
     <div
-      onTouchStart={(e) => {
+      onTouchStartCapture={(e) => {
         if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null) return;
         // Skip tab swipe if the touch started on an interactive element that has its own swipe behavior
         // (e.g. SetRow, story carousel, horizontal scroller), or on a text input where the user may
@@ -16939,7 +16939,7 @@ function AppInner() {
         swipeDX.current = 0;
         setSwipeX(0);
       }}
-      onTouchMove={(e) => {
+      onTouchMoveCapture={(e) => {
         if (!swipeStart.current.t) return;
         const t = e.touches[0];
         const dx = t.clientX - swipeStart.current.x;
@@ -16968,7 +16968,7 @@ function AppInner() {
         swipeDX.current = dx;        // synchronous — survives even if state lags
         setSwipeX(dx);
       }}
-      onTouchEnd={() => {
+      onTouchEndCapture={(e) => {
         const type = swipeStart.current.type;
         const startT = swipeStart.current.t;
         const dx = swipeDX.current;  // read the ref, not the async state
@@ -17183,29 +17183,16 @@ function AppInner() {
               } else {
                 touchStartY.current = 0;
               }
-              // Also track start position for detecting horizontal swipes
-              if (!window.__feedTouchStartX) {
-                window.__feedTouchStartX = e.touches[0].clientX;
-              }
             }}
             onTouchMove={(e) => {
               if (touchStartY.current === 0 || isRefreshing) return;
-              const t = e.touches[0];
-              const dx = t.clientX - (window.__feedTouchStartX || t.clientX);
-              const dy = t.clientY - touchStartY.current;
-              // If this is a horizontal swipe (dx > dy), don't handle pull-to-refresh
-              if (Math.abs(dx) > Math.abs(dy)) {
-                touchStartY.current = 0;
-                return;
-              }
-              const dist = dy;
+              const dist = e.touches[0].clientY - touchStartY.current;
               const scrollTop = pullScrollRef.current?.scrollTop || 0;
               if (dist > 0 && scrollTop <= 5) {
                 setPullDist(Math.min(dist * 0.5, 100));
               }
             }}
             onTouchEnd={() => {
-              window.__feedTouchStartX = null;
               if (pullDist > 60 && !isRefreshing) {
                 setIsRefreshing(true);
                 setPullDist(50);
