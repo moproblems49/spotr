@@ -1,4 +1,4 @@
-// v178091716490
+// v178091716491
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3397,6 +3397,7 @@ function loadStore() {
     historyInteractions: {},
     workoutDates: {},
     blockedUsers: [],
+    closeFriends: [], // user ids hand-picked for the Close Friends leaderboard (max 10, local-only v1)
     groups: [],
     weeklyTarget: 3, // default: 3 workouts/week for streak system
     dismissedInsights: [], // keys of insight cards the user swiped away (persisted)
@@ -12256,8 +12257,20 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   const [subTab, setSubTab] = useState("discover");
   const [viewingExercise, setViewingExercise] = useState(null);
   const [showAllLifts, setShowAllLifts] = useState(false);
+  const [boardMode, setBoardMode] = useState("all"); // "all" | "close" — which leaderboard is shown
+  const [showCloseFriendPicker, setShowCloseFriendPicker] = useState(false);
   const me = store.users.find(u => u.id === currentUserId);
   const following = me?.following || [];
+  const closeFriends = (store.closeFriends || []).filter(id => following.includes(id)); // stay in sync with who you follow
+  const CLOSE_FRIENDS_MAX = 10;
+  function toggleCloseFriend(id) {
+    setStore(prev => {
+      const cur = (prev.closeFriends || []).filter(fid => (prev.users.find(u=>u.id===currentUserId)?.following||[]).includes(fid));
+      if (cur.includes(id)) return { ...prev, closeFriends: cur.filter(x => x !== id) };
+      if (cur.length >= CLOSE_FRIENDS_MAX) return prev; // cap reached
+      return { ...prev, closeFriends: [...cur, id] };
+    });
+  }
   const unit = store.unit || "lbs"; // DiscoverScreen isn't passed `unit`; read it from store
 
   // Load followed users' PRs (exercise → lbs) so the leaderboard shows real numbers.
@@ -12440,7 +12453,37 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
 
           {following.length > 0 && (
             <div style={{ marginBottom:20 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>FRIENDS LEADERBOARD</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8 }}>LEADERBOARD</div>
+                {boardMode === "close" && (
+                  <button onClick={() => setShowCloseFriendPicker(true)} style={{
+                    background:"none", border:"none", cursor:"pointer", fontFamily:F,
+                    fontSize:12, fontWeight:700, color:C.accent, padding:0,
+                  }}>Edit</button>
+                )}
+              </div>
+              {/* All Friends / Close Friends toggle */}
+              <div style={{ display:"flex", gap:6, marginBottom:12, background:C.divider, borderRadius:12, padding:3 }}>
+                {[{ id:"all", label:"All Friends" }, { id:"close", label:"Close Friends" }].map(t => (
+                  <button key={t.id} onClick={() => setBoardMode(t.id)} style={{
+                    flex:1, padding:"8px 0", borderRadius:9, border:"none", cursor:"pointer", fontFamily:F,
+                    fontSize:12.5, fontWeight:700, letterSpacing:-0.1,
+                    background: boardMode===t.id ? C.bg : "transparent",
+                    color: boardMode===t.id ? C.text : C.sub,
+                    boxShadow: boardMode===t.id ? "0 1px 3px rgba(0,0,0,0.12)" : "none",
+                  }}>{t.label}</button>
+                ))}
+              </div>
+              {boardMode === "close" && closeFriends.length === 0 ? (
+                <div className="seshd-float" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 20px", textAlign:"center" }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>No close friends yet</div>
+                  <div style={{ fontSize:12, color:C.sub, marginBottom:16, lineHeight:1.4 }}>Pick up to {CLOSE_FRIENDS_MAX} people for a smaller, private leaderboard.</div>
+                  <button onClick={() => setShowCloseFriendPicker(true)} style={{
+                    background:C.accent, color:"#fff", border:"none", borderRadius:12, padding:"11px 22px",
+                    fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F,
+                  }}>Choose close friends</button>
+                </div>
+              ) : (
               <div className="seshd-float" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:18, overflow:"hidden" }}>
                 {(() => {
                   // The six big barbell compounds, using the EXACT names from EXERCISE_DB
@@ -12470,11 +12513,13 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     return Math.max(...candidates);
                   };
                   const lifts = showAllLifts ? ALL_LIFTS : ALL_LIFTS.slice(0, 3);
+                  // Which friends populate the board: everyone you follow, or just close friends.
+                  const boardFriends = boardMode === "close" ? closeFriends : following;
                   return lifts.map((exName, i) => {
                   // Real numbers only. Your PR comes from store.prs; friends' PRs come from
                   // u.prs (loaded on this screen via the effect above). Both are stored in lbs
                   // and converted to the viewer's unit. Anyone without loaded PR data shows "—".
-                  const rows = [...store.users.filter(u => following.includes(u.id)), store.users.find(u => u.id === currentUserId)]
+                  const rows = [...store.users.filter(u => boardFriends.includes(u.id)), store.users.find(u => u.id === currentUserId)]
                     .filter(Boolean)
                     .map(u => {
                       let val = null;
@@ -12543,6 +12588,50 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                   background:"none", border:"none", cursor:"pointer", fontFamily:F,
                   fontSize:12, fontWeight:700, color:C.accent, textAlign:"center", letterSpacing:-0.1,
                 }}>{showAllLifts ? "Show less" : "Show all 6 lifts"}</button>
+              </div>
+              )}
+            </div>
+          )}
+
+          {/* Close Friends picker modal */}
+          {showCloseFriendPicker && (
+            <div onClick={() => setShowCloseFriendPicker(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+              <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div>
+                    <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Close Friends</div>
+                    <div style={{ fontSize:11.5, color:C.sub, marginTop:2 }}>{closeFriends.length}/{CLOSE_FRIENDS_MAX} selected</div>
+                  </div>
+                  <button onClick={() => setShowCloseFriendPicker(false)} style={{ fontSize:14, fontWeight:700, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Done</button>
+                </div>
+                <div style={{ overflowY:"auto", flex:1, padding:"6px 0" }}>
+                  {following.length === 0 ? (
+                    <div style={{ padding:"28px 20px", textAlign:"center", fontSize:13, color:C.sub }}>Follow people first, then add them here.</div>
+                  ) : following.map(fid => store.users.find(u => u.id === fid)).filter(Boolean).map(u => {
+                    const picked = closeFriends.includes(u.id);
+                    const atCap = !picked && closeFriends.length >= CLOSE_FRIENDS_MAX;
+                    return (
+                      <button key={u.id} onClick={() => !atCap && toggleCloseFriend(u.id)} style={{
+                        width:"100%", display:"flex", alignItems:"center", gap:12, padding:"11px 18px",
+                        background:"none", border:"none", cursor: atCap ? "default" : "pointer", fontFamily:F,
+                        opacity: atCap ? 0.45 : 1, textAlign:"left",
+                      }}>
+                        <Avatar user={u} size={40} C={C}/>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:14, fontWeight:600, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name || u.username}</div>
+                          <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>@{u.username}</div>
+                        </div>
+                        <div style={{
+                          width:24, height:24, borderRadius:"50%", flexShrink:0,
+                          border:`2px solid ${picked ? C.accent : C.border}`, background: picked ? C.accent : "transparent",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                        }}>
+                          {picked && <Icon name="check" size={13} color="#fff"/>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
