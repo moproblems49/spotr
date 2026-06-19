@@ -1,4 +1,4 @@
-// v178091716493
+// v178091716494
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15225,7 +15225,7 @@ function AppInner() {
         try { if (typeof flushPendingWorkouts === "function") flushPendingWorkouts(); } catch {}
         try {
           const tok = tokenRef.current || loadSession()?.access_token;
-          if (tok) sb.flushWriteQueue(tok).then(r => { if (r.flushed > 0) console.log(`Synced ${r.flushed} queued change(s)`); }).catch(()=>{});
+          if (tok) sb.flushWriteQueue(tok).then(r => { if (r.flushed > 0 && IS_DEV) console.warn(`Synced ${r.flushed} queued change(s)`); }).catch(()=>{});
         } catch {}
       }
     });
@@ -17314,8 +17314,8 @@ function AppInner() {
         </div>
       )}
 
-      {/* CONTENT — single persistent panel that follows the finger during a horizontal
-          swipe (no DOM swap mid-gesture, which is what broke the old co-move on iOS). */}
+      {/* CONTENT — 3-panel co-move track [prev|current|next]; see comment below for details.
+          The center panel never unmounts mid-gesture (that's what froze the drag on iOS before). */}
       {(() => {
         const prevIdx = TABS_ORDER.indexOf(prevTab);
         const curIdx = TABS_ORDER.indexOf(tab);
