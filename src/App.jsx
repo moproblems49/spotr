@@ -1,4 +1,4 @@
-// v178091716495
+// v178091716496
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10116,19 +10116,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 }}>Go to workouts</button>
               </div>
             )}
-            {(histQuery.trim()
-              ? Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a))
-              : Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a)).slice(0, histLimit)
-            ).map(([date, sessions]) => {
+            {(() => {
               const q = histQuery.trim().toLowerCase();
-              if (q) {
-                const filtered = Object.fromEntries(Object.entries(sessions).filter(([, s]) =>
+              const all = Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a));
+              const matched = !q ? all : all
+                .map(([date, sessions]) => [date, Object.fromEntries(Object.entries(sessions).filter(([, s]) =>
                   (s.dayName || "").toLowerCase().includes(q) ||
                   (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
-                ));
-                if (!Object.keys(filtered).length) return null;
-                sessions = filtered;
-              }
+                ))])
+                .filter(([, sessions]) => Object.keys(sessions).length);
+              return matched.slice(0, histLimit);
+            })().map(([date, sessions]) => {
               return (
               <div key={date} data-history-date={date} style={{ marginBottom:16, scrollMarginTop:60 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
@@ -10237,7 +10235,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })}
               </div>
             );})}
-            {!histQuery.trim() && Object.keys(store.history || {}).length > histLimit && (
+            {(() => {
+              const q = histQuery.trim().toLowerCase();
+              const all = Object.entries(store.history || {});
+              const matchCount = !q ? all.length : all.filter(([, sessions]) =>
+                Object.entries(sessions).some(([, s]) =>
+                  (s.dayName || "").toLowerCase().includes(q) ||
+                  (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
+                )
+              ).length;
+              return matchCount > histLimit;
+            })() && (
               <button onClick={() => setHistLimit(n => n + 30)} style={{
                 display:"block", width:"100%", marginTop:4, padding:"12px",
                 background:"none", border:`1px solid ${C.border}`, borderRadius:10,
