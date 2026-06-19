@@ -16955,7 +16955,8 @@ function AppInner() {
         const idx = TABS_ORDER.indexOf(tab);
         const canLeft = idx > 0;
         const canRight = idx < TABS_ORDER.length - 1;
-        if ((dx > 0 && !canLeft && !profileUserId) || (dx < 0 && !canRight)) return;
+        // Allow swipe if: (right swipe and can go left) OR (right swipe and in profile) OR (left swipe and can go right)
+        if (!((dx > 0 && (canLeft || profileUserId)) || (dx < 0 && canRight))) return;
         e.preventDefault();
         swipeDX.current = dx;        // synchronous — survives even if state lags
         setSwipeX(dx);
