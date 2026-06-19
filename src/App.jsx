@@ -1,4 +1,4 @@
-// v178091716491
+// v178091716492
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16573,6 +16573,20 @@ function AppInner() {
     } catch (e) { console.error("refresh error:", e); }
   }
 
+  // Tab co-move swipe: attach touchmove as a NON-PASSIVE native listener so e.preventDefault()
+  // actually works on iOS (React's synthetic touch listeners are passive, which let vertical
+  // scrolling leak through during a horizontal swipe — the page drifted up/down). A callback
+  // ref (not useEffect) wires it up so it survives the component's early returns and re-attaches
+  // whenever the main screen mounts. swipeMoveRef holds the latest handler (set during render).
+  const swipeMoveRef = useRef(null);
+  const swipeNativeMove = useRef((e) => { if (swipeMoveRef.current) swipeMoveRef.current(e); });
+  const swipeElRef = useRef(null);
+  const setSwipeContainer = useCallback((node) => {
+    if (swipeElRef.current) swipeElRef.current.removeEventListener("touchmove", swipeNativeMove.current);
+    swipeElRef.current = node;
+    if (node) node.addEventListener("touchmove", swipeNativeMove.current, { passive: false });
+  }, []);
+
   // Persist non-Supabase store changes to localStorage as fallback
   useEffect(() => { saveStore(store); }, [store]);
   // Keep the module-level custom-exercise registry in sync so getMuscle/getExEntry and the pickers
@@ -17111,6 +17125,8 @@ function AppInner() {
   swipeDX.current = clamped;   // synchronous — survives even if state lags
   setSwipeX(clamped);
   }
+  // Expose the latest move handler to the non-passive native listener wired via setSwipeContainer.
+  swipeMoveRef.current = handleSwipeMove;
   function handleSwipeEnd(e) {
   const type = swipeStart.current.type;
   const startT = swipeStart.current.t;
@@ -17159,9 +17175,8 @@ function AppInner() {
   }
   return (
     <div
-      ref={swipeContainerRef}
+      ref={setSwipeContainer}
       onTouchStart={handleSwipeStart}
-      onTouchMove={handleSwipeMove}
       onTouchEnd={handleSwipeEnd}
       onTouchCancel={handleSwipeEnd}
       style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"pan-y" }}
