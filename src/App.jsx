@@ -1,4 +1,4 @@
-// v178091716488
+// v178091716489
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9299,10 +9299,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   const groupLabel = selectedGroups.length > 0 ? ` + ${selectedGroups.length} group${selectedGroups.length>1?"s":""}` : "";
                   return (
                     <button onClick={() => {
+                      // Append the active program's share code to the caption so the feed post
+                      // shows an "Import" chip (PostCard detects IGNITE-/WO- codes in the caption).
+                      // Only when the active program already has a generated share code.
+                      const activeProg = (store.programs||[]).find(p => p.id === store.activeProgramId);
+                      const progCode = activeProg?.shareCode || null;
                       if (workoutSummary.shareData) {
-                        // Share to feed AND any selected groups in one shot (no auto-appended
-                        // program code — people can share their program deliberately instead).
-                        onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, groupOnly: false });
+                        const enrichedShareData = progCode
+                          ? { ...workoutSummary.shareData, caption: `${workoutSummary.shareData.caption} · Try my program: ${progCode}` }
+                          : workoutSummary.shareData;
+                        // Share to feed AND any selected groups in one shot
+                        onShareWorkout({ ...enrichedShareData, groupIds: selectedGroups, groupOnly: false });
                       }
                       // (External/native share removed — it could only send plain text, not the
                       // summary card, and any link has nowhere public to point yet. In-app feed +
