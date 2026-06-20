@@ -1,4 +1,4 @@
-// v178091716498
+// v178091716500
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16666,6 +16666,17 @@ function AppInner() {
     }
     metaViewport.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
 
+    // Belt-and-suspenders pinch-zoom block: WebKit is known to ignore user-scalable=no
+    // in the viewport meta tag in some iOS versions, and touch-action only stops it where
+    // every element in the gesture's path agrees. Block native multi-touch gestures
+    // directly so a stray two-finger touch can never get the page stuck zoomed in.
+    // Single-finger touches (swipe, taps) are untouched — only e.touches.length > 1 fires.
+    const blockPinchGesture = (e) => e.preventDefault();
+    const blockMultiTouchMove = (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); };
+    document.addEventListener("gesturestart", blockPinchGesture, { passive: false });
+    document.addEventListener("gesturechange", blockPinchGesture, { passive: false });
+    document.addEventListener("touchmove", blockMultiTouchMove, { passive: false });
+
     // Inject Inter + JetBrains Mono from Google Fonts
     if (!document.getElementById("seshd-fonts")) {
       const preconnect1 = document.createElement("link");
@@ -16700,7 +16711,7 @@ function AppInner() {
         /* Micro-feel: kill the iOS gray tap-flash, and give every button a crisp press-down.
            Since web haptics are dormant on iOS, this visual depress is the tactile feedback. */
         * { -webkit-tap-highlight-color: transparent; }
-        button { transition: transform 0.06s ease-out, opacity 0.12s ease-out; touch-action: manipulation; }
+        button { transition: transform 0.06s ease-out, opacity 0.12s ease-out; touch-action: pan-x pan-y; }
         button:active { transform: scale(0.95); }
         @keyframes seshdPop { 0% { transform: scale(0.6); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
 
@@ -17251,7 +17262,11 @@ function AppInner() {
           user-select: none;
           -webkit-tap-highlight-color: transparent;
           -webkit-touch-callout: none;
-          touch-action: manipulation;
+          /* "manipulation" is shorthand for pan-x pan-y pinch-zoom — it would re-permit
+             pinch-zoom on every button. Use pan-x pan-y so buttons still block pinch like
+             the rest of the page (this was the cause of the "stuck zoom" bug on
+             button-dense screens like Exercises and Choose Close Friends). */
+          touch-action: pan-x pan-y;
         }
         /* Inputs and editable text should still allow selection */
         input, textarea, [contenteditable="true"] {
@@ -17259,8 +17274,8 @@ function AppInner() {
           user-select: text;
           -webkit-touch-callout: default;
         }
-        /* Avoid double-tap zoom on iOS */
-        body, html { touch-action: manipulation; }
+        /* Avoid double-tap zoom on iOS — pan-x pan-y (not "manipulation") so pinch-zoom stays blocked too */
+        body, html { touch-action: pan-x pan-y; }
         /* Disable native long-press text selection on commonly-tapped content */
         [data-tap-only] {
           -webkit-user-select: none;
