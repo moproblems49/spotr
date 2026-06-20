@@ -1,4 +1,4 @@
-// v178091716510
+// v178091716511
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5465,6 +5465,13 @@ function PRModal({ prs, unit, onClose }) {
                 +{hero.increase} {unit} over your previous best
               </div>
             )}
+            {hero.types?.length > 0 && (
+              <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap" }}>
+                {hero.types.map(t => (
+                  <span key={t} style={{ fontSize:9, fontWeight:700, letterSpacing:1.2, color:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:20, padding:"3px 9px" }}>{PR_TYPE_LABEL[t].toUpperCase()}</span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Additional PRs hit this session */}
@@ -5475,7 +5482,10 @@ function PRModal({ prs, unit, onClose }) {
               </div>
               {rest.map((pr, i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: i < rest.length-1 ? 10 : 0 }}>
-                  <span style={{ fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.85)" }}>{pr.name}</span>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.85)" }}>{pr.name}</div>
+                    {pr.types?.length > 0 && <div style={{ fontSize:9, fontWeight:700, letterSpacing:0.8, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{pr.types.map(t => PR_TYPE_LABEL[t]).join(" + ").toUpperCase()}</div>}
+                  </div>
                   <span style={{ display:"flex", alignItems:"baseline", gap:6 }}>
                     <span style={{ fontFamily:MONO, fontSize:15, fontWeight:700, color:"#fff" }}>{pr.weight} {unit}</span>
                     {pr.increase > 0 && <span style={{ fontFamily:MONO, fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.4)" }}>+{pr.increase}</span>}
@@ -8293,8 +8303,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       const dk = dKey();
       const sid = uid();
       const originalPRs = { ...store.prs }; // snapshot before any updates
+      const originalPRsE1rm = { ...store.prsE1rm };
+      const originalPRsVolume = { ...store.prsVolume };
       let hitPRs = [];
       const newPRs = { ...store.prs };
+      const newPRsE1rm = { ...store.prsE1rm };
+      const newPRsVolume = { ...store.prsVolume };
 
       // Idle-gap correction: if the user forgot to hit Finish and there's a long gap
       // since their last completed set, the raw elapsed time would be misleadingly long.
@@ -8313,15 +8327,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         sets: ex.sets.map(s => ({ weight: s.weight, reps: s.reps, done: s.done, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) }))
       }));
 
-      // Compute PRs
+      // Compute PRs — Strong/Hevy-style: weight, estimated 1RM, and single-set volume each
+      // tracked independently per exercise; a session can hit more than one category at once.
+      const toLbs = w => unit === "lbs" ? w : cvt(w, "kg", "lbs");
       session.exercises.forEach(ex => {
         if (!ex.name) return;
-        const maxW = Math.max(0, ...ex.sets.filter(s => s.done && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
-        const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
-        const prev = newPRs[ex.name] || 0;
-        if (maxLbs > 0 && maxLbs > prev) {
-          newPRs[ex.name] = maxLbs;
-          hitPRs.push({ name: ex.name, weight: maxW, increase: Math.round((maxLbs - prev) * 10) / 10 });
+        const doneSets = ex.sets.filter(s => s.done && s.weight && s.reps && s.type !== "warmup");
+        if (!doneSets.length) return;
+        const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
+        const maxLbs = toLbs(maxW);
+        const maxE1rmLbs = Math.max(0, ...doneSets.map(s => {
+          const wLbs = toLbs(parseFloat(s.weight) || 0), r = parseInt(s.reps) || 0;
+          return r > 0 ? Math.round(wLbs * (1 + Math.min(r, 12) / 30)) : 0;
+        }));
+        const maxVolLbs = Math.max(0, ...doneSets.map(s => toLbs(parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0)));
+
+        const types = [];
+        const prevW = newPRs[ex.name] || 0;
+        if (maxLbs > 0 && maxLbs > prevW) { newPRs[ex.name] = maxLbs; types.push("weight"); }
+        const prevE1rm = newPRsE1rm[ex.name] || 0;
+        if (maxE1rmLbs > 0 && maxE1rmLbs > prevE1rm) { newPRsE1rm[ex.name] = maxE1rmLbs; types.push("e1rm"); }
+        const prevVol = newPRsVolume[ex.name] || 0;
+        if (maxVolLbs > 0 && maxVolLbs > prevVol) { newPRsVolume[ex.name] = maxVolLbs; types.push("volume"); }
+
+        if (types.length) {
+          hitPRs.push({ name: ex.name, weight: maxW, increase: Math.round((maxLbs - prevW) * 10) / 10, types });
         }
       });
 
@@ -8336,6 +8366,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           }
         },
         prs: newPRs,
+        prsE1rm: newPRsE1rm,
+        prsVolume: newPRsVolume,
         workoutDates: { ...p.workoutDates, [dk]: true },
         exerciseNotes: {
           ...(p.exerciseNotes || {}),
@@ -8411,10 +8443,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }
       }
 
-      // Build summary
-      const newPRsList = Object.entries(newPRs)
-        .filter(([k, v]) => (originalPRs[k] || 0) < v)
-        .map(([name, weight]) => ({ name, weight: unit === "lbs" ? weight : cvt(weight, "lbs", "kg") }));
+      // Build summary — reuse hitPRs (already covers weight/e1RM/volume categories) so the
+      // finish-screen card and the PRModal celebration agree on what counts as a PR.
+      const newPRsList = hitPRs.map(pr => ({ name: pr.name, weight: pr.weight, types: pr.types }));
       const totalSets = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").length, 0);
       const totalVol = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
 
@@ -8540,6 +8571,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           session: JSON.parse(JSON.stringify(session)),
           elapsed,
           prevPRs: originalPRs,
+          prevPRsE1rm: originalPRsE1rm,
+          prevPRsVolume: originalPRsVolume,
         },
       });
       setShowWorkoutSummary(true);
@@ -9299,7 +9332,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           display:"flex", justifyContent:"space-between", alignItems:"baseline",
                           marginTop: i > 0 ? 4 : 0,
                         }}>
-                          <span style={{ fontSize:13, color:"#fff", fontWeight:500 }}>{pr.name}</span>
+                          <div>
+                            <span style={{ fontSize:13, color:"#fff", fontWeight:500 }}>{pr.name}</span>
+                            {pr.types?.length > 0 && <div style={{ fontSize:9, fontWeight:700, letterSpacing:0.8, color:"rgba(255,255,255,0.4)", marginTop:1 }}>{pr.types.map(t => PR_TYPE_LABEL[t]).join(" + ").toUpperCase()}</div>}
+                          </div>
                           <span style={{ fontFamily:MONO, fontSize:14, color:"#fff", fontWeight:700, letterSpacing:-0.3 }}>{pr.weight}<span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginLeft:3 }}>{unit}</span></span>
                         </div>
                       ))}
@@ -9436,7 +9472,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       if (Object.keys(day).length === 0) delete newHistory[u.dk];
                       else newHistory[u.dk] = day;
                       // Restore PRs to pre-finish snapshot
-                      return { ...prev, history: newHistory, prs: u.prevPRs || prev.prs };
+                      return { ...prev, history: newHistory, prs: u.prevPRs || prev.prs, prsE1rm: u.prevPRsE1rm || prev.prsE1rm, prsVolume: u.prevPRsVolume || prev.prsVolume };
                     });
                     // 2. Restore the session
                     setSession(u.session);
