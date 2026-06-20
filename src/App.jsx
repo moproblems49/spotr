@@ -1,4 +1,4 @@
-// v178091716505
+// v178091716506
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4294,7 +4294,10 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   const fieldLabel = isCardio
     ? (field === "weight" ? "MINUTES" : (unit === "kg" ? "KM" : "MI"))
     : (field === "weight" ? (unit || "lbs").toUpperCase() : "REPS");
-  return (
+  // Portaled to document.body: opened from inside the active-workout tab content, so without
+  // a portal it renders nested under the tab-swipe track and inherits that ancestor's transform,
+  // breaking this fixed bottom sheet's sizing (the "number pad zoomed out" bug).
+  return createPortal((
     <>
       {/* Tap-anywhere-above backdrop to dismiss — so you're never trapped if Done is covered. */}
       <div onClick={closePad} onTouchStart={(e) => { e.preventDefault(); closePad(); }} style={{ position:"fixed", inset:0, zIndex:449, background:"transparent" }}/>
@@ -4347,7 +4350,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
       </div>
     </div>
     </>
-  );
+  ), document.body);
 }
 
 const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
@@ -11464,7 +11467,10 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
     finally { setAiLoading(false); }
   }
 
-  return (
+  // Portaled to document.body: this is a full-screen overlay opened from inside tab content,
+  // so without a portal it'd render nested under the tab-swipe track and inherit any transform
+  // that ancestor briefly has mid-gesture, breaking its position:fixed sizing/centering.
+  return createPortal((
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
@@ -11719,7 +11725,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
         )}
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
@@ -12616,8 +12622,9 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             </div>
           )}
 
-          {/* Close Friends picker modal */}
-          {showCloseFriendPicker && (
+          {/* Close Friends picker modal — portaled so it escapes the tab-swipe track's
+              transform-as-containing-block, which broke its full-screen sizing/centering. */}
+          {showCloseFriendPicker && createPortal((
             <div onClick={() => setShowCloseFriendPicker(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
               <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
@@ -12657,7 +12664,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                 </div>
               </div>
             </div>
-          )}
+          ), document.body)}
 
           <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>SUGGESTED PEOPLE</div>
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
@@ -13783,8 +13790,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         )}
       </div>
 
-      {/* Edit Profile modal */}
-      {showEdit && (
+      {/* Edit Profile modal — portaled to escape the tab-swipe track's transform ancestor
+          (otherwise it becomes the containing block for this fixed overlay and the sheet
+          "bleeds" into the screen behind it / becomes scrollable past). */}
+      {showEdit && createPortal((
         <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"flex-end" }}>
           <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"90vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
@@ -13821,13 +13830,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {/* Settings modal */}
       {showBody && createPortal(<BodyTrackingScreen store={store} setStore={setStore} currentUserId={currentUserId} unit={displayUnit} C={C} onClose={() => setShowBody(false)}/>, document.body)}
 
-      {/* Cover position sheet — drag the photo to choose what shows */}
-      {coverDraft && (
+      {/* Cover position sheet — drag the photo to choose what shows. Portaled for the same
+          transform-containing-block reason as the Edit Profile modal above. */}
+      {coverDraft && createPortal((
         <div onTouchStart={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}
           style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
           <div style={{ width:"100%", maxWidth:440, background:C.bg, borderRadius:18, overflow:"hidden", fontFamily:F }}>
@@ -13853,18 +13863,18 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
-      {/* Full-screen cover viewer */}
-      {showCoverView && user?.coverUrl && (
+      {/* Full-screen cover viewer — portaled for the same reason as above. */}
+      {showCoverView && user?.coverUrl && createPortal((
         <div onClick={() => setShowCoverView(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <img src={user.coverUrl} alt="" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }}/>
           <button onClick={() => setShowCoverView(false)} style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 12px)", right:14, width:34, height:34, borderRadius:17, background:"rgba(255,255,255,0.12)", border:"none", color:"#fff", fontSize:17, cursor:"pointer", fontFamily:F }}>×</button>
         </div>
-      )}
+      ), document.body)}
 
-      {/* Feedback modal */}
-      {showFeedback && (
+      {/* Feedback modal — portaled for the same reason as above. */}
+      {showFeedback && createPortal((
         <div onClick={() => setShowFeedback(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
           <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
             <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>Send feedback</div>
@@ -13877,7 +13887,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
       {showDelete && createPortal((
@@ -17314,7 +17324,11 @@ function AppInner() {
   // frequency (60-120/sec on iOS), routing every frame through React re-rendered the whole
   // screen and made the drag feel laggy. The ref write below is instant and 1:1 with the finger.
   if (swipeTrackRef.current) {
-    swipeTrackRef.current.style.transform = `translateX(calc(-33.3333% + ${clamped}px))`;
+    // Only the live drag delta goes through transform — the constant -33.3333% base offset
+    // lives in marginLeft instead. A non-"none" transform on this ancestor would otherwise make
+    // it the containing block for every position:fixed modal nested in any tab (exercise detail,
+    // close friends picker, edit profile, etc.), breaking their full-screen positioning.
+    swipeTrackRef.current.style.transform = clamped ? `translateX(${clamped}px)` : "none";
   }
   }
   // Expose the latest move handler to the non-passive native listener wired via setSwipeContainer.
@@ -17918,7 +17932,12 @@ function AppInner() {
               ref={swipeTrackRef}
               style={{
                 flex:1, display:"flex", width:"300%", height:"100%",
-                transform: `translateX(calc(-33.3333% + ${dragPx}px))`,
+                // Constant base offset lives in marginLeft (not transform) so this ancestor has
+                // transform:"none" at rest — any non-"none" transform here would become the
+                // containing block for every position:fixed modal nested in tab content below,
+                // breaking their full-screen sizing/centering (the "zoomed/clipped" bug).
+                marginLeft: "-33.3333%",
+                transform: dragPx ? `translateX(${dragPx}px)` : "none",
                 transition: swipeRelease ? "transform 0.24s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
                 willChange: isActive ? "transform" : "auto",
               }}
