@@ -1,4 +1,4 @@
-// v178091716498
+// v178091716499
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17787,6 +17787,7 @@ function AppInner() {
                 flex:1, display:"flex", width:"300%", height:"100%",
                 transform: `translateX(calc(-33.3333% + ${dragPx}px))`,
                 transition: swipeRelease ? "transform 0.24s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
+                willChange: isActive ? "transform" : "auto",
               }}
             >
               {/* LEFT (prev tab) — only populated while a swipe is active */}
