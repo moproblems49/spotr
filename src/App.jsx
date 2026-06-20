@@ -1,4 +1,4 @@
-// v178091716507
+// v178091716508
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12625,8 +12625,8 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           {/* Close Friends picker modal — portaled so it escapes the tab-swipe track's
               transform-as-containing-block, which broke its full-screen sizing/centering. */}
           {showCloseFriendPicker && createPortal((
-            <div onClick={() => setShowCloseFriendPicker(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-              <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+            <div onClick={() => setShowCloseFriendPicker(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+              <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
                   <div>
                     <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Close Friends</div>
@@ -13794,8 +13794,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           (otherwise it becomes the containing block for this fixed overlay and the sheet
           "bleeds" into the screen behind it / becomes scrollable past). */}
       {showEdit && createPortal((
-        <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"90vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+        <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Edit Profile</div>
