@@ -1,4 +1,4 @@
-// v178091716517
+// v178091716518
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8150,10 +8150,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // Deload-stall checks sort+scan the whole history per exercise — memoize per exercise name so
   // they only recompute when history/unit/the exercise list change, not on every weight/reps
   // keystroke (session.exercises is replaced immutably on every set edit).
-  const exerciseNameKey = (session?.exercises || []).map(ex => ex.name).filter(Boolean).join("|");
+  const exerciseNames = (session?.exercises || []).map(ex => ex.name).filter(Boolean);
+  const exerciseNameKey = JSON.stringify(exerciseNames);
   const deloadByExercise = useMemo(() => {
     const out = {};
-    for (const name of new Set(exerciseNameKey.split("|").filter(Boolean))) out[name] = detectDeloadNeeded(store, name, unit);
+    for (const name of new Set(exerciseNames)) out[name] = detectDeloadNeeded(store, name, unit);
     return out;
   }, [store.history, unit, exerciseNameKey]);
 
@@ -13322,10 +13323,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const me = store.users.find(u => u.id === currentUserId);
   const isFollowing = me?.following?.includes(userId);
   // computeStrengthScore() scans the full lift history — memoize so it doesn't recompute on
-  // every Profile render (e.g. every keystroke in the age field).
+  // every Profile render (e.g. every keystroke in the age field). Only relevant on your own
+  // profile (the only place it's shown), so skip the scan entirely when viewing someone else's.
   const strengthScore = useMemo(
-    () => computeStrengthScore(store, displayUnit || store.unit || "lbs", store.strengthSex || "male"),
-    [store.history, store.prs, store.bodyLog, store.strengthSex, displayUnit, store.unit]
+    () => isMe ? computeStrengthScore(store, displayUnit || store.unit || "lbs", store.strengthSex || "male") : null,
+    [isMe, store.history, store.prs, store.bodyLog, store.strengthSex, displayUnit, store.unit]
   );
 
   // Export workout history as CSV (one row per set) — the format lifters expect for
