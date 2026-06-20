@@ -1,4 +1,4 @@
-// v178091716499
+// v178091716500
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16075,10 +16075,11 @@ function AppInner() {
       const groupOnly = postData.groupOnly === true;
 
       // Post to each selected group
+      let groupFailures = 0;
       if (groupIds.length > 0) {
         for (const gid of groupIds) {
           try {
-            await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
               method: "POST",
               headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}`, "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -16090,13 +16091,19 @@ function AppInner() {
                 workout: postData.workout || null,
               })
             });
-          } catch (e) { console.error("group post error:", e); }
+            if (!res.ok) throw new Error("group_post_http_" + res.status);
+          } catch (e) { console.error("group post error:", e); groupFailures++; }
         }
       }
 
       // If group-only, skip the feed post
       if (groupOnly) {
-        toast(`Shared to ${groupIds.length} group${groupIds.length>1?"s":""}`, "success");
+        const succeeded = groupIds.length - groupFailures;
+        if (groupFailures > 0) {
+          toast(`Shared to ${succeeded} of ${groupIds.length} group${groupIds.length>1?"s":""} — some failed`, "error");
+        } else {
+          toast(`Shared to ${groupIds.length} group${groupIds.length>1?"s":""}`, "success");
+        }
         return;
       }
 
@@ -16132,6 +16139,10 @@ function AppInner() {
           createdAt: new Date(newPost.created_at || nowIso).getTime(),
         };
         setStore(prev => ({ ...prev, posts: [appPost, ...prev.posts] }));
+      }
+      if (groupFailures > 0) {
+        const succeeded = groupIds.length - groupFailures;
+        toast(`Posted, but only shared to ${succeeded} of ${groupIds.length} group${groupIds.length>1?"s":""}`, "error");
       }
     } catch (e) { console.error("post error:", e); toast("Couldn't save post", "error"); }
   }
@@ -16372,6 +16383,10 @@ function AppInner() {
   async function handleDeleteComment(postId, commentId) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
 
+    // Snapshot what's being removed so we can put it back if the server call fails.
+    const removedComment = store.posts.find(p => p.id === postId)?.comments?.find(c => c.id === commentId);
+    const removedHistComment = store.historyInteractions?.[postId]?.comments?.find(c => c.id === commentId);
+
     // Optimistic remove from posts
     setStore(prev => ({
       ...prev,
@@ -16402,6 +16417,28 @@ function AppInner() {
     } catch (e) {
       console.error("comment delete failed:", e);
       toast("Couldn't delete comment", "error");
+      // Revert — the server still has this comment, so the UI should too.
+      if (removedComment) {
+        setStore(prev => ({
+          ...prev,
+          posts: prev.posts.map(p => p.id !== postId ? p : {
+            ...p,
+            comments: [...(p.comments||[]), removedComment]
+          })
+        }));
+      }
+      if (removedHistComment) {
+        setStore(prev => {
+          const hi = prev.historyInteractions?.[postId];
+          return {
+            ...prev,
+            historyInteractions: {
+              ...(prev.historyInteractions||{}),
+              [postId]: { ...hi, comments: [...(hi?.comments||[]), removedHistComment] }
+            }
+          };
+        });
+      }
     }
   }
 
@@ -17006,6 +17043,7 @@ function AppInner() {
   // from handleFollow). Updates both my followers list and their following list.
   async function handleRemoveFollower(otherId) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    const prevUsers = store.users;
     setStore(prev => ({
       ...prev,
       users: prev.users.map(u => {
@@ -17019,6 +17057,7 @@ function AppInner() {
     } catch (e) {
       console.error("remove follower error:", e);
       toast("Couldn't remove follower", "error");
+      setStore(prev => ({ ...prev, users: prevUsers }));
     }
   }
 
@@ -17026,6 +17065,11 @@ function AppInner() {
   // so they can't re-follow or appear in each other's social surfaces.
   async function handleBlock(otherId) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    // Snapshot so we can revert if the block record fails to save server-side —
+    // blockedUsers is what actually gates feed visibility, so a failed write here
+    // must not leave the UI believing the block is in effect.
+    const prevUsers = store.users;
+    const prevBlocked = store.blockedUsers || [];
     setStore(prev => ({
       ...prev,
       blockedUsers: [...(prev.blockedUsers || []), otherId],
@@ -17036,14 +17080,17 @@ function AppInner() {
       })
     }));
     try {
-      // Drop follows both ways
-      await sb.query(`follows?or=(and(follower_id.eq.${currentUserId},following_id.eq.${otherId}),and(follower_id.eq.${otherId},following_id.eq.${currentUserId}))`, { method:"DELETE" }, tok).catch(()=>{});
-      // Record the block (table created by master SQL). Best-effort.
+      // Drop follows both ways — best-effort cleanup; the actual block gate is the
+      // blocked_users row below, so we log rather than abort if this leg fails.
+      await sb.query(`follows?or=(and(follower_id.eq.${currentUserId},following_id.eq.${otherId}),and(follower_id.eq.${otherId},following_id.eq.${currentUserId}))`, { method:"DELETE" }, tok)
+        .catch(e => console.error("block: follow cleanup failed (non-fatal):", e));
+      // Record the block (table created by master SQL).
       await sb.query("blocked_users", { method:"POST", body: JSON.stringify({ blocker_id: currentUserId, blocked_id: otherId }) }, tok);
       toast("User blocked", "success");
     } catch (e) {
       console.error("block error:", e);
       toast("Couldn't block user", "error");
+      setStore(prev => ({ ...prev, blockedUsers: prevBlocked, users: prevUsers }));
     }
   }
 
