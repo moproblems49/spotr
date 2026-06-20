@@ -1,4 +1,4 @@
-// v178091716514
+// v178091716515
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8153,6 +8153,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // Memoized so it doesn't recompute on every render (every keystroke, every 30s tick).
   // Recomputes only when the inputs that actually affect insights change.
   const memoInsights = useMemo(() => getProgressInsights(store, unit), [store.history, store.prs, store.workoutDates, store.dismissedInsights, store.weeklyTarget, unit]);
+  // Deload-stall checks sort+scan the whole history per exercise — memoize per exercise name so
+  // they only recompute when history/unit/the exercise list change, not on every weight/reps
+  // keystroke (session.exercises is replaced immutably on every set edit).
+  const exerciseNameKey = (session?.exercises || []).map(ex => ex.name).filter(Boolean).join("|");
+  const deloadByExercise = useMemo(() => {
+    const out = {};
+    for (const name of new Set(exerciseNameKey.split("|").filter(Boolean))) out[name] = detectDeloadNeeded(store, name, unit);
+    return out;
+  }, [store.history, unit, exerciseNameKey]);
 
   useEffect(() => {
     clearInterval(elRef.current);
@@ -9127,8 +9136,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     sessions. Dismissible per-exercise for this workout via local state. */}
                 {(() => {
                   if (!ex.name || dismissedDeloads.includes(ex.name)) return null;
-                  const dl = detectDeloadNeeded(store, ex.name, unit);
-                  if (!dl.stalled) return null;
+                  const dl = deloadByExercise[ex.name];
+                  if (!dl?.stalled) return null;
                   return (
                     <div style={{ margin:"0 14px 8px", padding:"10px 12px", borderRadius:10, background:C.isDark?"rgba(180,83,9,0.15)":"#FEF3C7", border:`1px solid ${C.isDark?"rgba(180,83,9,0.4)":"#FDE68A"}`, display:"flex", alignItems:"flex-start", gap:9 }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.isDark?"#FBBF24":"#B45309"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:1 }}><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
