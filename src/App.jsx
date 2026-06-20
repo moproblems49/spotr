@@ -1,4 +1,4 @@
-// v178091716515
+// v178091716516
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13327,6 +13327,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
   const isFollowing = me?.following?.includes(userId);
+  // computeStrengthScore() scans the full lift history — memoize so it doesn't recompute on
+  // every Profile render (e.g. every keystroke in the age field).
+  const strengthScore = useMemo(
+    () => computeStrengthScore(store, displayUnit || store.unit || "lbs", store.strengthSex || "male"),
+    [store.history, store.prs, store.bodyLog, store.strengthSex, displayUnit, store.unit]
+  );
 
   // Export workout history as CSV (one row per set) — the format lifters expect for
   // spreadsheet analysis, matching what Strong/others offer.
@@ -13870,7 +13876,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           <MuscleHeatmap store={store} setStore={setStore} currentUserId={currentUserId} token={token} unit={displayUnit} C={C}/>
           {(() => {
             const sex = store.strengthSex || "male";
-            const ss = computeStrengthScore(store, displayUnit || store.unit || "lbs", sex);
+            const ss = strengthScore;
             const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#c8f135", Elite:"#fbbf24" };
             const setAge = (v) => {
               const a = parseInt(v);
