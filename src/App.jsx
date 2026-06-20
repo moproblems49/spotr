@@ -1,4 +1,4 @@
-// v178091716509
+// v178091716510
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1962,6 +1962,26 @@ function calc1RM(weight, reps) {
   return Math.round(w * (1 + r / 30));
 }
 
+const PR_TYPE_LABEL = { weight: "Weight", e1rm: "Est. 1RM", volume: "Volume" };
+const PR_TYPE_LABEL_SHORT = { weight: "Wt", e1rm: "e1RM", volume: "Vol" };
+
+// Strong/Hevy-style PR check: a single set can set a PR in raw weight, estimated 1RM
+// (weight scaled for reps via Epley, capped at 12 reps so high-rep sets can't inflate it),
+// and/or single-set volume (weight × reps) — independently, and more than one can fire at once.
+// store.prs holds weight bests (synced); prsE1rm/prsVolume are additive, local-only extensions.
+function getSetPRTypes(store, exName, weight, reps, unit) {
+  const w = parseFloat(weight), r = parseInt(reps);
+  if (!exName || !w || !r || w <= 0 || r < 1) return { types: [], wLbs: 0, e1rmLbs: 0, volLbs: 0 };
+  const wLbs = unit === "lbs" ? w : cvt(w, "kg", "lbs");
+  const e1rmLbs = Math.round(wLbs * (1 + Math.min(r, 12) / 30));
+  const volLbs = wLbs * r;
+  const types = [];
+  if (wLbs > (store.prs?.[exName] || 0)) types.push("weight");
+  if (e1rmLbs > (store.prsE1rm?.[exName] || 0)) types.push("e1rm");
+  if (volLbs > (store.prsVolume?.[exName] || 0)) types.push("volume");
+  return { types, wLbs, e1rmLbs, volLbs };
+}
+
 // Get ISO week boundary (Mon 00:00 local) for a given date
 function weekStart(d = new Date()) {
   const date = new Date(d);
@@ -3412,6 +3432,8 @@ function loadStore() {
     currentUserId: null,
     history: {},
     prs: {},
+    prsE1rm: {},
+    prsVolume: {},
     programs: [],
     activeProgramId: null,
     notificationPrefs: { messages: true, kudos: true, comments: true, follows: true },
@@ -4674,6 +4696,12 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           )}
           {!suggestion && prev && (!set.weight || !set.reps) && (
             <button onClick={() => { onUpdate({weight:prev.w,reps:prev.r}); haptic("tap"); }} style={{ background:`${C.accent}15`, border:`1px solid ${C.accent}30`, color:C.accent, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:F }}>Use last</button>
+          )}
+          {isDone && set.prTypes?.length > 0 && (
+            <div style={{ display:"flex", alignItems:"center", gap:3, fontSize:10, color:C.gold, fontWeight:700, fontFamily:MONO, background:`${C.gold}18`, border:`1px solid ${C.gold}40`, padding:"2px 7px", borderRadius:5 }}>
+              <Icon name="trophy" size={10} color={C.gold} strokeWidth={2.4}/>
+              {set.prTypes.map(t => PR_TYPE_LABEL_SHORT[t]).join("+")} PR
+            </div>
           )}
           {est1RM && !isCardio && set.type !== "warmup" && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
           {/* RPE tag — only for completed working sets. Tap to set/clear how hard the set felt
@@ -8172,16 +8200,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }
       }
 
+      let prTypes = [];
       if (nowDone) {
         const currentSet = { ...rawSet, weight: resolvedWeight, reps: resolvedReps };
 
-        // Mid-workout PR detection — fire PR haptic + confetti burst if this set is a new record
+        // Mid-workout PR detection — fire PR haptic + confetti burst if this set is a new
+        // record. Strong/Hevy-style: weight, estimated 1RM, and single-set volume each count
+        // independently, so a set can hit more than one PR category at once.
         if (currentSet?.weight && currentSet?.reps && currentSet?.type !== "warmup") {
-          const wLbs = unit === "lbs" ? parseFloat(currentSet.weight) : cvt(parseFloat(currentSet.weight), "kg", "lbs");
-          const currentPR = store.prs?.[currentExercise.name] || 0;
-          if (wLbs > currentPR && wLbs > 0) {
-            // Tier the haptic by how big the PR is
-            const pctOver = currentPR > 0 ? (wLbs - currentPR) / currentPR : 1;
+          const prCheck = getSetPRTypes(store, currentExercise.name, currentSet.weight, currentSet.reps, unit);
+          prTypes = prCheck.types;
+          if (prTypes.length > 0) {
+            // Tier the haptic by how big the weight PR is over the prior best. e1RM/volume-only
+            // PRs (no weight PR) don't have a clean prior number to size a % against, so they
+            // just get the standard "pr" tier.
+            const currentPR = store.prs?.[currentExercise.name] || 0;
+            const pctOver = prTypes.includes("weight") && currentPR > 0 ? (prCheck.wLbs - currentPR) / currentPR : 1;
             if (pctOver >= 0.10) haptic("pr-big");
             else if (pctOver >= 0.05) haptic("pr");
             else haptic("pr-small");
@@ -8218,9 +8252,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           sets: ex.sets.map((s, j) => {
             if (j !== si) return s;
             if (nowDone) {
-              return { ...s, weight: resolvedWeight, reps: resolvedReps, done: nowDone };
+              return { ...s, weight: resolvedWeight, reps: resolvedReps, done: nowDone, prTypes: prTypes.length ? prTypes : undefined };
             }
-            return { ...s, done: nowDone };
+            return { ...s, done: nowDone, prTypes: undefined };
           })
         })
       };
