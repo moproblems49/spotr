@@ -1,4 +1,4 @@
-// v178091716513
+// v178091716514
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3041,9 +3041,16 @@ function computeBodyBatteryTimeline(store) {
   const hoursElapsed = Math.floor((now - sevenAm) / 36e5);
   if (hoursElapsed < 1) return null;
 
-  // Today's workout sessions as precise [startMs, endMs, drainTotal] windows (same per-session
-  // drain formula as computeBodyBattery's workoutDrain, just kept per-session instead of summed).
-  const sessions = Object.values((store.history || {})[todayKey] || {}).map(sess => {
+  // Workout sessions as precise [startMs, endMs, drainTotal] windows (same per-session drain
+  // formula as computeBodyBattery's workoutDrain, just kept per-session instead of summed).
+  // Pull from both the calendar date sevenAm falls on and today's date — between midnight and
+  // 7am these differ (sevenAm rolls back a day), and a late-night session would otherwise be
+  // filed under yesterday's date key and silently dropped from the chart.
+  const sevenAmKey = `${sevenAm.getFullYear()}-${String(sevenAm.getMonth()+1).padStart(2,"0")}-${String(sevenAm.getDate()).padStart(2,"0")}`;
+  const historyBuckets = sevenAmKey === todayKey
+    ? [(store.history || {})[todayKey] || {}]
+    : [(store.history || {})[sevenAmKey] || {}, (store.history || {})[todayKey] || {}];
+  const sessions = historyBuckets.flatMap(bucket => Object.values(bucket)).map(sess => {
     const endMs = sess.finishedAt || now.getTime();
     const startMs = endMs - (sess.duration || 0) * 1000;
     let sets = 0, rpeSum = 0, rpeN = 0;
@@ -4589,7 +4596,9 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     [store.history, exName, set.type, prevIndex, si, unit]
   );
   const setType = SET_TYPES.find(t => t.id === set.type) || SET_TYPES[0];
-  const est1RM = set.weight && set.reps ? calc1RM(set.weight, set.reps) : null;
+  // Cap reps at 12 for the estimate — same cap getSetPRTypes() uses for the e1RM PR badge,
+  // so the displayed number always matches what's actually being checked against the PR bar.
+  const est1RM = set.weight && set.reps ? calc1RM(set.weight, Math.min(parseInt(set.reps) || 0, 12)) : null;
   const isDone = set.done;
 
   // Duration-based exercise detection — show duration input instead of weight + reps.
