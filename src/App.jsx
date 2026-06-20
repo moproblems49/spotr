@@ -1,4 +1,4 @@
-// v178091716511
+// v178091716512
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8510,18 +8510,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       } catch (e) { /* ignore */ }
 
       // Build share data (used by both feed share and groups-only share)
+      const hitPRNames = new Set(hitPRs.map(pr => pr.name));
       const shareData = (() => {
         const postEx = session.exercises
           .filter(ex => ex.name && ex.sets.some(s => s.done === true && s.type !== "warmup"))
-          .map(ex => {
-            const maxW = Math.max(0, ...ex.sets.filter(s => s.done === true && s.weight && s.type !== "warmup").map(s => parseFloat(s.weight) || 0));
-            const maxLbs = unit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
-            return {
-              name: ex.name,
-              sets: ex.sets.filter(s => s.done === true && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-              isPR: maxLbs > 0 && maxLbs > (originalPRs[ex.name] || 0) + 0.001
-            };
-          })
+          .map(ex => ({
+            name: ex.name,
+            sets: ex.sets.filter(s => s.done === true && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+            isPR: hitPRNames.has(ex.name)
+          }))
           .filter(ex => ex.sets.length > 0);
         const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
         const hasPR = postEx.some(ex => ex.isPR);
