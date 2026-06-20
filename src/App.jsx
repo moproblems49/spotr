@@ -1,4 +1,4 @@
-// v178091716504
+// v178091716505
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16808,6 +16808,11 @@ function AppInner() {
         /* Prevent the iOS long-press text-selection / lookup callout everywhere except real
            text inputs — fixes the selection bubble appearing when holding a set/plate row. */
         * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        /* WebKit's double-tap-to-zoom check doesn't reliably walk the ancestor chain — a plain
+           div with no touch-action of its own can still register a double-tap zoom even though
+           html/body are restricted. Set it on every element directly as the real fix; anything
+           that needs touch-action:none (drag handles) sets it inline and still wins over this. */
+        *, *::before, *::after { touch-action: pan-x pan-y; }
         input, textarea, select { font-size: 16px !important; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
         input[type=number] { -moz-appearance: textfield; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
