@@ -1,4 +1,4 @@
-// v178091716506
+// v178091716507
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17936,7 +17936,10 @@ function AppInner() {
                 // transform:"none" at rest — any non-"none" transform here would become the
                 // containing block for every position:fixed modal nested in tab content below,
                 // breaking their full-screen sizing/centering (the "zoomed/clipped" bug).
-                marginLeft: "-33.3333%",
+                // Note: margin % resolves against the parent's width, while transform's translateX %
+                // resolves against this element's own width (300%) — so matching the old
+                // translateX(-33.3333%) requires marginLeft:-100% here, not -33.3333%.
+                marginLeft: "-100%",
                 transform: dragPx ? `translateX(${dragPx}px)` : "none",
                 transition: swipeRelease ? "transform 0.24s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
                 willChange: isActive ? "transform" : "auto",
