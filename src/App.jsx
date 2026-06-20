@@ -1,4 +1,4 @@
-// v178091716500
+// v178091716501
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15208,6 +15208,8 @@ function AppInner() {
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = session?.access_token || null; }, [session]);
   const currentUserId = session?.user?.id || (isGuest ? GUEST_ID : null);
+  const currentUserIdRef = useRef(currentUserId);
+  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
 
   // ── All UI state — must be at top level before any returns ──
   // Open on the Workout (tracker) tab — training is the core action; social comes second
@@ -15354,20 +15356,31 @@ function AppInner() {
     const PN = Cap?.isNativePlatform?.() ? Cap.Plugins?.PushNotifications : null;
     if (!PN || !currentUserId || isGuest) return;
     let regListener = null;
+    let cancelled = false;
+    const registeredForUserId = currentUserId;
     (async () => {
       try {
         const perm = await PN.requestPermissions();
-        if (perm?.receive !== "granted") return;
-        regListener = await PN.addListener("registration", (t) => {
+        if (perm?.receive !== "granted" || cancelled) return;
+        const listener = await PN.addListener("registration", (t) => {
           try {
+            // Guard against the user having switched/logged out while this listener
+            // was still being set up — without this, a stale listener can fire later
+            // and write the push token under the wrong user.
+            if (registeredForUserId !== currentUserIdRef.current) return;
             const tok = tokenRef.current || loadSession()?.access_token;
-            if (tok && t?.value) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ push_token: t.value }) }, tok).catch(() => {});
+            if (tok && t?.value) sb.queueWrite(`profiles?id=eq.${registeredForUserId}`, { method:"PATCH", body: JSON.stringify({ push_token: t.value }) }, tok).catch(() => {});
           } catch (e) {}
         });
+        // The effect may have been cleaned up (account switched) while addListener
+        // was in flight, in which case `regListener` was still null and the cleanup
+        // below couldn't remove it — remove it ourselves here instead.
+        if (cancelled) { try { listener?.remove?.(); } catch (e) {} return; }
+        regListener = listener;
         await PN.register();
       } catch (e) {}
     })();
-    return () => { try { regListener?.remove?.(); } catch (e) {} };
+    return () => { cancelled = true; try { regListener?.remove?.(); } catch (e) {} };
   }, [currentUserId, isGuest]);
   // Match the iOS status bar / browser chrome to the app background — big "native" feel
   // win for the PWA and the Capacitor shell, costs nothing. (Reads THEMES directly:
@@ -15565,6 +15578,10 @@ function AppInner() {
           const fresh = await sb.refreshToken(saved.refresh_token);
           const merged = { ...saved, ...fresh };
           saveSession(merged);
+          // Sync tokenRef immediately — setSession's re-render (and the effect that
+          // mirrors it into tokenRef) hasn't happened yet, so loadUserData() below
+          // would otherwise read the stale/expired token instead of this fresh one.
+          tokenRef.current = merged.access_token || tokenRef.current;
           setSession(merged);
         } catch (e) {
           console.warn("Foreground token refresh failed:", e.message);
@@ -16147,10 +16164,12 @@ function AppInner() {
     } catch (e) { console.error("post error:", e); toast("Couldn't save post", "error"); }
   }
 
+  const kudosInFlightRef = useRef({});
   async function handleKudos(postId) {
     if (requireAuth("Sign up to give kudos and connect with lifters")) return;
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) return;
+    if (kudosInFlightRef.current[postId]) return; // ignore rapid double-taps until the in-flight request settles
 
     // _isHistory posts — store kudos locally in historyInteractions (no DB equivalent yet)
     if (postId.startsWith("hist_")) {
@@ -16186,6 +16205,7 @@ function AppInner() {
       })
     }));
 
+    kudosInFlightRef.current[postId] = true;
     try {
       if (hasKudos) {
         await sb.query(`kudos?post_id=eq.${postId}&user_id=eq.${currentUserId}`, { method:"DELETE" }, tok);
@@ -16205,6 +16225,8 @@ function AppInner() {
             : (p.kudos||[]).filter(id => id !== currentUserId)
         })
       }));
+    } finally {
+      delete kudosInFlightRef.current[postId];
     }
   }
 
@@ -16318,9 +16340,12 @@ function AppInner() {
     }
   }
 
+  const commentLikeInFlightRef = useRef({});
   async function handleLikeComment(postId, commentId) {
     if (requireAuth("Sign up to like comments")) return;
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    const likeKey = `${postId}:${commentId}`;
+    if (commentLikeInFlightRef.current[likeKey]) return; // ignore rapid double-taps until the in-flight request settles
 
     // Find current state
     const post = store.posts.find(p => p.id === postId);
@@ -16361,6 +16386,7 @@ function AppInner() {
     }
 
     if (!tok) return;
+    commentLikeInFlightRef.current[likeKey] = true;
     try {
       await sb.query(`comments?id=eq.${commentId}`, {
         method: "PATCH",
@@ -16377,6 +16403,8 @@ function AppInner() {
           comments: (p.comments||[]).map(c => c.id === commentId ? { ...c, likes } : c)
         })
       }));
+    } finally {
+      delete commentLikeInFlightRef.current[likeKey];
     }
   }
 
