@@ -1,4 +1,4 @@
-// v178091716503
+// v178091716504
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4287,7 +4287,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
         border:`1px solid ${C.border}`, color: color || C.text,
         fontSize, fontWeight:700, fontFamily:F,
         display:"flex", alignItems:"center", justifyContent:"center",
-        userSelect:"none", WebkitUserSelect:"none", touchAction:"manipulation",
+        userSelect:"none", WebkitUserSelect:"none", touchAction:"pan-x pan-y",
       }}
     >{label}</button>
   );
@@ -4519,12 +4519,12 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
               setMenuPos({ top, left: r.left });
               setShowTypeMenu(true);
             }}
-            style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"manipulation", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
+            style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"pan-x pan-y", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
         </div>
         {showTypeMenu && menuPos && createPortal(
           <>
             {/* Transparent backdrop to catch outside taps */}
-            <div onClick={() => setShowTypeMenu(false)} style={{ position:"fixed", inset:0, zIndex:9998, touchAction:"manipulation" }}/>
+            <div onClick={() => setShowTypeMenu(false)} style={{ position:"fixed", inset:0, zIndex:9998, touchAction:"pan-x pan-y" }}/>
             {/* Compact dropdown - Seshd style */}
             <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
               position:"fixed",
