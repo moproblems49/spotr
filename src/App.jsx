@@ -1,4 +1,4 @@
-// v178091716502
+// v178091716503
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -113,6 +113,24 @@ async function hydrateFromNative() {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const IS_DEV = !!(import.meta.env && import.meta.env.DEV); // true in `vite dev`, false in production builds
+
+// ── Analytics (PostHog) ────────────────────────────────────────────────────────
+// No-op until VITE_POSTHOG_KEY is set in Vercel env vars. We send behavioral
+// events only (signup, workout logged, post created, tab switches) — never
+// workout content, photos, or messages — to keep this purely usage analytics.
+const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY || "";
+function track(event, props = {}) {
+  try {
+    if (!POSTHOG_KEY || typeof window === "undefined" || !window.posthog) return;
+    window.posthog.capture(event, props);
+  } catch (e) {}
+}
+function identifyUser(userId) {
+  try {
+    if (!POSTHOG_KEY || typeof window === "undefined" || !window.posthog || !userId) return;
+    window.posthog.identify(userId);
+  } catch (e) {}
+}
 
 // ── OAuth provider flags ──────────────────────────────────────────────────────
 // Flip a provider to true ONLY after it's fully configured in Supabase
@@ -8484,6 +8502,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       });
       setShowWorkoutSummary(true);
       haptic("success");
+      track("workout_logged", { sets: totalSets, exercises: session.exercises.filter(e => e.name).length, prs: newPRsList.length, duration: recordedDuration });
       try {
         const volLbs = unit === "lbs" ? (workoutSummary?.volumeRaw || 0) : cvt(workoutSummary?.volumeRaw || 0, "kg", "lbs");
         writeWorkoutToHealth(wStart || (Date.now() - recordedDuration * 1000), recordedDuration, volLbs);
@@ -14485,6 +14504,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
               });
             }
           } catch (profErr) { console.warn("profile upsert:", profErr); }
+          track("signup_completed");
           onAuth(data);
         } else {
           // Email confirmation is on — try signing in immediately in case it went through.
@@ -15210,6 +15230,8 @@ function AppInner() {
   const currentUserId = session?.user?.id || (isGuest ? GUEST_ID : null);
   const currentUserIdRef = useRef(currentUserId);
   useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
+  // Identify real (non-guest) users to analytics — never sends workout content, just the id
+  useEffect(() => { if (session?.user?.id) identifyUser(session.user.id); }, [session?.user?.id]);
 
   // ── All UI state — must be at top level before any returns ──
   // Open on the Workout (tracker) tab — training is the core action; social comes second
@@ -15281,7 +15303,7 @@ function AppInner() {
   // "swipe" source skips the slide-in keyframe on the next render — the drag/glide already
   // animated the transition, so replaying the keyframe caused a visible double-animation.
   const tabSwitchSourceRef = useRef("tap");
-  function switchTab(t, source = "tap") { if (t !== tab) haptic("tab"); tabSwitchSourceRef.current = source; setPrevTab(tab); setTab(t); }
+  function switchTab(t, source = "tap") { if (t !== tab) { haptic("tab"); track("tab_viewed", { tab: t }); } tabSwitchSourceRef.current = source; setPrevTab(tab); setTab(t); }
 
   // When user taps an Import button on a feed code, switch to tracker and re-dispatch
   useEffect(() => {
@@ -16156,6 +16178,7 @@ function AppInner() {
           createdAt: new Date(newPost.created_at || nowIso).getTime(),
         };
         setStore(prev => ({ ...prev, posts: [appPost, ...prev.posts] }));
+        track("post_created", { type: appPost.type, hasImage: !!appPost.imageData, isWorkout: !!appPost.workout });
       }
       if (groupFailures > 0) {
         const succeeded = groupIds.length - groupFailures;
@@ -16758,6 +16781,21 @@ function AppInner() {
       fonts.rel = "stylesheet";
       fonts.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Barlow+Condensed:wght@600;700&display=swap";
       document.head.appendChild(fonts);
+    }
+
+    // Load PostHog (analytics) — no-op until VITE_POSTHOG_KEY is set
+    if (POSTHOG_KEY && !window.posthog) {
+      (function (t, e) {
+        var o, n, p, r;
+        e.__SV || (window.posthog = e, e._i = [], e.init = function (i, s, a) {
+          function g(t, e) { var o = e.split("."); 2 == o.length && (t = t[o[0]], e = o[1]); t[e] = function () { t.push([e].concat(Array.prototype.slice.call(arguments, 0))); }; }
+          (p = t.createElement("script")).type = "text/javascript", p.crossOrigin = "anonymous", p.async = !0, p.src = s.api_host + "/static/array.js", (r = t.getElementsByTagName("script")[0]).parentNode.insertBefore(p, r);
+          var u = e;
+          for (void 0 !== a ? u = e[a] = [] : a = "posthog", u.people = u.people || [], u.toString = function (t) { var e = "posthog"; return "posthog" !== a && (e += "." + a), t || (e += " (stub)"), e; }, u.people.toString = function () { return u.toString(1) + ".people (stub)"; }, o = "init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "), n = 0; n < o.length; n++) g(u, o[n]);
+          e._i.push([i, s, a]);
+        }, e.__SV = 1);
+      })(document, window.posthog || []);
+      window.posthog.init(POSTHOG_KEY, { api_host: "https://us.i.posthog.com", person_profiles: "identified_only" });
     }
 
     // Inject global style: ensure all inputs are >=16px to disable iOS zoom-on-focus, plus motion utilities
