@@ -1,4 +1,4 @@
-// v178091716508
+// v178091716509
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2677,14 +2677,19 @@ function detectDeloadNeeded(store, exName, unit) {
     wU: cvt(s.topWeight, s.unit, unit),
     e1rm: s.topWeight ? cvt(s.topWeight, s.unit, unit) * (1 + Math.min(s.topReps, 12) / 30) : 0,
   }));
+  const recentRaw = sessions.slice(0, 4);
   const recent = norm.slice(0, 4);
   const topWeights = recent.map(s => s.wU);
   const maxTop = Math.max(...topWeights);
   const minTop = Math.min(...topWeights);
   const weightFlat = (maxTop - minTop) < (unit === "lbs" ? 5 : 2.5);
+  // Also require reps to be flat (not just weight) — otherwise a lifter quietly adding reps
+  // each session at the same weight (real progress) still gets flagged as a plateau.
+  const topReps = recentRaw.map(s => s.topReps);
+  const repsFlat = (Math.max(...topReps) - Math.min(...topReps)) <= 1;
   const e1rms = recent.map(s => s.e1rm);
   const e1rmNotProgressing = e1rms[0] <= Math.max(...e1rms.slice(1)) + 0.01;
-  if (weightFlat && e1rmNotProgressing) {
+  if (weightFlat && repsFlat && e1rmNotProgressing) {
     const dl = unit === "lbs" ? Math.round((maxTop * 0.9) / 5) * 5 : Math.round((maxTop * 0.9) / 2.5) * 2.5;
     return {
       stalled: true,
