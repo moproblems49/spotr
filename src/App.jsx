@@ -1,4 +1,4 @@
-// v178091716512
+// v178091716513
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1478,6 +1478,35 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       <div style={{ height:10, borderRadius:5, background:C.divider, overflow:"hidden", marginBottom:18 }}>
                         <div style={{ width:`${bb.level}%`, height:"100%", borderRadius:5, background:fill }}/>
                       </div>
+                      {(() => {
+                        const timeline = computeBodyBatteryTimeline(store);
+                        if (!timeline || timeline.length < 2) return null;
+                        const W = 300, H = 70, PAD = 4;
+                        const n = timeline.length;
+                        const xAt = i => PAD + (i / (n - 1)) * (W - PAD * 2);
+                        const yAt = lvl => PAD + (1 - lvl / 100) * (H - PAD * 2);
+                        const linePath = timeline.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
+                        const areaPath = `${linePath} L ${xAt(n - 1).toFixed(1)} ${H} L ${xAt(0).toFixed(1)} ${H} Z`;
+                        const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
+                        return (
+                          <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
+                            <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted, marginBottom:8 }}>TODAY'S DRAIN</div>
+                            <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:80, display:"block" }} preserveAspectRatio="none">
+                              <path d={areaPath} fill={fill} opacity={0.12} stroke="none"/>
+                              <path d={linePath} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
+                            </svg>
+                            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4, fontSize:9, color:C.muted, fontWeight:600 }}>
+                              <span>{fmtHour(timeline[0].hour)}</span>
+                              <span>{fmtHour(timeline[timeline.length - 1].hour)}</span>
+                            </div>
+                            {!store.activityHourly && (
+                              <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
+                                Connect Apple Health for activity-aware dips during the day.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:16 }}>
                         {rows.map((r, i) => (
                           <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", paddingBottom:12, borderBottom: i < rows.length-1 ? `1px solid ${C.divider}` : "none" }}>
@@ -2996,6 +3025,71 @@ function computeBodyBattery(store) {
   return { level, charge0, baselineDrain, workoutDrain, activityDrain, hasRecovery, hasActivity };
 }
 
+// Hour-by-hour Body Battery curve from wake (or 7am) to now, walked one hour at a time instead
+// of collapsed into computeBodyBattery()'s single end-of-day number. There's no continuous
+// heart-rate stream without a paired Apple Watch, so this can't show real recovery bounces like
+// Garmin's chart — it's an honest, monotonically-draining curve driven by elapsed time, each
+// today session's real start/end timestamps, and real per-hour step/active-energy samples from
+// HealthKit (store.activityHourly, from readHourlyActivity()) when available. Returns null if
+// there's nothing to plot yet (just woke up).
+function computeBodyBatteryTimeline(store) {
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const bb = computeBodyBattery(store); // same starting charge as the headline number
+  const sevenAm = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
+  if (now < sevenAm) sevenAm.setDate(sevenAm.getDate() - 1);
+  const hoursElapsed = Math.floor((now - sevenAm) / 36e5);
+  if (hoursElapsed < 1) return null;
+
+  // Today's workout sessions as precise [startMs, endMs, drainTotal] windows (same per-session
+  // drain formula as computeBodyBattery's workoutDrain, just kept per-session instead of summed).
+  const sessions = Object.values((store.history || {})[todayKey] || {}).map(sess => {
+    const endMs = sess.finishedAt || now.getTime();
+    const startMs = endMs - (sess.duration || 0) * 1000;
+    let sets = 0, rpeSum = 0, rpeN = 0;
+    for (const ex of (sess.exercises || [])) {
+      for (const s of (ex.sets || [])) {
+        if (s.type === "warmup") continue;
+        if (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) {
+          sets++;
+          const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
+        }
+      }
+    }
+    if (!sets) return null;
+    const avgRpe = rpeN ? rpeSum / rpeN : null;
+    const drain = Math.max(5, Math.min(30, Math.round(6 + sets * 0.9 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
+    return { startMs, endMs: Math.max(endMs, startMs + 60000), drain };
+  }).filter(Boolean);
+
+  const hourlyActivity = store.activityHourly;
+  const points = [];
+  let level = bb.charge0;
+  for (let h = 0; h <= hoursElapsed; h++) {
+    const hourStart = sevenAm.getTime() + h * 36e5;
+    const hourEnd = hourStart + 36e5;
+    const hourFraction = h === hoursElapsed ? Math.max(0, Math.min(1, (now.getTime() - hourStart) / 36e5)) : 1;
+
+    let drain = 0.9 * hourFraction; // baseline awake drain, same rate as computeBodyBattery
+
+    for (const s of sessions) {
+      const overlapMs = Math.max(0, Math.min(s.endMs, hourEnd) - Math.max(s.startMs, hourStart));
+      if (overlapMs > 0) drain += s.drain * (overlapMs / Math.max(1, s.endMs - s.startMs));
+    }
+
+    const hourOfDay = new Date(hourStart).getHours();
+    const act = hourlyActivity?.[hourOfDay];
+    if (act && (act.steps || act.kcal)) {
+      const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
+      drain += Math.min(6, a); // gentler per-hour cap than the whole-day 18 cap
+    }
+
+    level = Math.max(5, level - drain);
+    points.push({ hour: hourOfDay, level: Math.round(level) });
+  }
+  return points;
+}
+
 function nativeHealth() {
   const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
   if (Cap?.isNativePlatform?.() && Cap.Plugins?.Health) return Cap.Plugins.Health;
@@ -3064,6 +3158,41 @@ async function readTodayActivity() {
   const activeKcal = await sum(["activeEnergyBurned", "activeCalories", "calories"]);
   if (steps == null && activeKcal == null) return null;
   return { date: `${dayStart.getFullYear()}-${String(dayStart.getMonth()+1).padStart(2,"0")}-${String(dayStart.getDate()).padStart(2,"0")}`, steps, activeKcal };
+}
+
+// Today's movement bucketed by the hour it actually happened (0-23, local time), straight from
+// each HealthKit sample's own startDate — this is the real per-hour signal the Body Battery
+// timeline is built from (no fabricated activity). Returns null on web/unavailable.
+async function readHourlyActivity() {
+  const H = nativeHealth();
+  if (!H) return null;
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startIso = dayStart.toISOString(), endIso = now.toISOString();
+  try { await H.requestAuthorization({ read: ["steps", "activeEnergyBurned", "activeCalories", "calories"], write: [] }); } catch (e) {}
+  const buckets = Array.from({ length: 24 }, () => ({ steps: 0, kcal: 0 }));
+  let gotAny = false;
+  async function bucket(types, key) {
+    for (const dataType of types) {
+      try {
+        const r = await H.readSamples({ dataType, startDate: startIso, endDate: endIso, limit: 2000 });
+        const samples = (r && r.samples) || [];
+        if (!samples.length) continue;
+        for (const s of samples) {
+          const v = parseFloat(s.value) || 0;
+          if (!v) continue;
+          const t = s.startDate || s.endDate;
+          if (!t) continue;
+          const h = new Date(t).getHours();
+          if (h >= 0 && h < 24) { buckets[h][key] += v; gotAny = true; }
+        }
+        return; // got data for this metric — don't also try the next dataType spelling
+      } catch (e) { /* try next spelling */ }
+    }
+  }
+  await bucket(["steps", "stepCount"], "steps");
+  await bucket(["activeEnergyBurned", "activeCalories", "calories"], "kcal");
+  return gotAny ? buckets : null;
 }
 
 // Pull the most recent recovery snapshot. Returns null on web or if unavailable/denied.
@@ -15510,9 +15639,9 @@ function AppInner() {
       if (Date.now() - healthSyncRef.current < 15 * 60 * 1000) return;
       healthSyncRef.current = Date.now();
       try {
-        const [rec, act] = await Promise.all([readRecovery(), readTodayActivity()]);
+        const [rec, act, actHourly] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity()]);
         if (cancelled) return;
-        if (rec || act) setStore(p => ({ ...p, recovery: rec || p.recovery, activity: act || p.activity }));
+        if (rec || act || actHourly) setStore(p => ({ ...p, recovery: rec || p.recovery, activity: act || p.activity, activityHourly: actHourly || p.activityHourly }));
       } catch (e) {}
     }
     sync();
