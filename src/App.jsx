@@ -1,4 +1,4 @@
-// v178091716519
+// v178091716520
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -113,6 +113,8 @@ async function hydrateFromNative() {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const IS_DEV = !!(import.meta.env && import.meta.env.DEV); // true in `vite dev`, false in production builds
+const devWarn = (...args) => { if (IS_DEV) console.warn(...args); };
+const devError = (...args) => { if (IS_DEV) console.error(...args); };
 
 // ── Analytics (PostHog) ────────────────────────────────────────────────────────
 // No-op until VITE_POSTHOG_KEY is set in Vercel env vars. We send behavioral
@@ -261,7 +263,7 @@ const sb = (() => {
   const readQueue = () => { try { return JSON.parse(localStorage.getItem(WRITE_QUEUE_KEY) || "[]"); } catch { return []; } };
   const writeQueue = (q) => {
     try {
-      if (q.length > WRITE_QUEUE_CAP && IS_DEV) console.warn(`writeQueue: dropping ${q.length - WRITE_QUEUE_CAP} oldest unsynced write(s) over cap ${WRITE_QUEUE_CAP}`);
+      if (q.length > WRITE_QUEUE_CAP) devWarn(`writeQueue: dropping ${q.length - WRITE_QUEUE_CAP} oldest unsynced write(s) over cap ${WRITE_QUEUE_CAP}`);
       localStorage.setItem(WRITE_QUEUE_KEY, JSON.stringify(q.slice(-WRITE_QUEUE_CAP)));
     } catch {}
   };
@@ -350,11 +352,11 @@ function compressImage(base64DataUrl, maxDim = 1200, quality = 0.8) {
           // JPEG drops transparency (fine for photos/avatars) and compresses well.
           const out = canvas.toDataURL("image/jpeg", quality);
           resolve(out && out.length > 20 ? out : base64DataUrl);
-        } catch (err) { if (IS_DEV) console.warn("compressImage: canvas/encode failed, using original", err); resolve(base64DataUrl); }
+        } catch (err) { devWarn("compressImage: canvas/encode failed, using original", err); resolve(base64DataUrl); }
       };
-      img.onerror = (err) => { if (IS_DEV) console.warn("compressImage: image failed to load (CORS/format?), using original", err); resolve(base64DataUrl); };
+      img.onerror = (err) => { devWarn("compressImage: image failed to load (CORS/format?), using original", err); resolve(base64DataUrl); };
       img.src = base64DataUrl;
-    } catch (err) { if (IS_DEV) console.warn("compressImage: unexpected failure, using original", err); resolve(base64DataUrl); }
+    } catch (err) { devWarn("compressImage: unexpected failure, using original", err); resolve(base64DataUrl); }
   });
 }
 
@@ -387,13 +389,13 @@ async function uploadImage(base64DataUrl, token, userId) {
     });
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      console.warn("uploadImage storage error:", res.status, err);
+      devWarn("uploadImage storage error:", res.status, err);
       return null;
     }
     // Public URL for the object (bucket must be public-read).
     return `${SUPABASE_URL}/storage/v1/object/public/images/${path}`;
   } catch (e) {
-    console.warn("uploadImage failed:", e);
+    devWarn("uploadImage failed:", e);
     return null;
   }
 }
@@ -6719,7 +6721,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                 if (onSaveProgram) onSaveProgram(updated);
                 setShareModal({ code, generating: false });
               } catch (e) {
-                console.error("share code error:", e);
+                devError("share code error:", e);
                 setShareModal(null);
                 toast("Couldn't generate share code", "error");
               }
@@ -7044,7 +7046,7 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
           method: "PATCH",
           body: JSON.stringify({ active_program_id: newId })
         }, token))
-        .catch(e => console.error("save imported program:", e));
+        .catch(e => devError("save imported program:", e));
     }
     toast(isWorkout ? "Workout imported" : "Program imported", "success");
     setCode("");
@@ -7448,7 +7450,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         }, token);
       }
     } catch (e) {
-      console.error("edit workout failed:", e);
+      devError("edit workout failed:", e);
       toast("Saved locally — couldn't sync to server", "error");
       setSaving(false);
       onClose();
@@ -7511,7 +7513,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         }
       }
     } catch (e) {
-      console.error("post sync failed:", e);
+      devError("post sync failed:", e);
     }
     // 5. Patch any matching GROUP posts on the server (same workout shared to groups).
     // Group posts store the workout JSONB directly but have no link to workout_history id,
@@ -7556,12 +7558,12 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
                   body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: postEx, volume: Math.round(newVolume) } })
                 }, token);
               }
-            } catch (e) { console.error(`group post sync failed for group ${g.id}:`, e); }
+            } catch (e) { devError(`group post sync failed for group ${g.id}:`, e); }
           }));
         }
       }
     } catch (e) {
-      console.error("group post sync failed:", e);
+      devError("group post sync failed:", e);
     }
     toast("Workout updated", "success");
     haptic("complete");
@@ -9786,7 +9788,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   try {
                     await finishWorkout(false, { groupIds: selectedGroupIds, groupOnly: true });
                   } catch (e) {
-                    console.error("Group share finish failed:", e);
+                    devError("Group share finish failed:", e);
                     toast("Couldn't save to groups — your workout is saved locally", "error");
                   }
                 }} disabled={finishing || selectedGroupIds.length === 0} style={{ width:"100%", background:(finishing||selectedGroupIds.length===0)?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:(finishing||selectedGroupIds.length===0)?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>
@@ -10802,7 +10804,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     }, token);
                     setShareModal({ stage:"code", kind:"day", name: day.name, code, generating: false });
                   } catch (e) {
-                    console.error("workout code error:", e);
+                    devError("workout code error:", e);
                     setShareModal(null);
                     toast("Couldn't generate code — run SQL migration", "error");
                   }
@@ -10845,7 +10847,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                         if (onSaveProgram) onSaveProgram({ ...prog, shareCode: code });
                         setShareModal({ stage:"code", kind:"program", name: prog.name, code, generating: false });
                       } catch (e) {
-                        console.error("share code error:", e);
+                        devError("share code error:", e);
                         setShareModal(null);
                         toast("Couldn't generate share code", "error");
                       }
@@ -11351,7 +11353,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
       const ai = await buildProgramAI();
       setResult(ai);
     } catch (e) {
-      console.warn("AI program gen failed, using fallback:", e);
+      devWarn("AI program gen failed, using fallback:", e);
       setGenError("ai_unavailable");
       setResult(buildProgramFallback());
     } finally {
@@ -12195,12 +12197,12 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                                     body: JSON.stringify({ reactions: next })
                                   });
                                   if (!res.ok) {
-                                    console.error("reaction save failed:", res.status, await res.text().catch(()=>""));
+                                    devError("reaction save failed:", res.status, await res.text().catch(()=>""));
                                     toast("Couldn't save reaction", "error");
                                     setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:prev} : x));
                                   }
                                 } catch (e) {
-                                  console.error("reaction save error:", e);
+                                  devError("reaction save error:", e);
                                   toast("Couldn't save reaction", "error");
                                   setPosts(p => p.map(x => x.id===post.id ? {...x, _reactions:prev} : x));
                                 }
@@ -12544,7 +12546,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           ...prev,
           users: (prev.users || []).map(u => prMapByUser[u.id] ? { ...u, prs: prMapByUser[u.id] } : u),
         }));
-      } catch (e) { console.warn("friend PR load failed:", e); }
+      } catch (e) { devWarn("friend PR load failed:", e); }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -13029,7 +13031,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
         });
         setFriendStats(prev => ({ ...prev, ...next }));
       } catch (e) {
-        console.warn("friend stats sync failed:", e);
+        devWarn("friend stats sync failed:", e);
       }
     }
     loadFriends();
@@ -13167,7 +13169,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
       const tok = (typeof loadSession === "function" && loadSession()?.access_token);
       if (tok && currentUserId) {
         sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok)
-          .catch(e => console.error("body_log save error:", e));
+          .catch(e => devError("body_log save error:", e));
       }
       return { ...p, bodyLog: nextLog };
     });
@@ -13635,7 +13637,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           body: JSON.stringify({ name: newName, username: newUsername, bio: newBio, age: newAge })
         }, tok);
       } catch (e) {
-        console.error("profile save error:", e);
+        devError("profile save error:", e);
         toast("Couldn't save profile changes", "error");
       }
     }
@@ -13685,7 +13687,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             toast("Upload failed — preview only", "error");
           }
         } catch (err) {
-          console.error("avatar upload error:", err);
+          devError("avatar upload error:", err);
           toast("Couldn't save photo", "error");
         }
       }
@@ -14171,7 +14173,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
                           try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ unit: u }) }, tok); }
-                          catch (e) { console.error("unit save error:", e); }
+                          catch (e) { devError("unit save error:", e); }
                         }
                       }} style={{
                         padding:"6px 16px", background:(store.unit||"lbs")===u?C.accent:"transparent",
@@ -14200,7 +14202,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           const tok = token || loadSession()?.access_token;
                           if (tok) {
                             try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
-                            catch (e) { console.error("privacy save error:", e); }
+                            catch (e) { devError("privacy save error:", e); }
                           }
                           haptic("tap");
                         }} style={{
@@ -14237,7 +14239,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               const tok = token || loadSession()?.access_token;
                               if (tok) {
                                 try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
-                                catch (e) { console.error("notification_prefs save error:", e); }
+                                catch (e) { devError("notification_prefs save error:", e); }
                               }
                               haptic("tap");
                             }} style={{
@@ -14267,7 +14269,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
                           try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n }) }, tok); }
-                          catch (e) { console.error("weekly_target save error:", e); }
+                          catch (e) { devError("weekly_target save error:", e); }
                         }
                       }} style={{
                         padding:"6px 12px", background:(store.weeklyTarget||3)===n?C.accent:"transparent",
@@ -14738,7 +14740,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
                 }),
               });
             }
-          } catch (profErr) { console.warn("profile upsert:", profErr); }
+          } catch (profErr) { devWarn("profile upsert:", profErr); }
           track("signup_completed");
           onAuth(data);
         } else {
@@ -15527,7 +15529,7 @@ function AppInner() {
         try { if (typeof flushPendingWorkouts === "function") flushPendingWorkouts(); } catch {}
         try {
           const tok = tokenRef.current || loadSession()?.access_token;
-          if (tok) sb.flushWriteQueue(tok).then(r => { if (r.flushed > 0 && IS_DEV) console.warn(`Synced ${r.flushed} queued change(s)`); }).catch(()=>{});
+          if (tok) sb.flushWriteQueue(tok).then(r => { if (r.flushed > 0) devWarn(`Synced ${r.flushed} queued change(s)`); }).catch(()=>{});
         } catch {}
       }
     });
@@ -15777,7 +15779,7 @@ function AppInner() {
             return;
           }
         } catch (e) {
-          console.error("OAuth callback error:", e);
+          devError("OAuth callback error:", e);
         }
       }
       const saved = loadSession();
@@ -15806,7 +15808,7 @@ function AppInner() {
         saveSession(merged);
         setSession(merged);
       } catch (e) {
-        console.warn("Token refresh failed:", e.message);
+        devWarn("Token refresh failed:", e.message);
       }
     }, 45 * 60 * 1000);
     return () => clearInterval(refreshInterval);
@@ -15848,7 +15850,7 @@ function AppInner() {
           tokenRef.current = merged.access_token || tokenRef.current;
           setSession(merged);
         } catch (e) {
-          console.warn("Foreground token refresh failed:", e.message);
+          devWarn("Foreground token refresh failed:", e.message);
         }
       }
       loadUserData();
@@ -16146,7 +16148,7 @@ function AppInner() {
 
       setDbReady(true);
     } catch (e) {
-      console.error("loadUserData error:", e);
+      devError("loadUserData error:", e);
       toast("Couldn't load your data — check connection", "error");
       setDbReady(true);
     } finally {
@@ -16233,7 +16235,7 @@ function AppInner() {
         return { ...prev, posts: all };
       });
     } catch (e) {
-      console.error("loadFeed error:", e);
+      devError("loadFeed error:", e);
     }
   }
 
@@ -16263,7 +16265,7 @@ function AppInner() {
               id: prog.id, user_id: newUserId, name: prog.name, days: prog.days,
             })
           }, tok);
-        } catch (e) { console.error("migrate program:", e); }
+        } catch (e) { devError("migrate program:", e); }
       }
       // Active program is a single FK on the profile row.
       if (store.activeProgramId) {
@@ -16271,7 +16273,7 @@ function AppInner() {
           await sb.query(`profiles?id=eq.${newUserId}`, {
             method: "PATCH", body: JSON.stringify({ active_program_id: store.activeProgramId })
           }, tok);
-        } catch (e) { console.error("migrate active program:", e); }
+        } catch (e) { devError("migrate active program:", e); }
       }
       // Upload PRs
       for (const [exName, weightLbs] of Object.entries(store.prs || {})) {
@@ -16281,7 +16283,7 @@ function AppInner() {
             headers_extra: { "Prefer": "resolution=merge-duplicates" },
             body: JSON.stringify({ user_id: newUserId, exercise_name: exName, weight_lbs: weightLbs })
           }, tok);
-        } catch (e) { console.error("migrate PR:", e); }
+        } catch (e) { devError("migrate PR:", e); }
       }
       // Upload workout history
       for (const [date, daySessions] of Object.entries(store.history || {})) {
@@ -16296,7 +16298,7 @@ function AppInner() {
                 created_at: new Date(date).toISOString(),
               })
             }, tok);
-          } catch (e) { console.error("migrate history:", e); }
+          } catch (e) { devError("migrate history:", e); }
         }
       }
       // Clear guest flag and update session
@@ -16311,7 +16313,7 @@ function AppInner() {
       setSession(authData);
       toast("Welcome — your progress is saved", "success");
     } catch (e) {
-      console.error("guest migration error:", e);
+      devError("guest migration error:", e);
       toast("Account created — some data didn't transfer", "error");
       // Still complete the auth even if migration partially failed
       try { localStorage.removeItem("seshd_guest"); } catch {}
@@ -16373,7 +16375,7 @@ function AppInner() {
               })
             });
             if (!res.ok) throw new Error("group_post_http_" + res.status);
-          } catch (e) { console.error("group post error:", e); groupFailures++; }
+          } catch (e) { devError("group post error:", e); groupFailures++; }
         }
       }
 
@@ -16426,7 +16428,7 @@ function AppInner() {
         const succeeded = groupIds.length - groupFailures;
         toast(`Posted, but only shared to ${succeeded} of ${groupIds.length} group${groupIds.length>1?"s":""}`, "error");
       }
-    } catch (e) { console.error("post error:", e); toast("Couldn't save post", "error"); }
+    } catch (e) { devError("post error:", e); toast("Couldn't save post", "error"); }
   }
 
   const kudosInFlightRef = useRef({});
@@ -16478,7 +16480,7 @@ function AppInner() {
         await sb.query("kudos", { method:"POST", body: JSON.stringify({ post_id: postId, user_id: currentUserId }) }, tok);
       }
     } catch (e) {
-      console.error("kudos save failed:", e);
+      devError("kudos save failed:", e);
       toast("Couldn't save like", "error");
       // Revert optimistic update
       setStore(prev => ({
@@ -16549,7 +16551,7 @@ function AppInner() {
         }));
       }
     } catch (e) {
-      console.error("comment save failed:", e);
+      devError("comment save failed:", e);
       toast("Couldn't save comment", "error");
       setStore(prev => ({
         ...prev,
@@ -16600,7 +16602,7 @@ function AppInner() {
         body: JSON.stringify({ text: newText.trim() })
       }, tok);
     } catch (e) {
-      console.error("comment edit failed:", e);
+      devError("comment edit failed:", e);
       toast("Couldn't save edit", "error");
     }
   }
@@ -16658,7 +16660,7 @@ function AppInner() {
         body: JSON.stringify({ likes: newLikes })
       }, tok);
     } catch (e) {
-      console.error("comment like failed:", e);
+      devError("comment like failed:", e);
       toast("Couldn't save like", "error");
       // Revert
       setStore(prev => ({
@@ -16708,7 +16710,7 @@ function AppInner() {
     try {
       await sb.query(`comments?id=eq.${commentId}`, { method: "DELETE" }, tok);
     } catch (e) {
-      console.error("comment delete failed:", e);
+      devError("comment delete failed:", e);
       toast("Couldn't delete comment", "error");
       // Revert — the server still has this comment, so the UI should too.
       if (removedComment) {
@@ -16766,7 +16768,7 @@ function AppInner() {
         for (const sid of sidsToDelete) {
           try {
             await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
-          } catch (e) { console.error("workout_history delete:", e); }
+          } catch (e) { devError("workout_history delete:", e); }
         }
       }
       return;
@@ -16777,7 +16779,7 @@ function AppInner() {
     try {
       await sb.query(`posts?id=eq.${postId}`, { method:"DELETE" }, tok);
     } catch (e) {
-      console.error("delete error:", e);
+      devError("delete error:", e);
       toast("Couldn't delete post", "error");
       setStore(prev => ({ ...prev, posts: prevPosts }));
     }
@@ -16810,7 +16812,7 @@ function AppInner() {
       if (program._silent && program.id && store.programs.find(p => p.id === program.id)) {
         setStore(prev => ({ ...prev, programs: prev.programs.map(p => p.id === program.id ? { ...program, _silent: undefined } : p) }));
         try { await sb.query(`programs?id=eq.${program.id}`, { method:"PATCH", body: JSON.stringify({ days: program.days }) }, tok); }
-        catch (e) { console.error("silent program save error:", e); }
+        catch (e) { devError("silent program save error:", e); }
         return;
       }
       // Check if existing or new
@@ -16840,7 +16842,7 @@ function AppInner() {
       }));
       if (store.activeProgramId !== program.id) toast("Program activated", "success");
     } catch (e) {
-      console.error("program save error:", e);
+      devError("program save error:", e);
       toast("Couldn't save program", "error");
     }
   }
@@ -16861,7 +16863,7 @@ function AppInner() {
         await sb.query(`programs?id=eq.${prog.id}`, {
           method:"PATCH", body: JSON.stringify({ name: prog.name, days: prog.days })
         }, tok);
-      } catch (e) { console.error("program edit sync error:", e); }
+      } catch (e) { devError("program edit sync error:", e); }
     }, 1500);
   }
 
@@ -16901,12 +16903,12 @@ function AppInner() {
               headers_extra: { "Prefer": "resolution=merge-duplicates" },
               body: JSON.stringify({ user_id: currentUserId, exercise_name: exName, weight_lbs: weight })
             }, tok);
-          } catch (prErr) { console.error("PR save error:", prErr); }
+          } catch (prErr) { devError("PR save error:", prErr); }
         }
       }
       return { ok: true, id: savedRow.id };
     } catch (e) {
-      console.error("workout save error:", e);
+      devError("workout save error:", e);
       return { ok: false, reason: "db-error", error: e };
     }
   }
@@ -16943,7 +16945,7 @@ function AppInner() {
     try {
       const offset = (store.posts || []).length;
       await loadFeed(tok, currentUserId, store.users || [], offset);
-    } catch (e) { console.error("loadMoreFeed error:", e); }
+    } catch (e) { devError("loadMoreFeed error:", e); }
     finally { setFeedLoadingMore(false); }
   }
 
@@ -16955,7 +16957,7 @@ function AppInner() {
       // loadUserData reloads history, PRs, programs, profile, and calls loadFeed internally
       // (so we don't need to call loadFeed again here — that would double-fetch).
       await loadUserData?.();
-    } catch (e) { console.error("refresh error:", e); }
+    } catch (e) { devError("refresh error:", e); }
   }
 
   // Tab co-move swipe: attach touchmove as a NON-PASSIVE native listener so e.preventDefault()
@@ -17317,7 +17319,7 @@ function AppInner() {
       await sb.query(`posts?id=eq.${id}`, {
         method:"PATCH", body: JSON.stringify({ caption: cap })
       }, tok);
-    } catch (e) { console.error("edit error:", e); }
+    } catch (e) { devError("edit error:", e); }
   }
 
   async function handleFollow(userId) {
@@ -17345,7 +17347,7 @@ function AppInner() {
         await sb.query("follows", { method:"POST", body: JSON.stringify({ follower_id: currentUserId, following_id: userId }) }, tok);
       }
     } catch (e) {
-      console.error("follow error:", e);
+      devError("follow error:", e);
       // Revert both sides on failure
       setStore(prev => ({
         ...prev,
@@ -17379,7 +17381,7 @@ function AppInner() {
     try {
       await sb.query(`follows?follower_id=eq.${otherId}&following_id=eq.${currentUserId}`, { method:"DELETE" }, tok);
     } catch (e) {
-      console.error("remove follower error:", e);
+      devError("remove follower error:", e);
       toast("Couldn't remove follower", "error");
       setStore(prev => ({ ...prev, users: prevUsers }));
     }
@@ -17407,12 +17409,12 @@ function AppInner() {
       // Drop follows both ways — best-effort cleanup; the actual block gate is the
       // blocked_users row below, so we log rather than abort if this leg fails.
       await sb.query(`follows?or=(and(follower_id.eq.${currentUserId},following_id.eq.${otherId}),and(follower_id.eq.${otherId},following_id.eq.${currentUserId}))`, { method:"DELETE" }, tok)
-        .catch(e => console.error("block: follow cleanup failed (non-fatal):", e));
+        .catch(e => devError("block: follow cleanup failed (non-fatal):", e));
       // Record the block (table created by master SQL).
       await sb.query("blocked_users", { method:"POST", body: JSON.stringify({ blocker_id: currentUserId, blocked_id: otherId }) }, tok);
       toast("User blocked", "success");
     } catch (e) {
-      console.error("block error:", e);
+      devError("block error:", e);
       toast("Couldn't block user", "error");
       setStore(prev => ({ ...prev, blockedUsers: prevBlocked, users: prevUsers }));
     }
@@ -17446,7 +17448,7 @@ function AppInner() {
       const tok = tokenRef.current || loadSession()?.access_token;
       if (tok) {
         try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target, ...(answers?.sex ? { strength_sex: answers.sex, body_type: answers.sex } : {}), ...((answers?.age > 0 && answers?.age < 100) ? { age: answers.age } : {}) }) }, tok); }
-        catch (e) { console.error("onboarding flag save error:", e); }
+        catch (e) { devError("onboarding flag save error:", e); }
       }
     }}/>;
   }
@@ -17488,7 +17490,7 @@ function AppInner() {
             const tok = tokenRef.current || loadSession()?.access_token;
             if (tok) {
               try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
-              catch (e) { console.error("theme save error:", e); }
+              catch (e) { devError("theme save error:", e); }
             }
           }}
           onUserClick={setProfileUserId}
@@ -18007,7 +18009,7 @@ function AppInner() {
               try {
                 const tok = tokenRef.current || loadSession()?.access_token;
                 if (tok) await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
-              } catch(e) { console.error("history delete:", e); }
+              } catch(e) { devError("history delete:", e); }
             }}
           />
         )}
@@ -18113,7 +18115,7 @@ function AppInner() {
               const tok = tokenRef.current || loadSession()?.access_token;
               if (tok) {
                 try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
-                catch (e) { console.error("theme save error:", e); }
+                catch (e) { devError("theme save error:", e); }
               }
             }}
             onUserClick={setProfileUserId}
@@ -18327,7 +18329,7 @@ class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, msg: "" }; }
   static getDerivedStateFromError(error) { return { hasError: true, msg: String(error?.message || error || "Unknown error") }; }
   componentDidCatch(error, info) {
-    try { console.error("App crashed:", error, info); } catch {}
+    try { devError("App crashed:", error, info); } catch {}
     try { reportError(error?.message || String(error), (error?.stack || "") + "\n--component stack--" + (info?.componentStack || ""), "ErrorBoundary"); } catch {}
   }
   render() {
