@@ -1,4 +1,4 @@
-// v178091716520
+// v178091716521
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10256,7 +10256,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               const wEnd = new Date(wStart); wEnd.setDate(wEnd.getDate() + 6);
               let vol = 0; let sessions = 0;
               Object.entries(store.history||{}).forEach(([date, sess]) => {
-                const d = new Date(date);
+                const d = new Date(date + "T00:00:00");
                 if (d >= wStart && d <= wEnd) {
                   Object.values(sess).forEach(s => {
                     sessions++;
