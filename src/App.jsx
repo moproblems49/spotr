@@ -1,4 +1,4 @@
-// v178091716524
+// v178091716525
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -155,12 +155,22 @@ const sb = (() => {
   }
 
   async function query(path, opts = {}, token = null) {
-    const { headers_extra, ...fetchOpts } = opts;
+    const { headers_extra, timeout, ...fetchOpts } = opts;
     const mergedHeaders = { ...authHeaders(token), ...(headers_extra || {}) };
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      headers: mergedHeaders,
-      ...fetchOpts,
-    });
+    // Hard timeout so a stalled connection can never hang a screen forever
+    // (e.g. the Messages list spinning indefinitely on a flaky network).
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), timeout || 20000);
+    let res;
+    try {
+      res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+        headers: mergedHeaders,
+        signal: ctrl.signal,
+        ...fetchOpts,
+      });
+    } finally {
+      clearTimeout(to);
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || res.statusText);
@@ -411,6 +421,24 @@ function saveSession(s) {
 }
 function clearSession() {
   try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+}
+
+// Run an authed REST query; if it fails (most often an expired access token —
+// the documented foreground-refresh race), refresh the session once and retry
+// before giving up. Used by screens whose own access_token prop can go stale
+// (Messages/Chat poll on intervals), so a dead token doesn't leave them empty.
+async function queryWithRetry(path, opts, token) {
+  const tok = token || loadSession()?.access_token;
+  try {
+    return await sb.query(path, opts, tok);
+  } catch (e) {
+    const saved = loadSession();
+    if (!saved?.refresh_token) throw e;
+    const fresh = await sb.refreshToken(saved.refresh_token);
+    const merged = { ...saved, ...fresh };
+    saveSession(merged);
+    return await sb.query(path, opts, merged.access_token);
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -15267,7 +15295,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
     const tok = token || loadSession()?.access_token;
     if (!tok) { setRows([]); return; }
     try {
-      const ms = await sb.query(`messages?or=(sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId})&order=created_at.desc&limit=300`, {}, tok);
+      const ms = await queryWithRetry(`messages?or=(sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId})&order=created_at.desc&limit=300`, {}, tok);
       if (aliveRef.current) setRows(Array.isArray(ms) ? ms : []);
     } catch (e) { if (aliveRef.current) setRows(r => (r === null ? [] : r)); }
   }, [currentUserId, token]);
@@ -15349,12 +15377,16 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   const tok = token || loadSession()?.access_token;
 
   async function load() {
-    if (!tok) return;
+    // Recompute the token each call — this loop polls every 5s, so the captured
+    // `tok` can expire while the chat is open; reading it fresh (and retrying on
+    // failure) keeps the thread live instead of silently stalling.
+    const freshTok = token || loadSession()?.access_token;
+    if (!freshTok) return;
     try {
-      const ms = await sb.query(`messages?or=(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerId}),and(sender_id.eq.${peerId},recipient_id.eq.${currentUserId}))&order=created_at.asc&limit=300`, {}, tok);
+      const ms = await queryWithRetry(`messages?or=(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerId}),and(sender_id.eq.${peerId},recipient_id.eq.${currentUserId}))&order=created_at.asc&limit=300`, {}, freshTok);
       if (Array.isArray(ms)) setMsgs(ms);
       // Mark incoming as read (best-effort)
-      sb.query(`messages?sender_id=eq.${peerId}&recipient_id=eq.${currentUserId}&read_at=is.null`, { method:"PATCH", body: JSON.stringify({ read_at: new Date().toISOString() }) }, tok)
+      sb.query(`messages?sender_id=eq.${peerId}&recipient_id=eq.${currentUserId}&read_at=is.null`, { method:"PATCH", body: JSON.stringify({ read_at: new Date().toISOString() }) }, freshTok)
         .then(() => onRead && onRead()).catch(() => {});
     } catch (e) { setMsgs(m => (m === null ? [] : m)); }
   }
