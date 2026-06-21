@@ -1,4 +1,4 @@
-// v178091716538
+// v178091716539
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -186,6 +186,10 @@ const sb = (() => {
       headers: authHeaders(token),
       body: JSON.stringify(params),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || res.statusText);
+    }
     const text = await res.text();
     return text ? JSON.parse(text) : null;
   }
@@ -6785,9 +6789,11 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               // Generate code, save to DB
               try {
                 let code = generateShareCode("IGNITE");
-                // Try a few times if collision
+                // Try a few times if collision. Checked via the redeem RPC (not a direct table
+                // SELECT) since a collision is, by definition, someone else's row — RLS only
+                // lets you SELECT your own programs, but the RPC can see any row by exact code.
                 for (let i = 0; i < 5; i++) {
-                  const existing = await sb.query(`programs?share_code=eq.${code}&select=id`, {}, token).catch(()=>[]);
+                  const existing = await sb.rpc("redeem_program_by_code", { p_code: code }, token).catch(()=>[]);
                   if (!existing || existing.length === 0) break;
                   code = generateShareCode("IGNITE");
                 }
@@ -10865,8 +10871,10 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                   setShareModal({ stage:"code", kind:"day", name: day.name, generating: true });
                   try {
                     let code = generateShareCode("WO");
+                    // Checked via the redeem RPC, not a direct table SELECT — see the
+                    // "Try a few times if collision" comment above for why.
                     for (let i = 0; i < 5; i++) {
-                      const existing = await sb.query(`workout_codes?code=eq.${code}&select=code`, {}, token).catch(()=>[]);
+                      const existing = await sb.rpc("redeem_workout_code", { p_code: code }, token).catch(()=>[]);
                       if (!existing || existing.length === 0) break;
                       code = generateShareCode("WO");
                     }
@@ -10912,8 +10920,10 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     if (token) {
                       try {
                         let code = generateShareCode("IGNITE");
+                        // Checked via the redeem RPC, not a direct table SELECT — see the
+                        // "Try a few times if collision" comment in ProgramDetailView for why.
                         for (let i = 0; i < 5; i++) {
-                          const existing = await sb.query(`programs?share_code=eq.${code}&select=id`, {}, token).catch(()=>[]);
+                          const existing = await sb.rpc("redeem_program_by_code", { p_code: code }, token).catch(()=>[]);
                           if (!existing || existing.length === 0) break;
                           code = generateShareCode("IGNITE");
                         }
