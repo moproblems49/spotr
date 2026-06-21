@@ -1,4 +1,4 @@
-// v178091716537
+// v178091716538
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7057,14 +7057,13 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
     if (!c || c.length < 3) { setError("Enter a code"); return; }
     setLoading(true);
     try {
-      // Workout codes start with WO-
+      // Workout codes start with WO-. Looked up via RPC (not a direct table SELECT) since the
+      // code itself is the bearer credential — RLS can't see the query filter, only the row, so
+      // a blanket "anyone can read" policy would let any authenticated user bulk-list every
+      // shared code instead of just the one they were given.
       if (c.startsWith("WO-")) {
-        const rows = await sb.query(
-          `workout_codes?code=eq.${encodeURIComponent(c)}&select=code,day_name,exercises`,
-          {},
-          token
-        );
-        if (!rows || rows.length === 0) {
+        const rows = await sb.rpc("redeem_workout_code", { p_code: c }, token);
+        if (!Array.isArray(rows) || rows.length === 0) {
           setError("Code not found");
         } else {
           const w = rows[0];
@@ -7076,12 +7075,8 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
           });
         }
       } else {
-        const rows = await sb.query(
-          `programs?share_code=eq.${encodeURIComponent(c)}&select=id,name,days,user_id`,
-          {},
-          token
-        );
-        if (!rows || rows.length === 0) {
+        const rows = await sb.rpc("redeem_program_by_code", { p_code: c }, token);
+        if (!Array.isArray(rows) || rows.length === 0) {
           setError("Code not found");
         } else {
           setPreview({ ...rows[0], kind: "program" });
