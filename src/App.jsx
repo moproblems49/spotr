@@ -1,4 +1,4 @@
-// v178091716533
+// v178091716534
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9043,7 +9043,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
 
         {rest && rest.minimized && !focusedSet && (
-          <div style={{ position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 76px)", zIndex:490, padding:"8px 10px 8px 14px", borderRadius:16, background:C.surface, border:`1px solid ${rest.secs<=10 ? "#EF4444" : C.divider}`, boxShadow:"0 8px 24px rgba(0,0,0,0.16)", display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 92px)", zIndex:490, padding:"8px 10px 8px 14px", borderRadius:16, background:C.surface, border:`1px solid ${rest.secs<=10 ? "#EF4444" : C.divider}`, boxShadow:"0 8px 24px rgba(0,0,0,0.16)", display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ fontSize:17, fontWeight:800, color: rest.secs<=10 ? "#EF4444" : C.text, fontFamily:MONO, minWidth:52 }}>
               {fmtTime(rest.secs)}
             </div>
@@ -18330,14 +18330,23 @@ function AppInner() {
         );
       })()}
 
-      {/* BOTTOM NAV — Instagram: clean SVG icons with filled/outlined states */}
+      {/* BOTTOM NAV — floating "liquid glass" pill: blurred translucent capsule with margin
+          on all sides (rather than an edge-to-edge bar), echoing the iOS 26 Liquid Glass material. */}
       <div style={{
-        background:C.tabBg, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
-        borderTop:`1px solid ${C.divider}`,
-        paddingBottom:"env(safe-area-inset-bottom)",
-        paddingLeft:"env(safe-area-inset-left)",
-        paddingRight:"env(safe-area-inset-right)",
-        display:"flex", flexShrink:0
+        background:C.bg, flexShrink:0,
+        paddingTop:8, paddingBottom:"calc(8px + env(safe-area-inset-bottom))",
+        paddingLeft:"calc(14px + env(safe-area-inset-left))",
+        paddingRight:"calc(14px + env(safe-area-inset-right))",
+      }}>
+      <div style={{
+        background:C.isDark ? "rgba(40,40,46,0.55)" : "rgba(255,255,255,0.55)",
+        backdropFilter:"blur(24px) saturate(1.6)", WebkitBackdropFilter:"blur(24px) saturate(1.6)",
+        border:`1px solid ${C.isDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.6)"}`,
+        borderRadius:26,
+        boxShadow: C.isDark
+          ? "0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)"
+          : "0 8px 24px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.7)",
+        display:"flex", overflow:"hidden",
       }}>
         {[
           {
@@ -18387,7 +18396,7 @@ function AppInner() {
               onClick={() => switchTab(id)}
               aria-label={label}
               style={{
-                flex:1, padding:"12px 4px 18px", background:"none", border:"none",
+                flex:1, padding:"12px 4px", background:"none", border:"none",
                 cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
                 opacity: active ? 1 : 0.45,
                 transition: "opacity 0.15s",
@@ -18397,6 +18406,7 @@ function AppInner() {
             </button>
           );
         })}
+      </div>
       </div>
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
