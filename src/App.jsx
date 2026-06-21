@@ -1,4 +1,4 @@
-// v178091716536
+// v178091716537
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3731,7 +3731,7 @@ function Skeleton({ width = "100%", height = 12, radius = 6, C, style }) {
 
 // PullToRefresh — wraps a scrollable area and triggers `onRefresh` when user
 // pulls past the threshold while at the top. iOS-style spring animation.
-function PullToRefresh({ onRefresh, C, children }) {
+function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
   const [pull, setPull] = useState(0); // current pull distance in pixels
   const [refreshing, setRefreshing] = useState(false);
   const scrollRef = useRef(null);
@@ -3810,7 +3810,7 @@ function PullToRefresh({ onRefresh, C, children }) {
         style={{
           flex:1,
           overflowY:"auto",
-          paddingBottom:NAV_CLEARANCE, // clears the floating bottom nav overlay
+          paddingBottom: navClearance ? NAV_CLEARANCE : 0, // clears the floating bottom nav overlay (screens without the nav can opt out)
           transform:`translateY(${visiblePull}px)`,
           transition: trackingRef.current ? "none" : "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           WebkitOverflowScrolling:"touch",
@@ -10191,7 +10191,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
-          <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden", maxWidth:480, margin:"0 auto" }}>
+          <div data-fullscreen-overlay="true" style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden", maxWidth:480, margin:"0 auto" }}>
           <ProgramDetailView
             prog={prog}
             store={store}
@@ -10215,7 +10215,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {/* Custom Program Builder */}
       {subTab === "workout" && showBuilder && (
-        <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div data-fullscreen-overlay="true" style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
@@ -15394,7 +15394,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
         <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
         <div style={{ fontSize:19, fontWeight:700, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Messages</div>
       </div>
-      <PullToRefresh onRefresh={load} C={C}>
+      <PullToRefresh onRefresh={load} C={C} navClearance={false}>
       <div>
         {rows === null && <div style={{ padding:24 }}><Spinner C={C}/></div>}
         {rows !== null && convos.length === 0 && (
@@ -17155,6 +17155,9 @@ function AppInner() {
   const navLastScrollTop = useRef(0);
   const [navShrunk, setNavShrunk] = useState(false);
   const navNativeScroll = useRef((e) => {
+    // Skip while a full-screen takeover (e.g. ProgramBuilder/ProgramDetailView) covers the nav —
+    // it's invisible underneath, so there's nothing to shrink/restore.
+    if (e.target?.closest?.("[data-fullscreen-overlay]")) return;
     const top = e.target?.scrollTop;
     if (typeof top !== "number") return;
     const delta = top - navLastScrollTop.current;
