@@ -69,19 +69,24 @@ Recently shipped & verified: true iOS co-move swipe (3-panel track), Wrapped "Sh
 
 Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`). Email confirmation (Resend SMTP) is off (fine pre-launch). Native Live Activity rest timer + home-screen widgets are Mac-side. Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
-### Push notifications — handoff checklist for Ashley
-The app code and Supabase backend are done; this is purely Xcode/Apple-portal setup so a real device can receive and display pushes.
+### Push notifications — handoff checklist
+The app code and Supabase backend are done. What's left is APNs credential setup (web-based — Mo can do this from his PC) and Xcode capability/device work (needs Ashley/Mac).
 
-1. **Apple Developer portal:** create an APNs key (Keys → +, enable "Apple Push Notifications service (APNs)"). Note the Key ID and Team ID (`66M7SCD5GA`). Download the `.p8` file — it can only be downloaded once.
-2. **Xcode capabilities** (target → Signing & Capabilities):
-   - Add **Push Notifications** capability.
-   - Add **Background Modes** capability → check **Remote notifications**.
-3. **Supabase secrets** (already partially set up by a prior session, but confirm/re-set with the new key if it's a fresh one — `supabase secrets set` from repo root, or via Supabase dashboard → Edge Functions → Secrets):
+**Mo: do now on PC (no Mac needed)**
+1. **Apple Developer portal** (developer.apple.com, any browser): create an APNs key (Keys → +, enable "Apple Push Notifications service (APNs)"). Note the Key ID and Team ID (`66M7SCD5GA`). Download the `.p8` file — it can only be downloaded once, so save it somewhere safe.
+2. **Supabase secrets** (Supabase dashboard → Edge Functions → Secrets, or `supabase secrets set` CLI from repo root — both work fine from Windows):
    - `APNS_KEY_ID`, `APNS_TEAM_ID` = `66M7SCD5GA`, `APNS_TOPIC` = `com.seshd.app`
    - `APNS_PRIVATE_KEY` = contents of the `.p8` file
    - `APNS_ENV` = `production` for TestFlight/App Store builds, `sandbox` only for a direct Xcode-run debug build on a device
-4. **Test:** install a build with the new capability, open the app and accept the push permission prompt, then check the `profiles.push_token` column for that user filled in. Send yourself a DM or kudos from a second account — a push should arrive, and tapping it should open the right screen.
-5. If pushes don't arrive: check Supabase Edge Function logs for `send-message-push` / `send-activity-push` — a 401 means `WEBHOOK_SECRET` mismatch (server-side, not yours to fix), anything from `api.push.apple.com` failing means the APNs key/entitlement pairing is wrong.
+   - These may already be partially set from a prior session — re-set them if you generated a fresh key above, since the old key/secret pairing won't match.
+   - Note: Claude can't set these directly — there's no Supabase tool for reading/writing Edge Function secrets, and pasting the `.p8` key into chat would expose it anyway. This step has to happen in the dashboard/CLI on your end.
+
+**Ashley: Mac/Xcode only**
+3. **Xcode capabilities** (target → Signing & Capabilities):
+   - Add **Push Notifications** capability.
+   - Add **Background Modes** capability → check **Remote notifications**.
+4. **Test on a physical device** (simulators can't receive real APNs pushes): install a build with the new capability, open the app and accept the push permission prompt, then check the `profiles.push_token` column for that user filled in. Send yourself a DM or kudos from a second account — a push should arrive, and tapping it should open the right screen.
+5. If pushes don't arrive: check Supabase Edge Function logs for `send-message-push` / `send-activity-push` — a 401 means `WEBHOOK_SECRET` mismatch (server-side, not yours to fix), anything from `api.push.apple.com` failing means the APNs key/entitlement pairing from steps 1–2 is wrong.
 
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.
