@@ -1,4 +1,4 @@
-// v178091716529
+// v178091716531
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7455,12 +7455,21 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
     });
   }
 
-  // Autocomplete suggestions from the exercise DB
-  const exSuggestions = newExName.trim().length >= 1
-    ? [...(store.customExercises || []), ...EXERCISE_DB].filter(e => e.name.toLowerCase().includes(newExName.trim().toLowerCase())).slice(0, 6)
-    : [];
-  // Whether the typed name matches nothing in the library or custom list (offer to create it).
-  const exactMatch = newExName.trim().length >= 1 && [...(store.customExercises || []), ...EXERCISE_DB].some(e => _exNorm(e.name) === _exNorm(newExName));
+  // Autocomplete suggestions from the exercise DB. Memoized so typing doesn't
+  // re-spread + rescan the full ~590-entry library twice on every keystroke.
+  const exLibrary = useMemo(() => [...(store.customExercises || []), ...EXERCISE_DB], [store.customExercises]);
+  const { exSuggestions, exactMatch } = useMemo(() => {
+    const q = newExName.trim().toLowerCase();
+    if (!q) return { exSuggestions: [], exactMatch: false };
+    const qNorm = _exNorm(newExName);
+    const suggestions = [];
+    let exact = false;
+    for (const e of exLibrary) {
+      if (suggestions.length < 6 && e.name.toLowerCase().includes(q)) suggestions.push(e);
+      if (!exact && _exNorm(e.name) === qNorm) exact = true;
+    }
+    return { exSuggestions: suggestions, exactMatch: exact };
+  }, [newExName, exLibrary]);
   const [showCreateEx, setShowCreateEx] = useState(false);
 
   async function handleSave() {
@@ -12597,16 +12606,21 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   }, [token, following.join(",")]);
 
   const blocked = store.blockedUsers || [];
-  const userResults = q.length >= 1
-    ? store.users.filter(u => u.id !== currentUserId && !blocked.includes(u.id) && (
-        u.name?.toLowerCase().includes(q.toLowerCase()) ||
-        u.username?.toLowerCase().includes(q.toLowerCase())
-      )).slice(0, 8)
-    : [];
+  // Memoized so each keystroke doesn't rescan the user list + 590-entry exercise DB
+  // (and re-lowercase the query for every single row).
+  const userResults = useMemo(() => {
+    if (q.length < 1) return [];
+    const ql = q.toLowerCase();
+    return store.users.filter(u => u.id !== currentUserId && !blocked.includes(u.id) && (
+      u.name?.toLowerCase().includes(ql) || u.username?.toLowerCase().includes(ql)
+    )).slice(0, 8);
+  }, [q, store.users, currentUserId, store.blockedUsers]);
 
-  const exerciseResults = q.length >= 2
-    ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 6)
-    : [];
+  const exerciseResults = useMemo(() => {
+    if (q.length < 2) return [];
+    const ql = q.toLowerCase();
+    return EXERCISE_DB.filter(e => e.name.toLowerCase().includes(ql)).slice(0, 6);
+  }, [q]);
 
   const showResults = q.length >= 1 && (userResults.length > 0 || exerciseResults.length > 0);
 
