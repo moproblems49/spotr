@@ -1,4 +1,4 @@
-// v178091716523
+// v178091716524
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16346,10 +16346,33 @@ function AppInner() {
       // Upload image to Storage if present - don't fall back to base64 (too large for DB)
       let imageUrl = null;
       if (postData.imageData && postData.imageData.startsWith("data:")) {
-        const uploaded = await uploadImage(postData.imageData, tok, currentUserId);
+        let uploaded = await uploadImage(postData.imageData, tok, currentUserId);
+        // If upload failed, the access token may be stale (e.g. another tab already rotated
+        // the refresh token) — refresh once and retry before giving up.
+        if (!uploaded || uploaded.startsWith("data:")) {
+          try {
+            const saved = loadSession();
+            if (saved?.refresh_token) {
+              const fresh = await sb.refreshToken(saved.refresh_token);
+              const merged = { ...saved, ...fresh };
+              saveSession(merged);
+              tokenRef.current = merged.access_token || tokenRef.current;
+              setSession(merged);
+              uploaded = await uploadImage(postData.imageData, merged.access_token, currentUserId);
+            }
+          } catch (e) { devWarn("Retry token refresh failed:", e.message); }
+        }
         // Only use if it's a real URL (upload succeeded), not base64
         imageUrl = uploaded && !uploaded.startsWith("data:") ? uploaded : null;
-        if (!imageUrl) toast("Image upload failed — posting without photo", "error");
+        if (!imageUrl) {
+          // A story/wrapped-recap post IS the image — posting without it just shows a
+          // broken placeholder to everyone else, so abort instead of posting it broken.
+          if (postData.type === "story") {
+            toast("Couldn't upload photo — try again", "error");
+            return;
+          }
+          toast("Image upload failed — posting without photo", "error");
+        }
       } else {
         imageUrl = postData.imageData || null;
       }
