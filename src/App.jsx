@@ -1,4 +1,4 @@
-// v178091716521
+// v178091716522
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13513,7 +13513,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     if (!userId) return;
     let alive = true;
     (async () => {
-      const tok = token || loadSession()?.access_token;
+      const tok = tokenRef.current || token || loadSession()?.access_token;
       if (!tok) return;
       try {
         const rows = await sb.query(
@@ -13629,7 +13629,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     }));
     setShowEdit(false);
     // Persist to Supabase
-    const tok = token || loadSession()?.access_token;
+    const tok = tokenRef.current || token || loadSession()?.access_token;
     if (tok) {
       try {
         await sb.query(`profiles?id=eq.${currentUserId}`, {
@@ -13658,7 +13658,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   async function handleAvatar(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const tok = token || loadSession()?.access_token;
+    const tok = tokenRef.current || token || loadSession()?.access_token;
     const r = new FileReader();
     r.onload = async ev => {
       const dataUrl = ev.target.result;
@@ -13707,7 +13707,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     const dataUrl = coverDraft;
     const pos = Math.round(coverPosDraft);
     setCoverDraft(null);
-    const tok = token || loadSession()?.access_token;
+    const tok = tokenRef.current || token || loadSession()?.access_token;
     // Instant local preview
     setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: dataUrl, coverPos: pos } : u) }));
     if (!tok) return;
@@ -14170,7 +14170,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     {["lbs","kg"].map(u => (
                       <button key={u} onClick={async () => {
                         setStore(p => ({ ...p, unit: u }));
-                        const tok = token || loadSession()?.access_token;
+                        const tok = tokenRef.current || token || loadSession()?.access_token;
                         if (tok) {
                           try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ unit: u }) }, tok); }
                           catch (e) { devError("unit save error:", e); }
@@ -14199,7 +14199,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       return (
                         <button key={label} onClick={async () => {
                           setStore(p => ({ ...p, isPublic: val }));
-                          const tok = token || loadSession()?.access_token;
+                          const tok = tokenRef.current || token || loadSession()?.access_token;
                           if (tok) {
                             try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
                             catch (e) { devError("privacy save error:", e); }
@@ -14236,7 +14236,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                             <button key={btnLabel} onClick={async () => {
                               const nextPrefs = { ...prefs, [key]: val };
                               setStore(p => ({ ...p, notificationPrefs: nextPrefs }));
-                              const tok = token || loadSession()?.access_token;
+                              const tok = tokenRef.current || token || loadSession()?.access_token;
                               if (tok) {
                                 try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
                                 catch (e) { devError("notification_prefs save error:", e); }
@@ -14266,7 +14266,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     {[2, 3, 4, 5].map(n => (
                       <button key={n} onClick={async () => {
                         setStore(p => ({ ...p, weeklyTarget: n }));
-                        const tok = token || loadSession()?.access_token;
+                        const tok = tokenRef.current || token || loadSession()?.access_token;
                         if (tok) {
                           try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n }) }, tok); }
                           catch (e) { devError("weekly_target save error:", e); }
@@ -14303,7 +14303,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
                           setStore(p => ({ ...p, customExercises: next }));
                           setCustomExerciseRegistry(next);
-                          const tok = token || loadSession()?.access_token;
+                          const tok = tokenRef.current || token || loadSession()?.access_token;
                           if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
                           haptic("tap");
                         }} style={{ flexShrink:0, background:"none", border:"none", color:"#ef4444", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Remove</button>
@@ -14312,7 +14312,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     <button onClick={() => {
                       setStore(p => ({ ...p, customExercises: [] }));
                       setCustomExerciseRegistry([]);
-                      const tok = token || loadSession()?.access_token;
+                      const tok = tokenRef.current || token || loadSession()?.access_token;
                       if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: [] }) }, tok).catch(()=>{}); } catch(e){} }
                       haptic("success");
                     }} style={{ width:"100%", background:"none", border:"none", padding:"13px 14px", textAlign:"left", fontSize:13, color:"#ef4444", fontWeight:600, cursor:"pointer", fontFamily:F }}>Clear all custom exercises</button>
@@ -15264,7 +15264,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   const [rows, setRows] = useState(null); // null = loading
   const aliveRef = useRef(true);
   const load = useCallback(async () => {
-    const tok = token || loadSession()?.access_token;
+    const tok = tokenRef.current || token || loadSession()?.access_token;
     if (!tok) { setRows([]); return; }
     try {
       const ms = await sb.query(`messages?or=(sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId})&order=created_at.desc&limit=300`, {}, tok);
@@ -15346,7 +15346,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
   const peer = (store.users || []).find(u => u.id === peerId);
-  const tok = token || loadSession()?.access_token;
+  const tok = tokenRef.current || token || loadSession()?.access_token;
 
   async function load() {
     if (!tok) return;
