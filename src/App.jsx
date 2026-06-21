@@ -1,4 +1,4 @@
-// v178091716534
+// v178091716535
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5672,9 +5672,10 @@ function PRModal({ prs, unit, onClose }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // ONBOARDING
 // ═════════════════════════════════════════════════════════════════════════════
-function Onboarding({ C, onComplete }) {
+function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({ goal: null, experience: null, daysPerWeek: null });
+  const [followIds, setFollowIds] = useState(() => new Set());
 
   // Intro screens followed by quick personalization questions.
   const introScreens = [
@@ -5703,23 +5704,33 @@ function Onboarding({ C, onComplete }) {
     ]},
     { key:"profile", q:"A bit about you", profile:true },
   ];
-  // step layout: [intro screens][questions][closing]
-  const totalSteps = introScreens.length + questions.length + 1;
+  // step layout: [intro screens][questions][follow suggestions][closing]
+  const hasFollowStep = suggestedUsers.length > 0;
+  const totalSteps = introScreens.length + questions.length + (hasFollowStep ? 1 : 0) + 1;
   const closingStep = totalSteps - 1;
+  const followStep = hasFollowStep ? closingStep - 1 : -1;
   const inIntro = step < introScreens.length;
   const qIndex = step - introScreens.length;
   const inQuestions = qIndex >= 0 && qIndex < questions.length;
+  const inFollowStep = step === followStep;
   const inClosing = step === closingStep;
 
   function next() {
     if (step < totalSteps - 1) setStep(step + 1);
-    else onComplete(answers);
+    else onComplete(answers, Array.from(followIds));
   }
   function back() { if (step > 0) setStep(step - 1); }
   function pick(key, v) {
     setAnswers(a => ({ ...a, [key]: v }));
     // Auto-advance shortly after a tap for a snappy feel (into the next question or the closing screen)
     setTimeout(() => setStep(s => Math.min(s + 1, closingStep)), 220);
+  }
+  function toggleFollowSuggestion(id) {
+    setFollowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
   const s = inIntro ? introScreens[step] : null;
@@ -5758,6 +5769,32 @@ function Onboarding({ C, onComplete }) {
             <div style={{ fontSize:28, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.6, lineHeight:1.15 }}>You're all set</div>
             <div style={{ fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:8 }}>
               We'll tailor things around {goalLabel}, {dpw} days a week. Start your first workout whenever you're ready — your progress builds from here.
+            </div>
+          </div>
+        ) : inFollowStep ? (
+          <div key="follow" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
+            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.5, lineHeight:1.2 }}>Follow some lifters</div>
+            <div style={{ fontSize:14, color:C.sub, marginBottom:20, lineHeight:1.4 }}>Your feed is more fun with friends in it. You can always follow more people later.</div>
+            <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, overflow:"hidden", maxHeight:340, overflowY:"auto", textAlign:"left" }}>
+              {suggestedUsers.map((u, idx) => {
+                const picked = followIds.has(u.id);
+                return (
+                  <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < suggestedUsers.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <Avatar user={u} size={40} C={C}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.username}</div>
+                      <div style={{ fontSize:12, color:C.sub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name}</div>
+                    </div>
+                    <button onClick={() => toggleFollowSuggestion(u.id)} style={{
+                      padding:"7px 16px", borderRadius:20, fontSize:12, fontWeight:700, flexShrink:0,
+                      background: picked ? "transparent" : C.accent,
+                      color: picked ? C.text : "#fff",
+                      border: `1.5px solid ${picked ? C.border : C.accent}`,
+                      cursor:"pointer", fontFamily:F
+                    }}>{picked ? "Following" : "Follow"}</button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (inQuestions && question.profile) ? (
@@ -5824,8 +5861,16 @@ function Onboarding({ C, onComplete }) {
             Continue
           </button>
         )}
+        {inFollowStep && (
+          <button onClick={next} style={{
+            width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
+            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
+          }}>
+            {followIds.size > 0 ? `Continue (${followIds.size} selected)` : "Skip for now"}
+          </button>
+        )}
         {inClosing && (
-          <button onClick={() => onComplete(answers)} style={{
+          <button onClick={() => onComplete(answers, Array.from(followIds))} style={{
             width:"100%", background:C.accent, color:C.onAccent, border:"none", borderRadius:14, padding:"16px",
             fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
           }}>
@@ -17564,7 +17609,13 @@ function AppInner() {
   const hasAnyHistory = Object.keys(store.history || {}).length > 0;
   const onboardedLocally = (() => { try { return localStorage.getItem("seshd_onboarded") === "1"; } catch { return false; } })();
   if (!store.seenOnboarding && !onboardedLocally && !isGuest && !dataLoading && !hasAnyHistory) {
-    return <Onboarding C={C} onComplete={async (answers) => {
+    // Suggest the most-followed accounts so a new user's feed isn't empty on day one.
+    const blockedForSuggestions = store.blockedUsers || [];
+    const suggestedUsers = (store.users || [])
+      .filter(u => u.id !== currentUserId && !following.includes(u.id) && !blockedForSuggestions.includes(u.id))
+      .sort((a, b) => (b.followers?.length || 0) - (a.followers?.length || 0))
+      .slice(0, 8);
+    return <Onboarding C={C} suggestedUsers={suggestedUsers} onComplete={async (answers, followIds) => {
       const target = answers?.daysPerWeek ? Math.min(7, Math.max(1, parseInt(answers.daysPerWeek))) : 3;
       try { localStorage.setItem("seshd_onboarded", "1"); } catch {}
       const oSex = answers?.sex === "female" ? "female" : answers?.sex === "male" ? "male" : undefined;
@@ -17579,6 +17630,10 @@ function AppInner() {
       if (tok) {
         try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target, ...(answers?.sex ? { strength_sex: answers.sex, body_type: answers.sex } : {}), ...((answers?.age > 0 && answers?.age < 100) ? { age: answers.age } : {}) }) }, tok); }
         catch (e) { devError("onboarding flag save error:", e); }
+      }
+      // Follow whichever suggested accounts the user picked during onboarding.
+      for (const uid_ of (followIds || [])) {
+        try { await handleFollow(uid_); } catch (e) { devError("onboarding auto-follow error:", e); }
       }
     }}/>;
   }
