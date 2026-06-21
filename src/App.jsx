@@ -1,4 +1,4 @@
-// v178091716528
+// v178091716529
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6196,6 +6196,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
   const isOwn = post.userId === currentUserId;
+  // Hide comments from blocked users (the post itself is already filtered upstream
+  // in the feed, but comments need their own pass so blocked people can't show up
+  // under someone else's post you can see).
+  const _blocked = store.blockedUsers || [];
+  const visibleComments = (post.comments || []).filter(c => !_blocked.includes(c.userId));
   // Detect a share code in the caption (IGNITE-XXXX program / WO-XXXX workout). Computed once so
   // the slim code block can render in the post body (above the action bar) while the caption text
   // renders separately below, with the code suffix stripped out.
@@ -6487,7 +6492,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15 Q21 17 19 17 L8 17 L4 21 V17 Q3 17 3 15 V7 Q3 5 5 5 H19 Q21 5 21 7 Z"/>
           </svg>
-          {post.comments.length > 0 && <span style={{ fontSize:12, color:C.sub, fontWeight:600 }}>{post.comments.length}</span>}
+          {visibleComments.length > 0 && <span style={{ fontSize:12, color:C.sub, fontWeight:600 }}>{visibleComments.length}</span>}
         </button>
         <button
           onClick={() => {
@@ -6512,10 +6517,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             {displayCaption}
           </div>
         )}
-        {post.comments.length > 0 && !showCmts && (
+        {visibleComments.length > 0 && !showCmts && (
           <div>
             {(() => {
-              const c = post.comments[0];
+              const c = visibleComments[0];
               const cu = store.users.find(u => u.id === c.userId);
               return (
                 <div style={{ fontSize:13, color:C.text, lineHeight:1.4, marginBottom:3 }}>
@@ -6523,9 +6528,9 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 </div>
               );
             })()}
-            {post.comments.length > 1 && (
+            {visibleComments.length > 1 && (
               <button onClick={() => setShowCmts(true)} style={{ fontSize:12, color:C.muted, background:"none", border:"none", cursor:"pointer", padding:"0 0 2px", fontFamily:F }}>
-                View all {post.comments.length} comments
+                View all {visibleComments.length} comments
               </button>
             )}
           </div>
@@ -6534,7 +6539,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {showCmts && (
         <div style={{ padding:"4px 16px 14px" }}>
-          {post.comments.map(c => {
+          {visibleComments.map(c => {
             const cu = store.users.find(u => u.id === c.userId);
             const isOwn = c.userId === currentUserId;
             const isEditing = editingCommentId === c.id;
@@ -15318,14 +15323,16 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   }, [load]);
 
   const convos = useMemo(() => {
+    const blocked = store.blockedUsers || [];
     const byPeer = new Map();
     for (const m of rows || []) {
       const peer = m.sender_id === currentUserId ? m.recipient_id : m.sender_id;
+      if (blocked.includes(peer)) continue; // hide threads with blocked users
       if (!byPeer.has(peer)) byPeer.set(peer, { peer, last: m, unread: 0 });
       if (m.recipient_id === currentUserId && !m.read_at) byPeer.get(peer).unread++;
     }
     return [...byPeer.values()];
-  }, [rows, currentUserId]);
+  }, [rows, currentUserId, store.blockedUsers]);
 
   return (
     <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
@@ -15385,6 +15392,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
   const peer = (store.users || []).find(u => u.id === peerId);
+  const isBlocked = (store.blockedUsers || []).includes(peerId);
   const tok = token || loadSession()?.access_token;
 
   async function load() {
@@ -15408,7 +15416,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
 
   async function send() {
     const text = draft.trim();
-    if (!text || sending || !tok) return;
+    if (!text || sending || !tok || isBlocked) return;
     setSending(true);
     const tmp = { id: "tmp_" + Date.now(), sender_id: currentUserId, recipient_id: peerId, text, created_at: new Date().toISOString(), _tmp: true };
     setMsgs(m => [...(m || []), tmp]);
@@ -15455,6 +15463,11 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
         })}
         <div ref={bottomRef}/>
       </div>
+      {isBlocked ? (
+        <div style={{ padding:"14px 16px calc(env(safe-area-inset-bottom) + 14px)", borderTop:`1px solid ${C.divider}`, flexShrink:0, background:C.bg, textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.5 }}>
+          You've blocked this user. Unblock them from their profile to message again.
+        </div>
+      ) : (
       <div style={{ display:"flex", gap:8, alignItems:"flex-end", padding:"8px 12px calc(env(safe-area-inset-bottom) + 10px)", borderTop:`1px solid ${C.divider}`, flexShrink:0, background:C.bg }}>
         <input value={draft} onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
@@ -15465,6 +15478,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={draft.trim() ? C.onAccent : "#fff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
+      )}
     </div>
   );
 }
@@ -15772,10 +15786,13 @@ function AppInner() {
     const tok = tokenRef.current || loadSession()?.access_token;
     if (!tok) return;
     try {
-      const rows = await sb.query(`messages?recipient_id=eq.${currentUserId}&read_at=is.null&select=id&limit=100`, {}, tok);
-      if (Array.isArray(rows)) setMsgUnread(rows.length);
+      const rows = await sb.query(`messages?recipient_id=eq.${currentUserId}&read_at=is.null&select=id,sender_id&limit=100`, {}, tok);
+      if (Array.isArray(rows)) {
+        const blocked = store.blockedUsers || [];
+        setMsgUnread(rows.filter(r => !blocked.includes(r.sender_id)).length);
+      }
     } catch (e) { /* table may not exist yet — badge just stays at 0 */ }
-  }, [isGuest, currentUserId]);
+  }, [isGuest, currentUserId, store.blockedUsers]);
   useEffect(() => {
     refreshMsgUnread();
     const t = setInterval(refreshMsgUnread, 30000);
