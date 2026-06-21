@@ -1,4 +1,4 @@
-// v178091716525
+// v178091716533
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6196,6 +6196,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
   const isOwn = post.userId === currentUserId;
+  // Hide comments from blocked users (the post itself is already filtered upstream
+  // in the feed, but comments need their own pass so blocked people can't show up
+  // under someone else's post you can see).
+  const _blocked = store.blockedUsers || [];
+  const visibleComments = (post.comments || []).filter(c => !_blocked.includes(c.userId));
   // Detect a share code in the caption (IGNITE-XXXX program / WO-XXXX workout). Computed once so
   // the slim code block can render in the post body (above the action bar) while the caption text
   // renders separately below, with the code suffix stripped out.
@@ -6267,7 +6272,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             {showMenu && (
               <div style={{ position:"absolute", right:0, top:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden", zIndex:30, minWidth:130, boxShadow:"0 8px 24px rgba(0,0,0,0.3)" }}>
                 <button onClick={() => { setShowMenu(false); onEdit(post); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", borderBottom:`1px solid ${C.divider}`, fontFamily:F }}>Edit</button>
-                <button onClick={() => { setShowMenu(false); onDelete(post.id); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.red, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:F }}>Delete</button>
+                <button onClick={() => { setShowMenu(false); confirmAction({ title:"Delete post?", message:"This can't be undone.", confirmLabel:"Delete", destructive:true, onConfirm:() => onDelete(post.id) }); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.red, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:F }}>Delete</button>
               </div>
             )}
           </div>
@@ -6487,7 +6492,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15 Q21 17 19 17 L8 17 L4 21 V17 Q3 17 3 15 V7 Q3 5 5 5 H19 Q21 5 21 7 Z"/>
           </svg>
-          {post.comments.length > 0 && <span style={{ fontSize:12, color:C.sub, fontWeight:600 }}>{post.comments.length}</span>}
+          {visibleComments.length > 0 && <span style={{ fontSize:12, color:C.sub, fontWeight:600 }}>{visibleComments.length}</span>}
         </button>
         <button
           onClick={() => {
@@ -6512,10 +6517,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             {displayCaption}
           </div>
         )}
-        {post.comments.length > 0 && !showCmts && (
+        {visibleComments.length > 0 && !showCmts && (
           <div>
             {(() => {
-              const c = post.comments[0];
+              const c = visibleComments[0];
               const cu = store.users.find(u => u.id === c.userId);
               return (
                 <div style={{ fontSize:13, color:C.text, lineHeight:1.4, marginBottom:3 }}>
@@ -6523,9 +6528,9 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 </div>
               );
             })()}
-            {post.comments.length > 1 && (
+            {visibleComments.length > 1 && (
               <button onClick={() => setShowCmts(true)} style={{ fontSize:12, color:C.muted, background:"none", border:"none", cursor:"pointer", padding:"0 0 2px", fontFamily:F }}>
-                View all {post.comments.length} comments
+                View all {visibleComments.length} comments
               </button>
             )}
           </div>
@@ -6534,7 +6539,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {showCmts && (
         <div style={{ padding:"4px 16px 14px" }}>
-          {post.comments.map(c => {
+          {visibleComments.map(c => {
             const cu = store.users.find(u => u.id === c.userId);
             const isOwn = c.userId === currentUserId;
             const isEditing = editingCommentId === c.id;
@@ -7450,12 +7455,21 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
     });
   }
 
-  // Autocomplete suggestions from the exercise DB
-  const exSuggestions = newExName.trim().length >= 1
-    ? [...(store.customExercises || []), ...EXERCISE_DB].filter(e => e.name.toLowerCase().includes(newExName.trim().toLowerCase())).slice(0, 6)
-    : [];
-  // Whether the typed name matches nothing in the library or custom list (offer to create it).
-  const exactMatch = newExName.trim().length >= 1 && [...(store.customExercises || []), ...EXERCISE_DB].some(e => _exNorm(e.name) === _exNorm(newExName));
+  // Autocomplete suggestions from the exercise DB. Memoized so typing doesn't
+  // re-spread + rescan the full ~590-entry library twice on every keystroke.
+  const exLibrary = useMemo(() => [...(store.customExercises || []), ...EXERCISE_DB], [store.customExercises]);
+  const { exSuggestions, exactMatch } = useMemo(() => {
+    const q = newExName.trim().toLowerCase();
+    if (!q) return { exSuggestions: [], exactMatch: false };
+    const qNorm = _exNorm(newExName);
+    const suggestions = [];
+    let exact = false;
+    for (const e of exLibrary) {
+      if (suggestions.length < 6 && e.name.toLowerCase().includes(q)) suggestions.push(e);
+      if (!exact && _exNorm(e.name) === qNorm) exact = true;
+    }
+    return { exSuggestions: suggestions, exactMatch: exact };
+  }, [newExName, exLibrary]);
   const [showCreateEx, setShowCreateEx] = useState(false);
 
   async function handleSave() {
@@ -8038,6 +8052,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [subTab, setSubTab] = useState("workout");
   const [histQuery, setHistQuery] = useState("");
   const [histLimit, setHistLimit] = useState(30); // cap mounted date-groups; "Show more" reveals older ones
+  // Memoized so it only recomputes on history/query change — this screen also hosts the
+  // 1s workout timer tick, which would otherwise re-run this filter every second while idle.
+  const historyMatched = useMemo(() => {
+    const q = histQuery.trim().toLowerCase();
+    const all = Object.entries(store.history || {}).sort(([a], [b]) => b.localeCompare(a));
+    if (!q) return all;
+    return all
+      .map(([date, sessions]) => [date, Object.fromEntries(Object.entries(sessions).filter(([, s]) =>
+        (s.dayName || "").toLowerCase().includes(q) ||
+        (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
+      ))])
+      .filter(([, sessions]) => Object.keys(sessions).length);
+  }, [store.history, histQuery]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [prefilledCode, setPrefilledCode] = useState(null);
   const [showAICoach, setShowAICoach] = useState(false);
@@ -10378,17 +10405,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 }}>Go to workouts</button>
               </div>
             )}
-            {(() => {
-              const q = histQuery.trim().toLowerCase();
-              const all = Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a));
-              const matched = !q ? all : all
-                .map(([date, sessions]) => [date, Object.fromEntries(Object.entries(sessions).filter(([, s]) =>
-                  (s.dayName || "").toLowerCase().includes(q) ||
-                  (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
-                ))])
-                .filter(([, sessions]) => Object.keys(sessions).length);
-              return matched.slice(0, histLimit);
-            })().map(([date, sessions]) => {
+            {historyMatched.slice(0, histLimit).map(([date, sessions]) => {
               return (
               <div key={date} data-history-date={date} style={{ marginBottom:16, scrollMarginTop:60 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
@@ -10497,17 +10514,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })}
               </div>
             );})}
-            {(() => {
-              const q = histQuery.trim().toLowerCase();
-              const all = Object.entries(store.history || {});
-              const matchCount = !q ? all.length : all.filter(([, sessions]) =>
-                Object.entries(sessions).some(([, s]) =>
-                  (s.dayName || "").toLowerCase().includes(q) ||
-                  (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
-                )
-              ).length;
-              return matchCount > histLimit;
-            })() && (
+            {historyMatched.length > histLimit && (
               <button onClick={() => setHistLimit(n => n + 30)} style={{
                 display:"block", width:"100%", marginTop:4, padding:"12px",
                 background:"none", border:`1px solid ${C.border}`, borderRadius:10,
@@ -11993,6 +12000,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const me = store.users.find(u => u.id === currentUserId);
 
   useEffect(() => {
+    // Guard against a stale group's fetch landing after the user switched groups.
+    // GroupDetail is reused (no key) across group switches, so without this a slow
+    // fetch for the previous group can overwrite the new group's freshly-loaded feed.
+    let cancelled = false;
     async function load() {
       setLoading(true);
       try {
@@ -12000,8 +12011,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
           `${SUPABASE_URL}/rest/v1/group_posts?group_id=eq.${g.id}&select=*&order=created_at.desc`,
           { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` } }
         );
+        if (cancelled) return;
         if (res.ok) {
           const raw = (await res.json()) || [];
+          if (cancelled) return;
           // Merge persisted self-reactions (RLS may block self-PATCH on own group posts)
           // Handle both shapes: { selfReaction: emoji } (new) and { kudos: [userId] } (old, treat as 🔥)
           const persisted = store.historyInteractions || {};
@@ -12021,9 +12034,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
           }));
         }
       } catch {}
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
     if (token) load(); else setLoading(false);
+    return () => { cancelled = true; };
   }, [g.id, token]);
 
   async function sendPost() {
@@ -12044,8 +12058,12 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
         const newPost = Array.isArray(data) ? data[0] : data;
         if (newPost) setPosts(p => [{ ...newPost, _localImage: img }, ...p]);
         setCaption(""); setImg(null);
+      } else {
+        toast("Couldn't post — try again", "error");
       }
-    } catch {}
+    } catch {
+      toast("Couldn't post — try again", "error");
+    }
     setPosting(false);
   }
 
@@ -12288,7 +12306,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
               ))}
             </>
           )}
-          <button onClick={onLeave} style={{ width:"100%", background:"none", color:C.red, border:"none", padding:"14px", fontSize:13, cursor:"pointer", marginTop:16, fontFamily:F }}>Leave Group</button>
+          <button onClick={() => confirmAction({ title:`Leave ${g.name}?`, message:"You'll lose access to this group's feed and will need to be re-invited to rejoin.", confirmLabel:"Leave", destructive:true, onConfirm:onLeave })} style={{ width:"100%", background:"none", color:C.red, border:"none", padding:"14px", fontSize:13, cursor:"pointer", marginTop:16, fontFamily:F }}>Leave Group</button>
         </div>
       )}
 
@@ -12581,16 +12599,21 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   }, [token, following.join(",")]);
 
   const blocked = store.blockedUsers || [];
-  const userResults = q.length >= 1
-    ? store.users.filter(u => u.id !== currentUserId && !blocked.includes(u.id) && (
-        u.name?.toLowerCase().includes(q.toLowerCase()) ||
-        u.username?.toLowerCase().includes(q.toLowerCase())
-      )).slice(0, 8)
-    : [];
+  // Memoized so each keystroke doesn't rescan the user list + 590-entry exercise DB
+  // (and re-lowercase the query for every single row).
+  const userResults = useMemo(() => {
+    if (q.length < 1) return [];
+    const ql = q.toLowerCase();
+    return store.users.filter(u => u.id !== currentUserId && !blocked.includes(u.id) && (
+      u.name?.toLowerCase().includes(ql) || u.username?.toLowerCase().includes(ql)
+    )).slice(0, 8);
+  }, [q, store.users, currentUserId, store.blockedUsers]);
 
-  const exerciseResults = q.length >= 2
-    ? EXERCISE_DB.filter(e => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 6)
-    : [];
+  const exerciseResults = useMemo(() => {
+    if (q.length < 2) return [];
+    const ql = q.toLowerCase();
+    return EXERCISE_DB.filter(e => e.name.toLowerCase().includes(ql)).slice(0, 6);
+  }, [q]);
 
   const showResults = q.length >= 1 && (userResults.length > 0 || exerciseResults.length > 0);
 
@@ -15307,14 +15330,16 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   }, [load]);
 
   const convos = useMemo(() => {
+    const blocked = store.blockedUsers || [];
     const byPeer = new Map();
     for (const m of rows || []) {
       const peer = m.sender_id === currentUserId ? m.recipient_id : m.sender_id;
+      if (blocked.includes(peer)) continue; // hide threads with blocked users
       if (!byPeer.has(peer)) byPeer.set(peer, { peer, last: m, unread: 0 });
       if (m.recipient_id === currentUserId && !m.read_at) byPeer.get(peer).unread++;
     }
     return [...byPeer.values()];
-  }, [rows, currentUserId]);
+  }, [rows, currentUserId, store.blockedUsers]);
 
   return (
     <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
@@ -15374,6 +15399,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
   const peer = (store.users || []).find(u => u.id === peerId);
+  const isBlocked = (store.blockedUsers || []).includes(peerId);
   const tok = token || loadSession()?.access_token;
 
   async function load() {
@@ -15397,7 +15423,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
 
   async function send() {
     const text = draft.trim();
-    if (!text || sending || !tok) return;
+    if (!text || sending || !tok || isBlocked) return;
     setSending(true);
     const tmp = { id: "tmp_" + Date.now(), sender_id: currentUserId, recipient_id: peerId, text, created_at: new Date().toISOString(), _tmp: true };
     setMsgs(m => [...(m || []), tmp]);
@@ -15444,6 +15470,11 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
         })}
         <div ref={bottomRef}/>
       </div>
+      {isBlocked ? (
+        <div style={{ padding:"14px 16px calc(env(safe-area-inset-bottom) + 14px)", borderTop:`1px solid ${C.divider}`, flexShrink:0, background:C.bg, textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.5 }}>
+          You've blocked this user. Unblock them from their profile to message again.
+        </div>
+      ) : (
       <div style={{ display:"flex", gap:8, alignItems:"flex-end", padding:"8px 12px calc(env(safe-area-inset-bottom) + 10px)", borderTop:`1px solid ${C.divider}`, flexShrink:0, background:C.bg }}>
         <input value={draft} onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
@@ -15454,6 +15485,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={draft.trim() ? C.onAccent : "#fff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
+      )}
     </div>
   );
 }
@@ -15647,13 +15679,16 @@ function AppInner() {
     } catch (e) {}
     return () => { try { removeUrlListener?.remove?.(); } catch (e) {} };
   }, []);
-  // Push notifications: register and store the APNs token on the profile. Sending
-  // (messages/kudos) comes later via an edge function — tokens are collected from day one.
+  // Push notifications: register and store the APNs token on the profile, and route a
+  // tapped notification to the right screen. The edge functions (send-activity-push,
+  // send-message-push, send-streak-push) send a payload with a `type` field plus
+  // ids (senderId / postId / followerId) — see those functions for the exact shape.
   useEffect(() => {
     const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
     const PN = Cap?.isNativePlatform?.() ? Cap.Plugins?.PushNotifications : null;
     if (!PN || !currentUserId || isGuest) return;
     let regListener = null;
+    let actionListener = null;
     let cancelled = false;
     const registeredForUserId = currentUserId;
     (async () => {
@@ -15675,10 +15710,47 @@ function AppInner() {
         // below couldn't remove it — remove it ourselves here instead.
         if (cancelled) { try { listener?.remove?.(); } catch (e) {} return; }
         regListener = listener;
+
+        // Tap-to-navigate: when the user taps a notification (incl. from a cold start,
+        // which Capacitor replays once a listener is attached), route by payload type.
+        const aListener = await PN.addListener("pushNotificationActionPerformed", (action) => {
+          try {
+            if (registeredForUserId !== currentUserIdRef.current) return;
+            const data = action?.notification?.data || {};
+            switch (data.type) {
+              case "dm":
+                if (data.senderId) setChatPeerId(data.senderId);
+                break;
+              case "follows":
+                if (data.followerId) setProfileUserId(data.followerId);
+                break;
+              case "kudos":
+              case "comments":
+                // No single-post route exists; the Activity tab lists these. The
+                // tab-change effect marks them seen, clearing the badge.
+                setTab("activity");
+                break;
+              case "streak":
+                setTab("tracker");
+                break;
+              default:
+                break;
+            }
+            // Clear the app icon badge after the user engages with a notification.
+            try { PN.removeAllDeliveredNotifications?.(); } catch (e) {}
+          } catch (e) {}
+        });
+        if (cancelled) { try { aListener?.remove?.(); } catch (e) {} }
+        else actionListener = aListener;
+
         await PN.register();
       } catch (e) {}
     })();
-    return () => { cancelled = true; try { regListener?.remove?.(); } catch (e) {} };
+    return () => {
+      cancelled = true;
+      try { regListener?.remove?.(); } catch (e) {}
+      try { actionListener?.remove?.(); } catch (e) {}
+    };
   }, [currentUserId, isGuest]);
   // Match the iOS status bar / browser chrome to the app background — big "native" feel
   // win for the PWA and the Capacitor shell, costs nothing. (Reads THEMES directly:
@@ -15761,10 +15833,13 @@ function AppInner() {
     const tok = tokenRef.current || loadSession()?.access_token;
     if (!tok) return;
     try {
-      const rows = await sb.query(`messages?recipient_id=eq.${currentUserId}&read_at=is.null&select=id&limit=100`, {}, tok);
-      if (Array.isArray(rows)) setMsgUnread(rows.length);
+      const rows = await sb.query(`messages?recipient_id=eq.${currentUserId}&read_at=is.null&select=id,sender_id&limit=100`, {}, tok);
+      if (Array.isArray(rows)) {
+        const blocked = store.blockedUsers || [];
+        setMsgUnread(rows.filter(r => !blocked.includes(r.sender_id)).length);
+      }
     } catch (e) { /* table may not exist yet — badge just stays at 0 */ }
-  }, [isGuest, currentUserId]);
+  }, [isGuest, currentUserId, store.blockedUsers]);
   useEffect(() => {
     refreshMsgUnread();
     const t = setInterval(refreshMsgUnread, 30000);
