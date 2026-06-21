@@ -1,4 +1,4 @@
-// v178091716526
+// v178091716527
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12051,8 +12051,12 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
         const newPost = Array.isArray(data) ? data[0] : data;
         if (newPost) setPosts(p => [{ ...newPost, _localImage: img }, ...p]);
         setCaption(""); setImg(null);
+      } else {
+        toast("Couldn't post — try again", "error");
       }
-    } catch {}
+    } catch {
+      toast("Couldn't post — try again", "error");
+    }
     setPosting(false);
   }
 
