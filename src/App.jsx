@@ -1,4 +1,4 @@
-// v178091716518
+// v178091716519
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11950,6 +11950,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const [editingPost, setEditingPost] = useState(null);  // post id being caption-edited
   const [editText, setEditText] = useState("");
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
+  const workoutPickerRecents = useMemo(() => {
+    if (!showWorkoutPicker) return [];
+    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([d,s])=>Object.values(s).map(sess=>({...sess,date:d}))).slice(0,10);
+  }, [showWorkoutPicker, store.history]);
   const [loading, setLoading] = useState(true);
   const [caption, setCaption] = useState("");
   const [img, setImg] = useState(null);
@@ -12259,7 +12263,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
       )}
 
       {showWorkoutPicker && (() => {
-        const recents = Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([d,s])=>Object.values(s).map(sess=>({...sess,date:d}))).slice(0,10);
+        const recents = workoutPickerRecents;
         return (
           <div onClick={() => setShowWorkoutPicker(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
             <div onClick={e=>e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden" }}>
@@ -15556,6 +15560,13 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   const [showNewPost, setShowNewPost] = useState(false);
+  const newPostRecentWorkouts = useMemo(() => {
+    if (!showNewPost) return [];
+    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.values(sessions).map(s=>({...s,_date:date}))).filter(sess=>{
+      const hasDone=(sess.exercises||[]).some(ex=>(ex.sets||[]).some(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0))));
+      return hasDone;
+    }).slice(0,10);
+  }, [showNewPost, store.history]);
   const [newPostKind, setNewPostKind] = useState("photo");
   const [profileUserId, setProfileUserId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
@@ -18257,10 +18268,7 @@ function AppInner() {
       </div>
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
-        recentWorkouts={Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.values(sessions).map(s=>({...s,_date:date}))).filter(sess=>{
-          const hasDone=(sess.exercises||[]).some(ex=>(ex.sets||[]).some(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0))));
-          return hasDone;
-        }).slice(0,10)}
+        recentWorkouts={newPostRecentWorkouts}
       />}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
       {storyIndex !== null && (() => {
