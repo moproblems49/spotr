@@ -1,4 +1,4 @@
-// v178091716531
+// v178091716532
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8052,6 +8052,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [subTab, setSubTab] = useState("workout");
   const [histQuery, setHistQuery] = useState("");
   const [histLimit, setHistLimit] = useState(30); // cap mounted date-groups; "Show more" reveals older ones
+  // Memoized so it only recomputes on history/query change — this screen also hosts the
+  // 1s workout timer tick, which would otherwise re-run this filter every second while idle.
+  const historyMatched = useMemo(() => {
+    const q = histQuery.trim().toLowerCase();
+    const all = Object.entries(store.history || {}).sort(([a], [b]) => b.localeCompare(a));
+    if (!q) return all;
+    return all
+      .map(([date, sessions]) => [date, Object.fromEntries(Object.entries(sessions).filter(([, s]) =>
+        (s.dayName || "").toLowerCase().includes(q) ||
+        (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
+      ))])
+      .filter(([, sessions]) => Object.keys(sessions).length);
+  }, [store.history, histQuery]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [prefilledCode, setPrefilledCode] = useState(null);
   const [showAICoach, setShowAICoach] = useState(false);
@@ -10392,17 +10405,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 }}>Go to workouts</button>
               </div>
             )}
-            {(() => {
-              const q = histQuery.trim().toLowerCase();
-              const all = Object.entries(store.history || {}).sort(([a],[b]) => b.localeCompare(a));
-              const matched = !q ? all : all
-                .map(([date, sessions]) => [date, Object.fromEntries(Object.entries(sessions).filter(([, s]) =>
-                  (s.dayName || "").toLowerCase().includes(q) ||
-                  (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
-                ))])
-                .filter(([, sessions]) => Object.keys(sessions).length);
-              return matched.slice(0, histLimit);
-            })().map(([date, sessions]) => {
+            {historyMatched.slice(0, histLimit).map(([date, sessions]) => {
               return (
               <div key={date} data-history-date={date} style={{ marginBottom:16, scrollMarginTop:60 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, marginBottom:8, letterSpacing:0.5 }}>
@@ -10511,17 +10514,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })}
               </div>
             );})}
-            {(() => {
-              const q = histQuery.trim().toLowerCase();
-              const all = Object.entries(store.history || {});
-              const matchCount = !q ? all.length : all.filter(([, sessions]) =>
-                Object.entries(sessions).some(([, s]) =>
-                  (s.dayName || "").toLowerCase().includes(q) ||
-                  (s.exercises || []).some(ex => (ex.name || "").toLowerCase().includes(q))
-                )
-              ).length;
-              return matchCount > histLimit;
-            })() && (
+            {historyMatched.length > histLimit && (
               <button onClick={() => setHistLimit(n => n + 30)} style={{
                 display:"block", width:"100%", marginTop:4, padding:"12px",
                 background:"none", border:`1px solid ${C.border}`, borderRadius:10,
