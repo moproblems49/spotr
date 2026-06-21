@@ -1,4 +1,4 @@
-// v178091716535
+// v178091716536
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -113,6 +113,7 @@ async function hydrateFromNative() {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const IS_DEV = !!(import.meta.env && import.meta.env.DEV); // true in `vite dev`, false in production builds
+const NAV_CLEARANCE = "calc(86px + env(safe-area-inset-bottom))"; // bottom-padding so scrollable content clears the floating bottom nav overlay
 const devWarn = (...args) => { if (IS_DEV) console.warn(...args); };
 const devError = (...args) => { if (IS_DEV) console.error(...args); };
 
@@ -3809,6 +3810,7 @@ function PullToRefresh({ onRefresh, C, children }) {
         style={{
           flex:1,
           overflowY:"auto",
+          paddingBottom:NAV_CLEARANCE, // clears the floating bottom nav overlay
           transform:`translateY(${visiblePull}px)`,
           transition: trackingRef.current ? "none" : "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           WebkitOverflowScrolling:"touch",
@@ -9108,7 +9110,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Exercises */}
 
-        <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
+        <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
           {session.exercises.length > 1 && (
             <div style={{ padding:"10px 14px 0", display:"flex", justifyContent:"flex-end" }}>
               <button onClick={() => setReorderMode(true)} style={{
@@ -9914,7 +9916,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   (store.customExercises || []).forEach(e => e.name && allEx.add(e.name));
 
   return (
-    <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:viewingProgram||showBuilder?0:20, position:"relative" }}>
+    <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:viewingProgram||showBuilder?0:NAV_CLEARANCE, position:"relative" }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
         {[["workout","Workout"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
@@ -12169,7 +12171,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             </div>
           </div>
           {/* Feed */}
-          <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+          <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
             {loading && <div style={{ padding:40 }}><Spinner C={C}/></div>}
             {!loading && posts.length === 0 && (
               <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
@@ -12517,7 +12519,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
         {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Groups</div>
@@ -12686,7 +12688,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:24 }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
       {/* Search bar */}
       <div style={{ padding:"14px 16px 10px", position:"relative" }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:30, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
@@ -13136,7 +13138,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
   }, [token, following.join(",")]);
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
         {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>&#8249;</button>}
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Friends Activity</div>
@@ -17143,10 +17145,35 @@ function AppInner() {
   const swipeMoveRef = useRef(null);
   const swipeNativeMove = useRef((e) => { if (swipeMoveRef.current) swipeMoveRef.current(e); });
   const swipeElRef = useRef(null);
+
+  // ── Bottom nav scroll-shrink ──────────────────────────────────────
+  // Scrolling down shrinks the floating nav pill (Instagram-style); scrolling up (or being
+  // near the top) restores it. Each tab has its own independent overflow:auto container, so
+  // rather than wiring a listener to every one of them, a single capture-phase "scroll"
+  // listener on the swipe-container root catches them all — scroll events don't bubble, but
+  // capture-phase listeners on an ancestor still fire for descendant scroll targets.
+  const navLastScrollTop = useRef(0);
+  const [navShrunk, setNavShrunk] = useState(false);
+  const navNativeScroll = useRef((e) => {
+    const top = e.target?.scrollTop;
+    if (typeof top !== "number") return;
+    const delta = top - navLastScrollTop.current;
+    if (delta > 4 && top > 40) setNavShrunk(true);
+    else if (delta < -4 || top <= 40) setNavShrunk(false);
+    navLastScrollTop.current = top;
+  });
+  useEffect(() => { navLastScrollTop.current = 0; setNavShrunk(false); }, [tab]);
+
   const setSwipeContainer = useCallback((node) => {
-    if (swipeElRef.current) swipeElRef.current.removeEventListener("touchmove", swipeNativeMove.current);
+    if (swipeElRef.current) {
+      swipeElRef.current.removeEventListener("touchmove", swipeNativeMove.current);
+      swipeElRef.current.removeEventListener("scroll", navNativeScroll.current, true);
+    }
     swipeElRef.current = node;
-    if (node) node.addEventListener("touchmove", swipeNativeMove.current, { passive: false });
+    if (node) {
+      node.addEventListener("touchmove", swipeNativeMove.current, { passive: false });
+      node.addEventListener("scroll", navNativeScroll.current, { capture: true, passive: true });
+    }
   }, []);
 
   // Persist non-Supabase store changes to localStorage as fallback
@@ -17985,7 +18012,7 @@ function AppInner() {
                 touchStartY.current = 0;
               }
             }}
-            style={{ overflowY:"auto", flex:1, position:"relative" }}
+            style={{ overflowY:"auto", flex:1, position:"relative", paddingBottom:NAV_CLEARANCE }}
           >
             <div style={{
               position:"absolute", top:0, left:0, right:0,
@@ -18232,7 +18259,7 @@ function AppInner() {
           // main feed; piling them into Activity made the badge noisy with many follows.
           events.sort((a,b) => b.ts - a.ts);
           return (
-            <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+            <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
               <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
                 <button onClick={() => { handleRefresh(); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px" }}>
@@ -18385,10 +18412,12 @@ function AppInner() {
         );
       })()}
 
-      {/* BOTTOM NAV — floating "liquid glass" pill: blurred translucent capsule with margin
-          on all sides (rather than an edge-to-edge bar), echoing the iOS 26 Liquid Glass material. */}
+      {/* BOTTOM NAV — floating "liquid glass" pill, positioned as an absolute overlay (not a
+          flex sibling) so tab content actually scrolls underneath it — that's what gives
+          backdrop-filter real content to blur, instead of just a flat background color.
+          Shrinks/fades slightly on scroll-down, restores on scroll-up (see navShrunk above). */}
       <div style={{
-        background:C.bg, flexShrink:0,
+        position:"absolute", left:0, right:0, bottom:0, zIndex:50, pointerEvents:"none",
         paddingTop:8, paddingBottom:"calc(8px + env(safe-area-inset-bottom))",
         paddingLeft:"calc(14px + env(safe-area-inset-left))",
         paddingRight:"calc(14px + env(safe-area-inset-right))",
@@ -18401,7 +18430,10 @@ function AppInner() {
         boxShadow: C.isDark
           ? "0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)"
           : "0 8px 24px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.7)",
-        display:"flex", overflow:"hidden",
+        display:"flex", overflow:"hidden", pointerEvents:"auto",
+        transform: navShrunk ? "scale(0.9) translateY(4px)" : "scale(1) translateY(0)",
+        opacity: navShrunk ? 0.88 : 1,
+        transition: "transform 0.25s cubic-bezier(0.34,1.2,0.4,1), opacity 0.25s",
       }}>
         {[
           {
