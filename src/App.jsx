@@ -1,4 +1,4 @@
-// v178091716532
+// v178091716533
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15679,13 +15679,16 @@ function AppInner() {
     } catch (e) {}
     return () => { try { removeUrlListener?.remove?.(); } catch (e) {} };
   }, []);
-  // Push notifications: register and store the APNs token on the profile. Sending
-  // (messages/kudos) comes later via an edge function — tokens are collected from day one.
+  // Push notifications: register and store the APNs token on the profile, and route a
+  // tapped notification to the right screen. The edge functions (send-activity-push,
+  // send-message-push, send-streak-push) send a payload with a `type` field plus
+  // ids (senderId / postId / followerId) — see those functions for the exact shape.
   useEffect(() => {
     const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
     const PN = Cap?.isNativePlatform?.() ? Cap.Plugins?.PushNotifications : null;
     if (!PN || !currentUserId || isGuest) return;
     let regListener = null;
+    let actionListener = null;
     let cancelled = false;
     const registeredForUserId = currentUserId;
     (async () => {
@@ -15707,10 +15710,47 @@ function AppInner() {
         // below couldn't remove it — remove it ourselves here instead.
         if (cancelled) { try { listener?.remove?.(); } catch (e) {} return; }
         regListener = listener;
+
+        // Tap-to-navigate: when the user taps a notification (incl. from a cold start,
+        // which Capacitor replays once a listener is attached), route by payload type.
+        const aListener = await PN.addListener("pushNotificationActionPerformed", (action) => {
+          try {
+            if (registeredForUserId !== currentUserIdRef.current) return;
+            const data = action?.notification?.data || {};
+            switch (data.type) {
+              case "dm":
+                if (data.senderId) setChatPeerId(data.senderId);
+                break;
+              case "follows":
+                if (data.followerId) setProfileUserId(data.followerId);
+                break;
+              case "kudos":
+              case "comments":
+                // No single-post route exists; the Activity tab lists these. The
+                // tab-change effect marks them seen, clearing the badge.
+                setTab("activity");
+                break;
+              case "streak":
+                setTab("tracker");
+                break;
+              default:
+                break;
+            }
+            // Clear the app icon badge after the user engages with a notification.
+            try { PN.removeAllDeliveredNotifications?.(); } catch (e) {}
+          } catch (e) {}
+        });
+        if (cancelled) { try { aListener?.remove?.(); } catch (e) {} }
+        else actionListener = aListener;
+
         await PN.register();
       } catch (e) {}
     })();
-    return () => { cancelled = true; try { regListener?.remove?.(); } catch (e) {} };
+    return () => {
+      cancelled = true;
+      try { regListener?.remove?.(); } catch (e) {}
+      try { actionListener?.remove?.(); } catch (e) {}
+    };
   }, [currentUserId, isGuest]);
   // Match the iOS status bar / browser chrome to the app background — big "native" feel
   // win for the PWA and the Capacitor shell, costs nothing. (Reads THEMES directly:
