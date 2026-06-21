@@ -1,4 +1,4 @@
-// v178091716525
+// v178091716526
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11993,6 +11993,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const me = store.users.find(u => u.id === currentUserId);
 
   useEffect(() => {
+    // Guard against a stale group's fetch landing after the user switched groups.
+    // GroupDetail is reused (no key) across group switches, so without this a slow
+    // fetch for the previous group can overwrite the new group's freshly-loaded feed.
+    let cancelled = false;
     async function load() {
       setLoading(true);
       try {
@@ -12000,8 +12004,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
           `${SUPABASE_URL}/rest/v1/group_posts?group_id=eq.${g.id}&select=*&order=created_at.desc`,
           { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` } }
         );
+        if (cancelled) return;
         if (res.ok) {
           const raw = (await res.json()) || [];
+          if (cancelled) return;
           // Merge persisted self-reactions (RLS may block self-PATCH on own group posts)
           // Handle both shapes: { selfReaction: emoji } (new) and { kudos: [userId] } (old, treat as 🔥)
           const persisted = store.historyInteractions || {};
@@ -12021,9 +12027,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
           }));
         }
       } catch {}
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
     if (token) load(); else setLoading(false);
+    return () => { cancelled = true; };
   }, [g.id, token]);
 
   async function sendPost() {
