@@ -1,4 +1,4 @@
-// v178091716527
+// v178091716528
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6267,7 +6267,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             {showMenu && (
               <div style={{ position:"absolute", right:0, top:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden", zIndex:30, minWidth:130, boxShadow:"0 8px 24px rgba(0,0,0,0.3)" }}>
                 <button onClick={() => { setShowMenu(false); onEdit(post); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", borderBottom:`1px solid ${C.divider}`, fontFamily:F }}>Edit</button>
-                <button onClick={() => { setShowMenu(false); onDelete(post.id); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.red, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:F }}>Delete</button>
+                <button onClick={() => { setShowMenu(false); confirmAction({ title:"Delete post?", message:"This can't be undone.", confirmLabel:"Delete", destructive:true, onConfirm:() => onDelete(post.id) }); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.red, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:F }}>Delete</button>
               </div>
             )}
           </div>
@@ -12299,7 +12299,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
               ))}
             </>
           )}
-          <button onClick={onLeave} style={{ width:"100%", background:"none", color:C.red, border:"none", padding:"14px", fontSize:13, cursor:"pointer", marginTop:16, fontFamily:F }}>Leave Group</button>
+          <button onClick={() => confirmAction({ title:`Leave ${g.name}?`, message:"You'll lose access to this group's feed and will need to be re-invited to rejoin.", confirmLabel:"Leave", destructive:true, onConfirm:onLeave })} style={{ width:"100%", background:"none", color:C.red, border:"none", padding:"14px", fontSize:13, cursor:"pointer", marginTop:16, fontFamily:F }}>Leave Group</button>
         </div>
       )}
 
