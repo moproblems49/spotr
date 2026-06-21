@@ -1,4 +1,4 @@
-// v178091716539
+// v178091716540
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18431,13 +18431,15 @@ function AppInner() {
         paddingRight:"calc(14px + env(safe-area-inset-right))",
       }}>
       <div style={{
-        background:C.isDark ? "rgba(40,40,46,0.55)" : "rgba(255,255,255,0.55)",
-        backdropFilter:"blur(24px) saturate(1.6)", WebkitBackdropFilter:"blur(24px) saturate(1.6)",
-        border:`1px solid ${C.isDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.6)"}`,
+        background: C.isDark
+          ? "linear-gradient(165deg, rgba(70,70,78,0.65) 0%, rgba(40,40,46,0.32) 45%, rgba(55,55,62,0.5) 100%)"
+          : "linear-gradient(165deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.32) 45%, rgba(255,255,255,0.42) 100%)",
+        backdropFilter:"blur(28px) saturate(1.8)", WebkitBackdropFilter:"blur(28px) saturate(1.8)",
+        border:`1px solid ${C.isDark ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.85)"}`,
         borderRadius:26,
         boxShadow: C.isDark
-          ? "0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)"
-          : "0 8px 24px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.7)",
+          ? "0 10px 30px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.14), inset 0 -6px 10px rgba(0,0,0,0.2)"
+          : "0 10px 30px rgba(0,0,0,0.16), inset 0 1px 1px rgba(255,255,255,0.9), inset 0 -6px 10px rgba(0,0,0,0.03)",
         display:"flex", overflow:"hidden", pointerEvents:"auto",
         transform: navShrunk ? "scale(0.9) translateY(4px)" : "scale(1) translateY(0)",
         opacity: navShrunk ? 0.88 : 1,
