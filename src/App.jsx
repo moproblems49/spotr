@@ -1,4 +1,4 @@
-// v178091716536
+// v178091716539
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -186,6 +186,10 @@ const sb = (() => {
       headers: authHeaders(token),
       body: JSON.stringify(params),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || res.statusText);
+    }
     const text = await res.text();
     return text ? JSON.parse(text) : null;
   }
@@ -3731,7 +3735,7 @@ function Skeleton({ width = "100%", height = 12, radius = 6, C, style }) {
 
 // PullToRefresh — wraps a scrollable area and triggers `onRefresh` when user
 // pulls past the threshold while at the top. iOS-style spring animation.
-function PullToRefresh({ onRefresh, C, children }) {
+function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
   const [pull, setPull] = useState(0); // current pull distance in pixels
   const [refreshing, setRefreshing] = useState(false);
   const scrollRef = useRef(null);
@@ -3810,7 +3814,7 @@ function PullToRefresh({ onRefresh, C, children }) {
         style={{
           flex:1,
           overflowY:"auto",
-          paddingBottom:NAV_CLEARANCE, // clears the floating bottom nav overlay
+          paddingBottom: navClearance ? NAV_CLEARANCE : 0, // clears the floating bottom nav overlay (screens without the nav can opt out)
           transform:`translateY(${visiblePull}px)`,
           transition: trackingRef.current ? "none" : "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           WebkitOverflowScrolling:"touch",
@@ -6785,9 +6789,11 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               // Generate code, save to DB
               try {
                 let code = generateShareCode("IGNITE");
-                // Try a few times if collision
+                // Try a few times if collision. Checked via the redeem RPC (not a direct table
+                // SELECT) since a collision is, by definition, someone else's row — RLS only
+                // lets you SELECT your own programs, but the RPC can see any row by exact code.
                 for (let i = 0; i < 5; i++) {
-                  const existing = await sb.query(`programs?share_code=eq.${code}&select=id`, {}, token).catch(()=>[]);
+                  const existing = await sb.rpc("redeem_program_by_code", { p_code: code }, token).catch(()=>[]);
                   if (!existing || existing.length === 0) break;
                   code = generateShareCode("IGNITE");
                 }
@@ -7057,14 +7063,13 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
     if (!c || c.length < 3) { setError("Enter a code"); return; }
     setLoading(true);
     try {
-      // Workout codes start with WO-
+      // Workout codes start with WO-. Looked up via RPC (not a direct table SELECT) since the
+      // code itself is the bearer credential — RLS can't see the query filter, only the row, so
+      // a blanket "anyone can read" policy would let any authenticated user bulk-list every
+      // shared code instead of just the one they were given.
       if (c.startsWith("WO-")) {
-        const rows = await sb.query(
-          `workout_codes?code=eq.${encodeURIComponent(c)}&select=code,day_name,exercises`,
-          {},
-          token
-        );
-        if (!rows || rows.length === 0) {
+        const rows = await sb.rpc("redeem_workout_code", { p_code: c }, token);
+        if (!Array.isArray(rows) || rows.length === 0) {
           setError("Code not found");
         } else {
           const w = rows[0];
@@ -7076,12 +7081,8 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
           });
         }
       } else {
-        const rows = await sb.query(
-          `programs?share_code=eq.${encodeURIComponent(c)}&select=id,name,days,user_id`,
-          {},
-          token
-        );
-        if (!rows || rows.length === 0) {
+        const rows = await sb.rpc("redeem_program_by_code", { p_code: c }, token);
+        if (!Array.isArray(rows) || rows.length === 0) {
           setError("Code not found");
         } else {
           setPreview({ ...rows[0], kind: "program" });
@@ -10191,7 +10192,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
-          <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden", maxWidth:480, margin:"0 auto" }}>
+          <div data-fullscreen-overlay="true" style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden", maxWidth:480, margin:"0 auto" }}>
           <ProgramDetailView
             prog={prog}
             store={store}
@@ -10215,7 +10216,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {/* Custom Program Builder */}
       {subTab === "workout" && showBuilder && (
-        <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div data-fullscreen-overlay="true" style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         <ProgramBuilder
           C={C}
           onCancel={() => setShowBuilder(false)}
@@ -10870,8 +10871,10 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                   setShareModal({ stage:"code", kind:"day", name: day.name, generating: true });
                   try {
                     let code = generateShareCode("WO");
+                    // Checked via the redeem RPC, not a direct table SELECT — see the
+                    // "Try a few times if collision" comment above for why.
                     for (let i = 0; i < 5; i++) {
-                      const existing = await sb.query(`workout_codes?code=eq.${code}&select=code`, {}, token).catch(()=>[]);
+                      const existing = await sb.rpc("redeem_workout_code", { p_code: code }, token).catch(()=>[]);
                       if (!existing || existing.length === 0) break;
                       code = generateShareCode("WO");
                     }
@@ -10917,8 +10920,10 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     if (token) {
                       try {
                         let code = generateShareCode("IGNITE");
+                        // Checked via the redeem RPC, not a direct table SELECT — see the
+                        // "Try a few times if collision" comment in ProgramDetailView for why.
                         for (let i = 0; i < 5; i++) {
-                          const existing = await sb.query(`programs?share_code=eq.${code}&select=id`, {}, token).catch(()=>[]);
+                          const existing = await sb.rpc("redeem_program_by_code", { p_code: code }, token).catch(()=>[]);
                           if (!existing || existing.length === 0) break;
                           code = generateShareCode("IGNITE");
                         }
@@ -15394,7 +15399,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
         <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
         <div style={{ fontSize:19, fontWeight:700, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Messages</div>
       </div>
-      <PullToRefresh onRefresh={load} C={C}>
+      <PullToRefresh onRefresh={load} C={C} navClearance={false}>
       <div>
         {rows === null && <div style={{ padding:24 }}><Spinner C={C}/></div>}
         {rows !== null && convos.length === 0 && (
@@ -17155,6 +17160,9 @@ function AppInner() {
   const navLastScrollTop = useRef(0);
   const [navShrunk, setNavShrunk] = useState(false);
   const navNativeScroll = useRef((e) => {
+    // Skip while a full-screen takeover (e.g. ProgramBuilder/ProgramDetailView) covers the nav —
+    // it's invisible underneath, so there's nothing to shrink/restore.
+    if (e.target?.closest?.("[data-fullscreen-overlay]")) return;
     const top = e.target?.scrollTop;
     if (typeof top !== "number") return;
     const delta = top - navLastScrollTop.current;
