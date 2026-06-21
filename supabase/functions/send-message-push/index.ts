@@ -56,7 +56,7 @@ async function sbGet(path: string) {
 Deno.serve(async (req) => {
   try {
     if (req.method !== "POST") return new Response("method", { status: 405 });
-    if (WEBHOOK_SECRET && req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
+    if (!WEBHOOK_SECRET || req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
       return new Response("unauthorized", { status: 401 });
     }
     const payload = await req.json();
