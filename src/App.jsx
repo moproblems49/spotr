@@ -1,4 +1,4 @@
-// v178091716546
+// v178091716547
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2576,15 +2576,36 @@ function computeStrengthScore(store, unit, sex = "male") {
     }
   }
   // Fallback: if history has no matching sets but a stored PR exists, use the raw PR (better than
-  // nothing — treats it as a 1RM, slightly conservative for high-rep PRs).
+  // nothing — treats it as a 1RM, slightly conservative for high-rep PRs). Unlike the e1RM-from-
+  // history path above, store.prs has no date on its own — so look up the matching prEvents entry
+  // (logged at the moment the PR was hit) to find when it happened and apply the same staleness
+  // decay, instead of letting an old PR silently overstate current strength forever.
+  const prEvents = store.prEvents || [];
+  const prDate = (name, weightLbs) => {
+    let best = null;
+    for (const e of prEvents) {
+      if (e.name === name && Math.abs((e.weightLbs || 0) - weightLbs) < 0.6) {
+        if (!best || e.date > best) best = e.date;
+      }
+    }
+    return best;
+  };
   const bestPR = (canonical) => {
     if (liftBestE1RM[canonical]) return liftBestE1RM[canonical];
     const names = [canonical, ...(STRENGTH_LIFT_ALIASES[canonical] || [])];
-    const exactVals = names.map(n => prs[n]).filter(v => v != null && v > 0);
+    const exactPairs = names.map(n => [n, prs[n]]).filter(([, v]) => v != null && v > 0);
     const kw = LIFT_KEYWORDS[canonical];
-    const fuzzyVals = kw ? Object.entries(prs).filter(([name, v]) => v != null && v > 0 && kw(norm(name))).map(([, v]) => v) : [];
-    // prs are stored in lbs; convert to display unit if needed.
-    const all = [...exactVals, ...fuzzyVals].map(v => unit === "lbs" ? v : cvt(v, "lbs", unit));
+    const fuzzyPairs = kw ? Object.entries(prs).filter(([name, v]) => v != null && v > 0 && kw(norm(name))) : [];
+    const all = [...exactPairs, ...fuzzyPairs].map(([name, lbs]) => {
+      const date = prDate(name, lbs);
+      let val = lbs;
+      if (date) {
+        const ageDays = (Date.now() - new Date(date + "T12:00:00").getTime()) / 864e5;
+        if (ageDays > 120) val *= Math.max(0.85, 1 - (ageDays - 120) * 0.0004);
+      }
+      // prs are stored in lbs; convert to display unit if needed.
+      return unit === "lbs" ? val : cvt(val, "lbs", unit);
+    });
     return all.length ? Math.max(...all) : null;
   };
   // Age-fair scaling: scale standards by the user's age (if known).
