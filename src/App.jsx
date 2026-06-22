@@ -1,4 +1,4 @@
-// v178091716552
+// v178091716553
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1868,8 +1868,11 @@ const uid = () => Math.random().toString(36).slice(2,10);
 // Excludes ambiguous chars: 0, O, 1, I, L
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function generateShareCode(prefix = "IGNITE") {
+  // 6 chars (32^6 ≈ 1.07B combinations) — a 4-char suffix (32^4 ≈ 1M) was brute-forceable
+  // over the public redeem RPC, which has no rate limit. Old 4-char codes already issued
+  // still work fine (the redeem lookup is an exact string match either length).
   let suffix = "";
-  for (let i = 0; i < 4; i++) suffix += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  for (let i = 0; i < 6; i++) suffix += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
   return `${prefix}-${suffix}`;
 }
 function normalizeShareCode(input) {
@@ -6328,10 +6331,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   // Detect a share code in the caption (IGNITE-XXXX program / WO-XXXX workout). Computed once so
   // the slim code block can render in the post body (above the action bar) while the caption text
   // renders separately below, with the code suffix stripped out.
-  const _codeMatch = post.caption ? post.caption.match(/(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i) : null;
+  const _codeMatch = post.caption ? post.caption.match(/(IGNITE-[A-Z0-9]{4,8}|WO-[A-Z0-9]{4,8})/i) : null;
   const postCode = _codeMatch ? _codeMatch[0].toUpperCase() : null;
   const displayCaption = postCode
-    ? post.caption.replace(/\s*·?\s*Try my (program|workout):?\s*(IGNITE-[A-Z0-9]{4}|WO-[A-Z0-9]{4})/i, "").trim()
+    ? post.caption.replace(/\s*·?\s*Try my (program|workout):?\s*(IGNITE-[A-Z0-9]{4,8}|WO-[A-Z0-9]{4,8})/i, "").trim()
     : (post.caption || "");
   const [showCmts, setShowCmts] = useState(false);
   const [cmtText, setCmtText] = useState("");
@@ -7237,7 +7240,7 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
           value={code}
           onChange={e => { setCode(e.target.value.toUpperCase()); setError(""); setPreview(null); }}
           onKeyDown={e => { if (e.key === "Enter") lookup(); }}
-          placeholder="IGNITE-X9K2 or WO-X9K2"
+          placeholder="IGNITE-X9K2P7 or WO-X9K2P7"
           autoCapitalize="characters"
           autoCorrect="off"
           style={{
