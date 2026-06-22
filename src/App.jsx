@@ -1,4 +1,4 @@
-// v178091716549
+// v178091716550
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5476,7 +5476,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
         <div style={{ position:"relative", zIndex:1 }}>
           <div style={{ fontSize:14, letterSpacing:5, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:8, fontFamily:DISPLAY }}>SESHD WRAPPED</div>
           <div style={{ fontSize:13, letterSpacing:1.5, fontWeight:600, color:"rgba(255,255,255,0.4)", marginBottom:28 }}>
-            {(() => { const d = new Date(); return `Week of ${d.toLocaleDateString("en",{month:"short",day:"numeric"}).toUpperCase()}`; })()}
+            {weekLabel.replace(/^WEEK OF/, "Week of")}
           </div>
 
           {/* Trained-muscle map (matches the shared image) */}
