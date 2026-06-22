@@ -1,4 +1,4 @@
-// v178091716544
+// v178091716545
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1513,13 +1513,28 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         const W = 300, H = 70, PAD = 4;
                         const n = timeline.length;
                         const xAt = i => PAD + (i / (n - 1)) * (W - PAD * 2);
-                        const yAt = lvl => PAD + (1 - lvl / 100) * (H - PAD * 2);
+                        // The day's real drain is usually only ~15-35 points, so a fixed 0-100
+                        // scale squeezes the line into the top sliver of the chart and it reads
+                        // as flat. Scale to the day's actual min/max instead (floor of 20pts of
+                        // span so a near-flat day doesn't get exaggerated into noise), clamped
+                        // back into the natural 0-100 bounds.
+                        const levels = timeline.map(p => p.level);
+                        const rawLo = Math.min(...levels), rawHi = Math.max(...levels);
+                        const span = Math.max(20, rawHi - rawLo);
+                        const mid = (rawHi + rawLo) / 2;
+                        let lo = mid - span / 2, hi = mid + span / 2;
+                        if (hi > 100) { lo -= (hi - 100); hi = 100; }
+                        if (lo < 0) { hi += (0 - lo); lo = 0; }
+                        const yAt = lvl => PAD + (1 - (lvl - lo) / (hi - lo)) * (H - PAD * 2);
                         const linePath = timeline.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
                         const areaPath = `${linePath} L ${xAt(n - 1).toFixed(1)} ${H} L ${xAt(0).toFixed(1)} ${H} Z`;
                         const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
                         return (
                           <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
-                            <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted, marginBottom:8 }}>TODAY'S DRAIN</div>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
+                              <span style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>TODAY'S DRAIN</span>
+                              <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>{rawHi} → {rawLo}</span>
+                            </div>
                             <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:80, display:"block" }} preserveAspectRatio="none">
                               <path d={areaPath} fill={fill} opacity={0.12} stroke="none"/>
                               <path d={linePath} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
