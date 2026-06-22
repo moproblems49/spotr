@@ -1,4 +1,4 @@
-// v178091716540
+// v178091716541
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18432,8 +18432,8 @@ function AppInner() {
       }}>
       <div style={{
         background: C.isDark
-          ? "linear-gradient(165deg, rgba(70,70,78,0.65) 0%, rgba(40,40,46,0.32) 45%, rgba(55,55,62,0.5) 100%)"
-          : "linear-gradient(165deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.32) 45%, rgba(255,255,255,0.42) 100%)",
+          ? "linear-gradient(165deg, rgba(70,70,78,0.5) 0%, rgba(40,40,46,0.2) 45%, rgba(55,55,62,0.35) 100%)"
+          : "linear-gradient(165deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.18) 45%, rgba(255,255,255,0.28) 100%)",
         backdropFilter:"blur(28px) saturate(1.8)", WebkitBackdropFilter:"blur(28px) saturate(1.8)",
         border:`1px solid ${C.isDark ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.85)"}`,
         borderRadius:26,
