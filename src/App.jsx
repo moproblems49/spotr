@@ -1,4 +1,4 @@
-// v178091716551
+// v178091716552
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8681,8 +8681,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // where a lifter merely matches an old weight max (e.g. an e1RM/volume PR at the same top
       // weight) as "PR: <old number>", showing a stale figure instead of nothing or the real one.
       const newPrEvents = hitPRs.length
-        ? [...(store.prEvents || []), ...hitPRs.map(pr => ({ date: dk, sid, name: pr.name, weightLbs: toLbs(pr.weight), types: pr.types }))]
+        ? [...(store.prEvents || []), ...hitPRs.map(pr => ({ date: dk, sid, name: pr.name, weightLbs: toLbs(pr.weight), types: pr.types }))].slice(-300)
         : (store.prEvents || []);
+
+      // Persist to the server (mirrors the body_log pattern) so PR history survives
+      // reinstalls/new devices instead of living only in this device's localStorage —
+      // that local-only gap was why Wrapped could show "0 PRs" for a week that had real ones.
+      if (hitPRs.length) {
+        try {
+          const tok = tokenRef.current || loadSession()?.access_token;
+          if (tok && currentUserId && !isGuest) {
+            sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: newPrEvents }) }, tok)
+              .catch(e => devError("pr_events save error:", e));
+          }
+        } catch (e) {}
+      }
 
       // Save to local store
       setStore(p => ({
@@ -9810,7 +9823,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     // 3. Remove from Supabase workout_history (best-effort)
                     try {
                       const tok = token || loadSession()?.access_token;
-                      if (tok) await sb.query(`workout_history?id=eq.${u.sid}`, { method:"DELETE" }, tok);
+                      if (tok) {
+                        await sb.query(`workout_history?id=eq.${u.sid}`, { method:"DELETE" }, tok);
+                        if (currentUserId) {
+                          const keptPrEvents = (store.prEvents || []).filter(e => e.sid !== u.sid);
+                          sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
+                        }
+                      }
                     } catch (e) { /* not fatal */ }
                     toast("Workout reopened — make your edits", "success");
                   }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"6px 10px", fontSize:12, cursor:"pointer", fontFamily:F, marginTop:-4 }}>
@@ -16337,6 +16356,7 @@ function AppInner() {
         // (profiles.body_log / onboarding_answers / strength_sex) so they survive re-login and
         // new devices. Prefer the server copy, fall back to whatever's on-device.
         bodyLog: (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : (prev.bodyLog || []),
+        prEvents: (Array.isArray(me?.pr_events) && me.pr_events.length) ? me.pr_events : (prev.prEvents || []),
         // Custom exercises persist on the profile (profiles.custom_exercises). Merge server + local
         // by id/name so nothing is lost if either side has entries the other doesn't.
         customExercises: (() => {
@@ -17041,6 +17061,10 @@ function AppInner() {
           try {
             await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
           } catch (e) { devError("workout_history delete:", e); }
+        }
+        if (currentUserId) {
+          const keptPrEvents = (store.prEvents || []).filter(e => !sidsToDelete.includes(e.sid));
+          sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
         }
       }
       return;
@@ -18323,7 +18347,13 @@ function AppInner() {
               });
               try {
                 const tok = tokenRef.current || loadSession()?.access_token;
-                if (tok) await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
+                if (tok) {
+                  await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
+                  if (currentUserId) {
+                    const keptPrEvents = (store.prEvents || []).filter(e => e.sid !== sid);
+                    sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
+                  }
+                }
               } catch(e) { devError("history delete:", e); }
             }}
           />
