@@ -1,4 +1,4 @@
-// v178091716541
+// v178091716542
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3599,6 +3599,7 @@ function loadStore() {
     prs: {},
     prsE1rm: {},
     prsVolume: {},
+    prEvents: [],
     programs: [],
     activeProgramId: null,
     notificationPrefs: { messages: true, kudos: true, comments: true, follows: true },
@@ -5336,26 +5337,14 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
         return d2 + cvt(parseFloat(s2.weight)||0, su, unit) * (parseFloat(s2.reps)||0);
       }, 0), 0);
   }, 0), 0);
-  // PRs this week: count distinct exercises that hit a top set this week beating their
-  // prior best. Approximation using current stored PRs vs sessions in the window would
-  // require historical PR snapshots, so we count exercises whose best e1RM-relevant set
-  // this week equals or exceeds the stored PR (i.e. the PR was likely set this week).
-  const weekPRs = (() => {
-    const prs = store.prs || {};
-    const seen = new Set();
-    weekHistory.forEach(([, ss]) => Object.values(ss).forEach(s => {
-      const su = s.unit || "lbs";
-      (s.exercises||[]).forEach(ex => {
-        if (!ex.name || !prs[ex.name]) return;
-        const maxLbs = Math.max(0, ...(ex.sets||[])
-          .filter(st => (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)) && st.type !== "warmup")
-          .map(st => { const w = parseFloat(st.weight)||0; return su === "lbs" ? w : cvt(w, "kg", "lbs"); }));
-        // PR stored in lbs; if this week's best meets it, the PR was (re)set this week
-        if (maxLbs > 0 && maxLbs >= prs[ex.name] * 0.999) seen.add(ex.name);
-      });
-    }));
-    return seen.size;
-  })();
+  // PRs this week: read the actual PR-hit log (recorded the moment each PR was set) rather
+  // than guessing from current store.prs — that used to falsely flag any week where a lifter
+  // merely matched an old weight max (e.g. a reps/e1RM PR at the same top weight) as a fresh PR.
+  const weekPREvents = (store.prEvents || []).filter(e => {
+    const t = new Date(e.date + "T12:00:00").getTime();
+    return t > rangeStart && t <= rangeEnd;
+  });
+  const weekPRs = new Set(weekPREvents.map(e => e.name)).size;
   const streak = calcStreak(store.workoutDates);
   const sex = (store.bodyType === "female" || store.bodyType === "male")
     ? store.bodyType
@@ -5375,23 +5364,17 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
   const prevVolume = volOf(prevHistory);
   const volDeltaPct = prevVolume > 0 ? Math.round((volume - prevVolume) / prevVolume * 100) : null;
   const woDelta = workouts - prevWorkouts;
-  // Named PRs set this week (for the share card), reusing the same detection as the count above.
+  // Named PRs set this week (for the share card) — the weight actually lifted at the moment
+  // of the PR, not whatever store.prs currently holds (which can have moved on since). If an
+  // exercise PR'd more than once this week, show the heaviest of those hits, not just the first.
   const prList = (() => {
-    const prs = store.prs || {};
-    const seen = new Set(); const out = [];
-    weekHistory.forEach(([, ss]) => Object.values(ss).forEach(s => {
-      const su = s.unit || "lbs";
-      (s.exercises || []).forEach(ex => {
-        if (!ex.name || !prs[ex.name] || seen.has(ex.name)) return;
-        const maxLbs = Math.max(0, ...(ex.sets || [])
-          .filter(st => (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)) && st.type !== "warmup")
-          .map(st => { const w = parseFloat(st.weight) || 0; return su === "lbs" ? w : cvt(w, "kg", "lbs"); }));
-        if (maxLbs > 0 && maxLbs >= prs[ex.name] * 0.999) {
-          seen.add(ex.name);
-          const disp = unit === "lbs" ? Math.round(prs[ex.name]) : Math.round(cvt(prs[ex.name], "lbs", "kg"));
-          out.push({ name: ex.name, weight: disp });
-        }
-      });
+    const best = new Map();
+    weekPREvents.forEach(e => {
+      if (!e.name) return;
+      if (!best.has(e.name) || e.weightLbs > best.get(e.name)) best.set(e.name, e.weightLbs);
+    });
+    const out = [...best.entries()].map(([name, weightLbs]) => ({
+      name, weight: unit === "lbs" ? Math.round(weightLbs) : Math.round(cvt(weightLbs, "lbs", "kg")),
     }));
     return out.slice(0, 3);
   })();
@@ -8602,6 +8585,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }
       });
 
+      // Log the actual PR-hit events (date + exercise + weight at the time), so Wrapped/recaps
+      // can read real history instead of reconstructing "was a PR set this week?" by comparing
+      // current store.prs against the week's sets — that approximation falsely flags any week
+      // where a lifter merely matches an old weight max (e.g. an e1RM/volume PR at the same top
+      // weight) as "PR: <old number>", showing a stale figure instead of nothing or the real one.
+      const newPrEvents = hitPRs.length
+        ? [...(store.prEvents || []), ...hitPRs.map(pr => ({ date: dk, sid, name: pr.name, weightLbs: toLbs(pr.weight), types: pr.types }))]
+        : (store.prEvents || []);
+
       // Save to local store
       setStore(p => ({
         ...p,
@@ -8615,6 +8607,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         prs: newPRs,
         prsE1rm: newPRsE1rm,
         prsVolume: newPRsVolume,
+        prEvents: newPrEvents,
         workoutDates: { ...p.workoutDates, [dk]: true },
         exerciseNotes: {
           ...(p.exerciseNotes || {}),
@@ -9716,7 +9709,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       if (Object.keys(day).length === 0) delete newHistory[u.dk];
                       else newHistory[u.dk] = day;
                       // Restore PRs to pre-finish snapshot
-                      return { ...prev, history: newHistory, prs: u.prevPRs || prev.prs, prsE1rm: u.prevPRsE1rm || prev.prsE1rm, prsVolume: u.prevPRsVolume || prev.prsVolume };
+                      return { ...prev, history: newHistory, prs: u.prevPRs || prev.prs, prsE1rm: u.prevPRsE1rm || prev.prsE1rm, prsVolume: u.prevPRsVolume || prev.prsVolume, prEvents: (prev.prEvents || []).filter(e => e.sid !== u.sid) };
                     });
                     // 2. Restore the session
                     setSession(u.session);
@@ -15908,6 +15901,7 @@ function AppInner() {
   const [swipeX, setSwipeX] = useState(0); // 0 = idle, 1 = dragging (boundary flag, not the live px)
   // Co-move release glide: { toPx } animates the track to a neighbor slot before switching.
   const [swipeRelease, setSwipeRelease] = useState(null);
+  const swipeReleaseTimeoutRef = useRef(null); // lets a new gesture cancel a still-pending release settle
   // Co-move release animation: when set, the track glides to completion before switching.
   const swipeContainerRef = useRef(null);
   useEffect(() => {
@@ -17744,6 +17738,10 @@ function AppInner() {
   const target = e.target;
   if (target && target.closest && target.closest("[data-no-tab-swipe]")) return;
   if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+  // A new gesture always wins — cancel any still-pending release settle from a prior swipe so
+  // its delayed setSwipeRelease(null)/setSwipeX(0) can't fire mid-drag and snap the track.
+  if (swipeReleaseTimeoutRef.current) { clearTimeout(swipeReleaseTimeoutRef.current); swipeReleaseTimeoutRef.current = null; }
+  setSwipeRelease(null);
   const t = e.touches[0];
   swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now(), type: null };
   swipeDX.current = 0;
@@ -17819,7 +17817,7 @@ function AppInner() {
   if (!passed || !canGo || dx === 0) {
     // Didn't pass threshold — glide the track back to center, no tab change.
     setSwipeRelease({ toPx: 0 });
-    setTimeout(() => { setSwipeRelease(null); setSwipeX(0); }, 240);
+    swipeReleaseTimeoutRef.current = setTimeout(() => { swipeReleaseTimeoutRef.current = null; setSwipeRelease(null); setSwipeX(0); }, 240);
     return;
   }
   // Passed — glide the track to the neighbor slot, then switch tabs and re-center.
@@ -17827,7 +17825,8 @@ function AppInner() {
   const destTab = goPrev ? TABS_ORDER[idx - 1] : TABS_ORDER[idx + 1];
   const vwNow = window.innerWidth || 390;
   setSwipeRelease({ toPx: goPrev ? vwNow : -vwNow });
-  setTimeout(() => {
+  swipeReleaseTimeoutRef.current = setTimeout(() => {
+    swipeReleaseTimeoutRef.current = null;
     switchTab(destTab, "swipe");
     setSwipeRelease(null);
     setSwipeX(0);
@@ -18224,7 +18223,7 @@ function AppInner() {
                 const newHistory = { ...prev.history };
                 if (Object.keys(dayHistory).length === 0) delete newHistory[date];
                 else newHistory[date] = dayHistory;
-                return { ...prev, history: newHistory };
+                return { ...prev, history: newHistory, prEvents: (prev.prEvents || []).filter(e => e.sid !== sid) };
               });
               try {
                 const tok = tokenRef.current || loadSession()?.access_token;
