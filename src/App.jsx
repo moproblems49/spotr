@@ -1,4 +1,4 @@
-// v178091716548
+// v178091716549
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1039,19 +1039,28 @@ const EXERCISE_SECONDARIES = {"Barbell Bench Press":["Triceps","Shoulders"],"Inc
 // parenthetical formatting can drift from how an exercise is actually logged. Fall back to a
 // normalized match (same normalization used elsewhere for tolerant name matching) before giving up.
 let _exerciseSecondariesNormCache = null;
+const _normExerciseName = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 function getExerciseSecondaries(name) {
   if (!name) return [];
   if (EXERCISE_SECONDARIES[name]) return EXERCISE_SECONDARIES[name];
   if (!_exerciseSecondariesNormCache) {
-    const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-    _exerciseSecondariesNormCache = {};
+    // Some distinct keys (e.g. "Back Extension" vs "Back Extension (Machine)") collapse to the
+    // same normalized name but carry different secondary-muscle data. Picking either one would be
+    // a guess, so an ambiguous normalized name resolves to no fallback match instead.
+    const byNorm = {};
     for (const k of Object.keys(EXERCISE_SECONDARIES)) {
-      const nk = norm(k);
-      if (!(nk in _exerciseSecondariesNormCache)) _exerciseSecondariesNormCache[nk] = EXERCISE_SECONDARIES[k];
+      const nk = _normExerciseName(k);
+      (byNorm[nk] = byNorm[nk] || []).push(EXERCISE_SECONDARIES[k]);
+    }
+    _exerciseSecondariesNormCache = {};
+    for (const nk of Object.keys(byNorm)) {
+      const vals = byNorm[nk];
+      if (vals.every(v => JSON.stringify(v) === JSON.stringify(vals[0]))) {
+        _exerciseSecondariesNormCache[nk] = vals[0];
+      }
     }
   }
-  const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-  return _exerciseSecondariesNormCache[norm(name)] || [];
+  return _exerciseSecondariesNormCache[_normExerciseName(name)] || [];
 }
 // Map a muscle name to the body-map region(s) it lights up. Some muscles (traps/forearms/calves)
 // live on both views; aliases "Back"->Lats and "RearDelts"->Rear Delts are handled here.
@@ -13495,7 +13504,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   // profile (the only place it's shown), so skip the scan entirely when viewing someone else's.
   const strengthScore = useMemo(
     () => isMe ? computeStrengthScore(store, displayUnit || store.unit || "lbs", store.strengthSex || "male") : null,
-    [isMe, store.history, store.prs, store.bodyLog, store.strengthSex, displayUnit, store.unit]
+    [isMe, store.history, store.prs, store.prEvents, store.bodyLog, store.strengthSex, displayUnit, store.unit]
   );
 
   // Export workout history as CSV (one row per set) — the format lifters expect for
