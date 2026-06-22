@@ -1,4 +1,4 @@
-// v178091716547
+// v178091716548
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1642,6 +1642,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       : null}
                     {" "}Grey = no strength standard for that muscle.
                   </div>
+                  {strength.bodyweightAgeDays > 60 && (
+                    <div style={{ margin:"0 16px 14px", padding:"8px 12px", background:C.divider, borderRadius:10, textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.4 }}>
+                      Bodyweight last logged {strength.bodyweightAgeDays} days ago — log a fresh weigh-in for more accurate standards.
+                    </div>
+                  )}
                 </>
               ) : (
                 <div style={{ padding:"8px 18px 18px", textAlign:"center", fontSize:12, color:C.sub, lineHeight:1.5 }}>
@@ -2514,6 +2519,10 @@ function computeStrengthScore(store, unit, sex = "male") {
   const bodyLog = [...(store.bodyLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const bw = bodyLog.length ? parseFloat(bodyLog[0].weight) : null;
   if (!bw || bw <= 0) return { ready: false, reason: "no_bodyweight" };
+  // Bodyweight drives every ratio below — flag when it's stale so a months-old weigh-in
+  // doesn't silently masquerade as today's number.
+  const bwDate = bodyLog[0].date;
+  const bodyweightAgeDays = bwDate ? Math.round((Date.now() - new Date(bwDate + "T12:00:00").getTime()) / 864e5) : null;
   const prs = store.prs || {};
   // Normalize for tolerant matching — strips parentheticals like "(heavy)", punctuation, casing.
   const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -2650,7 +2659,7 @@ function computeStrengthScore(store, unit, sex = "male") {
   // when the rounded overall is lower.
   const topLifts = lifts.filter(l => l.level === "Elite" || l.level === "Advanced")
     .sort((a, b) => STRENGTH_LEVELS.indexOf(b.level) - STRENGTH_LEVELS.indexOf(a.level));
-  return { ready: true, overall, score, lifts, bodyweight: bw, counted, sex, age, ageFactor, topLifts };
+  return { ready: true, overall, score, lifts, bodyweight: bw, bodyweightAgeDays, counted, sex, age, ageFactor, topLifts };
 }
 
 // Maps each body-map region to the scored lift(s) that best represent its strength. Regions with no
@@ -2702,7 +2711,7 @@ function muscleStrength(store, unit, sex) {
   if (upper != null && lower != null && Math.abs(upper - lower) >= 0.2) {
     imbalances.push(upper > lower ? "Legs are lagging your upper body" : "Upper body lags your legs");
   }
-  return { ready: true, regionFrac, overall: ss.overall, score: ss.score, imbalances };
+  return { ready: true, regionFrac, overall: ss.overall, score: ss.score, imbalances, bodyweightAgeDays: ss.bodyweightAgeDays };
 }
 
 // Assembles a compact, structured snapshot of the user's training for the AI coach to reason
