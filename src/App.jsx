@@ -1,4 +1,4 @@
-// v178091716550
+// v178091716551
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1556,6 +1556,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         const linePath = timeline.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
                         const areaPath = `${linePath} L ${xAt(n - 1).toFixed(1)} ${H} L ${xAt(0).toFixed(1)} ${H} Z`;
                         const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
+                        // Hour ticks along the bottom, Garmin-style, instead of just the
+                        // first/last hour — spaced so 4-5 labels fit regardless of timeline length.
+                        const tickStep = Math.max(1, Math.round((n - 1) / 4));
+                        const tickIdxs = [];
+                        for (let i = 0; i < n - 1; i += tickStep) tickIdxs.push(i);
+                        tickIdxs.push(n - 1);
                         return (
                           <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
@@ -1563,12 +1569,24 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                               <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>{rawHi} → {rawLo}</span>
                             </div>
                             <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:80, display:"block" }} preserveAspectRatio="none">
-                              <path d={areaPath} fill={fill} opacity={0.12} stroke="none"/>
+                              <defs>
+                                <linearGradient id="bbGradient" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor={fill} stopOpacity="0.35"/>
+                                  <stop offset="100%" stopColor={fill} stopOpacity="0"/>
+                                </linearGradient>
+                              </defs>
+                              <path d={areaPath} fill="url(#bbGradient)" stroke="none"/>
                               <path d={linePath} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
                             </svg>
-                            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4, fontSize:9, color:C.muted, fontWeight:600 }}>
-                              <span>{fmtHour(timeline[0].hour)}</span>
-                              <span>{fmtHour(timeline[timeline.length - 1].hour)}</span>
+                            <div style={{ position:"relative", height:12, marginTop:4 }}>
+                              {tickIdxs.map(i => (
+                                <span key={i} style={{
+                                  position:"absolute", top:0,
+                                  left:`${(xAt(i) / W) * 100}%`,
+                                  transform: i === 0 ? "none" : i === n - 1 ? "translateX(-100%)" : "translateX(-50%)",
+                                  fontSize:9, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
+                                }}>{fmtHour(timeline[i].hour)}</span>
+                              ))}
                             </div>
                             {!store.activityHourly && (
                               <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
