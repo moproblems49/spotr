@@ -1,4 +1,4 @@
-// v178091716542
+// v178091716543
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12843,7 +12843,10 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     "Deadlift": ["Conventional Deadlift","Sumo Deadlift","Trap Bar Deadlift"],
                     "Overhead Press (Barbell)": ["Overhead Press","OHP","Standing Barbell OHP","Standing OHP","Standing Press","Strict Press","Military Press","Barbell OHP","Barbell Overhead Press"],
                     "Barbell Row": ["Barbell Bent-Over Row","Barbell Bent Over Row","Bent-Over Row","Bent Over Row","Bent-Over Barbell Row","Bent Over Barbell Row","Pendlay Row","Yates Row"],
-                    "Hip Thrust (Barbell)": ["Hip Thrust","Barbell Hip Thrust","Glute Bridge (Barbell)","Hip Thrust (Machine)","Hip Thrust (machine)","Machine Hip Thrust","Smith Machine Hip Thrust","Hip Thrust Machine"],
+                    // NOTE: machine hip thrust variants are deliberately excluded here — a machine's
+                    // leverage lets people move much more weight than a free barbell, so merging them
+                    // makes an old machine PR permanently bury a real, current barbell PR (reported bug).
+                    "Hip Thrust (Barbell)": ["Hip Thrust","Barbell Hip Thrust","Glute Bridge (Barbell)"],
                   };
                   // Resolve the best (max) PR from canonical name + any alias the user may have used.
                   // Case-insensitive so "(machine)" vs "(Machine)" and other casings all match.
