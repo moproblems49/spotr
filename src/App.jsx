@@ -1,4 +1,4 @@
-// v178091716543
+// v178091716544
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16939,7 +16939,10 @@ function AppInner() {
         // Also clear historyInteractions for this synthetic post
         const newHI = { ...(prev.historyInteractions || {}) };
         delete newHI[postId];
-        return { ...prev, history: newHistory, historyInteractions: newHI };
+        return {
+          ...prev, history: newHistory, historyInteractions: newHI,
+          prEvents: (prev.prEvents || []).filter(e => !sidsToDelete.includes(e.sid)),
+        };
       });
 
       // Delete from Supabase workout_history
