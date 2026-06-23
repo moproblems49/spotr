@@ -1,4 +1,4 @@
-// v178091716554
+// v178091716555
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2675,7 +2675,15 @@ function computeStrengthScore(store, unit, sex = "male") {
       }
     }
     if (winner) {
-      lifts.push({ lift: winner.lift, best: winner.best, ratio: winner.ratio, level: winner.level, pattern: winner.pattern });
+      // Continuous position within the level band (0-1) so the bar reflects how close the
+      // lift is to the next tier, instead of every lift at a level rendering an identical bar.
+      // Elite has no upper threshold, so extend its band 25% past the Elite cutoff for the bar.
+      const s = standards[winner.lift], f = ageFactor || 1;
+      const bounds = [0, s.Novice * f, s.Intermediate * f, s.Advanced * f, s.Elite * f, s.Elite * f * 1.25];
+      const lo = bounds[winner.lvlIdx], hi = bounds[winner.lvlIdx + 1];
+      const within = hi > lo ? Math.min(1, Math.max(0, (winner.ratio - lo) / (hi - lo))) : 1;
+      const pct = Math.min(100, Math.round(((winner.lvlIdx + within) / (STRENGTH_LEVELS.length - 1)) * 1000) / 10);
+      lifts.push({ lift: winner.lift, best: winner.best, ratio: winner.ratio, level: winner.level, pattern: winner.pattern, pct });
       usedLifts.add(winner.lift);
       levelSum += winner.lvlIdx;
       counted++;
@@ -14172,7 +14180,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}><span style={{ color:C.text, fontWeight:700 }}>{l.best}</span> · {l.ratio}×BW</span>
                       </div>
                       <div style={{ height:8, borderRadius:5, background:C.divider, overflow:"hidden" }}>
-                        <div style={{ height:"100%", width:`${(STRENGTH_LEVELS.indexOf(l.level)/(STRENGTH_LEVELS.length-1))*100}%`, background:LEVEL_COLOR[l.level], borderRadius:5 }}/>
+                        <div style={{ height:"100%", width:`${l.pct}%`, background:LEVEL_COLOR[l.level], borderRadius:5 }}/>
                       </div>
                     </div>
                   ))}
