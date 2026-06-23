@@ -1,4 +1,4 @@
-// v178091716555
+// v178091716556
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14179,8 +14179,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         <span style={{ fontSize:13, color:C.text, fontWeight:700 }}>{l.lift.replace(" (Barbell)","").replace("Barbell ","")} <span style={{ fontSize:10, color:LEVEL_COLOR[l.level], fontWeight:700 }}>{l.level !== "Untrained" ? l.level : ""}</span></span>
                         <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}><span style={{ color:C.text, fontWeight:700 }}>{l.best}</span> · {l.ratio}×BW</span>
                       </div>
-                      <div style={{ height:8, borderRadius:5, background:C.divider, overflow:"hidden" }}>
+                      <div style={{ height:8, borderRadius:5, background:C.divider, position:"relative" }}>
                         <div style={{ height:"100%", width:`${l.pct}%`, background:LEVEL_COLOR[l.level], borderRadius:5 }}/>
+                        {/* Tier markers at 25/50/75% — show how close this lift is to the next stage. */}
+                        {[25, 50, 75].map(p => (
+                          <div key={p} style={{ position:"absolute", top:0, bottom:0, left:`${p}%`, width:1.5, background:C.isDark ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.6)" }}/>
+                        ))}
                       </div>
                     </div>
                   ))}
