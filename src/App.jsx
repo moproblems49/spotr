@@ -1,4 +1,4 @@
-// v178091716563
+// v178091716564
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2772,7 +2772,11 @@ function computeStrengthScore(store, unit, sex = "male") {
   if (!counted) return { ready: false, reason: "no_lifts" };
   const avgIdx = levelSum / counted;
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
-  const score = Math.round((avgIdx / (STRENGTH_LEVELS.length - 1)) * 100);
+  // Anchor the 0-100 score to Elite (a realistic ceiling for a dedicated natural lifter) rather
+  // than World Class — pinning 100 to world-record territory left everyday strong lifters scoring
+  // punishingly low. World Class lifts simply cap at 100. The level LABELS are unchanged.
+  const eliteIdx = STRENGTH_LEVELS.indexOf("Elite");
+  const score = Math.min(100, Math.round((avgIdx / eliteIdx) * 100));
   // Map-only lifts (e.g. calf raise): give them a level for the muscle-balance body map, but
   // keep them out of `lifts`/`counted`/`overall` so they never affect the strength score.
   const mapLifts = [];
