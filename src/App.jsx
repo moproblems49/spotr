@@ -1,4 +1,4 @@
-// v178091716557
+// v178091716558
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2444,42 +2444,92 @@ function parseRepRange(reps) {
 }
 
 // Strength score — rates the user's main lifts relative to bodyweight against population
-// standards, returning a level (Untrained→World Class) per lift plus an overall. Uses the same
-// Bodyweight-multiple thresholds (lower bound of each level), by sex. These are reasonable,
-// transparent population baselines for relative strength — not medical or competitive metrics.
-// Novice/Intermediate/Advanced/Elite approximate published lifting-standard calculators;
-// Exceptional and World Class aren't independently sourced (those upper tiers aren't published
-// per-lift anywhere reliable) — each is extrapolated by continuing the same Advanced→Elite
-// multiplicative step one half-step and one full step further, so the progression stays
-// internally consistent with the rest of the table instead of being guessed independently.
+// standards, returning a level (Untrained→World Class) per lift plus an overall, by sex.
+// For the 8 male lifts covered by STRENGTH_WEIGHT_CLASS_MALE_LBS below, thresholds are real
+// sourced data (Symmetric Strength, no-age 1RM standards) interpolated by the user's actual
+// bodyweight — NOT a fixed bodyweight-multiple, because the real ratio shifts with bodyweight
+// (e.g. Back Squat Untrained is ~0.80x BW at 150 lb but ~0.62x BW at 250 lb). The fixed-ratio
+// numbers below are the FALLBACK for lifts with no weight-class table (Romanian Deadlift, Hip
+// Thrust, Standing Calf Raise — no published standard exists for these accessory lifts) and
+// for female (no sourced weight-class data yet). Their Proficient values are the geometric
+// mean of Intermediate/Advanced (a midpoint multiplicative step) since that tier isn't
+// independently sourced for these lifts/sex.
 const STRENGTH_STANDARDS_BY_SEX = {
   male: {
-    "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Advanced:1.25, Exceptional:1.5, Elite:1.75, WorldClass:2.45 },
-    "Barbell Back Squat":      { Novice:0.75, Intermediate:1.25, Advanced:1.75, Exceptional:2.1, Elite:2.5, WorldClass:3.55 },
-    "Deadlift":                { Novice:1.0, Intermediate:1.5, Advanced:2.25, Exceptional:2.6, Elite:3.0, WorldClass:4.0 },
-    "Sumo Deadlift":           { Novice:1.0, Intermediate:1.5, Advanced:2.2, Exceptional:2.5, Elite:2.9, WorldClass:3.8 },
-    "Overhead Press (Barbell)":{ Novice:0.35, Intermediate:0.55, Advanced:0.8, Exceptional:0.95, Elite:1.1, WorldClass:1.5 },
-    "Incline Bench Press":     { Novice:0.4, Intermediate:0.6, Advanced:1.0, Exceptional:1.2, Elite:1.45, WorldClass:2.1 },
-    "Front Squat":             { Novice:0.55, Intermediate:0.95, Advanced:1.4, Exceptional:1.65, Elite:2.0, WorldClass:2.85 },
-    "Barbell Row":             { Novice:0.5, Intermediate:0.75, Advanced:1.1, Exceptional:1.3, Elite:1.5, WorldClass:2.05 },
-    "Romanian Deadlift":       { Novice:0.6, Intermediate:1.0, Advanced:1.6, Exceptional:1.9, Elite:2.2, WorldClass:3.0 },
-    "Hip Thrust":              { Novice:1.0, Intermediate:1.5, Advanced:2.25, Exceptional:2.6, Elite:3.0, WorldClass:4.0 },
-    "Standing Calf Raise":     { Novice:1.0, Intermediate:1.7, Advanced:2.5, Exceptional:2.9, Elite:3.4, WorldClass:4.6 },
+    "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Proficient:0.97, Advanced:1.25, Exceptional:1.5, Elite:1.75, WorldClass:2.45 },
+    "Barbell Back Squat":      { Novice:0.75, Intermediate:1.25, Proficient:1.48, Advanced:1.75, Exceptional:2.1, Elite:2.5, WorldClass:3.55 },
+    "Deadlift":                { Novice:1.0, Intermediate:1.5, Proficient:1.84, Advanced:2.25, Exceptional:2.6, Elite:3.0, WorldClass:4.0 },
+    "Sumo Deadlift":           { Novice:1.0, Intermediate:1.5, Proficient:1.82, Advanced:2.2, Exceptional:2.5, Elite:2.9, WorldClass:3.8 },
+    "Overhead Press (Barbell)":{ Novice:0.35, Intermediate:0.55, Proficient:0.66, Advanced:0.8, Exceptional:0.95, Elite:1.1, WorldClass:1.5 },
+    "Incline Bench Press":     { Novice:0.4, Intermediate:0.6, Proficient:0.77, Advanced:1.0, Exceptional:1.2, Elite:1.45, WorldClass:2.1 },
+    "Front Squat":             { Novice:0.55, Intermediate:0.95, Proficient:1.15, Advanced:1.4, Exceptional:1.65, Elite:2.0, WorldClass:2.85 },
+    "Barbell Row":             { Novice:0.5, Intermediate:0.75, Proficient:0.91, Advanced:1.1, Exceptional:1.3, Elite:1.5, WorldClass:2.05 },
+    "Romanian Deadlift":       { Novice:0.6, Intermediate:1.0, Proficient:1.26, Advanced:1.6, Exceptional:1.9, Elite:2.2, WorldClass:3.0 },
+    "Hip Thrust":              { Novice:1.0, Intermediate:1.5, Proficient:1.84, Advanced:2.25, Exceptional:2.6, Elite:3.0, WorldClass:4.0 },
+    "Standing Calf Raise":     { Novice:1.0, Intermediate:1.7, Proficient:2.06, Advanced:2.5, Exceptional:2.9, Elite:3.4, WorldClass:4.6 },
   },
   female: {
-    "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Advanced:0.8, Exceptional:0.95, Elite:1.1, WorldClass:1.5 },
-    "Barbell Back Squat":      { Novice:0.5, Intermediate:0.9, Advanced:1.35, Exceptional:1.6, Elite:1.9, WorldClass:2.65 },
-    "Deadlift":                { Novice:0.65, Intermediate:1.1, Advanced:1.75, Exceptional:2.1, Elite:2.5, WorldClass:3.55 },
-    "Sumo Deadlift":           { Novice:0.65, Intermediate:1.1, Advanced:1.7, Exceptional:2.05, Elite:2.45, WorldClass:3.55 },
-    "Overhead Press (Barbell)":{ Novice:0.2, Intermediate:0.35, Advanced:0.55, Exceptional:0.65, Elite:0.8, WorldClass:1.15 },
-    "Incline Bench Press":     { Novice:0.25, Intermediate:0.4, Advanced:0.65, Exceptional:0.8, Elite:0.95, WorldClass:1.4 },
-    "Front Squat":             { Novice:0.4, Intermediate:0.7, Advanced:1.1, Exceptional:1.35, Elite:1.6, WorldClass:2.35 },
-    "Barbell Row":             { Novice:0.3, Intermediate:0.5, Advanced:0.75, Exceptional:0.9, Elite:1.1, WorldClass:1.6 },
-    "Romanian Deadlift":       { Novice:0.4, Intermediate:0.75, Advanced:1.2, Exceptional:1.45, Elite:1.7, WorldClass:2.4 },
-    "Hip Thrust":              { Novice:0.75, Intermediate:1.25, Advanced:1.9, Exceptional:2.2, Elite:2.6, WorldClass:3.55 },
-    "Standing Calf Raise":     { Novice:0.6, Intermediate:1.15, Advanced:1.85, Exceptional:2.25, Elite:2.7, WorldClass:3.95 },
+    "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Proficient:0.63, Advanced:0.8, Exceptional:0.95, Elite:1.1, WorldClass:1.5 },
+    "Barbell Back Squat":      { Novice:0.5, Intermediate:0.9, Proficient:1.1, Advanced:1.35, Exceptional:1.6, Elite:1.9, WorldClass:2.65 },
+    "Deadlift":                { Novice:0.65, Intermediate:1.1, Proficient:1.39, Advanced:1.75, Exceptional:2.1, Elite:2.5, WorldClass:3.55 },
+    "Sumo Deadlift":           { Novice:0.65, Intermediate:1.1, Proficient:1.37, Advanced:1.7, Exceptional:2.05, Elite:2.45, WorldClass:3.55 },
+    "Overhead Press (Barbell)":{ Novice:0.2, Intermediate:0.35, Proficient:0.44, Advanced:0.55, Exceptional:0.65, Elite:0.8, WorldClass:1.15 },
+    "Incline Bench Press":     { Novice:0.25, Intermediate:0.4, Proficient:0.51, Advanced:0.65, Exceptional:0.8, Elite:0.95, WorldClass:1.4 },
+    "Front Squat":             { Novice:0.4, Intermediate:0.7, Proficient:0.88, Advanced:1.1, Exceptional:1.35, Elite:1.6, WorldClass:2.35 },
+    "Barbell Row":             { Novice:0.3, Intermediate:0.5, Proficient:0.61, Advanced:0.75, Exceptional:0.9, Elite:1.1, WorldClass:1.6 },
+    "Romanian Deadlift":       { Novice:0.4, Intermediate:0.75, Proficient:0.95, Advanced:1.2, Exceptional:1.45, Elite:1.7, WorldClass:2.4 },
+    "Hip Thrust":              { Novice:0.75, Intermediate:1.25, Proficient:1.54, Advanced:1.9, Exceptional:2.2, Elite:2.6, WorldClass:3.55 },
+    "Standing Calf Raise":     { Novice:0.6, Intermediate:1.15, Proficient:1.46, Advanced:1.85, Exceptional:2.25, Elite:2.7, WorldClass:3.95 },
   },
 };
+// Real Symmetric Strength weight-class standards (no age, 1-rep maxes, lbs), for the 8 male
+// lifts they publish a comparable standard for. Keys are anchor bodyweights (lb); each value
+// array is [Untrained, Novice, Intermediate, Proficient, Advanced, Exceptional, Elite, World
+// Class]. computeStrengthScore interpolates between anchors by the user's actual bodyweight
+// (and linearly extrapolates past 150/250 using the nearest segment's slope) instead of using
+// a single fixed ratio, since the real ratio is NOT constant across bodyweight.
+const STRENGTH_WEIGHT_CLASS_MALE_LBS = {
+  "Barbell Back Squat":       { 150:[120,180,240,300,350,395,445,495], 208:[145,220,295,365,425,490,550,610], 250:[155,235,315,390,455,520,585,650] },
+  "Front Squat":              { 150:[95,145,190,240,280,320,360,395],  208:[115,175,235,295,340,390,440,490], 250:[125,190,250,315,365,420,470,520] },
+  "Deadlift":                 { 150:[135,205,275,345,400,455,515,570], 208:[170,250,335,420,490,560,630,700], 250:[180,270,360,450,525,600,675,750] },
+  "Sumo Deadlift":            { 150:[135,205,275,345,400,455,515,570], 208:[170,250,335,420,490,560,630,700], 250:[180,270,360,450,525,600,675,750] },
+  "Barbell Bench Press":      { 150:[90,135,180,225,260,295,335,370],  208:[110,165,220,275,320,365,410,455], 250:[115,175,235,295,340,390,440,485] },
+  "Incline Bench Press":      { 150:[75,110,145,185,215,245,275,305],  208:[90,135,180,225,260,300,335,375],  250:[95,145,190,240,280,320,360,400] },
+  "Overhead Press (Barbell)": { 150:[60,85,115,145,170,195,215,240],   208:[70,105,140,180,205,235,265,295],  250:[75,115,150,190,220,255,285,315] },
+  "Barbell Row":              { 150:[75,110,145,180,210,240,270,305],  208:[90,135,180,225,260,295,335,370],  250:[95,145,190,240,280,320,360,395] },
+};
+const STRENGTH_WC_LEVEL_KEYS = ["Novice","Intermediate","Proficient","Advanced","Exceptional","Elite","WorldClass"];
+// Interpolates (or extrapolates past the table's ends) this lift's level thresholds at a given
+// bodyweight, then expresses them as bodyweight ratios so the result drops into the same
+// ratio-based scoring path as the fixed-table lifts. Returns null if this lift has no real
+// weight-class data (caller should fall back to the fixed-ratio table).
+function weightClassRatios(lift, bwLbs) {
+  const table = STRENGTH_WEIGHT_CLASS_MALE_LBS[lift];
+  if (!table || !bwLbs || bwLbs <= 0) return null;
+  const anchors = Object.keys(table).map(Number).sort((a, b) => a - b);
+  let lo = anchors[0], hi = anchors[1];
+  for (let i = 0; i < anchors.length - 1; i++) {
+    if (bwLbs >= anchors[i]) { lo = anchors[i]; hi = anchors[i + 1]; }
+  }
+  const t = (bwLbs - lo) / (hi - lo);
+  const loVals = table[lo], hiVals = table[hi];
+  const out = {};
+  STRENGTH_WC_LEVEL_KEYS.forEach((key, i) => {
+    const idx = i + 1; // index 0 in the arrays is Untrained, which has no standards key
+    const abs = loVals[idx] + t * (hiVals[idx] - loVals[idx]);
+    out[key] = Math.max(0, abs) / bwLbs;
+  });
+  return out;
+}
+// Builds the effective male standards object for this bodyweight: real weight-class ratios
+// where available, the fixed-ratio fallback otherwise.
+function maleStandardsForBw(bwLbs) {
+  const out = {};
+  for (const lift of Object.keys(STRENGTH_STANDARDS_BY_SEX.male)) {
+    out[lift] = weightClassRatios(lift, bwLbs) || STRENGTH_STANDARDS_BY_SEX.male[lift];
+  }
+  return out;
+}
 const STRENGTH_LIFT_ALIASES = {
   "Barbell Bench Press": ["Bench Press","Flat Barbell Bench","Flat Bench"],
   "Barbell Back Squat": ["Back Squat","Low Bar Squat","High Bar Squat","Squat"],
@@ -2492,7 +2542,7 @@ const STRENGTH_LIFT_ALIASES = {
   "Romanian Deadlift": ["RDL","Barbell RDL","Stiff-Leg Deadlift","Stiff Leg Deadlift"],
   "Hip Thrust": ["Barbell Hip Thrust","Glute Bridge","Barbell Glute Bridge"],
 };
-const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Advanced","Exceptional","Elite","World Class"];
+const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Proficient","Advanced","Exceptional","Elite","World Class"];
 
 // Movement patterns: lifts that compete for the SAME slot in the score. The strongest
 // lift in each pattern represents you — so front + back squat don't both drag the average
@@ -2529,6 +2579,7 @@ function levelForRatio(standards, lift, ratio, ageFactor = 1) {
   if (ratio >= s.Elite * f) return "Elite";
   if (ratio >= s.Exceptional * f) return "Exceptional";
   if (ratio >= s.Advanced * f) return "Advanced";
+  if (ratio >= s.Proficient * f) return "Proficient";
   if (ratio >= s.Intermediate * f) return "Intermediate";
   if (ratio >= s.Novice * f) return "Novice";
   return "Untrained";
@@ -2539,20 +2590,6 @@ function levelForRatio(standards, lift, ratio, ageFactor = 1) {
 // Returns { overall, score (0-100), lifts:[{lift, best, ratio, level}], bodyweight, sex } or
 // { ready:false } if there isn't enough data (no bodyweight or no main-lift PRs).
 function computeStrengthScore(store, unit, sex = "male") {
-  let standards;
-  if (sex === "other") {
-    // Average the male & female thresholds per lift/level for a neutral baseline.
-    const m = STRENGTH_STANDARDS_BY_SEX.male, f = STRENGTH_STANDARDS_BY_SEX.female;
-    standards = {};
-    for (const lift of Object.keys(m)) {
-      standards[lift] = {};
-      for (const lvl of Object.keys(m[lift])) {
-        standards[lift][lvl] = (m[lift][lvl] + f[lift][lvl]) / 2;
-      }
-    }
-  } else {
-    standards = STRENGTH_STANDARDS_BY_SEX[sex] || STRENGTH_STANDARDS_BY_SEX.male;
-  }
   const bodyLog = [...(store.bodyLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const bw = bodyLog.length ? parseFloat(bodyLog[0].weight) : null;
   if (!bw || bw <= 0) return { ready: false, reason: "no_bodyweight" };
@@ -2560,6 +2597,25 @@ function computeStrengthScore(store, unit, sex = "male") {
   // doesn't silently masquerade as today's number.
   const bwDate = bodyLog[0].date;
   const bodyweightAgeDays = bwDate ? Math.round((Date.now() - new Date(bwDate + "T12:00:00").getTime()) / 864e5) : null;
+  // The weight-class table is in lbs, so the real-data interpolation needs bodyweight in lbs
+  // regardless of the user's display unit.
+  const bwLbs = unit === "kg" ? bw * LBS_PER_KG : bw;
+  let standards;
+  if (sex === "other") {
+    // Average the male (bodyweight-aware) & female (fixed-ratio) thresholds for a neutral baseline.
+    const m = maleStandardsForBw(bwLbs), f = STRENGTH_STANDARDS_BY_SEX.female;
+    standards = {};
+    for (const lift of Object.keys(m)) {
+      standards[lift] = {};
+      for (const lvl of Object.keys(m[lift])) {
+        standards[lift][lvl] = (m[lift][lvl] + f[lift][lvl]) / 2;
+      }
+    }
+  } else if (sex === "male") {
+    standards = maleStandardsForBw(bwLbs);
+  } else {
+    standards = STRENGTH_STANDARDS_BY_SEX.female;
+  }
   const prs = store.prs || {};
   // Normalize for tolerant matching — strips parentheticals like "(heavy)", punctuation, casing.
   const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -2686,7 +2742,7 @@ function computeStrengthScore(store, unit, sex = "male") {
       // lift is to the next tier, instead of every lift at a level rendering an identical bar.
       // World Class has no upper threshold, so extend its band 25% past the cutoff for the bar.
       const s = standards[winner.lift], f = ageFactor || 1;
-      const bounds = [0, s.Novice * f, s.Intermediate * f, s.Advanced * f, s.Exceptional * f, s.Elite * f, s.WorldClass * f, s.WorldClass * f * 1.25];
+      const bounds = [0, s.Novice * f, s.Intermediate * f, s.Proficient * f, s.Advanced * f, s.Exceptional * f, s.Elite * f, s.WorldClass * f, s.WorldClass * f * 1.25];
       const lo = bounds[winner.lvlIdx], hi = bounds[winner.lvlIdx + 1];
       const within = hi > lo ? Math.min(1, Math.max(0, (winner.ratio - lo) / (hi - lo))) : 1;
       const pct = Math.min(100, Math.round(((winner.lvlIdx + within) / (STRENGTH_LEVELS.length - 1)) * 1000) / 10);
@@ -14112,7 +14168,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           {(() => {
             const sex = store.strengthSex || "male";
             const ss = strengthScore;
-            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#c8f135", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" };
+            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Proficient:"#7ed957", Advanced:"#c8f135", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" };
             const setAge = (v) => {
               const a = parseInt(v);
               setStore(p => ({ ...p, age: (a > 0 && a < 100) ? a : null }));
