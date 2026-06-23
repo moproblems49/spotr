@@ -1,4 +1,4 @@
-// v178091716566
+// v178091716567
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2577,12 +2577,12 @@ const STRENGTH_PATTERNS = {
   "Hinge":    ["Hip Thrust"],
 };
 
-// The "big 5" patterns that drive the headline 0-100 score / overall level. RDL and Hinge
-// (Hip Thrust) still get a winner computed and appear in `lifts` (per-lift list + body map),
-// but they're accessory hinges almost always trained for reps rather than tested as a true
-// 1RM, and average them in pulls the score down on shaky data. Same exclusion mechanism as
-// STRENGTH_MAP_ONLY_LIFTS, just applied to patterns instead of individual lifts.
-const STRENGTH_SCORE_PATTERNS = new Set(["Squat", "Bench", "Deadlift", "Press", "Row"]);
+// The headline 0-100 score / overall level averages only the user's BEST this-many patterns,
+// dropping their weakest few. Lifts you train hard as accessories for reps (often a hinge or
+// the press) score low and drag the average on shaky data; counting each person's strongest
+// patterns keeps the number representative without singling out specific lifts. All winners
+// still appear in `lifts` (per-lift list + body map) regardless of whether they're counted.
+const STRENGTH_SCORE_TOP_N = 5;
 
 // Lifts evaluated for the muscle-balance body map ONLY — they get a level so their region can
 // be shaded, but are deliberately excluded from STRENGTH_PATTERNS so they never count toward
@@ -2751,7 +2751,7 @@ function computeStrengthScore(store, unit, sex = "male") {
   // Score each MOVEMENT PATTERN by its best-performing lift, so logging a light variant
   // (e.g. a few easy front squats) never drags down a strong main lift.
   const lifts = [];
-  let levelSum = 0, counted = 0;
+  const scoredWinners = []; // {lvlIdx, score} for every pattern with data — top N drive the score
   const usedLifts = new Set();
   for (const [pattern, candidates] of Object.entries(STRENGTH_PATTERNS)) {
     let winner = null;
@@ -2778,14 +2778,15 @@ function computeStrengthScore(store, unit, sex = "male") {
       const pct = Math.min(100, Math.round(((winner.lvlIdx + within) / (STRENGTH_LEVELS.length - 1)) * 1000) / 10);
       lifts.push({ lift: winner.lift, best: winner.best, ratio: winner.ratio, level: winner.level, pattern: winner.pattern, pct });
       usedLifts.add(winner.lift);
-      if (STRENGTH_SCORE_PATTERNS.has(pattern)) {
-        levelSum += winner.lvlIdx;
-        counted++;
-      }
+      scoredWinners.push({ lvlIdx: winner.lvlIdx, score: winner.score });
     }
   }
-  if (!counted) return { ready: false, reason: "no_lifts" };
-  const avgIdx = levelSum / counted;
+  if (!scoredWinners.length) return { ready: false, reason: "no_lifts" };
+  // Average only the user's strongest patterns (drop the weakest few). Rank by the continuous
+  // `score` (level + ratio-within-band) so ties between same-level lifts break on the closer one.
+  const topWinners = scoredWinners.sort((a, b) => b.score - a.score).slice(0, STRENGTH_SCORE_TOP_N);
+  const counted = topWinners.length;
+  const avgIdx = topWinners.reduce((sum, w) => sum + w.lvlIdx, 0) / counted;
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
   // Curved 0-100 score — see STRENGTH_SCORE_CURVE. Interpolates between the two control points
   // straddling avgIdx (same piecewise-linear approach as the per-lift bar % below).
