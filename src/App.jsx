@@ -2449,10 +2449,12 @@ function parseRepRange(reps) {
 // are real sourced data (Symmetric Strength, no-age 1RM standards) interpolated by the user's
 // actual bodyweight — NOT a fixed bodyweight-multiple, because the real ratio shifts with
 // bodyweight (e.g. male Back Squat Untrained is ~0.80x BW at 150 lb but ~0.62x BW at 250 lb).
-// The fixed-ratio numbers below are the FALLBACK for the 2 accessory lifts with no weight-class
-// table (Romanian Deadlift, Hip Thrust — no published standard exists for these). Their
-// Proficient values are the geometric mean of Intermediate/Advanced (a midpoint multiplicative
-// step) since that tier isn't independently sourced for these lifts.
+// The fixed-ratio numbers below are the FALLBACK for the accessory lifts with no weight-class
+// table (no published standard exists for these): Romanian Deadlift and Hip Thrust (scored),
+// plus Standing Calf Raise (NOT scored — it's listed in STRENGTH_MAP_ONLY_LIFTS so the muscle-
+// balance body map can shade the calves region, but it never counts toward the strength score).
+// Their Proficient values are the geometric mean of Intermediate/Advanced (a midpoint
+// multiplicative step) since that tier isn't independently sourced for these lifts.
 const STRENGTH_STANDARDS_BY_SEX = {
   male: {
     "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Proficient:0.97, Advanced:1.25, Exceptional:1.5, Elite:1.75, WorldClass:2.45 },
@@ -2465,6 +2467,7 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Barbell Row":             { Novice:0.5, Intermediate:0.75, Proficient:0.91, Advanced:1.1, Exceptional:1.3, Elite:1.5, WorldClass:2.05 },
     "Romanian Deadlift":       { Novice:0.6, Intermediate:1.0, Proficient:1.26, Advanced:1.6, Exceptional:1.9, Elite:2.2, WorldClass:3.0 },
     "Hip Thrust":              { Novice:1.0, Intermediate:1.5, Proficient:1.84, Advanced:2.25, Exceptional:2.6, Elite:3.0, WorldClass:4.0 },
+    "Standing Calf Raise":     { Novice:1.0, Intermediate:1.7, Proficient:2.06, Advanced:2.5, Exceptional:2.9, Elite:3.4, WorldClass:4.6 },
   },
   female: {
     "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Proficient:0.63, Advanced:0.8, Exceptional:0.95, Elite:1.1, WorldClass:1.5 },
@@ -2477,6 +2480,7 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Barbell Row":             { Novice:0.3, Intermediate:0.5, Proficient:0.61, Advanced:0.75, Exceptional:0.9, Elite:1.1, WorldClass:1.6 },
     "Romanian Deadlift":       { Novice:0.4, Intermediate:0.75, Proficient:0.95, Advanced:1.2, Exceptional:1.45, Elite:1.7, WorldClass:2.4 },
     "Hip Thrust":              { Novice:0.75, Intermediate:1.25, Proficient:1.54, Advanced:1.9, Exceptional:2.2, Elite:2.6, WorldClass:3.55 },
+    "Standing Calf Raise":     { Novice:0.6, Intermediate:1.15, Proficient:1.46, Advanced:1.85, Exceptional:2.25, Elite:2.7, WorldClass:3.95 },
   },
 };
 // Real Symmetric Strength weight-class standards (no age, 1-rep maxes, lbs), per sex, for the
@@ -2567,6 +2571,11 @@ const STRENGTH_PATTERNS = {
   "Hinge":    ["Hip Thrust"],
 };
 
+// Lifts evaluated for the muscle-balance body map ONLY — they get a level so their region can
+// be shaded, but are deliberately excluded from STRENGTH_PATTERNS so they never count toward
+// the strength score (no real per-bodyweight standard exists, so scoring them would dilute it).
+const STRENGTH_MAP_ONLY_LIFTS = ["Standing Calf Raise"];
+
 // Age multiplier on strength standards. Strength peaks ~20-30; after 35 it declines ~1%/yr,
 // accelerating past 50. Below 18, standards are slightly lower too. We DIVIDE the thresholds
 // by this factor so an older lifter reaches each level at a proportionally lower ratio —
@@ -2639,6 +2648,9 @@ function computeStrengthScore(store, unit, sex = "male") {
     "Barbell Row": (n) => (n.includes("barbell row") || n.includes("bent over row") || n.includes("bent-over row") || n.includes("pendlay") || (n.includes("bb row"))) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("cable") && !n.includes("machine") && !n.includes("seated"),
     "Romanian Deadlift": (n) => n.includes("romanian") || n.includes("rdl") || n.includes("stiff leg") || n.includes("stiff-leg"),
     "Hip Thrust": (n) => n.includes("hip thrust") || n.includes("glute bridge"),
+    // Standing/smith calf raises only — seated and leg-press variants load very differently.
+    // Map-only (see STRENGTH_MAP_ONLY_LIFTS): shades the calves region, not part of the score.
+    "Standing Calf Raise": (n) => n.includes("calf") && (n.includes("raise") || n.includes("press")) && !n.includes("seated") && !n.includes("leg press") && !n.includes("single") && !n.includes("donkey"),
   };
   // Strength standards are defined against a 1-REP MAX. store.prs holds the heaviest raw weight
   // lifted (any rep count), which understates strength for higher-rep PRs. So we estimate 1RM
@@ -2761,17 +2773,28 @@ function computeStrengthScore(store, unit, sex = "male") {
   const avgIdx = levelSum / counted;
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
   const score = Math.round((avgIdx / (STRENGTH_LEVELS.length - 1)) * 100);
+  // Map-only lifts (e.g. calf raise): give them a level for the muscle-balance body map, but
+  // keep them out of `lifts`/`counted`/`overall` so they never affect the strength score.
+  const mapLifts = [];
+  for (const lift of STRENGTH_MAP_ONLY_LIFTS) {
+    if (!standards[lift]) continue;
+    const best = bestPR(lift);
+    if (best == null) continue;
+    mapLifts.push({ lift, level: levelForRatio(standards, lift, best / bw, ageFactor) });
+  }
   // Surface any individually high-leveled lifts so single big lifts get recognised even
   // when the rounded overall is lower.
   const advancedIdx = STRENGTH_LEVELS.indexOf("Advanced");
   const topLifts = lifts.filter(l => STRENGTH_LEVELS.indexOf(l.level) >= advancedIdx)
     .sort((a, b) => STRENGTH_LEVELS.indexOf(b.level) - STRENGTH_LEVELS.indexOf(a.level));
-  return { ready: true, overall, score, lifts, bodyweight: bw, bodyweightAgeDays, counted, sex, age, ageFactor, topLifts };
+  return { ready: true, overall, score, lifts, mapLifts, bodyweight: bw, bodyweightAgeDays, counted, sex, age, ageFactor, topLifts };
 }
 
-// Maps each body-map region to the scored lift(s) that best represent its strength. Regions with no
-// standard lift (calves, forearms, abs, etc.) are intentionally absent — they render as "no data".
+// Maps each body-map region to the lift(s) that best represent its strength. Regions with no
+// standard lift (forearms, abs, etc.) are intentionally absent — they render as "no data".
 // A few are proxies (biceps via rows, triceps via pressing) since there's no isolation standard.
+// Calves is sourced from a map-only lift (see STRENGTH_MAP_ONLY_LIFTS): it shades here without
+// counting toward the strength score.
 const MUSCLE_STRENGTH_LIFTS = {
   Chest: ["Barbell Bench Press", "Incline Bench Press"],
   Shoulders: ["Overhead Press (Barbell)"],
@@ -2784,6 +2807,7 @@ const MUSCLE_STRENGTH_LIFTS = {
   Traps: ["Deadlift", "Barbell Row"],
   LowerBack: ["Deadlift", "Romanian Deadlift"],
   "Rear Delts": ["Barbell Row"],
+  Calves: ["Standing Calf Raise"],
 };
 
 // Per-region strength fraction (0 = Untrained, 1 = Elite) vs bodyweight standards, for the weakness
@@ -2793,6 +2817,8 @@ function muscleStrength(store, unit, sex) {
   if (!ss.ready) return { ready: false, reason: ss.reason };
   const liftLevel = {};
   ss.lifts.forEach(l => { liftLevel[l.lift] = STRENGTH_LEVELS.indexOf(l.level); });
+  // Map-only lifts (e.g. calf raise) shade their region without being part of the score.
+  (ss.mapLifts || []).forEach(l => { liftLevel[l.lift] = STRENGTH_LEVELS.indexOf(l.level); });
   const denom = STRENGTH_LEVELS.length - 1;
   const regionFrac = {};
   for (const [region, lifts] of Object.entries(MUSCLE_STRENGTH_LIFTS)) {
