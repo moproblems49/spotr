@@ -1,4 +1,4 @@
-// v178091716564
+// v178091716565
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2557,6 +2557,12 @@ const STRENGTH_LIFT_ALIASES = {
   "Hip Thrust": ["Barbell Hip Thrust","Glute Bridge","Barbell Glute Bridge"],
 };
 const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Proficient","Advanced","Exceptional","Elite","World Class"];
+// Control points (one per STRENGTH_LEVELS index) for the headline 0-100 score. A straight linear
+// mapping pins 100 to World Class (literal world-record territory), which makes everyday strong
+// lifters score punishingly low. This curve front-loads the range so the levels most people
+// actually occupy (Novice..Advanced) are spread across more of 0-100, while Elite/World Class
+// still sit at the top — the level LABELS themselves are unaffected, only this display number.
+const STRENGTH_SCORE_CURVE = [0, 25, 45, 60, 75, 88, 96, 100];
 
 // Movement patterns: lifts that compete for the SAME slot in the score. The strongest
 // lift in each pattern represents you — so front + back squat don't both drag the average
@@ -2772,11 +2778,13 @@ function computeStrengthScore(store, unit, sex = "male") {
   if (!counted) return { ready: false, reason: "no_lifts" };
   const avgIdx = levelSum / counted;
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
-  // Anchor the 0-100 score to Elite (a realistic ceiling for a dedicated natural lifter) rather
-  // than World Class — pinning 100 to world-record territory left everyday strong lifters scoring
-  // punishingly low. World Class lifts simply cap at 100. The level LABELS are unchanged.
-  const eliteIdx = STRENGTH_LEVELS.indexOf("Elite");
-  const score = Math.min(100, Math.round((avgIdx / eliteIdx) * 100));
+  // Curved 0-100 score — see STRENGTH_SCORE_CURVE. Interpolates between the two control points
+  // straddling avgIdx (same piecewise-linear approach as the per-lift bar % below).
+  const cps = STRENGTH_SCORE_CURVE;
+  const lo = Math.max(0, Math.min(cps.length - 1, Math.floor(avgIdx)));
+  const hi = Math.min(cps.length - 1, lo + 1);
+  const t = avgIdx - lo;
+  const score = Math.min(100, Math.round(cps[lo] + t * (cps[hi] - cps[lo])));
   // Map-only lifts (e.g. calf raise): give them a level for the muscle-balance body map, but
   // keep them out of `lifts`/`counted`/`overall` so they never affect the strength score.
   const mapLifts = [];
