@@ -1,4 +1,4 @@
-// v178091716558
+// v178091716559
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2445,15 +2445,14 @@ function parseRepRange(reps) {
 
 // Strength score — rates the user's main lifts relative to bodyweight against population
 // standards, returning a level (Untrained→World Class) per lift plus an overall, by sex.
-// For the 8 male lifts covered by STRENGTH_WEIGHT_CLASS_MALE_LBS below, thresholds are real
-// sourced data (Symmetric Strength, no-age 1RM standards) interpolated by the user's actual
-// bodyweight — NOT a fixed bodyweight-multiple, because the real ratio shifts with bodyweight
-// (e.g. Back Squat Untrained is ~0.80x BW at 150 lb but ~0.62x BW at 250 lb). The fixed-ratio
-// numbers below are the FALLBACK for lifts with no weight-class table (Romanian Deadlift, Hip
-// Thrust, Standing Calf Raise — no published standard exists for these accessory lifts) and
-// for female (no sourced weight-class data yet). Their Proficient values are the geometric
-// mean of Intermediate/Advanced (a midpoint multiplicative step) since that tier isn't
-// independently sourced for these lifts/sex.
+// For the 8 main lifts covered by STRENGTH_WEIGHT_CLASS_LBS below (both sexes), thresholds
+// are real sourced data (Symmetric Strength, no-age 1RM standards) interpolated by the user's
+// actual bodyweight — NOT a fixed bodyweight-multiple, because the real ratio shifts with
+// bodyweight (e.g. male Back Squat Untrained is ~0.80x BW at 150 lb but ~0.62x BW at 250 lb).
+// The fixed-ratio numbers below are the FALLBACK for the 3 accessory lifts with no weight-class
+// table (Romanian Deadlift, Hip Thrust, Standing Calf Raise — no published standard exists for
+// these). Their Proficient values are the geometric mean of Intermediate/Advanced (a midpoint
+// multiplicative step) since that tier isn't independently sourced for these lifts.
 const STRENGTH_STANDARDS_BY_SEX = {
   male: {
     "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Proficient:0.97, Advanced:1.25, Exceptional:1.5, Elite:1.75, WorldClass:2.45 },
@@ -2482,29 +2481,41 @@ const STRENGTH_STANDARDS_BY_SEX = {
     "Standing Calf Raise":     { Novice:0.6, Intermediate:1.15, Proficient:1.46, Advanced:1.85, Exceptional:2.25, Elite:2.7, WorldClass:3.95 },
   },
 };
-// Real Symmetric Strength weight-class standards (no age, 1-rep maxes, lbs), for the 8 male
-// lifts they publish a comparable standard for. Keys are anchor bodyweights (lb); each value
-// array is [Untrained, Novice, Intermediate, Proficient, Advanced, Exceptional, Elite, World
-// Class]. computeStrengthScore interpolates between anchors by the user's actual bodyweight
-// (and linearly extrapolates past 150/250 using the nearest segment's slope) instead of using
-// a single fixed ratio, since the real ratio is NOT constant across bodyweight.
-const STRENGTH_WEIGHT_CLASS_MALE_LBS = {
-  "Barbell Back Squat":       { 150:[120,180,240,300,350,395,445,495], 208:[145,220,295,365,425,490,550,610], 250:[155,235,315,390,455,520,585,650] },
-  "Front Squat":              { 150:[95,145,190,240,280,320,360,395],  208:[115,175,235,295,340,390,440,490], 250:[125,190,250,315,365,420,470,520] },
-  "Deadlift":                 { 150:[135,205,275,345,400,455,515,570], 208:[170,250,335,420,490,560,630,700], 250:[180,270,360,450,525,600,675,750] },
-  "Sumo Deadlift":            { 150:[135,205,275,345,400,455,515,570], 208:[170,250,335,420,490,560,630,700], 250:[180,270,360,450,525,600,675,750] },
-  "Barbell Bench Press":      { 150:[90,135,180,225,260,295,335,370],  208:[110,165,220,275,320,365,410,455], 250:[115,175,235,295,340,390,440,485] },
-  "Incline Bench Press":      { 150:[75,110,145,185,215,245,275,305],  208:[90,135,180,225,260,300,335,375],  250:[95,145,190,240,280,320,360,400] },
-  "Overhead Press (Barbell)": { 150:[60,85,115,145,170,195,215,240],   208:[70,105,140,180,205,235,265,295],  250:[75,115,150,190,220,255,285,315] },
-  "Barbell Row":              { 150:[75,110,145,180,210,240,270,305],  208:[90,135,180,225,260,295,335,370],  250:[95,145,190,240,280,320,360,395] },
+// Real Symmetric Strength weight-class standards (no age, 1-rep maxes, lbs), per sex, for the
+// 8 main lifts they publish a comparable standard for. Keys are anchor bodyweights (lb); each
+// value array is [Untrained, Novice, Intermediate, Proficient, Advanced, Exceptional, Elite,
+// World Class]. computeStrengthScore interpolates between anchors by the user's actual
+// bodyweight (and linearly extrapolates past the ends using the nearest segment's slope)
+// instead of using a single fixed ratio, since the real ratio is NOT constant across bodyweight.
+const STRENGTH_WEIGHT_CLASS_LBS = {
+  male: {
+    "Barbell Back Squat":       { 150:[120,180,240,300,350,395,445,495], 208:[145,220,295,365,425,490,550,610], 250:[155,235,315,390,455,520,585,650] },
+    "Front Squat":              { 150:[95,145,190,240,280,320,360,395],  208:[115,175,235,295,340,390,440,490], 250:[125,190,250,315,365,420,470,520] },
+    "Deadlift":                 { 150:[135,205,275,345,400,455,515,570], 208:[170,250,335,420,490,560,630,700], 250:[180,270,360,450,525,600,675,750] },
+    "Sumo Deadlift":            { 150:[135,205,275,345,400,455,515,570], 208:[170,250,335,420,490,560,630,700], 250:[180,270,360,450,525,600,675,750] },
+    "Barbell Bench Press":      { 150:[90,135,180,225,260,295,335,370],  208:[110,165,220,275,320,365,410,455], 250:[115,175,235,295,340,390,440,485] },
+    "Incline Bench Press":      { 150:[75,110,145,185,215,245,275,305],  208:[90,135,180,225,260,300,335,375],  250:[95,145,190,240,280,320,360,400] },
+    "Overhead Press (Barbell)": { 150:[60,85,115,145,170,195,215,240],   208:[70,105,140,180,205,235,265,295],  250:[75,115,150,190,220,255,285,315] },
+    "Barbell Row":              { 150:[75,110,145,180,210,240,270,305],  208:[90,135,180,225,260,295,335,370],  250:[95,145,190,240,280,320,360,395] },
+  },
+  female: {
+    "Barbell Back Squat":       { 100:[65,100,135,165,195,225,250,280],  130:[80,120,165,205,240,270,305,340],  180:[100,155,205,255,295,340,380,425] },
+    "Front Squat":              { 100:[55,80,105,135,155,180,200,225],   130:[65,100,130,165,190,220,245,270],  180:[80,120,165,205,240,270,305,340] },
+    "Deadlift":                 { 100:[80,120,160,200,230,265,300,330],  130:[95,145,195,245,285,325,365,405],  180:[120,180,245,305,355,405,455,505] },
+    "Sumo Deadlift":            { 100:[80,120,160,200,230,265,300,330],  130:[95,145,195,245,285,325,365,405],  180:[120,180,245,305,355,405,455,505] },
+    "Barbell Bench Press":      { 100:[45,70,90,115,130,150,170,190],    130:[55,85,110,140,160,185,210,230],   180:[70,105,140,175,200,230,260,290] },
+    "Incline Bench Press":      { 100:[35,55,75,95,110,125,140,155],     130:[45,70,90,115,130,150,170,190],    180:[55,85,115,140,165,190,215,235] },
+    "Overhead Press (Barbell)": { 100:[30,45,60,75,85,100,110,125],      130:[35,55,70,90,105,120,135,150],     180:[45,65,90,110,130,150,170,185] },
+    "Barbell Row":              { 100:[40,65,85,105,125,140,160,175],    130:[50,75,105,130,150,170,195,215],   180:[65,95,130,160,190,215,240,270] },
+  },
 };
 const STRENGTH_WC_LEVEL_KEYS = ["Novice","Intermediate","Proficient","Advanced","Exceptional","Elite","WorldClass"];
 // Interpolates (or extrapolates past the table's ends) this lift's level thresholds at a given
-// bodyweight, then expresses them as bodyweight ratios so the result drops into the same
-// ratio-based scoring path as the fixed-table lifts. Returns null if this lift has no real
-// weight-class data (caller should fall back to the fixed-ratio table).
-function weightClassRatios(lift, bwLbs) {
-  const table = STRENGTH_WEIGHT_CLASS_MALE_LBS[lift];
+// bodyweight for the given sex, then expresses them as bodyweight ratios so the result drops
+// into the same ratio-based scoring path as the fixed-table lifts. Returns null if this
+// sex/lift has no real weight-class data (caller should fall back to the fixed-ratio table).
+function weightClassRatios(sex, lift, bwLbs) {
+  const table = (STRENGTH_WEIGHT_CLASS_LBS[sex] || {})[lift];
   if (!table || !bwLbs || bwLbs <= 0) return null;
   const anchors = Object.keys(table).map(Number).sort((a, b) => a - b);
   let lo = anchors[0], hi = anchors[1];
@@ -2521,12 +2532,13 @@ function weightClassRatios(lift, bwLbs) {
   });
   return out;
 }
-// Builds the effective male standards object for this bodyweight: real weight-class ratios
-// where available, the fixed-ratio fallback otherwise.
-function maleStandardsForBw(bwLbs) {
+// Builds the effective standards object for a sex at this bodyweight: real weight-class ratios
+// where available, the fixed-ratio fallback (accessory lifts) otherwise.
+function standardsForBw(sex, bwLbs) {
+  const base = STRENGTH_STANDARDS_BY_SEX[sex] || STRENGTH_STANDARDS_BY_SEX.male;
   const out = {};
-  for (const lift of Object.keys(STRENGTH_STANDARDS_BY_SEX.male)) {
-    out[lift] = weightClassRatios(lift, bwLbs) || STRENGTH_STANDARDS_BY_SEX.male[lift];
+  for (const lift of Object.keys(base)) {
+    out[lift] = weightClassRatios(sex, lift, bwLbs) || base[lift];
   }
   return out;
 }
@@ -2602,8 +2614,8 @@ function computeStrengthScore(store, unit, sex = "male") {
   const bwLbs = unit === "kg" ? bw * LBS_PER_KG : bw;
   let standards;
   if (sex === "other") {
-    // Average the male (bodyweight-aware) & female (fixed-ratio) thresholds for a neutral baseline.
-    const m = maleStandardsForBw(bwLbs), f = STRENGTH_STANDARDS_BY_SEX.female;
+    // Average the male & female bodyweight-aware thresholds for a neutral baseline.
+    const m = standardsForBw("male", bwLbs), f = standardsForBw("female", bwLbs);
     standards = {};
     for (const lift of Object.keys(m)) {
       standards[lift] = {};
@@ -2611,10 +2623,8 @@ function computeStrengthScore(store, unit, sex = "male") {
         standards[lift][lvl] = (m[lift][lvl] + f[lift][lvl]) / 2;
       }
     }
-  } else if (sex === "male") {
-    standards = maleStandardsForBw(bwLbs);
   } else {
-    standards = STRENGTH_STANDARDS_BY_SEX.female;
+    standards = standardsForBw(sex, bwLbs);
   }
   const prs = store.prs || {};
   // Normalize for tolerant matching — strips parentheticals like "(heavy)", punctuation, casing.
