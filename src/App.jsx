@@ -1,4 +1,4 @@
-// v178091716556
+// v178091716557
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2444,35 +2444,40 @@ function parseRepRange(reps) {
 }
 
 // Strength score — rates the user's main lifts relative to bodyweight against population
-// standards, returning a level (Untrained→Elite) per lift plus an overall. Uses the same
+// standards, returning a level (Untrained→World Class) per lift plus an overall. Uses the same
 // Bodyweight-multiple thresholds (lower bound of each level), by sex. These are reasonable,
 // transparent population baselines for relative strength — not medical or competitive metrics.
+// Novice/Intermediate/Advanced/Elite approximate published lifting-standard calculators;
+// Exceptional and World Class aren't independently sourced (those upper tiers aren't published
+// per-lift anywhere reliable) — each is extrapolated by continuing the same Advanced→Elite
+// multiplicative step one half-step and one full step further, so the progression stays
+// internally consistent with the rest of the table instead of being guessed independently.
 const STRENGTH_STANDARDS_BY_SEX = {
   male: {
-    "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Advanced:1.25, Elite:1.75 },
-    "Barbell Back Squat":      { Novice:0.75, Intermediate:1.25, Advanced:1.75, Elite:2.5 },
-    "Deadlift":                { Novice:1.0, Intermediate:1.5, Advanced:2.25, Elite:3.0 },
-    "Sumo Deadlift":           { Novice:1.0, Intermediate:1.5, Advanced:2.2, Elite:2.9 },
-    "Overhead Press (Barbell)":{ Novice:0.35, Intermediate:0.55, Advanced:0.8, Elite:1.1 },
-    "Incline Bench Press":     { Novice:0.4, Intermediate:0.6, Advanced:1.0, Elite:1.45 },
-    "Front Squat":             { Novice:0.55, Intermediate:0.95, Advanced:1.4, Elite:2.0 },
-    "Barbell Row":             { Novice:0.5, Intermediate:0.75, Advanced:1.1, Elite:1.5 },
-    "Romanian Deadlift":       { Novice:0.6, Intermediate:1.0, Advanced:1.6, Elite:2.2 },
-    "Hip Thrust":              { Novice:1.0, Intermediate:1.5, Advanced:2.25, Elite:3.0 },
-    "Standing Calf Raise":     { Novice:1.0, Intermediate:1.7, Advanced:2.5, Elite:3.4 },
+    "Barbell Bench Press":     { Novice:0.5, Intermediate:0.75, Advanced:1.25, Exceptional:1.5, Elite:1.75, WorldClass:2.45 },
+    "Barbell Back Squat":      { Novice:0.75, Intermediate:1.25, Advanced:1.75, Exceptional:2.1, Elite:2.5, WorldClass:3.55 },
+    "Deadlift":                { Novice:1.0, Intermediate:1.5, Advanced:2.25, Exceptional:2.6, Elite:3.0, WorldClass:4.0 },
+    "Sumo Deadlift":           { Novice:1.0, Intermediate:1.5, Advanced:2.2, Exceptional:2.5, Elite:2.9, WorldClass:3.8 },
+    "Overhead Press (Barbell)":{ Novice:0.35, Intermediate:0.55, Advanced:0.8, Exceptional:0.95, Elite:1.1, WorldClass:1.5 },
+    "Incline Bench Press":     { Novice:0.4, Intermediate:0.6, Advanced:1.0, Exceptional:1.2, Elite:1.45, WorldClass:2.1 },
+    "Front Squat":             { Novice:0.55, Intermediate:0.95, Advanced:1.4, Exceptional:1.65, Elite:2.0, WorldClass:2.85 },
+    "Barbell Row":             { Novice:0.5, Intermediate:0.75, Advanced:1.1, Exceptional:1.3, Elite:1.5, WorldClass:2.05 },
+    "Romanian Deadlift":       { Novice:0.6, Intermediate:1.0, Advanced:1.6, Exceptional:1.9, Elite:2.2, WorldClass:3.0 },
+    "Hip Thrust":              { Novice:1.0, Intermediate:1.5, Advanced:2.25, Exceptional:2.6, Elite:3.0, WorldClass:4.0 },
+    "Standing Calf Raise":     { Novice:1.0, Intermediate:1.7, Advanced:2.5, Exceptional:2.9, Elite:3.4, WorldClass:4.6 },
   },
   female: {
-    "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Advanced:0.8, Elite:1.1 },
-    "Barbell Back Squat":      { Novice:0.5, Intermediate:0.9, Advanced:1.35, Elite:1.9 },
-    "Deadlift":                { Novice:0.65, Intermediate:1.1, Advanced:1.75, Elite:2.5 },
-    "Sumo Deadlift":           { Novice:0.65, Intermediate:1.1, Advanced:1.7, Elite:2.45 },
-    "Overhead Press (Barbell)":{ Novice:0.2, Intermediate:0.35, Advanced:0.55, Elite:0.8 },
-    "Incline Bench Press":     { Novice:0.25, Intermediate:0.4, Advanced:0.65, Elite:0.95 },
-    "Front Squat":             { Novice:0.4, Intermediate:0.7, Advanced:1.1, Elite:1.6 },
-    "Barbell Row":             { Novice:0.3, Intermediate:0.5, Advanced:0.75, Elite:1.1 },
-    "Romanian Deadlift":       { Novice:0.4, Intermediate:0.75, Advanced:1.2, Elite:1.7 },
-    "Hip Thrust":              { Novice:0.75, Intermediate:1.25, Advanced:1.9, Elite:2.6 },
-    "Standing Calf Raise":     { Novice:0.6, Intermediate:1.15, Advanced:1.85, Elite:2.7 },
+    "Barbell Bench Press":     { Novice:0.3, Intermediate:0.5, Advanced:0.8, Exceptional:0.95, Elite:1.1, WorldClass:1.5 },
+    "Barbell Back Squat":      { Novice:0.5, Intermediate:0.9, Advanced:1.35, Exceptional:1.6, Elite:1.9, WorldClass:2.65 },
+    "Deadlift":                { Novice:0.65, Intermediate:1.1, Advanced:1.75, Exceptional:2.1, Elite:2.5, WorldClass:3.55 },
+    "Sumo Deadlift":           { Novice:0.65, Intermediate:1.1, Advanced:1.7, Exceptional:2.05, Elite:2.45, WorldClass:3.55 },
+    "Overhead Press (Barbell)":{ Novice:0.2, Intermediate:0.35, Advanced:0.55, Exceptional:0.65, Elite:0.8, WorldClass:1.15 },
+    "Incline Bench Press":     { Novice:0.25, Intermediate:0.4, Advanced:0.65, Exceptional:0.8, Elite:0.95, WorldClass:1.4 },
+    "Front Squat":             { Novice:0.4, Intermediate:0.7, Advanced:1.1, Exceptional:1.35, Elite:1.6, WorldClass:2.35 },
+    "Barbell Row":             { Novice:0.3, Intermediate:0.5, Advanced:0.75, Exceptional:0.9, Elite:1.1, WorldClass:1.6 },
+    "Romanian Deadlift":       { Novice:0.4, Intermediate:0.75, Advanced:1.2, Exceptional:1.45, Elite:1.7, WorldClass:2.4 },
+    "Hip Thrust":              { Novice:0.75, Intermediate:1.25, Advanced:1.9, Exceptional:2.2, Elite:2.6, WorldClass:3.55 },
+    "Standing Calf Raise":     { Novice:0.6, Intermediate:1.15, Advanced:1.85, Exceptional:2.25, Elite:2.7, WorldClass:3.95 },
   },
 };
 const STRENGTH_LIFT_ALIASES = {
@@ -2487,7 +2492,7 @@ const STRENGTH_LIFT_ALIASES = {
   "Romanian Deadlift": ["RDL","Barbell RDL","Stiff-Leg Deadlift","Stiff Leg Deadlift"],
   "Hip Thrust": ["Barbell Hip Thrust","Glute Bridge","Barbell Glute Bridge"],
 };
-const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Advanced","Elite"];
+const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Advanced","Exceptional","Elite","World Class"];
 
 // Movement patterns: lifts that compete for the SAME slot in the score. The strongest
 // lift in each pattern represents you — so front + back squat don't both drag the average
@@ -2520,7 +2525,9 @@ function levelForRatio(standards, lift, ratio, ageFactor = 1) {
   const s = standards[lift];
   if (!s) return "Untrained";
   const f = ageFactor || 1;
+  if (ratio >= s.WorldClass * f) return "World Class";
   if (ratio >= s.Elite * f) return "Elite";
+  if (ratio >= s.Exceptional * f) return "Exceptional";
   if (ratio >= s.Advanced * f) return "Advanced";
   if (ratio >= s.Intermediate * f) return "Intermediate";
   if (ratio >= s.Novice * f) return "Novice";
@@ -2677,9 +2684,9 @@ function computeStrengthScore(store, unit, sex = "male") {
     if (winner) {
       // Continuous position within the level band (0-1) so the bar reflects how close the
       // lift is to the next tier, instead of every lift at a level rendering an identical bar.
-      // Elite has no upper threshold, so extend its band 25% past the Elite cutoff for the bar.
+      // World Class has no upper threshold, so extend its band 25% past the cutoff for the bar.
       const s = standards[winner.lift], f = ageFactor || 1;
-      const bounds = [0, s.Novice * f, s.Intermediate * f, s.Advanced * f, s.Elite * f, s.Elite * f * 1.25];
+      const bounds = [0, s.Novice * f, s.Intermediate * f, s.Advanced * f, s.Exceptional * f, s.Elite * f, s.WorldClass * f, s.WorldClass * f * 1.25];
       const lo = bounds[winner.lvlIdx], hi = bounds[winner.lvlIdx + 1];
       const within = hi > lo ? Math.min(1, Math.max(0, (winner.ratio - lo) / (hi - lo))) : 1;
       const pct = Math.min(100, Math.round(((winner.lvlIdx + within) / (STRENGTH_LEVELS.length - 1)) * 1000) / 10);
@@ -2693,9 +2700,10 @@ function computeStrengthScore(store, unit, sex = "male") {
   const avgIdx = levelSum / counted;
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
   const score = Math.round((avgIdx / (STRENGTH_LEVELS.length - 1)) * 100);
-  // Surface any individual Elite/Advanced lifts so single big lifts get recognised even
+  // Surface any individually high-leveled lifts so single big lifts get recognised even
   // when the rounded overall is lower.
-  const topLifts = lifts.filter(l => l.level === "Elite" || l.level === "Advanced")
+  const advancedIdx = STRENGTH_LEVELS.indexOf("Advanced");
+  const topLifts = lifts.filter(l => STRENGTH_LEVELS.indexOf(l.level) >= advancedIdx)
     .sort((a, b) => STRENGTH_LEVELS.indexOf(b.level) - STRENGTH_LEVELS.indexOf(a.level));
   return { ready: true, overall, score, lifts, bodyweight: bw, bodyweightAgeDays, counted, sex, age, ageFactor, topLifts };
 }
@@ -2732,21 +2740,23 @@ function muscleStrength(store, unit, sex) {
     lifts.forEach(lift => { if (liftLevel[lift] != null) best = Math.max(best == null ? -1 : best, liftLevel[lift]); });
     if (best != null) regionFrac[region] = best / denom;
   }
-  // Imbalance checks (only when both sides have data). Flags meaningful gaps (>~1 level).
+  // Imbalance checks (only when both sides have data). Flags meaningful gaps (>~0.6 / ~0.8 of
+  // a level) — thresholds expressed as a fraction of denom so they stay level-equivalent
+  // regardless of how many tiers STRENGTH_LEVELS has.
   const avg = (keys) => { const vs = keys.map(k => regionFrac[k]).filter(v => v != null); return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null; };
   const imbalances = [];
   const push = avg(["Chest", "Shoulders", "Triceps"]), pull = avg(["Lats", "Biceps"]);
-  if (push != null && pull != null && Math.abs(push - pull) >= 0.15) {
+  if (push != null && pull != null && Math.abs(push - pull) >= 0.6 / denom) {
     imbalances.push(push > pull ? "Pull is lagging your push" : "Push is lagging your pull");
   }
   const quad = regionFrac["Quads"], post = avg(["Hamstrings", "Glutes"]);
-  if (quad != null && post != null && Math.abs(quad - post) >= 0.15) {
+  if (quad != null && post != null && Math.abs(quad - post) >= 0.6 / denom) {
     imbalances.push(quad > post ? "Hamstrings/glutes lag your quads" : "Quads lag your hamstrings/glutes");
   }
   // Lower body vs upper body — a common neglect pattern worth surfacing.
   const upper = avg(["Chest", "Shoulders", "Lats", "Biceps", "Triceps"]);
   const lower = avg(["Quads", "Hamstrings", "Glutes"]);
-  if (upper != null && lower != null && Math.abs(upper - lower) >= 0.2) {
+  if (upper != null && lower != null && Math.abs(upper - lower) >= 0.8 / denom) {
     imbalances.push(upper > lower ? "Legs are lagging your upper body" : "Upper body lags your legs");
   }
   return { ready: true, regionFrac, overall: ss.overall, score: ss.score, imbalances, bodyweightAgeDays: ss.bodyweightAgeDays };
@@ -14102,7 +14112,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           {(() => {
             const sex = store.strengthSex || "male";
             const ss = strengthScore;
-            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#c8f135", Elite:"#fbbf24" };
+            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Advanced:"#c8f135", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" };
             const setAge = (v) => {
               const a = parseInt(v);
               setStore(p => ({ ...p, age: (a > 0 && a < 100) ? a : null }));
@@ -14181,8 +14191,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       </div>
                       <div style={{ height:8, borderRadius:5, background:C.divider, position:"relative" }}>
                         <div style={{ height:"100%", width:`${l.pct}%`, background:LEVEL_COLOR[l.level], borderRadius:5 }}/>
-                        {/* Tier markers at 25/50/75% — show how close this lift is to the next stage. */}
-                        {[25, 50, 75].map(p => (
+                        {/* Tier markers at each level boundary — show how close this lift is to the next stage. */}
+                        {Array.from({ length: STRENGTH_LEVELS.length - 2 }, (_, i) => Math.round((1000 * (i + 1)) / (STRENGTH_LEVELS.length - 1)) / 10).map(p => (
                           <div key={p} style={{ position:"absolute", top:0, bottom:0, left:`${p}%`, width:1.5, background:C.isDark ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.6)" }}/>
                         ))}
                       </div>
