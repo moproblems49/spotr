@@ -1,4 +1,4 @@
-// v178091716565
+// v178091716566
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2577,6 +2577,13 @@ const STRENGTH_PATTERNS = {
   "Hinge":    ["Hip Thrust"],
 };
 
+// The "big 5" patterns that drive the headline 0-100 score / overall level. RDL and Hinge
+// (Hip Thrust) still get a winner computed and appear in `lifts` (per-lift list + body map),
+// but they're accessory hinges almost always trained for reps rather than tested as a true
+// 1RM, and average them in pulls the score down on shaky data. Same exclusion mechanism as
+// STRENGTH_MAP_ONLY_LIFTS, just applied to patterns instead of individual lifts.
+const STRENGTH_SCORE_PATTERNS = new Set(["Squat", "Bench", "Deadlift", "Press", "Row"]);
+
 // Lifts evaluated for the muscle-balance body map ONLY — they get a level so their region can
 // be shaded, but are deliberately excluded from STRENGTH_PATTERNS so they never count toward
 // the strength score (no real per-bodyweight standard exists, so scoring them would dilute it).
@@ -2771,8 +2778,10 @@ function computeStrengthScore(store, unit, sex = "male") {
       const pct = Math.min(100, Math.round(((winner.lvlIdx + within) / (STRENGTH_LEVELS.length - 1)) * 1000) / 10);
       lifts.push({ lift: winner.lift, best: winner.best, ratio: winner.ratio, level: winner.level, pattern: winner.pattern, pct });
       usedLifts.add(winner.lift);
-      levelSum += winner.lvlIdx;
-      counted++;
+      if (STRENGTH_SCORE_PATTERNS.has(pattern)) {
+        levelSum += winner.lvlIdx;
+        counted++;
+      }
     }
   }
   if (!counted) return { ready: false, reason: "no_lifts" };
