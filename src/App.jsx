@@ -1,4 +1,4 @@
-// v178091716553
+// v178091716554
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10268,7 +10268,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             MY PROGRAMS · {store.programs?.length || 0}
           </div>
           {(!store.programs || !store.programs.length) && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"24px 0", fontSize:13 }}>No programs yet. Build one or import a template.</div>
+            <div style={{ textAlign:"center", color:C.sub, padding:"32px 0", fontSize:13 }}>
+              <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="dumbbell" size={32} color="currentColor"/></div>
+              <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:6 }}>No programs yet</div>
+              <div style={{ fontSize:13 }}>Build one below or import a template</div>
+            </div>
           )}
           <DndContext sensors={exReorderSensors} collisionDetection={closestCenter}
             onDragStart={() => haptic("medium")}
@@ -13779,7 +13783,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${token || loadSession()?.access_token || SUPABASE_KEY}` },
         body: JSON.stringify({ user_id: (loadSession()?.user?.id === currentUserId ? currentUserId : null), text: text.slice(0, 4000), app_version: APP_BUILD }),
       });
-      toast("Thanks for the feedback!", "success");
+      toast("Thanks — got it", "success");
       setFeedbackText(""); setShowFeedback(false);
     } catch (e) {
       toast("Couldn't send — try again", "error");
@@ -13893,7 +13897,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               ...p,
               users: p.users.map(u => u.id === currentUserId ? { ...u, avatarUrl: uploadedUrl } : u)
             }));
-            toast("Profile photo updated!", "success");
+            toast("Profile photo updated", "success");
           } else {
             toast("Upload failed — preview only", "error");
           }
@@ -13928,7 +13932,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       if (uploadedUrl && !uploadedUrl.startsWith("data:")) {
         await sb.query(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ cover_url: uploadedUrl, cover_pos: pos }) }, tok);
         setStore(p => ({ ...p, users: p.users.map(u => u.id === currentUserId ? { ...u, coverUrl: uploadedUrl, coverPos: pos } : u) }));
-        toast("Cover photo updated!", "success");
+        toast("Cover photo updated", "success");
       } else {
         toast("Upload failed — preview only", "error");
       }
@@ -16580,7 +16584,7 @@ function AppInner() {
       }));
       saveSession(authData);
       setSession(authData);
-      toast("Welcome — your progress is saved", "success");
+      toast("Account created — your progress is saved", "success");
     } catch (e) {
       devError("guest migration error:", e);
       toast("Account created — some data didn't transfer", "error");
