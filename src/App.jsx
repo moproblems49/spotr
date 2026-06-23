@@ -1,4 +1,4 @@
-// v178091716570
+// v178091716571
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6489,6 +6489,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
   );
 }
 const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onLikeComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
+  const bodyMapData = useBodyMapData();
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
   const isOwn = post.userId === currentUserId;
