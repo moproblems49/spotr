@@ -1,4 +1,4 @@
-// v178091716561
+// v178091716562
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2816,7 +2816,17 @@ function muscleStrength(store, unit, sex) {
   const ss = computeStrengthScore(store, unit, sex);
   if (!ss.ready) return { ready: false, reason: ss.reason };
   const liftLevel = {};
-  ss.lifts.forEach(l => { liftLevel[l.lift] = STRENGTH_LEVELS.indexOf(l.level); });
+  ss.lifts.forEach(l => {
+    const lvl = STRENGTH_LEVELS.indexOf(l.level);
+    liftLevel[l.lift] = lvl;
+    // The score works in patterns (variants compete for one slot — only the winner appears in
+    // ss.lifts), but the body map references exact lift names. Propagate the winning level to
+    // every sibling in the same pattern so a region keyed on "Deadlift" still gets credit when
+    // the user's best is "Sumo Deadlift" (same for Front vs Back Squat, Incline vs Flat Bench).
+    for (const candidates of Object.values(STRENGTH_PATTERNS)) {
+      if (candidates.includes(l.lift)) candidates.forEach(c => { liftLevel[c] = lvl; });
+    }
+  });
   // Map-only lifts (e.g. calf raise) shade their region without being part of the score.
   (ss.mapLifts || []).forEach(l => { liftLevel[l.lift] = STRENGTH_LEVELS.indexOf(l.level); });
   const denom = STRENGTH_LEVELS.length - 1;
