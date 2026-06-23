@@ -1,4 +1,4 @@
-// v178091716567
+// v178091716568
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1863,6 +1863,16 @@ const SET_TYPES = [
 // UTILITIES
 // ═════════════════════════════════════════════════════════════════════════════
 const uid = () => Math.random().toString(36).slice(2,10);
+// RFC4122 v4 UUID — needed (unlike uid() above) wherever the id is sent to a Postgres `uuid`
+// column, e.g. as an idempotency key on a retried insert. crypto.randomUUID covers modern
+// WebViews; the fallback keeps older iOS WebViews working without it.
+const genUUID = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
 
 // Generate a friendly shareable code like "IGNITE-X9K2"
 // Excludes ambiguous chars: 0, O, 1, I, L
@@ -8761,7 +8771,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
     try {
       const dk = dKey();
-      const sid = uid();
+      const sid = genUUID();
       const originalPRs = { ...store.prs }; // snapshot before any updates
       const originalPRsE1rm = { ...store.prsE1rm };
       const originalPRsVolume = { ...store.prsVolume };
@@ -9013,11 +9023,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // to show the summary so the "Update program?" prompt appears (it lives on the summary).
       if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && !programChange) {
         onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
-        const gSave = await onSaveWorkout({ dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
+        const gSave = await onSaveWorkout({ clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
         if (gSave && gSave.ok === false) {
           try {
             const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
-            pending.push({ dk, sid, savedAt: Date.now(), data: { dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
+            pending.push({ dk, sid, savedAt: Date.now(), data: { clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
             localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
           } catch {}
           toast("Saved on this device — couldn't reach server. Will retry.", "error");
@@ -9079,6 +9089,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // the source of truth on next login, so a silent DB failure = lost workout.
       // We await the result and tell the user the truth.
       const saveResult = await onSaveWorkout({
+        clientId: sid,
+        workoutDate: dk,
         dayName: session.dayName,
         exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
         duration: recordedDuration,
@@ -9090,6 +9102,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         try {
           const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
           pending.push({ dk, sid, savedAt: Date.now(), data: {
+            clientId: sid,
+            workoutDate: dk,
             dayName: session.dayName,
             exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
             duration: recordedDuration, unit, note: "", prs: newPRs
@@ -17319,18 +17333,28 @@ function AppInner() {
     }
     try {
       const row = {
+        // Explicit client-generated id (when we have one) so a save that's retried after a
+        // lost response — flaky connection, app backgrounded mid-request — upserts the SAME
+        // row instead of inserting a duplicate. It also becomes the row's real id from the
+        // first save, so the local history key always matches the server row (needed for
+        // "Undo finish & edit" / delete-by-id to find the right row later).
+        ...(workoutData.clientId ? { id: workoutData.clientId } : {}),
         user_id: currentUserId,
         day_name: workoutData.dayName,
         exercises: workoutData.exercises,
         duration_secs: workoutData.duration,
         unit: workoutData.unit || "lbs",
         note: workoutData.note || "",
-        workout_date: dKey(),
+        // Use the date the workout actually happened, not "now" — a retry that runs after
+        // a day boundary (offline at the gym, app reopened next morning) would otherwise
+        // file the workout under the wrong day and silently skew that day's streak/volume.
+        workout_date: workoutData.workoutDate || dKey(),
       };
       // Request the inserted row back so we can confirm the write actually landed
-      const inserted = await sb.query("workout_history", {
+      const path = workoutData.clientId ? "workout_history?on_conflict=id" : "workout_history";
+      const inserted = await sb.query(path, {
         method:"POST",
-        headers_extra: { "Prefer": "return=representation" },
+        headers_extra: { "Prefer": workoutData.clientId ? "return=representation,resolution=merge-duplicates" : "return=representation" },
         body: JSON.stringify(row)
       }, tok);
       const savedRow = Array.isArray(inserted) ? inserted[0] : inserted;
