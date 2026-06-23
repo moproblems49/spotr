@@ -1,4 +1,4 @@
-// v178091716562
+// v178091716563
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2790,11 +2790,11 @@ function computeStrengthScore(store, unit, sex = "male") {
   return { ready: true, overall, score, lifts, mapLifts, bodyweight: bw, bodyweightAgeDays, counted, sex, age, ageFactor, topLifts };
 }
 
-// Maps each body-map region to the lift(s) that best represent its strength. Regions with no
-// standard lift (forearms, abs, etc.) are intentionally absent — they render as "no data".
-// A few are proxies (biceps via rows, triceps via pressing) since there's no isolation standard.
-// Calves is sourced from a map-only lift (see STRENGTH_MAP_ONLY_LIFTS): it shades here without
-// counting toward the strength score.
+// Maps each body-map region to the lift(s) that best represent its strength. Abs is intentionally
+// absent — no standard lift loads it directly, so it renders as "no data" rather than mirroring an
+// unrelated lift. Several entries are proxies (biceps via rows, triceps via pressing, forearms via
+// heavy pulls/grip) since there's no isolation standard. Calves is sourced from a map-only lift
+// (see STRENGTH_MAP_ONLY_LIFTS): it shades here without counting toward the strength score.
 const MUSCLE_STRENGTH_LIFTS = {
   Chest: ["Barbell Bench Press", "Incline Bench Press"],
   Shoulders: ["Overhead Press (Barbell)"],
@@ -2804,6 +2804,7 @@ const MUSCLE_STRENGTH_LIFTS = {
   Glutes: ["Hip Thrust", "Barbell Back Squat", "Deadlift", "Romanian Deadlift"],
   Triceps: ["Barbell Bench Press", "Overhead Press (Barbell)"],
   Biceps: ["Barbell Row"],
+  Forearms: ["Deadlift", "Barbell Row"],
   Traps: ["Deadlift", "Barbell Row"],
   LowerBack: ["Deadlift", "Romanian Deadlift"],
   "Rear Delts": ["Barbell Row"],
