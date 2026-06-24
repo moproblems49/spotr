@@ -1,4 +1,4 @@
-// v178091716584
+// v178091716585
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -863,12 +863,16 @@ const EXERCISE_ALIASES = {
   "Step-Ups": "Step-Up",
   "Frog Pumps": "Frog Pump",
 };
+// Map a de-duplicated old spelling to its canonical entry. Used both for exercise-DB lookups
+// and for the standing exerciseNotes/barTypes maps, so a renamed exercise doesn't orphan a
+// user's saved note or bar-type override under the old spelling.
+const canonicalExName = (n) => EXERCISE_ALIASES[n] || n;
 
 // Resolve an exercise's library/custom entry by name (exact, then normalized). Custom exercises
 // win when present so a user's chosen muscle is authoritative.
 function getExEntry(name) {
   if (!name) return null;
-  name = EXERCISE_ALIASES[name] || name; // map de-duplicated old spellings to the canonical entry
+  name = canonicalExName(name); // map de-duplicated old spellings to the canonical entry
   let e = _customExercises.find(x => x.name === name);
   if (e) return e;
   e = EXERCISE_DB.find(x => x.name === name);
@@ -1801,10 +1805,18 @@ const MuscleIcon = memo(function MuscleIcon({ muscle = "", name = "", size = 28,
 });
 
 let _setToast = null;
+let _toastQueue = [];
 // `action` (optional): { label, onAction } renders an inline button (e.g. "Undo")
-// and keeps the toast up longer so the user has time to react.
+// and keeps the toast up longer so the user has time to react. Toasts queue rather than
+// replace each other in flight, so a fast second swipe-to-delete can't silently drop an
+// earlier Undo offer before the user's had a chance to see or use it.
 function toast(msg, type = "info", action = null) {
-  if (_setToast) _setToast({ msg, type, action, id: Date.now() });
+  _toastQueue.push({ msg, type, action, id: Date.now() + Math.random() });
+  if (_toastQueue.length === 1 && _setToast) _setToast(_toastQueue[0]);
+}
+function _dismissToast() {
+  _toastQueue.shift();
+  if (_setToast) _setToast(_toastQueue[0] || null);
 }
 
 // Native-feeling confirmation sheet — replaces window.confirm so destructive actions
@@ -1849,7 +1861,7 @@ function ToastHost() {
   useEffect(() => {
     if (!t) return;
     // Give actionable toasts (e.g. "Undo") a longer window to react to.
-    const id = setTimeout(() => setT(null), t.action ? 5000 : 2800);
+    const id = setTimeout(() => _dismissToast(), t.action ? 5000 : 2800);
     return () => clearTimeout(id);
   }, [t?.id]);
   if (!t) return null;
@@ -1864,7 +1876,7 @@ function ToastHost() {
     }}>
       {t.msg}
       {t.action && (
-        <button onClick={() => { try { t.action.onAction && t.action.onAction(); } catch (e) {} setT(null); }}
+        <button onClick={() => { try { t.action.onAction && t.action.onAction(); } catch (e) {} _dismissToast(); }}
           style={{ background:"rgba(255,255,255,0.18)", border:"none", color:"#fff", borderRadius:12, padding:"5px 12px", fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:F, letterSpacing:0.2 }}>
           {t.action.label}
         </button>
@@ -8766,10 +8778,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             // Surface the standing per-exercise note when the program day doesn't define one,
             // so coaching cues / reminders ("elbows tucked", "go lighter — shoulder") carry
             // forward into the session instead of living write-only in store.exerciseNotes.
-            note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[ex.name] || ""),
+            note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[canonicalExName(ex.name)] || ""),
             // Standing bar-type override (women's/EZ-curl/custom) for this exercise name,
             // so the plate diagram defaults to the right bar without re-picking it every time.
-            barType: store.barTypes?.[ex.name] || undefined,
+            barType: store.barTypes?.[canonicalExName(ex.name)] || undefined,
             // Carry the day's saved rest (e.g. Push A's bench rest) onto each set so it
             // displays and applies immediately. ex.rest persists per program day.
             sets: Array.from({ length: Math.min(12, Math.max(1, setCount)) }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal", ...(ex.rest ? { restTime: ex.rest } : {}) }))
@@ -8798,8 +8810,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         id: uid(),
         name: ex.name,
         reps: ex.reps || "",
-        note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[ex.name] || ""),
-        barType: store.barTypes?.[ex.name] || undefined,
+        note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[canonicalExName(ex.name)] || ""),
+        barType: store.barTypes?.[canonicalExName(ex.name)] || undefined,
         sets: Array.from({ length: setCount }, () => ({
           id: uid(),
           weight: "",
@@ -9036,8 +9048,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const next = { ...(p.exerciseNotes || {}) };
           session.exercises.forEach(ex => {
             if (!ex.name) return;
+            const key = canonicalExName(ex.name);
             const n = (ex.note || "").trim();
-            if (n) next[ex.name] = n; else delete next[ex.name];
+            if (n) next[key] = n; else delete next[key];
           });
           return next;
         })(),
@@ -9047,7 +9060,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const next = { ...(p.barTypes || {}) };
           session.exercises.forEach(ex => {
             if (!ex.name) return;
-            if (ex.barType?.id && ex.barType.id !== "standard") next[ex.name] = ex.barType; else delete next[ex.name];
+            const key = canonicalExName(ex.name);
+            if (ex.barType?.id && ex.barType.id !== "standard") next[key] = ex.barType; else delete next[key];
           });
           return next;
         })()
@@ -9569,7 +9583,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <ExerciseInput value={ex.name}
-                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v, note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[v] || ""), barType: store.barTypes?.[v] || undefined}) }))}
+                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v, note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[canonicalExName(v)] || ""), barType: x.barType || (store.barTypes?.[canonicalExName(v)] || undefined)}) }))}
                         C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}
                         store={store} setStore={setStore} currentUserId={currentUserId} token={token}/>
                     </div>
@@ -9633,7 +9647,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     {ex.name && <button onClick={() => setSwapEx(ei)} title="Swap exercise" style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></svg>
                     </button>}
-                    <button onClick={() => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); }} aria-label="Remove exercise" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
+                    <button onClick={() => {
+                      const removeNow = () => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); };
+                      // Only confirm when there's logged progress to lose — an exercise added but not yet
+                      // touched can be removed instantly, matching the fast swipe-to-delete-a-set behavior.
+                      if ((ex.sets||[]).some(s => s.done)) {
+                        confirmAction({ title:"Remove exercise?", message:`This removes "${ex.name || "this exercise"}" and its logged sets from this workout.`, confirmLabel:"Remove", destructive:true, onConfirm:removeNow });
+                      } else {
+                        removeNow();
+                      }
+                    }} aria-label="Remove exercise" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
                 </div>
                 {/* Per-exercise rest picker — applies to all sets in this exercise */}
@@ -9772,9 +9795,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       onDelete={ex.sets.length > 1 ? () => {
                         // Swipe-to-delete fires instantly with no confirm (kept fast on purpose),
                         // so capture the removed set and offer an Undo rather than losing logged data.
-                        const removed = ex.sets[si]; const exi = ei, seti = si;
-                        setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==exi?x:{...x,sets:x.sets.filter((_,j)=>j!==seti)}) }));
-                        toast("Set deleted", "info", { label:"Undo", onAction: () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=> i!==exi ? x : { ...x, sets: [...x.sets.slice(0,seti), removed, ...x.sets.slice(seti)] }) })) });
+                        // Matched by id (not index) on undo, since the Undo button can fire seconds
+                        // later after other edits have shifted indices around.
+                        const removed = ex.sets[si]; const exId = ex.id; const fallbackIndex = si;
+                        setSession(p => ({ ...p, exercises: p.exercises.map(x=>x.id!==exId?x:{...x,sets:x.sets.filter(s=>s.id!==removed.id)}) }));
+                        toast("Set deleted", "info", { label:"Undo", onAction: () => setSession(p => ({ ...p, exercises: p.exercises.map(x => { if (x.id !== exId) return x; const idx = Math.min(fallbackIndex, x.sets.length); return { ...x, sets: [...x.sets.slice(0,idx), removed, ...x.sets.slice(idx)] }; }) })) });
                       } : undefined}
                       onCopyToNext={() => setSession(p => ({
                         ...p,
