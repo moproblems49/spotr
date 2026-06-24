@@ -1,4 +1,4 @@
-// v178091716582
+// v178091716583
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1181,10 +1181,6 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
     </div>
   );
 }
-
-// Female body map — not yet extracted. Until it exists, the female view falls back to the male
-// figure; the preference is still recorded so it switches automatically once female art is added.
-// Female body map removed pending a redesign — BodyMap falls back to the male map.
 
 // Weighted weekly training volume per body-map region. Each completed working set credits its
 // exercise's primary muscle fully and each secondary muscle at half. Returns { "view:Region": sets }
