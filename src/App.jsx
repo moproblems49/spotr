@@ -1,4 +1,4 @@
-// v178091716574
+// v178091716575
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1805,8 +1805,10 @@ const MuscleIcon = memo(function MuscleIcon({ muscle = "", name = "", size = 28,
 });
 
 let _setToast = null;
-function toast(msg, type = "info") {
-  if (_setToast) _setToast({ msg, type, id: Date.now() });
+// `action` (optional): { label, onAction } renders an inline button (e.g. "Undo")
+// and keeps the toast up longer so the user has time to react.
+function toast(msg, type = "info", action = null) {
+  if (_setToast) _setToast({ msg, type, action, id: Date.now() });
 }
 
 // Native-feeling confirmation sheet — replaces window.confirm so destructive actions
@@ -1850,7 +1852,8 @@ function ToastHost() {
   _setToast = setT;
   useEffect(() => {
     if (!t) return;
-    const id = setTimeout(() => setT(null), 2800);
+    // Give actionable toasts (e.g. "Undo") a longer window to react to.
+    const id = setTimeout(() => setT(null), t.action ? 5000 : 2800);
     return () => clearTimeout(id);
   }, [t?.id]);
   if (!t) return null;
@@ -1861,9 +1864,15 @@ function ToastHost() {
       background:bg, color:"#fff", borderRadius:20, padding:"10px 20px",
       fontSize:13, fontWeight:600, zIndex:999, whiteSpace:"nowrap",
       boxShadow:"0 4px 20px rgba(0,0,0,0.2)", fontFamily:F,
-      animation:"fadeInUp 0.2s ease"
+      animation:"fadeInUp 0.2s ease", display:"flex", alignItems:"center", gap:14
     }}>
       {t.msg}
+      {t.action && (
+        <button onClick={() => { try { t.action.onAction && t.action.onAction(); } catch (e) {} setT(null); }}
+          style={{ background:"rgba(255,255,255,0.18)", border:"none", color:"#fff", borderRadius:12, padding:"5px 12px", fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:F, letterSpacing:0.2 }}>
+          {t.action.label}
+        </button>
+      )}
       <style>{`@keyframes fadeInUp{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
     </div>
   );
@@ -9684,7 +9693,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       }}
                       onUpdate={patch => updateSet(ei,si,patch)}
                       onToggleDone={() => toggleDone(ei,si)}
-                      onDelete={ex.sets.length > 1 ? () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.filter((_,j)=>j!==si)}) })) : undefined}
+                      onDelete={ex.sets.length > 1 ? () => {
+                        // Swipe-to-delete fires instantly with no confirm (kept fast on purpose),
+                        // so capture the removed set and offer an Undo rather than losing logged data.
+                        const removed = ex.sets[si]; const exi = ei, seti = si;
+                        setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==exi?x:{...x,sets:x.sets.filter((_,j)=>j!==seti)}) }));
+                        toast("Set deleted", "info", { label:"Undo", onAction: () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=> i!==exi ? x : { ...x, sets: [...x.sets.slice(0,seti), removed, ...x.sets.slice(seti)] }) })) });
+                      } : undefined}
                       onCopyToNext={() => setSession(p => ({
                         ...p,
                         exercises: p.exercises.map((x, i) => {
