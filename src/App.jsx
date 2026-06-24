@@ -1,4 +1,4 @@
-// v178091716577
+// v178091716578
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18654,12 +18654,20 @@ function AppInner() {
                       <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>
                         Follow athletes in the Discover tab,{"\n"}or log your first workout to get started
                       </div>
-                      <button onClick={() => switchTab("tracker")} style={{
-                        background:C.accent,
-                        color:"#fff", border:"none", borderRadius:10,
-                        padding:"11px 22px", fontSize:13, fontWeight:700,
-                        cursor:"pointer", fontFamily:F
-                      }}>Start a Workout</button>
+                      <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
+                        <button onClick={() => switchTab("tracker")} style={{
+                          background:C.accent,
+                          color:"#fff", border:"none", borderRadius:10,
+                          padding:"11px 22px", fontSize:13, fontWeight:700,
+                          cursor:"pointer", fontFamily:F
+                        }}>Start a Workout</button>
+                        <button onClick={() => switchTab("discover")} style={{
+                          background:"none",
+                          color:C.text, border:`1px solid ${C.border}`, borderRadius:10,
+                          padding:"11px 22px", fontSize:13, fontWeight:700,
+                          cursor:"pointer", fontFamily:F
+                        }}>Find People</button>
+                      </div>
                     </div>
                   )
                 )}
