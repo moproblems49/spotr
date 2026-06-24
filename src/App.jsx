@@ -1,4 +1,4 @@
-// v178091716573
+// v178091716574
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2020,7 +2020,33 @@ function isOneSidedBarbell(name) {
   return /\bt-?bar\b|\blandmine\b/i.test(name);
 }
 
-function calcPlatesPerSide(totalWeight, unit, oneSided = false) {
+// Barbell detection — shared by the plate breakdown and the per-exercise bar-type picker.
+// Requires an explicit barbell-loaded movement, excluding machine/dumbbell/cable variants
+// that happen to share a word with one (e.g. "Seated Leg Curl", "Leg Press").
+function isBarbellExercise(name) {
+  if (!name) return false;
+  return /\bbarbell\b|\bbench press\b|\bback squat\b|\bfront squat\b|\bhigh bar\b|\blow bar\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bbarbell hip thrust\b|\bhip thrust \(barbell\)\b|\blandmine\b|\bt-?bar row\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo deadlift\b|\boverhead press \(barbell\)\b|\bbarbell row\b|\bpower clean\b|\bhang clean\b|\bclean and jerk\b|\bsnatch\b|\btrap bar\b|\brack pull\b|\bbarbell shrug\b|\bpush press\b|\bz press\b|\bbradford\b|\bseated ohp\b|\bclose-grip bench\b|\bjm press\b|\bskull crusher\b|\bbarbell glute bridge\b|\bfront raises \(plate\)\b/i.test(name)
+    && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|leg curl|leg press|leg extension|pec deck|pulldown|pushdown|\bfly\b|lateral raise|pec|seated calf|assisted/i.test(name);
+}
+
+// Bar types — the plate diagram assumed a standard 45lb/20kg Olympic bar, which is wrong for
+// a women's bar, an EZ-curl bar (skull crushers, JM press), or any specialty bar. "Custom" lets
+// the user enter their gym's actual bar weight when none of the presets match (trap/hex,
+// safety squat, etc. all vary too much by manufacturer to guess).
+const BAR_TYPES = [
+  { id: "standard", label: "Standard", short: "45/20", lbs: 45, kg: 20 },
+  { id: "womens", label: "Women's", short: "35/15", lbs: 35, kg: 15 },
+  { id: "ez", label: "EZ-Curl", short: "15/7", lbs: 15, kg: 7 },
+];
+function getBarWeight(barType, unit) {
+  if (barType?.id === "custom" && barType.customLbs > 0) {
+    return unit === "kg" ? cvt(barType.customLbs, "lbs", "kg") : barType.customLbs;
+  }
+  const preset = BAR_TYPES.find(b => b.id === barType?.id) || BAR_TYPES[0];
+  return unit === "kg" ? preset.kg : preset.lbs;
+}
+
+function calcPlatesPerSide(totalWeight, unit, oneSided = false, barWeightOverride = null) {
   const t = parseFloat(totalWeight);
   const plates = unit === "kg" ? PLATES_KG_LIST : PLATES_LBS_LIST;
   if (oneSided) {
@@ -2041,7 +2067,7 @@ function calcPlatesPerSide(totalWeight, unit, oneSided = false) {
     result.leftover = remaining > 0.01 ? remaining : 0;
     return result;
   }
-  const bar = unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS;
+  const bar = barWeightOverride != null ? barWeightOverride : (unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS);
   if (!t || t <= bar) return null;
   let remaining = (t - bar) / 2;
   const result = [];
@@ -4807,7 +4833,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   ), document.body);
 }
 
-const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, unit, repsTarget, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
+const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, unit, repsTarget, barType, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [showRpe, setShowRpe] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
@@ -4898,22 +4924,17 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
 
   // Barbell detection — show plate breakdown inline ONLY for true barbell-loaded movements.
-  // The previous regex matched bare "curl"/"row"/"press", which wrongly flagged machine moves like
-  // "Seated Leg Curl" and "Leg Press". Now: require an explicit barbell-loaded movement, and
-  // exclude machine/dumbbell/cable/leg-curl/leg-press/etc.
-  const isBarbell = exName ? (
-    /\bbarbell\b|\bbench press\b|\bback squat\b|\bfront squat\b|\bhigh bar\b|\blow bar\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bbarbell hip thrust\b|\bhip thrust \(barbell\)\b|\blandmine\b|\bt-?bar row\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo deadlift\b|\boverhead press \(barbell\)\b|\bbarbell row\b|\bpower clean\b|\bhang clean\b|\bclean and jerk\b|\bsnatch\b|\btrap bar\b|\brack pull\b|\bbarbell shrug\b|\bpush press\b|\bz press\b|\bbradford\b|\bseated ohp\b|\bclose-grip bench\b|\bjm press\b|\bskull crusher\b|\bbarbell glute bridge\b|\bfront raises \(plate\)\b/i.test(exName)
-    && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|leg curl|leg press|leg extension|pec deck|pulldown|pushdown|\bfly\b|lateral raise|pec|seated calf|assisted/i.test(exName)
-  ) : false;
+  const isBarbell = isBarbellExercise(exName);
   const oneSided = exName ? isOneSidedBarbell(exName) : false;
+  const barWeight = useMemo(() => getBarWeight(barType, unit), [barType, unit]);
   const platesBreakdown = useMemo(() => {
     if (!isBarbell || isCardio) return null;
     // Use the entered weight, or fall back to the grayed placeholder (previous weeks' weight)
     // so the plate diagram shows before you type, matching what the input displays.
     const effWeight = (set.weight !== "" && set.weight != null) ? set.weight : (prev?.w ?? null);
     if (!effWeight) return null;
-    return calcPlatesPerSide(effWeight, unit, oneSided);
-  }, [isBarbell, set.weight, set.type, unit, isCardio, prev, oneSided]);
+    return calcPlatesPerSide(effWeight, unit, oneSided, barWeight);
+  }, [isBarbell, set.weight, set.type, unit, isCardio, prev, oneSided, barWeight]);
 
   // Progressive overload suggestion (only for working sets, not warmups, not completed, not cardio)
   const suggestion = useMemo(() => {
@@ -5161,7 +5182,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       {platesBreakdown && platesBreakdown.length > 0 && (
         <div style={{ marginTop:6, paddingTop:8, borderTop:`1px dashed ${C.divider}` }}>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, flexShrink:0 }}>{oneSided ? "LOADED" : "PER SIDE"}</span>
+            <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, flexShrink:0 }}>{oneSided ? "LOADED" : "PER SIDE"}{!oneSided ? ` (${barWeight} ${unit} bar)` : ""}</span>
             {/* Visual barbell: sleeve + plates loaded heaviest-inner to lightest-outer.
                 Disc height scales with plate weight so a 45 towers over a 2.5. */}
             <div style={{ display:"flex", alignItems:"center", flex:1, minWidth:0, height:46, overflowX:"auto" }}>
@@ -5226,6 +5247,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   ) &&
     a.si === b.si && a.prevIndex === b.prevIndex && a.ei === b.ei &&
     a.unit === b.unit && a.exName === b.exName && a.repsTarget === b.repsTarget &&
+    a.barType === b.barType &&
     a.C === b.C &&
     // Track whether delete is allowed (becomes undefined when only one set remains),
     // otherwise the last set could keep a stale swipe-to-delete.
@@ -5336,7 +5358,11 @@ function OneRMModal({ onClose, unit, C }) {
 // ═════════════════════════════════════════════════════════════════════════════
 function PlateCalcModal({ onClose, unit, C }) {
   const [target, setTarget] = useState("");
-  const BAR_WEIGHT = unit === "kg" ? 20 : 45;
+  const [barTypeId, setBarTypeId] = useState("standard");
+  const [customBar, setCustomBar] = useState("");
+  const BAR_WEIGHT = barTypeId === "custom" && parseFloat(customBar) > 0
+    ? parseFloat(customBar)
+    : (BAR_TYPES.find(b => b.id === barTypeId) || BAR_TYPES[0])[unit === "kg" ? "kg" : "lbs"];
   const PLATES_LBS = [45, 35, 25, 10, 5, 2.5];
   const PLATES_KG  = [25, 20, 15, 10, 5, 2.5, 1.25];
   const plates = unit === "kg" ? PLATES_KG : PLATES_LBS;
@@ -5369,6 +5395,26 @@ function PlateCalcModal({ onClose, unit, C }) {
           <button onClick={onClose} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
         </div>
         <div style={{ overflowY:"auto", flex:1, padding:"16px 18px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10, flexWrap:"wrap" }}>
+            {BAR_TYPES.map(bt => (
+              <button key={bt.id} onClick={() => setBarTypeId(bt.id)} style={{
+                padding:"5px 10px", borderRadius:7, cursor:"pointer", fontSize:11, fontWeight:700,
+                background: barTypeId === bt.id ? C.accent : C.divider,
+                border:"none", color: barTypeId === bt.id ? C.onAccent : C.text,
+              }}>{bt.label}</button>
+            ))}
+            <button onClick={() => setBarTypeId("custom")} style={{
+              padding:"5px 10px", borderRadius:7, cursor:"pointer", fontSize:11, fontWeight:700,
+              background: barTypeId === "custom" ? C.accent : C.divider, border:"none",
+              color: barTypeId === "custom" ? C.onAccent : C.text, display:"flex", alignItems:"center", gap:4,
+            }}>
+              Custom
+              <input type="text" inputMode="decimal" value={customBar} onClick={e => e.stopPropagation()}
+                onChange={e => { setCustomBar(e.target.value); setBarTypeId("custom"); }}
+                placeholder={unit}
+                style={{ width:30, background:"none", border:"none", borderBottom:`1px solid ${barTypeId === "custom" ? C.onAccent : C.border}`, color:"inherit", fontSize:11, fontWeight:700, fontFamily:MONO, outline:"none", padding:0 }}/>
+            </button>
+          </div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>Bar: <strong style={{ color:C.text }}>{BAR_WEIGHT} {unit}</strong> · Enter total target weight</div>
 
           <div style={{ background:C.divider, borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
@@ -8403,6 +8449,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
   const [restPickerEx, setRestPickerEx] = useState(null); // exercise index whose rest picker is open
+  const [barPickerEx, setBarPickerEx] = useState(null); // exercise index whose bar-type picker is open
+  const [customBarInput, setCustomBarInput] = useState("");
   const [swapEx, setSwapEx] = useState(null); // exercise index being swapped (substitution modal)
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseFilter, setExerciseFilter] = useState("All");
@@ -8634,6 +8682,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             // so coaching cues / reminders ("elbows tucked", "go lighter — shoulder") carry
             // forward into the session instead of living write-only in store.exerciseNotes.
             note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[ex.name] || ""),
+            // Standing bar-type override (women's/EZ-curl/custom) for this exercise name,
+            // so the plate diagram defaults to the right bar without re-picking it every time.
+            barType: store.barTypes?.[ex.name] || undefined,
             // Carry the day's saved rest (e.g. Push A's bench rest) onto each set so it
             // displays and applies immediately. ex.rest persists per program day.
             sets: Array.from({ length: Math.min(12, Math.max(1, setCount)) }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal", ...(ex.rest ? { restTime: ex.rest } : {}) }))
@@ -8663,6 +8714,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         name: ex.name,
         reps: ex.reps || "",
         note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[ex.name] || ""),
+        barType: store.barTypes?.[ex.name] || undefined,
         sets: Array.from({ length: setCount }, () => ({
           id: uid(),
           weight: "",
@@ -8901,6 +8953,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             if (!ex.name) return;
             const n = (ex.note || "").trim();
             if (n) next[ex.name] = n; else delete next[ex.name];
+          });
+          return next;
+        })(),
+        // Standing per-exercise bar-type overrides, same pattern as exerciseNotes: a non-standard
+        // pick (women's/EZ-curl/custom) sticks for next time; switching back to standard clears it.
+        barTypes: (() => {
+          const next = { ...(p.barTypes || {}) };
+          session.exercises.forEach(ex => {
+            if (!ex.name) return;
+            if (ex.barType?.id && ex.barType.id !== "standard") next[ex.name] = ex.barType; else delete next[ex.name];
           });
           return next;
         })()
@@ -9422,7 +9484,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <ExerciseInput value={ex.name}
-                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v, note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[v] || "")}) }))}
+                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v, note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[v] || ""), barType: store.barTypes?.[v] || undefined}) }))}
                         C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}
                         store={store} setStore={setStore} currentUserId={currentUserId} token={token}/>
                     </div>
@@ -9457,6 +9519,20 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </svg>
                       {ex.rest ? <span style={{ fontSize:10, fontWeight:700, color: restPickerEx === ei ? "#fff" : C.sub, fontFamily:MONO }}>{ex.rest >= 60 ? `${ex.rest/60}m`.replace(".0m","m").replace(".5m","½m") : `${ex.rest}s`}</span> : null}
                     </button>
+                    {/* Bar-type picker — only for true barbell lifts (not T-bar/landmine, which
+                        load plates directly with no bar weight to subtract). Defaults to
+                        standard 45/20 unless a women's/EZ-curl/custom bar was picked for this
+                        exercise, which then resurfaces every time you train it. */}
+                    {isBarbellExercise(ex.name) && !isOneSidedBarbell(ex.name) && (
+                      <button onClick={() => { setBarPickerEx(barPickerEx === ei ? null : ei); setCustomBarInput(""); }}
+                        title="Bar type for this exercise"
+                        style={{ background: barPickerEx === ei ? C.accent : "none", border:`1px solid ${barPickerEx === ei ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={barPickerEx === ei ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="10" width="20" height="4" rx="1"/><rect x="0" y="9" width="3" height="6" rx="0.5"/><rect x="21" y="9" width="3" height="6" rx="0.5"/>
+                        </svg>
+                        <span style={{ fontSize:10, fontWeight:700, color: barPickerEx === ei ? "#fff" : C.sub, fontFamily:MONO }}>{getBarWeight(ex.barType, unit)}{unit}</span>
+                      </button>
+                    )}
                     {/* Superset link — links this exercise with the next so they're performed
                         back-to-back. When linked, the rest timer is skipped between them. */}
                     {ei < session.exercises.length - 1 && (
@@ -9508,6 +9584,46 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     })}
                   </div>
                 )}
+                {/* Per-exercise bar-type picker */}
+                {barPickerEx === ei && (
+                  <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 8px", flexWrap:"wrap" }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:0.4, marginRight:2 }}>BAR</span>
+                    {BAR_TYPES.map(bt => {
+                      const active = (ex.barType?.id || "standard") === bt.id;
+                      return (
+                        <button key={bt.id} onClick={() => {
+                          setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{ ...x, barType: { id: bt.id } }) }));
+                          setBarPickerEx(null);
+                          haptic("tap");
+                        }} style={{
+                          padding:"6px 11px", borderRadius:8, cursor:"pointer", fontFamily:F, fontSize:12, fontWeight:700,
+                          background: active ? C.accent : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
+                          border:`1px solid ${active ? C.accent : C.border}`, color: active ? C.onAccent : C.text,
+                        }}>{bt.label} <span style={{ opacity:0.7, fontFamily:MONO }}>{bt.short}</span></button>
+                      );
+                    })}
+                    <div style={{
+                      padding:"6px 11px", borderRadius:8, fontFamily:F, fontSize:12, fontWeight:700,
+                      background: ex.barType?.id === "custom" ? C.accent : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
+                      border:`1px solid ${ex.barType?.id === "custom" ? C.accent : C.border}`, color: ex.barType?.id === "custom" ? C.onAccent : C.text,
+                      display:"flex", alignItems:"center", gap:4,
+                    }}>
+                      Custom
+                      <input type="text" inputMode="decimal" value={customBarInput}
+                        onChange={e => setCustomBarInput(e.target.value)}
+                        onBlur={() => {
+                          const n = parseFloat(customBarInput);
+                          if (!(n > 0)) return;
+                          const customLbs = unit === "kg" ? cvt(n, "kg", "lbs") : n;
+                          setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{ ...x, barType: { id: "custom", customLbs } }) }));
+                          setCustomBarInput(""); setBarPickerEx(null);
+                        }}
+                        onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
+                        placeholder={ex.barType?.id === "custom" ? String(getBarWeight(ex.barType, unit)) : unit}
+                        style={{ width:34, background:"none", border:"none", borderBottom:`1px solid ${ex.barType?.id === "custom" ? C.onAccent : C.border}`, color:"inherit", fontSize:12, fontWeight:700, fontFamily:MONO, outline:"none", padding:0 }}/>
+                    </div>
+                  </div>
+                )}
                 {/* Superset connector — shows this exercise flows into the next with no rest */}
                 {ex.superset && ei < session.exercises.length - 1 && (
                   <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 4px 20px" }}>
@@ -9556,7 +9672,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   const prevIndex = set.type === "warmup" ? -1 : ex.sets.slice(0, si).filter(s => s.type !== "warmup").length;
                   return (
                   <div key={set.id||si}>
-                    <SetRow set={set} si={si} prevIndex={prevIndex} ei={ei} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} C={C}
+                    <SetRow set={set} si={si} prevIndex={prevIndex} ei={ei} exName={ex.name} store={store} unit={unit} repsTarget={ex.reps} barType={ex.barType} C={C}
                       onFocusInput={(field) => { freshFocusRef.current = true; setFocusedSet(prev =>
                         // Tapping the field that's already open toggles the pad closed;
                         // otherwise open/switch the pad to the tapped field.
