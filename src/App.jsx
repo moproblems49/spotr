@@ -1,4 +1,4 @@
-// v178091716579
+// v178091716580
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11114,9 +11114,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 // Surface the template matched to the user's onboarding answers first,
                 // tagged RECOMMENDED, instead of always hardcoding Full Body.
                 const recId = recommendTemplateId(store.onboardingAnswers);
-                return [...PROGRAM_TEMPLATES].sort((a, b) => (a.id === recId ? -1 : b.id === recId ? 1 : 0));
-              })().map(t => {
-                const featured = t.id === recommendTemplateId(store.onboardingAnswers);
+                return [...PROGRAM_TEMPLATES].sort((a, b) => (a.id === recId ? -1 : b.id === recId ? 1 : 0)).map(t => {
+                const featured = t.id === recId;
                 return (
                 <div key={t.id} style={{
                   background: featured ? `linear-gradient(135deg, ${C.accentSoft}, transparent)` : "none",
@@ -11139,7 +11138,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   }}>Import & Set Active</button>
                 </div>
                 );
-              })}
+              });
+              })()}
             </div>
           </div>
         </div>
