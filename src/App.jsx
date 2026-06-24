@@ -1,4 +1,4 @@
-// v178091716578
+// v178091716579
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2096,10 +2096,10 @@ function calcPlatesPerSide(totalWeight, unit, oneSided = false, barWeightOverrid
 // Returns 4 sets: empty bar, then ~45%, ~65%, ~85% of working weight, each rounded
 // to the nearest achievable weight given standard plates. Reps taper as weight rises.
 // Used by the opt-in "Add warmup" button on compound barbell lifts.
-function generateWarmupSets(workingWeight, unit) {
+function generateWarmupSets(workingWeight, unit, barWeightOverride = null) {
   const w = parseFloat(workingWeight);
   if (!w || w <= 0) return [];
-  const bar = unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS;
+  const bar = barWeightOverride != null ? barWeightOverride : (unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS);
   // Smallest increment we can actually load (plate × 2 sides)
   const minPlate = unit === "kg" ? 1.25 : 2.5;
   const step = minPlate * 2;
@@ -9858,7 +9858,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     if (!isCompound || hasWarmup || topWorkingWeight <= 0) return null;
                     return (
                       <button onClick={() => {
-                        const warmups = generateWarmupSets(topWorkingWeight, unit);
+                        const warmups = generateWarmupSets(topWorkingWeight, unit, ex.barType ? getBarWeight(ex.barType, unit) : null);
                         if (!warmups.length) { toast("Working weight too light for warmups", "error"); return; }
                         setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x, sets:[...warmups, ...x.sets]}) }));
                         haptic("success");
