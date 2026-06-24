@@ -26,3 +26,7 @@ build
 
 .vercel
 .env*.local
+
+# Disposable jsdom verification artifacts (never committed — see CLAUDE.md verification methodology)
+.verify_tmp/
+src/App.verify.jsx
