@@ -1,4 +1,4 @@
-// v178091716575
+// v178091716576
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5975,6 +5975,83 @@ function PRModal({ prs, unit, onClose }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// PROGRAM TEMPLATES — shared by the Tracker's template picker AND first-run
+// onboarding, which auto-creates a starter program matched to the user's answers.
+// ═════════════════════════════════════════════════════════════════════════════
+const PROGRAM_TEMPLATES = [
+  { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", days:[
+    { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
+    { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
+    { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row","DB Shoulder Press","Lateral Raises","Cable Crunch"] },
+  ]},
+  { id:"ul4", name:"Upper / Lower", icon:"⚡", desc:"4-day · strength + size", days:[
+    { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (wide)","Barbell Curl","Tricep Rope Pushdown"] },
+    { name:"Lower A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","DB Shoulder Press","Seated Cable Row","Hammer Curl","Skull Crushers"] },
+    { name:"Lower B", exercises:["Deadlift","Hack Squat (Machine)","Leg Extension","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"ppl6", name:"Push / Pull / Legs", icon:"🔥", desc:"6-day · classic hypertrophy", days:[
+    { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (wide)","Barbell Row","Seated Cable Row","Face Pulls","Barbell Curl","Incline DB Curl"] },
+    { name:"Legs A · Quad Focus", exercises:["Barbell Back Squat","Leg Press","Leg Extension","Romanian Deadlift","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
+    { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly","Preacher Curl Machine","Hammer Curl"] },
+    { name:"Legs B · Posterior Chain", exercises:["Romanian Deadlift","Hack Squat (Machine)","Seated Leg Curl","Hip Thrust (Barbell)","Leg Extension","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"pplul", name:"PPL · Upper / Lower", icon:"🗓️", desc:"5-day · PPLUL hybrid", days:[
+    { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Pull", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Face Pulls","Barbell Curl","Hammer Curl"] },
+    { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row","DB Shoulder Press","Lat Pulldown (wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers"] },
+    { name:"Lower", exercises:["Hack Squat (Machine)","Romanian Deadlift","Leg Extension","Seated Leg Curl","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"bro", name:"Bro Split", icon:"💯", desc:"5-day · one muscle per day", days:[
+    { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Weighted Dips"] },
+    { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row","Lat Pulldown (wide)"] },
+    { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Face Pulls"] },
+    { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
+    { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Leg Extension","Standing Calf Raise (Machine)"] },
+  ]},
+  { id:"sl5x5", name:"StrongLifts 5×5", icon:"🏋️", desc:"3-day · beginner strength", days:[
+    { name:"Workout A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row"] },
+    { name:"Workout B", exercises:["Barbell Back Squat","Overhead Press (Barbell)","Deadlift"] },
+  ]},
+  { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"4-day · Wendler strength", days:[
+    { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press","Seated Leg Curl"] },
+    { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row","Tricep Rope Pushdown"] },
+    { name:"Deadlift Day", exercises:["Deadlift","Romanian Deadlift","Standing Calf Raise (Machine)"] },
+    { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises"] },
+  ]},
+];
+
+// Pick the best starter template from the onboarding answers. Matches the user's
+// available training days first (the hard constraint), then leans strength vs.
+// hypertrophy by stated goal. Falls back to the beginner Full Body 3-day.
+function recommendTemplateId({ goal, experience, daysPerWeek } = {}) {
+  const days = parseInt(daysPerWeek) || 3;
+  if (days <= 2) return "full3";
+  if (days === 3) return goal === "strength" ? "sl5x5" : "full3";
+  if (days === 4) return "ul4";
+  return goal === "muscle" ? "ppl6" : "pplul"; // 5+ days
+}
+
+// Turn a template definition into a concrete, freshly-id'd program object.
+function buildProgramFromTemplate(t) {
+  return {
+    id: uid(),
+    name: t.name,
+    days: t.days.map(d => ({
+      ...d, id: uid(),
+      exercises: d.exercises.map(ex =>
+        typeof ex === "string"
+          ? { name: ex, reps: "8–12", note: "" }
+          : { name: ex.name, reps: ex.reps || "8–12", note: ex.note || "" }
+      )
+    }))
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // ONBOARDING
 // ═════════════════════════════════════════════════════════════════════════════
 function Onboarding({ C, onComplete, suggestedUsers = [] }) {
@@ -6044,6 +6121,7 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   // Personalized closing copy from their answers
   const goalLabel = { strength:"getting stronger", muscle:"building muscle", lean:"getting lean", general:"staying healthy" }[answers.goal] || "your goals";
   const dpw = answers.daysPerWeek || 3;
+  const recProgram = PROGRAM_TEMPLATES.find(t => t.id === recommendTemplateId(answers));
 
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
@@ -6073,7 +6151,7 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
             </div>
             <div style={{ fontSize:28, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.6, lineHeight:1.15 }}>You're all set</div>
             <div style={{ fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:8 }}>
-              We'll tailor things around {goalLabel}, {dpw} days a week. Start your first workout whenever you're ready — your progress builds from here.
+              We'll tailor things around {goalLabel}, {dpw} days a week.{recProgram ? <> We've set you up with a <strong style={{ color:C.text, fontWeight:700 }}>{recProgram.name}</strong> program to start — tweak it anytime.</> : ""} Your progress builds from here.
             </div>
           </div>
         ) : inFollowStep ? (
@@ -11032,74 +11110,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
 
             <div style={{ overflowY:"auto", flex:1, padding:"0 14px 14px" }}>
-              {[
-                { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", featured:true, days:[
-                  { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
-                  { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
-                  { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row","DB Shoulder Press","Lateral Raises","Cable Crunch"] },
-                ]},
-                { id:"ul4", name:"Upper / Lower", icon:"⚡", desc:"4-day · strength + size", days:[
-                  { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (wide)","Barbell Curl","Tricep Rope Pushdown"] },
-                  { name:"Lower A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-                  { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","DB Shoulder Press","Seated Cable Row","Hammer Curl","Skull Crushers"] },
-                  { name:"Lower B", exercises:["Deadlift","Hack Squat (Machine)","Leg Extension","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
-                ]},
-                { id:"ppl6", name:"Push / Pull / Legs", icon:"🔥", desc:"6-day · classic hypertrophy", days:[
-                  { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
-                  { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (wide)","Barbell Row","Seated Cable Row","Face Pulls","Barbell Curl","Incline DB Curl"] },
-                  { name:"Legs A · Quad Focus", exercises:["Barbell Back Squat","Leg Press","Leg Extension","Romanian Deadlift","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-                  { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
-                  { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly","Preacher Curl Machine","Hammer Curl"] },
-                  { name:"Legs B · Posterior Chain", exercises:["Romanian Deadlift","Hack Squat (Machine)","Seated Leg Curl","Hip Thrust (Barbell)","Leg Extension","Seated Calf Raise (Machine)"] },
-                ]},
-                { id:"pplul", name:"PPL · Upper / Lower", icon:"🗓️", desc:"5-day · PPLUL hybrid", days:[
-                  { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
-                  { name:"Pull", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Face Pulls","Barbell Curl","Hammer Curl"] },
-                  { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-                  { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row","DB Shoulder Press","Lat Pulldown (wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers"] },
-                  { name:"Lower", exercises:["Hack Squat (Machine)","Romanian Deadlift","Leg Extension","Seated Leg Curl","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
-                ]},
-                { id:"bro", name:"Bro Split", icon:"💯", desc:"5-day · one muscle per day", days:[
-                  { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Weighted Dips"] },
-                  { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row","Lat Pulldown (wide)"] },
-                  { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Face Pulls"] },
-                  { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
-                  { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Leg Extension","Standing Calf Raise (Machine)"] },
-                ]},
-                { id:"sl5x5", name:"StrongLifts 5×5", icon:"🏋️", desc:"3-day · beginner strength", days:[
-                  { name:"Workout A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row"] },
-                  { name:"Workout B", exercises:["Barbell Back Squat","Overhead Press (Barbell)","Deadlift"] },
-                ]},
-                { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"4-day · Wendler strength", days:[
-                  { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press","Seated Leg Curl"] },
-                  { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row","Tricep Rope Pushdown"] },
-                  { name:"Deadlift Day", exercises:["Deadlift","Romanian Deadlift","Standing Calf Raise (Machine)"] },
-                  { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises"] },
-                ]},
-              ].map(t => (
+              {(() => {
+                // Surface the template matched to the user's onboarding answers first,
+                // tagged RECOMMENDED, instead of always hardcoding Full Body.
+                const recId = recommendTemplateId(store.onboardingAnswers);
+                return [...PROGRAM_TEMPLATES].sort((a, b) => (a.id === recId ? -1 : b.id === recId ? 1 : 0));
+              })().map(t => {
+                const featured = t.id === recommendTemplateId(store.onboardingAnswers);
+                return (
                 <div key={t.id} style={{
-                  background: t.featured ? `linear-gradient(135deg, ${C.accentSoft}, transparent)` : "none",
-                  border:`1px solid ${t.featured ? C.accent : C.border}`,
+                  background: featured ? `linear-gradient(135deg, ${C.accentSoft}, transparent)` : "none",
+                  border:`1px solid ${featured ? C.accent : C.border}`,
                   borderRadius:12, padding:"14px", marginBottom:10
                 }}>
-                  {t.featured && (
+                  {featured && (
                     <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
                   )}
                   <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.name}</div>
                   <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>{t.desc} · {t.days.length} days</div>
                   <button onClick={() => {
-                    const prog = {
-                      id: uid(),
-                      name: t.name,
-                      days: t.days.map(d => ({
-                        ...d, id: uid(),
-                        exercises: d.exercises.map(ex =>
-                          typeof ex === "string"
-                            ? { name: ex, reps: "8–12", note: "" }
-                            : { name: ex.name, reps: ex.reps || "8–12", note: ex.note || "" }
-                        )
-                      }))
-                    };
+                    const prog = buildProgramFromTemplate(t);
                     if (onSaveProgram) onSaveProgram(prog);
                     else setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
                     setShowTemplates(false);
@@ -11108,7 +11138,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     fontSize:12, fontWeight:600, color:"#fff", cursor:"pointer", padding:"9px", fontFamily:F
                   }}>Import & Set Active</button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -18119,9 +18150,17 @@ function AppInner() {
       try { localStorage.setItem("seshd_onboarded", "1"); } catch {}
       const oSex = answers?.sex === "female" ? "female" : answers?.sex === "male" ? "male" : undefined;
       const oAge = (answers?.age > 0 && answers?.age < 100) ? answers.age : undefined;
+      // Auto-create a starter program matched to their goal + training days so they land
+      // on a ready-to-start plan instead of an empty "No active program" screen.
+      const recTemplate = PROGRAM_TEMPLATES.find(t => t.id === recommendTemplateId(answers));
+      const starterProg = recTemplate ? buildProgramFromTemplate(recTemplate) : null;
       setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {},
         ...(oSex ? { strengthSex: oSex, bodyType: oSex } : {}),
-        ...(oAge ? { age: oAge } : {}) }));
+        ...(oAge ? { age: oAge } : {}),
+        // Only seed if they have no programs yet (don't clobber an existing one).
+        ...((starterProg && !(prev.programs && prev.programs.length))
+          ? { programs: [starterProg], activeProgramId: starterProg.id }
+          : {}) }));
       // Persist seen-onboarding to the profile so it doesn't reappear after a reload or
       // on another device. Best-effort: if the column doesn't exist yet the local store
       // flag still prevents it showing again this session/device.
