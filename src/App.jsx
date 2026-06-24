@@ -1,4 +1,4 @@
-// v178091716580
+// v178091716581
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5256,7 +5256,9 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   ) &&
     a.si === b.si && a.prevIndex === b.prevIndex && a.ei === b.ei &&
     a.unit === b.unit && a.exName === b.exName && a.repsTarget === b.repsTarget &&
-    a.barType === b.barType &&
+    // Compare bar type by value, not reference, so the row still memo-skips correctly
+    // even if a future code path hands it a freshly-allocated barType object.
+    (a.barType?.id === b.barType?.id && a.barType?.customLbs === b.barType?.customLbs) &&
     a.C === b.C &&
     // Track whether delete is allowed (becomes undefined when only one set remains),
     // otherwise the last set could keep a stale swipe-to-delete.
