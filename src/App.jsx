@@ -1,4 +1,4 @@
-// v178091716572
+// v178091716573
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8630,6 +8630,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             : (repsLead ? parseInt(repsLead[1]) : 3);
           return {
             ...ex, id: uid(),
+            // Surface the standing per-exercise note when the program day doesn't define one,
+            // so coaching cues / reminders ("elbows tucked", "go lighter — shoulder") carry
+            // forward into the session instead of living write-only in store.exerciseNotes.
+            note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[ex.name] || ""),
             // Carry the day's saved rest (e.g. Push A's bench rest) onto each set so it
             // displays and applies immediately. ex.rest persists per program day.
             sets: Array.from({ length: Math.min(12, Math.max(1, setCount)) }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal", ...(ex.rest ? { restTime: ex.rest } : {}) }))
@@ -8658,7 +8662,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         id: uid(),
         name: ex.name,
         reps: ex.reps || "",
-        note: ex.note || "",
+        note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[ex.name] || ""),
         sets: Array.from({ length: setCount }, () => ({
           id: uid(),
           weight: "",
@@ -8887,14 +8891,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         prsVolume: newPRsVolume,
         prEvents: newPrEvents,
         workoutDates: { ...p.workoutDates, [dk]: true },
-        exerciseNotes: {
-          ...(p.exerciseNotes || {}),
-          ...Object.fromEntries(
-            session.exercises
-              .filter(ex => ex.name && ex.note?.trim())
-              .map(ex => [ex.name, ex.note.trim()])
-          )
-        }
+        // Standing per-exercise notes, keyed by exercise name. For every exercise that was in
+        // this session: a non-empty note is stored (so it resurfaces next time you train it),
+        // and a cleared note deletes the standing note (so stale cues don't stick forever).
+        // Exercises not in this session keep whatever note they had.
+        exerciseNotes: (() => {
+          const next = { ...(p.exerciseNotes || {}) };
+          session.exercises.forEach(ex => {
+            if (!ex.name) return;
+            const n = (ex.note || "").trim();
+            if (n) next[ex.name] = n; else delete next[ex.name];
+          });
+          return next;
+        })()
       }));
 
       // Detect whether the session structure differs from the saved program day.
@@ -9413,7 +9422,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <ExerciseInput value={ex.name}
-                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v}) }))}
+                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v, note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[v] || "")}) }))}
                         C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}
                         store={store} setStore={setStore} currentUserId={currentUserId} token={token}/>
                     </div>
