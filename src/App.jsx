@@ -1,4 +1,4 @@
-// v178091716576
+// v178091716577
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4485,12 +4485,12 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
         {view === "cal" && (
           <div style={{ display:"flex", alignItems:"center", gap:4 }}>
             <button onClick={() => setCalMonth(p => { const n = new Date(p); n.setMonth(n.getMonth()-1); return n; })}
-              style={{ background:"none", border:"none", padding:"4px 6px", cursor:"pointer", color:C.sub, fontSize:14, fontFamily:F }}>‹</button>
+              aria-label="Previous month" style={{ background:"none", border:"none", padding:"4px 6px", cursor:"pointer", color:C.sub, fontSize:14, fontFamily:F }}>‹</button>
             <span style={{ fontSize:12, color:C.text, fontWeight:600, minWidth:80, textAlign:"center", fontFamily:MONO }}>
               {calMonth.toLocaleDateString(undefined, { month:"short", year:"numeric" })}
             </span>
             <button onClick={() => setCalMonth(p => { const n = new Date(p); n.setMonth(n.getMonth()+1); return n; })}
-              style={{ background:"none", border:"none", padding:"4px 6px", cursor:"pointer", color:C.sub, fontSize:14, fontFamily:F }}>›</button>
+              aria-label="Next month" style={{ background:"none", border:"none", padding:"4px 6px", cursor:"pointer", color:C.sub, fontSize:14, fontFamily:F }}>›</button>
           </div>
         )}
       </div>
@@ -5322,7 +5322,7 @@ function OneRMModal({ onClose, unit, C }) {
       <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>1RM Calculator</div>
-          <button onClick={onClose} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
         </div>
         <div style={{ overflowY:"auto", flex:1, padding:"16px 18px" }}>
           <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Enter your best set to estimate one-rep max (Epley formula)</div>
@@ -5401,7 +5401,7 @@ function PlateCalcModal({ onClose, unit, C }) {
       <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Plate Calculator</div>
-          <button onClick={onClose} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
         </div>
         <div style={{ overflowY:"auto", flex:1, padding:"16px 18px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10, flexWrap:"wrap" }}>
@@ -6392,7 +6392,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
                   <div style={{ fontSize:14, fontWeight:700, color:bodyClr }}>{ex.name}</div>
                   {exInfo?.muscle && <div style={{ fontSize:11, color:labelClr, marginTop:1 }}>{exInfo.muscle}</div>}
                 </div>
-                <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 4px", lineHeight:1 }}>×</button>
+                <button onClick={() => removeEx(ei)} aria-label="Remove exercise" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 4px", lineHeight:1 }}>×</button>
               </div>
 
               {/* Sets / Reps / Rest row */}
@@ -6565,7 +6565,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
           <div style={{ fontSize:13, fontWeight:600, color:"#fff" }}>{user.username}</div>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>now</div>
         </div>
-        <button onClick={onClose} style={{ background:"none", border:"none", color:"#fff", fontSize:24, cursor:"pointer", padding:4, lineHeight:1 }}>✕</button>
+        <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:"#fff", fontSize:24, cursor:"pointer", padding:4, lineHeight:1 }}>✕</button>
       </div>
 
       {/* Story content */}
@@ -7341,7 +7341,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                     <ExerciseInput value={ex.name} onChange={name => updateEx(ei,{name})} C={C} store={store} token={token}/>
                     {exInfo?.muscle && <div style={{ fontSize:11, color:SUB, marginTop:1 }}>{exInfo.muscle}</div>}
                   </div>
-                  <button onClick={() => removeEx(ei)} style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"4px 6px", lineHeight:1 }}>×</button>
+                  <button onClick={() => removeEx(ei)} aria-label="Remove exercise" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"4px 6px", lineHeight:1 }}>×</button>
                 </div>
 
                 {/* Sets / Reps / Rest */}
@@ -8077,7 +8077,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
                 <input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} name={`r-${ei}-${si}`} data-1p-ignore data-lpignore="true" data-form-type="other" enterKeyHint="done" value={s.reps || ""} onFocus={e => e.target.select()} onChange={e => updateSet(ei, si, { reps: e.target.value.replace(/[^0-9]/g, "") })}
                   style={{ width:"100%", background:C.bg, border:`1.5px solid ${C.divider}`, borderRadius:8, padding:"7px 8px", fontSize:14, fontWeight:700, color:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
                 />
-                <button onClick={() => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: x.sets.filter((_, j) => j !== si) }))} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:0 }}>×</button>
+                <button onClick={() => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: x.sets.filter((_, j) => j !== si) }))} aria-label="Delete set" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:0 }}>×</button>
               </div>
             ))}
             <button onClick={() => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: [...x.sets, { id: uid(), weight: "", reps: "", done: true, type: "normal" }] }))}
@@ -9341,7 +9341,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                   <div style={{ fontSize:17, fontWeight:800, color:C.text }}>Swap exercise</div>
-                  <button onClick={() => setSwapEx(null)} style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
+                  <button onClick={() => setSwapEx(null)} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
                 </div>
                 <div style={{ fontSize:13, color:C.sub, marginBottom:14 }}>Alternatives for <span style={{ color:C.text, fontWeight:600 }}>{cur.name}</span> · same muscle group</div>
                 {subs.length === 0 ? (
@@ -9635,7 +9635,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     {ex.name && <button onClick={() => setSwapEx(ei)} title="Swap exercise" style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></svg>
                     </button>}
-                    <button onClick={() => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); }} style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
+                    <button onClick={() => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); }} aria-label="Remove exercise" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
                 </div>
                 {/* Per-exercise rest picker — applies to all sets in this exercise */}
@@ -10745,7 +10745,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               placeholder="Search exercises..."
               style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"10px 10px 10px 38px", fontSize:14, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box" }}
             />
-            {exerciseSearch && <button onClick={() => setExerciseSearch("")} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.sub, fontSize:16, cursor:"pointer" }}>×</button>}
+            {exerciseSearch && <button onClick={() => setExerciseSearch("")} aria-label="Clear search" style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.sub, fontSize:16, cursor:"pointer" }}>×</button>}
           </div>
           {/* Filter Pills */}
           <div data-no-tab-swipe style={{ display:"flex", gap:6, marginBottom:14, overflowX:"auto", paddingBottom:4, WebkitOverflowScrolling:"touch", touchAction:"pan-x" }}>
@@ -11530,7 +11530,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                       <MuscleIcon muscle={exInfo?.muscle||""} size={20} name={ex.name} C={C}/>
                     </div>
                     <div style={{ flex:1, fontSize:13, fontWeight:700, color:TXT }}>{ex.name}</div>
-                    <button onClick={() => removeEx(i)} style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 2px", lineHeight:1 }}>×</button>
+                    <button onClick={() => removeEx(i)} aria-label="Remove exercise" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 2px", lineHeight:1 }}>×</button>
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                     <div>
@@ -12246,7 +12246,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
+        <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{name}</div>
           <div style={{ fontSize:12, color:C.sub }}>{exInfo.muscle}</div>
@@ -12592,7 +12592,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
     <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
       {/* Header */}
       <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-        <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer" }}>‹</button>
+        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer" }}>‹</button>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{g.name}</div>
           <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} members</div>
@@ -12619,7 +12619,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             {img && (
               <div style={{ position:"relative", marginBottom:8 }}>
                 <img src={img} style={{ width:"100%", maxHeight:180, objectFit:"cover", borderRadius:10 }}/>
-                <button onClick={() => setImg(null)} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:24, height:24, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+                <button onClick={() => setImg(null)} aria-label="Remove image" style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:24, height:24, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
               </div>
             )}
             <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
@@ -12838,7 +12838,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             <div onClick={e=>e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
                 <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Share a Workout</div>
-                <button onClick={() => setShowWorkoutPicker(false)} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text }}>×</button>
+                <button onClick={() => setShowWorkoutPicker(false)} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text }}>×</button>
               </div>
               <div style={{ overflowY:"auto", flex:1, padding:"10px 14px 14px" }}>
                 {recents.length === 0 ? (
@@ -12995,7 +12995,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   return (
     <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-        {onBack && <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
+        {onBack && <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Groups</div>
         <button onClick={() => setShowCreate(true)} style={{
           background:C.accent, color:C.onAccent, border:"none", borderRadius:6,
@@ -13177,7 +13177,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           style={{ width:"100%", background:C.divider, border:"none", borderRadius:14, padding:"12px 14px 12px 38px", fontSize:14, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:F }}
         />
         {q.length > 0 && (
-          <button onClick={() => setQ("")} style={{ position:"absolute", right:28, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:18, padding:4, lineHeight:1 }}>×</button>
+          <button onClick={() => setQ("")} aria-label="Clear search" style={{ position:"absolute", right:28, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:18, padding:4, lineHeight:1 }}>×</button>
         )}
       </div>
 
@@ -13770,7 +13770,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
+        <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
         <div style={{ flex:1, fontSize:16, fontWeight:700, color:C.text }}>Body</div>
         {!adding && <button onClick={() => setAdding(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"7px 14px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Log</button>}
       </div>
@@ -13799,7 +13799,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
               {draftPhoto ? (
                 <div style={{ position:"relative", display:"inline-block" }}>
                   <img src={draftPhoto} alt="" style={{ width:90, height:120, objectFit:"cover", borderRadius:10 }}/>
-                  <button onClick={() => setDraftPhoto(null)} style={{ position:"absolute", top:4, right:4, background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12 }}>×</button>
+                  <button onClick={() => setDraftPhoto(null)} aria-label="Remove photo" style={{ position:"absolute", top:4, right:4, background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12 }}>×</button>
                 </div>
               ) : (
                 <label style={{ display:"inline-flex", alignItems:"center", gap:7, background:C.bg, border:`1.5px dashed ${C.border}`, borderRadius:10, padding:"12px 16px", cursor:"pointer", color:C.sub, fontSize:13, fontWeight:600 }}>
@@ -14320,7 +14320,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           : <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>}
         <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))", pointerEvents:"none" }}/>
         {onBack && (
-          <button onClick={onBack} style={{ position:"absolute", top:8, left:10, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, fontSize:17, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
+          <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:8, left:10, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, fontSize:17, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
         )}
         {isMe && (
           <>
@@ -14675,7 +14675,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {showCoverView && user?.coverUrl && createPortal((
         <div onClick={() => setShowCoverView(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <img src={user.coverUrl} alt="" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }}/>
-          <button onClick={() => setShowCoverView(false)} style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 12px)", right:14, width:34, height:34, borderRadius:17, background:"rgba(255,255,255,0.12)", border:"none", color:"#fff", fontSize:17, cursor:"pointer", fontFamily:F }}>×</button>
+          <button onClick={() => setShowCoverView(false)} aria-label="Close" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 12px)", right:14, width:34, height:34, borderRadius:17, background:"rgba(255,255,255,0.12)", border:"none", color:"#fff", fontSize:17, cursor:"pointer", fontFamily:F }}>×</button>
         </div>
       ), document.body)}
 
@@ -14960,7 +14960,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px", borderBottom:`1px solid ${C.divider}` }}>
                 <div style={{ width:44 }}/>
                 <div style={{ fontSize:14, fontWeight:700, color:C.text, textTransform:"capitalize" }}>{listModal} · {listUsers.length}</div>
-                <button onClick={() => setListModal(null)} style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+                <button onClick={() => setListModal(null)} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
               </div>
               <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
                 {listUsers.length === 0 && (
@@ -15151,7 +15151,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                 {img
                   ? <>
                       <img src={img} alt="" style={{ width:"100%", maxHeight:260, objectFit:"cover" }}/>
-                      <button onClick={e => { e.stopPropagation(); setImg(null); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:26, height:26, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+                      <button onClick={e => { e.stopPropagation(); setImg(null); }} aria-label="Close" style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:26, height:26, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
                     </>
                   : <>
                       <span style={{ display:"flex" }}><Icon name={postKind==="story"?"zap":"plus"} size={30} color={C.sub}/></span>
@@ -15759,7 +15759,7 @@ function AICoachSheet({ store, setStore, unit, C, onClose }) {
           <div style={{ display:"flex", alignItems:"center", gap:9 }}>
             <span style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>AI Coaching</span>
           </div>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
         </div>
         {state.loading && (
           <div style={{ padding:"40px 0", textAlign:"center", color:C.sub }}>
@@ -15872,7 +15872,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   return (
     <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
+        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
         <div style={{ fontSize:19, fontWeight:700, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Messages</div>
       </div>
       <PullToRefresh onRefresh={load} C={C} navClearance={false}>
@@ -15972,7 +15972,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   return (
     <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onBack} style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
+        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
         <Avatar user={peer || { name:"?" }} size={32} C={C}/>
         <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:F }}>{peer?.name || peer?.username || "User"}</div>
       </div>
