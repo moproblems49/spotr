@@ -1,4 +1,4 @@
-// v178091716586
+// v178091716588
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1807,12 +1807,16 @@ const MuscleIcon = memo(function MuscleIcon({ muscle = "", name = "", size = 28,
 let _setToast = null;
 let _toastQueue = [];
 // `action` (optional): { label, onAction } renders an inline button (e.g. "Undo")
-// and keeps the toast up longer so the user has time to react. Toasts queue rather than
-// replace each other in flight, so a fast second swipe-to-delete can't silently drop an
-// earlier Undo offer before the user's had a chance to see or use it.
+// and keeps the toast up longer so the user has time to react. Actionable toasts queue
+// behind each other rather than replacing in flight, so a fast second swipe-to-delete
+// can't silently drop an earlier Undo offer before the user's had a chance to see or use
+// it. Plain info/error toasts jump to the front and show immediately instead of waiting
+// out a pending Undo's full window — the interrupted Undo stays queued and resumes after.
 function toast(msg, type = "info", action = null) {
-  _toastQueue.push({ msg, type, action, id: Date.now() + Math.random() });
-  if (_toastQueue.length === 1 && _setToast) _setToast(_toastQueue[0]);
+  const item = { msg, type, action, id: Date.now() + Math.random() };
+  if (action) _toastQueue.push(item);
+  else _toastQueue.unshift(item);
+  if (_setToast) _setToast(_toastQueue[0]);
 }
 function _dismissToast() {
   _toastQueue.shift();
@@ -8782,6 +8786,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             // Standing bar-type override (women's/EZ-curl/custom) for this exercise name,
             // so the plate diagram defaults to the right bar without re-picking it every time.
             barType: store.barTypes?.[canonicalExName(ex.name)] || undefined,
+            barTypeFor: canonicalExName(ex.name),
             // Carry the day's saved rest (e.g. Push A's bench rest) onto each set so it
             // displays and applies immediately. ex.rest persists per program day.
             sets: Array.from({ length: Math.min(12, Math.max(1, setCount)) }, () => ({ id: uid(), weight: "", reps: "", done: false, type: "normal", ...(ex.rest ? { restTime: ex.rest } : {}) }))
@@ -8812,6 +8817,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         reps: ex.reps || "",
         note: (ex.note && ex.note.trim()) ? ex.note : (store.exerciseNotes?.[canonicalExName(ex.name)] || ""),
         barType: store.barTypes?.[canonicalExName(ex.name)] || undefined,
+        barTypeFor: canonicalExName(ex.name),
         sets: Array.from({ length: setCount }, () => ({
           id: uid(),
           weight: "",
@@ -9583,7 +9589,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <ExerciseInput value={ex.name}
-                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,name:v, note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[canonicalExName(v)] || ""), barType: x.barType || (store.barTypes?.[canonicalExName(v)] || undefined)}) }))}
+                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>{
+                          if (i!==ei) return x;
+                          // Only re-pull the standing bar override once the typed name resolves to a
+                          // KNOWN exercise whose canonical name differs from the bar's anchor — this
+                          // ignores transient/unresolved strings mid-edit (e.g. a typo overshoot) so
+                          // an already-picked bar survives a same-exercise correction, but still resets
+                          // cleanly on a genuine switch to a different exercise.
+                          const newEntry = getExEntry(v);
+                          const switchedAway = x.barTypeFor && newEntry && canonicalExName(newEntry.name) !== x.barTypeFor;
+                          return {...x, name:v,
+                            note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[canonicalExName(v)] || ""),
+                            barType: switchedAway ? (store.barTypes?.[canonicalExName(v)] || undefined) : x.barType,
+                            barTypeFor: switchedAway ? canonicalExName(v) : x.barTypeFor,
+                          };
+                        }) }))}
                         C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}
                         store={store} setStore={setStore} currentUserId={currentUserId} token={token}/>
                     </div>
@@ -9700,7 +9720,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       const active = (ex.barType?.id || "standard") === bt.id;
                       return (
                         <button key={bt.id} onClick={() => {
-                          setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{ ...x, barType: { id: bt.id } }) }));
+                          setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{ ...x, barType: { id: bt.id }, barTypeFor: canonicalExName(x.name) }) }));
                           setBarPickerEx(null);
                           haptic("tap");
                         }} style={{
