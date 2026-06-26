@@ -1,4 +1,4 @@
-// v178091716589
+// v178091716590
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9600,7 +9600,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           // an already-picked bar survives a same-exercise correction, but still resets
                           // cleanly on a genuine switch to a different exercise.
                           const newEntry = getExEntry(v);
-                          const switchedAway = x.barTypeFor && newEntry && canonicalExName(newEntry.name) !== x.barTypeFor;
+                          // No barTypeFor yet (a freshly-added blank row, or an empty starting
+                          // name) counts as "needs evaluation" too — otherwise the very first
+                          // name typed into a new row never picks up a saved bar override.
+                          const switchedAway = newEntry && (!x.barTypeFor || canonicalExName(newEntry.name) !== x.barTypeFor);
                           return {...x, name:v,
                             note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[canonicalExName(v)] || ""),
                             barType: switchedAway ? (store.barTypes?.[canonicalExName(v)] || undefined) : x.barType,
@@ -10272,6 +10275,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         if (currentUserId) {
                           const keptPrEvents = (store.prEvents || []).filter(e => e.sid !== u.sid);
                           sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
+                          // Roll back the server-side personal_records rows this finish wrote —
+                          // otherwise a later refetch's local/server PR merge can resurrect the
+                          // undone PR from the still-higher value left on the server.
+                          (workoutSummary.prs || []).forEach(pr => {
+                            const prevWeight = u.prevPRs?.[pr.name];
+                            if (typeof prevWeight === "number") {
+                              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: pr.name, weight_lbs: prevWeight }) }, tok).catch(() => {});
+                            } else {
+                              sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(pr.name)}`, { method:"DELETE" }, tok).catch(() => {});
+                            }
+                          });
                         }
                       }
                     } catch (e) { /* not fatal */ }
@@ -16759,7 +16773,11 @@ function AppInner() {
         // Merge with local PRs (max-wins) instead of blindly overwriting — a transient
         // failure in the per-exercise PR upsert during save would otherwise permanently
         // regress a correct local PR back to a stale server value on the next load.
+        // Only do this when continuing the SAME logged-in user's in-memory state — on a
+        // shared device, `prev.prs` after a different account just logged out/in would
+        // otherwise leak that account's numbers into this one.
         prs: (() => {
+          if (prev.currentUserId !== currentUserId) return appPrs;
           const merged = { ...appPrs };
           Object.entries(prev.prs || {}).forEach(([name, w]) => {
             if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
