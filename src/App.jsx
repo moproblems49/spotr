@@ -1,4 +1,4 @@
-// v178091716593
+// v178091716594
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4049,6 +4049,14 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
   const scrollRef = useRef(null);
   const startYRef = useRef(0);
   const trackingRef = useRef(false);
+  // pull state only drives the first frame of a gesture (to flip the transition off) and the
+  // settled/idle value — every frame in between writes straight to these refs instead of through
+  // setPull, which used to re-render this component's whole subtree (e.g. all of History, or the
+  // full Profile screen) at touchmove frequency.
+  const liveDist = useRef(0);
+  const indicatorRef = useRef(null);
+  const spinnerRef = useRef(null);
+  const contentRef = useRef(null);
   const THRESHOLD = 70;
   const MAX_PULL = 120;
 
@@ -4064,18 +4072,29 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
   function onTouchMove(e) {
     if (!trackingRef.current || refreshing) return;
     const dy = e.touches[0].clientY - startYRef.current;
-    if (dy <= 0) {
-      setPull(0);
+    const damped = dy <= 0 ? 0 : Math.min(MAX_PULL, dy * 0.55); // damped pull — gets harder as user pulls further
+    const justStarted = liveDist.current === 0 && damped !== 0;
+    liveDist.current = damped;
+    if (dy <= 0 || justStarted) {
+      // One state update for the whole gesture (flips the transition off); every later frame
+      // writes straight to the refs below.
+      setPull(damped);
       return;
     }
-    // Damped pull — gets harder as user pulls further
-    const damped = Math.min(MAX_PULL, dy * 0.55);
-    setPull(damped);
+    const progress = Math.min(1, damped / THRESHOLD);
+    if (indicatorRef.current) indicatorRef.current.style.transform = `translateY(${damped}px)`;
+    if (contentRef.current) contentRef.current.style.transform = `translateY(${damped}px)`;
+    if (spinnerRef.current) {
+      spinnerRef.current.style.transform = `rotate(${progress * 360}deg)`;
+      spinnerRef.current.style.opacity = progress;
+    }
   }
   async function onTouchEnd() {
     if (!trackingRef.current) return;
     trackingRef.current = false;
-    if (pull >= THRESHOLD && !refreshing) {
+    const dist = liveDist.current;
+    liveDist.current = 0;
+    if (dist >= THRESHOLD && !refreshing) {
       setRefreshing(true);
       haptic("refresh");
       try { await onRefresh?.(); } catch {}
@@ -4092,11 +4111,11 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
-      onTouchCancel={() => { trackingRef.current = false; setPull(0); }}
+      onTouchCancel={() => { trackingRef.current = false; liveDist.current = 0; setPull(0); }}
       style={{ overflow:"hidden", flex:1, display:"flex", flexDirection:"column", position:"relative" }}
     >
       {/* Spinner indicator above the content */}
-      <div style={{
+      <div ref={indicatorRef} style={{
         position:"absolute", top:-30, left:0, right:0,
         display:"flex", justifyContent:"center", alignItems:"center",
         height:60,
@@ -4105,7 +4124,7 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
         pointerEvents:"none",
         zIndex:1,
       }}>
-        <div style={{
+        <div ref={spinnerRef} style={{
           width:28, height:28,
           border:`2.5px solid ${C.divider}`,
           borderTopColor:C.accent,
@@ -4118,7 +4137,7 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
       <style>{`@keyframes ptr-spin { to { transform: rotate(360deg); } }`}</style>
       {/* Scrollable content — translated downward when pulling */}
       <div
-        ref={scrollRef}
+        ref={(node) => { scrollRef.current = node; contentRef.current = node; }}
         style={{
           flex:1,
           overflowY:"auto",
