@@ -1,4 +1,4 @@
-// v178091716588
+// v178091716589
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8955,7 +8955,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
     try {
       const dk = dKey();
-      const sid = genUUID();
+      // Reuse the sid carried over from an "Undo finish & edit" so re-finishing upserts
+      // the SAME server row instead of leaving the original behind as an orphaned duplicate
+      // if the undo's best-effort delete didn't land.
+      const sid = session._resumeSid || genUUID();
       const originalPRs = { ...store.prs }; // snapshot before any updates
       const originalPRsE1rm = { ...store.prsE1rm };
       const originalPRsVolume = { ...store.prsVolume };
@@ -10254,8 +10257,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       // Restore PRs to pre-finish snapshot
                       return { ...prev, history: newHistory, prs: u.prevPRs || prev.prs, prsE1rm: u.prevPRsE1rm || prev.prsE1rm, prsVolume: u.prevPRsVolume || prev.prsVolume, prEvents: (prev.prEvents || []).filter(e => e.sid !== u.sid) };
                     });
-                    // 2. Restore the session
-                    setSession(u.session);
+                    // 2. Restore the session — carry the original sid forward so a re-finish
+                    // upserts onto the same server row (see finishWorkout's _resumeSid read).
+                    setSession({ ...u.session, _resumeSid: u.sid });
                     setElapsed(u.elapsed || 0);
                     setWStart(Date.now() - (u.elapsed || 0) * 1000);
                     setShowWorkoutSummary(false);
@@ -16752,7 +16756,16 @@ function AppInner() {
         currentUserId,
         programs: appPrograms,
         activeProgramId: activeProgram?.id || null,
-        prs: appPrs,
+        // Merge with local PRs (max-wins) instead of blindly overwriting — a transient
+        // failure in the per-exercise PR upsert during save would otherwise permanently
+        // regress a correct local PR back to a stale server value on the next load.
+        prs: (() => {
+          const merged = { ...appPrs };
+          Object.entries(prev.prs || {}).forEach(([name, w]) => {
+            if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
+          });
+          return merged;
+        })(),
         history: appHistory,
         workoutDates: appWorkoutDates,
         unit: me?.unit || "lbs",
@@ -16975,6 +16988,9 @@ function AppInner() {
                 user_id: newUserId, day_name: sess.dayName,
                 exercises: sess.exercises, duration_secs: sess.duration || 0,
                 unit: sess.unit || "lbs", note: sess.note || "",
+                // workout_date defaults to CURRENT_DATE server-side if omitted — without this,
+                // every guest workout lands on the migration day instead of its real date.
+                workout_date: date,
                 created_at: new Date(date).toISOString(),
               })
             }, tok);
