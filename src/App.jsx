@@ -1,4 +1,4 @@
-// v178091716594
+// v178091716595
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14823,9 +14823,18 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               onTouchStart={e => { e.stopPropagation(); coverDragStart(e.touches[0].clientY); }}
               onTouchMove={e => { e.stopPropagation(); coverDragMove(e.touches[0].clientY); }}
               onTouchEnd={e => { e.stopPropagation(); coverDragEnd(); }}
-              onMouseDown={e => { e.preventDefault(); coverDragStart(e.clientY); }}
-              onMouseMove={e => { if (e.buttons === 1) coverDragMove(e.clientY); }}
-              onMouseUp={coverDragEnd}
+              onMouseDown={e => {
+                e.preventDefault();
+                coverDragStart(e.clientY);
+                // Track on window, not just this 132px-tall div — mousemove/mouseup only fire on
+                // an element while the cursor is over it, so a drag that exits these bounds before
+                // the button is released would otherwise never call coverDragEnd() and leave
+                // coverPosDraft frozen at the gesture's first frame instead of the released position.
+                const onMove = ev => coverDragMove(ev.clientY);
+                const onUp = () => { coverDragEnd(); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              }}
               style={{ height:132, position:"relative", overflow:"hidden", touchAction:"none", cursor:"grab", background:"#000" }}>
               <img ref={coverImgRef} src={coverDraft} alt="" draggable={false}
                 style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${coverPosDraft}%`, userSelect:"none", pointerEvents:"none" }}/>
