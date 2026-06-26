@@ -1,4 +1,4 @@
-// v178091716590
+// v178091716591
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4859,7 +4859,16 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   const [showRpe, setShowRpe] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const swipeRef = useRef(null);
+  const checkHintRef = useRef(null);
+  const checkIconRef = useRef(null);
+  const deleteHintRef = useRef(null);
+  const deleteIconRef = useRef(null);
   const swipeState = useRef({ startX: 0, startY: 0, dx: 0, swiping: false, locked: null });
+  // swipeDx/swipeDir only drive the render for the FIRST frame of a drag (to flip the CSS
+  // transition off) and the settled/idle value after release. Every frame in between writes
+  // straight to the DOM via the refs above — routing each touchmove through setState was
+  // re-rendering the whole row 60+ times/sec, which is what made a half-swipe feel like it
+  // was stuttering/re-rendering instead of tracking the finger smoothly.
   const [swipeDx, setSwipeDx] = useState(0);
   const [swipeDir, setSwipeDir] = useState(null);
   const longPressTimer = useRef(null);
@@ -4891,7 +4900,8 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     // Any meaningful movement cancels the long-press
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) clearLongPress();
     if (!swipeState.current.swiping && Math.abs(dy) > Math.abs(dx)) return;
-    if (Math.abs(dx) > 6) {
+    const justStartedSwiping = !swipeState.current.swiping && Math.abs(dx) > 6;
+    if (justStartedSwiping) {
       swipeState.current.swiping = true;
       e.preventDefault();
     }
@@ -4906,8 +4916,20 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       if (lockKey) haptic("lock");
     }
     swipeState.current.dx = clamped;
-    setSwipeDx(clamped);
-    setSwipeDir(clamped > 0 ? "right" : clamped < 0 ? "left" : null);
+    if (justStartedSwiping) {
+      // One state update to flip the CSS transition off and mount the hint refs for the first time.
+      setSwipeDx(clamped);
+      setSwipeDir(direction);
+    } else {
+      // Every subsequent frame writes straight to the DOM — no setState, no re-render.
+      const rightOp = clamped > 0 ? Math.min(1, clamped / 45) : 0;
+      const leftOp = clamped < 0 ? Math.min(1, Math.abs(clamped) / 45) : 0;
+      if (swipeRef.current) swipeRef.current.style.transform = `translateX(${clamped}px)`;
+      if (checkHintRef.current) checkHintRef.current.style.opacity = rightOp;
+      if (checkIconRef.current) checkIconRef.current.style.transform = `scale(${Math.min(1, clamped / 60)})`;
+      if (deleteHintRef.current) deleteHintRef.current.style.opacity = leftOp;
+      if (deleteIconRef.current) deleteIconRef.current.style.transform = `scale(${Math.min(1, Math.abs(clamped) / 60)})`;
+    }
   }
   function onTouchEnd() {
     clearLongPress();
@@ -4919,6 +4941,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       onDelete();
       haptic("delete");
     }
+    // One state update at gesture end to flip the transition back on and animate to rest.
     setSwipeDx(0);
     setSwipeDir(null);
     swipeState.current = { startX: 0, startY: 0, dx: 0, swiping: false, locked: null };
@@ -4971,15 +4994,17 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
 
   return (
     <div data-no-tab-swipe style={{ position:"relative", overflow:"hidden", margin:"0 14px 3px", borderRadius:11 }}>
-      {/* Swipe hint backgrounds */}
-      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-start", paddingLeft:16, background:`${C.green}E5`, opacity: swipeDir==="right" ? Math.min(1, swipeDx/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
-        <div style={{ transform: `scale(${Math.min(1, swipeDx/60)})`, transition:"transform 0.08s ease-out" }}>
+      {/* Swipe hint backgrounds — opacity/scale set inline via refs during an active drag (see
+          onTouchMove); the swipeDx/swipeDir state values below only matter for the first-frame
+          and settled/idle renders, where the refs haven't been written to yet for this gesture. */}
+      <div ref={checkHintRef} style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-start", paddingLeft:16, background:`${C.green}E5`, opacity: swipeDir==="right" ? Math.min(1, swipeDx/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
+        <div ref={checkIconRef} style={{ transform: `scale(${Math.min(1, swipeDx/60)})`, transition:"transform 0.08s ease-out" }}>
           <Icon name="check" size={20} color="#fff" strokeWidth={3}/>
         </div>
       </div>
       {onDelete && (
-        <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:16, background:"#EF4444E5", opacity: swipeDir==="left" ? Math.min(1, Math.abs(swipeDx)/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
-          <div style={{ transform: `scale(${Math.min(1, Math.abs(swipeDx)/60)})`, transition:"transform 0.08s ease-out" }}>
+        <div ref={deleteHintRef} style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:16, background:"#EF4444E5", opacity: swipeDir==="left" ? Math.min(1, Math.abs(swipeDx)/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
+          <div ref={deleteIconRef} style={{ transform: `scale(${Math.min(1, Math.abs(swipeDx)/60)})`, transition:"transform 0.08s ease-out" }}>
             <Icon name="trash" size={18} color="#fff" strokeWidth={2.4}/>
           </div>
         </div>
@@ -18345,7 +18370,14 @@ function AppInner() {
     swipeStart.current.type = Math.abs(dx) > Math.abs(dy) * 0.7 ? "horizontal" : "vertical";
     // One state update for the whole gesture (not per move) — mounts the neighbor panels so
     // they're ready to receive the live drag below.
-    if (swipeStart.current.type === "horizontal") setSwipeX(1);
+    if (swipeStart.current.type === "horizontal") {
+      setSwipeX(1);
+      // touchAction:"pan-y" on the container unconditionally authorizes native vertical panning —
+      // it's a CSS-level grant, not gated on our own gesture classification, so without this the
+      // page could still scroll vertically underneath an active horizontal tab swipe. Revoke it
+      // for the rest of this gesture once we know it's horizontal; handleSwipeEnd restores it.
+      if (swipeElRef.current) swipeElRef.current.style.touchAction = "none";
+    }
   }
   if (swipeStart.current.type === "vertical") return;
 
@@ -18375,6 +18407,8 @@ function AppInner() {
   const type = swipeStart.current.type;
   const startT = swipeStart.current.t;
   const dx = swipeDX.current;  // read the ref, not the async state
+  // Restore native vertical panning now that this gesture (whatever it classified as) is over.
+  if (swipeElRef.current) swipeElRef.current.style.touchAction = "pan-y";
   if (!type || type === "vertical") {
     swipeStart.current = { x:0, y:0, t:0, type:null };
     swipeDX.current = 0;
