@@ -1,4 +1,4 @@
-// v178091716592
+// v178091716593
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6488,6 +6488,11 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [sentReaction, setSentReaction] = useState(null);
   const dragStart = useRef(null);
+  // Every frame of the drag used to go through setDrag, re-rendering this whole full-screen
+  // component (image, header, reaction bar) at touchmove frequency. liveDrag is the source of
+  // truth read by endDrag; the actual translate/opacity is written straight to rootRef per frame.
+  const liveDrag = useRef({ x: 0, y: 0 });
+  const rootRef = useRef(null);
   const duration = 5000; // 5 seconds per story
 
   useEffect(() => {
@@ -6517,19 +6522,41 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 
   function startDrag(x, y) {
     dragStart.current = { x, y };
+    liveDrag.current = { x: 0, y: 0 };
+    if (rootRef.current) rootRef.current.style.transition = "none";
     setPaused(true);
   }
   function moveDrag(x, y) {
     if (!dragStart.current) return;
-    setDrag({ x: x - dragStart.current.x, y: y - dragStart.current.y });
+    const dx = x - dragStart.current.x;
+    const dy = y - dragStart.current.y;
+    liveDrag.current = { x: dx, y: dy };
+    if (rootRef.current) {
+      rootRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
+      const dragDist = Math.sqrt(dx ** 2 + dy ** 2);
+      rootRef.current.style.opacity = Math.max(0.35, 1 - dragDist / 500);
+    }
+  }
+  // Since moveDrag never puts a non-rest value into `drag` state (every in-progress frame is a
+  // direct DOM write), setDrag({x:0,y:0}) alone doesn't change React's last-known style value —
+  // React diffs against its own previous render, not the actual DOM — so it would skip writing
+  // the reset and leave the stale direct-written transform/opacity/transition stuck on screen.
+  // Write the rest styles straight to the DOM here too, then sync state for future renders.
+  function settleBack() {
+    if (rootRef.current) {
+      rootRef.current.style.transition = "transform 0.2s";
+      rootRef.current.style.transform = "translate(0px, 0px)";
+      rootRef.current.style.opacity = "1";
+    }
+    setDrag({ x: 0, y: 0 });
+    setPaused(false);
   }
   function endDrag() {
     if (!dragStart.current) {
-      setDrag({ x: 0, y: 0 });
-      setPaused(false);
+      settleBack();
       return;
     }
-    const { x, y } = drag;
+    const { x, y } = liveDrag.current;
     const absX = Math.abs(x);
     const absY = Math.abs(y);
     dragStart.current = null;
@@ -6542,9 +6569,8 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
         return;
       }
       if (y < -100) {
-        if (onViewProfile) onViewProfile();
-        else setDrag({ x: 0, y: 0 });
-        setPaused(false);
+        if (onViewProfile) { onViewProfile(); return; }
+        settleBack();
         return;
       }
     } else {
@@ -6558,8 +6584,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
         return;
       }
     }
-    setDrag({ x: 0, y: 0 });
-    setPaused(false);
+    settleBack();
   }
 
   if (!user) return null;
@@ -6570,6 +6595,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 
   return (
     <div
+      ref={rootRef}
       onTouchStart={(e) => { const t = e.touches[0]; startDrag(t.clientX, t.clientY); }}
       onTouchMove={(e) => { const t = e.touches[0]; moveDrag(t.clientX, t.clientY); }}
       onTouchEnd={endDrag}
@@ -8191,25 +8217,43 @@ function InsightCards({ insights, C, big, onDismiss }) {
   const start = useRef(null);
   const startY = useRef(null);
   const axis = useRef(null); // "h" or "v" — locked after first meaningful move
+  // liveDx is the source of truth read by onEnd; the actual transform/opacity is written
+  // straight to cardRef per frame instead of through setDx (this card is small, but the
+  // pattern is kept consistent with the other gesture fixes — and the dots indicator below
+  // it would otherwise repaint at touchmove frequency for no reason).
+  const liveDx = useRef(0);
+  const cardRef = useRef(null);
 
   if (!insights || index >= insights.length) return null;
   const insight = insights[index];
 
-  const onStart = (x, y) => { start.current = x; startY.current = y; axis.current = null; setDragging(true); };
+  const onStart = (x, y) => { start.current = x; startY.current = y; axis.current = null; liveDx.current = 0; setDragging(true); };
   const onMove = (x, y) => {
     if (start.current == null) return;
     const ddx = x - start.current;
     const ddy = y != null ? y - startY.current : 0;
     // Lock axis after a small movement so a diagonal drag doesn't trigger both this and the page swipe
+    let justClassified = false;
     if (axis.current == null && (Math.abs(ddx) > 6 || Math.abs(ddy) > 6)) {
       axis.current = Math.abs(ddx) > Math.abs(ddy) ? "h" : "v";
+      justClassified = true;
     }
-    if (axis.current === "h") setDx(ddx);
+    if (axis.current === "h") {
+      liveDx.current = ddx;
+      if (justClassified) {
+        // One state update for the whole gesture — flips the transition off via render.
+        setDx(ddx);
+      } else if (cardRef.current) {
+        cardRef.current.style.transform = `translateX(${ddx}px) rotate(${ddx * 0.02}deg)`;
+        cardRef.current.style.opacity = Math.max(0, 1 - Math.abs(ddx) / 220);
+      }
+    }
   };
     const onEnd = () => {
     const threshold = 90;
-    if (axis.current === "h" && Math.abs(dx) > threshold) {
-      const dir = dx > 0 ? 1 : -1;
+    const finalDx = liveDx.current;
+    if (axis.current === "h" && Math.abs(finalDx) > threshold) {
+      const dir = finalDx > 0 ? 1 : -1;
       const dismissedKey = insights[index]?.key;
       setDx(dir * 500);
       setTimeout(() => {
@@ -8243,6 +8287,7 @@ function InsightCards({ insights, C, big, onDismiss }) {
         }}/>
       )}
       <div
+        ref={cardRef}
         onTouchStart={(e) => { e.stopPropagation(); onStart(e.touches[0].clientX, e.touches[0].clientY); }}
         onTouchMove={(e) => { onMove(e.touches[0].clientX, e.touches[0].clientY); if (axis.current === "h") e.stopPropagation(); }}
         onTouchEnd={(e) => { e.stopPropagation(); onEnd(); }}
