@@ -1,4 +1,4 @@
-// v178091716591
+// v178091716592
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14216,6 +14216,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const [coverSaving, setCoverSaving] = useState(false);
   const [showCoverView, setShowCoverView] = useState(false);
   const coverDragRef = useRef(null);
+  const coverImgRef = useRef(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSending, setFeedbackSending] = useState(false);
@@ -14387,12 +14388,29 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     }
     setCoverSaving(false);
   }
-  function coverDragStart(clientY) { coverDragRef.current = { y: clientY, pos: coverPosDraft }; }
+  function coverDragStart(clientY) { coverDragRef.current = { y: clientY, pos: coverPosDraft, live: coverPosDraft, justStarted: true }; }
   function coverDragMove(clientY) {
     if (!coverDragRef.current) return;
     const dy = clientY - coverDragRef.current.y;
     // Dragging down reveals the upper part of the photo (objectPosition % decreases).
-    setCoverPosDraft(Math.max(0, Math.min(100, coverDragRef.current.pos - dy * 0.45)));
+    const next = Math.max(0, Math.min(100, coverDragRef.current.pos - dy * 0.45));
+    coverDragRef.current.live = next;
+    if (coverDragRef.current.justStarted) {
+      // One state update for the whole gesture (flips the live image into "dragging" mode);
+      // every frame after this writes straight to the image's objectPosition via the ref below
+      // instead of through setState — this is the Profile screen's own state, so routing every
+      // touchmove through it was re-rendering the entire screen (post feed included) per frame.
+      coverDragRef.current.justStarted = false;
+      setCoverPosDraft(next);
+    } else if (coverImgRef.current) {
+      coverImgRef.current.style.objectPosition = `50% ${next}%`;
+    }
+  }
+  function coverDragEnd() {
+    // Commit the live ref value back to state so saveCover() (which reads coverPosDraft) sees
+    // the actual released position, not whatever value the last setState happened to freeze at.
+    if (coverDragRef.current) setCoverPosDraft(coverDragRef.current.live);
+    coverDragRef.current = null;
   }
 
   return (
@@ -14740,12 +14758,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             <div
               onTouchStart={e => { e.stopPropagation(); coverDragStart(e.touches[0].clientY); }}
               onTouchMove={e => { e.stopPropagation(); coverDragMove(e.touches[0].clientY); }}
-              onTouchEnd={e => { e.stopPropagation(); coverDragRef.current = null; }}
+              onTouchEnd={e => { e.stopPropagation(); coverDragEnd(); }}
               onMouseDown={e => { e.preventDefault(); coverDragStart(e.clientY); }}
               onMouseMove={e => { if (e.buttons === 1) coverDragMove(e.clientY); }}
-              onMouseUp={() => { coverDragRef.current = null; }}
+              onMouseUp={coverDragEnd}
               style={{ height:132, position:"relative", overflow:"hidden", touchAction:"none", cursor:"grab", background:"#000" }}>
-              <img src={coverDraft} alt="" draggable={false}
+              <img ref={coverImgRef} src={coverDraft} alt="" draggable={false}
                 style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${coverPosDraft}%`, userSelect:"none", pointerEvents:"none" }}/>
               <div style={{ position:"absolute", inset:0, border:`2px solid ${C.accent}`, pointerEvents:"none" }}/>
             </div>
@@ -16464,6 +16482,16 @@ function AppInner() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
   const pullScrollRef = useRef(null);
+  // pullDist state only drives the first frame of a pull (to flip the height transition off
+  // and reveal the spinner) and the settled/idle value — every frame in between writes straight
+  // to these refs. Routing every touchmove through setPullDist re-rendered the WHOLE app (this is
+  // AppInner's own state) at touchmove frequency, which made a feed pull-to-refresh stutter.
+  const pullState = useRef({ pulling: false, dist: 0 });
+  const pullIndicatorRef = useRef(null);
+  const pullSpinnerWrapRef = useRef(null);
+  const pullSpinnerRef = useRef(null);
+  const pullLabelRef = useRef(null);
+  const pullContentRef = useRef(null);
   const swipeStart = useRef({ x: 0, y: 0, t: 0, type: null });
   const swipeDX = useRef(0); // synchronous live drag distance — source of truth for end decision
   const swipeTrackRef = useRef(null); // the 300%-wide track div — written to directly during drag
@@ -18622,49 +18650,62 @@ function AppInner() {
               const dist = e.touches[0].clientY - touchStartY.current;
               const scrollTop = pullScrollRef.current?.scrollTop || 0;
               if (dist > 0 && scrollTop <= 5) {
-                setPullDist(Math.min(dist * 0.5, 100));
+                const clamped = Math.min(dist * 0.5, 100);
+                const justStarted = !pullState.current.pulling;
+                pullState.current.pulling = true;
+                pullState.current.dist = clamped;
+                if (justStarted) {
+                  // One state update for the whole gesture — flips the height transition off and
+                  // reveals the indicator; every frame after this writes straight to the refs below.
+                  setPullDist(clamped);
+                } else {
+                  if (pullIndicatorRef.current) pullIndicatorRef.current.style.height = `${clamped}px`;
+                  if (pullContentRef.current) pullContentRef.current.style.paddingTop = `${clamped}px`;
+                  if (pullSpinnerWrapRef.current) pullSpinnerWrapRef.current.style.opacity = clamped > 20 ? "1" : "0";
+                  if (pullSpinnerRef.current) pullSpinnerRef.current.style.transform = `rotate(${Math.min(clamped * 4, 360)}deg)`;
+                  if (pullLabelRef.current) pullLabelRef.current.style.display = clamped > 55 ? "block" : "none";
+                }
               }
             }}
             onTouchEnd={() => {
-              if (pullDist > 60 && !isRefreshing) {
+              pullState.current.pulling = false;
+              if (pullState.current.dist > 60 && !isRefreshing) {
                 setIsRefreshing(true);
                 setPullDist(50);
                 handleRefresh().finally(() => {
                   setIsRefreshing(false);
                   setPullDist(0);
                   touchStartY.current = 0;
+                  pullState.current.dist = 0;
                 });
               } else {
                 setPullDist(0);
                 touchStartY.current = 0;
+                pullState.current.dist = 0;
               }
             }}
             style={{ overflowY:"auto", flex:1, position:"relative", paddingBottom:NAV_CLEARANCE }}
           >
-            <div style={{
+            <div ref={pullIndicatorRef} style={{
               position:"absolute", top:0, left:0, right:0,
               height:pullDist, display:"flex", alignItems:"center", justifyContent:"center",
-              transition: pullDist === 0 ? "height 0.2s" : "none",
+              transition: pullState.current.pulling ? "none" : "height 0.2s",
               pointerEvents:"none", overflow:"hidden"
             }}>
-              {pullDist > 20 && (
-                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-                  <div style={{
-                    width:28, height:28, borderRadius:"50%",
-                    border:`2.5px solid ${C.divider}`,
-                    borderTopColor: C.accent,
-                    animation: isRefreshing ? "spotrSpin 0.7s linear infinite" : "none",
-                    transform: isRefreshing ? undefined : `rotate(${Math.min(pullDist * 4, 360)}deg)`
-                  }}/>
-                  {!isRefreshing && pullDist > 55 && (
-                    <div style={{ fontSize:10, color:C.accent, fontWeight:600 }}>Release to refresh</div>
-                  )}
-                </div>
-              )}
+              <div ref={pullSpinnerWrapRef} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, opacity: pullDist > 20 ? 1 : 0 }}>
+                <div ref={pullSpinnerRef} style={{
+                  width:28, height:28, borderRadius:"50%",
+                  border:`2.5px solid ${C.divider}`,
+                  borderTopColor: C.accent,
+                  animation: isRefreshing ? "spotrSpin 0.7s linear infinite" : "none",
+                  transform: isRefreshing ? undefined : `rotate(${Math.min(pullDist * 4, 360)}deg)`
+                }}/>
+                <div ref={pullLabelRef} style={{ fontSize:10, color:C.accent, fontWeight:600, display: (!isRefreshing && pullDist > 55) ? "block" : "none" }}>Release to refresh</div>
+              </div>
             </div>
             <style>{`@keyframes spotrSpin { to { transform: rotate(360deg); } }`}</style>
 
-            <div style={{ paddingTop: pullDist }}>
+            <div ref={pullContentRef} style={{ paddingTop: pullDist }}>
               {/* Monday recap — last week's numbers, dismissible, shares via Wrapped */}
               {weeklyRecap && (
                 <div style={{ margin:"12px 14px 0", padding:"14px 16px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, position:"relative" }}>
