@@ -1,4 +1,4 @@
-// v178091716595
+// v178091716596
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -267,6 +267,40 @@ const sb = (() => {
     window.location.href = url;
   }
 
+  // Sign in with Apple. On the native iOS build we use the Capacitor Sign in with Apple plugin —
+  // the system sheet Apple's App Store guideline 4.8 requires when any social login ships — and
+  // exchange the returned identity token with Supabase (grant_type=id_token). Reached through the
+  // runtime Capacitor global (same pattern as Haptics/Health/LiveActivity) so there's no build-time
+  // import and the web bundle stays clean. On web/PWA there's no native sheet, so we fall back to
+  // the hosted OAuth redirect flow, which AppInner's init() completes by parsing #access_token on
+  // return. NOTE: the native id_token path can only be exercised on a real device once Ashley adds
+  // the "Sign in with Apple" capability + the plugin pod in Xcode — verify it there before submit.
+  async function signInWithApple() {
+    const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+    const Plugin = Cap?.isNativePlatform?.() ? Cap.Plugins?.SignInWithApple : null;
+    if (Plugin?.authorize) {
+      // A nonce ties this request to the device session; Apple embeds it in the signed token so
+      // Supabase can reject a replayed token. Pass the same raw value to Supabase for verification.
+      const nonce = (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).replace(/-/g, "");
+      const result = await Plugin.authorize({ scopes: "name email", nonce });
+      const idToken = result?.response?.identityToken;
+      if (!idToken) throw new Error("Apple sign-in was cancelled.");
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=id_token`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ provider: "apple", id_token: idToken, nonce }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.access_token) {
+        throw new Error(data.error_description || data.msg || data.error || "Apple sign-in failed.");
+      }
+      return data; // { access_token, refresh_token, user } — caller saves the session
+    }
+    // Web fallback: hosted redirect flow (no session returned here; init() picks it up on return).
+    signInWithOAuth("apple");
+    return null;
+  }
+
   // ── UNIVERSAL WRITE-RETRY QUEUE ───────────────────────────────────────────
   // Wraps a server write so that if it fails due to being OFFLINE (network error), the write is
   // saved to a durable queue and replayed on reconnect — instead of being silently lost. Only
@@ -339,7 +373,7 @@ const sb = (() => {
 
   const queuedCount = () => readQueue().length;
 
-  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth };
+  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth, signInWithApple };
 })();
 
 // Upload image to Supabase Storage, return public URL
@@ -15697,7 +15731,20 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
 
         {/* OAuth buttons */}
         {OAUTH_ENABLED.apple && (
-        <button onClick={() => sb.signInWithOAuth("apple")} disabled={loading} style={{
+        <button onClick={async () => {
+          setError("");
+          setLoading(true);
+          try {
+            // Native iOS returns a session inline (id_token exchange); web redirects away and
+            // returns null, with init() completing the sign-in on the redirect back.
+            const data = await sb.signInWithApple();
+            if (data?.access_token) { track("signin_apple"); onAuth(data); }
+          } catch (e) {
+            setError(e.message || "Apple sign-in failed.");
+          } finally {
+            setLoading(false);
+          }
+        }} disabled={loading} style={{
           width:"100%", background:"#000", color:"#fff",
           border:"none", borderRadius:12, padding:"14px",
           fontSize:14, fontWeight:600, cursor:loading?"not-allowed":"pointer",
