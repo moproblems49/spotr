@@ -1,4 +1,4 @@
-// v178091716596
+// v178091716597
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8043,6 +8043,39 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
       onClose();
       return;
     }
+    // 2b. Recompute raw-weight PRs from the edited sets and raise any that now beat the stored PR.
+    // Editing a past workout used to patch only the history row, leaving personal_records (the cache
+    // the History "Personal Records" strip + leaderboard read) stale below a set just corrected
+    // upward — e.g. fixing a 145 to the 155 you actually lifted wouldn't move your PR.
+    try {
+      const eu = sess.unit || store.unit || "lbs";
+      const editedPRs = {};
+      exercises.forEach(ex => {
+        if (!ex?.name) return;
+        (ex.sets || []).forEach(s => {
+          const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
+          if (!done || s?.type === "warmup") return;
+          const wt = parseFloat(s.weight), r = parseInt(s.reps);
+          if (!wt || wt <= 0 || !r || r < 1) return;
+          const lbs = eu === "lbs" ? wt : cvt(wt, "kg", "lbs");
+          if (lbs > (editedPRs[ex.name] || 0)) editedPRs[ex.name] = lbs;
+        });
+      });
+      const curPrs = store.prs || {};
+      const raised = Object.entries(editedPRs).filter(([name, w]) => w > (curPrs[name] || 0));
+      if (raised.length) {
+        setStore(prev => {
+          const nextPrs = { ...(prev.prs || {}) };
+          raised.forEach(([name, w]) => { if (w > (nextPrs[name] || 0)) nextPrs[name] = w; });
+          return { ...prev, prs: nextPrs };
+        });
+        if (token && currentUserId) {
+          raised.forEach(([name, w]) => {
+            sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, token).catch(()=>{});
+          });
+        }
+      }
+    } catch (e) { devError("PR recompute on edit failed:", e); }
     // 3. Update any feed post that links to this workout (best-effort: match by dayName + finishedAt window)
     setStore(prev => {
       const newPosts = (prev.posts || []).map(p => {
@@ -16924,6 +16957,30 @@ function AppInner() {
         });
       } catch {}
 
+      // Self-heal raw-weight PRs from actual history (the source of truth). The personal_records
+      // table is a denormalized cache that can drift BELOW reality: editing a past workout
+      // (EditHistoryModal) patches history but historically didn't touch PRs, and a finish's
+      // best-effort PR upsert can silently fail. Derive the heaviest done, non-warmup set per
+      // exercise from history (converted to lbs) so a real logged set can never be missing from
+      // the PR list. Keyed by exact exercise name to match how PRs are stored/displayed.
+      const historyPRs = {};
+      Object.values(appHistory).forEach(day => {
+        Object.values(day || {}).forEach(w => {
+          const wu = w?.unit || "lbs";
+          (w?.exercises || []).forEach(ex => {
+            if (!ex?.name) return;
+            (ex.sets || []).forEach(s => {
+              const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
+              if (!done || s?.type === "warmup") return;
+              const wt = parseFloat(s.weight), r = parseInt(s.reps);
+              if (!wt || wt <= 0 || !r || r < 1) return;
+              const lbs = wu === "lbs" ? wt : cvt(wt, "kg", "lbs");
+              if (lbs > (historyPRs[ex.name] || 0)) historyPRs[ex.name] = lbs;
+            });
+          });
+        });
+      });
+
       // Clear stale posts immediately so deleted ones don't flash
       setStore(prev => ({ ...prev, posts: [] }));
 
@@ -16950,11 +17007,20 @@ function AppInner() {
         // shared device, `prev.prs` after a different account just logged out/in would
         // otherwise leak that account's numbers into this one.
         prs: (() => {
-          if (prev.currentUserId !== currentUserId) return appPrs;
           const merged = { ...appPrs };
-          Object.entries(prev.prs || {}).forEach(([name, w]) => {
+          // History reconcile wins over a stale cache — only ever raises a PR to match a real
+          // logged set (max-wins), never lowers one. Applied for every user since historyPRs is
+          // derived from the loaded user's own history.
+          Object.entries(historyPRs).forEach(([name, w]) => {
             if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
           });
+          // Same-user in-memory PRs (e.g. one set this session that hasn't round-tripped yet) also
+          // win; skip on a user switch so one account's numbers can't leak into another's.
+          if (prev.currentUserId === currentUserId) {
+            Object.entries(prev.prs || {}).forEach(([name, w]) => {
+              if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
+            });
+          }
           return merged;
         })(),
         history: appHistory,
@@ -16998,6 +17064,21 @@ function AppInner() {
         age: me?.age != null ? me.age : prev.age,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
+
+      // Persist any PR the history reconcile raised above the stored value, so the fix survives
+      // future loads and reaches the leaderboard (which reads personal_records directly) and other
+      // devices — not just this device's in-memory store. Best-effort; self-limiting (once the
+      // server catches up, the next load's appPrs already matches and nothing is re-sent).
+      try {
+        const tokPR = tokenRef.current || token;
+        if (tokPR && currentUserId && !isGuest) {
+          Object.entries(historyPRs).forEach(([name, w]) => {
+            if (typeof w === "number" && w > (appPrs[name] || 0)) {
+              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, tokPR).catch(()=>{});
+            }
+          });
+        }
+      } catch {}
 
       // Activity badge: profiles.seen_activity_count is the server copy of how much
       // activity the user has already seen. Take the max so a re-login or a new device
