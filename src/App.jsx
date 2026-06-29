@@ -1,4 +1,4 @@
-// v178091716600
+// v178091716601
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16785,11 +16785,19 @@ function AppInner() {
   // they change. These used to live only on-device, so a reinstall/new device reset them (and a lost
   // bar-type override silently changed warmup/plate math). Gated on prefsLoadedRef so it only runs
   // after a successful load — never overwriting the server copy with empty values from a blank/failed
-  // load. Best-effort PATCH; writes the full maps (small) so last-write-wins is correct.
+  // load. A signature of the last-synced values means the first effect run after a load (which fires
+  // because the load created fresh object refs) just records the baseline instead of re-PATCHing
+  // what we just read; only a genuine edit afterwards triggers a write. Best-effort; full maps are
+  // small, so last-write-wins is correct.
+  const lastPrefsSyncRef = useRef(null);
   useEffect(() => {
     if (!prefsLoadedRef.current || isGuest) return;
     const tok = tokenRef.current || token;
     if (!tok || !currentUserId) return;
+    const sig = JSON.stringify({ n: store.exerciseNotes || {}, b: store.barTypes || {}, c: store.closeFriends || [] });
+    if (lastPrefsSyncRef.current === null) { lastPrefsSyncRef.current = sig; return; } // baseline from the load
+    if (sig === lastPrefsSyncRef.current) return; // nothing actually changed
+    lastPrefsSyncRef.current = sig;
     sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({
       exercise_notes: store.exerciseNotes || {},
       bar_types: store.barTypes || {},
@@ -16968,7 +16976,10 @@ function AppInner() {
     setDataLoading(true);
     // Until this load succeeds, hold off the prefs save effect — prevents a user switch (or a
     // failed load) from pushing the wrong/empty notes-bar-types-closeFriends back to the server.
+    // Clear the sync baseline too so the first post-load effect run re-records it (and skips a
+    // redundant write of the values we just fetched).
     prefsLoadedRef.current = false;
+    lastPrefsSyncRef.current = null;
     try {
       // Load profile
       const tok = tokenRef.current || token;
