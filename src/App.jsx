@@ -1,4 +1,4 @@
-// v178091716597
+// v178091716598
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2217,6 +2217,56 @@ function getSetPRTypes(store, exName, weight, reps, unit) {
   if (e1rmLbs > (store.prsE1rm?.[exName] || 0)) types.push("e1rm");
   if (volLbs > (store.prsVolume?.[exName] || 0)) types.push("volume");
   return { types, wLbs, e1rmLbs, volLbs };
+}
+
+// Rebuild the dated PR-hit log (store.prEvents — what Wrapped/recaps count) from workout history
+// by replaying every session in chronological order and tracking a running max per exercise for
+// each PR category (weight, estimated 1RM, single-set volume), exactly mirroring the live
+// finish-time check in getSetPRTypes/finishWorkout. A PR event is emitted the first time a set
+// beats any running max — so the very first time you do an exercise counts, same as the app would
+// have recorded it. Used only when the stored log is empty (the log is otherwise append-only at
+// finish, so an edited workout or a finish whose PR write didn't land leaves it blank or short).
+function reconstructPrEvents(history) {
+  const sessions = [];
+  Object.entries(history || {}).forEach(([dk, day]) => {
+    Object.entries(day || {}).forEach(([sid, s]) => {
+      sessions.push({
+        dk, sid,
+        finishedAt: s?.finishedAt || new Date(dk + "T12:00:00").getTime(),
+        unit: s?.unit || "lbs",
+        exercises: s?.exercises || [],
+      });
+    });
+  });
+  // Chronological: oldest first, so each running max reflects only prior sessions.
+  sessions.sort((a, b) => a.finishedAt - b.finishedAt);
+  const maxW = {}, maxE = {}, maxV = {};
+  const events = [];
+  for (const sess of sessions) {
+    const toLbs = w => sess.unit === "lbs" ? w : cvt(w, "kg", "lbs");
+    for (const ex of sess.exercises) {
+      if (!ex?.name) continue;
+      let bw = 0, be = 0, bv = 0;
+      for (const s of (ex.sets || [])) {
+        const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
+        if (!done || s?.type === "warmup") continue;
+        const wt = parseFloat(s.weight), r = parseInt(s.reps);
+        if (!wt || wt <= 0 || !r || r < 1) continue;
+        const lbs = toLbs(wt);
+        const e1 = Math.round(lbs * (1 + Math.min(r, 12) / 30));
+        const v = lbs * r;
+        if (lbs > bw) bw = lbs;
+        if (e1 > be) be = e1;
+        if (v > bv) bv = v;
+      }
+      const types = [];
+      if (bw > 0 && bw > (maxW[ex.name] || 0)) { maxW[ex.name] = bw; types.push("weight"); }
+      if (be > 0 && be > (maxE[ex.name] || 0)) { maxE[ex.name] = be; types.push("e1rm"); }
+      if (bv > 0 && bv > (maxV[ex.name] || 0)) { maxV[ex.name] = bv; types.push("volume"); }
+      if (types.length) events.push({ date: sess.dk, sid: sess.sid, name: ex.name, weightLbs: bw, types });
+    }
+  }
+  return events.slice(-300); // same cap the finish-time appender uses
 }
 
 // Get ISO week boundary (Mon 00:00 local) for a given date
@@ -16981,6 +17031,11 @@ function AppInner() {
         });
       });
 
+      // Rebuild the dated PR-hit log from history for the same reason — it's append-only at finish,
+      // so it can sit empty while real PRs exist. Computed once here; used below only when the
+      // stored log is empty, and persisted to the server in that case.
+      const reconstructedPrEvents = reconstructPrEvents(appHistory);
+
       // Clear stale posts immediately so deleted ones don't flash
       setStore(prev => ({ ...prev, posts: [] }));
 
@@ -17040,7 +17095,12 @@ function AppInner() {
         // (profiles.body_log / onboarding_answers / strength_sex) so they survive re-login and
         // new devices. Prefer the server copy, fall back to whatever's on-device.
         bodyLog: (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : (prev.bodyLog || []),
-        prEvents: (Array.isArray(me?.pr_events) && me.pr_events.length) ? me.pr_events : (prev.prEvents || []),
+        // Dated PR-hit log: prefer the server copy, then any local copy; if both are empty, rebuild
+        // it from history so Wrapped/recaps reflect real PRs instead of 0 (see reconstructPrEvents).
+        prEvents: (() => {
+          const stored = (Array.isArray(me?.pr_events) && me.pr_events.length) ? me.pr_events : (prev.prEvents || []);
+          return stored.length ? stored : reconstructedPrEvents;
+        })(),
         // Custom exercises persist on the profile (profiles.custom_exercises). Merge server + local
         // by id/name so nothing is lost if either side has entries the other doesn't.
         customExercises: (() => {
@@ -17077,6 +17137,11 @@ function AppInner() {
               sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, tokPR).catch(()=>{});
             }
           });
+          // Persist a freshly-rebuilt PR-hit log when the server had none, so Wrapped works on
+          // every device and survives reloads (not just this session's in-memory store).
+          if (!(Array.isArray(me?.pr_events) && me.pr_events.length) && reconstructedPrEvents.length) {
+            sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: reconstructedPrEvents }) }, tokPR).catch(()=>{});
+          }
         }
       } catch {}
 
