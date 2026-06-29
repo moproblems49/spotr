@@ -1,4 +1,4 @@
-// v178091716598
+// v178091716599
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17013,7 +17013,12 @@ function AppInner() {
       // best-effort PR upsert can silently fail. Derive the heaviest done, non-warmup set per
       // exercise from history (converted to lbs) so a real logged set can never be missing from
       // the PR list. Keyed by exact exercise name to match how PRs are stored/displayed.
-      const historyPRs = {};
+      // Also rebuild the estimated-1RM and single-set-volume PR baselines (store.prsE1rm /
+      // prsVolume). Unlike raw-weight PRs these are LOCAL-ONLY (never saved to the server), so on a
+      // fresh load / new device they start empty — which made every set register as a "first" e1RM
+      // and volume PR, badging every exercise of every workout as a PR. Deriving them from history
+      // (same formulas as getSetPRTypes/finishWorkout) means only a genuine improvement fires.
+      const historyPRs = {}, historyE1rm = {}, historyVolume = {};
       Object.values(appHistory).forEach(day => {
         Object.values(day || {}).forEach(w => {
           const wu = w?.unit || "lbs";
@@ -17026,6 +17031,10 @@ function AppInner() {
               if (!wt || wt <= 0 || !r || r < 1) return;
               const lbs = wu === "lbs" ? wt : cvt(wt, "kg", "lbs");
               if (lbs > (historyPRs[ex.name] || 0)) historyPRs[ex.name] = lbs;
+              const e1 = Math.round(lbs * (1 + Math.min(r, 12) / 30));
+              if (e1 > (historyE1rm[ex.name] || 0)) historyE1rm[ex.name] = e1;
+              const vol = lbs * r;
+              if (vol > (historyVolume[ex.name] || 0)) historyVolume[ex.name] = vol;
             });
           });
         });
@@ -17073,6 +17082,27 @@ function AppInner() {
           // win; skip on a user switch so one account's numbers can't leak into another's.
           if (prev.currentUserId === currentUserId) {
             Object.entries(prev.prs || {}).forEach(([name, w]) => {
+              if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
+            });
+          }
+          return merged;
+        })(),
+        // e1RM / volume PR baselines: rebuilt from history (there's no server copy), max-wins with
+        // same-user in-memory values. Without this they start empty and falsely flag every set as a
+        // PR. Skip the prev-merge on a user switch so one account's numbers don't leak into another.
+        prsE1rm: (() => {
+          const merged = { ...historyE1rm };
+          if (prev.currentUserId === currentUserId) {
+            Object.entries(prev.prsE1rm || {}).forEach(([name, w]) => {
+              if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
+            });
+          }
+          return merged;
+        })(),
+        prsVolume: (() => {
+          const merged = { ...historyVolume };
+          if (prev.currentUserId === currentUserId) {
+            Object.entries(prev.prsVolume || {}).forEach(([name, w]) => {
               if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
             });
           }
