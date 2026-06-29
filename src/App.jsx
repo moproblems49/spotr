@@ -1,4 +1,4 @@
-// v178091716599
+// v178091716600
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16366,6 +16366,10 @@ function AppInner() {
   const currentUserId = session?.user?.id || (isGuest ? GUEST_ID : null);
   const currentUserIdRef = useRef(currentUserId);
   useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
+  // Flipped true only after a successful loadUserData populated the server copies of
+  // exerciseNotes/barTypes/closeFriends — gates the save effect below so a failed/blank load
+  // can't overwrite the server with empty values.
+  const prefsLoadedRef = useRef(false);
   // Identify real (non-guest) users to analytics — never sends workout content, just the id
   useEffect(() => { if (session?.user?.id) identifyUser(session.user.id); }, [session?.user?.id]);
 
@@ -16777,6 +16781,22 @@ function AppInner() {
     });
   }, [token, currentUserId, isGuest]);
 
+  // Persist per-exercise notes, bar-type overrides, and Close Friends picks to the server whenever
+  // they change. These used to live only on-device, so a reinstall/new device reset them (and a lost
+  // bar-type override silently changed warmup/plate math). Gated on prefsLoadedRef so it only runs
+  // after a successful load — never overwriting the server copy with empty values from a blank/failed
+  // load. Best-effort PATCH; writes the full maps (small) so last-write-wins is correct.
+  useEffect(() => {
+    if (!prefsLoadedRef.current || isGuest) return;
+    const tok = tokenRef.current || token;
+    if (!tok || !currentUserId) return;
+    sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({
+      exercise_notes: store.exerciseNotes || {},
+      bar_types: store.barTypes || {},
+      close_friends: store.closeFriends || [],
+    }) }, tok).catch(() => {});
+  }, [store.exerciseNotes, store.barTypes, store.closeFriends]);
+
   // Re-fetch when the app comes back to foreground — keeps phone & desktop in sync
   // when user has switched between them or backgrounded the app for a while.
   useEffect(() => {
@@ -16946,6 +16966,9 @@ function AppInner() {
 
   async function loadUserData() {
     setDataLoading(true);
+    // Until this load succeeds, hold off the prefs save effect — prevents a user switch (or a
+    // failed load) from pushing the wrong/empty notes-bar-types-closeFriends back to the server.
+    prefsLoadedRef.current = false;
     try {
       // Load profile
       const tok = tokenRef.current || token;
@@ -17144,6 +17167,17 @@ function AppInner() {
         })(),
         onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.onboardingAnswers || {}),
         strengthSex: me?.strength_sex || prev.strengthSex || "male",
+        // Standing per-exercise notes + bar-type overrides and the Close Friends picks now persist
+        // server-side (profiles.exercise_notes / bar_types / close_friends) so they survive a
+        // reinstall / new device instead of silently resetting — a lost bar-type override in
+        // particular would quietly change warmup/plate math. Server wins per key; keep any local
+        // keys the server lacks (e.g. an offline edit not yet synced). Skip the local merge on a
+        // user switch so one account's settings can't leak into another's.
+        exerciseNotes: { ...((prev.currentUserId === currentUserId) ? (prev.exerciseNotes || {}) : {}), ...(me?.exercise_notes || {}) },
+        barTypes: { ...((prev.currentUserId === currentUserId) ? (prev.barTypes || {}) : {}), ...(me?.bar_types || {}) },
+        closeFriends: (Array.isArray(me?.close_friends) && me.close_friends.length)
+          ? me.close_friends
+          : ((prev.currentUserId === currentUserId) ? (prev.closeFriends || []) : []),
         // Insight dismissals persist server-side (profiles.dismissed_insights) so they
         // survive re-login and new devices. Union with whatever is on-device.
         dismissedInsights: Array.from(new Set([
@@ -17154,6 +17188,10 @@ function AppInner() {
         age: me?.age != null ? me.age : prev.age,
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
+      // Mark prefs as server-loaded so the save effect can start syncing local edits back — gated
+      // on a SUCCESSFUL load so a failed fetch (which leaves the store at on-device/default values)
+      // can never overwrite the server copy of notes/bar-types/close-friends with empties.
+      prefsLoadedRef.current = true;
 
       // Persist any PR the history reconcile raised above the stored value, so the fix survives
       // future loads and reaches the leaderboard (which reads personal_records directly) and other
