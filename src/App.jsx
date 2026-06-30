@@ -1,4 +1,4 @@
-// v178091716604
+// v178091716605
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15675,55 +15675,70 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
 
           <SeshdLogo C={C} big/>
 
+          {/* Accent eyebrow — small uppercase kicker above the headline for a more editorial,
+              premium feel. */}
+          <div style={{ marginTop:30, fontSize:11.5, fontWeight:800, letterSpacing:2.5, color:C.accent, fontFamily:F, textTransform:"uppercase" }}>
+            No-bullshit gym log
+          </div>
+          {/* Display-face headline — the condensed display font reads bolder/taller than Inter and
+              gives the hero real presence. */}
           <h1 style={{
-            fontSize:34, fontWeight:900, color:C.text, marginTop:24, marginBottom:10,
-            letterSpacing:-1, lineHeight:1.05, fontFamily:F
+            fontSize:52, fontWeight:700, color:C.text, marginTop:6, marginBottom:14,
+            letterSpacing:-1.5, lineHeight:0.95, fontFamily:DISPLAY
           }}>
             Lift heavy.<br/>Track everything.
           </h1>
           <p style={{
-            fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:0, fontFamily:F,
-            maxWidth:340
+            fontSize:15.5, color:C.sub, lineHeight:1.5, marginBottom:0, fontFamily:F,
+            maxWidth:330
           }}>
-            A no-bullshit gym log that actually keeps up with you. Train first — make it social later.
+            A gym log that actually keeps up with you. Train first — make it social later.
           </p>
 
-          {/* Trust signals — premium feel */}
-          <div style={{ marginTop:28, display:"flex", flexDirection:"column", gap:14 }}>
+          {/* Feature tiles — accent-tinted icon chips with distinct glyphs read more premium (and
+              more informative) than three identical checkmarks. */}
+          <div style={{ marginTop:32, display:"flex", flexDirection:"column", gap:14 }}>
             {[
-              ["Plate calculator & 1RM built in"],
-              ["Auto rest timer, swipe-to-complete"],
-              ["Your data stays yours"],
-            ].map(([txt], i) => (
-              <div key={i} style={{ display:"flex", alignItems:"center", gap:12 }}>
+              { label:"Plate calculator & 1RM, built in", icon:(
+                <><line x1="4" y1="12" x2="20" y2="12"/><rect x="1" y="9" width="3" height="6" rx="1"/><rect x="20" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2" height="10" rx="1"/><rect x="17" y="7" width="2" height="10" rx="1"/></>
+              ) },
+              { label:"Auto rest timer, swipe to log", icon:(
+                <><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></>
+              ) },
+              { label:"Your data stays yours", icon:(
+                <><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>
+              ) },
+            ].map((f, i) => (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:13 }}>
                 <div style={{
-                  width:24, height:24, borderRadius:12, background:`${C.accent}1f`,
+                  width:40, height:40, borderRadius:12, background:`${C.accent}14`, border:`1px solid ${C.accent}2e`,
                   display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0
                 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{f.icon}</svg>
                 </div>
-                <div style={{ fontSize:14, color:C.text, fontFamily:F }}>{txt}</div>
+                <div style={{ fontSize:14.5, color:C.text, fontWeight:500, fontFamily:F }}>{f.label}</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Gap between the hero block and the CTAs — sized to nudge the buttons a bit lower down the
-            screen (was 32) without anchoring them to the very bottom. */}
-        <div style={{ height:88 }}/>
+        {/* Gap between the hero block and the CTAs. */}
+        <div style={{ height:36 }}/>
 
         {/* CTAs */}
         <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", gap:10 }}>
           <button onClick={() => onGuest && onGuest()} style={{
             width:"100%", background:C.text, color:C.bg, border:"none",
-            borderRadius:14, padding:"17px", fontSize:16, fontWeight:800,
+            borderRadius:15, padding:"18px", fontSize:16, fontWeight:800,
             cursor:"pointer", fontFamily:F, letterSpacing:-0.3,
-            transition:"transform 0.1s",
+            transition:"transform 0.1s", boxShadow:"0 10px 24px rgba(0,0,0,0.18)",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:9,
           }}
             onTouchStart={e => e.currentTarget.style.transform = "scale(0.98)"}
             onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
           >
             Start Tracking
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.bg} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
           </button>
           <button onClick={() => setMode("signup")} style={{
             width:"100%", background:"transparent", color:C.text, border:`1px solid ${C.border}`,
