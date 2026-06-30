@@ -1,4 +1,4 @@
-// v178091716607
+// v178091716608
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1621,25 +1621,44 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                               <span style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>TODAY'S DRAIN</span>
                               <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>{rawHi} → {rawLo}</span>
                             </div>
-                            <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:80, display:"block" }} preserveAspectRatio="none">
-                              <defs>
-                                <linearGradient id="bbGradient" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="0%" stopColor={fill} stopOpacity="0.35"/>
-                                  <stop offset="100%" stopColor={fill} stopOpacity="0"/>
-                                </linearGradient>
-                              </defs>
-                              <path d={areaPath} fill="url(#bbGradient)" stroke="none"/>
-                              <path d={linePath} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
-                            </svg>
-                            <div style={{ position:"relative", height:12, marginTop:4 }}>
-                              {tickIdxs.map(i => (
-                                <span key={i} style={{
-                                  position:"absolute", top:0,
-                                  left:`${(xAt(i) / W) * 100}%`,
-                                  transform: i === 0 ? "none" : i === n - 1 ? "translateX(-100%)" : "translateX(-50%)",
-                                  fontSize:9, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
-                                }}>{fmtHour(timeline[i].hour)}</span>
-                              ))}
+                            <div style={{ display:"flex", gap:6 }}>
+                              {/* Y-axis labels (HTML, since the chart SVG is x-distorted via
+                                  preserveAspectRatio:none and would stretch any text inside it). */}
+                              <div style={{ position:"relative", width:22, height:80, flexShrink:0 }}>
+                                {[hi, (hi + lo) / 2, lo].map((lvl, k) => (
+                                  <span key={k} style={{
+                                    position:"absolute", right:0, top:`${(yAt(lvl) / H) * 80}px`,
+                                    transform:"translateY(-50%)", fontSize:8.5, color:C.muted, fontWeight:600, fontFamily:MONO,
+                                  }}>{Math.round(lvl)}</span>
+                                ))}
+                              </div>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:80, display:"block" }} preserveAspectRatio="none">
+                                  <defs>
+                                    <linearGradient id="bbGradient" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor={fill} stopOpacity="0.35"/>
+                                      <stop offset="100%" stopColor={fill} stopOpacity="0"/>
+                                    </linearGradient>
+                                  </defs>
+                                  {/* Gridlines at the three labeled levels — non-scaling stroke keeps them crisp
+                                      despite the x-distortion. */}
+                                  {[hi, (hi + lo) / 2, lo].map((lvl, k) => (
+                                    <line key={k} x1={PAD} y1={yAt(lvl)} x2={W - PAD} y2={yAt(lvl)} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.55"/>
+                                  ))}
+                                  <path d={areaPath} fill="url(#bbGradient)" stroke="none"/>
+                                  <path d={linePath} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+                                </svg>
+                                <div style={{ position:"relative", height:12, marginTop:4 }}>
+                                  {tickIdxs.map(i => (
+                                    <span key={i} style={{
+                                      position:"absolute", top:0,
+                                      left:`${(xAt(i) / W) * 100}%`,
+                                      transform: i === 0 ? "none" : i === n - 1 ? "translateX(-100%)" : "translateX(-50%)",
+                                      fontSize:9, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
+                                    }}>{fmtHour(timeline[i].hour)}</span>
+                                  ))}
+                                </div>
+                              </div>
                             </div>
                             {!store.activityHourly && (
                               <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
