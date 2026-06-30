@@ -1,4 +1,4 @@
-// v178091716602
+// v178091716603
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15650,7 +15650,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
   if (mode === "welcome") {
     return (
       <div style={{
-        minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
+        minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column", justifyContent:"center",
         paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 34px) + 16px)",
         paddingLeft:24, paddingRight:24, position:"relative", overflowY:"auto", overflowX:"hidden",
       }}>
@@ -15665,7 +15665,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         }}/>
 
         {/* Hero */}
-        <div style={{ display:"flex", flexDirection:"column", position:"relative", zIndex:1, paddingTop:"4vh" }}>
+        <div style={{ display:"flex", flexDirection:"column", position:"relative", zIndex:1 }}>
           {promptReason && (
             <div style={{ marginBottom:24, padding:"14px 18px", borderRadius:14, background:C.surface, border:`1px solid ${C.accent}40` }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
@@ -15708,9 +15708,10 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           </div>
         </div>
 
-        {/* Modest fixed gap — keeps the CTAs grouped just below the hero content near the top,
-            rather than a flex spacer that would shove them to the bottom of the screen. */}
-        <div style={{ height:32 }}/>
+        {/* Gap between the hero block and the CTAs. The whole stack is vertically centered by the
+            container (justifyContent:center), so top and bottom margins stay even instead of leaving
+            a lopsided void. */}
+        <div style={{ height:40 }}/>
 
         {/* CTAs */}
         <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", gap:10 }}>
