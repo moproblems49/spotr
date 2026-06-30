@@ -1,4 +1,4 @@
-// v178091716609
+// v178091716610
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3477,9 +3477,11 @@ function computeBodyBatteryTimeline(store) {
   const sleepStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22);
   sleepStart.setDate(sleepStart.getDate() - 1);
 
-  // Wake time: 7am today (or yesterday if we're still before 7am)
+  // Wake time = today 7am. Pre-dawn (now < 7am) we're still mid-recharge: the
+  // recharge loop caps at `now` and the drain phase is skipped, so this stays
+  // today 7am (the recharge target) rather than rolling back — rolling it back
+  // would put wakeTime before sleepStart and invert the recharge curve.
   const wakeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
-  if (now < wakeTime) wakeTime.setDate(wakeTime.getDate() - 1);
 
   if (now - sleepStart < 2 * 36e5) return null;
 
@@ -3489,13 +3491,10 @@ function computeBodyBatteryTimeline(store) {
   const rechargeTotal = Math.min(40, Math.max(15, Math.round(sleepHours * 4)));
   const sleepStartLevel = Math.max(10, Math.min(55, bb.charge0 - rechargeTotal));
 
-  // Workout sessions for drain phase (same formula as computeBodyBattery)
+  // Workout sessions for the drain phase (wakeTime → now is always within today,
+  // since wakeTime is today 7am) — same per-session drain formula as computeBodyBattery.
   const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-  const wakeKey = `${wakeTime.getFullYear()}-${String(wakeTime.getMonth()+1).padStart(2,"0")}-${String(wakeTime.getDate()).padStart(2,"0")}`;
-  const historyBuckets = wakeKey === todayKey
-    ? [(store.history || {})[todayKey] || {}]
-    : [(store.history || {})[wakeKey] || {}, (store.history || {})[todayKey] || {}];
-  const sessions = historyBuckets.flatMap(bucket => Object.values(bucket)).map(sess => {
+  const sessions = Object.values((store.history || {})[todayKey] || {}).map(sess => {
     const endMs = sess.finishedAt || now.getTime();
     const startMs = endMs - (sess.duration || 0) * 1000;
     let sets = 0, rpeSum = 0, rpeN = 0;
@@ -3530,6 +3529,10 @@ function computeBodyBatteryTimeline(store) {
   // Phase 2: wake → now, hourly intervals
   if (now > wakeTime) {
     let level = bb.charge0;
+    // Anchor the drain line to the wake boundary (charge0) so it meets the
+    // recharge line's endpoint exactly — otherwise the first drain point is an
+    // hour later and the two-color chart shows a gap at the peak.
+    points.push({ ts: wakeTime.getTime(), hour: wakeTime.getHours(), level: Math.round(level), phase: "drain" });
     const hoursElapsed = Math.ceil((now - wakeTime) / 36e5);
     for (let h = 0; h < hoursElapsed; h++) {
       const hourStart = wakeTime.getTime() + h * 36e5;
