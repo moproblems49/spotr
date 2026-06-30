@@ -1,4 +1,4 @@
-// v178091716601
+// v178091716602
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4024,12 +4024,16 @@ function loadStore() {
   return defaults;
 }
 function saveStore(d) {
-  try { localStorage.setItem(SK, JSON.stringify(d)); }
+  // Don't persist the feed here — it's cached separately (seshd_feed_cache) and loadStore always
+  // overrides posts with that cache, so the copy in this blob is dead weight that just inflates
+  // every serialize. Stripping it shrinks the JSON we stringify on each save.
+  const toSave = { ...d, posts: [] };
+  try { localStorage.setItem(SK, JSON.stringify(toSave)); }
   catch (e) {
     // Most likely quota exceeded (progress photos are large base64 blobs). Retry without
     // photo data so weight/measurement history still persists rather than losing everything.
     try {
-      const trimmed = { ...d, bodyLog: (d.bodyLog || []).map(b => ({ ...b, photoData: null })) };
+      const trimmed = { ...toSave, bodyLog: (toSave.bodyLog || []).map(b => ({ ...b, photoData: null })) };
       localStorage.setItem(SK, JSON.stringify(trimmed));
     } catch {}
   }
@@ -18154,8 +18158,32 @@ function AppInner() {
     }
   }, []);
 
-  // Persist non-Supabase store changes to localStorage as fallback
-  useEffect(() => { saveStore(store); }, [store]);
+  // Persist store changes to localStorage as the offline/fast-start fallback. Debounced: the store
+  // changes rapidly during a workout (every set edit), and saveStore JSON.stringifies the whole
+  // thing synchronously — doing that per keystroke caused jank as history grew. A 500ms debounce
+  // collapses bursts into one write. This can't lose a logged set: the in-progress workout lives in
+  // its own localStorage key (SESSION_KEY), and committed data is server-backed — the only thing in
+  // flight is the last settings/history change, which we also flush immediately on background below.
+  const storeRef = useRef(store);
+  useEffect(() => { storeRef.current = store; }, [store]);
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => { saveStore(store); }, 500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [store]);
+  // Flush the latest store synchronously when the app is hidden/closed so a pending debounced write
+  // is never lost if the OS kills the tab/app while backgrounded.
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === "hidden") saveStore(storeRef.current); };
+    const onPageHide = () => saveStore(storeRef.current);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, []);
   // Keep the module-level custom-exercise registry in sync so getMuscle/getExEntry and the pickers
   // see user-created exercises everywhere.
   useEffect(() => { setCustomExerciseRegistry(store.customExercises || []); }, [store.customExercises]);
