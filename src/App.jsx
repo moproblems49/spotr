@@ -1,4 +1,4 @@
-// v178091716605
+// v178091716606
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15678,7 +15678,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           {/* Accent eyebrow — small uppercase kicker above the headline for a more editorial,
               premium feel. */}
           <div style={{ marginTop:30, fontSize:11.5, fontWeight:800, letterSpacing:2.5, color:C.accent, fontFamily:F, textTransform:"uppercase" }}>
-            No-bullshit gym log
+            Built for lifters
           </div>
           {/* Display-face headline — the condensed display font reads bolder/taller than Inter and
               gives the hero real presence. */}
