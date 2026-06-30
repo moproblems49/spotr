@@ -1,4 +1,4 @@
-// v178091716608
+// v178091716609
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1589,80 +1589,78 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       </div>
                       {(() => {
                         const timeline = computeBodyBatteryTimeline(store);
-                        if (!timeline || timeline.length < 2) return null;
+                        if (!timeline?.points || timeline.points.length < 2) return null;
+                        const { points, wakeTimeMs, hasSleepData } = timeline;
                         const W = 300, H = 70, PAD = 4;
-                        const n = timeline.length;
-                        const xAt = i => PAD + (i / (n - 1)) * (W - PAD * 2);
-                        // The day's real drain is usually only ~15-35 points, so a fixed 0-100
-                        // scale squeezes the line into the top sliver of the chart and it reads
-                        // as flat. Scale to the day's actual min/max instead (floor of 20pts of
-                        // span so a near-flat day doesn't get exaggerated into noise), clamped
-                        // back into the natural 0-100 bounds.
-                        const levels = timeline.map(p => p.level);
-                        const rawLo = Math.min(...levels), rawHi = Math.max(...levels);
-                        const span = Math.max(20, rawHi - rawLo);
-                        const mid = (rawHi + rawLo) / 2;
-                        let lo = mid - span / 2, hi = mid + span / 2;
-                        if (hi > 100) { lo -= (hi - 100); hi = 100; }
-                        if (lo < 0) { hi += (0 - lo); lo = 0; }
-                        const yAt = lvl => PAD + (1 - (lvl - lo) / (hi - lo)) * (H - PAD * 2);
-                        const linePath = timeline.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
-                        const areaPath = `${linePath} L ${xAt(n - 1).toFixed(1)} ${H} L ${xAt(0).toFixed(1)} ${H} Z`;
+                        const tStart = points[0].ts, tSpan = Math.max(1, points[points.length - 1].ts - tStart);
+                        const xAt = ts => PAD + ((ts - tStart) / tSpan) * (W - PAD * 2);
+                        // Fixed 0-100 y-axis — shows the full recharge + drain story.
+                        const yAt = lvl => PAD + (1 - lvl / 100) * (H - PAD * 2);
+                        const ptStr = pts => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(p.ts).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
+                        const rPts = points.filter(p => p.phase === "recharge");
+                        const dPts = points.filter(p => p.phase !== "recharge");
+                        const rLine = rPts.length >= 2 ? ptStr(rPts) : "";
+                        const dLine = dPts.length >= 2 ? ptStr(dPts) : "";
+                        const rArea = rLine ? `${rLine} L ${xAt(rPts[rPts.length-1].ts).toFixed(1)} ${H} L ${xAt(rPts[0].ts).toFixed(1)} ${H} Z` : "";
+                        const dArea = dLine ? `${dLine} L ${xAt(dPts[dPts.length-1].ts).toFixed(1)} ${H} L ${xAt(dPts[0].ts).toFixed(1)} ${H} Z` : "";
                         const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
-                        // Hour ticks along the bottom, Garmin-style, instead of just the
-                        // first/last hour — spaced so 4-5 labels fit regardless of timeline length.
-                        const tickStep = Math.max(1, Math.round((n - 1) / 4));
-                        const tickIdxs = [];
-                        for (let i = 0; i < n - 1; i += tickStep) tickIdxs.push(i);
-                        tickIdxs.push(n - 1);
+                        // 5 evenly-spaced time labels along x-axis
+                        const xTickData = [0, 0.25, 0.5, 0.75, 1].map((f, i) => ({
+                          xPct: (xAt(tStart + tSpan * f) / W) * 100,
+                          label: fmtHour(new Date(tStart + tSpan * f).getHours()),
+                          idx: i,
+                        }));
+                        const GREEN = "#4ade80";
                         return (
                           <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
-                              <span style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>TODAY'S DRAIN</span>
-                              <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>{rawHi} → {rawLo}</span>
+                              <span style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>BODY BATTERY · 24H</span>
+                              <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>0–100</span>
                             </div>
                             <div style={{ display:"flex", gap:6 }}>
-                              {/* Y-axis labels (HTML, since the chart SVG is x-distorted via
-                                  preserveAspectRatio:none and would stretch any text inside it). */}
                               <div style={{ position:"relative", width:22, height:80, flexShrink:0 }}>
-                                {[hi, (hi + lo) / 2, lo].map((lvl, k) => (
-                                  <span key={k} style={{
+                                {[100, 75, 50, 25, 0].map(lvl => (
+                                  <span key={lvl} style={{
                                     position:"absolute", right:0, top:`${(yAt(lvl) / H) * 80}px`,
                                     transform:"translateY(-50%)", fontSize:8.5, color:C.muted, fontWeight:600, fontFamily:MONO,
-                                  }}>{Math.round(lvl)}</span>
+                                  }}>{lvl}</span>
                                 ))}
                               </div>
                               <div style={{ flex:1, minWidth:0 }}>
                                 <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:80, display:"block" }} preserveAspectRatio="none">
                                   <defs>
-                                    <linearGradient id="bbGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <linearGradient id="bbGreenGrad" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor={GREEN} stopOpacity="0.4"/>
+                                      <stop offset="100%" stopColor={GREEN} stopOpacity="0"/>
+                                    </linearGradient>
+                                    <linearGradient id="bbDrainGrad" x1="0" y1="0" x2="0" y2="1">
                                       <stop offset="0%" stopColor={fill} stopOpacity="0.35"/>
                                       <stop offset="100%" stopColor={fill} stopOpacity="0"/>
                                     </linearGradient>
                                   </defs>
-                                  {/* Gridlines at the three labeled levels — non-scaling stroke keeps them crisp
-                                      despite the x-distortion. */}
-                                  {[hi, (hi + lo) / 2, lo].map((lvl, k) => (
-                                    <line key={k} x1={PAD} y1={yAt(lvl)} x2={W - PAD} y2={yAt(lvl)} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.55"/>
+                                  {[75, 50, 25].map(lvl => (
+                                    <line key={lvl} x1={PAD} y1={yAt(lvl)} x2={W - PAD} y2={yAt(lvl)} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.55"/>
                                   ))}
-                                  <path d={areaPath} fill="url(#bbGradient)" stroke="none"/>
-                                  <path d={linePath} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+                                  {rArea && <path d={rArea} fill="url(#bbGreenGrad)" stroke="none"/>}
+                                  {dArea && <path d={dArea} fill="url(#bbDrainGrad)" stroke="none"/>}
+                                  {rLine && <path d={rLine} fill="none" stroke={GREEN} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>}
+                                  {dLine && <path d={dLine} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>}
                                 </svg>
                                 <div style={{ position:"relative", height:12, marginTop:4 }}>
-                                  {tickIdxs.map(i => (
-                                    <span key={i} style={{
+                                  {xTickData.map(({ xPct, label, idx }) => (
+                                    <span key={idx} style={{
                                       position:"absolute", top:0,
-                                      left:`${(xAt(i) / W) * 100}%`,
-                                      transform: i === 0 ? "none" : i === n - 1 ? "translateX(-100%)" : "translateX(-50%)",
+                                      left:`${xPct}%`,
+                                      transform: idx === 0 ? "none" : idx === 4 ? "translateX(-100%)" : "translateX(-50%)",
                                       fontSize:9, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
-                                    }}>{fmtHour(timeline[i].hour)}</span>
+                                    }}>{label}</span>
                                   ))}
                                 </div>
                               </div>
                             </div>
-                            {!store.activityHourly && (
+                            {!hasSleepData && (
                               <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
-                                Connect Apple Health for activity-aware dips during the day.
+                                Connect Apple Health for sleep-based recharge accuracy.
                               </div>
                             )}
                           </div>
@@ -3473,22 +3471,30 @@ function computeBodyBattery(store) {
 // there's nothing to plot yet (just woke up).
 function computeBodyBatteryTimeline(store) {
   const now = new Date();
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-  const bb = computeBodyBattery(store); // same starting charge as the headline number
-  const sevenAm = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
-  if (now < sevenAm) sevenAm.setDate(sevenAm.getDate() - 1);
-  const hoursElapsed = Math.floor((now - sevenAm) / 36e5);
-  if (hoursElapsed < 1) return null;
+  const bb = computeBodyBattery(store);
 
-  // Workout sessions as precise [startMs, endMs, drainTotal] windows (same per-session drain
-  // formula as computeBodyBattery's workoutDrain, just kept per-session instead of summed).
-  // Pull from both the calendar date sevenAm falls on and today's date — between midnight and
-  // 7am these differ (sevenAm rolls back a day), and a late-night session would otherwise be
-  // filed under yesterday's date key and silently dropped from the chart.
-  const sevenAmKey = `${sevenAm.getFullYear()}-${String(sevenAm.getMonth()+1).padStart(2,"0")}-${String(sevenAm.getDate()).padStart(2,"0")}`;
-  const historyBuckets = sevenAmKey === todayKey
+  // 24h window: yesterday ~10pm (estimated sleep start) → now
+  const sleepStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22);
+  sleepStart.setDate(sleepStart.getDate() - 1);
+
+  // Wake time: 7am today (or yesterday if we're still before 7am)
+  const wakeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
+  if (now < wakeTime) wakeTime.setDate(wakeTime.getDate() - 1);
+
+  if (now - sleepStart < 2 * 36e5) return null;
+
+  // HealthKit sleep hours will replace the 7.5h estimate when connected.
+  const hasSleepData = !!(store.recovery?.sleepHours);
+  const sleepHours = hasSleepData ? Math.min(9, Math.max(5, store.recovery.sleepHours)) : 7.5;
+  const rechargeTotal = Math.min(40, Math.max(15, Math.round(sleepHours * 4)));
+  const sleepStartLevel = Math.max(10, Math.min(55, bb.charge0 - rechargeTotal));
+
+  // Workout sessions for drain phase (same formula as computeBodyBattery)
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const wakeKey = `${wakeTime.getFullYear()}-${String(wakeTime.getMonth()+1).padStart(2,"0")}-${String(wakeTime.getDate()).padStart(2,"0")}`;
+  const historyBuckets = wakeKey === todayKey
     ? [(store.history || {})[todayKey] || {}]
-    : [(store.history || {})[sevenAmKey] || {}, (store.history || {})[todayKey] || {}];
+    : [(store.history || {})[wakeKey] || {}, (store.history || {})[todayKey] || {}];
   const sessions = historyBuckets.flatMap(bucket => Object.values(bucket)).map(sess => {
     const endMs = sess.finishedAt || now.getTime();
     const startMs = endMs - (sess.duration || 0) * 1000;
@@ -3497,8 +3503,7 @@ function computeBodyBatteryTimeline(store) {
       for (const s of (ex.sets || [])) {
         if (s.type === "warmup") continue;
         if (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) {
-          sets++;
-          const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
+          sets++; const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
         }
       }
     }
@@ -3510,30 +3515,44 @@ function computeBodyBatteryTimeline(store) {
 
   const hourlyActivity = store.activityHourly;
   const points = [];
-  let level = bb.charge0;
-  for (let h = 0; h <= hoursElapsed; h++) {
-    const hourStart = sevenAm.getTime() + h * 36e5;
-    const hourEnd = hourStart + 36e5;
-    const hourFraction = h === hoursElapsed ? Math.max(0, Math.min(1, (now.getTime() - hourStart) / 36e5)) : 1;
 
-    let drain = 0.9 * hourFraction; // baseline awake drain, same rate as computeBodyBattery
-
-    for (const s of sessions) {
-      const overlapMs = Math.max(0, Math.min(s.endMs, hourEnd) - Math.max(s.startMs, hourStart));
-      if (overlapMs > 0) drain += s.drain * (overlapMs / Math.max(1, s.endMs - s.startMs));
-    }
-
-    const hourOfDay = new Date(hourStart).getHours();
-    const act = hourlyActivity?.[hourOfDay];
-    if (act && (act.steps || act.kcal)) {
-      const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
-      drain += Math.min(6, a); // gentler per-hour cap than the whole-day 18 cap
-    }
-
-    level = Math.max(5, level - drain);
-    points.push({ hour: hourOfDay, level: Math.round(level) });
+  // Phase 1: overnight recharge (10pm → 7am), 30-min intervals, sqrt curve
+  const sleepDurMs = wakeTime.getTime() - sleepStart.getTime();
+  const phaseEnd1 = Math.min(now.getTime(), wakeTime.getTime());
+  for (let t = sleepStart.getTime(); ; t += 30 * 60000) {
+    const ct = Math.min(t, phaseEnd1);
+    const frac = sleepDurMs > 0 ? Math.max(0, Math.min(1, (ct - sleepStart.getTime()) / sleepDurMs)) : 1;
+    const level = Math.round(sleepStartLevel + Math.sqrt(frac) * (bb.charge0 - sleepStartLevel));
+    points.push({ ts: ct, hour: new Date(ct).getHours(), level, phase: "recharge" });
+    if (t >= phaseEnd1) break;
   }
-  return points;
+
+  // Phase 2: wake → now, hourly intervals
+  if (now > wakeTime) {
+    let level = bb.charge0;
+    const hoursElapsed = Math.ceil((now - wakeTime) / 36e5);
+    for (let h = 0; h < hoursElapsed; h++) {
+      const hourStart = wakeTime.getTime() + h * 36e5;
+      const hourEnd = hourStart + 36e5;
+      const ts = Math.min(hourEnd, now.getTime());
+      const hourFraction = (ts - hourStart) / 36e5;
+      let drain = 0.9 * hourFraction;
+      for (const s of sessions) {
+        const overlapMs = Math.max(0, Math.min(s.endMs, hourEnd) - Math.max(s.startMs, hourStart));
+        if (overlapMs > 0) drain += s.drain * (overlapMs / Math.max(1, s.endMs - s.startMs));
+      }
+      const hourOfDay = new Date(hourStart).getHours();
+      const act = hourlyActivity?.[hourOfDay];
+      if (act && (act.steps || act.kcal)) {
+        const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
+        drain += Math.min(6, a);
+      }
+      level = Math.max(5, level - drain);
+      points.push({ ts, hour: hourOfDay, level: Math.round(level), phase: "drain" });
+    }
+  }
+
+  return points.length >= 2 ? { points, wakeTimeMs: wakeTime.getTime(), hasSleepData } : null;
 }
 
 function nativeHealth() {
