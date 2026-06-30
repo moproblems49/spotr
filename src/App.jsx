@@ -1,4 +1,4 @@
-// v178091716606
+// v178091716607
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12343,6 +12343,29 @@ const WGER_IDS = {
 };
 
 
+// Compact axis-tick label: 1240 -> "1.2k", 18500 -> "18.5k", 135 -> "135".
+function fmtAxisTick(v) {
+  if (!isFinite(v)) return "";
+  const a = Math.abs(v);
+  if (a >= 1000) { const k = Math.round((v / 1000) * 10) / 10; return `${k}k`; }
+  return String(Math.round(v));
+}
+// "Nice" axis: expand [min,max] to rounded bounds and return evenly-spaced round tick values, so a
+// chart's y-axis reads 0 / 50 / 100 / 150 instead of arbitrary data min/max. Standard 1-2-5-10 step.
+function niceAxis(min, max, targetTicks = 4) {
+  if (!isFinite(min) || !isFinite(max)) return { lo: 0, hi: 1, values: [0, 1] };
+  if (min === max) { const pad = Math.max(1, Math.abs(min) * 0.1); min -= pad; max += pad; }
+  const rawStep = (max - min) / targetTicks;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag;
+  const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+  const lo = Math.floor(min / step) * step;
+  const hi = Math.ceil(max / step) * step;
+  const values = [];
+  for (let v = lo; v <= hi + step * 0.5; v += step) values.push(Math.round(v * 1e6) / 1e6);
+  return { lo, hi, values };
+}
+
 function ExerciseVolumeChart({ data, unit, C }) {
   if (!data || data.length === 0) return (
     <div style={{ textAlign:"center", padding:"30px 0", color:C.sub, fontSize:13 }}>
@@ -12350,27 +12373,36 @@ function ExerciseVolumeChart({ data, unit, C }) {
     </div>
   );
 
-  const W = 320, H = 100, PAD = { l:40, r:12, t:10, b:24 };
+  const W = 320, H = 116, PAD = { l:44, r:12, t:10, b:24 };
   const iW = W - PAD.l - PAD.r;
   const iH = H - PAD.t - PAD.b;
 
-  const maxV = Math.max(...data.map(d => d.value));
-  const minV = Math.min(...data.map(d => d.value));
-  const range = maxV - minV || 1;
+  const dataMax = Math.max(...data.map(d => d.value));
+  const dataMin = Math.min(...data.map(d => d.value));
+  // Anchor to 0 when the data sits low on the scale so small numbers don't float on a misleadingly
+  // zoomed axis; otherwise round outward from the data range.
+  const { lo, hi, values: ticks } = niceAxis(dataMin > 0 && dataMin <= dataMax * 0.35 ? 0 : dataMin, dataMax, 4);
+  const range = hi - lo || 1;
 
   const px = (i) => PAD.l + (i / (data.length - 1 || 1)) * iW;
-  const py = (v) => PAD.t + iH - ((v - minV) / range) * iH;
+  const py = (v) => PAD.t + iH - ((v - lo) / range) * iH;
 
   const pathD = data.map((d, i) => `${i===0?"M":"L"}${px(i)},${py(d.value)}`).join(" ");
   const areaD = `${pathD} L${px(data.length-1)},${PAD.t+iH} L${PAD.l},${PAD.t+iH} Z`;
 
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
-      {/* Grid lines */}
-      {[0,0.5,1].map(f => (
-        <line key={f} x1={PAD.l} y1={PAD.t + iH*(1-f)} x2={W-PAD.r} y2={PAD.t + iH*(1-f)}
-          stroke={C.divider} strokeWidth="1" opacity="0.8"/>
-      ))}
+      {/* Y gridlines + labels at nice round values — fills out the axis instead of a bare min/max */}
+      {ticks.map((tv, i) => {
+        const y = py(tv);
+        if (y < PAD.t - 1 || y > PAD.t + iH + 1) return null;
+        return (
+          <g key={i}>
+            <line x1={PAD.l} y1={y} x2={W-PAD.r} y2={y} stroke={C.divider} strokeWidth="1" opacity={tv === lo ? 0.9 : 0.5}/>
+            <text x={PAD.l-7} y={y+3} textAnchor="end" fontSize="8.5" fill={C.muted || C.sub} fontFamily={MONO}>{fmtAxisTick(tv)}</text>
+          </g>
+        );
+      })}
       {/* Area fill */}
       <path d={areaD} fill={C.accent} opacity="0.08"/>
       {/* Line */}
@@ -12379,9 +12411,6 @@ function ExerciseVolumeChart({ data, unit, C }) {
       {data.map((d, i) => (
         <circle key={i} cx={px(i)} cy={py(d.value)} r="3.5" fill={C.accent}/>
       ))}
-      {/* Y labels */}
-      <text x={PAD.l-4} y={PAD.t+4} textAnchor="end" fontSize="9" fill={C.sub}>{Math.round(maxV)}</text>
-      <text x={PAD.l-4} y={PAD.t+iH+4} textAnchor="end" fontSize="9" fill={C.sub}>{Math.round(minV)}</text>
       {/* X labels — first and last */}
       <text x={PAD.l} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[0]?.label}</text>
       {data.length > 1 && <text x={px(data.length-1)} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[data.length-1]?.label}</text>}
@@ -19665,3 +19694,4 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
