@@ -1,4 +1,4 @@
-// v178091716612
+// v178091716613
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3395,6 +3395,15 @@ const API_BASE = (() => {
   return Cap?.isNativePlatform?.() ? "https://spotr-drab.vercel.app" : "";
 })();
 function aiEndpoint() { return API_BASE + "/api/ai"; }
+// /api/ai requires a signed-in Supabase session — the proxy verifies the token server-side
+// so the Anthropic key can't be farmed by strangers hitting the URL directly. Returns null
+// for guests; callers must degrade gracefully (table-program fallback / sign-in note).
+function aiAuthHeaders() {
+  try {
+    const tok = loadSession()?.access_token;
+    return tok ? { "Content-Type": "application/json", Authorization: `Bearer ${tok}` } : null;
+  } catch (e) { return null; }
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // HEALTHKIT — recovery signals (iOS only, native build). Reads HRV, resting heart
@@ -12180,9 +12189,11 @@ function AICoachModal({ C, onClose, onImport, store }) {
       description: freeText || "(none provided)",
       unit: store?.unit || "lbs",
     };
+    const hdrs = aiAuthHeaders();
+    if (!hdrs) throw new Error("auth_required"); // guest → caller falls back to the table program
     const res = await fetch(aiEndpoint(), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: hdrs,
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 2000,
@@ -12568,9 +12579,11 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   async function fetchAiHowTo() {
     setAiLoading(true); setAiError(false);
     try {
+      const hdrs = aiAuthHeaders();
+      if (!hdrs) throw new Error("auth_required"); // guest → shows the standard error state
       const res = await fetch(aiEndpoint(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: hdrs,
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 700,
@@ -16118,9 +16131,11 @@ function AICoachSheet({ store, setStore, unit, C, onClose }) {
           "After your summary, output a line containing exactly 'ACTIONS:' on its own, then 2-4 concrete " +
           "action items — one per line, each starting with '- ' — that are specific and doable in the next " +
           "session or two (e.g. '- Add 2.5kg to your bench press next session'). No other text after ACTIONS:.";
+        const hdrs = aiAuthHeaders();
+        if (!hdrs) { if (!cancelled) setState({ loading: false, text: "", error: "auth" }); return; }
         const res = await fetch(aiEndpoint(), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: hdrs,
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
             max_tokens: 1000,
@@ -16128,6 +16143,7 @@ function AICoachSheet({ store, setStore, unit, C, onClose }) {
             messages: [{ role: "user", content: "Here is my training data as JSON:\n" + JSON.stringify(ctx) + "\n\nGive me my coaching summary." }],
           }),
         });
+        if (res.status === 401) { if (!cancelled) setState({ loading: false, text: "", error: "auth" }); return; }
         if (!res.ok) throw new Error("api_" + res.status);
         const data = await res.json();
         const raw = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
@@ -16177,6 +16193,11 @@ function AICoachSheet({ store, setStore, unit, C, onClose }) {
         {!state.loading && state.error === "no_data" && (
           <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
             Log a few workouts first — your coach needs some training history to give you useful advice.
+          </div>
+        )}
+        {!state.loading && state.error === "auth" && (
+          <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
+            Sign in to use AI coaching — it reads your synced training history to give advice specific to you.
           </div>
         )}
         {!state.loading && (state.error === "failed" || state.error === "empty") && (
