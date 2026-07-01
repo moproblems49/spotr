@@ -1,4 +1,4 @@
-// v178091716618
+// v178091716619
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1959,13 +1959,22 @@ function ToastHost() {
     return () => clearTimeout(id);
   }, [t?.id]);
   if (!t) return null;
-  const bg = t.type === "error" ? "#ef4444" : t.type === "success" ? "#22c55e" : "#26262d";
+  // Liquid glass, matching the bottom nav pill it floats above. It's position:fixed over
+  // real app content, so the backdrop blur here is live (unlike an in-flow bar's would be).
+  // Success/error keep a strong color tint for at-a-glance meaning; info is neutral glass.
+  const glassBg = t.type === "error"
+    ? "linear-gradient(165deg, rgba(248,84,84,0.9) 0%, rgba(200,38,38,0.82) 100%)"
+    : t.type === "success"
+    ? "linear-gradient(165deg, rgba(52,211,111,0.9) 0%, rgba(18,150,70,0.82) 100%)"
+    : "linear-gradient(165deg, rgba(70,70,78,0.72) 0%, rgba(34,34,40,0.78) 100%)";
   return (
     <div style={{
       position:"fixed", bottom:90, left:"50%", transform:"translateX(-50%)",
-      background:bg, color:"#fff", borderRadius:20, padding:"10px 20px",
+      background:glassBg, color:"#fff", borderRadius:20, padding:"10px 20px",
+      backdropFilter:"blur(24px) saturate(1.6)", WebkitBackdropFilter:"blur(24px) saturate(1.6)",
+      border:"1px solid rgba(255,255,255,0.22)",
       fontSize:13, fontWeight:600, zIndex:999, whiteSpace:"nowrap",
-      boxShadow:"0 4px 20px rgba(0,0,0,0.2)", fontFamily:F,
+      boxShadow:"0 10px 30px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.25)", fontFamily:F,
       animation:"fadeInUp 0.2s ease", display:"flex", alignItems:"center", gap:14
     }}>
       {t.msg}
@@ -11941,7 +11950,14 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
       </div>
 
       {/* Start button */}
-      <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"12px 18px 28px", background: isDark?"rgba(10,10,10,0.97)":"rgba(244,246,250,0.97)", backdropFilter:"blur(12px)", borderTop:`1px solid ${BORD}` }}>
+      {/* Floating CTA bar over the modal's scrolling content — real glass (blur is live here);
+          the old 97%-opaque background made the blur invisible. */}
+      <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"12px 18px 28px",
+        background: isDark
+          ? "linear-gradient(165deg, rgba(40,40,46,0.72) 0%, rgba(16,16,20,0.8) 100%)"
+          : "linear-gradient(165deg, rgba(255,255,255,0.78) 0%, rgba(240,243,248,0.82) 100%)",
+        backdropFilter:"blur(20px) saturate(1.5)", WebkitBackdropFilter:"blur(20px) saturate(1.5)",
+        borderTop:`1px solid ${isDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.9)"}` }}>
         <button onClick={saveAndStart} style={{
           width:"100%", background:accentColor, color:"#fff", border:"none",
           borderRadius:14, padding:"17px", fontSize:16, fontWeight:800,
@@ -19104,10 +19120,21 @@ function AppInner() {
         </div>
       )}
 
-      {/* TOP BAR — Instagram thin, minimal, SVG icons */}
+      {/* TOP BAR — thin, minimal, SVG icons, dressed in the same liquid-glass material as the
+          bottom nav pill so the two shell edges read as one system. It's still an in-flow
+          element (content does NOT scroll beneath it), so no backdrop-filter — the old
+          blur(20) was sampling the flat app background and doing nothing but costing GPU.
+          The glass look here comes from the gradient sheen + hairline + inset highlight.
+          TODO(device-test): convert to a floating overlay like the bottom nav so content
+          scrolls under it and the blur becomes real — needs per-screen scroller padding. */}
       <div style={{
-        background:C.tabBg, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
-        borderBottom:`1px solid ${C.divider}`,
+        background: C.isDark
+          ? "linear-gradient(165deg, rgba(70,70,78,0.45) 0%, rgba(24,24,28,0.92) 55%, rgba(32,32,38,0.96) 100%)"
+          : "linear-gradient(165deg, rgba(255,255,255,0.92) 0%, rgba(244,246,250,0.9) 55%, rgba(238,241,246,0.95) 100%)",
+        borderBottom:`1px solid ${C.isDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.9)"}`,
+        boxShadow: C.isDark
+          ? "inset 0 1px 1px rgba(255,255,255,0.1), 0 1px 0 rgba(0,0,0,0.25)"
+          : "inset 0 1px 1px rgba(255,255,255,0.95), 0 1px 0 rgba(0,0,0,0.05)",
         padding: isGuest ? "10px calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)" : "calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)",
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
