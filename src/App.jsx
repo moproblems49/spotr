@@ -1,4 +1,4 @@
-// v178091716619
+// v178091716620
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19149,7 +19149,7 @@ function AppInner() {
                 setNewPostKind("photo"); setShowNewPost(true);
               }}
               aria-label="New post"
-              style={{ background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
+              style={{ background:"none", border:"none", cursor:"pointer", padding:11, display:"flex", alignItems:"center", justifyContent:"center" }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="4"/>
@@ -19164,7 +19164,7 @@ function AppInner() {
               setShowMessages(true);
             }}
             aria-label="Messages"
-            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
+            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:11, display:"flex", alignItems:"center", justifyContent:"center" }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
@@ -19176,7 +19176,7 @@ function AppInner() {
           <button
             onClick={() => { markActivitySeen(); setTab("activity"); }}
             aria-label="Activity"
-            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:8, display:"flex", alignItems:"center", justifyContent:"center" }}
+            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:11, display:"flex", alignItems:"center", justifyContent:"center" }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill={notifCount > 0 ? C.red : "none"} stroke={notifCount > 0 ? C.red : C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
