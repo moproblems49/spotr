@@ -1,4 +1,4 @@
-// v178091716617
+// v178091716618
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1456,7 +1456,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
     if (mode === "strength") {
       const r = key.split(":")[1];
       if (!strength.ready || strength.regionFrac[r] == null) return bodyCol; // no standard -> no data
-      return _readyColor(strength.regionFrac[r]); // weak (red) -> strong (green)
+      return _readyColor(_strengthDisplayFrac(strength.regionFrac[r])); // weak (red) -> strong (green), score-curve scaled
     }
     // Volume: absolute scale against the evidence-based ~10-20 hard-sets/week band
     // (t = sets/20, so the ramp's midpoint sits at the bottom of the target band).
@@ -1500,8 +1500,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   const recoveringUniq = [...new Set(
     Object.entries(readiness).filter(([, v]) => v < 0.6).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
   )];
+  // "Lagging" = below the curve's midpoint (Untrained/Novice). The old raw <0.5 cutoff
+  // flagged everything below Advanced — an all-Intermediate lifter saw EVERY muscle listed.
   const weakUniq = strength.ready ? [...new Set(
-    Object.entries(strength.regionFrac).filter(([, v]) => v < 0.5).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
+    Object.entries(strength.regionFrac).filter(([, v]) => _strengthDisplayFrac(v) < 0.5).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
   )] : [];
 
   const Tab = ({ id, label }) => (
@@ -2781,6 +2783,16 @@ const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Proficient","Advan
 // the typical gym-goer) lands ~60, Advanced ~84 — not the "45/100 feels like a fail" of before.
 // Elite/World Class barely move (97/100), so the top of the scale still means what it says.
 const STRENGTH_SCORE_CURVE = [0, 38, 60, 73, 84, 92, 97, 100];
+// Converts a raw strength level fraction (levelIdx / 7, as stored in regionFrac) to the
+// DISPLAY fraction used for map coloring and the "Lagging" cutoff — through the same curve
+// as the headline score, so every strength surface tells one story. Raw lvl/7 painted an
+// Intermediate lifter (a solid, above-average gym-goer) at 29% = angry red; through the
+// curve they sit at 0.60 = amber-green, matching their 60/100 score. The analytic values
+// underneath (imbalance detection) stay raw — only what the user SEES is curved.
+function _strengthDisplayFrac(frac) {
+  const lvl = Math.max(0, Math.min(STRENGTH_SCORE_CURVE.length - 1, Math.round((frac || 0) * (STRENGTH_LEVELS.length - 1))));
+  return STRENGTH_SCORE_CURVE[lvl] / 100;
+}
 
 // Movement patterns: lifts that compete for the SAME slot in the score. The strongest
 // lift in each pattern represents you — so front + back squat don't both drag the average
