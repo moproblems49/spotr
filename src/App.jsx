@@ -1,4 +1,4 @@
-// v178091716611
+// v178091716612
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2963,7 +2963,12 @@ function computeStrengthScore(store, unit, sex = "male") {
       const pct = Math.min(100, Math.round(((winner.lvlIdx + within) / (STRENGTH_LEVELS.length - 1)) * 1000) / 10);
       lifts.push({ lift: winner.lift, best: winner.best, ratio: winner.ratio, level: winner.level, pattern: winner.pattern, pct });
       usedLifts.add(winner.lift);
-      scoredWinners.push({ lvlIdx: winner.lvlIdx, score: winner.score });
+      // `cont` = the lift's CONTINUOUS level position (integer level + how far it is
+      // into the band toward the next tier), the same measure the per-lift bar shows.
+      // The headline score averages this — NOT the bare integer level — so the number
+      // reflects real progress within a level and doesn't snap onto the level anchors
+      // (why an all-Intermediate lifter used to read exactly 60).
+      scoredWinners.push({ lvlIdx: winner.lvlIdx, cont: winner.lvlIdx + within, score: winner.score });
     }
   }
   if (!scoredWinners.length) return { ready: false, reason: "no_lifts" };
@@ -2971,7 +2976,7 @@ function computeStrengthScore(store, unit, sex = "male") {
   // `score` (level + ratio-within-band) so ties between same-level lifts break on the closer one.
   const topWinners = scoredWinners.sort((a, b) => b.score - a.score).slice(0, STRENGTH_SCORE_TOP_N);
   const counted = topWinners.length;
-  const avgIdx = topWinners.reduce((sum, w) => sum + w.lvlIdx, 0) / counted;
+  const avgIdx = topWinners.reduce((sum, w) => sum + w.cont, 0) / counted;
   const overall = STRENGTH_LEVELS[Math.round(avgIdx)] || "Untrained";
   // Curved 0-100 score — see STRENGTH_SCORE_CURVE. Interpolates between the two control points
   // straddling avgIdx (same piecewise-linear approach as the per-lift bar % below).
