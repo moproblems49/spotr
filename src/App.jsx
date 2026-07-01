@@ -1,4 +1,4 @@
-// v178091716610
+// v178091716611
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1359,7 +1359,11 @@ function muscleReadiness(store) {
   }
   recMod = Math.max(0.7, Math.min(1.35, recMod));
   // Larger muscles recover slower than small ones (multiplier on recovery time).
-  const RATE = { Quads:1.3, Hamstrings:1.3, Glutes:1.3, Lats:1.3, LowerBack:1.25, Traps:1.15, Chest:1.0, Shoulders:1.0, "Rear Delts":0.95, Biceps:0.8, Triceps:0.8, Forearms:0.75, Calves:0.8, Abs:0.8, Obliques:0.8 };
+  // Big compound-movement muscles (quads/hams/glutes/back/chest) are deliberately
+  // slow here: a real hypertrophy session should NOT read fully green ~24h later —
+  // performance + DOMS recovery for these is typically 48-72h. Small muscles
+  // (arms/calves/abs) bounce back closer to a day.
+  const RATE = { Quads:1.6, Hamstrings:1.6, Glutes:1.55, Lats:1.5, LowerBack:1.45, Traps:1.2, Chest:1.25, Shoulders:1.15, "Rear Delts":1.0, Biceps:0.85, Triceps:0.85, Forearms:0.75, Calves:0.9, Abs:0.8, Obliques:0.8 };
   const readiness = {};
   let usedRpe = false;
   for (const k in hits) {
@@ -2740,7 +2744,10 @@ const STRENGTH_LEVELS = ["Untrained","Novice","Intermediate","Proficient","Advan
 // lifters score punishingly low. This curve front-loads the range so the levels most people
 // actually occupy (Novice..Advanced) are spread across more of 0-100, while Elite/World Class
 // still sit at the top — the level LABELS themselves are unaffected, only this display number.
-const STRENGTH_SCORE_CURVE = [0, 25, 45, 60, 75, 88, 96, 100];
+// Tuned to be motivating for the average trained lifter: a solid Intermediate (genuinely above
+// the typical gym-goer) lands ~60, Advanced ~84 — not the "45/100 feels like a fail" of before.
+// Elite/World Class barely move (97/100), so the top of the scale still means what it says.
+const STRENGTH_SCORE_CURVE = [0, 38, 60, 73, 84, 92, 97, 100];
 
 // Movement patterns: lifts that compete for the SAME slot in the score. The strongest
 // lift in each pattern represents you — so front + back squat don't both drag the average
