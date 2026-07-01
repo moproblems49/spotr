@@ -1,4 +1,4 @@
-// v178091716622
+// v178091716623
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16413,6 +16413,21 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
     return [...byPeer.values()];
   }, [rows, currentUserId, store.blockedUsers]);
 
+  // People you could message but haven't yet: everyone you follow or who follows you,
+  // minus existing threads, blocked users, and yourself. This fills the (usually huge)
+  // empty space under a short conversation list with a reason to use the screen.
+  const friends = useMemo(() => {
+    const meU = (store.users || []).find(u => u.id === currentUserId);
+    const ids = [...new Set([...(meU?.following || []), ...(meU?.followers || [])])];
+    const convoSet = new Set(convos.map(c => c.peer));
+    const blocked = store.blockedUsers || [];
+    return ids
+      .filter(id => id !== currentUserId && !convoSet.has(id) && !blocked.includes(id))
+      .map(id => (store.users || []).find(u => u.id === id))
+      .filter(Boolean)
+      .slice(0, 8);
+  }, [store.users, currentUserId, convos, store.blockedUsers]);
+
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
@@ -16422,11 +16437,17 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
       <PullToRefresh onRefresh={load} C={C}>
       <div>
         {rows === null && <div style={{ padding:24 }}><Spinner C={C}/></div>}
-        {rows !== null && convos.length === 0 && (
+        {rows !== null && convos.length === 0 && friends.length === 0 && (
           <div style={{ padding:"48px 24px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.6 }}>
             <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="users" size={36} color={C.sub}/></div>
             <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:6 }}>No messages yet</div>
-            Open someone's profile and tap <b>Message</b> to start a chat.
+            Follow some lifters in Discover, then message them from here or their profile.
+          </div>
+        )}
+        {rows !== null && convos.length === 0 && friends.length > 0 && (
+          <div style={{ padding:"26px 24px 6px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.6 }}>
+            <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>No messages yet</div>
+            Start one with someone you follow.
           </div>
         )}
         {convos.map(c => {
@@ -16447,6 +16468,21 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
             </div>
           );
         })}
+        {rows !== null && friends.length > 0 && (
+          <div style={{ marginTop: convos.length ? 20 : 8, paddingBottom:8 }}>
+            <div style={{ padding:"0 14px 6px", fontSize:11, fontWeight:700, letterSpacing:1, color:C.muted }}>MESSAGE A FRIEND</div>
+            {friends.map(u => (
+              <div key={u.id} onClick={() => onOpenChat(u.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 14px", cursor:"pointer" }}>
+                <Avatar user={u} size={40} C={C}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:14, fontWeight:600, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name || u.username || "User"}</div>
+                  {u.username && <div style={{ fontSize:12, color:C.sub, marginTop:1 }}>@{u.username}</div>}
+                </div>
+                <span style={{ padding:"6px 14px", borderRadius:999, background:C.divider, color:C.text, fontSize:12, fontWeight:700, flexShrink:0 }}>Message</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       </PullToRefresh>
     </div>
