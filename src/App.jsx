@@ -1,4 +1,4 @@
-// v178091716615
+// v178091716616
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1458,7 +1458,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
       if (!strength.ready || strength.regionFrac[r] == null) return bodyCol; // no standard -> no data
       return _readyColor(strength.regionFrac[r]); // weak (red) -> strong (green)
     }
-    const t = max > 0 ? (region[key] || 0) / max : 0;
+    // Volume: absolute scale against the evidence-based ~10-20 hard-sets/week band
+    // (t = sets/20, so the ramp's midpoint sits at the bottom of the target band).
+    // The old relative-to-max scale made everything look trained whenever ALL muscles
+    // were undertrained — the map now only goes deep green when volume actually lands
+    // in the productive range.
+    const t = Math.min(1, (region[key] || 0) / 20);
     return _heatColor(t, C);
   };
 
@@ -1478,7 +1483,20 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
     );
   };
 
-  const topMuscle = Object.entries(byMuscle).sort((a, b) => b[1] - a[1])[0];
+  // Effective weekly sets per major muscle group for the volume list (secondaries already
+  // count 0.5× inside byMuscle). Core merges its primary label with ab/oblique secondary
+  // credit; rear delts fold into Shoulders. Sorted most-trained first, zeros at the end —
+  // a zero on a major group IS the insight (that muscle got nothing all week).
+  const majorSets = (() => {
+    const g = (k) => byMuscle[k] || 0;
+    const m = {
+      Chest: g("Chest"), Back: g("Back"), Shoulders: g("Shoulders") + g("RearDelts"),
+      Quads: g("Quads"), Hamstrings: g("Hamstrings"), Glutes: g("Glutes"),
+      Biceps: g("Biceps"), Triceps: g("Triceps"), Calves: g("Calves"),
+      Core: g("Core") + g("Abs") + g("Obliques"),
+    };
+    return Object.entries(m).map(([n, v]) => [n, Math.round(v)]).sort((a, b) => b[1] - a[1]);
+  })();
   const recoveringUniq = [...new Set(
     Object.entries(readiness).filter(([, v]) => v < 0.6).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
   )];
@@ -1535,14 +1553,25 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           {mode === "volume" ? (
             <>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
-                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Less</span>
+                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>0</span>
                 <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
                   {[0.12,0.37,0.62,0.82,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_heatColor(t, C), display:"inline-block" }}/>))}
                 </div>
-                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>More</span>
+                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>20+ sets/wk</span>
               </div>
-              <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub }}>
-                {totalSets} working set{totalSets === 1 ? "" : "s"} this week{topMuscle ? ` · most volume: ${topMuscle[0]}` : ""}
+              <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"5px 10px", padding:"8px 16px 2px" }}>
+                {majorSets.map(([mName, sets]) => {
+                  // <10 = under target (muted), 10-20 = productive range (accent + check), >20 = high (amber)
+                  const col = sets >= 10 && sets <= 20 ? C.accent : sets > 20 ? "#f59e0b" : C.muted;
+                  return (
+                    <span key={mName} style={{ fontSize:11, fontWeight:600, color:C.sub, whiteSpace:"nowrap" }}>
+                      {mName} <span style={{ fontFamily:MONO, fontWeight:800, color:col }}>{sets}{sets >= 10 && sets <= 20 ? "✓" : ""}</span>
+                    </span>
+                  );
+                })}
+              </div>
+              <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:10.5, color:C.muted }}>
+                {totalSets} working set{totalSets === 1 ? "" : "s"} this week · target 10–20 hard sets per muscle
               </div>
             </>
           ) : mode === "readiness" ? (
