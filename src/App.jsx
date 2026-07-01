@@ -1,4 +1,4 @@
-// v178091716621
+// v178091716622
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16335,19 +16335,55 @@ function fmtMsgTime(ts) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) {
-  // Edge swipe-to-go-back (iOS convention): start near the left edge, swipe right.
-  const swipeRef = useRef(null);
-  const swipeHandlers = {
-    onTouchStart: (e) => { const t = e.touches[0]; swipeRef.current = t.clientX < 32 ? { x: t.clientX, y: t.clientY } : null; },
-    onTouchMove: (e) => {
-      if (!swipeRef.current) return;
-      const t = e.touches[0];
-      const dx = t.clientX - swipeRef.current.x, dy = Math.abs(t.clientY - swipeRef.current.y);
-      if (dx > 70 && dy < 60) { swipeRef.current = null; haptic("light"); onBack(); }
-    },
-    onTouchEnd: () => { swipeRef.current = null; },
+// iOS-style interactive edge-swipe-back: arm within 32px of the left edge, the screen then
+// FOLLOWS the finger (the old version just teleported back after 70px with zero feedback),
+// slides out on commit (distance or flick velocity) and settles back otherwise. Follows the
+// house gesture pattern (see CLAUDE.md): exactly one setState on the first frame past the
+// threshold (kills the CSS transition), every later frame writes the transform straight to
+// the node ref, and the end handler reads the live ref values — not state — to decide.
+function EdgeSwipeBack({ onBack, children, style }) {
+  const nodeRef = useRef(null);
+  const g = useRef({ armed:false, active:false, x0:0, y0:0, dx:0, lastX:0, lastT:0, vx:0 }).current;
+  const [dragging, setDragging] = useState(false);
+  const start = (e) => {
+    const t = e.touches[0];
+    g.armed = t.clientX <= 32; g.active = false;
+    g.x0 = t.clientX; g.y0 = t.clientY; g.dx = 0;
+    g.lastX = t.clientX; g.lastT = Date.now(); g.vx = 0;
   };
+  const move = (e) => {
+    if (!g.armed) return;
+    const t = e.touches[0];
+    const dx = t.clientX - g.x0, dy = t.clientY - g.y0;
+    if (!g.active) {
+      if (Math.abs(dy) > 16 && Math.abs(dy) > dx) { g.armed = false; return; } // vertical scroll wins
+      if (dx > 12 && dx > Math.abs(dy) * 1.2) { g.active = true; setDragging(true); }
+      else return;
+    }
+    const now = Date.now();
+    if (now > g.lastT) { g.vx = (t.clientX - g.lastX) / (now - g.lastT); g.lastX = t.clientX; g.lastT = now; }
+    g.dx = Math.max(0, dx);
+    const n = nodeRef.current;
+    if (n) n.style.transform = `translateX(${g.dx}px)`;
+  };
+  const end = () => {
+    if (!g.active) { g.armed = false; return; }
+    const commit = g.dx > 90 || (g.dx > 30 && g.vx > 0.45);
+    setDragging(false); // re-enables the transition so the slide-out / settle-back animates
+    const n = nodeRef.current;
+    if (n) n.style.transform = commit ? "translateX(105%)" : "translateX(0px)";
+    if (commit) { haptic("light"); setTimeout(onBack, 180); }
+    g.armed = false; g.active = false; g.dx = 0;
+  };
+  return (
+    <div ref={nodeRef} onTouchStart={start} onTouchMove={move} onTouchEnd={end} onTouchCancel={end}
+      style={{ ...style, transition: dragging ? "none" : "transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)", willChange:"transform" }}>
+      {children}
+    </div>
+  );
+}
+
+function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) {
   const [rows, setRows] = useState(null); // null = loading
   const aliveRef = useRef(true);
   const load = useCallback(async () => {
@@ -16378,12 +16414,12 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   }, [rows, currentUserId, store.blockedUsers]);
 
   return (
-    <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
         <div style={{ fontSize:19, fontWeight:700, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Messages</div>
       </div>
-      <PullToRefresh onRefresh={load} C={C} navClearance={false}>
+      <PullToRefresh onRefresh={load} C={C}>
       <div>
         {rows === null && <div style={{ padding:24 }}><Spinner C={C}/></div>}
         {rows !== null && convos.length === 0 && (
@@ -16418,18 +16454,6 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
 }
 
 function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
-  // Edge swipe-to-go-back (iOS convention): start near the left edge, swipe right.
-  const swipeRef = useRef(null);
-  const swipeHandlers = {
-    onTouchStart: (e) => { const t = e.touches[0]; swipeRef.current = t.clientX < 32 ? { x: t.clientX, y: t.clientY } : null; },
-    onTouchMove: (e) => {
-      if (!swipeRef.current) return;
-      const t = e.touches[0];
-      const dx = t.clientX - swipeRef.current.x, dy = Math.abs(t.clientY - swipeRef.current.y);
-      if (dx > 70 && dy < 60) { swipeRef.current = null; haptic("light"); onBack(); }
-    },
-    onTouchEnd: () => { swipeRef.current = null; },
-  };
   const [msgs, setMsgs] = useState(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -16478,7 +16502,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   }
 
   return (
-    <div {...swipeHandlers} style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
         <Avatar user={peer || { name:"?" }} size={32} C={C}/>
@@ -16644,7 +16668,13 @@ function AppInner() {
   // "swipe" source skips the slide-in keyframe on the next render — the drag/glide already
   // animated the transition, so replaying the keyframe caused a visible double-animation.
   const tabSwitchSourceRef = useRef("tap");
-  function switchTab(t, source = "tap") { if (t !== tab) { haptic("tab"); track("tab_viewed", { tab: t }); } tabSwitchSourceRef.current = source; setPrevTab(tab); setTab(t); }
+  function switchTab(t, source = "tap") {
+    // Nav taps land while the messages overlay is up (the nav floats above it) — close it
+    // so the tap actually shows the chosen tab instead of switching underneath the overlay.
+    if (showMessages) { setShowMessages(false); refreshMsgUnread(); }
+    if (t !== tab) { haptic("tab"); track("tab_viewed", { tab: t }); }
+    tabSwitchSourceRef.current = source; setPrevTab(tab); setTab(t);
+  }
 
   // When user taps an Import button on a feed code, switch to tracker and re-dispatch
   useEffect(() => {
@@ -18878,22 +18908,16 @@ function AppInner() {
 
   if (chatPeerId) {
     return (
-      <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
+      <EdgeSwipeBack onBack={() => { setChatPeerId(null); refreshMsgUnread(); }}
+        style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
         <ChatView peerId={chatPeerId} store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
           onBack={() => { setChatPeerId(null); refreshMsgUnread(); }} onRead={refreshMsgUnread}/>
-      </div>
+      </EdgeSwipeBack>
     );
   }
 
-  if (showMessages) {
-    return (
-      <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
-        <MessagesScreen store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
-          onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
-          onOpenChat={(uid_) => setChatPeerId(uid_)}/>
-      </div>
-    );
-  }
+  // showMessages no longer early-returns: it renders as an overlay INSIDE the main shell
+  // (below, above the tab track) so the floating bottom nav stays visible over the list.
 
   if (profileUserId) {
     return (
@@ -19760,6 +19784,21 @@ function AppInner() {
         })}
       </div>
       </div>
+
+      {/* Messages overlay — sits above the tab track (zIndex 40) but UNDER the floating
+          bottom nav (zIndex 50), so the nav stays visible and tappable over the list.
+          data-no-tab-swipe keeps the shell's tab-swipe from fighting the edge-swipe-back.
+          The wrapper is transparent so the drag reveals the live tab underneath, iOS-style. */}
+      {showMessages && (
+        <div data-no-tab-swipe style={{ position:"absolute", inset:0, zIndex:40 }}>
+          <EdgeSwipeBack onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
+            style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
+            <MessagesScreen store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
+              onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
+              onOpenChat={(uid_) => setChatPeerId(uid_)}/>
+          </EdgeSwipeBack>
+        </div>
+      )}
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
         recentWorkouts={newPostRecentWorkouts}
