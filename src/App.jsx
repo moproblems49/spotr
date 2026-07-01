@@ -1,4 +1,4 @@
-// v178091716613
+// v178091716614
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2775,9 +2775,10 @@ const STRENGTH_SCORE_TOP_N = 5;
 const STRENGTH_MAP_ONLY_LIFTS = ["Standing Calf Raise"];
 
 // Age multiplier on strength standards. Strength peaks ~20-30; after 35 it declines ~1%/yr,
-// accelerating past 50. Below 18, standards are slightly lower too. We DIVIDE the thresholds
-// by this factor so an older lifter reaches each level at a proportionally lower ratio —
-// i.e. age-fair scoring rather than comparing a 55-year-old to a 25-year-old's numbers.
+// accelerating past 50. Below 18, standards are slightly lower too. The thresholds are
+// MULTIPLIED by this factor (≤1 outside the prime years), so an older or younger lifter
+// reaches each level at a proportionally lower ratio — age-fair scoring rather than
+// comparing a 55-year-old to a 25-year-old's numbers.
 function ageStrengthFactor(age) {
   if (!age || age < 1) return 1;
   if (age < 18) return 0.92 + (age - 14) * 0.02;        // 14→0.92 .. 18→1.0
@@ -2836,8 +2837,8 @@ function computeStrengthScore(store, unit, sex = "male") {
   // Keyword signatures so a PR logged under almost any sensible name still maps to a scored lift.
   // Exclusions prevent double-counting (e.g. incline bench must not also count as flat bench).
   const LIFT_KEYWORDS = {
-    "Barbell Bench Press": (n) => n.includes("bench") && !n.includes("incline") && !n.includes("decline") && !n.includes("close grip") && !n.includes("db") && !n.includes("dumbbell"),
-    "Barbell Back Squat": (n) => n.includes("squat") && !n.includes("front") && !n.includes("hack") && !n.includes("goblet") && !n.includes("split") && !n.includes("sissy") && !n.includes("bulgarian"),
+    "Barbell Bench Press": (n) => n.includes("bench") && !n.includes("incline") && !n.includes("decline") && !n.includes("close grip") && !n.includes("db") && !n.includes("dumbbell") && !n.includes("smith") && !n.includes("machine") && !n.includes("floor"),
+    "Barbell Back Squat": (n) => n.includes("squat") && !n.includes("front") && !n.includes("hack") && !n.includes("goblet") && !n.includes("split") && !n.includes("sissy") && !n.includes("bulgarian") && !n.includes("smith") && !n.includes("machine") && !n.includes("belt") && !n.includes("pendulum"),
     "Deadlift": (n) => n.includes("deadlift") && !n.includes("romanian") && !n.includes("rdl") && !n.includes("stiff") && !n.includes("single") && !n.includes("sumo"),
     "Sumo Deadlift": (n) => n.includes("sumo") && n.includes("deadlift"),
     "Overhead Press (Barbell)": (n) => (n.includes("overhead press") || n.includes("ohp") || n.includes("military") || (n.includes("strict press")) || (n.includes("shoulder press") && n.includes("barbell"))) && !n.includes("db") && !n.includes("dumbbell") && !n.includes("machine"),
@@ -3437,7 +3438,10 @@ function computeBodyBattery(store) {
     const daysSinceWorkout = (() => {
       const now_ = Date.now();
       for (let d = 0; d < 14; d++) {
-        const k = new Date(now_ - d * 864e5).toISOString().slice(0, 10);
+        // History keys are LOCAL dates — toISOString() is UTC and shifts a day for
+        // evening users west of Greenwich, which made "trained today" read as yesterday.
+        const dt = new Date(now_ - d * 864e5);
+        const k = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
         if (Object.keys((store.history || {})[k] || {}).length > 0) return d;
       }
       return 14;
