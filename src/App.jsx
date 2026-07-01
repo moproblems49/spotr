@@ -1,4 +1,4 @@
-// v178091716620
+// v178091716621
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1522,7 +1522,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px 8px" }}>
         <div>
           <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.muted }}>{kicker}</div>
-          <div style={{ fontSize:15, fontWeight:800, color:C.text, marginTop:2 }}>{title}</div>
+          <div style={{ fontSize:16, fontWeight:800, color:C.text, marginTop:2, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{title}</div>
         </div>
         <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
           {[["Male","male"],["Female","female"]].map(([label, val]) => (
@@ -1541,8 +1541,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         <Tab id="strength" label="Strength"/>
       </div>
 
+      {/* key={mode} remounts the body on tab switch so the whole panel (figures + captions)
+          crossfades via seshd-fade-in instead of snapping. */}
+      <div key={mode} style={{ animation:"seshd-fade-in 0.18s ease" }}>
       {mode === "volume" && totalSets === 0 ? (
-        <div style={{ padding:"10px 16px 22px", fontSize:13, color:C.sub, lineHeight:1.5 }}>
+        <div style={{ padding:"10px 16px 22px", fontSize:13, color:C.sub, lineHeight:1.5, textAlign:"center" }}>
+          <svg width="44" height="62" viewBox="0 0 40 56" style={{ display:"block", margin:"2px auto 8px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
           No working sets logged in the last 7 days. Train and complete some sets to light up your muscle map.
         </div>
       ) : (
@@ -1786,6 +1790,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 </>
               ) : (
                 <div style={{ padding:"8px 18px 18px", textAlign:"center", fontSize:12, color:C.sub, lineHeight:1.5 }}>
+                  <svg width="44" height="62" viewBox="0 0 40 56" style={{ display:"block", margin:"2px auto 8px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
                   Log your bodyweight and a few main lifts (bench, squat, deadlift, overhead press, row) to map your strength against standards.
                 </div>
               )}
@@ -1799,6 +1804,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           )}
         </>
       )}
+      </div>
     </div>
   );
 }
