@@ -1,4 +1,4 @@
-// v178091716614
+// v178091716615
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12186,8 +12186,10 @@ function AICoachModal({ C, onClose, onImport, store }) {
       "Return ONLY valid JSON (no markdown, no prose) in EXACTLY this shape: " +
       '{"name":"string","days":[{"name":"string","exercises":[{"name":"string","reps":"string like 4×8–10","note":"optional short cue"}]}]}. ' +
       "Rules: the number of days must match the requested training days. Use real, common exercise " +
-      "names. reps format like '3×10' or '4×8–10'. Keep notes short or empty. Respect the user's " +
-      "equipment and experience. 4-7 exercises per day. No commentary outside the JSON.";
+      "names. reps format like '3×10' or '4×8–10'. Keep notes short or empty — plain technique cues " +
+      "a lifter would actually say, no hype. Program and day names should be plain and descriptive " +
+      "(e.g. 'Upper/Lower 4-Day', 'Push A') — no marketing-speak like 'Ultimate' or 'Shred'. " +
+      "Respect the user's equipment and experience. 4-7 exercises per day. No commentary outside the JSON.";
     const profile = {
       goal, daysPerWeek: days, experience: level, equipment, focusArea: focus,
       description: freeText || "(none provided)",
@@ -16120,10 +16122,16 @@ function AICoachSheet({ store, setStore, unit, C, onClose }) {
           if (!cancelled) setState({ loading: false, text: "", error: "no_data" });
           return;
         }
-        const sys = "You are a knowledgeable, encouraging strength coach inside the Seshd app. " +
+        const sys = "You are a knowledgeable strength coach inside the Seshd app. " +
+          "Voice: a sharp training partner who lifts — plain, direct, specific. No emoji, no " +
+          "exclamation-mark hype, no generic motivational filler ('keep up the great work', " +
+          "'you've got this'), no AI-isms ('I notice', 'based on your data', 'it's worth noting'). " +
+          "Just talk about their lifting like a coach at the rack would. " +
           "Give specific, actionable advice based ONLY on the user's data below. Be concise: " +
           "3-5 short points. Reference their actual lifts and numbers. Cover what's going well, " +
           "what to prioritize next, and flag any stalls or muscle groups they're neglecting. " +
+          "If their notes or data mention pain or injury, tell them to get it checked by a " +
+          "professional and never advise training through pain. " +
           "If a 'recovery' object is present (HRV, resting heart rate, sleep hours), factor it in: " +
           "when HRV is low relative to a typical baseline, resting HR is elevated, or sleep was short " +
           "(under ~6.5h), suggest moderating intensity or prioritizing recovery; when recovery looks " +
