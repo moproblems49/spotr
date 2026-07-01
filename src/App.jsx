@@ -1,4 +1,4 @@
-// v178091716616
+// v178091716617
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1561,8 +1561,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               </div>
               <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"5px 10px", padding:"8px 16px 2px" }}>
                 {majorSets.map(([mName, sets]) => {
-                  // <10 = under target (muted), 10-20 = productive range (accent + check), >20 = high (amber)
-                  const col = sets >= 10 && sets <= 20 ? C.accent : sets > 20 ? "#f59e0b" : C.muted;
+                  // Tiers per the 2024-25 dose-response literature (Pelland et al. 2025 meta-
+                  // regression; fractional-set counting matches ours): <4 = below the minimum
+                  // effective dose (muted), 4-9 = growing — most of the gains happen here
+                  // (light ramp green), 10-20 = maximizing (accent + check), >20 = diminishing
+                  // returns / recovery cost (amber). No red: high volume isn't "wrong".
+                  const col = sets > 20 ? "#f59e0b" : sets >= 10 ? C.accent : sets >= 4 ? _heatColor(0.45, C) : C.muted;
                   return (
                     <span key={mName} style={{ fontSize:11, fontWeight:600, color:C.sub, whiteSpace:"nowrap" }}>
                       {mName} <span style={{ fontFamily:MONO, fontWeight:800, color:col }}>{sets}{sets >= 10 && sets <= 20 ? "✓" : ""}</span>
@@ -1571,7 +1575,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 })}
               </div>
               <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:10.5, color:C.muted }}>
-                {totalSets} working set{totalSets === 1 ? "" : "s"} this week · target 10–20 hard sets per muscle
+                {totalSets} working set{totalSets === 1 ? "" : "s"} this week · 4+ sets grows a muscle · 10–20 maximizes it
               </div>
             </>
           ) : mode === "readiness" ? (
