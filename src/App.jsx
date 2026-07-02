@@ -1,4 +1,4 @@
-// v178091716632
+// v178091716633
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2943,14 +2943,15 @@ function levelForRatio(standards, lift, ratio, ageFactor = 1) {
 // of the male/female thresholds (a neutral baseline) rather than forcing a binary choice.
 // Returns { overall, score (0-100), lifts:[{lift, best, ratio, level}], bodyweight, sex } or
 // { ready:false } if there isn't enough data (no bodyweight or no main-lift PRs).
-function computeStrengthScore(store, unit, sex = "male") {
+function computeStrengthScore(store, unit, sex = "male", asOf = null) {
+  const nowMs = asOf || Date.now();
   const bodyLog = [...(store.bodyLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const bw = bodyLog.length ? parseFloat(bodyLog[0].weight) : null;
   if (!bw || bw <= 0) return { ready: false, reason: "no_bodyweight" };
   // Bodyweight drives every ratio below — flag when it's stale so a months-old weigh-in
   // doesn't silently masquerade as today's number.
   const bwDate = bodyLog[0].date;
-  const bodyweightAgeDays = bwDate ? Math.round((Date.now() - new Date(bwDate + "T12:00:00").getTime()) / 864e5) : null;
+  const bodyweightAgeDays = bwDate ? Math.round((nowMs - new Date(bwDate + "T12:00:00").getTime()) / 864e5) : null;
   // The weight-class table is in lbs, so the real-data interpolation needs bodyweight in lbs
   // regardless of the user's display unit.
   const bwLbs = unit === "kg" ? bw * LBS_PER_KG : bw;
@@ -3023,7 +3024,7 @@ function computeStrengthScore(store, unit, sex = "male") {
           let e1rm = sUnit === unit ? e1rmRaw : cvt(e1rmRaw, sUnit, unit);
           // A max from 8 months ago overstates current strength after a layoff — decay
           // bests older than 4 months by ~1.2%/month, floored at 85%.
-          const ageDays = (Date.now() - new Date(d + "T12:00:00").getTime()) / 864e5;
+          const ageDays = (nowMs - new Date(d + "T12:00:00").getTime()) / 864e5;
           if (ageDays > 120) e1rm *= Math.max(0.85, 1 - (ageDays - 120) * 0.0004);
           if (!liftBestE1RM[canonical] || e1rm > liftBestE1RM[canonical]) liftBestE1RM[canonical] = e1rm;
         }
@@ -3055,7 +3056,7 @@ function computeStrengthScore(store, unit, sex = "male") {
       const date = prDate(name, lbs);
       let val = lbs;
       if (date) {
-        const ageDays = (Date.now() - new Date(date + "T12:00:00").getTime()) / 864e5;
+        const ageDays = (nowMs - new Date(date + "T12:00:00").getTime()) / 864e5;
         if (ageDays > 120) val *= Math.max(0.85, 1 - (ageDays - 120) * 0.0004);
       }
       // prs are stored in lbs; convert to display unit if needed.
@@ -14471,6 +14472,42 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     () => isMe ? computeStrengthScore(store, displayUnit || store.unit || "lbs", store.strengthSex || "male") : null,
     [isMe, store.history, store.prs, store.prEvents, store.bodyLog, store.strengthSex, displayUnit, store.unit]
   );
+  // Score history: reconstruct the strength score month-by-month from history alone
+  // (raw current-PR fallbacks are excluded so old snapshots can't see future bests, and
+  // asOf makes the stale-lift decay relative to each snapshot date, not today). ~12
+  // full-history passes, memoized — only recomputes when training data actually changes.
+  const strengthHistory = useMemo(() => {
+    if (!isMe) return null;
+    const hist = store.history || {};
+    const dates = Object.keys(hist).sort();
+    if (dates.length < 2) return null;
+    const firstMs = new Date(dates[0] + "T12:00:00").getTime();
+    const now = new Date();
+    const unit_ = displayUnit || store.unit || "lbs";
+    const sex_ = store.strengthSex || "male";
+    const snapshots = [];
+    for (let i = 11; i >= 1; i--) {
+      const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0); // last day of that month
+      if (mEnd.getTime() >= firstMs) snapshots.push(mEnd);
+    }
+    snapshots.push(now);
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const pts = snapshots.map((d, i) => {
+      const cutoff = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const histCut = {};
+      for (const k of dates) { if (k <= cutoff) histCut[k] = hist[k]; }
+      if (!Object.keys(histCut).length) return null;
+      const bodyLog = (store.bodyLog || []).filter(bp => (bp.date || "") <= cutoff);
+      if (!bodyLog.length) return null;
+      const snap = computeStrengthScore(
+        { ...store, history: histCut, bodyLog, prs: {}, prEvents: (store.prEvents || []).filter(e => (e.date || "") <= cutoff) },
+        unit_, sex_, d.getTime()
+      );
+      if (!snap.ready) return null;
+      return { value: snap.score, label: i === snapshots.length - 1 ? "Now" : MONTHS[d.getMonth()] };
+    }).filter(Boolean);
+    return pts.length >= 2 ? pts : null;
+  }, [isMe, store.history, store.bodyLog, store.prEvents, store.strengthSex, displayUnit, store.unit]);
 
   // Export workout history as CSV (one row per set) — the format lifters expect for
   // spreadsheet analysis, matching what Strong/others offer.
@@ -15120,6 +15157,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     </div>
                   ))}
                   <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>Relative to your {ss.bodyweight} {displayUnit || store.unit || "lbs"} bodyweight · {sex === "other" ? "neutral" : sex} standards{ss.age ? `, age ${ss.age}` : ""}. General reference, not medical.</div>
+                  {strengthHistory && (
+                    <div style={{ marginTop:16 }}>
+                      <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.sub, marginBottom:8 }}>SCORE HISTORY</div>
+                      <ExerciseVolumeChart data={strengthHistory} unit="" C={C}/>
+                    </div>
+                  )}
                 </div>
               </div>
             );
