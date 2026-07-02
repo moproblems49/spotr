@@ -80,7 +80,16 @@ Not yet done / launch-blockers: Apple Sign In is required by the App Store if an
 ### MAC DAY — the complete checklist (Mac access expected ~July 12, 2026)
 Everything that needs a Mac, in the order to do it. Code/server side is DONE for all of these.
 
-**Step 0 — sync the native project (CRITICAL, do first, before any build):**
+**Step 0a — set the last APNs secret (the `.p8` key file LIVES ON THE MAC):**
+The APNs key was already created in a prior session and all other secrets are already set
+(`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC`, `APNS_ENV=production`). The one missing piece
+is `APNS_PRIVATE_KEY`, blocked because the downloaded `.p8` file is on the Mac. On Mac day:
+find the `.p8`, open it in TextEdit, and paste its full contents (BEGIN/END lines included)
+into Supabase dashboard → Edge Functions → Secrets → `APNS_PRIVATE_KEY`. Do NOT generate a
+new key in the Apple portal unless the file truly can't be found — a new key means updating
+`APNS_KEY_ID` too. Pushes cannot send 200s from APNs until this secret is set.
+
+**Step 0b — sync the native project (CRITICAL, do before any build):**
 ```
 git pull
 npm install
@@ -130,19 +139,15 @@ not ideal), iOS 18 light/dark icon variants (light art exists at `assets/AppIcon
 decision was to stay single dark icon).
 
 **Mo: PC-side prerequisites (do BEFORE Mac day so Ashley isn't blocked)**
-1. **Apple Developer portal** (developer.apple.com, any browser): create an APNs key (Keys → +,
-   enable "Apple Push Notifications service (APNs)"). Note the Key ID and Team ID (`66M7SCD5GA`).
-   Download the `.p8` — it can only be downloaded once, save it somewhere safe.
-2. **Supabase secrets** (dashboard → Edge Functions → Secrets): `APNS_KEY_ID`,
-   `APNS_TEAM_ID` = `66M7SCD5GA`, `APNS_TOPIC` = `com.seshd.app`, `APNS_PRIVATE_KEY` = the
-   `.p8` contents, `APNS_ENV` = `production` (or `sandbox` for direct Xcode debug builds).
-   Re-set all of them if the key is freshly generated. (Claude can't set secrets — no tool
-   for it, and pasting the key into chat would expose it.)
-3. **App Store Connect** (appstoreconnect.apple.com): create the app record — name Seshd,
+1. ~~APNs key~~ — DONE in a prior session. The `.p8` file is on the Mac; setting the
+   `APNS_PRIVATE_KEY` secret from it is Step 0a of Mac day above. All other APNS_* secrets
+   are already set. (Claude can't set secrets — no tool for it, and pasting the key into
+   chat would expose it.)
+2. **App Store Connect** (appstoreconnect.apple.com): create the app record — name Seshd,
    bundle id `com.seshd.app`, privacy policy URL `https://spotr-drab.vercel.app/privacy.html`.
    Start the privacy questionnaire (declares: health data, user content/photos, messages,
    identifiers, analytics). Screenshots can wait for TestFlight.
-4. Optional pre-launch: Resend SMTP + "Confirm email" in Supabase Auth settings; Apple
+3. Optional pre-launch: Resend SMTP + "Confirm email" in Supabase Auth settings; Apple
    Services ID if Google/Apple sign-in will ship at launch.
 
 ## Environment notes
