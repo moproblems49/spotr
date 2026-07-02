@@ -1,4 +1,4 @@
-// v178091716634
+// v178091716635
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1899,11 +1899,15 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               const done = (ex.sets || []).filter(st => st.type !== "warmup" && (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0))).length;
               if (!done) continue;
               if (!lastTrained) lastTrained = d;
-              if (ts >= cutoff) contrib[ex.name] = (contrib[ex.name] || 0) + done * w;
+              if (ts >= cutoff) {
+                const c = contrib[ex.name] || (contrib[ex.name] = { sets: 0, credit: 0, w });
+                c.sets += done; c.credit += done * w;
+              }
             }
           }
         }
-        const contribList = Object.entries(contrib).sort((x, y) => y[1] - x[1]).slice(0, 5);
+        const contribList = Object.entries(contrib).sort((x, y) => y[1].credit - x[1].credit).slice(0, 5);
+        const hasAssist = contribList.some(([, c]) => c.w === 0.5);
         const daysAgo = lastTrained ? Math.round((Date.now() - new Date(lastTrained + "T12:00:00").getTime()) / 864e5) : null;
         // Rule-based suggestion (free — no AI call)
         const musclesFor = Object.entries(MUSCLE_REGION_MAP).filter(([, regs]) => regs.some(([, r]) => r === regionName)).map(([m]) => m);
@@ -1927,7 +1931,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               <div style={{ display:"flex", gap:10, marginBottom:14 }}>
                 <div style={{ flex:1, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
                   <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>THIS WEEK</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, marginTop:3 }}>{weekSets}<span style={{ fontSize:11, color:C.sub, fontWeight:600 }}> sets</span></div>
+                  <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, marginTop:3 }}>{weekSets}<span style={{ fontSize:11, color:C.sub, fontWeight:600 }}> eff. sets</span></div>
                   <div style={{ fontSize:10, color:C.sub, marginTop:1 }}>{tier}</div>
                 </div>
                 <div style={{ flex:1, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
@@ -1944,12 +1948,19 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               {contribList.length > 0 && (
                 <div style={{ marginBottom:14 }}>
                   <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted, marginBottom:7 }}>THIS WEEK'S WORK</div>
-                  {contribList.map(([name, sets2]) => (
+                  {contribList.map(([name, c]) => (
                     <div key={name} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.divider}` }}>
                       <span style={{ fontSize:13, color:C.text, fontWeight:600 }}>{name}</span>
-                      <span style={{ fontSize:12, color:C.sub, fontFamily:MONO }}>{Math.round(sets2 * 10) / 10} sets</span>
+                      <span style={{ fontSize:12, color:C.sub, fontFamily:MONO }}>
+                        {c.sets} set{c.sets === 1 ? "" : "s"}{c.w === 0.5 ? " · ½ credit" : ""}
+                      </span>
                     </div>
                   ))}
+                  {hasAssist && (
+                    <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
+                      ½ credit = this muscle assists in that lift rather than leading it, so each set counts half toward its volume.
+                    </div>
+                  )}
                 </div>
               )}
               <div style={{ fontSize:12, color:C.sub, lineHeight:1.55, padding:"10px 12px", background:C.surface, borderRadius:10 }}>{suggestion}</div>
