@@ -1,4 +1,4 @@
-// v178091716636
+// v178091716637
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1232,7 +1232,7 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
   const figW = Math.round(size * 0.58);
   const ratio = 408 / 160;
   const figH = Math.round(figW * ratio);
-  const VB = { front: "46 6 160 408", back: "26 6 160 408" };
+  const VB = { front: "48 6 168 408", back: "26 6 160 408" }; // front widened: male hand reaches x=214.7, old 46+160=206 clipped the fingers
 
   const Fig = ({ view }) => {
     const f = data[view];
@@ -1499,7 +1499,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   };
 
   const figW = 96, figH = Math.round(figW * 408 / 160);
-  const VB = { front: "46 6 160 408", back: "26 6 160 408" };
+  const VB = { front: "48 6 168 408", back: "26 6 160 408" }; // front widened: male hand reaches x=214.7, old 46+160=206 clipped the fingers
   const bodyCol = C?.isDark ? "#3f4049" : "#cdd1d8";
   const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
 
