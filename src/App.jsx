@@ -1,4 +1,4 @@
-// v178091716629
+// v178091716630
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3585,12 +3585,18 @@ function computeBodyBattery(store) {
     })();
     charge0 = Math.min(88, 70 + Math.min(daysSinceWorkout, 2) * 4 + (daysSinceWorkout >= 3 ? 4 : 0));
   }
-  // Baseline awake drain: ~0.9/h since 7am, capped.
-  // If it's before 7am, the "day" started at yesterday's 7am — so awakeHours
-  // rolls over rather than resetting, giving an honest late-night reading.
-  const sevenAm = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
-  if (now < sevenAm) sevenAm.setDate(sevenAm.getDate() - 1); // yesterday's 7am
-  const awakeHours = Math.max(0, (now - sevenAm) / 36e5);
+  // Baseline awake drain: ~0.9/h since wake. Real wake time from HealthKit when fresh
+  // (within 20h — actually last night); otherwise assume 7am, rolling to yesterday's 7am
+  // pre-dawn so awakeHours rolls over instead of resetting (honest late-night reading).
+  const recSE_ = rec?.sleepEnd ? new Date(rec.sleepEnd) : null;
+  let wakeAnchor;
+  if (recSE_ && (now - recSE_) < 20 * 36e5 && recSE_ <= now) {
+    wakeAnchor = recSE_;
+  } else {
+    wakeAnchor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
+    if (now < wakeAnchor) wakeAnchor.setDate(wakeAnchor.getDate() - 1); // yesterday's 7am
+  }
+  const awakeHours = Math.max(0, (now - wakeAnchor) / 36e5);
   const baselineDrain = Math.min(18, Math.round(awakeHours * 0.9));
   // Workout drain from today's logged sessions.
   let workoutDrain = 0;
@@ -3635,15 +3641,26 @@ function computeBodyBatteryTimeline(store) {
   const now = new Date();
   const bb = computeBodyBattery(store);
 
-  // 24h window: yesterday ~10pm (estimated sleep start) → now
-  const sleepStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22);
-  sleepStart.setDate(sleepStart.getDate() - 1);
-
-  // Wake time = today 7am. Pre-dawn (now < 7am) we're still mid-recharge: the
-  // recharge loop caps at `now` and the drain phase is skipped, so this stays
-  // today 7am (the recharge target) rather than rolling back — rolling it back
-  // would put wakeTime before sleepStart and invert the recharge curve.
-  const wakeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
+  // 24h window: last night's REAL sleep window from HealthKit when it's fresh (wake
+  // within the last 20h — i.e. actually last night), otherwise the 10pm→7am estimate.
+  // Night-shift schedules work automatically once Apple Health is connected.
+  const recSS = store.recovery?.sleepStart ? new Date(store.recovery.sleepStart) : null;
+  const recSE = store.recovery?.sleepEnd ? new Date(store.recovery.sleepEnd) : null;
+  const realWindow = recSS && recSE && recSE > recSS
+    && (now - recSE) < 20 * 36e5 && recSE <= now;
+  let sleepStart, wakeTime;
+  if (realWindow) {
+    sleepStart = recSS;
+    wakeTime = recSE;
+  } else {
+    // Estimate: yesterday ~10pm → today 7am. Pre-dawn (now < 7am) we're still
+    // mid-recharge: the recharge loop caps at `now` and the drain phase is skipped,
+    // so wakeTime stays today 7am (the recharge target) rather than rolling back —
+    // rolling it back would put wakeTime before sleepStart and invert the curve.
+    sleepStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22);
+    sleepStart.setDate(sleepStart.getDate() - 1);
+    wakeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
+  }
 
   if (now - sleepStart < 2 * 36e5) return null;
 
@@ -3653,10 +3670,15 @@ function computeBodyBatteryTimeline(store) {
   const rechargeTotal = Math.min(40, Math.max(15, Math.round(sleepHours * 4)));
   const sleepStartLevel = Math.max(10, Math.min(55, bb.charge0 - rechargeTotal));
 
-  // Workout sessions for the drain phase (wakeTime → now is always within today,
-  // since wakeTime is today 7am) — same per-session drain formula as computeBodyBattery.
+  // Workout sessions for the drain phase — same per-session drain formula as
+  // computeBodyBattery. With a real HealthKit wake time the awake window can start
+  // yesterday (night shift), so pull both calendar dates it can span.
   const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-  const sessions = Object.values((store.history || {})[todayKey] || {}).map(sess => {
+  const wakeKey = `${wakeTime.getFullYear()}-${String(wakeTime.getMonth()+1).padStart(2,"0")}-${String(wakeTime.getDate()).padStart(2,"0")}`;
+  const buckets = wakeKey === todayKey
+    ? [(store.history || {})[todayKey] || {}]
+    : [(store.history || {})[wakeKey] || {}, (store.history || {})[todayKey] || {}];
+  const sessions = buckets.flatMap(bucket => Object.values(bucket)).map(sess => {
     const endMs = sess.finishedAt || now.getTime();
     const startMs = endMs - (sess.duration || 0) * 1000;
     let sets = 0, rpeSum = 0, rpeN = 0;
@@ -3868,20 +3890,36 @@ async function readRecovery() {
     const v = parseFloat(rhr[0].value);
     if (!isNaN(v)) out.restingHr = Math.round(v);
   }
-  // Sleep — sum asleep states from the most recent night (samples are in minutes)
+  // Sleep — most recent night only. The 36h lookback can span two nights, so cluster:
+  // keep asleep samples whose end falls within 14h of the latest sample's end. Also keep
+  // the actual bed/wake TIMESTAMPS (sleepStart/sleepEnd) — the body battery uses them so
+  // the recharge window and the awake-drain clock follow the user's real schedule instead
+  // of an assumed 10pm-7am (night-shift lifters exist).
   const sleep = await read("sleep");
   if (sleep.length) {
-    let mins = 0;
-    for (const s of sleep) {
+    const asleepSamples = sleep.filter(s => {
       const st = (s.sleepState || "").toLowerCase();
-      const asleep = st === "asleep" || st === "rem" || st === "deep" || st === "light";
-      if (asleep) {
-        const v = parseFloat(s.value);
-        if (!isNaN(v)) mins += v;                       // value is minutes
-        else if (s.startDate && s.endDate) mins += (new Date(s.endDate) - new Date(s.startDate)) / 60000;
-      }
+      return st === "asleep" || st === "rem" || st === "deep" || st === "light";
+    }).map(s => ({
+      ...s,
+      _startMs: s.startDate ? new Date(s.startDate).getTime() : null,
+      _endMs: s.endDate ? new Date(s.endDate).getTime() : null,
+    }));
+    const latestEnd = Math.max(0, ...asleepSamples.map(s => s._endMs || 0));
+    const night = latestEnd > 0 ? asleepSamples.filter(s => (s._endMs || 0) >= latestEnd - 14 * 36e5) : asleepSamples;
+    let mins = 0, minStart = Infinity, maxEnd = 0;
+    for (const s of night) {
+      const v = parseFloat(s.value);
+      if (!isNaN(v)) mins += v;                         // value is minutes
+      else if (s._startMs && s._endMs) mins += (s._endMs - s._startMs) / 60000;
+      if (s._startMs) minStart = Math.min(minStart, s._startMs);
+      if (s._endMs) maxEnd = Math.max(maxEnd, s._endMs);
     }
     if (mins > 0) out.sleepHours = Math.round((mins / 60) * 10) / 10;
+    if (isFinite(minStart) && maxEnd > 0) {
+      out.sleepStart = new Date(minStart).toISOString();
+      out.sleepEnd = new Date(maxEnd).toISOString();
+    }
   }
 
   // ── Personal baselines from the last 60 days (HRV + resting HR) ──
