@@ -1,4 +1,4 @@
-// v178091716633
+// v178091716634
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1477,6 +1477,7 @@ function _regionLabel(k) {
 function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C }) {
   const [mode, setMode] = useState("readiness"); // "readiness" | "volume" | "strength"
   const [showBatteryDetail, setShowBatteryDetail] = useState(false);
+  const [selectedRegion, setSelectedRegion] = useState(null); // { key:"front:Chest", region:"Chest" }
   // Never leave the battery detail sheet mounted once we leave the readiness view —
   // a lingering fixed-position sheet was bleeding over the Edit Profile screen.
   useEffect(() => { if (mode !== "readiness") setShowBatteryDetail(false); }, [mode]);
@@ -1532,7 +1533,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         <svg viewBox={VB[view]} width={figW} height={figH} style={{ display:"block" }}>
           {f._body && <path d={f._body} fill={bodyCol}/>}
           {muscles.map(mk => (
-            <path key={mk} d={f[mk]} fill={fillFor(view + ":" + mk)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>
+            <path key={mk} d={f[mk]} fill={fillFor(view + ":" + mk)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"
+              onClick={() => { setSelectedRegion({ key: view + ":" + mk, region: mk }); haptic("tap"); }} style={{ cursor:"pointer" }}/>
           ))}
         </svg>
         <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
@@ -1612,6 +1614,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             <Fig view="front"/>
             <Fig view="back"/>
           </div>
+          <div style={{ textAlign:"center", fontSize:10, color:C.muted, paddingBottom:2 }}>Tap a muscle for details</div>
 
           {mode === "volume" ? (
             <>
@@ -1862,6 +1865,99 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </>
       )}
       </div>
+      {selectedRegion && (() => {
+        const { key, region: regionName } = selectedRegion;
+        const label = _regionLabel(key);
+        // Readiness (same 0.85 = "ready" scaling as the map fill)
+        const rawReady = key in readiness ? readiness[key] : 1;
+        const readyT = Math.min(1, rawReady / 0.85);
+        const readyPct = Math.round(rawReady * 100);
+        // This week's effective sets for the region (secondaries already 0.5x)
+        const weekSets = Math.round(region[key] || 0);
+        const tier = weekSets > 20 ? "high volume" : weekSets >= 10 ? "maximizing" : weekSets >= 4 ? "growing" : weekSets > 0 ? "below minimum dose" : "untrained this week";
+        // Strength level for the region, when a standard exists
+        const sFrac = strength.ready ? strength.regionFrac[regionName] : null;
+        const sLevel = sFrac != null ? STRENGTH_LEVELS[Math.round(sFrac * (STRENGTH_LEVELS.length - 1))] : null;
+        // Contributing exercises (last 7 days) + last trained date (all time), same
+        // primary/secondary credit rules as weeklyMuscleVolume.
+        const hitsRegion = (name) => {
+          const prim = (typeof getMuscle === "function" && getMuscle(name)) || (typeof resolveMuscle === "function" && resolveMuscle(name)) || "";
+          if (_regionsFor(prim).some(([, r]) => r === regionName)) return 1;
+          if (getExerciseSecondaries(name).some(mn => _regionsFor(mn).some(([, r]) => r === regionName))) return 0.5;
+          return 0;
+        };
+        const cutoff = new Date(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate() - 6);
+        const contrib = {};
+        let lastTrained = null;
+        const histDates = Object.keys(store.history || {}).sort().reverse();
+        for (const d of histDates) {
+          const ts = new Date(d + "T12:00:00");
+          for (const sess of Object.values(store.history[d] || {})) {
+            for (const ex of (sess.exercises || [])) {
+              const w = hitsRegion(ex.name || "");
+              if (!w) continue;
+              const done = (ex.sets || []).filter(st => st.type !== "warmup" && (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0))).length;
+              if (!done) continue;
+              if (!lastTrained) lastTrained = d;
+              if (ts >= cutoff) contrib[ex.name] = (contrib[ex.name] || 0) + done * w;
+            }
+          }
+        }
+        const contribList = Object.entries(contrib).sort((x, y) => y[1] - x[1]).slice(0, 5);
+        const daysAgo = lastTrained ? Math.round((Date.now() - new Date(lastTrained + "T12:00:00").getTime()) / 864e5) : null;
+        // Rule-based suggestion (free — no AI call)
+        const musclesFor = Object.entries(MUSCLE_REGION_MAP).filter(([, regs]) => regs.some(([, r]) => r === regionName)).map(([m]) => m);
+        const examples = EXERCISE_DB.filter(e => musclesFor.includes(e.muscle)).slice(0, 2).map(e => e.name);
+        const suggestion = weekSets > 20 ? "Volume is past the point of diminishing returns — trading a few sets for recovery usually pays off."
+          : weekSets >= 10 ? "Right in the productive 10–20 set range. Keep it here."
+          : weekSets >= 4 ? `Growing — ${10 - weekSets} more set${10 - weekSets === 1 ? "" : "s"} this week would put it in the maximizing range.`
+          : examples.length ? `Under the ~4-set minimum for growth. ${examples.join(" or ")} would cover it.`
+          : "Under the ~4-set minimum effective dose for growth.";
+        return createPortal((
+          <div onClick={() => setSelectedRegion(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+            <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+              <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14 }}>
+                <span style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{label}</span>
+                <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, color:_readyColor(readyT) }}>
+                  <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(readyT) }}/>
+                  {readyPct >= 85 ? "Ready" : readyPct >= 55 ? "Recovering" : "Fatigued"} · {readyPct}%
+                </span>
+              </div>
+              <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+                <div style={{ flex:1, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
+                  <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>THIS WEEK</div>
+                  <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, marginTop:3 }}>{weekSets}<span style={{ fontSize:11, color:C.sub, fontWeight:600 }}> sets</span></div>
+                  <div style={{ fontSize:10, color:C.sub, marginTop:1 }}>{tier}</div>
+                </div>
+                <div style={{ flex:1, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
+                  <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>STRENGTH</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:C.text, marginTop:6 }}>{sLevel || "—"}</div>
+                  <div style={{ fontSize:10, color:C.sub, marginTop:2 }}>{sLevel ? "vs standards" : "no standard lift logged"}</div>
+                </div>
+                <div style={{ flex:1, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
+                  <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>LAST TRAINED</div>
+                  <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, marginTop:3 }}>{daysAgo == null ? "—" : daysAgo === 0 ? "today" : `${daysAgo}d`}</div>
+                  <div style={{ fontSize:10, color:C.sub, marginTop:1 }}>{daysAgo == null ? "no sessions yet" : daysAgo === 0 ? "" : "ago"}</div>
+                </div>
+              </div>
+              {contribList.length > 0 && (
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted, marginBottom:7 }}>THIS WEEK'S WORK</div>
+                  {contribList.map(([name, sets2]) => (
+                    <div key={name} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.divider}` }}>
+                      <span style={{ fontSize:13, color:C.text, fontWeight:600 }}>{name}</span>
+                      <span style={{ fontSize:12, color:C.sub, fontFamily:MONO }}>{Math.round(sets2 * 10) / 10} sets</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize:12, color:C.sub, lineHeight:1.55, padding:"10px 12px", background:C.surface, borderRadius:10 }}>{suggestion}</div>
+              <button onClick={() => setSelectedRegion(null)} style={{ marginTop:14, width:"100%", padding:"13px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
+            </div>
+          </div>
+        ), document.body);
+      })()}
     </div>
   );
 }
