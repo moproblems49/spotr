@@ -1,4 +1,4 @@
-// v178091716627
+// v178091716628
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2050,6 +2050,25 @@ const fmtVol = (v, u) => v >= 1000 ? `${(v/1000).toFixed(1)}k ${u}` : `${v} ${u}
 // — which WorkoutTracker writes — and recomputes the remaining seconds from startedAt so it's
 // accurate on any tab without touching WorkoutTracker's timer logic. Renders nothing unless a
 // rest is actively running. Tapping it calls onTap (used to jump back to the workout tab).
+// Animates a stat from 0 to its value on mount (~40 leaf re-renders over 650ms — fine,
+// it only re-renders this span, not the screen; the gesture perf rule is about full-screen
+// re-renders per frame). Eased cubic so it starts fast and lands softly.
+function CountUpNumber({ value, duration = 650, style }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let raf; const t0 = performance.now();
+    const tick = (t) => {
+      const p = Math.min(1, (t - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.round(eased * value));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <span style={style}>{n}</span>;
+}
+
 function RestChip({ C, onTap }) {
   const [secs, setSecs] = useState(null);
   useEffect(() => {
@@ -2074,6 +2093,7 @@ function RestChip({ C, onTap }) {
       display:"flex", alignItems:"center", gap:5, padding:"4px 9px", borderRadius:999,
       background: low ? "#EF444418" : C.accentSoft || `${C.accent}18`, border:`1px solid ${low ? "#EF4444" : C.accent}55`,
       color: low ? "#EF4444" : C.accent, fontSize:12, fontWeight:700, fontFamily:MONO, cursor:"pointer", lineHeight:1,
+      animation:"seshd-pulse-soft 2s ease infinite",
     }}>
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4M12 2h0M9 2h6"/></svg>
       {fmtTime(secs)}
@@ -14972,7 +14992,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     <div>
                       <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:lvlColor, marginBottom:8 }}>STRENGTH SCORE</div>
                       <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
-                        <span style={{ fontSize:46, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:0.9, letterSpacing:-1 }}>{ss.score}</span>
+                        <CountUpNumber value={ss.score} style={{ fontSize:46, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:0.9, letterSpacing:-1 }}/>
                       </div>
                       <div style={{ display:"inline-block", marginTop:10, padding:"4px 11px", borderRadius:999, background:lvlColor, color:"#0a0a0a", fontSize:12, fontWeight:800, letterSpacing:0.3 }}>{ss.overall.toUpperCase()}</div>
                     </div>
@@ -15022,7 +15042,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       <div style={{ borderTop:`1px solid ${C.divider}`, paddingTop:16 }}>
         {posts.length === 0 && (
           <div style={{ textAlign:"center", color:C.sub, padding:"40px 24px", fontSize:13 }}>
-            <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="dumbbell" size={36} color="currentColor"/></div>
+            <svg width="46" height="64" viewBox="0 0 40 56" style={{ display:"block", margin:"0 auto 12px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
             <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>
               {isMe ? "No posts yet" : `${(user?.name || "").split(" ")[0] || "They"} hasn't posted yet`}
             </div>
@@ -19748,7 +19768,7 @@ function AppInner() {
                 </div>
               ) : events.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
-                  <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="users" size={40} color="currentColor"/></div>
+                  <svg width="46" height="64" viewBox="0 0 40 56" style={{ display:"block", margin:"0 auto 12px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
                   <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
                   <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
                 </div>
