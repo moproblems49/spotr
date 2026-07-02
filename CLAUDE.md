@@ -75,24 +75,73 @@ Recently shipped & verified: true iOS co-move swipe (3-panel track), Wrapped "Sh
 
 Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`). Email confirmation (Resend SMTP) is off (fine pre-launch). Native Live Activity rest timer + home-screen widgets are Mac-side. Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
-### Push notifications — handoff checklist
-The app code and Supabase backend are done. What's left is APNs credential setup (web-based — Mo can do this from his PC) and Xcode capability/device work (needs Ashley/Mac).
+### MAC DAY — the complete checklist (Mac access expected ~July 12, 2026)
+Everything that needs a Mac, in the order to do it. Code/server side is DONE for all of these.
 
-**Mo: do now on PC (no Mac needed)**
-1. **Apple Developer portal** (developer.apple.com, any browser): create an APNs key (Keys → +, enable "Apple Push Notifications service (APNs)"). Note the Key ID and Team ID (`66M7SCD5GA`). Download the `.p8` file — it can only be downloaded once, so save it somewhere safe.
-2. **Supabase secrets** (Supabase dashboard → Edge Functions → Secrets, or `supabase secrets set` CLI from repo root — both work fine from Windows):
-   - `APNS_KEY_ID`, `APNS_TEAM_ID` = `66M7SCD5GA`, `APNS_TOPIC` = `com.seshd.app`
-   - `APNS_PRIVATE_KEY` = contents of the `.p8` file
-   - `APNS_ENV` = `production` for TestFlight/App Store builds, `sandbox` only for a direct Xcode-run debug build on a device
-   - These may already be partially set from a prior session — re-set them if you generated a fresh key above, since the old key/secret pairing won't match.
-   - Note: Claude can't set these directly — there's no Supabase tool for reading/writing Edge Function secrets, and pasting the `.p8` key into chat would expose it anyway. This step has to happen in the dashboard/CLI on your end.
+**Step 0 — sync the native project (CRITICAL, do first, before any build):**
+```
+git pull
+npm install
+npx cap sync ios
+```
+This installs the plugins added while Mac-less: `@capacitor/preferences` (localStorage→native
+persistence mirror — without it iOS can silently wipe user data), `@capgo/capacitor-health`
+(ALL HealthKit reads: HRV/RHR/sleep/steps for readiness + body battery), and
+`@capawesome/capacitor-badge` (app-icon unread badge). The JS already calls all three behind
+guards; they no-op until this sync runs. Nothing works health/persistence-wise without Step 0.
 
-**Ashley: Mac/Xcode only**
-3. **Xcode capabilities** (target → Signing & Capabilities):
-   - Add **Push Notifications** capability.
-   - Add **Background Modes** capability → check **Remote notifications**.
-4. **Test on a physical device** (simulators can't receive real APNs pushes): install a build with the new capability, open the app and accept the push permission prompt, then check the `profiles.push_token` column for that user filled in. Send yourself a DM or kudos from a second account — a push should arrive, and tapping it should open the right screen.
-5. If pushes don't arrive: check Supabase Edge Function logs for `send-message-push` / `send-activity-push` — a 401 means `WEBHOOK_SECRET` mismatch (server-side, not yours to fix), anything from `api.push.apple.com` failing means the APNs key/entitlement pairing from steps 1–2 is wrong.
+**Step 1 — Xcode capabilities (target → Signing & Capabilities → +):**
+- **Push Notifications**
+- **Background Modes** → check *Remote notifications*
+- **HealthKit** (required for the health plugin; no background delivery needed)
+- **Associated Domains** → add `applinks:spotr-drab.vercel.app` (universal links — the
+  AASA file is already live at /.well-known/ and AppDelegate already handles the callback;
+  only this entitlement is missing)
+- (Only if/when social login ships: **Sign in with Apple**)
+
+**Step 2 — Launch screen:** LaunchScreen.storyboard → background `#0a0a0a`, centered logo
+(source art in `assets/`; `npx @capacitor/assets generate` can regenerate icons/splash from
+`assets/icon-only.png` + `assets/splash*.png` if preferred). Info.plist permission strings,
+portrait lock, and the app icon are already committed — no Xcode work needed for those.
+
+**Step 3 — device test (physical iPhone; simulator can't do APNs or HealthKit):**
+1. Build to device. Open app → accept push prompt → check `profiles.push_token` fills in.
+2. From a 2nd account: send a DM → push arrives with the sender's name, app icon shows an
+   unread badge count, tapping opens the right chat, badge clears when the app foregrounds.
+   (For a direct Xcode debug build set `APNS_ENV=sandbox` in Supabase secrets; TestFlight
+   uses `production`.)
+3. Connect Apple Health when prompted (readiness/body battery should switch from estimated
+   to real HRV/sleep within a day of data).
+4. Paste a `spotr-drab.vercel.app/u/...` profile link into Notes/iMessage and tap it — it
+   should open IN the app (universal link), not Safari.
+5. Kill + relaunch the app — workout history must survive (Preferences persistence mirror).
+6. If pushes fail: Supabase Edge Function logs → 401 = `WEBHOOK_SECRET` mismatch; an
+   `api.push.apple.com` error = APNs key/entitlement pairing wrong.
+
+**Step 4 — TestFlight:** archive, upload, add Mo as internal tester.
+
+**Deferred Mac-side (post-TestFlight):** Live Activity rest timer, home-screen widgets,
+share-to-Instagram-Stories plugin, converting the top bar to a true scroll-under glass
+overlay (marked TODO(device-test) in App.jsx), Keychain storage for the auth session
+(`capacitor-secure-storage-plugin` — currently in Preferences/UserDefaults, acceptable but
+not ideal), iOS 18 light/dark icon variants (light art exists at `assets/AppIcon-1024-light.png`,
+decision was to stay single dark icon).
+
+**Mo: PC-side prerequisites (do BEFORE Mac day so Ashley isn't blocked)**
+1. **Apple Developer portal** (developer.apple.com, any browser): create an APNs key (Keys → +,
+   enable "Apple Push Notifications service (APNs)"). Note the Key ID and Team ID (`66M7SCD5GA`).
+   Download the `.p8` — it can only be downloaded once, save it somewhere safe.
+2. **Supabase secrets** (dashboard → Edge Functions → Secrets): `APNS_KEY_ID`,
+   `APNS_TEAM_ID` = `66M7SCD5GA`, `APNS_TOPIC` = `com.seshd.app`, `APNS_PRIVATE_KEY` = the
+   `.p8` contents, `APNS_ENV` = `production` (or `sandbox` for direct Xcode debug builds).
+   Re-set all of them if the key is freshly generated. (Claude can't set secrets — no tool
+   for it, and pasting the key into chat would expose it.)
+3. **App Store Connect** (appstoreconnect.apple.com): create the app record — name Seshd,
+   bundle id `com.seshd.app`, privacy policy URL `https://spotr-drab.vercel.app/privacy.html`.
+   Start the privacy questionnaire (declares: health data, user content/photos, messages,
+   identifiers, analytics). Screenshots can wait for TestFlight.
+4. Optional pre-launch: Resend SMTP + "Confirm email" in Supabase Auth settings; Apple
+   Services ID if Google/Apple sign-in will ship at launch.
 
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.

@@ -53,6 +53,18 @@ async function sbGet(path: string) {
   return r.ok ? await r.json() : null;
 }
 
+// Exact row count without fetching rows (content-range header). Used for the badge number.
+async function sbCount(path: string): Promise<number | null> {
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    method: "HEAD",
+    headers: { apikey: SB_SERVICE, Authorization: `Bearer ${SB_SERVICE}`, Prefer: "count=exact" },
+  });
+  const range = r.headers.get("content-range"); // e.g. "0-24/25" or "*/3"
+  const total = range?.split("/")[1];
+  const n = total ? parseInt(total) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== "POST") return new Response("method", { status: 405 });
@@ -77,6 +89,10 @@ Deno.serve(async (req) => {
     const sender = senderRows?.[0];
     const title = sender?.name || (sender?.username ? `@${sender.username}` : "New message");
 
+    // App-icon badge = recipient's total unread DMs (this row is already inserted, so it's
+    // included). Best-effort: on failure the push simply goes out without a badge.
+    const unread = await sbCount(`messages?recipient_id=eq.${record.recipient_id}&read_at=is.null&select=id`).catch(() => null);
+
     const body = String(record.text ?? "").slice(0, 140);
     const jwt = await apnsJwt();
     const res = await fetch(`${APNS_HOST}/3/device/${token}`, {
@@ -93,6 +109,7 @@ Deno.serve(async (req) => {
           alert: { title, body },
           sound: "default",
           "thread-id": `dm-${record.sender_id}`,
+          ...(unread != null ? { badge: unread } : {}),
         },
         type: "dm",
         senderId: record.sender_id,

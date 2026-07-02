@@ -1,4 +1,4 @@
-// v178091716625
+// v178091716626
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6406,7 +6406,7 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
       {/* Back button — available after the first screen */}
       {step > 0 && !inClosing && (
-        <button onClick={back} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 16px)", left:18, background:"none", border:"none", fontSize:24, color:C.sub, cursor:"pointer", fontFamily:F, zIndex:2, padding:6 }}>‹</button>
+        <button onClick={back} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 16px)", left:18, background:"none", border:"none", fontSize:24, color:C.sub, cursor:"pointer", fontFamily:F, zIndex:2, padding:12 }}>‹</button>
       )}
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
         <div style={{ marginBottom:48 }}>
@@ -12692,7 +12692,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
+        <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"11px 14px 11px 2px", fontFamily:F }}>‹</button>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{name}</div>
           <div style={{ fontSize:12, color:C.sub }}>{exInfo.muscle}</div>
@@ -13038,7 +13038,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
     <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
       {/* Header */}
       <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer" }}>‹</button>
+        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"12px 14px" }}>‹</button>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{g.name}</div>
           <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} members</div>
@@ -13441,7 +13441,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   return (
     <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-        {onBack && <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>‹</button>}
+        {onBack && <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"11px 14px 11px 2px" }}>‹</button>}
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Groups</div>
         <button onClick={() => setShowCreate(true)} style={{
           background:C.accent, color:C.onAccent, border:"none", borderRadius:6,
@@ -14216,7 +14216,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"4px 8px 4px 0", fontFamily:F }}>‹</button>
+        <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"11px 14px 11px 2px", fontFamily:F }}>‹</button>
         <div style={{ flex:1, fontSize:16, fontWeight:700, color:C.text }}>Body</div>
         {!adding && <button onClick={() => setAdding(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"7px 14px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Log</button>}
       </div>
@@ -14784,7 +14784,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           : <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>}
         <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))", pointerEvents:"none" }}/>
         {onBack && (
-          <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:8, left:10, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, fontSize:17, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
+          <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:8, left:10, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:19, fontSize:19, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
         )}
         {isMe && (
           <>
@@ -16464,7 +16464,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
+        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"12px 14px 12px 6px" }}>‹</button>
         <div style={{ fontSize:19, fontWeight:700, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase", flex:1 }}>Messages</div>
         <button onClick={() => { setComposeOpen(o => !o); setComposeQ(""); haptic("tap"); }} aria-label="New message"
           style={{ background:"none", border:"none", cursor:"pointer", padding:11, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -16627,7 +16627,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
-        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"0 4px" }}>‹</button>
+        <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"12px 14px 12px 6px" }}>‹</button>
         <Avatar user={peer || { name:"?" }} size={32} C={C}/>
         <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:F }}>{peer?.name || peer?.username || "User"}</div>
       </div>
@@ -16911,6 +16911,7 @@ function AppInner() {
     if (!PN || !currentUserId || isGuest) return;
     let regListener = null;
     let actionListener = null;
+    let stateListener = null;
     let cancelled = false;
     const registeredForUserId = currentUserId;
     (async () => {
@@ -16965,6 +16966,24 @@ function AppInner() {
         if (cancelled) { try { aListener?.remove?.(); } catch (e) {} }
         else actionListener = aListener;
 
+        // App-icon badge (set by send-message-push): clear it whenever the app comes to
+        // the foreground — once the user is in the app the badge has done its job. Also
+        // clears delivered notifications from Notification Center, iMessage-style.
+        // Badge plugin is guarded — no-op until the next `npx cap sync ios`.
+        const Badge = Cap.Plugins?.Badge;
+        const AppPlug = Cap.Plugins?.App;
+        try { Badge?.clear?.(); } catch (e) {}
+        if (AppPlug?.addListener) {
+          const sl = await AppPlug.addListener("appStateChange", (st) => {
+            if (st?.isActive) {
+              try { Badge?.clear?.(); } catch (e) {}
+              try { PN.removeAllDeliveredNotifications?.(); } catch (e) {}
+            }
+          });
+          if (cancelled) { try { sl?.remove?.(); } catch (e) {} }
+          else stateListener = sl;
+        }
+
         await PN.register();
       } catch (e) {}
     })();
@@ -16972,6 +16991,7 @@ function AppInner() {
       cancelled = true;
       try { regListener?.remove?.(); } catch (e) {}
       try { actionListener?.remove?.(); } catch (e) {}
+      try { stateListener?.remove?.(); } catch (e) {}
     };
   }, [currentUserId, isGuest]);
   // Match the iOS status bar / browser chrome to the app background — big "native" feel
