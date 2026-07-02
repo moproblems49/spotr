@@ -1,4 +1,4 @@
-// v178091716628
+// v178091716629
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -107,6 +107,9 @@ async function hydrateFromNative() {
   } catch {}
   // Install the write-through mirror AFTER hydration so we don't echo during restore.
   installStorageMirror();
+  // Session tokens: hydrate from / migrate into the iOS Keychain (no-op on web or until
+  // the secure-storage plugin has been synced into the native build).
+  await hydrateSessionFromKeychain();
 }
 
 
@@ -452,14 +455,68 @@ async function uploadImage(base64DataUrl, token, userId) {
 
 // Session storage
 const SESSION_STORAGE_KEY = "seshd_session";
+// ── Session tokens: iOS Keychain on native, localStorage on web ─────────────────
+// On a native build with capacitor-secure-storage-plugin synced, the Supabase
+// access/refresh tokens live ONLY in the hardware-encrypted Keychain — never in
+// localStorage or the Preferences (UserDefaults) mirror, both of which are
+// unencrypted at rest. Reads stay synchronous for the ~30 call sites via a module
+// cache that boot hydration populates from the Keychain BEFORE React mounts (see
+// hydrateSessionFromKeychain). Web builds and native builds that haven't run
+// `npx cap sync ios` yet keep the localStorage path unchanged.
+function secureStore() {
+  const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+  if (Cap?.isNativePlatform?.() && Cap.Plugins?.SecureStoragePlugin) return Cap.Plugins.SecureStoragePlugin;
+  return null;
+}
+let _sessionCache; // undefined = not hydrated; null = known signed-out; object = session
 function loadSession() {
+  if (_sessionCache !== undefined) return _sessionCache;
   try { return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)); } catch { return null; }
 }
 function saveSession(s) {
-  try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s)); } catch {}
+  const sec = secureStore();
+  if (sec) {
+    _sessionCache = s;
+    try { sec.set({ key: SESSION_STORAGE_KEY, value: JSON.stringify(s) }).catch(() => {}); } catch {}
+    // Make sure no unencrypted copy lingers — remove from BOTH stores explicitly
+    // (not via the mirror, so this holds even if the mirror isn't installed).
+    try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+    try { nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }).catch(() => {}); } catch {}
+  } else {
+    try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s)); } catch {}
+  }
 }
 function clearSession() {
+  _sessionCache = secureStore() ? null : undefined;
   try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+  try { secureStore()?.remove({ key: SESSION_STORAGE_KEY }).catch(() => {}); } catch {}
+  try { nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }).catch(() => {}); } catch {}
+}
+// Boot-time hydration + one-time migration. Runs inside hydrateFromNative() (before React
+// mounts), so synchronous loadSession() calls see the Keychain session from the first render.
+async function hydrateSessionFromKeychain() {
+  const sec = secureStore();
+  if (!sec) return;
+  try {
+    const { value } = await sec.get({ key: SESSION_STORAGE_KEY });
+    _sessionCache = value ? JSON.parse(value) : null;
+    // Keychain is the source of truth now — scrub any old unencrypted copies explicitly.
+    try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+    try { await nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }); } catch {}
+  } catch (e) {
+    // Not in the Keychain yet. If an existing install has it in localStorage, migrate it.
+    try {
+      const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (raw) {
+        _sessionCache = JSON.parse(raw);
+        await sec.set({ key: SESSION_STORAGE_KEY, value: raw });
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        try { await nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }); } catch {}
+      } else {
+        _sessionCache = null;
+      }
+    } catch { _sessionCache = null; }
+  }
 }
 
 // Run an authed REST query; if it fails (most often an expired access token —

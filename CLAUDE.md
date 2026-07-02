@@ -97,9 +97,11 @@ npx cap sync ios
 ```
 This installs the plugins added while Mac-less: `@capacitor/preferences` (localStorage→native
 persistence mirror — without it iOS can silently wipe user data), `@capgo/capacitor-health`
-(ALL HealthKit reads: HRV/RHR/sleep/steps for readiness + body battery), and
-`@capawesome/capacitor-badge` (app-icon unread badge). The JS already calls all three behind
-guards; they no-op until this sync runs. Nothing works health/persistence-wise without Step 0.
+(ALL HealthKit reads: HRV/RHR/sleep/steps for readiness + body battery),
+`@capawesome/capacitor-badge` (app-icon unread badge), and `capacitor-secure-storage-plugin`
+(auth session tokens in the iOS Keychain — boot migration moves existing sessions out of
+localStorage/Preferences automatically). The JS already calls all four behind guards; they
+no-op until this sync runs. Nothing works health/persistence-wise without this step.
 
 **Step 1 — Xcode capabilities (target → Signing & Capabilities → +):**
 - **Push Notifications**
@@ -125,7 +127,8 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
    to real HRV/sleep within a day of data).
 4. Paste a `spotr-drab.vercel.app/u/...` profile link into Notes/iMessage and tap it — it
    should open IN the app (universal link), not Safari.
-5. Kill + relaunch the app — workout history must survive (Preferences persistence mirror).
+5. Kill + relaunch the app — workout history must survive (Preferences persistence mirror)
+   AND you must still be signed in (session now lives in the iOS Keychain).
 6. If pushes fail: Supabase Edge Function logs → 401 = `WEBHOOK_SECRET` mismatch; an
    `api.push.apple.com` error = APNs key/entitlement pairing wrong.
 
@@ -133,9 +136,7 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
 
 **Deferred Mac-side (post-TestFlight):** Live Activity rest timer, home-screen widgets,
 share-to-Instagram-Stories plugin, converting the top bar to a true scroll-under glass
-overlay (marked TODO(device-test) in App.jsx), Keychain storage for the auth session
-(`capacitor-secure-storage-plugin` — currently in Preferences/UserDefaults, acceptable but
-not ideal), iOS 18 light/dark icon variants (light art exists at `assets/AppIcon-1024-light.png`,
+overlay (marked TODO(device-test) in App.jsx), iOS 18 light/dark icon variants (light art exists at `assets/AppIcon-1024-light.png`,
 decision was to stay single dark icon).
 
 **Mo: PC-side prerequisites (do BEFORE Mac day so Ashley isn't blocked)**
