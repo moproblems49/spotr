@@ -1,4 +1,4 @@
-// v178091716624
+// v178091716625
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4262,6 +4262,7 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
   const [refreshing, setRefreshing] = useState(false);
   const scrollRef = useRef(null);
   const startYRef = useRef(0);
+  const startXRef = useRef(0);
   const trackingRef = useRef(false);
   // pull state only drives the first frame of a gesture (to flip the transition off) and the
   // settled/idle value — every frame in between writes straight to these refs instead of through
@@ -4281,11 +4282,17 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
     // Only initiate pull when at the very top of the scrollable
     if (el.scrollTop > 1) return;
     startYRef.current = e.touches[0].clientY;
+    startXRef.current = e.touches[0].clientX;
     trackingRef.current = true;
   }
   function onTouchMove(e) {
     if (!trackingRef.current || refreshing) return;
     const dy = e.touches[0].clientY - startYRef.current;
+    const dx = e.touches[0].clientX - startXRef.current;
+    // A predominantly-horizontal gesture is a tab-swipe / edge-swipe-back, not a pull —
+    // bail for the rest of the gesture. Without this, a horizontal drag with slight
+    // downward drift crept the spinner down mid-swipe (visible in the messages edge-swipe).
+    if (liveDist.current === 0 && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) { trackingRef.current = false; return; }
     const damped = dy <= 0 ? 0 : Math.min(MAX_PULL, dy * 0.55); // damped pull — gets harder as user pulls further
     const justStarted = liveDist.current === 0 && damped !== 0;
     liveDist.current = damped;
@@ -16383,8 +16390,11 @@ function EdgeSwipeBack({ onBack, children, style }) {
   );
 }
 
+// Last-loaded conversation rows, kept across opens so reopening Messages shows the list
+// instantly (background refresh follows) instead of blanking to a spinner every time.
+let _msgListCache = { uid: null, rows: null };
 function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) {
-  const [rows, setRows] = useState(null); // null = loading
+  const [rows, setRows] = useState(() => (_msgListCache.uid === currentUserId ? _msgListCache.rows : null)); // null = loading
   const [search, setSearch] = useState("");        // conversation filter (shown once threads grow)
   const [composeOpen, setComposeOpen] = useState(false); // pencil → people picker
   const [composeQ, setComposeQ] = useState("");
@@ -16394,6 +16404,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
     if (!tok) { setRows([]); return; }
     try {
       const ms = await queryWithRetry(`messages?or=(sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId})&order=created_at.desc&limit=300`, {}, tok);
+      if (Array.isArray(ms)) _msgListCache = { uid: currentUserId, rows: ms };
       if (aliveRef.current) setRows(Array.isArray(ms) ? ms : []);
     } catch (e) { if (aliveRef.current) setRows(r => (r === null ? [] : r)); }
   }, [currentUserId, token]);
@@ -16550,8 +16561,11 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
   );
 }
 
+// Per-peer thread cache — reopening a chat shows the conversation instantly while the
+// fresh fetch runs, instead of a spinner.
+const _chatThreadCache = {};
 function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
-  const [msgs, setMsgs] = useState(null);
+  const [msgs, setMsgs] = useState(() => _chatThreadCache[peerId] || null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -16573,7 +16587,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
     if (!freshTok) return;
     try {
       const ms = await queryWithRetry(`messages?or=(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerId}),and(sender_id.eq.${peerId},recipient_id.eq.${currentUserId}))&order=created_at.asc&limit=300`, {}, freshTok);
-      if (Array.isArray(ms)) setMsgs(ms);
+      if (Array.isArray(ms)) { _chatThreadCache[peerId] = ms; setMsgs(ms); }
       // Mark incoming as read (best-effort)
       sb.query(`messages?sender_id=eq.${peerId}&recipient_id=eq.${currentUserId}&read_at=is.null`, { method:"PATCH", body: JSON.stringify({ read_at: new Date().toISOString() }) }, freshTok)
         .then(() => onRead && onRead()).catch(() => {});
