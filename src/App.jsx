@@ -1,4 +1,4 @@
-// v178091716626
+// v178091716627
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19509,9 +19509,13 @@ function AppInner() {
                       setNewPostKind("story"); setShowNewPost(true);
                     }
                   }}>
+                    {/* Active story gets the same volt gradient ring as friends' stories;
+                        no-story state keeps the plain divider circle + the "+" badge. */}
+                    <div style={{ padding: myStoryPost ? 2.5 : 0, borderRadius:"50%", background: myStoryPost ? "linear-gradient(135deg,#d9ff4d,#a3e635,#4d7c0f)" : "none" }}>
+                    <div style={{ background: myStoryPost ? C.bg : "none", padding: myStoryPost ? 2 : 0, borderRadius:"50%" }}>
                     <div style={{
-                      width:60, height:60, borderRadius:"50%", overflow:"hidden",
-                      border: myStoryPost ? "2.5px solid #f97316" : `2.5px solid ${C.divider}`,
+                      width: myStoryPost ? 54 : 60, height: myStoryPost ? 54 : 60, borderRadius:"50%", overflow:"hidden",
+                      border: myStoryPost ? "none" : `2.5px solid ${C.divider}`,
                       display:"flex", alignItems:"center", justifyContent:"center",
                       background: C.divider
                     }}>
@@ -19519,6 +19523,8 @@ function AppInner() {
                         ? <img src={myStoryPost.imageData} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
                         : <span style={{ fontSize:26, fontWeight:900 }}>{me?.avatar || ((me?.name || me?.username || "?").trim()[0] || "?").toUpperCase()}</span>
                       }
+                    </div>
+                    </div>
                     </div>
                     {!myStoryPost && (
                       <div style={{ position:"absolute", bottom:-2, right:-2, width:20, height:20, borderRadius:"50%", background:C.accent, color:C.onAccent, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
@@ -19529,7 +19535,7 @@ function AppInner() {
                 {/* Others' stories */}
                 {storyUsers.map((u, i) => (
                   <div key={u.id} onClick={() => setStoryIndex(i)} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
-                    <div style={{ padding:2.5, borderRadius:"50%", background:"linear-gradient(135deg,#f97316,#ea580c,#be123c)", cursor:"pointer" }}>
+                    <div style={{ padding:2.5, borderRadius:"50%", background:"linear-gradient(135deg,#d9ff4d,#a3e635,#4d7c0f)", cursor:"pointer" }}>
                       <div style={{ background:C.bg, padding:2, borderRadius:"50%" }}>
                         <Avatar user={u} size={54} C={C}/>
                       </div>
