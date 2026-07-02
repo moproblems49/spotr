@@ -1,4 +1,4 @@
-// v178091716630
+// v178091716632
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15124,13 +15124,24 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               </div>
             );
           })()}
-          <button onClick={() => onOpenCoach && onOpenCoach()} style={{
-            width:"100%", marginTop:10, padding:"13px", borderRadius:14, cursor:"pointer", fontFamily:F,
-            background:C.accent, color:C.onAccent,
-            border:"none", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-          }}>
-            AI Coaching
-          </button>
+          {(() => {
+            const wr = store.weeklyReview;
+            const current = wr && wr.weekKey === weekKeyFor();
+            const nTotal = current ? (wr.actions || []).length : 0;
+            const nDone = current ? (wr.actions || []).filter(x => x.done).length : 0;
+            return (
+              <button onClick={() => onOpenCoach && onOpenCoach()} style={{
+                width:"100%", marginTop:10, padding:"13px 16px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                background:C.accent, color:C.onAccent,
+                border:"none", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+              }}>
+                <span>Weekly Review</span>
+                <span style={{ fontSize:11, fontWeight:700, opacity:0.8 }}>
+                  {current ? (nTotal ? `${nDone}/${nTotal} targets done` : "ready") : "lands Sunday"}
+                </span>
+              </button>
+            );
+          })()}
         </div>
       )}
 
@@ -16284,144 +16295,131 @@ function PublicProfileView({ userId, C, onOpenApp }) {
 // and native wrap it may need routing through a serverless function with an API key — that's
 // the thing to verify in production. UI + data assembly are environment-independent.
 // ═════════════════════════════════════════════════════════════════════════════
-function AICoachSheet({ store, setStore, unit, C, onClose }) {
-  const [state, setState] = useState({ loading: true, text: "", error: null });
-  const [actions, setActions] = useState([]);
+// ── WEEKLY REVIEW ────────────────────────────────────────────────────────────
+// The AI coach is no longer on-demand (open-ended = unbounded API cost). Instead, ONE
+// review generates per user per week — triggered client-side on first app open in a new
+// week (anchored to Sunday), only for signed-in users who trained in the last 7 days.
+// The result is stored (store.weeklyReview + coachLog for next week's memory) and the
+// sheet below renders the stored copy — reopening it never re-calls the API.
+function weekKeyFor(d = new Date()) {
+  const sun = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay()); // most recent Sunday
+  return `${sun.getFullYear()}-${String(sun.getMonth()+1).padStart(2,"0")}-${String(sun.getDate()).padStart(2,"0")}`;
+}
+function trainedInLastWeek(store) {
+  const cutoff = Date.now() - 7 * 864e5;
+  return Object.keys(store.history || {}).some(d => {
+    const t = new Date(d + "T12:00:00").getTime();
+    return !isNaN(t) && t >= cutoff && Object.keys(store.history[d] || {}).length > 0;
+  });
+}
+async function generateWeeklyReview(store, unit) {
+  // Fresh recovery snapshot on native so the review can factor it in (no-op on web).
+  try { const rec = await readRecovery(); if (rec) store.recovery = rec; } catch (e) {}
+  const ctx = buildCoachContext(store, unit);
+  if (!ctx.recentSessions.length) return { error: "no_data" };
+  ctx.priorCoaching = (store.coachLog || []).slice(0, 2).map(e => ({
+    date: e.date,
+    summary: e.summary,
+    actionsGiven: (e.actions || []).map(a => ({ text: a.text, done: !!a.done })),
+  }));
+  const sys = "You are a knowledgeable strength coach inside the Seshd app writing the lifter's WEEKLY REVIEW. " +
+    "Voice: a sharp training partner who lifts — plain, direct, specific. No emoji, no " +
+    "exclamation-mark hype, no generic motivational filler ('keep up the great work', " +
+    "'you've got this'), no AI-isms ('I notice', 'based on your data', 'it's worth noting'). " +
+    "Just talk about their lifting like a coach at the rack would. " +
+    "Review their LAST WEEK of training and set up the week ahead, based ONLY on the data below. " +
+    "Be concise: 3-5 short points. Reference their actual lifts and numbers. Cover what moved " +
+    "forward, what stalled, and what got neglected; then the priorities for this coming week. " +
+    "If their notes or data mention pain or injury, tell them to get it checked by a " +
+    "professional and never advise training through pain. " +
+    "If a 'recovery' object is present (HRV, resting heart rate, sleep hours), factor it in: " +
+    "poor recovery means moderate the plan; strong recovery means it's fine to push. " +
+    "If 'priorCoaching' is present, note follow-through briefly — build on it, don't repeat it. " +
+    "No medical claims. Use the user's units. Speak directly to the lifter ('you'). " +
+    "After your summary, output a line containing exactly 'ACTIONS:' on its own, then 2-4 concrete " +
+    "targets for THIS coming week — one per line, each starting with '- ', specific numbers where " +
+    "possible (e.g. '- Bench: 150x5 on your next push day'). No other text after ACTIONS:.";
+  const hdrs = aiAuthHeaders();
+  if (!hdrs) return { error: "auth" };
+  const res = await fetch(aiEndpoint(), {
+    method: "POST",
+    headers: hdrs,
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      system: sys,
+      messages: [{ role: "user", content: "Here is my training data as JSON:\n" + JSON.stringify(ctx) + "\n\nWrite my weekly review." }],
+    }),
+  });
+  if (res.status === 401) return { error: "auth" };
+  if (!res.ok) return { error: "failed" };
+  const data = await res.json();
+  const raw = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  let summary = raw, parsedActions = [];
+  const m = raw.split(/(?:^|\n)\s*\**#*\s*ACTIONS\s*:?\s*\**\s*(?:\n|$)/i);
+  if (m.length > 1) {
+    summary = m[0].trim();
+    parsedActions = m.slice(1).join("\n").split("\n")
+      .map(l => l.replace(/^\s*(?:[-•*]\s*|\d+[.)]\s+)/, "").trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .map((text, i) => ({ id: `${Date.now()}_${i}`, text, done: false }));
+  }
+  if (!summary) return { error: "failed" };
+  return { summary, actions: parsedActions };
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // Pull a fresh recovery snapshot (HRV/resting HR/sleep) on native iOS so the coach can
-        // factor recovery in. No-op on web — readRecovery() returns null.
-        try {
-          const rec = await readRecovery();
-          if (rec) store.recovery = rec;
-        } catch (e) { /* recovery is best-effort */ }
-        const ctx = buildCoachContext(store, unit);
-        // #1 Memory: feed the last couple of coaching sessions back in so the coach builds on its
-        // own advice (and can note follow-through) instead of starting cold every time.
-        ctx.priorCoaching = (store.coachLog || []).slice(0, 2).map(e => ({
-          date: e.date,
-          summary: e.summary,
-          actionsGiven: (e.actions || []).map(a => ({ text: a.text, done: !!a.done })),
-        }));
-        // Not enough data to coach meaningfully
-        if (!ctx.recentSessions.length) {
-          if (!cancelled) setState({ loading: false, text: "", error: "no_data" });
-          return;
-        }
-        const sys = "You are a knowledgeable strength coach inside the Seshd app. " +
-          "Voice: a sharp training partner who lifts — plain, direct, specific. No emoji, no " +
-          "exclamation-mark hype, no generic motivational filler ('keep up the great work', " +
-          "'you've got this'), no AI-isms ('I notice', 'based on your data', 'it's worth noting'). " +
-          "Just talk about their lifting like a coach at the rack would. " +
-          "Give specific, actionable advice based ONLY on the user's data below. Be concise: " +
-          "3-5 short points. Reference their actual lifts and numbers. Cover what's going well, " +
-          "what to prioritize next, and flag any stalls or muscle groups they're neglecting. " +
-          "If their notes or data mention pain or injury, tell them to get it checked by a " +
-          "professional and never advise training through pain. " +
-          "If a 'recovery' object is present (HRV, resting heart rate, sleep hours), factor it in: " +
-          "when HRV is low relative to a typical baseline, resting HR is elevated, or sleep was short " +
-          "(under ~6.5h), suggest moderating intensity or prioritizing recovery; when recovery looks " +
-          "strong, it's fine to encourage pushing. Mention recovery only when the data is present. " +
-          "If 'priorCoaching' is present, briefly acknowledge what you advised before and whether they " +
-          "followed through (based on actionsGiven.done and their recent sessions) — build on it, don't repeat it. " +
-          "Be supportive and never alarmist; you are not giving medical advice. " +
-          "No medical claims. Use the user's units. Speak directly to the lifter ('you'). " +
-          "After your summary, output a line containing exactly 'ACTIONS:' on its own, then 2-4 concrete " +
-          "action items — one per line, each starting with '- ' — that are specific and doable in the next " +
-          "session or two (e.g. '- Add 2.5kg to your bench press next session'). No other text after ACTIONS:.";
-        const hdrs = aiAuthHeaders();
-        if (!hdrs) { if (!cancelled) setState({ loading: false, text: "", error: "auth" }); return; }
-        const res = await fetch(aiEndpoint(), {
-          method: "POST",
-          headers: hdrs,
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 1000,
-            system: sys,
-            messages: [{ role: "user", content: "Here is my training data as JSON:\n" + JSON.stringify(ctx) + "\n\nGive me my coaching summary." }],
-          }),
-        });
-        if (res.status === 401) { if (!cancelled) setState({ loading: false, text: "", error: "auth" }); return; }
-        if (!res.ok) throw new Error("api_" + res.status);
-        const data = await res.json();
-        const raw = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
-        // #2 Actionable: split the prose summary from the ACTIONS: checklist.
-        let summary = raw, parsedActions = [];
-        // Tolerate markdown around the header (**ACTIONS:**, ### ACTIONS, missing colon, etc.),
-        // anchored to line start so "take actions" mid-sentence never false-matches.
-        const m = raw.split(/(?:^|\n)\s*\**#*\s*ACTIONS\s*:?\s*\**\s*(?:\n|$)/i);
-        if (m.length > 1) {
-          summary = m[0].trim();
-          parsedActions = m.slice(1).join("\n").split("\n")
-            .map(l => l.replace(/^\s*(?:[-•*]\s*|\d+[.)]\s+)/, "").trim())
-            .filter(Boolean)
-            .slice(0, 4)
-            .map((text, i) => ({ id: `${Date.now()}_${i}`, text, done: false }));
-        }
-        if (!cancelled) {
-          setActions(parsedActions);
-          setState({ loading: false, text: summary || "Couldn't generate advice right now.", error: summary ? null : "empty" });
-          // Persist this session so the coach remembers it next time (keep last 6, newest first).
-          if (summary && setStore) {
-            const entry = { date: dKey(), summary, actions: parsedActions };
-            setStore(p => ({ ...p, coachLog: [entry, ...((p.coachLog || []).slice(0, 5))] }));
-          }
-        }
-      } catch (e) {
-        if (!cancelled) setState({ loading: false, text: "", error: "failed" });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
+// Renders the STORED weekly review (no API call here — see generateWeeklyReview).
+function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
+  const review = store.weeklyReview || null;
+  const toggleAction = (id) => {
+    haptic("tap");
+    setStore(p => {
+      const wr = p.weeklyReview;
+      if (!wr) return p;
+      const actions = (wr.actions || []).map(a => a.id === id ? { ...a, done: !a.done } : a);
+      const log = [...(p.coachLog || [])];
+      if (log[0] && log[0].date === wr.date) log[0] = { ...log[0], actions };
+      return { ...p, weeklyReview: { ...wr, actions }, coachLog: log };
+    });
+  };
+  const fmtRange = (wk) => {
+    try {
+      const sun = new Date(wk + "T12:00:00");
+      const sat = new Date(sun.getTime() + 6 * 864e5);
+      const f = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      return `${f(sun)} – ${f(sat)}`;
+    } catch { return ""; }
+  };
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
       <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-            <span style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>AI Coaching</span>
+          <div>
+            <div style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>Weekly Review</div>
+            {review && <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Week of {fmtRange(review.weekKey)}</div>}
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1, padding:"6px 10px" }}>×</button>
         </div>
-        {state.loading && (
+        {reviewStatus === "generating" && !review && (
           <div style={{ padding:"40px 0", textAlign:"center", color:C.sub }}>
-            <div style={{ fontSize:13 }}>Analyzing your training…</div>
+            <div style={{ fontSize:13 }}>Reviewing your week…</div>
           </div>
         )}
-        {!state.loading && state.error === "no_data" && (
+        {reviewStatus !== "generating" && !review && (
           <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
-            Log a few workouts first — your coach needs some training history to give you useful advice.
+            <svg width="44" height="62" viewBox="0 0 40 56" style={{ display:"block", margin:"2px auto 10px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
+            Your first weekly review lands on Sunday. Train at least once this week and it'll be waiting when you open the app.
           </div>
         )}
-        {!state.loading && state.error === "auth" && (
-          <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
-            Sign in to use AI coaching — it reads your synced training history to give advice specific to you.
-          </div>
+        {review && (
+          <div style={{ fontSize:14.5, lineHeight:1.65, color:C.text, whiteSpace:"pre-wrap" }}>{review.summary}</div>
         )}
-        {!state.loading && (state.error === "failed" || state.error === "empty") && (
-          <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
-            Couldn't reach the coach right now. Please try again in a moment.
-          </div>
-        )}
-        {!state.loading && !state.error && (
-          <div style={{ fontSize:14.5, lineHeight:1.65, color:C.text, whiteSpace:"pre-wrap" }}>{state.text}</div>
-        )}
-        {!state.loading && !state.error && actions.length > 0 && (
+        {review && (review.actions || []).length > 0 && (
           <div style={{ marginTop:18 }}>
-            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.sub, marginBottom:10 }}>ACTION ITEMS</div>
-            {actions.map(a => (
-              <button key={a.id} onClick={() => {
-                setActions(prev => prev.map(x => x.id === a.id ? { ...x, done: !x.done } : x));
-                if (setStore) setStore(p => {
-                  const log = [...(p.coachLog || [])];
-                  if (log[0]) log[0] = { ...log[0], actions: (log[0].actions || []).map(x => x.id === a.id ? { ...x, done: !x.done } : x) };
-                  return { ...p, coachLog: log };
-                });
-                haptic("tap");
-              }} style={{
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.sub, marginBottom:10 }}>THIS WEEK'S TARGETS</div>
+            {review.actions.map(a => (
+              <button key={a.id} onClick={() => toggleAction(a.id)} style={{
                 width:"100%", display:"flex", alignItems:"flex-start", gap:10, textAlign:"left",
                 background:"none", border:"none", padding:"9px 0", cursor:"pointer", fontFamily:F,
                 borderBottom:`1px solid ${C.divider}`
@@ -16437,17 +16435,12 @@ function AICoachSheet({ store, setStore, unit, C, onClose }) {
           </div>
         )}
         <div style={{ fontSize:10, color:C.muted, marginTop:20, lineHeight:1.4, textAlign:"center" }}>
-          AI-generated guidance based on your logged data. Not medical or professional training advice.
+          Generated once a week from your logged training. Not medical or professional training advice.
         </div>
       </div>
     </div>
   );
 }
-
-
-// ─── Direct Messages ──────────────────────────────────────────────────────────
-// v1: simple polled DMs. One `messages` table; conversations are derived by peer.
-// No realtime — the thread polls every 5s while open, unread count every 30s.
 function fmtMsgTime(ts) {
   const d = new Date(ts), now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
@@ -16837,7 +16830,6 @@ function AppInner() {
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   // AI coach modal
   const [showCoach, setShowCoach] = useState(false);
-
   // Safety net: make sure the durable-storage write mirror is installed even if the app entry
   // (main.jsx) didn't call hydrateFromNative() for some reason. Hydration (restoring native →
   // localStorage at launch) only happens in main.jsx before mount, but installing the mirror
@@ -16856,6 +16848,44 @@ function AppInner() {
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = session?.access_token || null; }, [session]);
   const currentUserId = session?.user?.id || (isGuest ? GUEST_ID : null);
+
+  // Weekly review: at most ONE AI generation per user per week (cost-bounded by design).
+  // Anchored to the most recent Sunday; runs on first app open in a new week, signed-in
+  // users only, and only if they trained in the last 7 days. Result is stored — the sheet
+  // renders the stored copy, so reopening it never re-calls the API.
+  const [reviewStatus, setReviewStatus] = useState("idle");
+  const reviewAttemptRef = useRef(null);
+  useEffect(() => {
+    if (!dbReady || isGuest || !currentUserId) return;
+    const wk = weekKeyFor();
+    if (store.weeklyReview?.weekKey === wk) return;   // this week's review already exists
+    if (!trainedInLastWeek(store)) return;            // inactive week → save the API call
+    const attemptKey = `${currentUserId}:${wk}`;
+    if (reviewAttemptRef.current === attemptKey) return; // one attempt per app run
+    reviewAttemptRef.current = attemptKey;
+    let cancelled = false;
+    (async () => {
+      setReviewStatus("generating");
+      try {
+        const r = await generateWeeklyReview(store, store.unit || "lbs"); // AppInner's `unit` const is declared later — avoid TDZ
+        if (cancelled) return;
+        if (r && r.summary) {
+          const entry = { weekKey: wk, date: dKey(), summary: r.summary, actions: r.actions || [] };
+          setStore(p => ({ ...p, weeklyReview: entry,
+            coachLog: [{ date: entry.date, summary: entry.summary, actions: entry.actions }, ...((p.coachLog || []).slice(0, 5))] }));
+          setReviewStatus("idle");
+          toast("Your weekly review is ready", "success", { label: "View", onAction: () => setShowCoach(true) });
+        } else {
+          setReviewStatus(r?.error === "auth" ? "idle" : "error");
+        }
+      } catch (e) { if (!cancelled) setReviewStatus("error"); }
+    })();
+    return () => { cancelled = true; };
+    // store.history is a dep because history loads AFTER dbReady flips — without it the
+    // trained-last-week gate would see an empty history once and never re-check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbReady, isGuest, currentUserId, store.weeklyReview?.weekKey, store.history]);
+
   const currentUserIdRef = useRef(currentUserId);
   useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
   // Flipped true only after a successful loadUserData populated the server copies of
@@ -19398,7 +19428,7 @@ function AppInner() {
         }
       `}</style>
       {prModal && <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>}
-      {showCoach && <AICoachSheet store={store} setStore={setStore} unit={unit} C={C} onClose={() => setShowCoach(false)}/>}
+      {showCoach && <AICoachSheet store={store} setStore={setStore} unit={unit} C={C} reviewStatus={reviewStatus} onClose={() => setShowCoach(false)}/>}
       {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
       <ConfirmHost C={C}/>
