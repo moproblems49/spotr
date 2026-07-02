@@ -47,5 +47,15 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Seshd uses the camera so you can take photos for your posts and profile.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Seshd accesses your photo library so you can attach photos to posts and set a profile picture.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Seshd saves images you export (like your Wrapped recap) to your photo library.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Seshd reads your heart rate variability, resting heart rate, sleep, steps, and active energy to power recovery readiness and Body Battery.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Seshd saves your logged workouts to Apple Health so your training counts toward your activity.</string>
 </dict>
 </plist>
