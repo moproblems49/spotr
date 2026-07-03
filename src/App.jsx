@@ -1,4 +1,4 @@
-// v178091716643
+// v178091716644
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5586,31 +5586,35 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         {isCardio ? (
           <>
             <div style={{ position:"relative", width:70 }}>
-              <input readOnly type="text" inputMode="none" value={set.weight||""} onClick={() => onFocusInput && onFocusInput("weight")} placeholder={prev?.w||"0"}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
-              />
+              <div data-set-field="weight" onClick={() => onFocusInput && onFocusInput("weight")}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.weight || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
+                </div>
               <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>min</span>
             </div>
             <div style={{ position:"relative", width:62 }}>
-              <input readOnly type="text" inputMode="none" value={set.reps||""} onClick={() => onFocusInput && onFocusInput("reps")} placeholder={prev?.r||"0"}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
-              />
+              <div data-set-field="reps" onClick={() => onFocusInput && onFocusInput("reps")}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.reps || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
+                </div>
               <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
             </div>
           </>
         ) : (
           <>
             <div style={{ position:"relative", width:70 }}>
-              <input readOnly type="text" inputMode="none" value={set.weight||""} onClick={() => onFocusInput && onFocusInput("weight")} placeholder={prev?.w||"0"}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
-              />
+              <div data-set-field="weight" onClick={() => onFocusInput && onFocusInput("weight")}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.weight || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
+                </div>
               <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit}</span>
             </div>
 
             <div style={{ position:"relative", width:58 }}>
-              <input readOnly type="text" inputMode="none" value={set.reps||""} onClick={() => onFocusInput && onFocusInput("reps")} placeholder={prev?.r||"0"}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
-              />
+              <div data-set-field="reps" onClick={() => onFocusInput && onFocusInput("reps")}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.reps || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
+                </div>
               <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>reps</span>
             </div>
           </>
