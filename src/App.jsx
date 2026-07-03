@@ -1,4 +1,4 @@
-// v178091716640
+// v178091716641
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14592,10 +14592,20 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     const now = new Date();
     const unit_ = displayUnit || store.unit || "lbs";
     const sex_ = store.strengthSex || "male";
+    // Adaptive granularity: young accounts (<12 weeks of history) get WEEKLY snapshots —
+    // monthly gave a 2-week-old account two near-identical points (a flat line that hid
+    // real week-over-week improvement). Older accounts get monthly, capped at 12 points.
+    const spanDays = (now.getTime() - firstMs) / 864e5;
+    const weekly = spanDays < 84;
     const snapshots = [];
-    for (let i = 11; i >= 1; i--) {
-      const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0); // last day of that month
-      if (mEnd.getTime() >= firstMs) snapshots.push(mEnd);
+    if (weekly) {
+      const nWeeks = Math.min(11, Math.floor(spanDays / 7));
+      for (let i = nWeeks; i >= 1; i--) snapshots.push(new Date(now.getTime() - i * 7 * 864e5));
+    } else {
+      for (let i = 11; i >= 1; i--) {
+        const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0); // last day of that month
+        if (mEnd.getTime() >= firstMs) snapshots.push(mEnd);
+      }
     }
     snapshots.push(now);
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -14611,7 +14621,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         unit_, sex_, d.getTime()
       );
       if (!snap.ready) return null;
-      return { value: snap.score, label: i === snapshots.length - 1 ? "Now" : MONTHS[d.getMonth()] };
+      return { value: snap.score, label: i === snapshots.length - 1 ? "Now" : (weekly ? `${d.getMonth()+1}/${d.getDate()}` : MONTHS[d.getMonth()]) };
     }).filter(Boolean);
     return pts.length >= 2 ? pts : null;
   }, [isMe, store.history, store.bodyLog, store.prEvents, store.strengthSex, displayUnit, store.unit]);
