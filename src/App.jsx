@@ -1,4 +1,4 @@
-// v178091716642
+// v178091716643
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1241,7 +1241,13 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
     return (
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
         <svg viewBox={VB[view]} width={figW} height={figH} style={{ display:"block" }}>
-          {f._body && <path d={f._body} fill={bodyCol}/>}
+          {f._body && <>
+            {/* pass 1: thick half-opacity stroke fuses the fiber shapes into one soft
+                silhouette (the stock art is "floating islands" — without this, the gaps
+                between muscle groups show the card background as white channels) */}
+            <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/>
+            <path d={f._body} fill={bodyCol} stroke={bodyCol} strokeWidth={3} strokeLinejoin="round"/>
+          </>}
           {muscles.map(mk => {
             const k = view + ":" + mk;
             const fill = accent[k] ? accentCol : light[k] ? lightCol : bodyCol;
@@ -1531,7 +1537,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
     return (
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
         <svg viewBox={VB[view]} width={figW} height={figH} style={{ display:"block" }}>
-          {f._body && <path d={f._body} fill={bodyCol}/>}
+          {f._body && <>
+            {/* pass 1: thick half-opacity stroke fuses the fiber shapes into one soft
+                silhouette (the stock art is "floating islands" — without this, the gaps
+                between muscle groups show the card background as white channels) */}
+            <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/>
+            <path d={f._body} fill={bodyCol} stroke={bodyCol} strokeWidth={3} strokeLinejoin="round"/>
+          </>}
           {muscles.map(mk => (
             <path key={mk} d={f[mk]} fill={fillFor(view + ":" + mk)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"
               onClick={() => { setSelectedRegion({ key: view + ":" + mk, region: mk }); haptic("tap"); }} style={{ cursor:"pointer" }}/>
@@ -6023,7 +6035,7 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
     const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
     const h = Math.round(w * 408 / 160);
     let s = `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="${vb}">`;
-    s += `<path d="${f._body}" fill="#34343e"/>`;
+    s += `<path d="${f._body}" fill="#34343e" fill-opacity="0.55" stroke="#34343e" stroke-opacity="0.55" stroke-width="19" stroke-linejoin="round"/><path d="${f._body}" fill="#34343e" stroke="#34343e" stroke-width="3" stroke-linejoin="round"/>`;
     for (const mk of Object.keys(f).filter(k => k !== "_body")) {
       const t = max > 0 ? (region[view + ":" + mk] || 0) / max : 0;
       s += `<path d="${f[mk]}" fill="${heat(t)}" stroke="#0A0A0A" stroke-width="0.6"/>`;
@@ -6242,7 +6254,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
               const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
               return (
                 <svg viewBox={vb} width={88} height={Math.round(88*408/160)} style={{ display:"block" }}>
-                  <path d={f._body} fill="#34343e"/>
+                  <><path d={f._body} fill="#34343e" fillOpacity={0.55} stroke="#34343e" strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/><path d={f._body} fill="#34343e" stroke="#34343e" strokeWidth={3} strokeLinejoin="round"/></>
                   {Object.keys(f).filter(k=>k!=="_body").map(mk => {
                     const t = max>0 ? (region[view+":"+mk]||0)/max : 0;
                     return <path key={mk} d={f[mk]} fill={heat(t)} stroke="#0A0A0A" strokeWidth={0.6}/>;
@@ -7277,7 +7289,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                   const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
                   return (
                     <svg viewBox={vb} width={92} height={Math.round(92*408/160)} style={{ display:"block" }}>
-                      <path d={f._body} fill="#34343e"/>
+                      <><path d={f._body} fill="#34343e" fillOpacity={0.55} stroke="#34343e" strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/><path d={f._body} fill="#34343e" stroke="#34343e" strokeWidth={3} strokeLinejoin="round"/></>
                       {Object.keys(f).filter(k=>k!=="_body").map(mk => (
                         <path key={mk} d={f[mk]} fill={heat((w.muscles[view+":"+mk]||0)/w.muscleMax)} stroke="#0A0A0A" strokeWidth={0.6}/>
                       ))}
