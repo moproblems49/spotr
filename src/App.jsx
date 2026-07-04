@@ -1,4 +1,4 @@
-// v178091716650
+// v178091716651
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2166,7 +2166,10 @@ function ConfirmHost({ C }) {
   ), document.body);
 }
 function ToastHost() {
-  const [t, setT] = useState(null);
+  // Seed from the queue: a toast fired before this host mounts (e.g. a failure during the
+  // boot "Setting up your account" screen, which early-returns before ToastHost renders)
+  // would otherwise sit in _toastQueue forever and never display.
+  const [t, setT] = useState(() => _toastQueue[0] || null);
   _setToast = setT;
   useEffect(() => {
     if (!t) return;
@@ -17782,7 +17785,7 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isGuest, currentUserId]);
 
-  async function loadUserData() {
+  async function loadUserData(attempt = 0) {
     setDataLoading(true);
     // Until this load succeeds, hold off the prefs save effect — prevents a user switch (or a
     // failed load) from pushing the wrong/empty notes-bar-types-closeFriends back to the server.
@@ -18068,6 +18071,12 @@ function AppInner() {
       setDbReady(true);
     } catch (e) {
       devError("loadUserData error:", e);
+      // One silent retry before alarming the user — a single blip (token rotation race,
+      // cold start, flaky mobile signal) shouldn't flash "check connection" at login.
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 1500));
+        return loadUserData(1);
+      }
       toast("Couldn't load your data — check connection", "error");
       setDbReady(true);
     } finally {
