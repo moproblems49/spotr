@@ -6358,7 +6358,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
               const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta, bodyMapData });
               const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd");
               if (!ok) {
-                const text = `My week on Seshd\n${workouts} workouts · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PRs · ${streak} day streak`;
+                const text = `My week on Seshd\n${workouts} workout${workouts === 1 ? "" : "s"} · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PR${weekPRs === 1 ? "" : "s"} · ${streak} day streak`;
                 if (navigator.clipboard) { await navigator.clipboard.writeText(text); if (typeof toast === "function") toast("Copied to clipboard", "success"); }
               }
             } finally {
@@ -16504,8 +16504,8 @@ function PublicProfileView({ userId, C, onOpenApp }) {
                 <div style={{ fontSize:15, fontWeight:700 }}>{w.day_name || "Workout"}</div>
                 <div style={{ fontSize:12, color:C.sub, marginTop:3, fontFamily:MONO }}>
                   {dateStr ? new Date(dateStr).toLocaleDateString("en", { month:"short", day:"numeric" }) : ""}
-                  {(w.exercises?.length) ? ` · ${w.exercises.length} exercises` : ""}
-                  {setCount ? ` · ${setCount} sets` : ""}
+                  {(w.exercises?.length) ? ` · ${w.exercises.length} exercise${w.exercises.length === 1 ? "" : "s"}` : ""}
+                  {setCount ? ` · ${setCount} set${setCount === 1 ? "" : "s"}` : ""}
                 </div>
               </div>
               );
