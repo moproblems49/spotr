@@ -15090,7 +15090,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {user?.name}
             {isMe && (streak > 0 || weeklyStreak.thisWeek > 0) && <StreakBadge streak={streak} status={weeklyStreak.status} thisWeek={weeklyStreak.thisWeek} target={weeklyStreak.target} size="sm"/>}
           </div>
-          <div style={{ fontSize:13, color:C.sub }}>@{user?.username}</div>
+          {user?.username && <div style={{ fontSize:13, color:C.sub }}>@{user.username}</div>}
           {user?.bio && <div style={{ fontSize:13, color:C.text, marginTop:4 }}>{user.bio}</div>}
         </div>
         {!isMe ? (
