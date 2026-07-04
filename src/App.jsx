@@ -1,4 +1,4 @@
-// v178091716649
+// v178091716650
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -376,7 +376,41 @@ const sb = (() => {
 
   const queuedCount = () => readQueue().length;
 
-  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth, signInWithApple };
+  // Password reset step 1: email a recovery link. Accepts a username too (same profiles-table
+  // lookup as signIn). The link redirects back to the app, which lands with #type=recovery in
+  // the hash — handled at boot alongside the OAuth callback.
+  async function recover(emailOrUsername) {
+    let email = (emailOrUsername || "").trim();
+    if (!email.includes("@")) {
+      const rows = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?username=eq.${encodeURIComponent(email.toLowerCase())}&select=email`,
+        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+      ).then(r => r.json()).catch(() => []);
+      const found = rows?.[0]?.email;
+      if (!found) return; // silent — the UI always shows "if an account exists" (no enumeration)
+      email = found;
+    }
+    const redirectTo = (typeof window !== "undefined" && /^https?:/.test(window.location?.origin || ""))
+      ? window.location.origin : "https://spotr-drab.vercel.app";
+    await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
+      method: "POST", headers, body: JSON.stringify({ email }),
+    });
+  }
+  // Password reset step 2: set the new password using the recovery session's access token.
+  async function updatePassword(token, password) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: "PUT",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error || data.error_description) {
+      throw new Error(data.error_description || data.msg || data.error || "Couldn't update password.");
+    }
+    return data;
+  }
+
+  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth, signInWithApple, recover, updatePassword };
 })();
 
 // Upload image to Supabase Storage, return public URL
@@ -15996,13 +16030,24 @@ function EditPostModal({ C, post, onSave, onClose }) {
 // AUTH SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
 function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null }) {
-  const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup"
+  const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup" | "reset"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+
+  // Forgot-password: always report success — never reveal whether an account exists.
+  async function handleReset() {
+    setError("");
+    if (!email.trim()) { setError("Enter your email or username first"); return; }
+    setLoading(true);
+    try { await sb.recover(email); } catch (e) { /* silent by design */ }
+    setResetSent(true);
+    setLoading(false);
+  }
 
   async function handleSubmit() {
     setError("");
@@ -16196,6 +16241,8 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
     }}>
       <div style={{ display:"flex", alignItems:"center", height:48 }}>
         <button onClick={() => {
+          // From the reset form, Back returns to sign-in (not the welcome screen).
+          if (mode === "reset") { setMode("signin"); setError(""); setResetSent(false); return; }
           // Opened as an in-app guest gate (promptReason set): Back returns to the app, not to
           // the marketing welcome screen — a guest mid-session shouldn't land on "Start Tracking".
           if (promptReason && onGuest) { onGuest(); return; }
@@ -16214,10 +16261,12 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           fontSize:28, fontWeight:900, color:C.text, marginBottom:6,
           letterSpacing:-0.8, fontFamily:F
         }}>
-          {mode === "signin" ? "Welcome back" : "Create your account"}
+          {mode === "signin" ? "Welcome back" : mode === "reset" ? "Reset password" : "Create your account"}
         </h1>
         <p style={{ fontSize:14, color:C.sub, marginBottom:28, fontFamily:F }}>
-          {mode === "signin" ? "Sign in to sync your progress" : "Save your progress and connect with friends"}
+          {mode === "signin" ? "Sign in to sync your progress"
+            : mode === "reset" ? "We'll email you a link to set a new password"
+            : "Save your progress and connect with friends"}
         </p>
 
         {mode === "signup" && (
@@ -16232,23 +16281,39 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         <input value={email} onChange={e => setEmail(e.target.value)}
           placeholder="Email or username" type="email" style={inputStyle}
           autoCapitalize="none" autoCorrect="off" autoComplete="email"/>
-        <input value={password} onChange={e => setPassword(e.target.value)}
-          placeholder="Password" type="password" style={inputStyle}
-          autoComplete={mode === "signin" ? "current-password" : "new-password"}/>
+        {mode !== "reset" && (
+          <input value={password} onChange={e => setPassword(e.target.value)}
+            placeholder="Password" type="password" style={inputStyle}
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}/>
+        )}
+        {mode === "signin" && (
+          <button onClick={() => { setMode("reset"); setError(""); setResetSent(false); }} style={{
+            background:"none", border:"none", color:C.sub, fontSize:12, fontWeight:600,
+            cursor:"pointer", fontFamily:F, alignSelf:"flex-end", padding:"0 2px 12px", marginTop:-2,
+          }}>Forgot password?</button>
+        )}
 
         {error && (
           <div style={{ fontSize:13, color:C.red, marginBottom:10, textAlign:"center", lineHeight:1.4 }}>
             {error}
           </div>
         )}
+        {mode === "reset" && resetSent && (
+          <div style={{ fontSize:13, color:C.green || "#22c55e", marginBottom:10, textAlign:"center", lineHeight:1.5 }}>
+            If an account exists for that email, a reset link is on its way. Check your inbox (and spam).
+          </div>
+        )}
 
-        <button onClick={handleSubmit} disabled={loading} style={{
+        <button onClick={mode === "reset" ? handleReset : handleSubmit} disabled={loading} style={{
           width:"100%", background:loading ? C.sub : C.text, color:C.bg,
           border:"none", borderRadius:12, padding:"15px",
           fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer",
           fontFamily:F, marginTop:6, marginBottom:14,
         }}>
-          {loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Create Account"}
+          {loading ? "Please wait..."
+            : mode === "signin" ? "Sign In"
+            : mode === "reset" ? (resetSent ? "Resend link" : "Send reset link")
+            : "Create Account"}
         </button>
 
         {/* OAuth divider */}
@@ -16315,6 +16380,45 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
             : <>Have an account? <span style={{ color:C.accent, fontWeight:700 }}>Sign in</span></>
           }
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Shown after the user opens a password-recovery email link (#type=recovery in the URL hash).
+// The recovery session is already saved at this point; this just sets the new password.
+function NewPasswordScreen({ token, onDone, C }) {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  async function submit() {
+    setError("");
+    if (pw.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (pw !== pw2) { setError("Passwords don't match"); return; }
+    setLoading(true);
+    try { await sb.updatePassword(token, pw); onDone(); }
+    catch (e) { setError(e.message || "Couldn't update password. Try the email link again."); }
+    finally { setLoading(false); }
+  }
+  const inputStyle = {
+    width:"100%", background:C.divider, border:"none", borderRadius:12,
+    padding:"14px 16px", fontSize:16, color:C.text, outline:"none",
+    fontFamily:F, boxSizing:"border-box", marginBottom:10
+  };
+  return (
+    <div style={{ minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column", justifyContent:"center",
+      padding:"0 24px", paddingTop:"max(env(safe-area-inset-top), 20px)", paddingBottom:"max(env(safe-area-inset-bottom), 24px)" }}>
+      <div style={{ maxWidth:380, width:"100%", margin:"0 auto" }}>
+        <h1 style={{ fontSize:28, fontWeight:900, color:C.text, marginBottom:6, letterSpacing:-0.8, fontFamily:F }}>Set a new password</h1>
+        <p style={{ fontSize:14, color:C.sub, marginBottom:28, fontFamily:F }}>You're signed in — choose a new password to finish.</p>
+        <input value={pw} onChange={e => setPw(e.target.value)} placeholder="New password" type="password" style={inputStyle} autoComplete="new-password"/>
+        <input value={pw2} onChange={e => setPw2(e.target.value)} placeholder="Repeat new password" type="password" style={inputStyle} autoComplete="new-password"/>
+        {error && <div style={{ fontSize:13, color:C.red, marginBottom:10, textAlign:"center", lineHeight:1.4 }}>{error}</div>}
+        <button onClick={submit} disabled={loading} style={{
+          width:"100%", background:loading ? C.sub : C.text, color:C.bg, border:"none", borderRadius:12,
+          padding:"15px", fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", fontFamily:F, marginTop:6,
+        }}>{loading ? "Saving..." : "Save new password"}</button>
       </div>
     </div>
   );
@@ -16941,6 +17045,8 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
 function AppInner() {
   // ── Auth state ──────────────────────────────────────────────────
   const [session, setSession] = useState(loadSession);
+  // True while a password-recovery session needs its new password set (email link landing).
+  const [recoveryNeeded, setRecoveryNeeded] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   // True while the initial user-data fetch (profiles/programs/PRs/history/groups/feed) is in flight.
   // Used to show skeleton loaders on screens that would otherwise flash empty states.
@@ -17417,6 +17523,9 @@ function AppInner() {
           const access_token = params.get("access_token");
           const refresh_token = params.get("refresh_token");
           const expires_in = params.get("expires_in");
+          // Password-recovery links land with the same token hash plus type=recovery —
+          // sign the session in as usual, then force the set-new-password screen.
+          const isRecovery = params.get("type") === "recovery";
           if (access_token && refresh_token) {
             // Get user info
             const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -17426,6 +17535,7 @@ function AppInner() {
             const sess = { access_token, refresh_token, expires_in: parseInt(expires_in||"3600"), user };
             saveSession(sess);
             setSession(sess);
+            if (isRecovery) setRecoveryNeeded(true);
             // Clear the hash so it doesn't stick
             window.history.replaceState(null, "", window.location.pathname + window.location.search);
             // If user was a guest, migrate their data
@@ -19091,6 +19201,12 @@ function AppInner() {
         <Spinner C={C} size={20}/>
       </div>
     );
+  }
+
+  // ── Password-recovery landing: force the new-password screen before anything else ──
+  if (session && recoveryNeeded) {
+    return <NewPasswordScreen C={C} token={session.access_token}
+      onDone={() => { setRecoveryNeeded(false); toast("Password updated — you're signed in", "success"); }}/>;
   }
 
   // ── Show auth screen if not logged in AND not a guest ─────────
