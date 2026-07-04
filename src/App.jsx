@@ -1,4 +1,4 @@
-// v178091716646
+// v178091716647
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8154,13 +8154,18 @@ function saveCustomExercise({ name, muscle, equipment }, store, setStore, curren
   return entry;
 }
 
-// Merge/rename an exercise everywhere: retag all history sets, programs, and PRs from oldName to
-// newName so a slightly-misnamed lift's progress and PRs consolidate with the canonical exercise.
+// Merge/rename exercises everywhere: retag all history sets, programs, and PRs from each old name
+// to its canonical name so a slightly-misnamed lift's progress and PRs consolidate with the real
+// exercise. Takes a { oldName: newName } map and applies ALL pairs in ONE pass — sessions holding
+// two renamed exercises would lose the first rename if pairs were applied one call at a time (each
+// call would compute + PATCH the session row from the same pre-rename store snapshot).
 // Updates local state immediately and best-effort syncs the affected server rows. Returns the
 // number of workout sessions touched.
-function mergeExerciseName(oldName, newName, store, setStore, currentUserId, token) {
-  if (!oldName || !newName || oldName === newName) return 0;
+function mergeExerciseNames(mapping, store, setStore, currentUserId, token) {
+  const pairs = Object.entries(mapping || {}).filter(([o, n]) => o && n && o !== n);
+  if (!pairs.length) return 0;
   const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
+  const ren = (name) => (mapping[name] && mapping[name] !== name) ? mapping[name] : name;
 
   // 1. History — retag matching exercises, tracking which session rows changed (sid = server row id).
   const hist = store.history || {};
@@ -8171,7 +8176,8 @@ function mergeExerciseName(oldName, newName, store, setStore, currentUserId, tok
     for (const [sid, sess] of Object.entries(hist[date] || {})) {
       let changed = false;
       const exs = (sess.exercises || []).map(ex => {
-        if (ex.name === oldName) { changed = true; return { ...ex, name: newName }; }
+        const nn = ren(ex.name);
+        if (nn !== ex.name) { changed = true; return { ...ex, name: nn }; }
         return ex;
       });
       newHist[date][sid] = changed ? { ...sess, exercises: exs } : sess;
@@ -8179,14 +8185,18 @@ function mergeExerciseName(oldName, newName, store, setStore, currentUserId, tok
     }
   }
 
-  // 2. PRs — merge into the canonical name (keep the heavier), drop the old key.
+  // 2. PRs — merge into each canonical name (keep the heavier), drop the old keys. Two old names
+  // merging into the same target works because prs[newName] carries forward through the loop.
   const prs = { ...(store.prs || {}) };
-  const hadOldPR = prs[oldName] != null;
-  let mergedPR = null;
-  if (hadOldPR) {
-    mergedPR = Math.max(prs[oldName], prs[newName] || 0);
+  const prUpserts = []; // { exercise_name, weight_lbs }
+  const prDeletes = []; // old names whose server PR rows should go
+  for (const [oldName, newName] of pairs) {
+    if (prs[oldName] == null) continue;
+    const mergedPR = Math.max(prs[oldName], prs[newName] || 0);
     prs[newName] = mergedPR;
     delete prs[oldName];
+    prUpserts.push({ exercise_name: newName, weight_lbs: mergedPR });
+    prDeletes.push(oldName);
   }
 
   // 3. Programs — retag, tracking which programs changed.
@@ -8196,7 +8206,8 @@ function mergeExerciseName(oldName, newName, store, setStore, currentUserId, tok
     const days = (p.days || []).map(d => ({
       ...d,
       exercises: (d.exercises || []).map(ex => {
-        if (ex.name === oldName) { changed = true; return { ...ex, name: newName }; }
+        const nn = ren(ex.name);
+        if (nn !== ex.name) { changed = true; return { ...ex, name: nn }; }
         return ex;
       })
     }));
@@ -8204,9 +8215,9 @@ function mergeExerciseName(oldName, newName, store, setStore, currentUserId, tok
     return p;
   });
 
-  // 4. Drop the old name from the custom registry if it lived there (it's now merged).
-  const hadCustom = (store.customExercises || []).some(e => e.name === oldName);
-  const customExercises = (store.customExercises || []).filter(e => e.name !== oldName);
+  // 4. Drop the old names from the custom registry if they lived there (they're now merged).
+  const hadCustom = (store.customExercises || []).some(e => ren(e.name) !== e.name);
+  const customExercises = (store.customExercises || []).filter(e => ren(e.name) === e.name);
 
   // Apply locally first so the UI updates instantly.
   setStore(prev => ({ ...prev, history: newHist, prs, programs: newPrograms, customExercises }));
@@ -8220,7 +8231,7 @@ function mergeExerciseName(oldName, newName, store, setStore, currentUserId, tok
       const pending = JSON.parse(raw);
       let touched = false;
       pending.forEach(item => {
-        (item?.data?.exercises || []).forEach(ex => { if (ex.name === oldName) { ex.name = newName; touched = true; } });
+        (item?.data?.exercises || []).forEach(ex => { const nn = ren(ex.name); if (nn !== ex.name) { ex.name = nn; touched = true; } });
       });
       if (touched) localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
     }
@@ -8231,10 +8242,12 @@ function mergeExerciseName(oldName, newName, store, setStore, currentUserId, tok
     affected.forEach(({ sid, exercises }) => {
       try { sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ exercises }) }, tok).catch(() => {}); } catch (e) {}
     });
-    if (hadOldPR) {
-      try { sb.queueWrite(`personal_records`, { method: "POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: newName, weight_lbs: mergedPR }) }, tok).catch(() => {}); } catch (e) {}
+    prUpserts.forEach(({ exercise_name, weight_lbs }) => {
+      try { sb.queueWrite(`personal_records`, { method: "POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name, weight_lbs }) }, tok).catch(() => {}); } catch (e) {}
+    });
+    prDeletes.forEach((oldName) => {
       try { sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(oldName)}`, { method: "DELETE" }, tok).catch(() => {}); } catch (e) {}
-    }
+    });
     affectedPrograms.forEach(p => {
       try { sb.queueWrite(`programs?id=eq.${p.id}`, { method: "PATCH", body: JSON.stringify({ days: p.days }) }, tok).catch(() => {}); } catch (e) {}
     });
@@ -8244,6 +8257,34 @@ function mergeExerciseName(oldName, newName, store, setStore, currentUserId, tok
   }
   return affected.length;
 }
+// Single-pair convenience wrapper (the custom-exercise manager's "merge into" flow uses this).
+function mergeExerciseName(oldName, newName, store, setStore, currentUserId, token) {
+  return mergeExerciseNames({ [oldName]: newName }, store, setStore, currentUserId, token);
+}
+
+// One-time cleanup of commonly misnamed custom exercises → their canonical built-in entries, so
+// logged work consolidates under names that carry hand-written guides, body-map credit, and
+// leaderboard identity. Applied once per device at boot (flag: seshd_custom_merge_v1); merging
+// keeps every logged set and PR. Keys must match the logged names EXACTLY (trailing spaces real).
+const CUSTOM_MERGE_MAP_V1 = {
+  "Barbell Bent-Over Row": "Barbell Row",
+  "Standing Barbell OHP": "Overhead Press (Barbell)",
+  "T-Bar ": "T-Bar Row",
+  "T-Bar Row (narrow) ": "T-Bar Row",
+  "Seated Cable High Row (Wide)": "Seated Cable Row (Wide)",
+  "Cable Face Pull": "Face Pulls",
+  "Cable Lateral Raises": "Lateral Raises (Cable)",
+  "Lat Pulldown (high row machine)": "High Row (Machine)",
+  "Hex Bar Deadlift": "Trap Bar Deadlift",
+  "Bird machine lateral raises ": "Lateral Raises (Machine)",
+  "Cable Chest Fly": "Cable Fly (Neutral)",
+  "Cable fly": "Cable Fly (Neutral)",
+  "Cable Curl (single-arm)": "Cable Curl (Single Arm)",
+  "Lat Pulldown (underhand)": "Lat Pulldown (Underhand)",
+  "Lateral Raises": "Lateral Raises (DB)",
+  "Overhead Tricep Extension": "Overhead Tricep Extension (Cable)",
+  "EZ Bar Curl → Reverse Curl": "EZ Bar Curl",
+};
 
 // Reusable inline "create custom exercise" panel: shows a muscle-group picker (and optional
 // equipment) for a typed name, then calls onCreate(entry). Used wherever exercises are added.
@@ -16958,6 +16999,30 @@ function AppInner() {
     // trained-last-week gate would see an empty history once and never re-check.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbReady, isGuest, currentUserId, store.weeklyReview?.weekKey, store.history]);
+
+  // One-time merge of misnamed custom exercises into canonical built-ins (CUSTOM_MERGE_MAP_V1).
+  // Waits for history to hydrate (same reason as the weekly-review effect above), runs the whole
+  // map in one batched pass, then flags the device done — including when nothing matched, so
+  // this never rescans on later boots.
+  useEffect(() => {
+    if (!dbReady || isGuest || !currentUserId) return;
+    try { if (localStorage.getItem("seshd_custom_merge_v1")) return; } catch (e) {}
+    const hist = store.history || {};
+    if (!Object.keys(hist).length) return; // history not hydrated yet — dep below re-fires
+    let hasAny = (store.customExercises || []).some(e => CUSTOM_MERGE_MAP_V1[e.name]);
+    if (!hasAny) {
+      outer: for (const d of Object.keys(hist)) {
+        for (const sess of Object.values(hist[d] || {})) {
+          for (const ex of (sess.exercises || [])) {
+            if (CUSTOM_MERGE_MAP_V1[ex.name]) { hasAny = true; break outer; }
+          }
+        }
+      }
+    }
+    if (hasAny) mergeExerciseNames(CUSTOM_MERGE_MAP_V1, store, setStore, currentUserId, token);
+    try { localStorage.setItem("seshd_custom_merge_v1", "1"); } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbReady, isGuest, currentUserId, store.history]);
 
   const currentUserIdRef = useRef(currentUserId);
   useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
