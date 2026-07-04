@@ -1,4 +1,4 @@
-// v178091716645
+// v178091716646
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12692,8 +12692,8 @@ function getCues(name, muscle, exerciseCues) {
     const g = exerciseCues[name];
     return { cues: g.cues, mistakes: g.mistakes, breathe: g.breathe || null };
   }
-  // No generic per-muscle cues — if an exercise somehow isn't in the guide set, return a minimal
-  // neutral set and let the AI form guide button fill specifics on demand.
+  // Every built-in exercise has a hand-written guide; this minimal neutral set only shows for
+  // user-created custom exercises (and while the cues module is still loading).
   return { cues:["Move through a full range of motion","Control the lowering phase","Keep good form over heavy load"], mistakes:["Using momentum","Partial reps"], breathe:null };
 }
 
@@ -12887,43 +12887,6 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
   // Last 3 sessions for the mini-recent list (newest first)
   const recentSessions = historyData.slice(-3).reverse();
 
-  // AI "How to" — generates exercise-specific cues on demand for any movement (especially the
-  // ~290 without a hand-written guide). Cached in localStorage so repeat views are free.
-  const aiCacheKey = `seshd_ai_howto_${name}`;
-  const [aiGuide, setAiGuide] = useState(() => {
-    try { const c = localStorage.getItem(aiCacheKey); return c ? JSON.parse(c) : null; } catch { return null; }
-  });
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState(false);
-  async function fetchAiHowTo() {
-    setAiLoading(true); setAiError(false);
-    try {
-      const hdrs = aiAuthHeaders();
-      if (!hdrs) throw new Error("auth_required"); // guest → shows the standard error state
-      const res = await fetch(aiEndpoint(), {
-        method: "POST",
-        headers: hdrs,
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 700,
-          system: "You are a strength coach. For the given exercise, return ONLY JSON with this shape: " +
-            '{"steps":["..."],"cues":["..."],"mistakes":["..."]}. steps = 3-5 short numbered how-to-perform steps. ' +
-            "cues = 3-4 short technique cues. mistakes = 3-4 common mistakes. Each item under 12 words. No commentary outside JSON.",
-          messages: [{ role: "user", content: `Exercise: ${name} (primary muscle: ${exInfo.muscle})` }],
-        }),
-      });
-      if (!res.ok) throw new Error("api_" + res.status);
-      const data = await res.json();
-      let text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
-      text = text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(text);
-      if (!parsed || !Array.isArray(parsed.steps)) throw new Error("bad_shape");
-      setAiGuide(parsed);
-      try { localStorage.setItem(aiCacheKey, JSON.stringify(parsed)); } catch {}
-    } catch (e) { setAiError(true); }
-    finally { setAiLoading(false); }
-  }
-
   // Portaled to document.body: this is a full-screen overlay opened from inside tab content,
   // so without a portal it'd render nested under the tab-swipe track and inherit any transform
   // that ancestor briefly has mid-gesture, breaking its position:fixed sizing/centering.
@@ -13090,72 +13053,6 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
             <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{cueData.breathe}</div>
           </div>
         )}
-
-        {/* AI How-To — generates exercise-specific steps/cues/mistakes on demand */}
-        <div style={{ margin:"0 16px 24px" }}>
-          {!aiGuide && (
-            <button
-              onClick={fetchAiHowTo}
-              disabled={aiLoading}
-              style={{
-                width:"100%", padding:"13px 16px", borderRadius:12, cursor:aiLoading?"default":"pointer",
-                background: aiLoading ? C.surface : C.accent, color: aiLoading ? C.sub : C.onAccent,
-                border:`1px solid ${aiLoading ? C.border : C.accent}`, fontSize:13, fontWeight:700, fontFamily:F,
-                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-              }}
-            >
-              {aiLoading ? "Generating form guide…" : (
-                <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
-                Get AI form guide for {name.length > 22 ? "this exercise" : name}</>
-              )}
-            </button>
-          )}
-          {aiError && !aiLoading && (
-            <div style={{ marginTop:8, fontSize:12, color:C.sub, textAlign:"center" }}>Couldn't reach the coach — tap to retry.</div>
-          )}
-          {aiGuide && (
-            <div>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                <div style={{ fontSize:13, fontWeight:700, color:C.text, letterSpacing:0.3, display:"flex", alignItems:"center", gap:6 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
-                  AI FORM GUIDE
-                </div>
-                <button onClick={fetchAiHowTo} disabled={aiLoading} style={{ background:"none", border:"none", color:C.accent, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F }}>{aiLoading ? "…" : "↻ Regenerate"}</button>
-              </div>
-              {Array.isArray(aiGuide.steps) && aiGuide.steps.length > 0 && (
-                <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:12 }}>
-                  {aiGuide.steps.map((s, i) => (
-                    <div key={i} style={{ display:"flex", gap:12, padding:"11px 14px", borderBottom: i < aiGuide.steps.length-1 ? `1px solid ${C.divider}` : "none", alignItems:"flex-start" }}>
-                      <div style={{ width:20, height:20, borderRadius:"50%", background:C.accent, color:C.onAccent, fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>{i+1}</div>
-                      <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{s}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {Array.isArray(aiGuide.cues) && aiGuide.cues.length > 0 && (
-                <div style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.5, marginBottom:6 }}>KEY CUES</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                    {aiGuide.cues.map((c, i) => (
-                      <span key={i} style={{ fontSize:12, color:C.text, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 10px" }}>{c}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {Array.isArray(aiGuide.mistakes) && aiGuide.mistakes.length > 0 && (
-                <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:8 }}>
-                  {aiGuide.mistakes.map((m, i) => (
-                    <div key={i} style={{ display:"flex", gap:12, padding:"11px 14px", borderBottom: i < aiGuide.mistakes.length-1 ? `1px solid ${C.divider}` : "none", alignItems:"flex-start" }}>
-                      <div style={{ color:"#ef4444", fontSize:16, flexShrink:0, lineHeight:1.3 }}>✕</div>
-                      <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{m}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{ fontSize:10, color:C.muted, textAlign:"center", marginTop:6 }}>AI-generated · always prioritize safe form</div>
-            </div>
-          )}
-        </div>
 
         {/* Previous sessions */}
         {historyData.length > 0 && (
