@@ -1,4 +1,4 @@
-// v178091716648
+// v178091716649
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16009,7 +16009,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
     if (!email || !password) { setError("Email and password required"); return; }
     if (mode === "signup" && !username) { setError("Username required"); return; }
     if (mode === "signup" && username.length < 3) { setError("Username must be at least 3 characters"); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters"); return; }
     setLoading(true);
     try {
       if (mode === "signup") {
