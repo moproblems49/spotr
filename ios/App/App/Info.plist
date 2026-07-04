@@ -55,5 +55,7 @@
 	<string>Seshd reads your heart rate variability, resting heart rate, sleep, steps, and active energy to power recovery readiness and Body Battery.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Seshd saves your logged workouts to Apple Health so your training counts toward your activity.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
