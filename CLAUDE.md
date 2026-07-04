@@ -6,6 +6,8 @@ Seshd is a gym/workout tracker built as a **single-file React + Vite PWA**, ship
 - Repo: `github.com/moproblems49/spotr` → deploys to `spotr-drab.vercel.app` (Vercel)
 - Bundle id: `com.seshd.app` · Apple Team ID: `66M7SCD5GA`
 - Supabase project ref: `zwsoxvekobvtvsphesef`
+- Owned domain: `getseshd.app` — used ONLY for transactional email (Resend SMTP, sender
+  `hello@getseshd.app`); the app itself still lives on spotr-drab.vercel.app.
 - A friend (Ashley) handles all Xcode / TestFlight / Mac-side work.
 
 ## Who I'm working with
@@ -69,13 +71,41 @@ To write a new sim, copy the harness header from an existing one (it seeds a gue
 - Memory/safety: never reduce the app's own safety behavior; this is a consumer fitness app.
 
 ## Current state / roadmap (as of last session)
-Recently shipped & verified: true iOS co-move swipe (3-panel track), Wrapped "Share to Story" posts to the in-app Seshd story, Hip Thrust leaderboard counts the `(machine)` variant, profile recent-posts refetch fix, History "Lifetime Volume" tile, block users (reachable + filtered from feed, discover, comments, and DMs), native confirm sheets, iOS autofill fix, female body map (front + back scaled to match). A full bug audit (security/perf/React-hooks/feature-UX) was completed and all findings fixed: RLS policy gaps on groups/group_posts/workout_history, edge-function webhook auth that failed open without `WEBHOOK_SECRET` set, a GroupDetail group-switch race condition, a silently-swallowed group-post failure, missing delete/leave confirmations, and per-keystroke rescans in search/history screens.
+Recently shipped & verified (newest first): **password-reset flow** (Forgot password? on sign-in
+→ Resend email → `#type=recovery` landing forces a set-new-password screen; sim: `sim_reset.mjs`);
+**Resend SMTP live** on `getseshd.app` (sender `hello@getseshd.app` — the sender address MUST be
+at the verified domain, a placeholder domain 550s; check Supabase auth logs via MCP `get_logs`
+service `auth` when email "silently" fails, the reset UI intentionally never surfaces errors);
+password minimum is **8 chars** (Supabase setting + sign-up validation — keep in sync);
+**login blip fix** (loadUserData retries once silently before the "check connection" toast;
+ToastHost now seeds from the queue so pre-mount toasts aren't swallowed); **iOS 18 AutoFill fix
+v2** (the 4 keypad set fields are DIVs now — any focused real input attracts the pill, readOnly
+included; keep them divs); **core secondary credits** (32 compounds → Abs/Obliques half-credit;
+back squat/deadlift deliberately excluded — bracing ≠ half a set of abs); **AI form-guide button
+removed** (all 292 built-in exercises have hand-written cues/mistakes/breathe in exerciseCues.js
+— audited for duplicates/equipment-mismatch/generic filler, quality confirmed; custom exercises
+get the generic fallback); **one-time custom-exercise merge migration** (`CUSTOM_MERGE_MAP_V1` +
+batched `mergeExerciseNames()` — single-pair loops corrupt sessions holding two renamed
+exercises, always batch; flag `seshd_custom_merge_v1`); **bug-sweep fixes** (border shorthand +
+borderLeft in ONE style object breaks React's style diffing when either side is dynamic — use
+per-side borders; guest auth-gate Back now returns to the app, not the marketing screen); plus
+the earlier era: co-move swipe, Wrapped share-to-story, block users, native confirm sheets,
+female body map, and the full security/perf audit (RLS gaps, webhook auth, race conditions).
+
+**Sim battery (build/*.mjs, all currently passing):** `sim_sweep.mjs` (full-app fuzz tour, run
+plain AND with `guest` arg), `sim_flows.mjs` (finish-workout → recap + kg-unit smell scan),
+`sim_reset.mjs` (password reset both halves), `sim_retry.mjs` (login blip/persistent failure),
+`sim_merge.mjs` (custom-name migration), `sim_keypad.mjs` (div set fields + NumberPad),
+`sim_howto.mjs` (exercise-detail guides, no AI button), plus the older sim_tap/str/vol/msg/
+weekly/bb/hist/keychain/empty/gestures set. Sweep gotchas: nav buttons are aria-label-only
+(match both), NumberPad keys fire on pointerdown not click, NumberPad portals to document.body,
+and closePad arms a 500ms ghost-click swallower (wait it out before the next click).
 
 **Gesture-perf refactor (merged to main):** every touch/drag gesture in the app — `SetRow` swipe, tab-swipe, the shared `PullToRefresh` component (History/Profile/Messages), the feed's own pull-to-refresh, `StoryViewer` drag, `InsightCards` swipe, and the profile cover-photo position drag — was re-pointed from per-frame `setState` (re-rendering the whole screen on every `touchmove`) to the ref-write pattern documented above, plus a fix for vertical-scroll bleed-through during the tab swipe. A code review of this refactor caught and fixed one real regression before merge: the cover-photo drag's mouse path could freeze `coverPosDraft` at the gesture's first frame if the cursor left the small drag area before mouseup (now uses `window`-level listeners — see the Conventions note above).
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Ashley checklist below.**
 
-Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`). Email confirmation (Resend SMTP) is off (fine pre-launch). Native Live Activity rest timer + home-screen widgets are Mac-side. Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
+Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). Email confirmation is still OFF — SMTP is live now, flip "Confirm email" in Supabase Auth around public launch, not before TestFlight. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`) and a "Seshd" sender name in Supabase SMTP settings. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
 ### MAC DAY — the complete checklist (Mac access expected ~July 12, 2026)
 Everything that needs a Mac, in the order to do it. Code/server side is DONE for all of these.
@@ -144,12 +174,16 @@ decision was to stay single dark icon).
    `APNS_PRIVATE_KEY` secret from it is Step 0a of Mac day above. All other APNS_* secrets
    are already set. (Claude can't set secrets — no tool for it, and pasting the key into
    chat would expose it.)
-2. **App Store Connect** (appstoreconnect.apple.com): create the app record — name Seshd,
-   bundle id `com.seshd.app`, privacy policy URL `https://spotr-drab.vercel.app/privacy.html`.
-   Start the privacy questionnaire (declares: health data, user content/photos, messages,
-   identifiers, analytics). Screenshots can wait for TestFlight.
-3. Optional pre-launch: Resend SMTP + "Confirm email" in Supabase Auth settings; Apple
-   Services ID if Google/Apple sign-in will ship at launch.
+2. ~~App Store Connect~~ — DONE (July 4). App record "Seshd — Gym Log & Lift Tracker",
+   bundle id `com.seshd.app` verified, category Health & Fitness + Social Networking,
+   age rating 4+, privacy questionnaire published with 8 data types, App ID capabilities
+   ticked (Push, HealthKit, Associated Domains, Sign in with Apple, App Groups,
+   Communication Notifications), `ITSAppUsesNonExemptEncryption=false` in Info.plist.
+   Only screenshots/description remain — at TestFlight time (copy already drafted in chat).
+3. ~~Resend SMTP~~ — DONE (July 4): domain `getseshd.app` verified, sender
+   `hello@getseshd.app`, Supabase custom SMTP active (email rate limit 30/h).
+   Still Mo-side later: "Confirm email" toggle at public launch; DMARC record for
+   deliverability; Apple Services ID if Google/Apple sign-in ships at launch.
 
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.
