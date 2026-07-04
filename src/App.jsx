@@ -1,4 +1,4 @@
-// v178091716647
+// v178091716648
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5492,7 +5492,12 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         onTouchEnd={onTouchEnd}
         style={{
           background:isDone?`${C.green}0E`:C.surface,
-          border:`1.5px solid ${isDone?C.green+"30":C.divider}`,
+          // Explicit per-side borders (no `border` shorthand): React can't reliably diff a
+          // shorthand + longhand mix on the same element when either side changes (isDone /
+          // set type), and warns "Updating a style property during rerender".
+          borderTop:`1.5px solid ${isDone?C.green+"30":C.divider}`,
+          borderRight:`1.5px solid ${isDone?C.green+"30":C.divider}`,
+          borderBottom:`1.5px solid ${isDone?C.green+"30":C.divider}`,
           // Colored left stripe for non-normal set types — visually rhythmic across an exercise.
           // Always 4px so changing the type doesn't shift layout; transparent when "normal".
           borderLeft: `4px solid ${setType.id !== "normal" ? setType.color : "transparent"}`,
@@ -8907,7 +8912,11 @@ function SortableDayCard({ day, di, prog, store, C, onPreview, onEdit, onStart }
     transform: CSS.Transform.toString(transform),
     transition,
     background: C.surface,
-    border: `1px solid ${isDragging ? C.accent : C.border}`,
+    // Per-side borders instead of shorthand+borderLeft: mixing them on one element makes React
+    // warn and mis-diff styles when isDragging toggles the border color mid-drag.
+    borderTop: `1px solid ${isDragging ? C.accent : C.border}`,
+    borderRight: `1px solid ${isDragging ? C.accent : C.border}`,
+    borderBottom: `1px solid ${isDragging ? C.accent : C.border}`,
     borderLeft: `4px solid ${color}`,
     borderRadius: 14,
     overflow: "hidden",
@@ -16186,7 +16195,12 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
     }}>
       <div style={{ display:"flex", alignItems:"center", height:48 }}>
-        <button onClick={() => { setMode("welcome"); setError(""); }} style={{
+        <button onClick={() => {
+          // Opened as an in-app guest gate (promptReason set): Back returns to the app, not to
+          // the marketing welcome screen — a guest mid-session shouldn't land on "Start Tracking".
+          if (promptReason && onGuest) { onGuest(); return; }
+          setMode("welcome"); setError("");
+        }} style={{
           background:"none", border:"none", padding:"10px 4px",
           display:"flex", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F, color:C.text,
         }}>
