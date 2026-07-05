@@ -1,4 +1,4 @@
-// v178091716660
+// v178091716661
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16688,7 +16688,12 @@ async function generateWeeklyReview(store, unit) {
     "neglected in the same review. (4) If 'bodyweightTrend' shows they're losing weight, a stall or " +
     "small dip in strength is expected — frame it as holding strength on a cut, not failing; if " +
     "they're gaining, expect lifts to climb and hold them to it. (5) If 'prsThisWeek' is non-empty, " +
-    "open by naming those PRs specifically — they're the week's wins. " +
+    "open by naming those PRs specifically — they're the week's wins. (6) 'fatiguedMuscles' just " +
+    "lists muscles they recently trained that are still recovering — this is EXPECTED and not news. " +
+    "NEVER open the review with it, never call recent-training soreness 'the most urgent thing', and " +
+    "don't spend a point telling them the muscles they just worked aren't recovered. Only mention " +
+    "recovery at all if it changes what they should train in the next day or two. Open with something " +
+    "useful — a PR, real progress, or the single biggest priority — not recovery status. " +
     "If their notes or data mention pain or injury, tell them to get it checked by a " +
     "professional and never advise training through pain. " +
     "If a 'recovery' object is present (HRV, resting heart rate, sleep hours), factor it in: " +
