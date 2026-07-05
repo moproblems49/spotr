@@ -1,4 +1,4 @@
-// v178091716651
+// v178091716652
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4809,7 +4809,7 @@ function MuscleBalance({ store, C, days = 30 }) {
     <div style={{ padding:"16px 0 8px" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
         <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>MUSCLE BALANCE</div>
-        <div style={{ fontSize:11, color:C.sub }}>{data.total} sets · last {days}d</div>
+        <div style={{ fontSize:11, color:C.sub }}>{data.total} set{data.total === 1 ? "" : "s"} · last {days}d</div>
       </div>
 
       {/* Group bars */}
@@ -4824,7 +4824,7 @@ function MuscleBalance({ store, C, days = 30 }) {
                 <span style={{ display:"inline-block", transform: isExp?"rotate(90deg)":"none", transition:"transform 0.15s", color:C.sub, fontSize:10 }}>▶</span>
                 {g.name}
               </span>
-              <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}>{g.sets} sets · {g.pct}%</span>
+              <span style={{ fontSize:11, color:C.sub, fontFamily:MONO }}>{g.sets} set{g.sets === 1 ? "" : "s"} · {g.pct}%</span>
             </div>
             <div style={{ height:7, borderRadius:4, background:C.divider, overflow:"hidden" }}>
               <div style={{ height:"100%", width:`${g.pct}%`, background:GROUP_COLOR[g.name] || C.accent, borderRadius:4 }}/>
@@ -9067,7 +9067,7 @@ function SortableExerciseRow({ id, ex, C }) {
       <MuscleIcon muscle={exInfo?.muscle||""} size={32} name={ex.name} C={C}/>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ex.name || "Unnamed"}</div>
-        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{Array.isArray(ex.sets) ? ex.sets.length : (parseInt(ex.sets) || 0)} sets · {exInfo?.muscle || ""}</div>
+        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(() => { const n = Array.isArray(ex.sets) ? ex.sets.length : (parseInt(ex.sets) || 0); return `${n} set${n === 1 ? "" : "s"}`; })()} · {exInfo?.muscle || ""}</div>
       </div>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}>
         <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
@@ -11713,7 +11713,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                           {prExercises.length > 0 && (
@@ -13153,7 +13153,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
                 }}>
                   <div>
                     <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{d.label}</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{d.sets} sets</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{d.sets} set{d.sets === 1 ? "" : "s"}</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
                     <div style={{ fontSize:13, fontWeight:700, color:C.accent, fontFamily:MONO }}>{d.weight} {unit}</div>
@@ -13548,7 +13548,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                         <div style={{ flex:1 }}>
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
-                            {new Date(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} sets
+                            {new Date(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"}
                           </div>
                           <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
                             {(sess.exercises||[]).filter(e=>e.name).slice(0,3).map(e=>e.name).join(" · ")}
@@ -15955,7 +15955,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{w.dayName}</div>
                           {isSelected && <div style={{ color:C.accent, fontSize:18 }}>✓</div>}
                         </div>
-                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} sets · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}</div>
+                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}</div>
                       </div>
                     );
                   })}
