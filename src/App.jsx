@@ -1,4 +1,4 @@
-// v178091716659
+// v178091716660
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3423,12 +3423,55 @@ function buildCoachContext(store, unit) {
     .filter(([, v]) => v < 0.7).sort((a, b) => a[1] - b[1]).slice(0, 5)
     .map(([k, v]) => ({ muscle: _regionLabel(k), recoveredPct: Math.round(v * 100) }));
   const ms = muscleStrength(store, unit, sex);
+  // Bodyweight trend over the last ~6 weeks — lets the coach judge stalls in context (a stalled
+  // press while cutting is expected; while gaining it warrants attention).
+  const _bl = [...(store.bodyLog || [])].filter(b => b.weight != null && b.date).sort((a, b) => a.date.localeCompare(b.date));
+  let bodyweightTrend = null;
+  if (_bl.length >= 2) {
+    const cutoffMs = todayMs - 42 * 864e5;
+    const window = _bl.filter(b => new Date(b.date + "T12:00:00").getTime() >= cutoffMs);
+    const from = (window.length >= 2 ? window : _bl)[0], to = _bl[_bl.length - 1];
+    const delta = Math.round((to.weight - from.weight) * 10) / 10;
+    const days = Math.max(1, Math.round((new Date(to.date + "T12:00:00").getTime() - new Date(from.date + "T12:00:00").getTime()) / 864e5));
+    bodyweightTrend = { current: to.weight, overDays: days, change: delta, direction: delta <= -1 ? "losing" : delta >= 1 ? "gaining" : "stable" };
+  }
+  // PRs set in the last 7 days (dedup to the heaviest per lift), in display units.
+  const _weekAgoMs = todayMs - 7 * 864e5 + 1;
+  const _prBest = {};
+  for (const e of (store.prEvents || [])) {
+    if (!e.date || new Date(e.date + "T12:00:00").getTime() < _weekAgoMs) continue;
+    const w = unit === "lbs" ? e.weightLbs : cvt(e.weightLbs, "lbs", unit);
+    if (!_prBest[e.name] || w > _prBest[e.name]) _prBest[e.name] = Math.round(w * 10) / 10;
+  }
+  const prsThisWeek = Object.entries(_prBest).map(([lift, weight]) => ({ lift, weight }));
+  // The reviewed week's headline numbers (real, not AI) — power the recap stat header.
+  let _wSessions = 0, _wVolume = 0, _wTop = null;
+  for (const d of dates) {
+    if (new Date(d + "T12:00:00").getTime() < _weekAgoMs) continue;
+    for (const s of Object.values(store.history[d] || {})) {
+      let counted = false;
+      for (const ex of (s.exercises || [])) for (const st of (ex.sets || [])) {
+        if (st.type === "warmup") continue;
+        const done = st.done === true || (st.done === undefined && parseFloat(st.reps) > 0);
+        if (!done) continue;
+        counted = true;
+        const w = cvt(parseFloat(st.weight) || 0, s.unit || unit, unit), r = parseFloat(st.reps) || 0;
+        _wVolume += w * r;
+        if (!_wTop || w > _wTop.w) _wTop = { w: Math.round(w * 10) / 10, r, lift: ex.name };
+      }
+      if (counted) _wSessions++;
+    }
+  }
+  const weekStats = { sessions: _wSessions, volume: Math.round(_wVolume), prs: prsThisWeek.length, topSet: _wTop ? { weight: _wTop.w, reps: _wTop.r, lift: _wTop.lift } : null };
   return {
     unit, sex,
     fatiguedMuscles,
     imbalances: ms.ready ? (ms.imbalances || []) : [],
     strength: ss.ready ? { overall: ss.overall, score: ss.score, lifts: ss.lifts.map(l => ({ lift: l.lift, level: l.level, ratio: l.ratio })) } : null,
     bodyweight: ss.ready ? ss.bodyweight : null,
+    bodyweightTrend,
+    prsThisWeek,
+    weekStats,
     consistency: { weeklyStreak: streak.count, thisWeek: streak.thisWeek, target: streak.target },
     recentSessions: recent,
     daysSinceMuscle: lastTrained,
@@ -16642,7 +16685,10 @@ async function generateWeeklyReview(store, unit) {
     "them getting sets. (2) 'consistency.target' is the MINIMUM sessions for their streak, NOT a cap " +
     "— training MORE than the target is good; never frame exceeding it as a problem or the cause of " +
     "fatigue. (3) Stay internally consistent: do not call a muscle group both a strength and " +
-    "neglected in the same review. " +
+    "neglected in the same review. (4) If 'bodyweightTrend' shows they're losing weight, a stall or " +
+    "small dip in strength is expected — frame it as holding strength on a cut, not failing; if " +
+    "they're gaining, expect lifts to climb and hold them to it. (5) If 'prsThisWeek' is non-empty, " +
+    "open by naming those PRs specifically — they're the week's wins. " +
     "If their notes or data mention pain or injury, tell them to get it checked by a " +
     "professional and never advise training through pain. " +
     "If a 'recovery' object is present (HRV, resting heart rate, sleep hours), factor it in: " +
@@ -16679,7 +16725,7 @@ async function generateWeeklyReview(store, unit) {
       .map((text, i) => ({ id: `${Date.now()}_${i}`, text, done: false }));
   }
   if (!summary) return { error: "failed" };
-  return { summary, actions: parsedActions };
+  return { summary, actions: parsedActions, stats: ctx.weekStats || null };
 }
 
 // Renders the STORED weekly review (no API call here — see generateWeeklyReview).
@@ -16725,6 +16771,26 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
             Your first weekly review lands on Sunday. Train at least once this week and it'll be waiting when you open the app.
           </div>
         )}
+        {review && review.stats && (() => {
+          const s = review.stats;
+          const volDisp = s.volume >= 1000 ? `${(s.volume/1000).toFixed(s.volume >= 10000 ? 0 : 1)}k` : String(s.volume);
+          const tiles = [
+            { label: "SESSIONS", value: String(s.sessions || 0) },
+            { label: "VOLUME", value: volDisp, unit: (unit || "lbs") },
+            { label: "PRS", value: String(s.prs || 0) },
+            ...(s.topSet ? [{ label: "TOP SET", value: `${s.topSet.weight}×${s.topSet.reps}`, unit: (unit || "lbs") }] : []),
+          ];
+          return (
+            <div style={{ display:"grid", gridTemplateColumns:`repeat(${tiles.length}, 1fr)`, gap:8, marginBottom:14 }}>
+              {tiles.map(t => (
+                <div key={t.label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"11px 8px", textAlign:"center" }}>
+                  <div style={{ fontSize:18, fontWeight:800, color:C.text, fontFamily:MONO, letterSpacing:-0.5, lineHeight:1 }}>{t.value}{t.unit ? <span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:1 }}>{t.unit}</span> : null}</div>
+                  <div style={{ fontSize:9, fontWeight:700, color:C.sub, letterSpacing:0.6, marginTop:5 }}>{t.label}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         {review && (
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"16px 16px 2px" }}>
             {review.summary.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map((para, i) => (
@@ -17192,7 +17258,7 @@ function AppInner() {
         const r = await generateWeeklyReview(store, store.unit || "lbs"); // AppInner's `unit` const is declared later — avoid TDZ
         if (cancelled) return;
         if (r && r.summary) {
-          const entry = { weekKey: wk, date: dKey(), summary: r.summary, actions: r.actions || [] };
+          const entry = { weekKey: wk, date: dKey(), summary: r.summary, actions: r.actions || [], stats: r.stats || null };
           setStore(p => ({ ...p, weeklyReview: entry,
             coachLog: [{ date: entry.date, summary: entry.summary, actions: entry.actions }, ...((p.coachLog || []).slice(0, 5))] }));
           setReviewStatus("idle");
