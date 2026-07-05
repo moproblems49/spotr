@@ -1,4 +1,4 @@
-// v178091716654
+// v178091716655
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9220,6 +9220,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [viewingExercise, setViewingExercise] = useState(null);
   const [restPickerEx, setRestPickerEx] = useState(null); // exercise index whose rest picker is open
   const [barPickerEx, setBarPickerEx] = useState(null); // exercise index whose bar-type picker is open
+  const [moreMenuEx, setMoreMenuEx] = useState(null); // exercise index whose ⋯ menu (link/swap) is open
   const [customBarInput, setCustomBarInput] = useState("");
   const [swapEx, setSwapEx] = useState(null); // exercise index being swapped (substitution modal)
   const [exerciseSearch, setExerciseSearch] = useState("");
@@ -10327,20 +10328,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         <span style={{ fontSize:10, fontWeight:700, color: barPickerEx === ei ? "#fff" : C.sub, fontFamily:MONO }}>{getBarWeight(ex.barType, unit)}{unit}</span>
                       </button>
                     )}
-                    {/* Superset link — links this exercise with the next so they're performed
-                        back-to-back. When linked, the rest timer is skipped between them. */}
-                    {ei < session.exercises.length - 1 && (
-                      <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x, superset: !x.superset}) }))}
-                        title={ex.superset ? "Linked as superset" : "Link with next exercise"}
-                        style={{ background: ex.superset ? C.accent : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>
-                        </svg>
-                      </button>
-                    )}
                     {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
-                    {ex.name && <button onClick={() => setSwapEx(ei)} title="Swap exercise" style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></svg>
+                    {/* Overflow menu — superset link + swap moved here so long exercise names
+                        aren't squeezed by a wide action row. Accent border when a superset is
+                        active so that state is still visible at a glance. */}
+                    {ex.name && <button onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
+                      aria-label="More exercise options"
+                      style={{ background: (moreMenuEx === ei || ex.superset) ? C.accentSoft : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? C.accent : C.sub} strokeWidth="2.6" strokeLinecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
                     </button>}
                     <button onClick={() => {
                       const removeNow = () => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); };
@@ -10354,6 +10349,23 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     }} aria-label="Remove exercise" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
                 </div>
+                {/* Overflow menu reveal — superset link (if there's a next exercise) + swap. */}
+                {moreMenuEx === ei && (
+                  <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 14px 10px", flexWrap:"wrap" }}>
+                    {ei < session.exercises.length - 1 && (
+                      <button onClick={() => { setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x, superset: !x.superset}) })); }}
+                        style={{ display:"flex", alignItems:"center", gap:6, background: ex.superset ? C.accent : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                        <span style={{ fontSize:12, fontWeight:600, color: ex.superset ? "#fff" : C.text }}>{ex.superset ? "Linked to next" : "Superset with next"}</span>
+                      </button>
+                    )}
+                    <button onClick={() => { setMoreMenuEx(null); setSwapEx(ei); }}
+                      style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></svg>
+                      <span style={{ fontSize:12, fontWeight:600, color:C.text }}>Swap exercise</span>
+                    </button>
+                  </div>
+                )}
                 {/* Per-exercise rest picker — applies to all sets in this exercise */}
                 {restPickerEx === ei && (
                   <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 8px", flexWrap:"wrap" }}>
@@ -14130,27 +14142,43 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             </div>
           ), document.body)}
 
-          <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>SUGGESTED PEOPLE</div>
-          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
-            {store.users.filter(u => u.id !== currentUserId).map((u, idx, arr) => {
-              const isF = following.includes(u.id);
-              return (
-                <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < arr.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                  <Avatar user={u} size={46} C={C} onClick={() => onUserClick(u.id)}/>
-                  <div style={{ flex:1, cursor:"pointer", minWidth:0 }} onClick={() => onUserClick(u.id)}>
-                    <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
-                    <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
-                  </div>
-                  <button onClick={() => toggleFollow(u.id)} style={{
-                    padding:"7px 16px", background:isF?"transparent":C.accent,
-                    border:`1.5px solid ${isF?C.border:C.accent}`, borderRadius:20,
-                    fontSize:12, fontWeight:700, color:isF?C.text:"#fff",
-                    cursor:"pointer", flexShrink:0, fontFamily:F
-                  }}>{isF?"Following":"Follow"}</button>
+          {(() => {
+            const suggested = store.users.filter(u => u.id !== currentUserId);
+            // No one to suggest yet (new user, few accounts, or offline) — show a friendly
+            // prompt instead of an orphaned "SUGGESTED PEOPLE" header over an empty card.
+            if (!suggested.length) return (
+              <div style={{ textAlign:"center", padding:"40px 28px" }}>
+                <div style={{ width:52, height:52, borderRadius:15, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px" }}>
+                  <Icon name="users" size={24} color={C.accent}/>
                 </div>
-              );
-            })}
-          </div>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Find your crew</div>
+                <div style={{ fontSize:12.5, color:C.sub, marginTop:5, lineHeight:1.5 }}>Search for friends above, or share your profile so they can find you.</div>
+              </div>
+            );
+            return (<>
+              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>SUGGESTED PEOPLE</div>
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
+                {suggested.map((u, idx, arr) => {
+                  const isF = following.includes(u.id);
+                  return (
+                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < arr.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                      <Avatar user={u} size={46} C={C} onClick={() => onUserClick(u.id)}/>
+                      <div style={{ flex:1, cursor:"pointer", minWidth:0 }} onClick={() => onUserClick(u.id)}>
+                        <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+                        <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
+                      </div>
+                      <button onClick={() => toggleFollow(u.id)} style={{
+                        padding:"7px 16px", background:isF?"transparent":C.accent,
+                        border:`1.5px solid ${isF?C.border:C.accent}`, borderRadius:20,
+                        fontSize:12, fontWeight:700, color:isF?C.text:"#fff",
+                        cursor:"pointer", flexShrink:0, fontFamily:F
+                      }}>{isF?"Following":"Follow"}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>);
+          })()}
         </div>
       )}
     </div>
@@ -15074,7 +15102,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             )}
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>Posts</div></div>
+            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>Workouts</div></div>
             <button onClick={() => setListModal("followers")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>Followers</div>
