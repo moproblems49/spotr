@@ -1,4 +1,4 @@
-// v178091716653
+// v178091716654
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1698,7 +1698,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 const parts = [];
                 if (bb.workoutDrain) parts.push(`−${bb.workoutDrain} training`);
                 if (bb.activityDrain) parts.push(`−${bb.activityDrain} activity`);
-                if (bb.baselineDrain) parts.push(`−${bb.baselineDrain} day`);
+                if (bb.baselineDrain) parts.push(`−${bb.baselineDrain} today`);
                 return (
                   <div onClick={() => setShowBatteryDetail(true)} style={{ margin:"2px 16px 10px", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, cursor:"pointer" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:7 }}>
