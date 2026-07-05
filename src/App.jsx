@@ -1,4 +1,4 @@
-// v178091716655
+// v178091716656
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12865,6 +12865,12 @@ function ExerciseVolumeChart({ data, unit, C }) {
   // zoomed axis; otherwise round outward from the data range.
   const { lo, hi, values: ticks } = niceAxis(dataMin > 0 && dataMin <= dataMax * 0.35 ? 0 : dataMin, dataMax, 4);
   const range = hi - lo || 1;
+  // Small ranges (e.g. bodyweight 208–210) produce fractional ticks (208, 208.5, 209…). Rounding
+  // each to an integer collapses them into duplicate labels ("209, 209, 210, 210"), so format ticks
+  // with enough decimals to stay distinct — while keeping the k/M shorthand for large values.
+  const tickStep = ticks.length > 1 ? Math.abs(ticks[1] - ticks[0]) : 1;
+  const tickDec = tickStep >= 1 ? 0 : tickStep >= 0.1 ? 1 : 2;
+  const fmtTick = (v) => Math.abs(v) >= 1000 ? fmtAxisTick(v) : (Number.isInteger(v) ? String(v) : v.toFixed(tickDec));
 
   const px = (i) => PAD.l + (i / (data.length - 1 || 1)) * iW;
   const py = (v) => PAD.t + iH - ((v - lo) / range) * iH;
@@ -12881,7 +12887,7 @@ function ExerciseVolumeChart({ data, unit, C }) {
         return (
           <g key={i}>
             <line x1={PAD.l} y1={y} x2={W-PAD.r} y2={y} stroke={C.divider} strokeWidth="1" opacity={tv === lo ? 0.9 : 0.5}/>
-            <text x={PAD.l-7} y={y+3} textAnchor="end" fontSize="8.5" fill={C.muted || C.sub} fontFamily={MONO}>{fmtAxisTick(tv)}</text>
+            <text x={PAD.l-7} y={y+3} textAnchor="end" fontSize="8.5" fill={C.muted || C.sub} fontFamily={MONO}>{fmtTick(tv)}</text>
           </g>
         );
       })}
