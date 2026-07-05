@@ -1,4 +1,4 @@
-// v178091716657
+// v178091716658
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12789,11 +12789,12 @@ function useExerciseCues() {
 function getCues(name, muscle, exerciseCues) {
   if (exerciseCues && exerciseCues[name]) {
     const g = exerciseCues[name];
-    return { cues: g.cues, mistakes: g.mistakes, breathe: g.breathe || null };
+    // `steps` is a beginner "how to perform" walkthrough, present on the ~30 most common lifts.
+    return { steps: g.steps || null, cues: g.cues, mistakes: g.mistakes, breathe: g.breathe || null };
   }
   // Every built-in exercise has a hand-written guide; this minimal neutral set only shows for
   // user-created custom exercises (and while the cues module is still loading).
-  return { cues:["Move through a full range of motion","Control the lowering phase","Keep good form over heavy load"], mistakes:["Using momentum","Partial reps"], breathe:null };
+  return { steps:null, cues:["Move through a full range of motion","Control the lowering phase","Keep good form over heavy load"], mistakes:["Using momentum","Partial reps"], breathe:null };
 }
 
 // ── Animated SVG exercise demos ───────────────────────────────────────────────
@@ -13114,9 +13115,31 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
           {chartData.length > 0 && <div style={{ fontSize:10, color:C.sub, textAlign:"right", marginTop:4 }}>{unit}</div>}
         </div>
 
-        {/* How To */}
+        {/* How To — numbered beginner walkthrough (only on exercises that have hand-written steps) */}
+        {cueData.steps && cueData.steps.length > 0 && (
+          <div style={{ margin:"0 16px 16px" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>HOW TO</div>
+            <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+              {cueData.steps.map((step, i) => (
+                <div key={i} style={{
+                  display:"flex", gap:12, padding:"11px 14px",
+                  borderBottom: i < cueData.steps.length - 1 ? `1px solid ${C.divider}` : "none",
+                  alignItems:"flex-start"
+                }}>
+                  <div style={{
+                    width:20, height:20, borderRadius:"50%", background:C.accent,
+                    color:"#fff", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1
+                  }}>{i+1}</div>
+                  <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{step}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Form tips — non-sequential cues, shown as a checklist so they don't look like more steps */}
         <div style={{ margin:"0 16px 16px" }}>
-          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>TIPS & HOW TO</div>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>{cueData.steps ? "FORM TIPS" : "TIPS & HOW TO"}</div>
           <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
             {cueData.cues.map((cue, i) => (
               <div key={i} style={{
@@ -13124,10 +13147,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
                 borderBottom: i < cueData.cues.length - 1 ? `1px solid ${C.divider}` : "none",
                 alignItems:"flex-start"
               }}>
-                <div style={{
-                  width:20, height:20, borderRadius:"50%", background:C.accent,
-                  color:"#fff", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1
-                }}>{i+1}</div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:2 }}><polyline points="20 6 9 17 4 12"/></svg>
                 <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{cue}</div>
               </div>
             ))}
