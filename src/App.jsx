@@ -1,4 +1,4 @@
-// v178091716662
+// v178091716663
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6680,9 +6680,9 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
 
   // Intro screens followed by quick personalization questions.
   const introScreens = [
-    { icon:"barbell", title:"Track every rep", body:"Log sets, weights, and reps. Watch every lift improve over time." },
-    { icon:"trending-up", title:"See your progress", body:"Charts, PRs, and smart suggestions for what to lift next session." },
-    { icon:"flame", title:"Train together", body:"Streaks, private groups, and friend activity. Lift with your people." },
+    { icon:"barbell", title:"Track every rep", body:"Swipe to log sets in seconds. Seshd remembers your last weights and suggests what to lift next." },
+    { icon:"activity", title:"Know your body", body:"See which muscles you've trained, how recovered you are, and how your lifts measure up to real strength standards." },
+    { icon:"spark", title:"Coached weekly", body:"A weekly review reads your training and tells you exactly what to work on — plus streaks and friends to keep you consistent." },
   ];
   const questions = [
     { key:"goal", q:"What's your main goal?", opts:[
