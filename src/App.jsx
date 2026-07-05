@@ -1,4 +1,4 @@
-// v178091716661
+// v178091716662
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5503,8 +5503,11 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     clearLongPress();
     const dx = swipeState.current.dx;
     if (dx > 60) {
+      // onToggleDone() already fires the correct tiered haptic (pr-big/pr/complete/medium/undo)
+      // AND starts the rest timer — don't add a second generic buzz here, or a swipe-complete
+      // double-buzzes and the flat "complete" stomps the celebratory PR/last-set feel. Keeping
+      // this path identical to tapping the checkmark.
       onToggleDone();
-      haptic(set.done ? "undo" : "complete");
     } else if (dx < -60 && onDelete) {
       onDelete();
       haptic("delete");
