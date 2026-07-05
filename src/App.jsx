@@ -1,4 +1,4 @@
-// v178091716652
+// v178091716653
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1861,7 +1861,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               </div>
               <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
                 {recoveringUniq.length
-                  ? <>Still recovering: <span style={{ color:C.text, fontWeight:600 }}>{recoveringUniq.slice(0, 3).join(", ")}</span>{recoveringUniq.length > 3 ? "…" : ""}. Everything else is ready.</>
+                  ? <>Still recovering: <span style={{ color:C.text, fontWeight:600 }}>{recoveringUniq.slice(0, 3).join(", ")}</span>{recoveringUniq.length > 3 ? "… " : ". "}Everything else is ready.</>
                   : (anyData ? "All muscles recovered — ready to train anything." : "No recent training logged — everything's fresh.")}
                 {rec && typeof rec.recoveryScore === "number" && rec.recoveryScore < 0.45
                   ? " Your recovery is below baseline today — easing off helps."
@@ -1881,7 +1881,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   </div>
                   <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
                     {weakUniq.length
-                      ? <>Lagging: <span style={{ color:C.text, fontWeight:600 }}>{weakUniq.slice(0, 3).join(", ")}</span>{weakUniq.length > 3 ? "…" : ""}. Overall: {strength.overall}.</>
+                      ? <>Lagging: <span style={{ color:C.text, fontWeight:600 }}>{weakUniq.slice(0, 3).join(", ")}</span>{weakUniq.length > 3 ? "… " : ". "}Overall: {strength.overall}.</>
                       : <>Well-balanced — overall: {strength.overall}.</>}
                     {strength.imbalances && strength.imbalances.length
                       ? <><br/><span style={{ color:"#f59e0b", fontWeight:600 }}>{strength.imbalances.join(" · ")}.</span></>
