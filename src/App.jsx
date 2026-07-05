@@ -1,4 +1,4 @@
-// v178091716656
+// v178091716657
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14538,7 +14538,9 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
                   {(() => {
                     const diff = Math.round((latest.weight - first.weight) * 10) / 10;
                     const up = diff > 0;
-                    return <div style={{ fontSize:26, fontWeight:800, fontFamily:MONO, letterSpacing:-1, color: diff === 0 ? C.text : up ? C.green : "#ef4444" }}>{up ? "+" : ""}{diff}<span style={{ fontSize:13, color:C.sub, marginLeft:3 }}>{unit}</span></div>;
+                    // Weight change stays neutral — the app is goal-agnostic (a decrease is good
+                    // when cutting, an increase is good when bulking), so no red/green signal.
+                    return <div style={{ fontSize:26, fontWeight:800, fontFamily:MONO, letterSpacing:-1, color:C.text }}>{up ? "+" : ""}{diff}<span style={{ fontSize:13, color:C.sub, marginLeft:3 }}>{unit}</span></div>;
                   })()}
                 </div>
               )}
