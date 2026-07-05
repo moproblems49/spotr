@@ -1,4 +1,4 @@
-// v178091716658
+// v178091716659
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3388,19 +3388,31 @@ function buildCoachContext(store, unit) {
     }
     if (recent.length >= 8) break;
   }
+  // Days since each muscle was last worked — counting BOTH primary and SECONDARY involvement.
+  // Without secondaries the coach falsely reports rear delts / traps / biceps / abs as "untouched
+  // for weeks" even when rows, face pulls, shrugs, and presses hit them every session.
+  const _cleanMuscle = (m) => ({ RearDelts: "Rear Delts", LowerBack: "Lower Back" }[m] || m);
   const lastTrained = {};
   const todayMs = new Date(dKey() + "T12:00:00").getTime();
   for (const d of dates) {
-    const sessions = Object.values(store.history[d] || {});
-    for (const s of sessions) {
+    const daysAgo = Math.floor((todayMs - new Date(d + "T12:00:00").getTime()) / 86400000);
+    for (const s of Object.values(store.history[d] || {})) {
       for (const ex of (s.exercises || [])) {
-        const m = resolveMuscle(ex.name);
-        if (m && lastTrained[m] == null) {
-          lastTrained[m] = Math.floor((todayMs - new Date(d + "T12:00:00").getTime()) / 86400000);
-        }
+        const worked = (ex.sets || []).some(st => st.type !== "warmup" && (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)));
+        if (!worked) continue;
+        const muscles = new Set();
+        const p = resolveMuscle(ex.name); if (p) muscles.add(p);
+        for (const sec of getExerciseSecondaries(ex.name)) muscles.add(_cleanMuscle(sec));
+        for (const m of muscles) if (lastTrained[m] == null) lastTrained[m] = daysAgo;
       }
     }
   }
+  // Effective weekly sets per muscle (secondaries count 0.5×) so the coach has hard numbers on
+  // what's actually being trained — including muscles only hit as secondaries — instead of
+  // inferring neglect from primary-muscle names alone.
+  const _wmv = weeklyMuscleVolume(store, 7);
+  const weeklyMuscleSets = {};
+  for (const [m, v] of Object.entries(_wmv.byMuscle || {})) weeklyMuscleSets[_cleanMuscle(m)] = Math.round(v * 10) / 10;
   const stalls = [];
   ["Barbell Bench Press","Barbell Back Squat","Deadlift","Overhead Press (Barbell)"].forEach(l => {
     const dl = detectDeloadNeeded(store, l, unit);
@@ -3420,6 +3432,7 @@ function buildCoachContext(store, unit) {
     consistency: { weeklyStreak: streak.count, thisWeek: streak.thisWeek, target: streak.target },
     recentSessions: recent,
     daysSinceMuscle: lastTrained,
+    weeklyMuscleSets,
     stalls,
     recovery: store.recovery || null,
   };
@@ -16621,6 +16634,15 @@ async function generateWeeklyReview(store, unit) {
     "Review their LAST WEEK of training and set up the week ahead, based ONLY on the data below. " +
     "Be concise: 3-5 short points. Reference their actual lifts and numbers. Cover what moved " +
     "forward, what stalled, and what got neglected; then the priorities for this coming week. " +
+    "DATA RULES (read carefully — getting these wrong makes the review useless): " +
+    "(1) 'weeklyMuscleSets' is EFFECTIVE weekly sets per muscle and ALREADY counts secondary work " +
+    "(rows/face pulls/shrugs give rear delts, traps, and biceps sets; presses give triceps and abs). " +
+    "'daysSinceMuscle' also counts secondary involvement. A muscle with real numbers there is NOT " +
+    "neglected — never claim rear delts, traps, biceps, or abs are 'untouched' if the data shows " +
+    "them getting sets. (2) 'consistency.target' is the MINIMUM sessions for their streak, NOT a cap " +
+    "— training MORE than the target is good; never frame exceeding it as a problem or the cause of " +
+    "fatigue. (3) Stay internally consistent: do not call a muscle group both a strength and " +
+    "neglected in the same review. " +
     "If their notes or data mention pain or injury, tell them to get it checked by a " +
     "professional and never advise training through pain. " +
     "If a 'recovery' object is present (HRV, resting heart rate, sleep hours), factor it in: " +
@@ -16704,7 +16726,14 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
           </div>
         )}
         {review && (
-          <div style={{ fontSize:14.5, lineHeight:1.65, color:C.text, whiteSpace:"pre-wrap" }}>{review.summary}</div>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"16px 16px 2px" }}>
+            {review.summary.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map((para, i) => (
+              <div key={i} style={{ display:"flex", gap:11, marginBottom:15 }}>
+                <div style={{ flexShrink:0, width:6, height:6, borderRadius:3, background:C.accent, marginTop:8 }}/>
+                <div style={{ fontSize:14.5, lineHeight:1.6, color:C.text }}>{para}</div>
+              </div>
+            ))}
+          </div>
         )}
         {review && (review.actions || []).length > 0 && (
           <div style={{ marginTop:18 }}>
