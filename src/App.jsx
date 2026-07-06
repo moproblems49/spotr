@@ -1,4 +1,4 @@
-// v178091716668
+// v178091716669
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4253,167 +4253,6 @@ function subscribeNetwork(cb) {
 
 
 
-const SEED_USERS = [
-  { id:"u1", username:"you", name:"You", avatar:"💪", bio:"Chasing PRs 🔥", followers:["u2","u3","u4","u5","u6","u7","u8"], following:["u2","u3","u4","u5","u6","u7","u8","u9"] },
-  { id:"u2", username:"marcus_lifts", name:"Marcus Chen", avatar:"🔥", bio:"Powerlifter · 600lb DL", followers:["u1","u3","u5"], following:["u1","u5"] },
-  { id:"u3", username:"jayden_gains", name:"Jayden Rivera", avatar:"⚡", bio:"Hypertrophy obsessed · 6 day PPL", followers:["u1","u2"], following:["u1","u2","u7"] },
-  { id:"u4", username:"k_fitness", name:"Kayla Park", avatar:"🏋️", bio:"Strength coach · form is everything", followers:["u1","u6"], following:["u1","u5"] },
-  { id:"u5", username:"iron_mike", name:"Mike Thompson", avatar:"🦾", bio:"5/3/1 lifer. Eat. Sleep. Lift.", followers:["u1","u2","u4"], following:["u1","u2"] },
-  { id:"u6", username:"sarah_strong", name:"Sarah Nguyen", avatar:"💥", bio:"Glute gains + running · half marathon PR 1:42", followers:["u1","u4"], following:["u1","u4","u8"] },
-  { id:"u7", username:"deadlift_dan", name:"Dan Hoffman", avatar:"⚙️", bio:"Deadlift or die. Currently pulling 505.", followers:["u1","u3"], following:["u1","u3","u5"] },
-  { id:"u8", username:"curl_bro_9000", name:"Tyler Brooks", avatar:"💪", bio:"Chest & arms specialist · curl bro forever", followers:["u1","u6"], following:["u1","u6"] },
-  { id:"u9", username:"yoga_lifter", name:"Priya Shah", avatar:"🧘", bio:"Mobility + strength. Yoga 2x / lift 4x per week.", followers:["u1"], following:["u1"] },
-];
-
-const SEED_POSTS = [
-  {
-    id:"p1", userId:"u2", type:"workout", unit:"lbs",
-    createdAt: Date.now() - 1000*60*35,
-    workout: {
-      name: "Pull Day · Heavy",
-      duration: 3720,
-      volume: 18400,
-      exercises: [
-        { name:"Barbell Row", sets:[{w:225,r:5},{w:225,r:5},{w:225,r:4},{w:205,r:6}] },
-        { name:"Weighted Pull-Ups", sets:[{w:55,r:6},{w:55,r:5},{w:45,r:7}] },
-        { name:"Seated Cable Row", sets:[{w:180,r:10},{w:180,r:9}] },
-        { name:"Barbell Curl", sets:[{w:95,r:10},{w:95,r:8}] },
-      ]
-    },
-    caption: "Finally pulled 225 for sets on row 🔥 Strap-free pulls next week.",
-    kudos: ["u3","u1","u5","u7"],
-    comments: [
-      {id:"c1", userId:"u3", text:"Those rows are insane 👊", createdAt:Date.now()-1000*60*25},
-      {id:"c2", userId:"u7", text:"Strength is crazy bro", createdAt:Date.now()-1000*60*15},
-    ],
-    isPR: true,
-  },
-  {
-    id:"p2", userId:"u3", type:"achievement",
-    createdAt: Date.now() - 1000*60*120,
-    achievement: { type:"streak", days:14 },
-    caption: "Two weeks straight 🔥 no missed days",
-    kudos: ["u2","u1","u4","u6","u8"],
-    comments: [
-      {id:"c3", userId:"u6", text:"Get it!! 💪", createdAt:Date.now()-1000*60*100},
-    ],
-  },
-  {
-    id:"p3", userId:"u6", type:"workout", unit:"lbs",
-    createdAt: Date.now() - 1000*60*60*4,
-    workout: {
-      name: "Leg Day · Glute Focus",
-      duration: 4260,
-      volume: 24600,
-      exercises: [
-        { name:"Hip Thrust", sets:[{w:275,r:8},{w:275,r:8},{w:275,r:6}] },
-        { name:"Bulgarian Split Squat", sets:[{w:40,r:10},{w:40,r:10}] },
-        { name:"Romanian Deadlift", sets:[{w:185,r:10},{w:185,r:9}] },
-        { name:"Seated Leg Curl", sets:[{w:120,r:12},{w:120,r:12}] },
-      ]
-    },
-    caption: "Hip thrusts hit different 🍑 almost done with prep week",
-    kudos: ["u1","u4","u8","u9"],
-    comments: [
-      {id:"c4", userId:"u4", text:"Form looked clean on that last set", createdAt:Date.now()-1000*60*60*3},
-    ],
-  },
-  {
-    id:"p4", userId:"u4", type:"photo",
-    createdAt: Date.now() - 1000*60*60*6,
-    caption: "Morning grind 🌅 first session of the week, feeling locked in",
-    imageColor: "#0a1628",
-    kudos: ["u2","u1","u6"],
-    comments: [],
-  },
-  {
-    id:"p5", userId:"u7", type:"workout", unit:"lbs",
-    createdAt: Date.now() - 1000*60*60*8,
-    workout: {
-      name: "Deadlift Max Out",
-      duration: 3000,
-      volume: 15400,
-      exercises: [
-        { name:"Deadlift", sets:[{w:405,r:3},{w:455,r:1},{w:495,r:1},{w:505,r:1}] },
-        { name:"Barbell Row", sets:[{w:185,r:8},{w:185,r:7}] },
-        { name:"Lat Pulldown", sets:[{w:160,r:10},{w:160,r:10}] },
-      ]
-    },
-    caption: "505 moved like it was taped to the floor but I'll take it 😤 onto 515 next month",
-    kudos: ["u1","u2","u3","u5","u8"],
-    comments: [
-      {id:"c5", userId:"u2", text:"MASSIVE. let's go", createdAt:Date.now()-1000*60*60*7},
-      {id:"c6", userId:"u5", text:"clean pull bro", createdAt:Date.now()-1000*60*60*6},
-      {id:"c7", userId:"u8", text:"holy 😳", createdAt:Date.now()-1000*60*60*5},
-    ],
-    isPR: true,
-  },
-  {
-    id:"p6", userId:"u5", type:"workout", unit:"lbs",
-    createdAt: Date.now() - 1000*60*60*16,
-    workout: {
-      name: "Bench Day · 5/3/1 BBB",
-      duration: 3300,
-      volume: 11800,
-      exercises: [
-        { name:"Barbell Bench Press", sets:[{w:225,r:5},{w:255,r:3},{w:285,r:2}] },
-        { name:"Barbell Bench Press (BBB)", sets:[{w:155,r:10},{w:155,r:10},{w:155,r:10},{w:155,r:10},{w:155,r:8}] },
-        { name:"Dumbbell Row", sets:[{w:85,r:10},{w:85,r:10}] },
-      ]
-    },
-    caption: "Top single felt heavy but moved. BBB volume is brutal 😮‍💨",
-    kudos: ["u2","u7","u1"],
-    comments: [],
-  },
-  {
-    id:"p7", userId:"u8", type:"photo",
-    createdAt: Date.now() - 1000*60*60*20,
-    caption: "pump day 💪 chest looking big finally",
-    imageColor: "#1a0818",
-    kudos: ["u6","u1","u3"],
-    comments: [
-      {id:"c8", userId:"u6", text:"looking huge man", createdAt:Date.now()-1000*60*60*18},
-    ],
-  },
-  {
-    id:"p8", userId:"u9", type:"achievement",
-    createdAt: Date.now() - 1000*60*60*24,
-    achievement: { type:"pr", exercise:"Front Squat", weight:185 },
-    caption: "New front squat PR — mobility work paying off ✨",
-    kudos: ["u1","u4","u6"],
-    comments: [
-      {id:"c9", userId:"u4", text:"yess those wrists held up? 🙌", createdAt:Date.now()-1000*60*60*22},
-      {id:"c10", userId:"u9", text:"finally yes lol", createdAt:Date.now()-1000*60*60*21},
-    ],
-  },
-  {
-    id:"p9", userId:"u3", type:"workout", unit:"lbs",
-    createdAt: Date.now() - 1000*60*60*26,
-    workout: {
-      name: "Push A · Heavy Chest",
-      duration: 3900,
-      volume: 16200,
-      exercises: [
-        { name:"Barbell Bench Press", sets:[{w:205,r:6},{w:205,r:6},{w:205,r:5}] },
-        { name:"Incline DB Press", sets:[{w:75,r:9},{w:75,r:8}] },
-        { name:"Cable Fly", sets:[{w:40,r:12},{w:40,r:12},{w:35,r:14}] },
-        { name:"Lateral Raises", sets:[{w:20,r:15},{w:20,r:15},{w:15,r:20}] },
-        { name:"Tricep Pushdown", sets:[{w:60,r:12},{w:60,r:12}] },
-      ]
-    },
-    caption: "Same PPL grind, different day. Hit every set clean 💯",
-    kudos: ["u1","u7"],
-    comments: [],
-  },
-  {
-    id:"p10", userId:"u6", type:"photo",
-    createdAt: Date.now() - 1000*60*60*36,
-    caption: "recovery day run 🏃‍♀️ 6 miles easy pace",
-    imageColor: "#0e1a0e",
-    kudos: ["u4","u9","u1"],
-    comments: [],
-  },
-];
 
 const SEED_GROUPS = [
   { id:"g1", name:"The Crew", description:"Our gym group — training log + accountability", createdBy:"u1", members:["u1","u2","u3","u7"], icon:"🏋️" },
@@ -7431,7 +7270,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
       {(post.type === "photo" || post.type === "form_check") && (
         post.imageData
           ? <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
-          : <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}><Icon name="search" size={36} color="currentColor"/></div>
+          : <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}>{/* image placeholder — shows when a photo post's blob isn't cached (offline/cold-start); an image glyph reads as "photo", not a magnifying-glass "search" */}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
       )}
 
       {post.type === "run" && post.run && (
