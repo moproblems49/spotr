@@ -1,4 +1,4 @@
-// v178091716664
+// v178091716665
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11927,7 +11927,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
                   )}
                   <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.name}</div>
-                  <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>{t.desc} · {t.days.length} days</div>
+                  {/* desc already encodes the weekly frequency (e.g. "3-day · …"); don't append
+                      days.length — it's redundant, and for A/B templates like StrongLifts (2 unique
+                      workouts, 3×/week) it contradicts the desc ("3-day · … · 2 days"). */}
+                  <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>{t.desc}</div>
                   <button onClick={() => {
                     const prog = buildProgramFromTemplate(t);
                     if (onSaveProgram) onSaveProgram(prog);
