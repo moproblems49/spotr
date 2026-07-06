@@ -1,4 +1,4 @@
-// v178091716666
+// v178091716667
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16400,7 +16400,10 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
           </>
         )}
         <input value={email} onChange={e => setEmail(e.target.value)}
-          placeholder="Email or username" type="email" style={inputStyle}
+          /* Only sign-in accepts either identifier; sign-up and reset need a real email
+             (sign-up already has its own Username field above, so "Email or username" here
+             was both wrong and confusing). */
+          placeholder={mode === "signin" ? "Email or username" : "Email"} type="email" style={inputStyle}
           autoCapitalize="none" autoCorrect="off" autoComplete="email"/>
         {mode !== "reset" && (
           <input value={password} onChange={e => setPassword(e.target.value)}
