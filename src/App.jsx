@@ -1,4 +1,4 @@
-// v178091716663
+// v178091716664
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6600,35 +6600,35 @@ function PRModal({ prs, unit, onClose }) {
 const PROGRAM_TEMPLATES = [
   { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", days:[
     { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
-    { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
-    { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row","DB Shoulder Press","Lateral Raises","Cable Crunch"] },
+    { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (Wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
+    { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lateral Raises (DB)","Cable Crunch"] },
   ]},
   { id:"ul4", name:"Upper / Lower", icon:"⚡", desc:"4-day · strength + size", days:[
-    { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (wide)","Barbell Curl","Tricep Rope Pushdown"] },
+    { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (Wide)","Barbell Curl","Tricep Rope Pushdown"] },
     { name:"Lower A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-    { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","DB Shoulder Press","Seated Cable Row","Hammer Curl","Skull Crushers"] },
+    { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","Seated DB Shoulder Press","Seated Cable Row (Narrow)","Hammer Curl","Skull Crushers (EZ Bar)"] },
     { name:"Lower B", exercises:["Deadlift","Hack Squat (Machine)","Leg Extension","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
   ]},
   { id:"ppl6", name:"Push / Pull / Legs", icon:"🔥", desc:"6-day · classic hypertrophy", days:[
-    { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
-    { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (wide)","Barbell Row","Seated Cable Row","Face Pulls","Barbell Curl","Incline DB Curl"] },
+    { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (Wide)","Barbell Row","Seated Cable Row (Narrow)","Face Pulls","Barbell Curl","Incline DB Curl"] },
     { name:"Legs A · Quad Focus", exercises:["Barbell Back Squat","Leg Press","Leg Extension","Romanian Deadlift","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-    { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
-    { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly","Preacher Curl Machine","Hammer Curl"] },
+    { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
+    { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly (DB)","Preacher Curl Machine","Hammer Curl"] },
     { name:"Legs B · Posterior Chain", exercises:["Romanian Deadlift","Hack Squat (Machine)","Seated Leg Curl","Hip Thrust (Barbell)","Leg Extension","Seated Calf Raise (Machine)"] },
   ]},
   { id:"pplul", name:"PPL · Upper / Lower", icon:"🗓️", desc:"5-day · PPLUL hybrid", days:[
-    { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
     { name:"Pull", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Face Pulls","Barbell Curl","Hammer Curl"] },
     { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-    { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row","DB Shoulder Press","Lat Pulldown (wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers"] },
+    { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lat Pulldown (Wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers (EZ Bar)"] },
     { name:"Lower", exercises:["Hack Squat (Machine)","Romanian Deadlift","Leg Extension","Seated Leg Curl","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
   ]},
   { id:"bro", name:"Bro Split", icon:"💯", desc:"5-day · one muscle per day", days:[
     { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Weighted Dips"] },
-    { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row","Lat Pulldown (wide)"] },
-    { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","DB Shoulder Press","Lateral Raises","Reverse Pec Deck","Face Pulls"] },
-    { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
+    { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row (Narrow)","Lat Pulldown (Wide)"] },
+    { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Face Pulls"] },
+    { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers (EZ Bar)","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
     { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Leg Extension","Standing Calf Raise (Machine)"] },
   ]},
   { id:"sl5x5", name:"StrongLifts 5×5", icon:"🏋️", desc:"3-day · beginner strength", days:[
@@ -6639,7 +6639,7 @@ const PROGRAM_TEMPLATES = [
     { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press","Seated Leg Curl"] },
     { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row","Tricep Rope Pushdown"] },
     { name:"Deadlift Day", exercises:["Deadlift","Romanian Deadlift","Standing Calf Raise (Machine)"] },
-    { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises"] },
+    { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises (DB)"] },
   ]},
 ];
 
@@ -12449,14 +12449,14 @@ function AICoachModal({ C, onClose, onImport, store }) {
             { name:"Barbell Bench Press", reps:"4×5–7", note:"Rest-pause last set" },
             { name:"Incline DB Press", reps:"3×8–10", note:"2 sec negative" },
             { name:"Cable Fly (Low-to-High)", reps:"3×12", note:"Drop set" },
-            { name:"DB Shoulder Press", reps:"3×10" },
-            { name:"Lateral Raises", reps:"4×15–20" },
+            { name:"Seated DB Shoulder Press", reps:"3×10" },
+            { name:"Lateral Raises (DB)", reps:"4×15–20" },
             { name:"Tricep Rope Pushdown", reps:"3×12–15" },
           ]},
           { name:"Pull A · Back Width", exercises:[
             { name:"Weighted Pull-Ups", reps:"4×6–8", note:"Dead hang" },
-            { name:"Lat Pulldown (wide)", reps:"3×10–12" },
-            { name:"Seated Cable Row", reps:"3×10" },
+            { name:"Lat Pulldown (Wide)", reps:"3×10–12" },
+            { name:"Seated Cable Row (Narrow)", reps:"3×10" },
             { name:"Face Pulls", reps:"3×15" },
             { name:"Barbell Curl", reps:"3×10" },
             { name:"Hammer Curl", reps:"3×12" },
@@ -12470,18 +12470,18 @@ function AICoachModal({ C, onClose, onImport, store }) {
             { name:"Standing Calf Raise", reps:"4×15" },
           ]},
           { name:"Push B · Shoulders", exercises:[
-            { name:"Overhead Press", reps:"4×5–7" },
-            { name:"DB Arnold Press", reps:"3×10" },
-            { name:"Lateral Raises", reps:"4×12–15" },
+            { name:"Overhead Press (Barbell)", reps:"4×5–7" },
+            { name:"Arnold Press", reps:"3×10" },
+            { name:"Lateral Raises (DB)", reps:"4×12–15" },
             { name:"Incline DB Press", reps:"3×10" },
-            { name:"Skull Crushers", reps:"3×10" },
+            { name:"Skull Crushers (EZ Bar)", reps:"3×10" },
             { name:"Tricep Rope Pushdown", reps:"3×15" },
           ]},
           { name:"Pull B · Thickness", exercises:[
             { name:"Barbell Row", reps:"4×5–7" },
             { name:"T-Bar Row", reps:"3×8" },
             { name:"Single-Arm DB Row", reps:"3×10" },
-            { name:"Rear Delt Fly", reps:"3×15" },
+            { name:"Rear Delt Fly (DB)", reps:"3×15" },
             { name:"EZ Bar Curl", reps:"3×10" },
             { name:"Cable Curl", reps:"3×12" },
           ]},
@@ -12500,9 +12500,9 @@ function AICoachModal({ C, onClose, onImport, store }) {
         days:[
           { name:"Upper A · Push Focus", exercises:[
             { name:"Barbell Bench Press", reps:"4×8–10" },
-            { name:"Overhead Press", reps:"3×10" },
+            { name:"Overhead Press (Barbell)", reps:"3×10" },
             { name:"Incline DB Press", reps:"3×10–12" },
-            { name:"Lateral Raises", reps:"3×15" },
+            { name:"Lateral Raises (DB)", reps:"3×15" },
             { name:"Tricep Rope Pushdown", reps:"3×12" },
           ]},
           { name:"Lower A · Quad Focus", exercises:[
@@ -12515,7 +12515,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
           { name:"Upper B · Pull Focus", exercises:[
             { name:"Barbell Row", reps:"4×8" },
             { name:"Pull-Ups", reps:"3×8–10" },
-            { name:"Seated Cable Row", reps:"3×12" },
+            { name:"Seated Cable Row (Narrow)", reps:"3×12" },
             { name:"Face Pulls", reps:"3×15" },
             { name:"Barbell Curl", reps:"3×10" },
             { name:"Hammer Curl", reps:"3×12" },
@@ -12535,8 +12535,8 @@ function AICoachModal({ C, onClose, onImport, store }) {
           { name:"Day A · Squat + Push", exercises:[
             { name:"Barbell Back Squat", reps:"5×5", note:"Work up to heavy 5" },
             { name:"Barbell Bench Press", reps:"4×5" },
-            { name:"Overhead Press", reps:"3×8" },
-            { name:"Lateral Raises", reps:"3×15" },
+            { name:"Overhead Press (Barbell)", reps:"3×8" },
+            { name:"Lateral Raises (DB)", reps:"3×15" },
             { name:"Tricep Rope Pushdown", reps:"3×12" },
           ]},
           { name:"Day B · Deadlift + Pull", exercises:[
@@ -12549,7 +12549,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
             { name:"Barbell Back Squat", reps:"3×8", note:"Lighter, more volume" },
             { name:"Barbell Bench Press", reps:"3×8" },
             { name:"Barbell Row", reps:"3×8" },
-            { name:"Overhead Press", reps:"3×8" },
+            { name:"Overhead Press (Barbell)", reps:"3×8" },
             { name:"Romanian Deadlift", reps:"3×10" },
           ]},
         ]
@@ -12561,21 +12561,21 @@ function AICoachModal({ C, onClose, onImport, store }) {
             { name:"Barbell Back Squat", reps:"3×8" },
             { name:"Barbell Bench Press", reps:"3×8" },
             { name:"Barbell Row", reps:"3×8" },
-            { name:"Overhead Press", reps:"3×10" },
+            { name:"Overhead Press (Barbell)", reps:"3×10" },
             { name:"Standing Calf Raise", reps:"3×15" },
           ]},
           { name:"Full Body B", exercises:[
             { name:"Deadlift", reps:"3×5" },
             { name:"Incline DB Press", reps:"3×10" },
             { name:"Pull-Ups", reps:"3×6–8" },
-            { name:"Lateral Raises", reps:"3×12" },
+            { name:"Lateral Raises (DB)", reps:"3×12" },
             { name:"Barbell Curl", reps:"3×10" },
           ]},
           { name:"Full Body C", exercises:[
             { name:"Leg Press", reps:"3×10" },
             { name:"Barbell Bench Press", reps:"3×10" },
-            { name:"Seated Cable Row", reps:"3×10" },
-            { name:"Overhead Press", reps:"3×10" },
+            { name:"Seated Cable Row (Narrow)", reps:"3×10" },
+            { name:"Overhead Press (Barbell)", reps:"3×10" },
             { name:"Romanian Deadlift", reps:"3×10" },
           ]},
         ]
@@ -12586,9 +12586,9 @@ function AICoachModal({ C, onClose, onImport, store }) {
           { name:"Upper Circuit A", exercises:[
             { name:"Barbell Bench Press", reps:"4×12" },
             { name:"Barbell Row", reps:"4×12" },
-            { name:"Overhead Press", reps:"3×12" },
+            { name:"Overhead Press (Barbell)", reps:"3×12" },
             { name:"Pull-Ups", reps:"3×10" },
-            { name:"Lateral Raises", reps:"3×15" },
+            { name:"Lateral Raises (DB)", reps:"3×15" },
             { name:"Tricep Rope Pushdown", reps:"3×15" },
             { name:"Barbell Curl", reps:"3×15" },
           ]},
@@ -12602,10 +12602,10 @@ function AICoachModal({ C, onClose, onImport, store }) {
           { name:"Upper Circuit B", exercises:[
             { name:"Incline DB Press", reps:"4×12" },
             { name:"Single-Arm DB Row", reps:"4×12" },
-            { name:"Lateral Raises", reps:"4×15" },
+            { name:"Lateral Raises (DB)", reps:"4×15" },
             { name:"Face Pulls", reps:"3×15" },
             { name:"Hammer Curl", reps:"3×15" },
-            { name:"Skull Crushers", reps:"3×12" },
+            { name:"Skull Crushers (EZ Bar)", reps:"3×12" },
           ]},
           { name:"Lower Circuit B", exercises:[
             { name:"Deadlift", reps:"4×8" },
