@@ -1,4 +1,4 @@
-// v178091716667
+// v178091716668
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20078,7 +20078,9 @@ function AppInner() {
                   <div style={{ fontSize:10, fontWeight:800, letterSpacing:1.5, color:C.accent, marginBottom:6 }}>LAST WEEK</div>
                   <div style={{ display:"flex", gap:18, alignItems:"baseline", marginBottom:10 }}>
                     <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{weeklyRecap.workouts}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>workout{weeklyRecap.workouts===1?"":"s"}</span></div>
-                    <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{fmtVol(weeklyRecap.volume, unit)}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>{unit}</span></div>
+                    {/* fmtVol already appends the unit; strip it (like the other stat callers do)
+                        so the small {unit} label below doesn't double it ("94.3k lbs lbs"). */}
+                    <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{fmtVol(weeklyRecap.volume, unit).replace(/\s\w+$/, "")}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>{unit}</span></div>
                     {weeklyRecap.topMuscle && <div style={{ fontSize:11, color:C.sub }}>most trained: <span style={{ color:C.text, fontWeight:700 }}>{weeklyRecap.topMuscle}</span></div>}
                   </div>
                   <button onClick={() => setShowWrapped({ start: weeklyRecap.start, end: weeklyRecap.end, label: weeklyRecap.label })} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Share recap</button>
