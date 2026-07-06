@@ -1,4 +1,4 @@
-// v178091716665
+// v178091716666
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11898,7 +11898,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <Icon name="spark" size={20}/>
                 </div>
                 <div style={{ textAlign:"left", flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:C.bg, letterSpacing:-0.2 }}>AI Program Builder</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.bg, letterSpacing:-0.2 }}>Program Builder</div>
                   <div style={{ fontSize:11, color:C.bg, opacity:0.65, marginTop:1 }}>Answer 5 questions, get a custom plan</div>
                 </div>
                 <Icon name="chevron-right" size={18} color={C.bg}/>
@@ -12690,7 +12690,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
     // Normalize into the app's program format (same as the fallback output).
     return {
       id: uid(),
-      name: parsed.name || "Custom AI Program",
+      name: parsed.name || "Custom Program",
       days: parsed.days.map(d => ({
         id: uid(),
         name: d.name || "Day",
