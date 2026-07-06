@@ -1,4 +1,4 @@
-// v178091716669
+// v178091716670
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10741,6 +10741,20 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </div>
                 )}
 
+                {/* Optional caption — say something in your own words instead of just the
+                    workout name (the card below already shows the name). Applies to the feed
+                    post AND any groups you share to. */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:8 }}>CAPTION</div>
+                  <textarea
+                    value={workoutSummary.captionDraft ?? ""}
+                    onChange={e => setWorkoutSummary(prev => ({ ...prev, captionDraft: e.target.value.slice(0, 280) }))}
+                    placeholder="Add a caption… (optional)"
+                    rows={2}
+                    style={{ width:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px", fontSize:13, color:C.text, fontFamily:F, resize:"none", outline:"none", boxSizing:"border-box", lineHeight:1.4 }}
+                  />
+                </div>
+
                 {/* Share to Groups */}
                 {(() => {
                   const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
@@ -10787,11 +10801,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       const activeProg = (store.programs||[]).find(p => p.id === store.activeProgramId);
                       const progCode = activeProg?.shareCode || null;
                       if (workoutSummary.shareData) {
-                        const enrichedShareData = progCode
-                          ? { ...workoutSummary.shareData, caption: `${workoutSummary.shareData.caption} · Try my program: ${progCode}` }
-                          : workoutSummary.shareData;
+                        // Use the user's typed caption (empty is fine — the workout card shows
+                        // the day name). Append the program share code so the post gets an Import chip.
+                        const userCaption = (workoutSummary.captionDraft || "").trim();
+                        const finalCaption = progCode
+                          ? (userCaption ? `${userCaption} · Try my program: ${progCode}` : `Try my program: ${progCode}`)
+                          : userCaption;
                         // Share to feed AND any selected groups in one shot
-                        onShareWorkout({ ...enrichedShareData, groupIds: selectedGroups, groupOnly: false });
+                        onShareWorkout({ ...workoutSummary.shareData, caption: finalCaption, groupIds: selectedGroups, groupOnly: false });
                       }
                       // (External/native share removed — it could only send plain text, not the
                       // summary card, and any link has nowhere public to point yet. In-app feed +
@@ -10817,7 +10834,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   return (
                     <button onClick={() => {
                       if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
-                      if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, groupIds: selectedGroups, feedOnly: false, groupOnly: true });
+                      if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, caption: (workoutSummary.captionDraft || "").trim(), groupIds: selectedGroups, feedOnly: false, groupOnly: true });
                       setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
                     }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -13116,6 +13133,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const [editingPost, setEditingPost] = useState(null);  // post id being caption-edited
   const [editText, setEditText] = useState("");
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
+  const [pickerCaption, setPickerCaption] = useState(""); // optional caption for the group workout share
   const workoutPickerRecents = useMemo(() => {
     if (!showWorkoutPicker) return [];
     return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([d,s])=>Object.values(s).map(sess=>({...sess,date:d}))).slice(0,10);
@@ -13243,7 +13261,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:8 }}>
               <div style={{ display:"flex", gap:12 }}>
                 <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="plus" size={14} color={C.accent}/> Photo</button>
-                <button onClick={() => setShowWorkoutPicker(true)} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
+                <button onClick={() => { setPickerCaption(""); setShowWorkoutPicker(true); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
               </div>
               <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
                 background:(caption.trim()||img)?C.accent:C.divider, color:(caption.trim()||img)?C.onAccent:C.sub,
@@ -13448,6 +13466,14 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                 <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Share a Workout</div>
                 <button onClick={() => setShowWorkoutPicker(false)} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text }}>×</button>
               </div>
+              {recents.length > 0 && (
+                <div style={{ padding:"12px 14px 4px" }}>
+                  <textarea value={pickerCaption} onChange={e => setPickerCaption(e.target.value.slice(0, 280))}
+                    placeholder="Add a caption… (optional)" rows={2}
+                    style={{ width:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px", fontSize:13, color:C.text, fontFamily:F, resize:"none", outline:"none", boxSizing:"border-box", lineHeight:1.4 }}/>
+                  <div style={{ fontSize:11, color:C.muted, margin:"6px 2px 0" }}>Then tap a workout below to post it.</div>
+                </div>
+              )}
               <div style={{ overflowY:"auto", flex:1, padding:"10px 14px 14px" }}>
                 {recents.length === 0 ? (
                   <div style={{ textAlign:"center", padding:"40px 20px", color:C.sub }}>
@@ -13462,12 +13488,14 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                       if (!token) return;
                       setShowWorkoutPicker(false);
                       setPosting(true);
+                      const cap = pickerCaption.trim();
+                      setPickerCaption("");
                       const workoutData = { name:sess.dayName, duration:sess.duration, exercises:(sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) };
                       try {
                         const r = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
                           method:"POST",
                           headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
-                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:`${sess.dayName}`, workout:workoutData })
+                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, workout:workoutData })
                         });
                         if (r.ok) {
                           const d = await r.json();
