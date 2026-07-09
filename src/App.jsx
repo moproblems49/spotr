@@ -1,4 +1,4 @@
-// v178091716670
+// v178091716671
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -217,12 +217,13 @@ const sb = (() => {
     let email = emailOrUsername.trim();
     if (!email.includes("@")) {
       try {
-        const rows = await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?username=eq.${encodeURIComponent(email.toLowerCase())}&select=email`,
-          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        // Resolve username -> email via a SECURITY DEFINER RPC (returns only this one email),
+        // so the email column doesn't have to be world-readable on the profiles table.
+        const found = await fetch(
+          `${SUPABASE_URL}/rest/v1/rpc/email_for_username`,
+          { method: "POST", headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_username: email.toLowerCase() }) }
         ).then(r => r.json());
-        const found = rows?.[0]?.email;
-        if (!found) throw new Error("No account found with that username.");
+        if (!found || typeof found !== "string") throw new Error("No account found with that username.");
         email = found;
       } catch (e) { throw e; }
     }
@@ -382,12 +383,12 @@ const sb = (() => {
   async function recover(emailOrUsername) {
     let email = (emailOrUsername || "").trim();
     if (!email.includes("@")) {
-      const rows = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?username=eq.${encodeURIComponent(email.toLowerCase())}&select=email`,
-        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
-      ).then(r => r.json()).catch(() => []);
-      const found = rows?.[0]?.email;
-      if (!found) return; // silent — the UI always shows "if an account exists" (no enumeration)
+      // Username -> email via the SECURITY DEFINER RPC (email column isn't world-readable).
+      const found = await fetch(
+        `${SUPABASE_URL}/rest/v1/rpc/email_for_username`,
+        { method: "POST", headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_username: email.toLowerCase() }) }
+      ).then(r => r.json()).catch(() => null);
+      if (!found || typeof found !== "string") return; // silent — UI always shows "if an account exists" (no enumeration)
       email = found;
     }
     const redirectTo = (typeof window !== "undefined" && /^https?:/.test(window.location?.origin || ""))
@@ -14231,7 +14232,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
             {}, token
           ).catch(() => []),
           sb.query(
-            `profiles?id=in.(${idList})&select=id,unit`,
+            `public_profiles?id=in.(${idList})&select=id,unit`,
             {}, token
           ).catch(() => []),
         ]);
@@ -16433,7 +16434,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
         const headers = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
         // Only profiles that opted into public sharing (is_public = true) are viewable here.
         // A private profile returns no row → the "not found / private" state below.
-        const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&is_public=eq.true&select=id,username,name,bio,avatar_url`, { headers });
+        const pRes = await fetch(`${SUPABASE_URL}/rest/v1/public_profiles?id=eq.${userId}&is_public=eq.true&select=id,username,name,bio,avatar_url`, { headers });
         const profiles = pRes.ok ? await pRes.json() : [];
         const profile = Array.isArray(profiles) ? profiles[0] : null;
         if (!profile) { if (!cancelled) setState({ loading: false, profile: null, workouts: [], error: "not_found" }); return; }
@@ -17828,13 +17829,22 @@ function AppInner() {
     try {
       // Load profile
       const tok = tokenRef.current || token;
-      const [profiles, programs, prs, history, groupsData] = await Promise.all([
-        sb.query(`profiles?select=*`, {}, tok),
+      // SECURITY: read your OWN full row from the base table (all private fields — body_log, age,
+      // pr_events, etc.), but read EVERYONE ELSE only through public_profiles (safe display columns).
+      // The base profiles table is now owner-only-readable, so email/push_token/body_log/age are
+      // never exposed to other users. Reassemble into one list so downstream code is unchanged.
+      const [ownRows, otherProfiles, programs, prs, history, groupsData] = await Promise.all([
+        sb.query(`profiles?id=eq.${currentUserId}&select=*`, {}, tok),
+        sb.query(`public_profiles?select=*`, {}, tok),
         sb.query(`programs?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, tok),
         sb.query(`personal_records?user_id=eq.${currentUserId}&select=*`, {}, tok),
         sb.query(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, tok),
         sb.query(`groups?select=*`, {}, tok).catch(() => []),
       ]);
+      const ownRow = Array.isArray(ownRows) ? ownRows.find(p => p.id === currentUserId) : null;
+      const profiles = ownRow
+        ? [ownRow, ...((otherProfiles || []).filter(p => p.id !== currentUserId))]
+        : (otherProfiles || []);
 
       const me = profiles?.find(p => p.id === currentUserId);
       const activeProgram = programs?.find(p => p.id === me?.active_program_id) || programs?.[0];
