@@ -1,4 +1,4 @@
-// v178091716671
+// v178091716672
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -144,6 +144,19 @@ function identifyUser(userId) {
 // on tap — App Review taps every button, and a dead login is a rejection.
 const OAUTH_ENABLED = { apple: false, google: false };
 
+// email_for_username is a scalar RPC, so PostgREST normally returns the bare email string.
+// Be tolerant of it also arriving wrapped (["a@b.com"] or [{email_for_username:"a@b.com"}] /
+// {email:"a@b.com"}) so username sign-in / password reset never silently fails on a shape quirk.
+function extractRpcEmail(raw) {
+  if (typeof raw === "string") return raw || null;
+  if (Array.isArray(raw)) {
+    const v = raw[0];
+    return (typeof v === "string" ? v : (v && (v.email_for_username ?? v.email))) || null;
+  }
+  if (raw && typeof raw === "object") return (raw.email_for_username ?? raw.email) || null;
+  return null;
+}
+
 // Lightweight Supabase client — no npm package needed
 const sb = (() => {
   const headers = {
@@ -219,11 +232,13 @@ const sb = (() => {
       try {
         // Resolve username -> email via a SECURITY DEFINER RPC (returns only this one email),
         // so the email column doesn't have to be world-readable on the profiles table.
-        const found = await fetch(
+        const raw = await fetch(
           `${SUPABASE_URL}/rest/v1/rpc/email_for_username`,
           { method: "POST", headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_username: email.toLowerCase() }) }
-        ).then(r => r.json());
-        if (!found || typeof found !== "string") throw new Error("No account found with that username.");
+        ).then(r => r.json()).catch(() => null);
+        // A scalar RPC normally returns the bare string, but tolerate array/object wrappers too.
+        const found = extractRpcEmail(raw);
+        if (!found) throw new Error("No account found with that username.");
         email = found;
       } catch (e) { throw e; }
     }
@@ -384,11 +399,12 @@ const sb = (() => {
     let email = (emailOrUsername || "").trim();
     if (!email.includes("@")) {
       // Username -> email via the SECURITY DEFINER RPC (email column isn't world-readable).
-      const found = await fetch(
+      const raw = await fetch(
         `${SUPABASE_URL}/rest/v1/rpc/email_for_username`,
         { method: "POST", headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_username: email.toLowerCase() }) }
       ).then(r => r.json()).catch(() => null);
-      if (!found || typeof found !== "string") return; // silent — UI always shows "if an account exists" (no enumeration)
+      const found = extractRpcEmail(raw);
+      if (!found) return; // silent — UI always shows "if an account exists" (no enumeration)
       email = found;
     }
     const redirectTo = (typeof window !== "undefined" && /^https?:/.test(window.location?.origin || ""))
