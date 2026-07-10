@@ -1,4 +1,4 @@
-// v178091716673
+// v178091716674
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13277,7 +13277,9 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:8 }}>
               <div style={{ display:"flex", gap:12 }}>
-                <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="plus" size={14} color={C.accent}/> Photo</button>
+                {/* Group photo posts are intentionally disabled: images would land in a public
+                    storage bucket, so a private group's photo wouldn't actually be private.
+                    Groups support text + shared workouts (the useful private content) instead. */}
                 <button onClick={() => { setPickerCaption(""); setShowWorkoutPicker(true); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
               </div>
               <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
