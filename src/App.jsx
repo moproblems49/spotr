@@ -1,4 +1,4 @@
-// v178091716674
+// v178091716675
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -499,6 +499,60 @@ async function uploadImage(base64DataUrl, token, userId) {
     return `${SUPABASE_URL}/storage/v1/object/public/images/${path}`;
   } catch (e) {
     devWarn("uploadImage failed:", e);
+    return null;
+  }
+}
+
+// Group photos are private: they upload to the non-public `group-images` bucket under a
+// per-group folder. A storage RLS policy only lets group members write there, so the returned
+// value is the storage PATH (not a public URL) — there is no public URL for a private object.
+// Viewing goes through signGroupImage() below, which mints a short-lived signed URL that the
+// same membership policy gates. Net effect: only members can upload or view a group's photos.
+async function uploadGroupImage(base64DataUrl, token, groupId) {
+  if (!base64DataUrl || !token || !groupId) return null;
+  try {
+    const compressed = await compressImage(base64DataUrl);
+    const mime = compressed.match(/data:(.*?);/)?.[1] || "image/jpeg";
+    const ext = mime.split("/")[1]?.split("+")[0] || "jpg";
+    const base64 = compressed.split(",")[1] || "";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    // Folder = group id so the RLS policy can scope writes/reads to that group's members.
+    const path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/group-images/${path}`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": mime, "x-upsert": "true" },
+      body: blob,
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      devWarn("uploadGroupImage storage error:", res.status, err);
+      return null;
+    }
+    return path; // store the private path in group_posts.image_url
+  } catch (e) {
+    devWarn("uploadGroupImage failed:", e);
+    return null;
+  }
+}
+
+// Mint a short-lived signed URL for a private group image. The storage RLS SELECT policy only
+// lets members sign, so a non-member's request 403s and returns null (image just doesn't render).
+async function signGroupImage(path, token) {
+  if (!path || !token) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/group-images/${path}`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: 3600 }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const signed = data?.signedURL || data?.signedUrl;
+    return signed ? `${SUPABASE_URL}/storage/v1${signed}` : null;
+  } catch {
     return null;
   }
 }
@@ -13160,8 +13214,36 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const [img, setImg] = useState(null);
   const [posting, setPosting] = useState(false);
   const [showPostKinds, setShowPostKinds] = useState(false);
+  const [signedImgs, setSignedImgs] = useState({}); // private group-image path -> short-lived signed URL
   const fileRef = useRef(null);
   const me = store.users.find(u => u.id === currentUserId);
+
+  // Resolve a post's displayable image src. Private group photos are stored as a bare storage
+  // path (no scheme) and must be signed; legacy/absolute URLs render directly; local optimistic
+  // previews win while a fresh upload is in flight.
+  const isStoredPath = (v) => typeof v === "string" && v.length > 0 && !/^(https?:|data:|blob:)/i.test(v);
+  const resolveImg = (post) => {
+    if (post._localImage) return post._localImage;
+    const iu = post.image_url;
+    if (!iu) return null;
+    return isStoredPath(iu) ? (signedImgs[iu] || null) : iu;
+  };
+
+  // Sign any private group-image paths that appear in the feed (once each, cached).
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const need = posts
+      .map(p => p.image_url)
+      .filter(iu => isStoredPath(iu) && !(iu in signedImgs));
+    if (need.length === 0) return;
+    (async () => {
+      const entries = await Promise.all(need.map(async path => [path, await signGroupImage(path, token)]));
+      if (cancelled) return;
+      setSignedImgs(prev => { const next = { ...prev }; for (const [k, v] of entries) next[k] = v; return next; });
+    })();
+    return () => { cancelled = true; };
+  }, [posts, token]);
 
   useEffect(() => {
     // Guard against a stale group's fetch landing after the user switched groups.
@@ -13210,7 +13292,8 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
     try {
       let imageUrl = null;
       if (img) {
-        imageUrl = await uploadImage(img, token, currentUserId);
+        imageUrl = await uploadGroupImage(img, token, g.id);
+        if (!imageUrl) { toast("Couldn't upload photo — try again", "error"); setPosting(false); return; }
       }
       const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
         method:"POST",
@@ -13277,9 +13360,9 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:8 }}>
               <div style={{ display:"flex", gap:12 }}>
-                {/* Group photo posts are intentionally disabled: images would land in a public
-                    storage bucket, so a private group's photo wouldn't actually be private.
-                    Groups support text + shared workouts (the useful private content) instead. */}
+                {/* Photos upload to the PRIVATE group-images bucket (members-only, signed URLs) —
+                    see uploadGroupImage/signGroupImage. Not the public feed bucket. */}
+                <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="plus" size={14} color={C.accent}/> Photo</button>
                 <button onClick={() => { setPickerCaption(""); setShowWorkoutPicker(true); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
               </div>
               <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
@@ -13341,8 +13424,8 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                       ) : (
                         post.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.5, marginBottom:6 }}>{post.caption}</div>
                       )}
-                      {(post.image_url || post._localImage) && (
-                        <img src={post._localImage || post.image_url} alt="" loading="lazy" decoding="async" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>
+                      {resolveImg(post) && (
+                        <img src={resolveImg(post)} alt="" loading="lazy" decoding="async" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>
                       )}
                       {post.workout && (
                         <div style={{ marginBottom:8, background:C.divider, borderRadius:12, padding:"12px 14px" }}>
