@@ -1,4 +1,4 @@
-// v178091716672
+// v178091716673
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13452,8 +13452,9 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
               {u.id === g.createdBy && <span style={{ fontSize:9, color:C.gold, fontWeight:600 }}>ADMIN</span>}
             </div>
           ))}
-          {notMembers.length > 0 && (
+          {currentUserId === g.createdBy && notMembers.length > 0 && (
             <>
+              {/* Only the group creator manages membership (enforced server-side too). */}
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, margin:"16px 0 10px" }}>INVITE</div>
               {notMembers.map(u => (
                 <div key={u.id} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 0", borderBottom:`1px solid ${C.divider}` }}>
