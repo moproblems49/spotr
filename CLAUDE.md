@@ -71,7 +71,31 @@ To write a new sim, copy the harness header from an existing one (it seeds a gue
 - Memory/safety: never reduce the app's own safety behavior; this is a consumer fitness app.
 
 ## Current state / roadmap (as of last session)
-Recently shipped & verified (newest first): **password-reset flow** (Forgot password? on sign-in
+Recently shipped & verified (newest first): **App Store trust & safety pass** — three things a
+UGC app needs for Guideline 1.2 review: (1) **Report flow** — module-level `reportContent(target)`
++ `<ReportHost>` (mirrors `confirmAction`/`ConfirmHost`; rendered next to ConfirmHost in AppInner
+so it needs `token`+`currentUserId` props), wired into profiles (the old standalone Block button
+is now a `···` overflow with Report+Block), personal feed posts (PostCard's non-own `···`), group
+posts (non-`isMyPost` `···`), and DM headers. Writes to the **insert-only `reports` table**
+(RLS: insert only as yourself via `reporter_id = auth.uid()`, NO select policy → clients can never
+read reports; **Mo triages in the Supabase dashboard `reports` table — Apple wants action within
+24h**). (2) **Terms/EULA agreement at sign-up** — signup mode shows "By creating an account you
+agree to Terms + Privacy, including a zero-tolerance policy for objectionable content and abusive
+behavior" linking `spotr-drab.vercel.app/terms.html` (new — `public/terms.html`, matches
+privacy.html style) + `/privacy.html`. (3) **Private group photos** — group photos are members-only
+now, NOT in the public `images` bucket: `uploadGroupImage()` posts to the private **`group-images`**
+bucket under a `{groupId}/` folder and stores the bare PATH in `group_posts.image_url`;
+`signGroupImage()` mints a 1h signed URL to view; RLS helper `group_image_member_check()`
+(SECURITY DEFINER) gates BOTH insert and select on group membership, so non-members 403 on signing.
+`GroupDetail` signs paths lazily into `signedImgs` state (only successes cached, so transient sign
+failures retry) and `resolveImg(post)` picks _localImage → signed path → legacy absolute URL.
+Signed-URL shareability (a copied link works ≤1h) is the accepted tradeoff — same model Instagram
+uses. Verified: RLS role-sims (member sees / outsider 403), `sim_report.mjs`, `sim_offline.mjs`.
+NOTE on **offline-first**: it was ALREADY robust and is now proven — `queueWrite`/`flushWriteQueue`
+(durable localStorage PATCH/DELETE queue, merges, flushed on boot AND reconnect) + the
+`seshd_pending_workouts` queue for the workout POST (idempotent upsert on client `id` via
+`on_conflict=id`, retried on boot+reconnect). Only offline likes/comments (POSTs) are best-effort.
+Also recently: **password-reset flow** (Forgot password? on sign-in
 → Resend email → `#type=recovery` landing forces a set-new-password screen; sim: `sim_reset.mjs`);
 **Resend SMTP live** on `getseshd.app` (sender `hello@getseshd.app` — the sender address MUST be
 at the verified domain, a placeholder domain 550s; check Supabase auth logs via MCP `get_logs`
@@ -96,7 +120,12 @@ female body map, and the full security/perf audit (RLS gaps, webhook auth, race 
 plain AND with `guest` arg), `sim_flows.mjs` (finish-workout → recap + kg-unit smell scan),
 `sim_reset.mjs` (password reset both halves), `sim_retry.mjs` (login blip/persistent failure),
 `sim_merge.mjs` (custom-name migration), `sim_keypad.mjs` (div set fields + NumberPad),
-`sim_howto.mjs` (exercise-detail guides, no AI button), plus the older sim_tap/str/vol/msg/
+`sim_howto.mjs` (exercise-detail guides, no AI button), `sim_report.mjs` (foreign feed post →
+`···` → Report → reason → asserts POST to `reports`; needs the post author followed + Home tab —
+the feed only shows followed users and boots to the tracker, not the feed), `sim_offline.mjs`
+(finish workout while the save throws → lands in `seshd_pending_workouts` → fire window
+offline→online → asserts idempotent `on_conflict=id` upsert + queue drains), plus the older
+sim_tap/str/vol/msg/
 weekly/bb/hist/keychain/empty/gestures set. Sweep gotchas: nav buttons are aria-label-only
 (match both), NumberPad keys fire on pointerdown not click, NumberPad portals to document.body,
 and closePad arms a 500ms ghost-click swallower (wait it out before the next click).

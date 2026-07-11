@@ -1,4 +1,4 @@
-// v178091716676
+// v178091716677
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13323,7 +13323,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
     (async () => {
       const entries = await Promise.all(need.map(async path => [path, await signGroupImage(path, token)]));
       if (cancelled) return;
-      setSignedImgs(prev => { const next = { ...prev }; for (const [k, v] of entries) next[k] = v; return next; });
+      // Only cache SUCCESSFUL signs. A transient failure (returns null) is left uncached so the
+      // next feed change re-signs it, instead of permanently blanking the image for the session.
+      const ok = entries.filter(([, v]) => v);
+      if (ok.length) setSignedImgs(prev => { const next = { ...prev }; for (const [k, v] of ok) next[k] = v; return next; });
     })();
     return () => { cancelled = true; };
   }, [posts, token]);
@@ -16512,6 +16515,17 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
             : mode === "reset" ? (resetSent ? "Resend link" : "Send reset link")
             : "Create Account"}
         </button>
+
+        {/* App Store Guideline 1.2 (UGC): creating an account must be an explicit agreement to
+            the Terms/EULA, including a stated zero-tolerance for objectionable content & abusive
+            users. Links open the hosted policy pages (work in the native WebView and on web). */}
+        {mode === "signup" && (
+          <div style={{ fontSize:11, color:C.muted, textAlign:"center", lineHeight:1.55, margin:"-6px 0 14px", padding:"0 6px" }}>
+            By creating an account you agree to our{" "}
+            <a href="https://spotr-drab.vercel.app/terms.html" target="_blank" rel="noopener noreferrer" style={{ color:C.accent, fontWeight:700, textDecoration:"none" }}>Terms</a>{" "}and{" "}
+            <a href="https://spotr-drab.vercel.app/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color:C.accent, fontWeight:700, textDecoration:"none" }}>Privacy Policy</a>, including a zero-tolerance policy for objectionable content and abusive behavior.
+          </div>
+        )}
 
         {/* OAuth divider */}
         {(OAUTH_ENABLED.apple || OAUTH_ENABLED.google) && (
