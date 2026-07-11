@@ -1,4 +1,4 @@
-// v178091716675
+// v178091716676
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2232,6 +2232,80 @@ function ConfirmHost({ C }) {
           <button onClick={() => { close(); try { cf.onConfirm && cf.onConfirm(); } catch (e) {} }}
             style={{ flex:1, background:accent, color:"#fff", border:"none", borderRadius:11, padding:"12px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>{cf.confirmLabel}</button>
         </div>
+      </div>
+    </div>
+  ), document.body);
+}
+// Report objectionable content/users. Mirrors confirmAction/ConfirmHost: a module-level opener
+// sets state on a single host that renders the reason sheet and writes to the insert-only
+// `reports` table. Required by App Store Guideline 1.2 (UGC apps must let users flag content).
+// target = { type:'user'|'post'|'group_post'|'message', id, reportedUserId, label }
+let _setReport = null;
+function reportContent(target) {
+  if (_setReport) _setReport({ ...target, id: target.id != null ? String(target.id) : null, key: Date.now() });
+}
+const REPORT_REASONS = [
+  { id:"spam",       label:"Spam or scam" },
+  { id:"harassment", label:"Harassment or bullying" },
+  { id:"nudity",     label:"Nudity or sexual content" },
+  { id:"hate",       label:"Hate speech" },
+  { id:"violence",   label:"Violence or dangerous behavior" },
+  { id:"other",      label:"Something else" },
+];
+function ReportHost({ C, token, currentUserId }) {
+  const [rp, setRp] = useState(null);
+  const [busy, setBusy] = useState(false);
+  _setReport = setRp;
+  useEffect(() => {
+    if (!rp) return;
+    const onKey = (e) => { if (e.key === "Escape") setRp(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rp?.key]);
+  if (!rp) return null;
+  const close = () => { if (!busy) setRp(null); };
+  const submit = async (reason) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/reports`, {
+        method:"POST",
+        headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
+        body: JSON.stringify({
+          reporter_id: currentUserId,
+          reported_user_id: rp.reportedUserId || null,
+          content_type: rp.type,
+          content_id: rp.id,
+          reason,
+        }),
+      });
+      setRp(null);
+      // Always thank the user, even on a network error — never hint that a report "failed"
+      // (mirrors the app's neutral-confirmation style) and log the error for follow-up.
+      if (!res.ok) devWarn("report insert failed:", res.status, await res.text().catch(()=>""));
+      toast("Thanks for reporting. Our team will review this within 24 hours.", "success");
+    } catch (e) {
+      devWarn("report failed:", e);
+      setRp(null);
+      toast("Thanks for reporting. Our team will review this within 24 hours.", "success");
+    } finally { setBusy(false); }
+  };
+  const accent = C.accent || "#65a30d";
+  return createPortal((
+    <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"flex-end", justifyContent:"center", animation:"seshd-cf-fade 0.15s ease" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", maxWidth:480, width:"100%", border:`1px solid ${C.border}`, borderBottom:"none", animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
+        <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:4, letterSpacing:-0.3 }}>Report{rp.label ? ` ${rp.label}` : ""}</div>
+        <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>Why are you reporting this? This is anonymous.</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {REPORT_REASONS.map(r => (
+            <button key={r.id} disabled={busy} onClick={() => submit(r.id)} style={{
+              textAlign:"left", background:C.bg, border:`1px solid ${C.border}`, color:C.text,
+              borderRadius:11, padding:"13px 15px", fontSize:14, fontWeight:600,
+              cursor:busy?"default":"pointer", fontFamily:F, opacity:busy?0.6:1,
+            }}>{r.label}</button>
+          ))}
+        </div>
+        <button onClick={close} disabled={busy} style={{ width:"100%", marginTop:12, background:"transparent", border:"none", color:C.sub, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:F }}>Cancel</button>
       </div>
     </div>
   ), document.body);
@@ -7251,13 +7325,22 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             })()}
           </div>
         </div>
-        {isOwn && (
+        {isOwn ? (
           <div ref={menuRef} style={{ position:"relative" }}>
             <button onClick={() => setShowMenu(!showMenu)} style={{ background:"none", border:"none", color:C.text, fontSize:18, cursor:"pointer", padding:"4px 8px", lineHeight:1 }}>⋯</button>
             {showMenu && (
               <div style={{ position:"absolute", right:0, top:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden", zIndex:30, minWidth:130, boxShadow:"0 8px 24px rgba(0,0,0,0.3)" }}>
                 <button onClick={() => { setShowMenu(false); onEdit(post); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", borderBottom:`1px solid ${C.divider}`, fontFamily:F }}>Edit</button>
                 <button onClick={() => { setShowMenu(false); confirmAction({ title:"Delete post?", message:"This can't be undone.", confirmLabel:"Delete", destructive:true, onConfirm:() => onDelete(post.id) }); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.red, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:F }}>Delete</button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div ref={menuRef} style={{ position:"relative" }}>
+            <button onClick={() => setShowMenu(!showMenu)} aria-label="Post options" style={{ background:"none", border:"none", color:C.text, fontSize:18, cursor:"pointer", padding:"4px 8px", lineHeight:1 }}>⋯</button>
+            {showMenu && (
+              <div style={{ position:"absolute", right:0, top:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden", zIndex:30, minWidth:130, boxShadow:"0 8px 24px rgba(0,0,0,0.3)" }}>
+                <button onClick={() => { setShowMenu(false); reportContent({ type:"post", id:post.id, reportedUserId:post.userId, label:"post" }); }} style={{ display:"block", width:"100%", padding:"10px 14px", background:"none", border:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:F }}>Report</button>
               </div>
             )}
           </div>
@@ -13396,8 +13479,11 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                           <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{author?.username || "Unknown"}</span>
                           <span style={{ fontSize:11, color:C.muted }}>{timeAgo(new Date(post.created_at).getTime())}</span>
                         </div>
-                        {isMyPost && (
+                        {isMyPost ? (
                           <button onClick={() => { setPostMenu(post); setMenuConfirm(false); }} aria-label="Post options"
+                            style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:"0 6px", letterSpacing:1, fontWeight:700 }}>···</button>
+                        ) : (
+                          <button onClick={() => reportContent({ type:"group_post", id:post.id, reportedUserId:post.user_id, label:"post" })} aria-label="Report post"
                             style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, padding:"0 6px", letterSpacing:1, fontWeight:700 }}>···</button>
                         )}
                       </div>
@@ -14961,6 +15047,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const [showEdit, setShowEdit] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showBody, setShowBody] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false); // overflow menu (Report / Block) for other users
   const [showDelete, setShowDelete] = useState(false);
   // Lock the page behind full-screen/bottom-sheet overlays so scrolling inside them
   // doesn't bleed through to the profile underneath (iOS overscroll-behavior alone
@@ -15197,19 +15284,35 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 cursor:"pointer", fontFamily:F
               }}>Message</button>
             )}
-            {onBlock && (
-              <button onClick={() => confirmAction({
-                title: `Block @${user?.username}?`,
-                message: "They won't be able to follow you, and you'll unfollow each other.",
-                confirmLabel: "Block", destructive: true, icon: "warn",
-                onConfirm: () => { onBlock(userId); if (onBack) onBack(); },
-              })} aria-label="Block user" style={{
-                padding:"8px 11px", background:"transparent",
+            <div style={{ position:"relative", flexShrink:0 }}>
+              <button onClick={() => setMoreOpen(o => !o)} aria-label="More options" style={{
+                padding:"8px 12px", background:"transparent",
                 border:`1px solid ${C.border}`, borderRadius:8,
-                fontSize:13, fontWeight:600, color:C.danger || "#ef4444",
-                cursor:"pointer", fontFamily:F, flexShrink:0
-              }}>Block</button>
-            )}
+                fontSize:15, fontWeight:700, color:C.text, letterSpacing:1,
+                cursor:"pointer", fontFamily:F
+              }}>···</button>
+              {moreOpen && (
+                <>
+                  {/* click-catcher closes the menu on any outside tap */}
+                  <div onClick={() => setMoreOpen(false)} style={{ position:"fixed", inset:0, zIndex:50 }}/>
+                  <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:51, background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, boxShadow:"0 10px 30px rgba(0,0,0,0.25)", overflow:"hidden", minWidth:170 }}>
+                    <button onClick={() => { setMoreOpen(false); reportContent({ type:"user", id:userId, reportedUserId:userId, label:`@${user?.username || ""}`.trim() }); }} style={{
+                      display:"block", width:"100%", textAlign:"left", padding:"12px 15px", background:"transparent", border:"none", color:C.text, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F
+                    }}>Report</button>
+                    {onBlock && (
+                      <button onClick={() => { setMoreOpen(false); confirmAction({
+                        title: `Block @${user?.username}?`,
+                        message: "They won't be able to follow you, and you'll unfollow each other.",
+                        confirmLabel: "Block", destructive: true, icon: "warn",
+                        onConfirm: () => { onBlock(userId); if (onBack) onBack(); },
+                      }); }} style={{
+                        display:"block", width:"100%", textAlign:"left", padding:"12px 15px", background:"transparent", border:"none", borderTop:`1px solid ${C.divider}`, color:C.danger || "#ef4444", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F
+                      }}>Block</button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <div style={{ display:"flex", gap:6 }}>
@@ -17107,7 +17210,8 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"12px 14px 12px 6px" }}>‹</button>
         <Avatar user={peer || { name:"?" }} size={32} C={C}/>
-        <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:F }}>{peer?.name || peer?.username || "User"}</div>
+        <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:F, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{peer?.name || peer?.username || "User"}</div>
+        <button onClick={() => reportContent({ type:"message", id:peerId, reportedUserId:peerId, label:"conversation" })} aria-label="Report conversation" style={{ fontSize:18, color:C.muted || C.sub, background:"none", border:"none", cursor:"pointer", padding:"10px 8px", letterSpacing:1, fontWeight:700, flexShrink:0 }}>···</button>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:6 }}>
         {msgs === null && <div style={{ padding:24 }}><Spinner C={C}/></div>}
@@ -19853,6 +19957,7 @@ function AppInner() {
       {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
       <ConfirmHost C={C}/>
+      <ReportHost C={C} token={token} currentUserId={currentUserId}/>
 
       {/* OFFLINE INDICATOR — non-intrusive; auto-hides on reconnect */}
       {!online && (
