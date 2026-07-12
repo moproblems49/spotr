@@ -1,4 +1,4 @@
-// v178091716677
+// v178091716678
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16454,6 +16454,8 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       </div>
 
       <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", maxWidth:380, width:"100%", margin:"0 auto" }}>
+        {/* Brand mark anchors the form so the screen doesn't read top-empty (esp. on tall phones). */}
+        <div style={{ marginBottom:28 }}><SeshdLogo C={C} big/></div>
         <h1 style={{
           fontSize:28, fontWeight:900, color:C.text, marginBottom:6,
           letterSpacing:-0.8, fontFamily:F
