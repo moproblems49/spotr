@@ -1,4 +1,4 @@
-// v178091716678
+// v178091716679
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4493,12 +4493,13 @@ function Spinner({ C, size = 22 }) {
   );
 }
 
-function SeshdLogo({ C, big = false }) {
-  const sz = big ? 44 : 30;
+function SeshdLogo({ C, big = false, size }) {
+  const sz = size || (big ? 44 : 30);
+  const word = size ? Math.round(sz * 0.5) : (big ? 28 : 19);
   return (
-    <div style={{ display:"flex", alignItems:"center", gap: big ? 10 : 7 }}>
+    <div style={{ display:"flex", alignItems:"center", gap: Math.round(sz * 0.22) }}>
       <img src="/icon-192.png" width={sz} height={sz} style={{ borderRadius: sz * 0.22, objectFit:"cover" }} alt="Seshd"/>
-      <span style={{ fontSize:big?28:19, fontWeight:700, letterSpacing:0.6, color:C.text, lineHeight:1, fontFamily:DISPLAY, textTransform:"uppercase" }}>Seshd</span>
+      <span style={{ fontSize: word, fontWeight:700, letterSpacing:0.6, color:C.text, lineHeight:1, fontFamily:DISPLAY, textTransform:"uppercase" }}>Seshd</span>
     </div>
   );
 }
@@ -6176,7 +6177,11 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
 // Wraps a 1080×1350 card SVG in a 1080×1920 story-format frame (IG/TikTok stories):
 // card centered on the dark canvas with a small wordmark at the bottom.
 function wrapStorySVG(cardSvg) {
-  const inner = cardSvg.replace(/^<svg /, '<svg y="220" ');
+  // The card carries its own lowercase "seshd" watermark for standalone shares. In a story we add
+  // the bottom "SESHD" below, so strip the card's copy to avoid the wordmark appearing twice.
+  const inner = cardSvg
+    .replace(/^<svg /, '<svg y="220" ')
+    .replace(/<text[^>]*>seshd<\/text>/, '');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">`
     + `<rect width="1080" height="1920" fill="#0A0A0A"/>`
     + inner
@@ -16454,8 +16459,8 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       </div>
 
       <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", maxWidth:380, width:"100%", margin:"0 auto" }}>
-        {/* Brand mark anchors the form so the screen doesn't read top-empty (esp. on tall phones). */}
-        <div style={{ marginBottom:28 }}><SeshdLogo C={C} big/></div>
+        {/* Big centered brand mark fills the empty upper area so the screen doesn't read top-heavy-empty. */}
+        <div style={{ display:"flex", justifyContent:"center", marginBottom:40 }}><SeshdLogo C={C} size={72}/></div>
         <h1 style={{
           fontSize:28, fontWeight:900, color:C.text, marginBottom:6,
           letterSpacing:-0.8, fontFamily:F
