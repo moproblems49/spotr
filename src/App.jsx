@@ -1,4 +1,4 @@
-// v178091716683
+// v178091716684
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6159,10 +6159,10 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
     + `<text x="80" y="158" fill="#8a8a93" font-size="26" font-weight="600" letter-spacing="3">${esc(weekLabel)}</text>`
     + (() => {
         const parts = [];
-        if (volDeltaPct != null) parts.push(`${volDeltaPct >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(volDeltaPct)}% volume`);
+        if (volDeltaPct != null && volDeltaPct !== 0) parts.push(`${volDeltaPct > 0 ? "\u25B2" : "\u25BC"} ${Math.abs(volDeltaPct)}% volume`);
         if (woDelta) parts.push(`${woDelta > 0 ? "+" : ""}${woDelta} workout${Math.abs(woDelta) === 1 ? "" : "s"}`);
         if (!parts.length) return "";
-        const col = volDeltaPct != null ? (volDeltaPct >= 0 ? "#34d399" : "#f87171") : "#8a8a93";
+        const col = (volDeltaPct != null && volDeltaPct !== 0) ? (volDeltaPct > 0 ? "#34d399" : "#f87171") : "#8a8a93";
         return `<text x="80" y="196" fill="${col}" font-size="23" font-weight="600">${esc(parts.join("   \u00b7   "))} <tspan fill="#6a6a73">vs last week</tspan></text>`;
       })()
     + fig("front", 300, 205, 230) + fig("back", 560, 205, 230)
@@ -6385,18 +6385,25 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
             ))}
           </div>
 
-          {(volDeltaPct != null || prevWorkouts > 0) && (
-            <div style={{ textAlign:"center", marginBottom:16, fontSize:12, fontWeight:600 }}>
-              {volDeltaPct != null && (
-                <span style={{ color: volDeltaPct >= 0 ? "#34d399" : "#f87171" }}>
-                  {volDeltaPct >= 0 ? "▲" : "▼"} {Math.abs(volDeltaPct)}% volume
-                </span>
-              )}
-              {volDeltaPct != null && woDelta !== 0 ? <span style={{ color:"rgba(255,255,255,0.4)" }}> · </span> : null}
-              {woDelta !== 0 && <span style={{ color: woDelta > 0 ? "#34d399" : "#f87171" }}>{woDelta > 0 ? "+" : ""}{woDelta} workout{Math.abs(woDelta) === 1 ? "" : "s"}</span>}
-              <span style={{ color:"rgba(255,255,255,0.4)" }}> vs last week</span>
-            </div>
-          )}
+          {/* A zero delta is no news — "▲ 0% volume" read as a contradiction. Only show real changes;
+              if neither volume nor workout count moved, the whole line drops out. */}
+          {(() => {
+            const hasVol = volDeltaPct != null && volDeltaPct !== 0;
+            const hasWo = woDelta !== 0;
+            if (!hasVol && !hasWo) return null;
+            return (
+              <div style={{ textAlign:"center", marginBottom:16, fontSize:12, fontWeight:600 }}>
+                {hasVol && (
+                  <span style={{ color: volDeltaPct > 0 ? "#34d399" : "#f87171" }}>
+                    {volDeltaPct > 0 ? "▲" : "▼"} {Math.abs(volDeltaPct)}% volume
+                  </span>
+                )}
+                {hasVol && hasWo ? <span style={{ color:"rgba(255,255,255,0.4)" }}> · </span> : null}
+                {hasWo && <span style={{ color: woDelta > 0 ? "#34d399" : "#f87171" }}>{woDelta > 0 ? "+" : ""}{woDelta} workout{Math.abs(woDelta) === 1 ? "" : "s"}</span>}
+                <span style={{ color:"rgba(255,255,255,0.4)" }}> vs last week</span>
+              </div>
+            );
+          })()}
 
           <button onClick={async (e) => {
             e.preventDefault();
@@ -7424,10 +7431,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                   </div>
                 );
               })()}
-              {(w.volDeltaPct != null || w.woDelta) ? (
+              {((w.volDeltaPct != null && w.volDeltaPct !== 0) || w.woDelta) ? (
                 <div style={{ marginBottom:16, fontSize:12, fontWeight:600 }}>
-                  {w.volDeltaPct != null && <span style={{ color: w.volDeltaPct >= 0 ? "#34d399" : "#f87171" }}>{w.volDeltaPct >= 0 ? "▲" : "▼"} {Math.abs(w.volDeltaPct)}% volume</span>}
-                  {w.volDeltaPct != null && w.woDelta ? <span style={{ color:"rgba(255,255,255,0.4)" }}>  ·  </span> : null}
+                  {w.volDeltaPct != null && w.volDeltaPct !== 0 && <span style={{ color: w.volDeltaPct > 0 ? "#34d399" : "#f87171" }}>{w.volDeltaPct > 0 ? "▲" : "▼"} {Math.abs(w.volDeltaPct)}% volume</span>}
+                  {w.volDeltaPct != null && w.volDeltaPct !== 0 && w.woDelta ? <span style={{ color:"rgba(255,255,255,0.4)" }}>  ·  </span> : null}
                   {w.woDelta ? <span style={{ color: w.woDelta > 0 ? "#34d399" : "#f87171" }}>{w.woDelta > 0 ? "+" : ""}{w.woDelta} workout{Math.abs(w.woDelta) === 1 ? "" : "s"}</span> : null}
                   <span style={{ color:"rgba(255,255,255,0.4)" }}> vs last week</span>
                 </div>
