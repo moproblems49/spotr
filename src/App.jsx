@@ -1,4 +1,4 @@
-// v178091716681
+// v178091716682
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15249,7 +15249,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           ? <img src={user.coverUrl} alt="" onClick={() => setShowCoverView(true)}
               style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${user?.coverPos ?? 50}%`, cursor:"pointer" }}/>
           : <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>}
-        <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))", pointerEvents:"none" }}/>
+        {/* Bottom scrim blends a cover PHOTO into the page; over the empty placeholder it just
+            paints a muddy dark band (ugly on the light theme), so only render it with a photo. */}
+        {user?.coverUrl && (
+          <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))", pointerEvents:"none" }}/>
+        )}
         {onBack && (
           <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:8, left:10, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:19, fontSize:19, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
         )}
