@@ -1,1 +1,11 @@
-/* Ignite - styles handled by React inline styles */
+/* Seshd — almost all styling is React inline styles. This file only sets the app-wide font
+   fallback: any element that misses an inline fontFamily would otherwise fall back to the
+   WebView/browser default (Times serif — this actually shipped on parts of ExerciseDetail).
+   Matches the `F` stack in App.jsx; keep the two in sync. */
+html, body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+/* Form controls don't inherit font by default. */
+input, textarea, button, select {
+  font-family: inherit;
+}
