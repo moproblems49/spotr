@@ -1,4 +1,4 @@
-// v178091716684
+// v178091716685
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10963,7 +10963,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             </div>
                             <div style={{ flex:1 }}>
                               <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{g.name}</div>
-                              <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} members</div>
+                              <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} member{(g.members||[]).length===1?"":"s"}</div>
                             </div>
                             <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${checked?C.accent:C.border}`, background:checked?C.accent:"none", display:"flex", alignItems:"center", justifyContent:"center" }}>
                               {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
@@ -11218,7 +11218,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{g.name}</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(g.members||g.member_ids||[]).length} members</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(g.members||g.member_ids||[]).length} member{(g.members||g.member_ids||[]).length===1?"":"s"}</div>
                         </div>
                         <div style={{ width:22, height:22, borderRadius:7, border:`2px solid ${checked?C.text:C.border}`, background:checked?C.text:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                           {checked && <Icon name="check" size={12} color={C.bg} strokeWidth={3}/>}
@@ -13440,7 +13440,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
         <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"12px 14px" }}>‹</button>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{g.name}</div>
-          <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} members</div>
+          <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} member{(g.members||[]).length===1?"":"s"}</div>
         </div>
         <div style={{ display:"flex", gap:0, background:C.divider, borderRadius:8, padding:2 }}>
           {["feed","members"].map(t => (
@@ -13890,7 +13890,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
             <div style={{ width:38, height:38, borderRadius:10, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><Icon name="users" size={19} color={C.accent}/></div>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{g.name}</div>
-              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{g.members.length} members</div>
+              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{g.members.length} member{g.members.length===1?"":"s"}</div>
             </div>
             <span style={{ fontSize:16, color:C.sub }}>›</span>
           </div>
