@@ -1,4 +1,4 @@
-// v178091716679
+// v178091716680
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7050,7 +7050,8 @@ function ProgramBuilder({ C, onCancel, onSave }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // STORY VIEWER — Instagram-style full-screen with auto-advance
 // ═════════════════════════════════════════════════════════════════════════════
-function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, onReact, C }) {
+function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, onViewProfile, onReact, onDelete, currentUserId, C }) {
+  const canDelete = !!(onDelete && post?.id && currentUserId && (post.userId === currentUserId || user?.id === currentUserId));
   const bodyMapData = useBodyMapData();
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -7199,6 +7200,20 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
           <div style={{ fontSize:13, fontWeight:600, color:"#fff" }}>{user.username}</div>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>now</div>
         </div>
+        {canDelete && (
+          <button onClick={(e) => {
+            e.stopPropagation();
+            setPaused(true); // hold the story timer while the confirm sheet is up
+            confirmAction({
+              title: "Delete story?",
+              message: "This removes it for everyone and can't be undone.",
+              confirmLabel: "Delete", destructive: true, icon: "warn",
+              onConfirm: () => { onDelete(post.id); onClose(); },
+            });
+          }} aria-label="Delete story" style={{ background:"none", border:"none", color:"#fff", cursor:"pointer", padding:4, lineHeight:1, display:"flex", alignItems:"center" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        )}
         <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:"#fff", fontSize:24, cursor:"pointer", padding:4, lineHeight:1 }}>✕</button>
       </div>
 
@@ -20687,6 +20702,8 @@ function AppInner() {
               onPrev={null}
               hasNext={storyUsers.length > 0}
               hasPrev={false}
+              onDelete={handleDelete}
+              currentUserId={currentUserId}
               C={C}
             />
           );
@@ -20715,6 +20732,8 @@ function AppInner() {
               }
               toast(`${emoji} sent to ${entry.user.username}`, "success");
             }}
+            onDelete={handleDelete}
+            currentUserId={currentUserId}
             C={C}
           />
         );

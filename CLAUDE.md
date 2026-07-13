@@ -124,7 +124,9 @@ plain AND with `guest` arg), `sim_flows.mjs` (finish-workout → recap + kg-unit
 `···` → Report → reason → asserts POST to `reports`; needs the post author followed + Home tab —
 the feed only shows followed users and boots to the tracker, not the feed), `sim_offline.mjs`
 (finish workout while the save throws → lands in `seshd_pending_workouts` → fire window
-offline→online → asserts idempotent `on_conflict=id` upsert + queue drains), plus the older
+offline→online → asserts idempotent `on_conflict=id` upsert + queue drains), `sim_storydel.mjs`
+(seed an own `type:"story"` post → open "Your story" ring → trash button → confirm → asserts
+DELETE to `posts?id=eq.<id>`; delete button is gated on `post.userId===currentUserId`), plus the older
 sim_tap/str/vol/msg/
 weekly/bb/hist/keychain/empty/gestures set. Sweep gotchas: nav buttons are aria-label-only
 (match both), NumberPad keys fire on pointerdown not click, NumberPad portals to document.body,
