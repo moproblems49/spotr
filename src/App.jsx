@@ -1,4 +1,4 @@
-// v178091716682
+// v178091716683
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6535,7 +6535,11 @@ function PRModal({ prs, unit, onClose }) {
           <div style={{ marginBottom:multiple ? 16 : 24 }}>
             <div style={{ fontSize:11, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:600, marginBottom:6 }}>EXERCISE</div>
             <div style={{ fontSize:20, fontWeight:800, lineHeight:1.2, letterSpacing:-0.5 }}>{hero.name}</div>
-            {hero.increase > 0 && (
+            {hero.firstEver ? (
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:4, fontFamily:MONO }}>
+                Your first record for this lift
+              </div>
+            ) : hero.increase > 0 && (
               <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:4, fontFamily:MONO }}>
                 +{hero.increase} {unit} over your previous best
               </div>
@@ -6563,7 +6567,7 @@ function PRModal({ prs, unit, onClose }) {
                   </div>
                   <span style={{ display:"flex", alignItems:"baseline", gap:6 }}>
                     <span style={{ fontFamily:MONO, fontSize:15, fontWeight:700, color:"#fff" }}>{pr.weight} {unit}</span>
-                    {pr.increase > 0 && <span style={{ fontFamily:MONO, fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.4)" }}>+{pr.increase}</span>}
+                    {!pr.firstEver && pr.increase > 0 && <span style={{ fontFamily:MONO, fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.4)" }}>+{pr.increase}</span>}
                   </span>
                 </div>
               ))}
@@ -9750,7 +9754,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         if (maxVolLbs > 0 && maxVolLbs > prevVol) { newPRsVolume[ex.name] = maxVolLbs; types.push("volume"); }
 
         if (types.length) {
-          hitPRs.push({ name: ex.name, weight: maxW, increase: Math.round((maxLbs - prevW) * 10) / 10, types });
+          // firstEver: no prior weight PR existed, so `increase` is just the full weight —
+          // the celebration modal shows "first record" instead of a meaningless "+225" delta.
+          hitPRs.push({ name: ex.name, weight: maxW, increase: Math.round((maxLbs - prevW) * 10) / 10, types, firstEver: prevW === 0 });
         }
       });
 
