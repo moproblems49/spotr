@@ -1,4 +1,4 @@
-// v178091716685
+// v178091716686
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10190,8 +10190,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           </div>
         </div>
 
-        {/* Rest timer - Full screen modal */}
-        {rest && !rest.minimized && (
+        {/* Rest timer - Full screen modal. PORTALED to document.body: position:fixed is captured
+            by the tab-swipe track's transformed ancestor on iOS (a transform creates a containing
+            block), which rendered the timer clipped INSIDE the scrolling list instead of over the
+            viewport — same reason the NumberPad and Edit Profile modal portal out. */}
+        {rest && !rest.minimized && createPortal(
           <div onClick={() => setRest(p => p ? ({ ...p, minimized: true }) : p)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
             <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.12)" : "rgba(56,189,248,0.12)"} 0%, transparent 70%)`, pointerEvents:"none" }}/>
             <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:380, borderRadius:28, padding:24, background:"rgba(15,23,42,0.95)", boxShadow:"0 32px 100px rgba(0,0,0,0.35)", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
@@ -10297,9 +10300,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               `}</style>
             </div>
           </div>
-        )}
+        , document.body)}
 
-        {rest && rest.minimized && !focusedSet && (
+        {/* Minimized rest bar — portaled for the same transformed-ancestor reason as above
+            (this one visibly broke: it rendered as a clipped band inside the set list). */}
+        {rest && rest.minimized && !focusedSet && createPortal(
           <div style={{ position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 92px)", zIndex:490, padding:"8px 10px 8px 14px", borderRadius:16, background:C.surface, border:`1px solid ${rest.secs<=10 ? "#EF4444" : C.divider}`, boxShadow:"0 8px 24px rgba(0,0,0,0.16)", display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ fontSize:17, fontWeight:800, color: rest.secs<=10 ? "#EF4444" : C.text, fontFamily:MONO, minWidth:52 }}>
               {fmtTime(rest.secs)}
@@ -10316,7 +10321,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </button>
             <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:10, background:"transparent", border:`1px solid ${C.border}`, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
           </div>
-        )}
+        , document.body)}
 
         {/* Exercises */}
 
