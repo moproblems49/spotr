@@ -128,14 +128,20 @@ slots); `appstore-submission.md` (App Review notes + TestFlight what-to-test, pa
 empty strings, profile auto-created by `handle_new_user` trigger). Login VERIFIED by Mo.
 **House/demo content (live in prod DB, seeded for testers):** 4 more personas — `maya_lifts`,
 `jblake_strong`, `tess_pr`, `sam_ortiz` (all `…@getseshd.app`, RANDOM unrecoverable passwords —
-view-only personas, nobody signs in) + Coach Kai, each with ~6 workout_history sessions,
-personal_records, and feed posts (text + workout-card jsonb `{name,duration,volume,exercises:[{name,isPR,sets:[{w,r}]}]}`);
-full follow mesh between them (drives onboarding's most-followed suggestions) and they follow
-appreview back. Private group "Seshd Crew" (creator coach_kai, appreview IS a member so App
-Review sees a live group feed; regular testers can't join — creator-only membership — they
-create their own). Role-sim verified: fresh outsider sees 6 profiles / 9 posts / 30 histories,
-group invisible to non-members. To wipe later: delete auth.users rows with `%@getseshd.app`
-emails (except appreview if still needed) — profiles/posts/history cascade. Mo is added as an internal TestFlight tester. DMARC is the
+view-only personas, nobody signs in) + Coach Kai. Each has: **27 workout_history sessions over
+~9 weeks with a real progressive-overload trend** (older rows scaled lighter via a temp SQL
+`scale_w(jsonb, factor)` helper — weights stay strings rounded to 5s, so exercise Progress
+charts slope upward), personal_records, feed posts (text + workout-card jsonb
+`{name,duration,volume,exercises:[{name,isPR,sets:[{w,r}]}]}`), **2 group posts each** in
+"Seshd Crew", a distinct bio, and an **avatar as an inline SVG data-URI in
+`profiles.avatar_url`** (gradient + initials — real photo uploads are impossible from the
+sandbox, and data-URIs render fine in `<img>`). Full follow mesh between them (drives
+onboarding's most-followed suggestions) and they follow appreview back. Private group
+"Seshd Crew" (creator coach_kai, appreview IS a member so App Review sees a live group feed;
+regular testers can't join — creator-only membership — they create their own). Role-sim
+verified: fresh outsider sees all profiles/posts/histories, group invisible to non-members.
+To wipe later: delete auth.users rows with `%@getseshd.app` emails (except appreview if still
+needed) — profiles/posts/history cascade. Mo is added as an internal TestFlight tester. DMARC is the
 one remaining optional Mo-side item. Earlier: **App Store trust & safety pass** — three things a
 UGC app needs for Guideline 1.2 review: (1) **Report flow** — module-level `reportContent(target)`
 + `<ReportHost>` (mirrors `confirmAction`/`ConfirmHost`; rendered next to ConfirmHost in AppInner
