@@ -36,7 +36,14 @@ git add src/App.jsx
 git commit -m "<clear message>"
 git push
 ```
-Then, if any DB change was needed, tell Mo to run the SQL in the Supabase SQL editor.
+In remote (claude.ai) sessions the standing directive is to push every change to BOTH the
+session branch AND `main` (`git push -u origin <branch> && git branch -f main HEAD && git push origin main`
+— main has always been a fast-forward so far). Version-bump one-liner that avoids hand-editing:
+`cur=$(head -1 src/App.jsx | grep -oE '[0-9]+'); sed -i "1s/v${cur}/v$((cur+1))/" src/App.jsx`.
+DB changes: apply directly via the Supabase MCP (`apply_migration`/`execute_sql`) — verified RLS
+with `SET LOCAL ROLE`/`request.jwt.claims` role-sims; direct HTTPS to supabase.co is blocked by the
+sandbox network policy (use MCP, not curl). Vercel note: pushes to main DO deploy — a "404" on a
+policy page turned out to be pure browser cache (incognito confirmed live), don't chase deploy ghosts.
 
 ## Verification methodology (how we catch regressions)
 There are jsdom simulation scripts that mount the real app bundle and exercise flows. Before running them, rebuild the ESM bundle (stale bundle = false failures):
@@ -56,8 +63,39 @@ Key sims (run ONE per invocation; they take ~1–2 min): a workout-flow sim (log
 
 To write a new sim, copy the harness header from an existing one (it seeds a guest workout and a female body type), then append the specific interaction + assertions.
 
+### Playwright visual verification (renders the REAL app — use for any UI/visual change)
+jsdom sims prove behavior; Playwright proves it LOOKS right. The polish run caught 5 shipped
+visual bugs this way (serif-font fallback, cover-scrim smudge, etc.) that no sim would see.
+Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/polish_tour*.mjs`):
+1. Build with stub env — write `.env.local` (VITE_SUPABASE_URL=https://stub.supabase.co,
+   VITE_SUPABASE_ANON_KEY=stubkey, VITE_POSTHOG_KEY=) → `npm run build` → delete `.env.local`.
+2. Serve: `cd dist && python3 -m http.server 8199 &` (it dies between long steps — re-check
+   `curl -s http://127.0.0.1:8199/` before each run or every shot is a Chromium error page).
+3. `npm install --no-save playwright-core jsdom` — install BOTH TOGETHER; any `--no-save`
+   install prunes the other one. Chromium binary: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+   (launch with `executablePath` + `--no-sandbox`; never `playwright install`).
+4. Seed a signed-in app via `page.addInitScript`: localStorage keys `seshd_v1` (store JSON),
+   `seshd_session`, `seshd_onboarded=1`, `seshd_custom_merge_v1=1`, and optionally
+   `seshd_active_session` + `seshd_wstart` for an in-progress workout.
+5. Route supabase: FULFILL `/auth/v1/*` (fake token/user JSON — otherwise the app bounces to
+   the welcome screen / guest banner) and ABORT `/rest/v1/*` (loadUserData fails gracefully and
+   the seeded local store keeps rendering).
+6. Driving gotchas: `page.setDefaultTimeout(3000)` or one bad locator hangs the whole tour;
+   there are ~9 `aria-label="Close"` nodes — always filter `.locator("visible=true")`;
+   the Settings sheet closes via its "Done" TEXT button, the Body screen via the "‹" Back chevron
+   (generic Close/Escape do nothing — a stuck overlay makes every later shot identical);
+   viewport 428×926 @ deviceScaleFactor 3 = 1284×2778 (the App Store size).
+
 ## Conventions & gotchas
-- **`C` theme object** holds all colors. Inline styles everywhere — no CSS classes/files.
+- **`C` theme object** holds all colors. Inline styles everywhere — no CSS classes/files, with ONE
+  exception: `src/index.css` sets the app-wide `font-family` fallback (same stack as `F`; keep them
+  in sync). It exists because any element missing an inline `fontFamily` used to render in the
+  WebView's default Times serif (this actually shipped on ExerciseDetail). Don't delete it.
+- **Pluralize user-facing counts** (`{n} member{n===1?"":"s"}`) and **suppress zero/meaningless
+  deltas** ("▲ 0% volume", "+225 over your previous best" on a first-ever PR — `hitPRs` carries a
+  `firstEver` flag for this). Both classes of bug shipped once; check for them in new stat UI.
+- **Wrapped story frame:** `wrapStorySVG()` strips the card's own lowercase "seshd" watermark and
+  adds a single bottom "SESHD" — don't re-add a watermark to card SVGs without checking it.
 - Helpers: `posNum()` (input sanitize), `LBS_PER_KG` (=2.2046), `cvt()` (unit conversion), `EXERCISE_ALIASES` (dedup), `IS_DEV` (dev-only logging).
 - **Number inputs use `type="text"` + `inputMode`, never `type="number"`** — `type="number"` triggers the iOS autofill pill. Keep it this way.
 - **Touch/swipe:** React's synthetic touch listeners are passive (preventDefault is a no-op). The tab swipe relies on `touch-action: pan-y` on the root container. **Never swap the DOM structure mid-gesture** — that orphans the touch on iOS and freezes the drag (this broke the co-move twice). The current co-move uses a stable 3-panel track `[prev|current|next]` where the center (touched) node never unmounts.
@@ -71,7 +109,25 @@ To write a new sim, copy the harness header from an existing one (it seeds a gue
 - Memory/safety: never reduce the app's own safety behavior; this is a consumer fitness app.
 
 ## Current state / roadmap (as of last session)
-Recently shipped & verified (newest first): **App Store trust & safety pass** — three things a
+Recently shipped & verified (newest first): **Polish run** (5 Playwright-verified visual fixes:
+global sans fallback in index.css; profile cover scrim only over a real photo; PR modal `firstEver`
+handling; zero-delta "▲ 0%" suppressed in Wrapped modal + wrapped PostCard + shared SVG;
+"1 member" pluralization ×4 sites). **Story delete** — trash button in StoryViewer for your own
+story (`post.userId === currentUserId`), confirmAction sheet, reuses `handleDelete` (stories are
+`posts` rows); sim: `sim_storydel.mjs`. **Auth-screen logo** — big centered `<SeshdLogo size={72}/>`
+above "Welcome back" (SeshdLogo now takes a `size` prop). **Wrapped story double-wordmark fix**
+(see Conventions). **App Store submission assets — ALL ENTERED in App Store Connect by Mo:**
+listing copy (subtitle/description/keywords/promo), screenshots uploaded, Support URL set.
+Assets live in the repo: `appstore-screenshots/captioned/` (upload-ready, lifter-voice headlines)
++ `plain/` — both **1284×2778** (the 6.5" slot REJECTED 1290×2796; 1284×2778 is accepted in both
+slots); `appstore-submission.md` (App Review notes + TestFlight what-to-test, paste-ready);
+`public/support.html` + `terms.html` + `privacy.html` all live (a "404" was browser cache).
+**App Review demo accounts (live in prod DB):** `appreview@getseshd.app` / `SeshdDemo2026`
+(follows Coach Kai so the feed + Report/Block are testable) and buddy `coachkai@getseshd.app`
+(same pw, has one post) — created via SQL insert into auth.users (token columns need explicit
+empty strings, profile auto-created by `handle_new_user` trigger). Mo still needs to sign in once
+to verify the login before submitting. Mo is added as an internal TestFlight tester. DMARC is the
+one remaining optional Mo-side item. Earlier: **App Store trust & safety pass** — three things a
 UGC app needs for Guideline 1.2 review: (1) **Report flow** — module-level `reportContent(target)`
 + `<ReportHost>` (mirrors `confirmAction`/`ConfirmHost`; rendered next to ConfirmHost in AppInner
 so it needs `token`+`currentUserId` props), wired into profiles (the old standalone Block button
@@ -131,6 +187,10 @@ sim_tap/str/vol/msg/
 weekly/bb/hist/keychain/empty/gestures set. Sweep gotchas: nav buttons are aria-label-only
 (match both), NumberPad keys fire on pointerdown not click, NumberPad portals to document.body,
 and closePad arms a 500ms ghost-click swallower (wait it out before the next click).
+**Stale-stub trap (bit sim_msg once):** the app loads OTHER users from `public_profiles`, not
+`profiles` — any sim whose fetch stub only answers `/rest/v1/profiles` renders an empty social
+UI and fails on "missing" friends. When a sim fails after a data-path change, suspect the sim's
+stub before the app.
 
 **Gesture-perf refactor (merged to main):** every touch/drag gesture in the app — `SetRow` swipe, tab-swipe, the shared `PullToRefresh` component (History/Profile/Messages), the feed's own pull-to-refresh, `StoryViewer` drag, `InsightCards` swipe, and the profile cover-photo position drag — was re-pointed from per-frame `setState` (re-rendering the whole screen on every `touchmove`) to the ref-write pattern documented above, plus a fix for vertical-scroll bleed-through during the tab swipe. A code review of this refactor caught and fixed one real regression before merge: the cover-photo drag's mouse path could freeze `coverPosDraft` at the gesture's first frame if the cursor left the small drag area before mouseup (now uses `window`-level listeners — see the Conventions note above).
 
@@ -210,7 +270,8 @@ decision was to stay single dark icon).
    age rating 4+, privacy questionnaire published with 8 data types, App ID capabilities
    ticked (Push, HealthKit, Associated Domains, Sign in with Apple, App Groups,
    Communication Notifications), `ITSAppUsesNonExemptEncryption=false` in Info.plist.
-   Only screenshots/description remain — at TestFlight time (copy already drafted in chat).
+   ~~Screenshots/description~~ — DONE (July 11): listing copy entered, screenshots uploaded,
+   Support URL set, App Review notes + demo account ready in `appstore-submission.md`.
 3. ~~Resend SMTP~~ — DONE (July 4): domain `getseshd.app` verified, sender
    `hello@getseshd.app`, Supabase custom SMTP active (email rate limit 30/h).
    Still Mo-side later: "Confirm email" toggle at public launch; DMARC record for
