@@ -1,7 +1,7 @@
 # Seshd — project context for Claude Code
 
 ## What this is
-Seshd is a gym/workout tracker built as a **single-file React + Vite PWA**, shipped to iOS via **Capacitor 8**. Almost all app code lives in **`src/App.jsx`** (very large — ~18,500+ lines). Treat that file as the whole app unless told otherwise.
+Seshd is a gym/workout tracker built as a **single-file React + Vite PWA**, shipped to iOS via **Capacitor 8**. Almost all app code lives in **`src/App.jsx`** (very large — ~20,800+ lines). Treat that file as the whole app unless told otherwise.
 
 - Repo: `github.com/moproblems49/spotr` → deploys to `spotr-drab.vercel.app` (Vercel)
 - Bundle id: `com.seshd.app` · Apple Team ID: `66M7SCD5GA`
