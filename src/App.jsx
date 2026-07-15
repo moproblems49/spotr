@@ -1,4 +1,4 @@
-// v178091716687
+// v178091716688
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2203,21 +2203,24 @@ function _dismissToast() {
 // Native-feeling confirmation sheet — replaces window.confirm so destructive actions
 // match the app's premium look instead of popping the browser's default dialog.
 let _setConfirm = null;
-function confirmAction({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", destructive = false, icon = "warn", onConfirm }) {
-  if (_setConfirm) _setConfirm({ title, message, confirmLabel, cancelLabel, destructive, icon, onConfirm, id: Date.now() });
+// onCancel (optional) fires on ANY dismissal that isn't the confirm button (cancel button,
+// backdrop tap, Escape) — for callers that changed state before asking (e.g. StoryViewer
+// pauses the story while the sheet is up and must resume if the user backs out).
+function confirmAction({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", destructive = false, icon = "warn", onConfirm, onCancel }) {
+  if (_setConfirm) _setConfirm({ title, message, confirmLabel, cancelLabel, destructive, icon, onConfirm, onCancel, id: Date.now() });
 }
 function ConfirmHost({ C }) {
   const [cf, setCf] = useState(null);
   _setConfirm = setCf;
   useEffect(() => {
     if (!cf) return;
-    const onKey = (e) => { if (e.key === "Escape") setCf(null); };
+    const onKey = (e) => { if (e.key === "Escape") { setCf(null); try { cf.onCancel && cf.onCancel(); } catch (e2) {} } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [cf?.id]);
   if (!cf) return null;
   const accent = cf.destructive ? "#ef4444" : (C.accent || "#65a30d");
-  const close = () => setCf(null);
+  const close = () => { setCf(null); try { cf.onCancel && cf.onCancel(); } catch (e) {} };
   return createPortal((
     <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"seshd-cf-fade 0.15s ease" }}>
       <style>{`@keyframes seshd-cf-fade{from{opacity:0}to{opacity:1}}@keyframes seshd-cf-pop{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}`}</style>
@@ -2229,7 +2232,7 @@ function ConfirmHost({ C }) {
         {cf.message && <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:18 }}>{cf.message}</div>}
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={close} style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, color:C.text, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>{cf.cancelLabel}</button>
-          <button onClick={() => { close(); try { cf.onConfirm && cf.onConfirm(); } catch (e) {} }}
+          <button onClick={() => { setCf(null); try { cf.onConfirm && cf.onConfirm(); } catch (e) {} }}
             style={{ flex:1, background:accent, color:"#fff", border:"none", borderRadius:11, padding:"12px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>{cf.confirmLabel}</button>
         </div>
       </div>
@@ -7229,6 +7232,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
               message: "This removes it for everyone and can't be undone.",
               confirmLabel: "Delete", destructive: true, icon: "warn",
               onConfirm: () => { onDelete(post.id); onClose(); },
+              onCancel: () => setPaused(false), // resume playback — the story froze while the sheet was up
             });
           }} aria-label="Delete story" style={{ background:"none", border:"none", color:"#fff", cursor:"pointer", padding:4, lineHeight:1, display:"flex", alignItems:"center" }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
