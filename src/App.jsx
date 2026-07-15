@@ -1,4 +1,4 @@
-// v178091716686
+// v178091716687
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6147,7 +6147,11 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
   if (prList && prList.length) {
     prSvg += `<text x="80" y="1108" fill="#c8f135" font-size="22" font-weight="700" letter-spacing="2">NEW PRs</text>`;
     prList.slice(0, 3).forEach((p, i) => {
-      prSvg += `<text x="80" y="${1158 + i * 46}" fill="#e8e8ea" font-size="30" font-weight="600">${esc(p.name)} \u00b7 ${esc(p.weight)} ${unit}</text>`;
+      // Type suffix ("Wt+Vol PR") matches the in-workout badge language; older prEvents rows
+      // (pre-types) have no types array, so the suffix is optional.
+      const typeTag = (Array.isArray(p.types) && p.types.length)
+        ? `<tspan fill="#6a6a73" font-size="22" font-weight="700">  ${esc(p.types.map(t => PR_TYPE_LABEL_SHORT[t] || t).join("+"))} PR</tspan>` : "";
+      prSvg += `<text x="80" y="${1158 + i * 46}" fill="#e8e8ea" font-size="30" font-weight="600">${esc(p.name)} \u00b7 ${esc(p.weight)} ${unit}${typeTag}</text>`;
     });
   } else {
     prSvg += `<text x="80" y="1140" fill="#8a8a93" font-size="26" font-weight="500">Another week in the books \uD83D\uDCAA</text>`;
@@ -6292,13 +6296,18 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
   // of the PR, not whatever store.prs currently holds (which can have moved on since). If an
   // exercise PR'd more than once this week, show the heaviest of those hits, not just the first.
   const prList = (() => {
+    // Best weight per exercise, plus the UNION of PR types hit that week (weight/e1rm/volume) —
+    // the card labels them so an e1RM/volume-only PR isn't presented as a weight PR.
     const best = new Map();
     weekPREvents.forEach(e => {
       if (!e.name) return;
-      if (!best.has(e.name) || e.weightLbs > best.get(e.name)) best.set(e.name, e.weightLbs);
+      const cur = best.get(e.name);
+      const types = new Set([...(cur?.types || []), ...(Array.isArray(e.types) ? e.types : [])]);
+      best.set(e.name, { weightLbs: Math.max(cur?.weightLbs || 0, e.weightLbs || 0), types });
     });
-    const out = [...best.entries()].map(([name, weightLbs]) => ({
-      name, weight: unit === "lbs" ? Math.round(weightLbs) : Math.round(cvt(weightLbs, "lbs", "kg")),
+    const out = [...best.entries()].map(([name, v]) => ({
+      name, weight: unit === "lbs" ? Math.round(v.weightLbs) : Math.round(cvt(v.weightLbs, "lbs", "kg")),
+      types: [...v.types],
     }));
     return out.slice(0, 3);
   })();
