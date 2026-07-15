@@ -210,7 +210,13 @@ and closePad arms a 500ms ghost-click swallower (wait it out before the next cli
 **Stale-stub trap (bit sim_msg once):** the app loads OTHER users from `public_profiles`, not
 `profiles` — any sim whose fetch stub only answers `/rest/v1/profiles` renders an empty social
 UI and fails on "missing" friends. When a sim fails after a data-path change, suspect the sim's
-stub before the app.
+stub before the app. Two more harness lessons (bit sim_wrappedpr): **loadUserData wipes
+localStorage-seeded history/prEvents with the server copy** — seed via the fetch stub
+(`workout_history` rows + `profiles.pr_events`), not just `seshd_v1`; and any share/rasterize
+path dies instantly without `global.Image = window.Image` (svgToDataURL does `new Image()` —
+the rejection is swallowed by the handler's catch, so nothing visibly errors). To capture a
+generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `sim_wrappedpr.mjs`
+(Wrapped story SVG carries typed "Wt+Vol PR" suffixes in NEW PRs) is the worked example.
 
 **Gesture-perf refactor (merged to main):** every touch/drag gesture in the app — `SetRow` swipe, tab-swipe, the shared `PullToRefresh` component (History/Profile/Messages), the feed's own pull-to-refresh, `StoryViewer` drag, `InsightCards` swipe, and the profile cover-photo position drag — was re-pointed from per-frame `setState` (re-rendering the whole screen on every `touchmove`) to the ref-write pattern documented above, plus a fix for vertical-scroll bleed-through during the tab swipe. A code review of this refactor caught and fixed one real regression before merge: the cover-photo drag's mouse path could freeze `coverPosDraft` at the gesture's first frame if the cursor left the small drag area before mouseup (now uses `window`-level listeners — see the Conventions note above).
 
