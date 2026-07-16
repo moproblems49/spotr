@@ -35,21 +35,35 @@ Either way: **the Mac pulls it down; you never push anything to the Mac.**
 
 # PART 1 — Setup before building anything
 
-## Step 1 · Install / check the tools (do this early — big downloads)
+## Step 1 · Check the tools (do this FIRST — a possible big download hides here)
 
-1. **Xcode:** Cmd+Space → type `Xcode`. If it opens — great, you have it.
-   If not: open **App Store** → search **Xcode** → **Get**. ⚠️ It's ~10 GB; start this
-   download FIRST and do Step 2–3 while it runs. After installing, open it once and
-   accept the license.
+This Mac has Xcode and has built Seshd before. That helps (signing and phone trust are
+probably already done) — but the **Xcode version** matters and old ones won't work.
+
+1. **Check Xcode's version:** Cmd+Space → `Xcode` → open it → menu bar
+   **Xcode → About Xcode**. You need **16.0 or newer**.
+   - **16 or newer** → ✅ move on.
+   - **Older (15.x, 14.x…)** → open **App Store → Updates** and update Xcode.
+     ⚠️ It's a ~10 GB download — start it NOW and do Steps 2–4 while it runs.
+     If the App Store won't offer an update (says the Mac's macOS is too old),
+     stop and message Claude — that needs a macOS update first, worth knowing early.
+   - After any update: open Xcode once and accept the license prompt.
 2. **Node.js:** open **Terminal** → paste `node -v` → Return.
-   - If you see a version like `v20.x.x` → done.
-   - If it says "command not found" → go to **nodejs.org** in Safari → big green
-     **LTS** download button → open the downloaded `.pkg` → click Continue/Agree/Install
-     until done → **quit and reopen Terminal** → `node -v` again to confirm.
+   - A version like `v20.x.x` (or higher) → done. (v18+ is fine.)
+   - "command not found" or v16/older → **nodejs.org** in Safari → big green **LTS**
+     button → open the downloaded `.pkg` → Continue/Agree/Install → **quit and reopen
+     Terminal** → `node -v` to confirm.
 
-## Step 2 · Download the project
+## Step 2 · Get a FRESH copy of the project
 
-In Terminal, one line at a time:
+The old Seshd folder from last time is on this Mac somewhere — **don't reuse it.** It has
+months-old code and leftover build files; updating it in place can hit conflicts that are
+miserable to untangle. A fresh download is guaranteed-clean and only takes a minute.
+
+1. **Park the old copy:** Cmd+Space → `spotr` → if a folder named **spotr** shows up,
+   note where it is (likely Desktop or Documents), right-click it in Finder →
+   **Rename** → call it `spotr-OLD`. (Don't delete it — just move it out of the way.)
+2. In Terminal, one line at a time:
 
 ```
 cd ~/Desktop
@@ -61,18 +75,9 @@ git clone https://github.com/moproblems49/spotr.git
 cd spotr
 ```
 
-**✅ Success:** the clone command prints progress and finishes without red errors, and
-there's now a `spotr` folder on the Desktop.
-
-**If the Mac already has a spotr folder** from before (search Desktop/Documents), instead do:
-```
-cd ~/Desktop/spotr
-```
-```
-git pull
-```
-(`git pull` = "fetch the newest changes". If it prints file names or "Already up to date",
-it worked.)
+**✅ Success:** the clone prints progress and ends without red errors; a fresh `spotr`
+folder is on the Desktop. This folder contains **every latest change** — the whole app,
+this guide, everything. Nothing needs to be "sent" to the Mac.
 
 ## Step 3 · Install the app's ingredients + build it
 
@@ -133,11 +138,12 @@ progress bar at the top. Let it finish.)
 1. In the LEFT panel, click the very top item — a blue icon named **App**.
 2. In the middle area, under the heading **TARGETS**, click **App**.
 3. Click the **Signing & Capabilities** tab (along the top of that middle area).
-4. Xcode needs your Apple developer login: menu bar → **Xcode → Settings → Accounts** →
-   click **+** (bottom left) → **Apple ID** → sign in with the developer account
-   → close Settings.
+4. Since this Mac built Seshd before, the Apple developer login is probably already
+   saved: check menu bar → **Xcode → Settings → Accounts**. If the developer Apple ID
+   is listed → close Settings and skip to the next step. If the list is empty →
+   click **+** (bottom left) → **Apple ID** → sign in → close Settings.
 5. Back in Signing & Capabilities: set **Team** to the one showing **(66M7SCD5GA)**.
-   ⚠️ Not "Personal Team" — the real one.
+   ⚠️ Not "Personal Team" — the real one. (It may already be selected from last time.)
 6. Check **Bundle Identifier** says exactly `com.seshd.app`.
 7. Leave **"Automatically manage signing"** ticked.
 
@@ -188,13 +194,18 @@ is optional polish; if you want it, ask Claude that day and we'll walk through i
 2. In Xcode, top-middle toolbar: there's a device dropdown (probably says a simulator name).
    Click it → pick **your iPhone** (listed at the top).
 3. Press the **▶ Play button** (top left) and wait. First build takes a few minutes.
-4. **Two one-time phone popups — both normal, do them then press ▶ again:**
+4. **Possible one-time phone popups** — since this phone ran a dev build before, these
+   may not appear at all; if they do, handle them and press ▶ again:
    - *"Untrusted Developer"* → on the phone: **Settings → General → VPN & Device
      Management** → tap the developer entry → **Trust**.
    - *"Developer Mode required"* → **Settings → Privacy & Security → Developer Mode**
      → turn ON → phone restarts → confirm.
 
 **✅ Success:** Seshd opens on your iPhone with the dark launch screen → welcome screen. 🎉
+
+> ℹ️ If the OLD Seshd build is still on your phone from last time, this simply replaces
+> it (same app identity — it updates in place). If anything acts strangely on first
+> launch, delete the app from the phone and press ▶ in Xcode once more for a clean install.
 
 ## Step 10 · The on-phone test list (cable build)
 
