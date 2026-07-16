@@ -1,297 +1,285 @@
-# 🖥️ MAC DAY — The Complete Step-by-Step Guide
+# 🖥️ MAC DAY — Complete Beginner-Proof Guide (written for Mo)
 
-**Goal of the day:** get Seshd building in Xcode, test it on a real iPhone (push
-notifications, Apple Health, sign-in persistence, universal links), and upload the
-first build to TestFlight.
+**What today achieves:** Seshd goes from code on GitHub → an app running on your iPhone →
+a build on TestFlight you can install like a real app.
 
-**Everything code- and server-side is already done.** Nothing in this guide involves
-writing code — it's setup clicks, one secret paste, and testing.
+**You will not write any code.** Every step below is: open something, click something,
+or copy-paste a command. Do the steps **in order** — each one assumes the previous worked.
 
----
-
-## Before you start — what you need on hand
-
-| Item | Details |
-|---|---|
-| The Mac | With **Xcode 16 or newer** installed (App Store → search "Xcode" — it's a big download, start it early) |
-| A physical iPhone + cable | The Simulator **cannot** test push notifications or Apple Health |
-| Apple Developer account login | The account with Team ID **66M7SCD5GA** (app record + certificates live here) |
-| The APNs key file | A file named like **`AuthKey_XXXXXXXXXX.p8`** — it was downloaded on this Mac in an earlier session. Check `~/Downloads`, Desktop, or Spotlight-search "AuthKey". **Find it before starting** — it's Step 1 |
-| Supabase dashboard login | Mo has this — supabase.com, project `zwsoxvekobvtvsphesef` |
-| GitHub access to the repo | `github.com/moproblems49/spotr` (public clone works if it's public; otherwise Mo's login) |
-| Two phones OR one phone + the web app | For the DM push test (Step 6.2) — the demo accounts below make this easy |
-
-**Demo logins for testing** (already live in the database):
-- `appreview@getseshd.app` / `SeshdDemo2026`
-- `coachkai@getseshd.app` / `SeshdDemo2026`
-
-**Node.js on the Mac:** needed for the terminal steps. If `node -v` in Terminal says
-"command not found", install from nodejs.org (LTS version) first.
+**Good news up front:** there is **no APNS_ENV switching** in this guide. The plan is
+arranged so that setting stays on `production` all day and push notifications get tested
+on the TestFlight build at the end. One less thing to remember.
 
 ---
 
-## Who does what
+# PART 0 — Mac basics (read this first, 2 minutes)
 
-- **Ashley:** everything in Xcode/Terminal (Steps 2–7).
-- **Mo:** Step 1 (Supabase secret — can be done from the PC at the same time),
-  being the "second account" in the push test, and installing TestFlight on his phone.
+**Opening apps:** press **Cmd + Space** (Cmd is the ⌘ key next to the space bar), type the
+app's name, press **Return**. That's how you'll open *Terminal*, *Xcode*, and *TextEdit*.
 
----
+**Terminal** is the app where you paste commands. Rules:
+- Paste with **Cmd+V**, then press **Return** to run it.
+- Run commands **one line at a time**, top to bottom. Wait for each to finish
+  (you get a new prompt line ending in `%` or `$` when it's done).
+- If a popup appears saying it needs to install **"command line developer tools"** →
+  click **Install**, wait for it to finish, then run the same command again. This is
+  normal on a Mac that hasn't done development recently.
 
-## Step 1 — Paste the APNs key into Supabase (5 min) — *Mo can do this from the PC*
-
-Push notifications are fully wired; this is the single missing secret.
-
-1. On the Mac, find the **`.p8` file** (Spotlight: `AuthKey`). Right-click → Open With → **TextEdit**.
-2. Select **all** of it (Cmd-A), including the `-----BEGIN PRIVATE KEY-----` and
-   `-----END PRIVATE KEY-----` lines. Copy.
-3. Go to **supabase.com** → sign in → project **zwsoxvekobvtvsphesef** →
-   **Edge Functions** (left sidebar) → **Secrets**.
-4. Find (or add) the secret named **`APNS_PRIVATE_KEY`** → paste the whole key → **Save**.
-
-> ⚠️ **Do NOT generate a new key** in the Apple Developer portal unless the file truly
-> cannot be found. A new key has a new ID, which means the `APNS_KEY_ID` secret would
-> need updating too. All the other secrets (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC`,
-> `APNS_ENV=production`) are already set.
-
-**✅ Success looks like:** `APNS_PRIVATE_KEY` shows in the secrets list with a value set.
+**"How does the latest app get onto the Mac?"** You don't send it — it's already waiting.
+Every change we've made is saved on GitHub (the online copy of the project). One command
+(`git clone`, in Step 2) downloads the entire latest project onto the Mac. If the project
+was downloaded on this Mac before, a different one-liner (`git pull`) fetches just the updates.
+Either way: **the Mac pulls it down; you never push anything to the Mac.**
 
 ---
 
-## Step 2 — Get the code and sync the native project (15 min)
+# PART 1 — Setup before building anything
 
-Open **Terminal** on the Mac:
+## Step 1 · Install / check the tools (do this early — big downloads)
 
-```bash
-# 1. Get the code (first time):
+1. **Xcode:** Cmd+Space → type `Xcode`. If it opens — great, you have it.
+   If not: open **App Store** → search **Xcode** → **Get**. ⚠️ It's ~10 GB; start this
+   download FIRST and do Step 2–3 while it runs. After installing, open it once and
+   accept the license.
+2. **Node.js:** open **Terminal** → paste `node -v` → Return.
+   - If you see a version like `v20.x.x` → done.
+   - If it says "command not found" → go to **nodejs.org** in Safari → big green
+     **LTS** download button → open the downloaded `.pkg` → click Continue/Agree/Install
+     until done → **quit and reopen Terminal** → `node -v` again to confirm.
+
+## Step 2 · Download the project
+
+In Terminal, one line at a time:
+
+```
+cd ~/Desktop
+```
+```
 git clone https://github.com/moproblems49/spotr.git
+```
+```
 cd spotr
+```
 
-#    …or if the repo is already on this Mac:
-cd spotr
+**✅ Success:** the clone command prints progress and finishes without red errors, and
+there's now a `spotr` folder on the Desktop.
+
+**If the Mac already has a spotr folder** from before (search Desktop/Documents), instead do:
+```
+cd ~/Desktop/spotr
+```
+```
 git pull
+```
+(`git pull` = "fetch the newest changes". If it prints file names or "Already up to date",
+it worked.)
 
-# 2. Install JS dependencies (takes a few minutes):
+## Step 3 · Install the app's ingredients + build it
+
+Still in Terminal, one at a time (the first two take a few minutes each — wait for the
+prompt to come back):
+
+```
 npm install
-
-# 3. Build the web app and copy it into the iOS project:
+```
+```
 npm run build
+```
+```
 npx cap sync ios
 ```
 
-**What `cap sync` does:** installs the four native plugins added while Mac-less —
-Preferences (data persistence), Health (HealthKit), Badge (app-icon badge), and
-Secure Storage (Keychain sessions). The app code already calls all of them; they
-simply don't work until this sync runs.
+**✅ Success:** the last command ends with **`✔ Sync finished`** and a list of plugin names
+(push-notifications, health, preferences, badge, secure-storage…). Those are the native
+features we added while Mac-less — this command is what activates them.
 
-> ℹ️ This project uses **Swift Package Manager** — you do **not** need CocoaPods.
-> If any guide/tutorial mentions `pod install`, ignore it.
+> ℹ️ If any tutorial or error mentions "CocoaPods" or `pod install` — **ignore it**.
+> This project doesn't use that.
 
-**✅ Success looks like:** `cap sync` ends with `✔ Sync finished` and lists the plugins
-(`@capacitor/push-notifications`, `@capgo/capacitor-health`, `@capacitor/preferences`,
-`@capawesome/capacitor-badge`, `capacitor-secure-storage-plugin`, etc.).
+## Step 4 · The one Supabase secret (5 min)
 
-**If `npm run build` fails about env variables:** create a file called `.env.local` in
-the repo root containing the two `VITE_SUPABASE_*` values (ask Claude/Mo for them),
-then rerun. (Normally not needed — the values are baked in.)
+Push notifications need one key that only exists on this Mac.
+
+1. Click the desktop, press **Cmd+Space** → type `AuthKey` → look for a file named like
+   **`AuthKey_ABC123XYZ.p8`** (check Downloads/Desktop too). Found it? Continue.
+   *Can't find it after really looking? Stop and tell Claude — do NOT create a new key
+   on Apple's website; that breaks other settings.*
+2. Right-click the file → **Open With → TextEdit**.
+3. **Cmd+A** (select all) → **Cmd+C** (copy). It looks like
+   `-----BEGIN PRIVATE KEY-----` gibberish `-----END PRIVATE KEY-----`. Copy ALL of it,
+   including those BEGIN/END lines.
+4. In Safari: **supabase.com** → sign in → open the project → left sidebar
+   **Edge Functions** → **Secrets** tab.
+5. Find the row **`APNS_PRIVATE_KEY`** (or click Add new secret and name it exactly that)
+   → paste → **Save**.
+6. While you're on this screen, sanity-check: **`APNS_ENV`** should say **`production`**.
+   If it does, leave it alone — you won't touch it again today.
 
 ---
 
-## Step 3 — Open in Xcode and set up signing (10 min)
+# PART 2 — Xcode
 
-```bash
+## Step 5 · Open the project in Xcode
+
+In Terminal (inside the spotr folder):
+```
 npx cap open ios
 ```
-(This opens the right thing automatically. If opening manually: open
-`ios/App/App.xcodeproj` — via Finder is fine.)
+Xcode opens with the project. (First time it may spend a few minutes "resolving packages" —
+progress bar at the top. Let it finish.)
 
-In Xcode:
+## Step 6 · Sign the app (tell Xcode who's publishing it)
 
-1. In the left file tree, click the blue **App** project icon (top).
-2. Under **TARGETS**, click **App**.
-3. Open the **Signing & Capabilities** tab.
-4. **Team:** pick the team ending in **(66M7SCD5GA)**. If it's not in the dropdown:
-   Xcode menu → **Settings → Accounts → +** → sign in with the Apple Developer account,
-   then come back.
-5. Check: **Bundle Identifier** must be exactly `com.seshd.app`.
-6. Leave "Automatically manage signing" **ON**.
+1. In the LEFT panel, click the very top item — a blue icon named **App**.
+2. In the middle area, under the heading **TARGETS**, click **App**.
+3. Click the **Signing & Capabilities** tab (along the top of that middle area).
+4. Xcode needs your Apple developer login: menu bar → **Xcode → Settings → Accounts** →
+   click **+** (bottom left) → **Apple ID** → sign in with the developer account
+   → close Settings.
+5. Back in Signing & Capabilities: set **Team** to the one showing **(66M7SCD5GA)**.
+   ⚠️ Not "Personal Team" — the real one.
+6. Check **Bundle Identifier** says exactly `com.seshd.app`.
+7. Leave **"Automatically manage signing"** ticked.
 
-**✅ Success looks like:** no red errors in the Signing section; it says
+**✅ Success:** no red text in this section; it says something like
 "Provisioning Profile: Xcode Managed Profile".
 
----
+## Step 7 · Add the four capabilities
 
-## Step 4 — Add the four capabilities (10 min)
+Still on Signing & Capabilities, find the **`+ Capability`** button (top-LEFT of that pane).
+You'll add four things. For each: click `+ Capability`, type the name in the search box,
+double-click the result.
 
-Still in **Signing & Capabilities**, click the **`+ Capability`** button (top-left of
-that pane) and add each of these, one at a time:
-
-1. **Push Notifications** — no configuration needed, just add it.
-2. **Background Modes** — after adding, a checkbox list appears:
-   tick **Remote notifications** only.
-3. **HealthKit** — no sub-options needed (do NOT tick "Background Delivery").
-4. **Associated Domains** — after adding, click the small **+** inside its panel and
+1. **Push Notifications** — nothing to configure after adding.
+2. **Background Modes** — after it appears, tick the checkbox **Remote notifications**
+   (only that one).
+3. **HealthKit** — nothing to configure (don't tick any sub-boxes).
+4. **Associated Domains** — after it appears, click the small **+** inside its box and
    type exactly:
    ```
    applinks:spotr-drab.vercel.app
    ```
 
-> These four are already enabled on the App ID in Apple's portal, so Xcode should
-> accept them without complaint. **Skip "Sign in with Apple"** — not shipping yet.
+**Skip** "Sign in with Apple" — not needed yet.
 
-**✅ Success looks like:** four capability panels visible, no red errors.
-If Xcode complains, make sure the Team from Step 3 is the paid team (not "Personal Team").
+**✅ Success:** four new sections visible, no red errors. (If Xcode complains about
+entitlements, re-check Step 6's Team.)
 
----
+## Step 8 · Launch screen (the flash you see while the app opens)
 
-## Step 5 — Launch screen (15 min)
+**Don't burn time here.** The minimum acceptable version:
 
-1. In the file tree: **App → App → LaunchScreen.storyboard** (wait for the visual editor).
-2. Click the white background of the view → open the **Attributes inspector**
-   (right panel, slider icon) → **Background** → Custom → hex **`0A0A0A`**.
-3. Drag an **Image View** from the library (+ button, top right) onto the center of
-   the view. Set its Image to the app logo — add `assets/icon-only.png` from the repo
-   to the asset catalog first (**App → App → Assets** → drag the PNG in, name it `LaunchLogo`),
-   then set the Image View's image to `LaunchLogo`, size ~120×120, centered with
-   alignment constraints (Align menu → horizontally + vertically in container).
+1. Left panel: **App → App → LaunchScreen.storyboard** (a visual editor loads).
+2. Click the big white rectangle. In the RIGHT panel, click the slider-looking icon
+   (**Attributes inspector**). Find **Background** → click the color dropdown → **Custom…**
+   → in the color window pick the sliders tab → **RGB Sliders** → Hex Color: `0A0A0A` → Return.
 
-*Shortcut if fiddly:* a plain `0A0A0A` background with **no** logo is perfectly
-acceptable for TestFlight — don't burn time here. (Everything else — app icon,
-permission strings, portrait lock — is already committed; no work needed.)
+That's a clean dark launch screen — totally fine for TestFlight. (Adding the centered logo
+is optional polish; if you want it, ask Claude that day and we'll walk through it.)
 
 ---
 
-## Step 6 — Build to the iPhone and run the device tests (1–2.5 hrs)
+# PART 3 — Run it on your iPhone
 
-### 6.0 First build
+## Step 9 · First build onto the phone
 
-1. Plug in the iPhone. Unlock it. Tap **Trust This Computer** if asked.
-2. In Xcode's top toolbar, click the device dropdown (next to the App name) →
-   select the physical iPhone (not a Simulator).
-3. Press **▶ (Run)** or Cmd-R.
-4. **First-run hurdles (both normal):**
-   - iPhone says *"Untrusted Developer"* → on the phone:
-     **Settings → General → VPN & Device Management** → tap the developer profile → **Trust**.
-   - iPhone asks to enable **Developer Mode** →
-     **Settings → Privacy & Security → Developer Mode** → on → restart phone → confirm.
-   Then press ▶ in Xcode again.
+1. Plug your iPhone into the Mac with a cable. Unlock the phone.
+   Tap **Trust** if the phone asks about trusting the computer.
+2. In Xcode, top-middle toolbar: there's a device dropdown (probably says a simulator name).
+   Click it → pick **your iPhone** (listed at the top).
+3. Press the **▶ Play button** (top left) and wait. First build takes a few minutes.
+4. **Two one-time phone popups — both normal, do them then press ▶ again:**
+   - *"Untrusted Developer"* → on the phone: **Settings → General → VPN & Device
+     Management** → tap the developer entry → **Trust**.
+   - *"Developer Mode required"* → **Settings → Privacy & Security → Developer Mode**
+     → turn ON → phone restarts → confirm.
 
-**✅ Success looks like:** Seshd launches on the phone with the dark launch screen,
-then the welcome screen.
+**✅ Success:** Seshd opens on your iPhone with the dark launch screen → welcome screen. 🎉
 
-### 6.1 Push registration
-1. In the app: create an account or sign in (use `appreview@getseshd.app` / `SeshdDemo2026`).
-2. Accept the push-notification permission prompt.
-3. **Verify:** Supabase dashboard → **Table Editor → profiles** → find the row for the
-   signed-in account → the **`push_token`** column should now contain a long string.
+## Step 10 · The on-phone test list (cable build)
 
-### 6.2 Receive a real push  *(the big one)*
-> ⚠️ **First:** a direct Xcode build uses Apple's **sandbox** push environment.
-> In Supabase → Edge Functions → Secrets, set **`APNS_ENV`** to **`sandbox`** now.
-> **You MUST set it back to `production` before the TestFlight upload** (Step 7) —
-> put a sticky note on the screen.
+Sign in as **`appreview@getseshd.app`** / **`SeshdDemo2026`** and accept the notification
+permission popup when it appears.
 
-1. On a **second** device (or Mo's PC browser at `spotr-drab.vercel.app`), sign in as
-   **coachkai@getseshd.app** / `SeshdDemo2026`.
-2. As Coach Kai, send a **DM** to the appreview account (Messages → find the user → send).
-3. On the iPhone (app in background / phone locked):
-   - A push arrives showing **the sender's name** and message.
-   - The app icon shows a red **unread badge**.
-   - **Tapping the push opens that exact chat.**
-   - Opening the app clears the badge.
+Then check these, in any order:
 
-**If no push arrives:** Supabase → **Edge Functions → Logs** → `send-message-push`:
-- **401** → the `WEBHOOK_SECRET` secret doesn't match the DB webhook config.
-- An **`api.push.apple.com`** error → APNs key/team/topic mismatch — re-check Step 1
-  values and that `APNS_ENV` is `sandbox` for this test.
-- **No log entry at all** → the DB webhook didn't fire; check Database → Webhooks.
+| # | Test | How | Pass looks like |
+|---|---|---|---|
+| 1 | Push token saved | After accepting the push popup: on Safari → Supabase → **Table Editor → profiles** → find the appreview row | the `push_token` column has a long code in it |
+| 2 | Apple Health | In the app: Profile → the Training Readiness card → connect Health when prompted → **Allow** the categories | no errors. (Real numbers replace estimates within ~a day — don't expect instant change) |
+| 3 | Universal links | Share any profile (Share button) → paste the link into the **Notes** app → tap it | opens **inside Seshd**, not Safari. (If Safari opens: delete app, press ▶ in Xcode to reinstall, wait 1 min, retry) |
+| 4 | Data survives | Log a quick workout (Quick Start → add exercise → one set → Finish) → **force-quit** the app (swipe up, fling it away) → reopen | still signed in AND the workout is in History |
+| 5 | Feel check | Do a set: haptic buzz fires, rest timer bar floats above the bottom nav, tab swiping is smooth | nothing looks broken. Note oddities, don't fix today |
 
-### 6.3 Apple Health
-1. In the app, trigger the Health connect prompt (Profile → Training Readiness area).
-2. Accept the iOS Health permission sheet (allow all the read types).
-3. **Expect:** readiness/body battery switches from "estimated" to real numbers
-   **within a day** of wear data — don't expect an instant change today. No error = pass.
-
-### 6.4 Universal links
-1. Paste a profile link (e.g. `https://spotr-drab.vercel.app/u/<any-user-id>` — share
-   one from a profile's Share button) into the iPhone **Notes** app.
-2. Tap it. **Expect:** it opens **in the Seshd app**, not Safari.
-   (If Safari opens: delete the app, reinstall, wait ~1 min — iOS fetches the
-   association file on install.)
-
-### 6.5 Persistence (the data-safety test)
-1. Log a quick workout (Quick Start → add an exercise → a set → Finish).
-2. **Force-quit** the app (swipe up and away). Relaunch.
-   **Expect:** still signed in (Keychain session) AND the workout is in History
-   (Preferences mirror).
-3. Bonus: reboot the phone and check once more.
-
-### 6.6 Quick native feel-check (5 min, no pass/fail)
-Rest timer floats above the nav during a workout · haptics fire on set completion ·
-tab swipe feels smooth · keyboard doesn't cover inputs. Note anything weird; don't fix today.
+> **Note:** notifications are NOT tested on this cable build — that's deliberate.
+> They get tested on the TestFlight build (Step 13), which uses the server's current
+> settings as-is. Nothing to flip, nothing to remember.
 
 ---
 
-## Step 7 — TestFlight upload (30–60 min, mostly waiting)
+# PART 4 — TestFlight
 
-> ⚠️ **FIRST: set `APNS_ENV` back to `production`** in Supabase secrets (from Step 6.2).
+## Step 11 · Archive (package the app for Apple)
 
-1. In Xcode's device dropdown, choose **Any iOS Device (arm64)** (not the phone).
-2. Menu: **Product → Archive**. Wait a few minutes.
-3. The **Organizer** window opens with the archive → click **Distribute App** →
-   **App Store Connect** → **Upload** → keep all defaults (Next/Next) → **Upload**.
-4. Wait for "Upload Successful". Then Apple **processes** the build (10–45 min —
-   you'll see it under App Store Connect → Seshd → **TestFlight** tab, status "Processing").
-5. When it flips to ready: it may ask a **Missing Compliance** question — encryption is
-   already declared in the app (`ITSAppUsesNonExemptEncryption=false`), so usually no
-   prompt; if one appears anyway, answer **"None of the algorithms mentioned"** / standard
-   encryption only.
-6. In **TestFlight → Internal Testing**, make sure the group with **Mo** is attached to
-   the build. In TestFlight's **Test Details**, paste the "what to test" text from
-   **`appstore-submission.md`** (in the repo).
-7. **Mo:** open the **TestFlight app** on your iPhone → Seshd appears → **Install**. 🎉
+1. In the device dropdown (top toolbar), choose **Any iOS Device (arm64)** — NOT your phone.
+2. Menu bar: **Product → Archive**. Wait a few minutes.
+3. A window called **Organizer** pops up with your archive listed.
 
-**Common archive failures:**
-- *Signing error* → re-check Step 3 team selection.
-- *"App Store Connect access required"* → Xcode → Settings → Accounts → the Apple ID
-  must be on the team; or use the "Export" option and upload with the **Transporter** app.
-- *Build number already used* (only on a SECOND upload) → Xcode → target **App** →
-  **General** → increment **Build** (1 → 2) → archive again.
+## Step 12 · Upload to Apple
 
----
+1. In Organizer: click **Distribute App** → choose **App Store Connect** → **Upload** →
+   click Next through every screen keeping defaults → **Upload**.
+2. Wait for **"Upload Successful"** ✅.
+3. Now Apple processes it: go to **appstoreconnect.apple.com** → **My Apps** → **Seshd** →
+   **TestFlight** tab. Your build shows as *"Processing"* — this takes **10–45 minutes**.
+   Go have lunch; refresh occasionally.
+4. If a yellow **"Missing Compliance"** warning shows when it's done: click **Manage** →
+   the answer is **standard encryption only / exempt** (our app already declares this,
+   so usually no question appears at all).
 
-## After TestFlight works — submitting to App Review (optional, same day or later)
+## Step 13 · Install from TestFlight + THE push test
 
-Everything is already entered in App Store Connect (listing, screenshots, Support URL).
-Remaining clicks when you're ready:
-1. App Store Connect → Seshd → the **1.0** version page → **Build** section → **+** →
-   select the uploaded build.
-2. **App Review Information**: turn ON "Sign-in required", enter
-   `appreview@getseshd.app` / `SeshdDemo2026`, and paste the review notes from
-   **`appstore-submission.md`**.
-3. **Save** → **Add for Review** → **Submit to App Review**.
+1. When the build's status becomes **Ready to Test**: still in the TestFlight tab, make
+   sure your **Internal Testing** group (with your Apple ID) is linked to the build —
+   click the group in the left sidebar → check the build is listed → if it asks for
+   **Test Details**, paste the "what to test" text from the file `appstore-submission.md`
+   in the project folder.
+2. On your iPhone: open the **TestFlight** app (install it from the App Store if needed —
+   it's Apple's own app) → Seshd appears → **Install**.
+3. **Now the push test.** Open TestFlight-Seshd, sign in as **appreview**, accept the
+   notification popup. Then lock the phone.
+4. On the Mac in Safari, go to **spotr-drab.vercel.app** → sign in as
+   **`coachkai@getseshd.app`** / **`SeshdDemo2026`** → send a **DM** to the appreview account.
+5. **✅ Pass:** your locked iPhone lights up with a notification showing Coach Kai's name
+   and message → the app icon shows a red badge → **tapping the notification opens that
+   exact chat** → opening the app clears the badge.
 
----
-
-## Explicitly NOT today (deferred, all post-TestFlight)
-- Live Activity rest timer, home-screen widgets
-- Share-to-Instagram-Stories native plugin
-- Sign in with Apple (only needed if social login ships)
-- "Confirm email" toggle (flip at public launch)
-- iOS 18 light/dark icon variants
+**If no push arrives (wait 30s first):**
+- Safari → Supabase → **Edge Functions** → **send-message-push** → **Logs**:
+  - **401** error → tell Claude: "webhook secret mismatch".
+  - An error mentioning **api.push.apple.com** → the key from Step 4 didn't paste
+    cleanly — redo Step 4 carefully (ALL of the file, including BEGIN/END lines).
+  - **No log entries at all** → tell Claude: "webhook didn't fire".
+- After fixing a secret: just send another DM — **no rebuild needed**. Server settings
+  take effect immediately.
 
 ---
 
-## End-of-day checklist
+# DONE — end-of-day checklist
 
-- [ ] `APNS_PRIVATE_KEY` secret set in Supabase
-- [ ] `cap sync ios` ran clean
-- [ ] 4 capabilities added, app signed with team 66M7SCD5GA
-- [ ] App runs on the physical iPhone
-- [ ] `push_token` fills in after accepting the prompt
-- [ ] DM push arrives, badge shows, tap opens the right chat
-- [ ] Health connected without errors
-- [ ] Universal link opens in-app
-- [ ] Force-quit → still signed in, history intact
-- [ ] **`APNS_ENV` set BACK to `production`**
-- [ ] Build uploaded, processing finished, Mo installed via TestFlight
+- [ ] `npx cap sync ios` finished clean (Step 3)
+- [ ] `APNS_PRIVATE_KEY` pasted; `APNS_ENV` says `production` (Step 4)
+- [ ] Team = 66M7SCD5GA, four capabilities added (Steps 6–7)
+- [ ] App runs on the iPhone via cable (Step 9)
+- [ ] push_token filled · Health connected · link opens in-app · data survives force-quit (Step 10)
+- [ ] Build uploaded and processed (Steps 11–12)
+- [ ] Installed via TestFlight; **DM push arrives and opens the right chat** (Step 13)
+
+## Explicitly NOT today
+Live Activity rest timer · widgets · Instagram story sharing · Sign in with Apple ·
+"Confirm email" toggle · light/dark icon variants. All post-TestFlight.
+
+## If you get stuck anywhere
+Take a screenshot of the error (Cmd+Shift+4, drag over it) and send it to Claude with
+the step number. Almost every Xcode error is either the Team setting (Step 6) or a
+one-time popup you haven't clicked yet.
