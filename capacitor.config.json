@@ -1,5 +1,10 @@
 {
   "appId": "com.seshd.app",
   "appName": "Seshd",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
 }

@@ -1,4 +1,4 @@
-// v178091716692
+// v178091716693
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -478,7 +478,10 @@ async function uploadImage(base64DataUrl, token, userId) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: mime });
+    // A File (not a bare Blob) so CapacitorHttp's native bridge treats the body as a binary
+    // upload and base64-encodes it — a plain Blob falls through its type check and is sent as
+    // broken JSON. A File is also a valid fetch body on web, so this works in both paths.
+    const blob = new File([bytes], `upload.${ext}`, { type: mime });
     // Unique path per user so uploads don't collide and RLS can scope by the user's folder.
     const path = `${userId || "anon"}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/images/${path}`, {
@@ -518,7 +521,10 @@ async function uploadGroupImage(base64DataUrl, token, groupId) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: mime });
+    // A File (not a bare Blob) so CapacitorHttp's native bridge treats the body as a binary
+    // upload and base64-encodes it — a plain Blob falls through its type check and is sent as
+    // broken JSON. A File is also a valid fetch body on web, so this works in both paths.
+    const blob = new File([bytes], `upload.${ext}`, { type: mime });
     // Folder = group id so the RLS policy can scope writes/reads to that group's members.
     const path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/group-images/${path}`, {
