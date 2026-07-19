@@ -1,4 +1,4 @@
-// v178091716694
+// v178091716695
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1848,12 +1848,21 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         // Fixed 0-100 y-axis — shows the full recharge + drain story.
                         const yAt = lvl => PAD + (1 - lvl / 100) * (H - PAD * 2);
                         const ptStr = pts => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(p.ts).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
-                        const rPts = points.filter(p => p.phase === "recharge");
-                        const dPts = points.filter(p => p.phase !== "recharge");
-                        const rLine = rPts.length >= 2 ? ptStr(rPts) : "";
-                        const dLine = dPts.length >= 2 ? ptStr(dPts) : "";
-                        const rArea = rLine ? `${rLine} L ${xAt(rPts[rPts.length-1].ts).toFixed(1)} ${H} L ${xAt(rPts[0].ts).toFixed(1)} ${H} Z` : "";
-                        const dArea = dLine ? `${dLine} L ${xAt(dPts[dPts.length-1].ts).toFixed(1)} ${H} L ${xAt(dPts[0].ts).toFixed(1)} ${H} Z` : "";
+                        // Contiguous phase segments. The 24h window holds two drain phases split
+                        // by the overnight recharge — a global filter-by-phase would join them
+                        // with a line straight across the recharge dip. Each segment reuses the
+                        // previous segment's last point so the curves stay visually continuous.
+                        const segs = [];
+                        for (const p of points) {
+                          const last = segs[segs.length - 1];
+                          if (!last || last.phase !== p.phase) segs.push({ phase: p.phase, pts: last ? [last.pts[last.pts.length - 1], p] : [p] });
+                          else last.pts.push(p);
+                        }
+                        const drawSegs = segs.filter(s => s.pts.length >= 2).map((s, i) => {
+                          const line = ptStr(s.pts);
+                          const area = `${line} L ${xAt(s.pts[s.pts.length - 1].ts).toFixed(1)} ${H} L ${xAt(s.pts[0].ts).toFixed(1)} ${H} Z`;
+                          return { key: i, line, area, recharge: s.phase === "recharge" };
+                        });
                         const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
                         // 5 evenly-spaced time labels along x-axis. On a short span (e.g. the
                         // pre-dawn recharge window, wake→now under a couple hours) flooring to
@@ -1897,10 +1906,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                                   {[75, 50, 25].map(lvl => (
                                     <line key={lvl} x1={PAD} y1={yAt(lvl)} x2={W - PAD} y2={yAt(lvl)} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.55"/>
                                   ))}
-                                  {rArea && <path d={rArea} fill="url(#bbGreenGrad)" stroke="none"/>}
-                                  {dArea && <path d={dArea} fill="url(#bbDrainGrad)" stroke="none"/>}
-                                  {rLine && <path d={rLine} fill="none" stroke={GREEN} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>}
-                                  {dLine && <path d={dLine} fill="none" stroke={fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>}
+                                  {drawSegs.map(s => (
+                                    <path key={`a${s.key}`} d={s.area} fill={s.recharge ? "url(#bbGreenGrad)" : "url(#bbDrainGrad)"} stroke="none"/>
+                                  ))}
+                                  {drawSegs.map(s => (
+                                    <path key={`l${s.key}`} d={s.line} fill="none" stroke={s.recharge ? GREEN : fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+                                  ))}
                                 </svg>
                                 <div style={{ position:"relative", height:12, marginTop:4 }}>
                                   {xTickData.map(({ xPct, label, idx }) => (
@@ -1916,7 +1927,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                             </div>
                             {!hasSleepData && (
                               <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
-                                Connect Apple Health for sleep-based recharge accuracy.
+                                {isHealthConnected()
+                                  ? "Apple Health connected — the recharge curve sharpens once a night of sleep is recorded."
+                                  : "Connect Apple Health for sleep-based recharge accuracy."}
                               </div>
                             )}
                           </div>
@@ -1934,7 +1947,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         ))}
                       </div>
                       <div style={{ fontSize:11, color:C.muted, lineHeight:1.6, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
-                        {!bb.hasRecovery && "Connect Apple Health on iPhone for readings based on your real HRV, resting heart rate, and sleep. "}{tip}
+                        {!bb.hasRecovery && (isHealthConnected()
+                          ? "Apple Health is connected — readings switch to your real HRV, resting heart rate, and sleep as soon as your iPhone or Apple Watch records them. "
+                          : "Connect Apple Health on iPhone for readings based on your real HRV, resting heart rate, and sleep. ")}{tip}
                       </div>
                       <button onClick={() => setShowBatteryDetail(false)} style={{ marginTop:14, width:"100%", padding:"13px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
                     </div>
@@ -4064,8 +4079,9 @@ function computeBodyBattery(store) {
 // heart-rate stream without a paired Apple Watch, so this can't show real recovery bounces like
 // Garmin's chart — it's an honest, monotonically-draining curve driven by elapsed time, each
 // today session's real start/end timestamps, and real per-hour step/active-energy samples from
-// HealthKit (store.activityHourly, from readHourlyActivity()) when available. Returns null if
-// there's nothing to plot yet (just woke up).
+// HealthKit (store.activityHourly, from readHourlyActivity()) when available. Always spans the
+// full trailing 24 hours: previous night's recharge tail → yesterday's drain → last night's
+// recharge → today's drain, so the "24H" header is literally true at any time of day.
 function computeBodyBatteryTimeline(store) {
   const now = new Date();
   const bb = computeBodyBattery(store);
@@ -4091,7 +4107,8 @@ function computeBodyBatteryTimeline(store) {
     wakeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
   }
 
-  if (now - sleepStart < 2 * 36e5) return null;
+  // The chart always spans the full trailing 24 hours (the header says "24H" — make it true).
+  const windowStartMs = now.getTime() - 24 * 36e5;
 
   // HealthKit sleep hours will replace the 7.5h estimate when connected.
   const hasSleepData = !!(store.recovery?.sleepHours);
@@ -4099,14 +4116,12 @@ function computeBodyBatteryTimeline(store) {
   const rechargeTotal = Math.min(40, Math.max(15, Math.round(sleepHours * 4)));
   const sleepStartLevel = Math.max(10, Math.min(55, bb.charge0 - rechargeTotal));
 
-  // Workout sessions for the drain phase — same per-session drain formula as
-  // computeBodyBattery. With a real HealthKit wake time the awake window can start
-  // yesterday (night shift), so pull both calendar dates it can span.
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-  const wakeKey = `${wakeTime.getFullYear()}-${String(wakeTime.getMonth()+1).padStart(2,"0")}-${String(wakeTime.getDate()).padStart(2,"0")}`;
-  const buckets = wakeKey === todayKey
-    ? [(store.history || {})[todayKey] || {}]
-    : [(store.history || {})[wakeKey] || {}, (store.history || {})[todayKey] || {}];
+  // Workout sessions for the drain phases — same per-session drain formula as
+  // computeBodyBattery. The 24h window can touch up to three calendar dates
+  // (yesterday, today, and the day before across a midnight boundary).
+  const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const dateKeys = [...new Set([keyOf(new Date(windowStartMs)), keyOf(new Date(windowStartMs + 12 * 36e5)), keyOf(now)])];
+  const buckets = dateKeys.map(k => (store.history || {})[k] || {});
   const sessions = buckets.flatMap(bucket => Object.values(bucket)).map(sess => {
     const endMs = sess.finishedAt || now.getTime();
     const startMs = endMs - (sess.duration || 0) * 1000;
@@ -4127,48 +4142,88 @@ function computeBodyBatteryTimeline(store) {
 
   const hourlyActivity = store.activityHourly;
   const points = [];
+  const clampLvl = (l) => Math.round(Math.max(5, Math.min(100, l)));
 
-  // Phase 1: overnight recharge (10pm → 7am), 30-min intervals, sqrt curve
+  // Per-hour drain shared by yesterday's and today's drain segments. `useActivity` only for
+  // today's hours — hourlyActivity is TODAY'S per-hour steps/kcal, keyed by hour-of-day, so
+  // applying it to yesterday's same-numbered hours would double today's movement into yesterday.
+  const drainForHour = (hourStart, hourEnd, useActivity) => {
+    let drain = 0.9 * ((hourEnd - hourStart) / 36e5);
+    for (const s of sessions) {
+      const overlapMs = Math.max(0, Math.min(s.endMs, hourEnd) - Math.max(s.startMs, hourStart));
+      if (overlapMs > 0) drain += s.drain * (overlapMs / Math.max(1, s.endMs - s.startMs));
+    }
+    if (useActivity) {
+      const act = hourlyActivity?.[new Date(hourStart).getHours()];
+      if (act && (act.steps || act.kcal)) {
+        const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
+        drain += Math.min(6, a);
+      }
+    }
+    return drain;
+  };
+  const pushPt = (ts, level, phase) => points.push({ ts, hour: new Date(ts).getHours(), level: clampLvl(level), phase });
+
+  // Phase A+B — yesterday: drain from the previous wake down to last night's sleep, anchored
+  // BACKWARD so it lands exactly on sleepStartLevel where the recharge curve picks up (walking
+  // backward from the known endpoint sidesteps needing yesterday's unknown morning charge).
+  const prevWakeMs = wakeTime.getTime() - 24 * 36e5;
+  const preStartMs = Math.max(windowStartMs, prevWakeMs);
+  if (sleepStart.getTime() > preStartMs) {
+    const hours = [];
+    for (let t = preStartMs; t < sleepStart.getTime(); t += 36e5) {
+      hours.push({ start: t, end: Math.min(t + 36e5, sleepStart.getTime()) });
+    }
+    const drains = hours.map(h => drainForHour(h.start, h.end, false));
+    const levels = new Array(hours.length);
+    let acc = 0;
+    for (let i = hours.length - 1; i >= 0; i--) { acc += drains[i]; levels[i] = sleepStartLevel + acc; }
+    // Previous night's recharge tail — only when the window reaches back before yesterday's
+    // wake (i.e. it's currently night/early morning). Same sqrt shape, rising into the level
+    // yesterday's drain starts from.
+    if (windowStartMs < prevWakeMs && hours.length) {
+      const prevWakeLevel = Math.min(100, levels[0]);
+      const prevSleepStartMs = sleepStart.getTime() - 24 * 36e5;
+      const prevLow = Math.max(10, Math.min(55, prevWakeLevel - rechargeTotal));
+      const span = Math.max(1, prevWakeMs - prevSleepStartMs);
+      for (let t = windowStartMs; ; t += 30 * 60000) {
+        const ct = Math.min(t, prevWakeMs);
+        const frac = Math.max(0, Math.min(1, (ct - prevSleepStartMs) / span));
+        pushPt(ct, prevLow + Math.sqrt(frac) * (prevWakeLevel - prevLow), "recharge");
+        if (t >= prevWakeMs) break;
+      }
+    }
+    for (let i = 0; i < hours.length; i++) pushPt(hours[i].start, levels[i], "drain");
+    pushPt(sleepStart.getTime(), sleepStartLevel, "drain");
+  }
+
+  // Phase C — last night's recharge, 30-min intervals, sqrt curve
   const sleepDurMs = wakeTime.getTime() - sleepStart.getTime();
   const phaseEnd1 = Math.min(now.getTime(), wakeTime.getTime());
   for (let t = sleepStart.getTime(); ; t += 30 * 60000) {
     const ct = Math.min(t, phaseEnd1);
     const frac = sleepDurMs > 0 ? Math.max(0, Math.min(1, (ct - sleepStart.getTime()) / sleepDurMs)) : 1;
-    const level = Math.round(sleepStartLevel + Math.sqrt(frac) * (bb.charge0 - sleepStartLevel));
-    points.push({ ts: ct, hour: new Date(ct).getHours(), level, phase: "recharge" });
+    pushPt(ct, sleepStartLevel + Math.sqrt(frac) * (bb.charge0 - sleepStartLevel), "recharge");
     if (t >= phaseEnd1) break;
   }
 
-  // Phase 2: wake → now, hourly intervals
+  // Phase D — today: wake → now, hourly intervals. The wake anchor keeps the drain line
+  // meeting the recharge line's endpoint exactly (no gap at the peak).
   if (now > wakeTime) {
     let level = bb.charge0;
-    // Anchor the drain line to the wake boundary (charge0) so it meets the
-    // recharge line's endpoint exactly — otherwise the first drain point is an
-    // hour later and the two-color chart shows a gap at the peak.
-    points.push({ ts: wakeTime.getTime(), hour: wakeTime.getHours(), level: Math.round(level), phase: "drain" });
+    pushPt(wakeTime.getTime(), level, "drain");
     const hoursElapsed = Math.ceil((now - wakeTime) / 36e5);
     for (let h = 0; h < hoursElapsed; h++) {
       const hourStart = wakeTime.getTime() + h * 36e5;
-      const hourEnd = hourStart + 36e5;
-      const ts = Math.min(hourEnd, now.getTime());
-      const hourFraction = (ts - hourStart) / 36e5;
-      let drain = 0.9 * hourFraction;
-      for (const s of sessions) {
-        const overlapMs = Math.max(0, Math.min(s.endMs, hourEnd) - Math.max(s.startMs, hourStart));
-        if (overlapMs > 0) drain += s.drain * (overlapMs / Math.max(1, s.endMs - s.startMs));
-      }
-      const hourOfDay = new Date(hourStart).getHours();
-      const act = hourlyActivity?.[hourOfDay];
-      if (act && (act.steps || act.kcal)) {
-        const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
-        drain += Math.min(6, a);
-      }
-      level = Math.max(5, level - drain);
-      points.push({ ts, hour: hourOfDay, level: Math.round(level), phase: "drain" });
+      const ts = Math.min(hourStart + 36e5, now.getTime());
+      level = Math.max(5, level - drainForHour(hourStart, ts, true));
+      pushPt(ts, level, "drain");
     }
   }
 
-  return points.length >= 2 ? { points, wakeTimeMs: wakeTime.getTime(), hasSleepData } : null;
+  // Clip to the 24h window (the recharge loop can start up to 2h before it late in the evening).
+  const clipped = points.filter(p => p.ts >= windowStartMs);
+  return clipped.length >= 2 ? { points: clipped, wakeTimeMs: wakeTime.getTime(), hasSleepData } : null;
 }
 
 function nativeHealth() {
@@ -4177,6 +4232,14 @@ function nativeHealth() {
   return null;
 }
 function healthKitAvailable() { return !!nativeHealth(); }
+
+// "Connected" = the HealthKit permission sheet flow completed at least once on this device.
+// Apple deliberately hides READ-permission state from apps (an app can't ask "am I allowed to
+// read HRV?"), so this flag is the honest best signal we have. Data presence (hasRecovery /
+// hasSleepData) is tracked separately — connected-but-no-data is a real, normal state for
+// anyone without an Apple Watch or sleep tracking.
+function markHealthConnected() { try { localStorage.setItem("seshd_health_connected", "1"); } catch {} }
+function isHealthConnected() { try { return localStorage.getItem("seshd_health_connected") === "1"; } catch { return false; } }
 
 // These MUST be valid @capgo/capacitor-health HealthDataType strings — the plugin's native
 // requestAuthorization THROWS on any unrecognized identifier, which rejects the whole request
@@ -4197,6 +4260,7 @@ async function requestHealthPermission() {
     const avail = await H.isAvailable();
     if (avail && avail.available === false) return false;
     await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
+    markHealthConnected();
     return true;
   } catch (e) {
     return false;
@@ -4296,6 +4360,7 @@ async function readRecovery() {
     const avail = await H.isAvailable();
     if (avail && avail.available === false) return null;
     await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
+    markHealthConnected();
   } catch (e) { /* if the user denies, the reads below just come back empty */ }
   const now = new Date();
   const endIso = now.toISOString();
