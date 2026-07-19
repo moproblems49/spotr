@@ -1,4 +1,4 @@
-// v178091716697
+// v178091716698
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4118,7 +4118,14 @@ function computeBodyBatteryTimeline(store) {
     // Yesterday's 8pm-midnight steps come from activityPrevEvening; post-midnight from
     // activityHourly (today's hour-of-day buckets).
     const ACTIVE_STEPS = 120;
+    // The persisted buckets carry no date of their own — only trust them when the last
+    // HealthKit sync ran TODAY (activityHourlyDate). Stale buckets from a previous open
+    // would otherwise steer the gate off the wrong night (e.g. last opened 11pm yesterday,
+    // opened again 9am: yesterday's 0-3h steps would read as last night's).
+    const gateTodayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+    const activityFresh = store.activityHourlyDate === gateTodayKey;
     const stepsInHour = (t) => {
+      if (!activityFresh) return 0; // no fresh evidence — keep the 10pm default
       const d = new Date(t), h = d.getHours();
       if (d.getDate() === now.getDate() && d.getMonth() === now.getMonth()) return (store.activityHourly?.[h]?.steps) || 0;
       return (store.activityPrevEvening?.[h]) || 0;
@@ -4144,8 +4151,11 @@ function computeBodyBatteryTimeline(store) {
   const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   const dateKeys = [...new Set([keyOf(new Date(windowStartMs)), keyOf(new Date(windowStartMs + 12 * 36e5)), keyOf(now)])];
   const buckets = dateKeys.map(k => (store.history || {})[k] || {});
-  const sessions = buckets.flatMap(bucket => Object.values(bucket)).map(sess => {
-    const endMs = sess.finishedAt || now.getTime();
+  // Legacy rows without finishedAt anchor to NOON OF THEIR OWN DATE (same fallback
+  // loadUserData uses) — falling back to `now` would model a workout from two days ago as
+  // ending this second and dent today's drain curve.
+  const sessions = dateKeys.flatMap((k, i) => Object.values(buckets[i]).map(sess => {
+    const endMs = sess.finishedAt || new Date(k + "T12:00:00").getTime();
     const startMs = endMs - (sess.duration || 0) * 1000;
     let sets = 0, rpeSum = 0, rpeN = 0;
     for (const ex of (sess.exercises || [])) {
@@ -4160,7 +4170,7 @@ function computeBodyBatteryTimeline(store) {
     const avgRpe = rpeN ? rpeSum / rpeN : null;
     const drain = Math.max(5, Math.min(30, Math.round(6 + sets * 0.9 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
     return { startMs, endMs: Math.max(endMs, startMs + 60000), drain };
-  }).filter(Boolean);
+  })).filter(Boolean);
 
   const hourlyActivity = store.activityHourly;
   const points = [];
@@ -4381,7 +4391,9 @@ async function readHourlyActivity() {
   }
   await bucket(["steps"], "steps");
   await bucket(["calories"], "kcal");
-  return gotAny ? { hours: buckets, prevEvening } : null;
+  // `date` stamps which day the hour buckets belong to — the bedtime gate refuses stale data.
+  const date = `${dayStart.getFullYear()}-${String(dayStart.getMonth()+1).padStart(2,"0")}-${String(dayStart.getDate()).padStart(2,"0")}`;
+  return gotAny ? { hours: buckets, prevEvening, date } : null;
 }
 
 // Pull the most recent recovery snapshot. Returns null on web or if unavailable/denied.
@@ -17943,6 +17955,7 @@ function AppInner() {
           ...p, recovery: rec || p.recovery, activity: act || p.activity,
           activityHourly: (actHourly && actHourly.hours) || p.activityHourly,
           activityPrevEvening: (actHourly && actHourly.prevEvening) || p.activityPrevEvening,
+          activityHourlyDate: (actHourly && actHourly.date) || p.activityHourlyDate,
         }));
       } catch (e) {}
     }
