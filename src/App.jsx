@@ -1,4 +1,4 @@
-// v178091716690
+// v178091716691
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1824,12 +1824,17 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         const rArea = rLine ? `${rLine} L ${xAt(rPts[rPts.length-1].ts).toFixed(1)} ${H} L ${xAt(rPts[0].ts).toFixed(1)} ${H} Z` : "";
                         const dArea = dLine ? `${dLine} L ${xAt(dPts[dPts.length-1].ts).toFixed(1)} ${H} L ${xAt(dPts[0].ts).toFixed(1)} ${H} Z` : "";
                         const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
-                        // 5 evenly-spaced time labels along x-axis
-                        const xTickData = [0, 0.25, 0.5, 0.75, 1].map((f, i) => ({
-                          xPct: (xAt(tStart + tSpan * f) / W) * 100,
-                          label: fmtHour(new Date(tStart + tSpan * f).getHours()),
-                          idx: i,
-                        }));
+                        // 5 evenly-spaced time labels along x-axis. On a short span (e.g. the
+                        // pre-dawn recharge window, wake→now under a couple hours) flooring to
+                        // the hour repeats — "10p 10p 11p 11p 12a" — so blank any label that
+                        // duplicates the previous tick's rather than showing it twice.
+                        let _prevTickLabel = null;
+                        const xTickData = [0, 0.25, 0.5, 0.75, 1].map((f, i) => {
+                          const full = fmtHour(new Date(tStart + tSpan * f).getHours());
+                          const label = full === _prevTickLabel ? "" : full;
+                          _prevTickLabel = full;
+                          return { xPct: (xAt(tStart + tSpan * f) / W) * 100, label, idx: i };
+                        });
                         const GREEN = "#4ade80";
                         return (
                           <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
