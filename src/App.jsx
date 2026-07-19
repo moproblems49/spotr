@@ -1,4 +1,4 @@
-// v178091716688
+// v178091716689
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3886,6 +3886,32 @@ function nativeLocalNotifs() {
   if (Cap?.isNativePlatform?.() && Cap.Plugins?.LocalNotifications) return Cap.Plugins.LocalNotifications;
   return null;
 }
+function nativeShare() {
+  const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
+  if (Cap?.isNativePlatform?.() && Cap.Plugins?.Share) return Cap.Plugins.Share;
+  return null;
+}
+// Share text/a link. Native builds use the @capacitor/share plugin (the web `navigator.share`
+// is unreliable inside the iOS WKWebView — it can silently no-op). Web falls back to
+// navigator.share, then to copying the URL so the button ALWAYS does something visible.
+// `onCopied` fires when we fell back to clipboard so the caller can toast "copied".
+async function shareLink({ title, text, url } = {}, onCopied) {
+  const S = nativeShare();
+  if (S) {
+    try { await S.share({ title, text, url, dialogTitle: title }); return; }
+    catch (e) { /* user cancelled or plugin failed — fall through to web paths */ }
+  }
+  try {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      await navigator.share({ title, text, url });
+      return;
+    }
+  } catch (e) { /* cancelled/unsupported — fall through to copy */ }
+  const copyTarget = url || text;
+  if (copyTarget && typeof navigator !== "undefined" && navigator.clipboard) {
+    try { await navigator.clipboard.writeText(copyTarget); if (onCopied) onCopied(); } catch (e) {}
+  }
+}
 
 // API base — on the web the serverless function is served at a relative path; inside a native
 // Capacitor build there's no local server, so AI calls must hit the deployed origin in full.
@@ -7609,8 +7635,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         <button
           onClick={() => {
             const shareText = post.caption ? `${user?.username} on Seshd: ${post.caption}` : `Check out ${user?.username}'s workout on Seshd`;
-            if (navigator.share) navigator.share({ title:"Seshd", text: shareText, url: window.location.href }).catch(()=>{});
-            else if (navigator.clipboard) { navigator.clipboard.writeText(shareText).then(() => toast("Link copied", "success")).catch(()=>{}); }
+            shareLink({ title:"Seshd", text: shareText, url: window.location.href }, () => toast("Link copied", "success"));
           }}
           aria-label="Share"
           style={{ background:"none", border:"none", cursor:"pointer", padding:"8px 10px", display:"flex", alignItems:"center", justifyContent:"center" }}
@@ -7928,8 +7953,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                 <>
                   <button onClick={() => {
                     const text = `Try my program on Seshd — ${shareModal.code}`;
-                    if (navigator.share) navigator.share({ title:"Program code", text }).catch(()=>{});
-                    else if (navigator.clipboard) { navigator.clipboard.writeText(shareModal.code); toast("Code copied", "success"); }
+                    shareLink({ title:"Program code", text }, () => toast("Code copied", "success"));
                   }} style={{
                     width:"100%", background:"#fff", color:"#0A0A0A",
                     border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
@@ -12307,8 +12331,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     <button onClick={() => {
                       const label = shareModal.kind === "day" ? "workout" : "program";
                       const text = `Try my ${label} on Seshd — ${shareModal.code}`;
-                      if (navigator.share) navigator.share({ title:`${label} code`, text }).catch(()=>{});
-                      else if (navigator.clipboard) { navigator.clipboard.writeText(shareModal.code); toast("Code copied", "success"); }
+                      shareLink({ title:`${label} code`, text }, () => toast("Code copied", "success"));
                     }} style={{
                       width:"100%", background:"#fff", color:"#0A0A0A",
                       border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
@@ -15396,10 +15419,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   return;
                 }
                 const link = `${window.location.origin}/u/${currentUserId}`;
-                try {
-                  if (navigator.share) { navigator.share({ title: "My Seshd profile", url: link }).catch(() => {}); }
-                  else if (navigator.clipboard) { navigator.clipboard.writeText(link); toast("Profile link copied", "success"); }
-                } catch {}
+                shareLink({ title: "My Seshd profile", url: link }, () => toast("Profile link copied", "success"));
                 haptic("tap");
               }}
               aria-label="Share profile"
