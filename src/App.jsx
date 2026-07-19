@@ -1,4 +1,4 @@
-// v178091716698
+// v178091716699
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -615,17 +615,36 @@ function loadSession() {
   if (_sessionCache !== undefined) return _sessionCache;
   try { return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)); } catch { return null; }
 }
+// Boot/session diagnostics — surfaced as a tiny line on the auth screen so a device where
+// session persistence fails can tell us exactly which step went wrong (Keychain hit/miss/error,
+// save confirmed/failed). Keys start with seshd_ so the Preferences mirror carries them too.
+function setBootDiag(s) { try { localStorage.setItem("seshd_boot_diag", String(s).slice(0, 80)); } catch {} }
+function setSaveDiag(s) { try { localStorage.setItem("seshd_kc_save", String(s).slice(0, 60)); } catch {} }
+// PARANOIA RULE for everything below: never destroy a copy of the session until its
+// replacement write is CONFIRMED. A silently-failing Keychain plugin must degrade to
+// "session kept in localStorage/Preferences" (still app-sandboxed), never to "signed out".
 function saveSession(s) {
   const sec = secureStore();
+  const payload = JSON.stringify(s);
   if (sec) {
     _sessionCache = s;
-    try { sec.set({ key: SESSION_STORAGE_KEY, value: JSON.stringify(s) }).catch(() => {}); } catch {}
-    // Make sure no unencrypted copy lingers — remove from BOTH stores explicitly
-    // (not via the mirror, so this holds even if the mirror isn't installed).
-    try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
-    try { nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }).catch(() => {}); } catch {}
+    try {
+      sec.set({ key: SESSION_STORAGE_KEY, value: payload }).then(() => {
+        setSaveDiag("kc-save:ok");
+        // Keychain write CONFIRMED — now it's safe to scrub the unencrypted copies
+        // (explicitly on both stores, so this holds even if the mirror isn't installed).
+        try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+        try { nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }).catch(() => {}); } catch {}
+      }).catch((e) => {
+        setSaveDiag("kc-save:err " + String((e && e.message) || e || "?").slice(0, 32));
+        try { localStorage.setItem(SESSION_STORAGE_KEY, payload); } catch {}
+      });
+    } catch (e) {
+      setSaveDiag("kc-save:threw");
+      try { localStorage.setItem(SESSION_STORAGE_KEY, payload); } catch {}
+    }
   } else {
-    try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s)); } catch {}
+    try { localStorage.setItem(SESSION_STORAGE_KEY, payload); } catch {}
   }
 }
 function clearSession() {
@@ -634,30 +653,50 @@ function clearSession() {
   try { secureStore()?.remove({ key: SESSION_STORAGE_KEY }).catch(() => {}); } catch {}
   try { nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }).catch(() => {}); } catch {}
 }
+// Resolve to undefined (instead of hanging) if a plugin call never settles — a wedged bridge
+// must not white-screen the boot forever.
+function _withTimeout(p, ms) {
+  return Promise.race([p, new Promise(res => setTimeout(() => res(undefined), ms))]);
+}
 // Boot-time hydration + one-time migration. Runs inside hydrateFromNative() (before React
 // mounts), so synchronous loadSession() calls see the Keychain session from the first render.
 async function hydrateSessionFromKeychain() {
   const sec = secureStore();
-  if (!sec) return;
+  if (!sec) { setBootDiag("kc:no-plugin"); return; }
   try {
-    const { value } = await sec.get({ key: SESSION_STORAGE_KEY });
+    const res = await _withTimeout(sec.get({ key: SESSION_STORAGE_KEY }), 4000);
+    if (res === undefined) {
+      // Timed out — Keychain state unknown. Fall back to any localStorage copy but do NOT
+      // scrub or migrate anything (we might race a functioning-but-slow plugin).
+      setBootDiag("kc:timeout");
+      try { _sessionCache = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)) || null; } catch { _sessionCache = null; }
+      return;
+    }
+    const value = res && res.value;
     _sessionCache = value ? JSON.parse(value) : null;
+    setBootDiag(value ? "kc:hit" : "kc:empty");
     // Keychain is the source of truth now — scrub any old unencrypted copies explicitly.
     try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
     try { await nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }); } catch {}
   } catch (e) {
-    // Not in the Keychain yet. If an existing install has it in localStorage, migrate it.
-    try {
-      const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-      if (raw) {
-        _sessionCache = JSON.parse(raw);
+    // Keychain miss (first run) or a broken plugin. Use the localStorage copy if present —
+    // and NEVER null a session we successfully parsed just because the migration write fails.
+    let raw = null;
+    try { raw = localStorage.getItem(SESSION_STORAGE_KEY); } catch {}
+    if (raw) {
+      try { _sessionCache = JSON.parse(raw); } catch { _sessionCache = null; raw = null; }
+    } else {
+      _sessionCache = null;
+    }
+    setBootDiag("kc:miss(" + String((e && e.message) || e || "?").slice(0, 24) + ") ls:" + (raw ? "hit" : "none"));
+    if (raw && _sessionCache) {
+      // Best-effort migration into the Keychain; scrub the plaintext copies ONLY on success.
+      try {
         await sec.set({ key: SESSION_STORAGE_KEY, value: raw });
         localStorage.removeItem(SESSION_STORAGE_KEY);
         try { await nativePrefs()?.remove({ key: SESSION_STORAGE_KEY }); } catch {}
-      } else {
-        _sessionCache = null;
-      }
-    } catch { _sessionCache = null; }
+      } catch { /* keep the localStorage fallback — signed-in beats scrubbed */ }
+    }
   }
 }
 
@@ -16564,6 +16603,23 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
     fontFamily:F, boxSizing:"border-box", marginBottom:10
   };
 
+  // TestFlight-phase diagnostic: why did boot land on the auth screen? Shows the Keychain
+  // hydration outcome + last save result. Its PRESENCE also proves which build is running.
+  // TODO: remove before App Store submission.
+  const bootDiagLine = (() => {
+    try {
+      const b = localStorage.getItem("seshd_boot_diag") || "boot:?";
+      const s = localStorage.getItem("seshd_kc_save") || "save:none";
+      return `d1 · ${b} · ${s}`;
+    } catch { return "d1"; }
+  })();
+  const diagEl = (
+    <div style={{
+      position:"fixed", bottom:2, left:0, right:0, textAlign:"center",
+      fontSize:9, color:C.muted, opacity:0.55, fontFamily:MONO, pointerEvents:"none", zIndex:5,
+    }}>{bootDiagLine}</div>
+  );
+
   // ── Welcome / guest entry ────────────────────────────────────
   if (mode === "welcome") {
     return (
@@ -16572,6 +16628,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 34px) + 16px)",
         paddingLeft:24, paddingRight:24, position:"relative", overflowY:"auto", overflowX:"hidden",
       }}>
+        {diagEl}
         {/* Soft ambient gradient — no generic blobs */}
         <div style={{
           position:"absolute", top:"-20%", right:"-30%", width:"80%", aspectRatio:"1",
@@ -16688,6 +16745,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       paddingTop:"max(env(safe-area-inset-top), 20px)",
       paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
     }}>
+      {diagEl}
       <div style={{ display:"flex", alignItems:"center", height:48 }}>
         <button onClick={() => {
           // From the reset form, Back returns to sign-in (not the welcome screen).
