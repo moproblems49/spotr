@@ -1,4 +1,4 @@
-// v178091716696
+// v178091716697
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -52,18 +52,24 @@ let __mirrorInstalled = false;
 function installStorageMirror() {
   if (__mirrorInstalled || typeof window === "undefined" || !window.localStorage) return;
   if (!nativePrefs()) return; // web build / not native — plain localStorage is fine
+  // MUST patch Storage.prototype, not the localStorage instance: per the web storage spec,
+  // `localStorage.setItem = fn` does NOT override the method — Storage objects route property
+  // assignments into stored ITEMS and the prototype method stays. The instance-assignment
+  // version of this mirror was a silent no-op in every real browser/WebView.
+  const proto = window.Storage && window.Storage.prototype;
+  if (!proto || typeof proto.setItem !== "function") return;
   __mirrorInstalled = true;
-  const origSet = localStorage.setItem.bind(localStorage);
-  const origRemove = localStorage.removeItem.bind(localStorage);
-  localStorage.setItem = function (key, value) {
-    origSet(key, value);
-    if (typeof key === "string" && key.startsWith(DURABLE_PREFIX)) {
+  const origSet = proto.setItem;
+  const origRemove = proto.removeItem;
+  proto.setItem = function (key, value) {
+    origSet.call(this, key, value);
+    if (this === window.localStorage && typeof key === "string" && key.startsWith(DURABLE_PREFIX)) {
       try { nativePrefs()?.set({ key, value: String(value) }).catch(() => {}); } catch {}
     }
   };
-  localStorage.removeItem = function (key) {
-    origRemove(key);
-    if (typeof key === "string" && key.startsWith(DURABLE_PREFIX)) {
+  proto.removeItem = function (key) {
+    origRemove.call(this, key);
+    if (this === window.localStorage && typeof key === "string" && key.startsWith(DURABLE_PREFIX)) {
       try { nativePrefs()?.remove({ key }).catch(() => {}); } catch {}
     }
   };

@@ -9,10 +9,17 @@ if ('serviceWorker' in navigator) {
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.jsx'
+import App, { hydrateFromNative } from './App.jsx'
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// Native boot hydration MUST complete before React mounts: it pulls durable data from iOS
+// Preferences into localStorage, installs the write-through mirror, and loads the auth session
+// from the iOS Keychain. Without awaiting it, the first render sees empty storage and the app
+// boots signed-out on every launch. Instant no-op on web. `.finally` so a hydration error can
+// never leave the app unmounted.
+hydrateFromNative().finally(() => {
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+})
