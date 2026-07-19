@@ -1,4 +1,4 @@
-// v178091716695
+// v178091716696
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4105,6 +4105,22 @@ function computeBodyBatteryTimeline(store) {
     sleepStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22);
     sleepStart.setDate(sleepStart.getDate() - 1);
     wakeTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
+    // Steps overrule the 10pm default (how the wearable apps do it, phone-only: Garmin's
+    // battery only rises when the body is measurably calm; Whoop/Oura recharge the DETECTED
+    // sleep episode). Steps can prove you were AWAKE — never that you were asleep — so
+    // evidence only pushes bedtime LATER (a late night out), capped at 4am, never earlier.
+    // Yesterday's 8pm-midnight steps come from activityPrevEvening; post-midnight from
+    // activityHourly (today's hour-of-day buckets).
+    const ACTIVE_STEPS = 120;
+    const stepsInHour = (t) => {
+      const d = new Date(t), h = d.getHours();
+      if (d.getDate() === now.getDate() && d.getMonth() === now.getMonth()) return (store.activityHourly?.[h]?.steps) || 0;
+      return (store.activityPrevEvening?.[h]) || 0;
+    };
+    const gateEnd = Math.min(now.getTime(), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 4).getTime());
+    for (let t = sleepStart.getTime(); t < gateEnd; t += 36e5) {
+      if (stepsInHour(t) >= ACTIVE_STEPS) sleepStart = new Date(Math.min(t + 36e5, gateEnd));
+    }
   }
 
   // The chart always spans the full trailing 24 hours (the header says "24H" — make it true).
@@ -4197,14 +4213,17 @@ function computeBodyBatteryTimeline(store) {
     pushPt(sleepStart.getTime(), sleepStartLevel, "drain");
   }
 
-  // Phase C — last night's recharge, 30-min intervals, sqrt curve
+  // Phase C — last night's recharge, 30-min intervals, sqrt curve. Skipped entirely when the
+  // steps gate says sleep hasn't started yet (still out at 1am — the drain just continues).
   const sleepDurMs = wakeTime.getTime() - sleepStart.getTime();
   const phaseEnd1 = Math.min(now.getTime(), wakeTime.getTime());
-  for (let t = sleepStart.getTime(); ; t += 30 * 60000) {
-    const ct = Math.min(t, phaseEnd1);
-    const frac = sleepDurMs > 0 ? Math.max(0, Math.min(1, (ct - sleepStart.getTime()) / sleepDurMs)) : 1;
-    pushPt(ct, sleepStartLevel + Math.sqrt(frac) * (bb.charge0 - sleepStartLevel), "recharge");
-    if (t >= phaseEnd1) break;
+  if (sleepStart.getTime() < phaseEnd1) {
+    for (let t = sleepStart.getTime(); ; t += 30 * 60000) {
+      const ct = Math.min(t, phaseEnd1);
+      const frac = sleepDurMs > 0 ? Math.max(0, Math.min(1, (ct - sleepStart.getTime()) / sleepDurMs)) : 1;
+      pushPt(ct, sleepStartLevel + Math.sqrt(frac) * (bb.charge0 - sleepStartLevel), "recharge");
+      if (t >= phaseEnd1) break;
+    }
   }
 
   // Phase D — today: wake → now, hourly intervals. The wake anchor keeps the drain line
@@ -4225,6 +4244,7 @@ function computeBodyBatteryTimeline(store) {
   const clipped = points.filter(p => p.ts >= windowStartMs);
   return clipped.length >= 2 ? { points: clipped, wakeTimeMs: wakeTime.getTime(), hasSleepData } : null;
 }
+export { computeBodyBatteryTimeline }; // for the sim harness — pure function, safe to expose
 
 function nativeHealth() {
   const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
@@ -4317,15 +4337,20 @@ async function readTodayActivity() {
 
 // Today's movement bucketed by the hour it actually happened (0-23, local time), straight from
 // each HealthKit sample's own startDate — this is the real per-hour signal the Body Battery
-// timeline is built from (no fabricated activity). Returns null on web/unavailable.
+// timeline is built from (no fabricated activity). Also captures YESTERDAY EVENING's steps
+// (8pm-midnight, `prevEvening`) — the bedtime gate needs them: the night being modeled starts
+// at ~10pm yesterday, which a today-from-midnight query can't see. Returns
+// { hours: [24 × {steps,kcal}], prevEvening: {20..23: steps} } or null on web/unavailable.
 async function readHourlyActivity() {
   const H = nativeHealth();
   if (!H) return null;
   const now = new Date();
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startIso = dayStart.toISOString(), endIso = now.toISOString();
+  const evStart = new Date(dayStart.getTime() - 4 * 36e5); // yesterday 20:00
+  const startIso = evStart.toISOString(), endIso = now.toISOString();
   try { await H.requestAuthorization({ read: HK_ACTIVITY_READ, write: [] }); } catch (e) {}
   const buckets = Array.from({ length: 24 }, () => ({ steps: 0, kcal: 0 }));
+  const prevEvening = {};
   let gotAny = false;
   async function bucket(types, key) {
     for (const dataType of types) {
@@ -4338,16 +4363,19 @@ async function readHourlyActivity() {
           if (!v) continue;
           const t = s.startDate || s.endDate;
           if (!t) continue;
-          const h = new Date(t).getHours();
-          if (h >= 0 && h < 24) { buckets[h][key] += v; gotAny = true; }
+          const dt = new Date(t);
+          const h = dt.getHours();
+          if (h < 0 || h > 23) continue;
+          if (dt >= dayStart) { buckets[h][key] += v; gotAny = true; }
+          else if (key === "steps" && h >= 20) { prevEvening[h] = (prevEvening[h] || 0) + v; gotAny = true; }
         }
         return; // got data for this metric — don't also try the next dataType spelling
       } catch (e) { /* try next spelling */ }
     }
   }
-  await bucket(["steps", "stepCount"], "steps");
-  await bucket(["activeEnergyBurned", "activeCalories", "calories"], "kcal");
-  return gotAny ? buckets : null;
+  await bucket(["steps"], "steps");
+  await bucket(["calories"], "kcal");
+  return gotAny ? { hours: buckets, prevEvening } : null;
 }
 
 // Pull the most recent recovery snapshot. Returns null on web or if unavailable/denied.
@@ -17905,7 +17933,11 @@ function AppInner() {
       try {
         const [rec, act, actHourly] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity()]);
         if (cancelled) return;
-        if (rec || act || actHourly) setStore(p => ({ ...p, recovery: rec || p.recovery, activity: act || p.activity, activityHourly: actHourly || p.activityHourly }));
+        if (rec || act || actHourly) setStore(p => ({
+          ...p, recovery: rec || p.recovery, activity: act || p.activity,
+          activityHourly: (actHourly && actHourly.hours) || p.activityHourly,
+          activityPrevEvening: (actHourly && actHourly.prevEvening) || p.activityPrevEvening,
+        }));
       } catch (e) {}
     }
     sync();
