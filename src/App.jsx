@@ -1,4 +1,4 @@
-// v178091716700
+// v178091716701
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1870,6 +1870,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   bb.baselineDrain ? { label: "Awake drain", value: `−${bb.baselineDrain}`, detail: "Normal energy use through the day" } : null,
                   bb.workoutDrain ? { label: "Training drain", value: `−${bb.workoutDrain}`, detail: "Today's sets and effort" } : null,
                   bb.activityDrain ? { label: "Activity drain", value: `−${bb.activityDrain}`, detail: "Steps and active energy" } : null,
+                  // Real vitals from Apple Health, shown as soon as they exist. We already read
+                  // both for the readiness math — surfacing them costs no extra permission.
+                  rec?.restingHr ? { label: "Resting HR", value: `${rec.restingHr}`, detail: "bpm — from Apple Health" } : null,
+                  rec?.hrv ? { label: "HRV", value: `${Math.round(rec.hrv)}`, detail: rec.hrvBaseline ? `ms — your baseline is ${Math.round(rec.hrvBaseline)}` : "ms — from Apple Health" } : null,
                 ].filter(Boolean);
                 const tip = bb.level >= 80 ? "Well recovered — a great day to push hard." : bb.level >= 60 ? "Decent energy. Train smart, warm up well." : bb.level >= 40 ? "Moderate fatigue — consider a lighter session." : "Low battery. Prioritise sleep and recovery today.";
                 return createPortal((
@@ -1909,24 +1913,25 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           return { key: i, line, area, recharge: s.phase === "recharge" };
                         });
                         const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
-                        // 5 evenly-spaced time labels along x-axis. On a short span (e.g. the
-                        // pre-dawn recharge window, wake→now under a couple hours) flooring to
-                        // the hour repeats — "10p 10p 11p 11p 12a" — so blank any label that
-                        // duplicates the previous tick's rather than showing it twice.
-                        let _prevTickLabel = null;
-                        const xTickData = [0, 0.25, 0.5, 0.75, 1].map((f, i) => {
-                          const full = fmtHour(new Date(tStart + tSpan * f).getHours());
-                          const label = full === _prevTickLabel ? "" : full;
-                          _prevTickLabel = full;
-                          return { xPct: (xAt(tStart + tSpan * f) / W) * 100, label, idx: i };
-                        });
                         const GREEN = "#4ade80";
-                        // Gridlines: a vertical line at every hour (clock-aligned, stronger every
-                        // 6h) and a horizontal line every 10 levels (stronger at the labeled 25s).
-                        const hourLines = [];
-                        for (let t = Math.ceil(tStart / 36e5) * 36e5; t <= tStart + tSpan; t += 36e5) {
-                          hourLines.push({ x: xAt(t), major: new Date(t).getHours() % 6 === 0 });
+                        // Garmin-style clock axis: a dot at every hour (local-clock aligned), a
+                        // bigger dot + label every 3 hours, and dots turn GREEN across the sleep
+                        // stretch so the night reads at a glance.
+                        const rechargeRanges = segs.filter(s => s.phase === "recharge" && s.pts.length >= 2).map(s => [s.pts[0].ts, s.pts[s.pts.length - 1].ts]);
+                        const _d0 = new Date(tStart); _d0.setMinutes(0, 0, 0);
+                        let _t0 = _d0.getTime(); if (_t0 < tStart) _t0 += 36e5;
+                        const hourDots = [];
+                        for (let t = _t0; t <= tStart + tSpan; t += 36e5) {
+                          const h = new Date(t).getHours();
+                          const xPct = (xAt(t) / W) * 100;
+                          const major = h % 3 === 0;
+                          const asleep = rechargeRanges.some(([a, b]) => t >= a && t <= b);
+                          // Edge labels would clip half-off the card — keep their dots, drop the text.
+                          hourDots.push({ xPct, major, asleep, label: major && xPct > 4 && xPct < 96 ? fmtHour(h) : "" });
                         }
+                        // Gridlines, kept light (user-friendliness beats precision): horizontal
+                        // every 10 levels (slightly stronger at the labeled 25s), vertical only
+                        // at the labeled 3-hour marks.
                         const levelLines = [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90].map(lvl => ({ y: yAt(lvl), major: lvl % 25 === 0 }));
                         return (
                           <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
@@ -1956,10 +1961,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                                     </linearGradient>
                                   </defs>
                                   {levelLines.map((l, i) => (
-                                    <line key={`h${i}`} x1={PAD} y1={l.y} x2={W - PAD} y2={l.y} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity={l.major ? 0.55 : 0.2}/>
+                                    <line key={`h${i}`} x1={PAD} y1={l.y} x2={W - PAD} y2={l.y} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity={l.major ? 0.28 : 0.1}/>
                                   ))}
-                                  {hourLines.map((l, i) => (
-                                    <line key={`v${i}`} x1={l.x} y1={PAD} x2={l.x} y2={H - PAD} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity={l.major ? 0.45 : 0.16}/>
+                                  {hourDots.filter(d => d.major).map((d, i) => (
+                                    <line key={`v${i}`} x1={(d.xPct / 100) * W} y1={PAD} x2={(d.xPct / 100) * W} y2={H - PAD} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.14"/>
                                   ))}
                                   {drawSegs.map(s => (
                                     <path key={`a${s.key}`} d={s.area} fill={s.recharge ? "url(#bbGreenGrad)" : "url(#bbDrainGrad)"} stroke="none"/>
@@ -1968,14 +1973,22 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                                     <path key={`l${s.key}`} d={s.line} fill="none" stroke={s.recharge ? GREEN : fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
                                   ))}
                                 </svg>
-                                <div style={{ position:"relative", height:12, marginTop:4 }}>
-                                  {xTickData.map(({ xPct, label, idx }) => (
-                                    <span key={idx} style={{
-                                      position:"absolute", top:0,
-                                      left:`${xPct}%`,
-                                      transform: idx === 0 ? "none" : idx === 4 ? "translateX(-100%)" : "translateX(-50%)",
-                                      fontSize:9, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
-                                    }}>{label}</span>
+                                <div style={{ position:"relative", height:10, marginTop:5 }}>
+                                  {hourDots.map((d, i) => (
+                                    <span key={i} style={{
+                                      position:"absolute", top:"50%", left:`${d.xPct}%`, transform:"translate(-50%, -50%)",
+                                      width: d.major ? 5 : 2.5, height: d.major ? 5 : 2.5, borderRadius:999,
+                                      background: d.asleep ? GREEN : C.muted,
+                                      opacity: d.asleep ? 0.9 : (d.major ? 0.85 : 0.4),
+                                    }}/>
+                                  ))}
+                                </div>
+                                <div style={{ position:"relative", height:12, marginTop:3 }}>
+                                  {hourDots.filter(d => d.label).map((d, i) => (
+                                    <span key={i} style={{
+                                      position:"absolute", top:0, left:`${d.xPct}%`, transform:"translateX(-50%)",
+                                      fontSize:8.5, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
+                                    }}>{d.label}</span>
                                   ))}
                                 </div>
                               </div>

@@ -68,23 +68,19 @@ const openSheet = async () => { click(bbCardSpan); await settle(300); };
 await openSheet();
 check("battery detail sheet opened (24H header)", (document.body.textContent||"").includes("BODY BATTERY · 24H"));
 
-// ── 24h axis ── tick labels should span the trailing 24 hours: 5 ticks 6h apart.
-const nowMs = Date.now();
-const tickBox = qa("div").find(d => (d.getAttribute("style")||"").match(/height:\s*12px/) && d.querySelectorAll("span").length >= 4);
-const labels = tickBox ? Array.from(tickBox.querySelectorAll("span")).map(s => (s.textContent||"").trim()) : [];
-check("5 axis ticks rendered", labels.length === 5, `labels=${JSON.stringify(labels)}`);
-const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
-const utcH = new Date(nowMs).getHours();
-if (utcH === 22 || utcH === 23) {
-  check("ticks span am AND pm (24h window, structural)", labels.some(l=>l.endsWith("a")) && labels.some(l=>l.endsWith("p")), `labels=${JSON.stringify(labels)}`);
-} else {
-  let prev = null;
-  const expected = [0,0.25,0.5,0.75,1].map(f => {
-    const full = fmtHour(new Date(nowMs - 24*36e5 + f*24*36e5).getHours());
-    const lab = full === prev ? "" : full; prev = full; return lab;
-  });
-  check("tick labels cover the exact trailing 24h", JSON.stringify(labels) === JSON.stringify(expected), `got=${JSON.stringify(labels)} want=${JSON.stringify(expected)}`);
-}
+// ── Garmin-style clock axis ── hourly dots (green across the sleep stretch), a bigger dot +
+// label every 3 clock-hours.
+const dotSpans = qa("span").filter(s => /border-radius:\s*999px/.test(s.getAttribute("style")||"") && /translate\(-50%, -50%\)/.test(s.getAttribute("style")||""));
+check("hourly dot row rendered (≥20 dots over 24h)", dotSpans.length >= 20, `dots=${dotSpans.length}`);
+const greenDots = dotSpans.filter(s => /background:\s*(rgb\(74,\s*222,\s*128\)|#4ade80)/i.test(s.getAttribute("style")||""));
+check("sleep stretch dots are green", greenDots.length >= 3, `green=${greenDots.length}`);
+const bigDots = dotSpans.filter(s => /width:\s*5px/.test(s.getAttribute("style")||""));
+check("bigger dots at 3-hour marks (7-9 of them)", bigDots.length >= 7 && bigDots.length <= 9, `big=${bigDots.length}`);
+const hourLabels = qa("span").map(s => (s.textContent||"").trim()).filter(t => /^(12|[1-9]|1[01])[ap]$/.test(t));
+check("3-hourly labels present (≥6)", hourLabels.length >= 6, `labels=${JSON.stringify(hourLabels)}`);
+const labelHour = (t) => { const n = parseInt(t, 10); const pm = t.endsWith("p"); return (n === 12 ? 0 : n) + (pm ? 12 : 0); };
+check("every label sits on a 3-hour clock mark", hourLabels.every(t => labelHour(t) % 3 === 0), `labels=${JSON.stringify(hourLabels)}`);
+check("labels span am AND pm (24h window)", hourLabels.some(l=>l.endsWith("a")) && hourLabels.some(l=>l.endsWith("p")));
 
 // ── Multi-segment curve + gridlines (taller 300x110 chart) ──
 const chartSvg = qa("svg").find(s => s.getAttribute("viewBox") === "0 0 300 110");
@@ -95,7 +91,7 @@ check("multiple phase segments drawn (≥2 stroked paths)", strokes.length >= 2,
 check("has a recharge (green) segment", greens.length >= 1);
 check("has a drain (non-green) segment", strokes.length - greens.length >= 1);
 const gridLines = chartSvg ? chartSvg.querySelectorAll("line").length : 0;
-check("hour + level gridlines drawn (≥30 lines)", gridLines >= 30, `lines=${gridLines}`);
+check("light gridlines drawn (level 10s + 3h verticals, ≥15 lines)", gridLines >= 15 && gridLines <= 25, `lines=${gridLines}`);
 
 // ── Stat boxes in a 2-column grid ──
 const grid = qa("div").find(d => /grid-template-columns:\s*1fr 1fr/.test(d.getAttribute("style")||"") && (d.textContent||"").includes("Morning charge"));
@@ -106,9 +102,10 @@ const txt1 = document.body.textContent || "";
 check("not-connected: chart footnote prompts to connect", txt1.includes("Connect Apple Health for sleep-based recharge accuracy"));
 check("not-connected: bottom box prompts to connect", txt1.includes("Connect Apple Health on iPhone for readings"));
 
-// Dump the rendered chart for a visual screenshot (real markup, real coords).
-if (chartSvg && tickBox) {
-  const html = `<body style="margin:0;background:#0a0a0a;padding:24px"><div style="width:360px">${chartSvg.outerHTML}<div style="position:relative;height:14px;margin-top:4px">${tickBox.innerHTML}</div></div></body>`;
+// Dump the rendered chart + axis rows for a visual screenshot (real markup, real coords).
+const chartWrap = chartSvg && chartSvg.parentElement;
+if (chartWrap) {
+  const html = `<body style="margin:0;background:#111;padding:24px"><div style="width:360px">${chartWrap.outerHTML}</div></body>`;
   writeFileSync(new URL("./bb24_chart.html", import.meta.url), html);
 }
 
