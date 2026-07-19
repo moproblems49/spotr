@@ -1,4 +1,4 @@
-// v178091716691
+// v178091716692
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16314,7 +16314,10 @@ function EditPostModal({ C, post, onSave, onClose }) {
 // ═════════════════════════════════════════════════════════════════════════════
 function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null }) {
   const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup" | "reset"
-  const [email, setEmail] = useState("");
+  // Remember me: pre-fill the last email used to sign in. The session itself already persists
+  // (Keychain), so this just saves re-typing the address on the sign-in screen.
+  const [email, setEmail] = useState(() => { try { return localStorage.getItem("seshd_remember_email") || ""; } catch { return ""; } });
+  const [rememberMe, setRememberMe] = useState(() => { try { return localStorage.getItem("seshd_remember_email") ? true : true; } catch { return true; } });
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
@@ -16383,10 +16386,20 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         }
       } else {
         const data = await sb.signIn(email, password);
+        try {
+          if (rememberMe) localStorage.setItem("seshd_remember_email", email.trim());
+          else localStorage.removeItem("seshd_remember_email");
+        } catch {}
         onAuth(data);
       }
     } catch (e) {
-      setError(e.message);
+      // A fetch that never reaches the server throws a TypeError ("Load failed" in the iOS
+      // WebView) — surface that plainly instead of a bare blank so a network/CORS failure is
+      // distinguishable from a wrong password.
+      const netFail = e && (e.name === "TypeError" || /load failed|failed to fetch|networkerror|network request failed/i.test(e.message || ""));
+      setError(netFail
+        ? `Couldn't reach the server — ${e.name || "Error"}: ${e.message || "network error"}. Check your connection and try again.`
+        : (e.message || "Sign in failed. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -16575,10 +16588,28 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
             autoComplete={mode === "signin" ? "current-password" : "new-password"}/>
         )}
         {mode === "signin" && (
-          <button onClick={() => { setMode("reset"); setError(""); setResetSent(false); }} style={{
-            background:"none", border:"none", color:C.sub, fontSize:12, fontWeight:600,
-            cursor:"pointer", fontFamily:F, alignSelf:"flex-end", padding:"0 2px 12px", marginTop:-2,
-          }}>Forgot password?</button>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:-2, marginBottom:12 }}>
+            <button onClick={() => setRememberMe(v => !v)} style={{
+              background:"none", border:"none", cursor:"pointer", fontFamily:F, padding:"0 2px",
+              display:"flex", alignItems:"center", gap:8,
+            }} aria-label="Remember me" aria-pressed={rememberMe}>
+              <span style={{
+                width:18, height:18, borderRadius:5, flexShrink:0,
+                border:`1.5px solid ${rememberMe ? C.text : C.sub}`,
+                background: rememberMe ? C.text : "transparent",
+                display:"flex", alignItems:"center", justifyContent:"center",
+              }}>
+                {rememberMe && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.bg} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                )}
+              </span>
+              <span style={{ fontSize:12, fontWeight:600, color:C.sub }}>Remember me</span>
+            </button>
+            <button onClick={() => { setMode("reset"); setError(""); setResetSent(false); }} style={{
+              background:"none", border:"none", color:C.sub, fontSize:12, fontWeight:600,
+              cursor:"pointer", fontFamily:F, padding:"0 2px",
+            }}>Forgot password?</button>
+          </div>
         )}
 
         {error && (
