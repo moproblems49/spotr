@@ -1,4 +1,4 @@
-// v178091716693
+// v178091716694
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -174,23 +174,37 @@ const sb = (() => {
   async function query(path, opts = {}, token = null) {
     const { headers_extra, timeout, ...fetchOpts } = opts;
     const mergedHeaders = { ...authHeaders(token), ...(headers_extra || {}) };
-    // Hard timeout so a stalled connection can never hang a screen forever
-    // (e.g. the Messages list spinning indefinitely on a flaky network).
+    // Hard timeout so a stalled connection can never hang a screen forever (e.g. the Messages
+    // list spinning indefinitely on a flaky network). AbortController alone isn't enough on
+    // native: CapacitorHttp's patched fetch ignores `signal`, so we also race a manual timer that
+    // rejects. Whichever fires, the rejection is flagged `transportFailure` in the catch below.
+    const ms = timeout || 20000;
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), timeout || 20000);
+    let timeoutId;
+    const timeoutP = new Promise((_, rej) => {
+      timeoutId = setTimeout(() => { ctrl.abort(); rej(new Error("Request timed out")); }, ms);
+    });
     let res;
     try {
-      res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-        headers: mergedHeaders,
-        signal: ctrl.signal,
-        ...fetchOpts,
-      });
+      res = await Promise.race([
+        fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: mergedHeaders, signal: ctrl.signal, ...fetchOpts }),
+        timeoutP,
+      ]);
+    } catch (e) {
+      // fetch rejected (offline / DNS / CORS / aborted) or we timed out — the request never
+      // returned a response, so it's a transport failure the caller can safely re-queue/retry.
+      // Flag it explicitly: under CapacitorHttp native transport errors reject as a generic Error
+      // (name "Error"), not a TypeError, so sniffing e.name is no longer reliable.
+      if (e) e.transportFailure = true;
+      throw e;
     } finally {
-      clearTimeout(to);
+      clearTimeout(timeoutId);
     }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || res.statusText);
+      const e = new Error(err.message || res.statusText);
+      e.httpStatus = res.status; // the server responded — this is NOT a transport failure
+      throw e;
     }
     const text = await res.text();
     return text ? JSON.parse(text) : null;
@@ -242,11 +256,19 @@ const sb = (() => {
         email = found;
       } catch (e) { throw e; }
     }
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ email, password }),
-    });
+    let res;
+    try {
+      res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (e) {
+      // The request never reached the server (offline / DNS / native transport error). Flag it so
+      // the sign-in screen can tell a network problem apart from a wrong password.
+      if (e) e.transportFailure = true;
+      throw e;
+    }
     const data = await res.json().catch(() => ({}));
     // Supabase returns auth errors in several shapes (error_description / error / msg / error_code)
     // and a non-2xx status. Catch all of them, and require an access_token, so a failed login
@@ -336,16 +358,19 @@ const sb = (() => {
     } catch {}
   };
 
-  // A failed fetch (offline / DNS / connection) throws a TypeError; a 4xx/5xx comes back as an
-  // Error we threw with a message. We treat only the thrown-fetch case as "retryable offline".
+  // A request that never reached the server (offline / DNS / CORS / timeout) is flagged
+  // `transportFailure` by query(); a 4xx/5xx that the server DID answer carries `httpStatus`.
+  // We treat only transport failures as "retryable offline" — NOT sniffing e.name, which breaks
+  // under CapacitorHttp (native transport errors reject as a generic Error, not a TypeError).
+  const isTransportFailure = (e) =>
+    (typeof navigator !== "undefined" && navigator.onLine === false) || !!(e && e.transportFailure);
   async function queueWrite(path, opts = {}, token = null) {
     const method = (opts.method || "GET").toUpperCase();
     const retryable = method === "PATCH" || method === "DELETE" || method === "PUT";
     try {
       return await query(path, opts, token);
     } catch (e) {
-      const offline = (typeof navigator !== "undefined" && navigator.onLine === false)
-        || (e && e.name === "TypeError"); // fetch failed = network down
+      const offline = isTransportFailure(e);
       if (offline && retryable) {
         const q = readQueue();
         // Same row (path) + PATCH: merge the partial bodies so changing two settings offline (e.g.
@@ -381,9 +406,9 @@ const sb = (() => {
         await query(item.path, { method: item.method, body: item.body, headers_extra: item.headers_extra }, token);
         flushed++;
       } catch (e) {
-        const offline = (typeof navigator !== "undefined" && navigator.onLine === false) || (e && e.name === "TypeError");
-        if (offline) { remaining.push(item); } // still offline — keep for next time
-        // else: hard error — drop it (a doomed write shouldn't block the queue forever)
+        if (isTransportFailure(e)) { remaining.push(item); } // still offline — keep for next time
+        // else: hard error the server answered (validation/auth) — drop it (a doomed write
+        // shouldn't block the queue forever)
       }
     }
     writeQueue(remaining);
@@ -3906,18 +3931,24 @@ function nativeShare() {
 // is unreliable inside the iOS WKWebView — it can silently no-op). Web falls back to
 // navigator.share, then to copying the URL so the button ALWAYS does something visible.
 // `onCopied` fires when we fell back to clipboard so the caller can toast "copied".
+// A dismissed share sheet is a user CHOICE, not a failure: @capacitor/share rejects with
+// "Share canceled" and web navigator.share rejects with an AbortError. Treat those as "done"
+// so we don't pop a second sheet or copy a link the user chose not to share.
+function _shareCancelled(e) {
+  return !!e && (e.name === "AbortError" || /cancel/i.test(e.message || ""));
+}
 async function shareLink({ title, text, url } = {}, onCopied) {
   const S = nativeShare();
   if (S) {
     try { await S.share({ title, text, url, dialogTitle: title }); return; }
-    catch (e) { /* user cancelled or plugin failed — fall through to web paths */ }
+    catch (e) { if (_shareCancelled(e)) return; /* real failure — fall through to web paths */ }
   }
   try {
     if (typeof navigator !== "undefined" && navigator.share) {
       await navigator.share({ title, text, url });
       return;
     }
-  } catch (e) { /* cancelled/unsupported — fall through to copy */ }
+  } catch (e) { if (_shareCancelled(e)) return; /* unsupported — fall through to copy */ }
   const copyTarget = url || text;
   if (copyTarget && typeof navigator !== "undefined" && navigator.clipboard) {
     try { await navigator.clipboard.writeText(copyTarget); if (onCopied) onCopied(); } catch (e) {}
@@ -4152,7 +4183,10 @@ function healthKitAvailable() { return !!nativeHealth(); }
 // before iOS shows the permission sheet (so a bad string = no popup AND the app never registers
 // in Settings → Health). Keep every entry within the plugin's HealthDataType union.
 const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep"];
-const HK_WRITE = ["workouts", "calories", "distance"];
+// Only request WRITE scope for what we actually write. This plugin can't save a full HKWorkout
+// (no writeWorkout/saveWorkout — saveSample only), so we write the session's active energy and
+// request only `calories`. Requesting write scopes we never use is an App Review smell.
+const HK_WRITE = ["calories"];
 // Valid read identifiers for the movement/activity pull (steps + active energy).
 const HK_ACTIVITY_READ = ["steps", "calories"];
 
@@ -4181,10 +4215,11 @@ async function writeWorkoutToHealth(startMs, durationSecs, totalVolumeLbs) {
     const startDate = new Date(startMs).toISOString();
     const endDate = new Date(startMs + durationSecs * 1000).toISOString();
     const kcal = Math.round(totalVolumeLbs * 0.045);
-    if (H.writeWorkout) {
-      await H.writeWorkout({ workoutType: "traditionalStrengthTraining", startDate, endDate, totalEnergyBurned: kcal, totalEnergyBurnedUnit: "kilocalorie" }).catch(() => {});
-    } else if (H.saveWorkout) {
-      await H.saveWorkout({ activityType: "HKWorkoutActivityTypeTraditionalStrengthTraining", startDate, endDate, energyBurned: kcal }).catch(() => {});
+    // @capgo/capacitor-health exposes no workout-save (writeWorkout/saveWorkout don't exist) —
+    // only saveSample. Write the session's active energy so training still counts toward Apple
+    // Health activity/rings, which is what the write permission is for.
+    if (kcal > 0 && H.saveSample) {
+      await H.saveSample({ dataType: "calories", value: kcal, unit: "kilocalorie", startDate, endDate }).catch(() => {});
     }
   } catch (e) {}
 }
@@ -4210,8 +4245,8 @@ async function readTodayActivity() {
     }
     return null;
   }
-  const steps = await sum(["steps", "stepCount"]);
-  const activeKcal = await sum(["activeEnergyBurned", "activeCalories", "calories"]);
+  const steps = await sum(["steps"]);
+  const activeKcal = await sum(["calories"]);
   if (steps == null && activeKcal == null) return null;
   return { date: `${dayStart.getFullYear()}-${String(dayStart.getMonth()+1).padStart(2,"0")}-${String(dayStart.getDate()).padStart(2,"0")}`, steps, activeKcal };
 }
@@ -16323,7 +16358,8 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
   // Remember me: pre-fill the last email used to sign in. The session itself already persists
   // (Keychain), so this just saves re-typing the address on the sign-in screen.
   const [email, setEmail] = useState(() => { try { return localStorage.getItem("seshd_remember_email") || ""; } catch { return ""; } });
-  const [rememberMe, setRememberMe] = useState(() => { try { return localStorage.getItem("seshd_remember_email") ? true : true; } catch { return true; } });
+  // Default ON; honor a stored opt-out so unchecking Remember me actually sticks across visits.
+  const [rememberMe, setRememberMe] = useState(() => { try { return localStorage.getItem("seshd_remember_optout") !== "1"; } catch { return true; } });
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
@@ -16393,18 +16429,18 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       } else {
         const data = await sb.signIn(email, password);
         try {
-          if (rememberMe) localStorage.setItem("seshd_remember_email", email.trim());
-          else localStorage.removeItem("seshd_remember_email");
+          if (rememberMe) { localStorage.setItem("seshd_remember_email", email.trim()); localStorage.removeItem("seshd_remember_optout"); }
+          else { localStorage.removeItem("seshd_remember_email"); localStorage.setItem("seshd_remember_optout", "1"); }
         } catch {}
         onAuth(data);
       }
     } catch (e) {
-      // A fetch that never reaches the server throws a TypeError ("Load failed" in the iOS
-      // WebView) — surface that plainly instead of a bare blank so a network/CORS failure is
-      // distinguishable from a wrong password.
-      const netFail = e && (e.name === "TypeError" || /load failed|failed to fetch|networkerror|network request failed/i.test(e.message || ""));
+      // A request that never reached the server is flagged transportFailure by signIn — show a
+      // friendly connection message for that, and the specific reason (e.g. "Incorrect email or
+      // password") for everything the server actually answered.
+      const netFail = !!(e && e.transportFailure) || (typeof navigator !== "undefined" && navigator.onLine === false);
       setError(netFail
-        ? `Couldn't reach the server — ${e.name || "Error"}: ${e.message || "network error"}. Check your connection and try again.`
+        ? "Couldn't reach the server. Check your connection and try again."
         : (e.message || "Sign in failed. Please try again."));
     } finally {
       setLoading(false);
