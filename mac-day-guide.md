@@ -82,7 +82,21 @@ this guide, everything. Nothing needs to be "sent" to the Mac.
 ## Step 3 · Install the app's ingredients + build it
 
 Still in Terminal, one at a time (the first two take a few minutes each — wait for the
-prompt to come back):
+prompt to come back).
+
+**First, paste this whole block** — it creates the `.env.local` file that bakes your
+Supabase login into the build. **Without it, the app builds but sign-in fails** with
+"sign in failed, please try again":
+
+```
+cat > .env.local <<'EOF'
+VITE_SUPABASE_URL=https://zwsoxvekobvtvsphesef.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3c294dmVrb2J2dHZzcGhlc2VmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMDY1NzEsImV4cCI6MjA5MjU4MjU3MX0.CWlyo6jpvo3MqZuaRNt4DoBswbSTz2k1aJGZC6Fmqdk
+VITE_POSTHOG_KEY=
+EOF
+```
+
+Then, one at a time:
 
 ```
 npm install
@@ -95,8 +109,19 @@ npx cap sync ios
 ```
 
 **✅ Success:** the last command ends with **`✔ Sync finished`** and a list of plugin names
-(push-notifications, health, preferences, badge, secure-storage…). Those are the native
+(push-notifications, health, preferences, badge, secure-storage, share…). Those are the native
 features we added while Mac-less — this command is what activates them.
+
+> ⚠️ **The golden rule — the #1 thing that trips people up.** `npx cap sync ios` copies the
+> **compiled** app (the `dist` folder) into iOS. `dist` only rebuilds when you run
+> **`npm run build`**. So **any time you pull new changes, the order is ALWAYS:**
+> ```
+> git pull
+> npm run build
+> npx cap sync ios
+> ```
+> then rebuild in Xcode. If you skip `npm run build`, the phone keeps running the OLD version
+> and nothing you changed shows up — even though `git pull` and `cap sync` both "worked".
 
 > ℹ️ If any tutorial or error mentions "CocoaPods" or `pod install` — **ignore it**.
 > This project doesn't use that.
