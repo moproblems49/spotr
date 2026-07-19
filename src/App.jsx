@@ -1,4 +1,4 @@
-// v178091716689
+// v178091716690
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4136,8 +4136,14 @@ function nativeHealth() {
 }
 function healthKitAvailable() { return !!nativeHealth(); }
 
+// These MUST be valid @capgo/capacitor-health HealthDataType strings — the plugin's native
+// requestAuthorization THROWS on any unrecognized identifier, which rejects the whole request
+// before iOS shows the permission sheet (so a bad string = no popup AND the app never registers
+// in Settings → Health). Keep every entry within the plugin's HealthDataType union.
 const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep"];
-const HK_WRITE = ["workoutType", "activeEnergyBurned", "distanceWalkingRunning"];
+const HK_WRITE = ["workouts", "calories", "distance"];
+// Valid read identifiers for the movement/activity pull (steps + active energy).
+const HK_ACTIVITY_READ = ["steps", "calories"];
 
 async function requestHealthPermission() {
   const H = nativeHealth();
@@ -4180,7 +4186,7 @@ async function readTodayActivity() {
   const startIso = dayStart.toISOString(), endIso = now.toISOString();
   // Authorization for the extra types is best-effort and separate, so a strict plugin
   // rejecting unknown types can't break the core HRV/RHR/sleep permission.
-  try { await H.requestAuthorization({ read: ["steps", "activeEnergyBurned", "activeCalories", "calories"], write: [] }); } catch (e) {}
+  try { await H.requestAuthorization({ read: HK_ACTIVITY_READ, write: [] }); } catch (e) {}
   async function sum(types) {
     for (const dataType of types) {
       try {
@@ -4208,7 +4214,7 @@ async function readHourlyActivity() {
   const now = new Date();
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startIso = dayStart.toISOString(), endIso = now.toISOString();
-  try { await H.requestAuthorization({ read: ["steps", "activeEnergyBurned", "activeCalories", "calories"], write: [] }); } catch (e) {}
+  try { await H.requestAuthorization({ read: HK_ACTIVITY_READ, write: [] }); } catch (e) {}
   const buckets = Array.from({ length: 24 }, () => ({ steps: 0, kcal: 0 }));
   let gotAny = false;
   async function bucket(types, key) {
