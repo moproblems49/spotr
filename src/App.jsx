@@ -1,4 +1,4 @@
-// v178091716699
+// v178091716700
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1887,7 +1887,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         const timeline = computeBodyBatteryTimeline(store);
                         if (!timeline?.points || timeline.points.length < 2) return null;
                         const { points, wakeTimeMs, hasSleepData } = timeline;
-                        const W = 300, H = 70, PAD = 4;
+                        const W = 300, H = 110, PAD = 4;
                         const tStart = points[0].ts, tSpan = Math.max(1, points[points.length - 1].ts - tStart);
                         const xAt = ts => PAD + ((ts - tStart) / tSpan) * (W - PAD * 2);
                         // Fixed 0-100 y-axis — shows the full recharge + drain story.
@@ -1921,6 +1921,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           return { xPct: (xAt(tStart + tSpan * f) / W) * 100, label, idx: i };
                         });
                         const GREEN = "#4ade80";
+                        // Gridlines: a vertical line at every hour (clock-aligned, stronger every
+                        // 6h) and a horizontal line every 10 levels (stronger at the labeled 25s).
+                        const hourLines = [];
+                        for (let t = Math.ceil(tStart / 36e5) * 36e5; t <= tStart + tSpan; t += 36e5) {
+                          hourLines.push({ x: xAt(t), major: new Date(t).getHours() % 6 === 0 });
+                        }
+                        const levelLines = [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90].map(lvl => ({ y: yAt(lvl), major: lvl % 25 === 0 }));
                         return (
                           <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
@@ -1928,16 +1935,16 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                               <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>0–100</span>
                             </div>
                             <div style={{ display:"flex", gap:6 }}>
-                              <div style={{ position:"relative", width:22, height:80, flexShrink:0 }}>
+                              <div style={{ position:"relative", width:22, height:150, flexShrink:0 }}>
                                 {[100, 75, 50, 25, 0].map(lvl => (
                                   <span key={lvl} style={{
-                                    position:"absolute", right:0, top:`${(yAt(lvl) / H) * 80}px`,
+                                    position:"absolute", right:0, top:`${(yAt(lvl) / H) * 150}px`,
                                     transform:"translateY(-50%)", fontSize:8.5, color:C.muted, fontWeight:600, fontFamily:MONO,
                                   }}>{lvl}</span>
                                 ))}
                               </div>
                               <div style={{ flex:1, minWidth:0 }}>
-                                <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:80, display:"block" }} preserveAspectRatio="none">
+                                <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:150, display:"block" }} preserveAspectRatio="none">
                                   <defs>
                                     <linearGradient id="bbGreenGrad" x1="0" y1="0" x2="0" y2="1">
                                       <stop offset="0%" stopColor={GREEN} stopOpacity="0.4"/>
@@ -1948,8 +1955,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                                       <stop offset="100%" stopColor={fill} stopOpacity="0"/>
                                     </linearGradient>
                                   </defs>
-                                  {[75, 50, 25].map(lvl => (
-                                    <line key={lvl} x1={PAD} y1={yAt(lvl)} x2={W - PAD} y2={yAt(lvl)} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.55"/>
+                                  {levelLines.map((l, i) => (
+                                    <line key={`h${i}`} x1={PAD} y1={l.y} x2={W - PAD} y2={l.y} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity={l.major ? 0.55 : 0.2}/>
+                                  ))}
+                                  {hourLines.map((l, i) => (
+                                    <line key={`v${i}`} x1={l.x} y1={PAD} x2={l.x} y2={H - PAD} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity={l.major ? 0.45 : 0.16}/>
                                   ))}
                                   {drawSegs.map(s => (
                                     <path key={`a${s.key}`} d={s.area} fill={s.recharge ? "url(#bbGreenGrad)" : "url(#bbDrainGrad)"} stroke="none"/>
@@ -1980,14 +1990,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           </div>
                         );
                       })()}
-                      <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:16 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
                         {rows.map((r, i) => (
-                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", paddingBottom:12, borderBottom: i < rows.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                            <div>
-                              <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{r.label}</div>
-                              <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{r.detail}</div>
-                            </div>
-                            <div style={{ fontFamily:MONO, fontSize:15, fontWeight:800, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent, flexShrink:0, marginLeft:12 }}>{r.value}</div>
+                          <div key={i} style={{ background:C.surface, borderRadius:12, padding:"11px 12px" }}>
+                            <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.6, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
+                            <div style={{ fontFamily:MONO, fontSize:20, fontWeight:800, marginTop:4, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent }}>{r.value}</div>
+                            <div style={{ fontSize:10, color:C.sub, marginTop:3, lineHeight:1.35 }}>{r.detail}</div>
                           </div>
                         ))}
                       </div>
@@ -4328,13 +4336,27 @@ const HK_WRITE = ["calories"];
 // Valid read identifiers for the movement/activity pull (steps + active energy).
 const HK_ACTIVITY_READ = ["steps", "calories"];
 
+// ALL health authorization goes through this serialized helper, always requesting the FULL
+// union of types. The boot sync fires readRecovery/readTodayActivity/readHourlyActivity
+// CONCURRENTLY, and iOS honors only one permission presentation at a time — the racing losers
+// rejected silently, so a device could end up with ONLY Steps/Active Energy registered under
+// Settings → Health → Seshd and never HRV/resting-HR/sleep (exactly what shipped to the first
+// TestFlight build). One serialized union request = one sheet, everything registered.
+const HK_ALL_READ = [...HK_READ, ...HK_ACTIVITY_READ];
+let _hkAuthChain = Promise.resolve();
+function requestHealthAuth(H) {
+  const run = _hkAuthChain.then(() => H.requestAuthorization({ read: HK_ALL_READ, write: HK_WRITE }));
+  _hkAuthChain = run.catch(() => {}); // keep the chain alive after a failure
+  return run;
+}
+
 async function requestHealthPermission() {
   const H = nativeHealth();
   if (!H) return false;
   try {
     const avail = await H.isAvailable();
     if (avail && avail.available === false) return false;
-    await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
+    await requestHealthAuth(H);
     markHealthConnected();
     return true;
   } catch (e) {
@@ -4350,7 +4372,7 @@ async function writeWorkoutToHealth(startMs, durationSecs, totalVolumeLbs) {
   const H = nativeHealth();
   if (!H) return;
   try {
-    await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
+    await requestHealthAuth(H);
     const startDate = new Date(startMs).toISOString();
     const endDate = new Date(startMs + durationSecs * 1000).toISOString();
     const kcal = Math.round(totalVolumeLbs * 0.045);
@@ -4371,7 +4393,7 @@ async function readTodayActivity() {
   const startIso = dayStart.toISOString(), endIso = now.toISOString();
   // Authorization for the extra types is best-effort and separate, so a strict plugin
   // rejecting unknown types can't break the core HRV/RHR/sleep permission.
-  try { await H.requestAuthorization({ read: HK_ACTIVITY_READ, write: [] }); } catch (e) {}
+  try { await requestHealthAuth(H); } catch (e) {}
   async function sum(types) {
     for (const dataType of types) {
       try {
@@ -4403,7 +4425,7 @@ async function readHourlyActivity() {
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const evStart = new Date(dayStart.getTime() - 4 * 36e5); // yesterday 20:00
   const startIso = evStart.toISOString(), endIso = now.toISOString();
-  try { await H.requestAuthorization({ read: HK_ACTIVITY_READ, write: [] }); } catch (e) {}
+  try { await requestHealthAuth(H); } catch (e) {}
   const buckets = Array.from({ length: 24 }, () => ({ steps: 0, kcal: 0 }));
   const prevEvening = {};
   let gotAny = false;
@@ -4444,7 +4466,7 @@ async function readRecovery() {
   try {
     const avail = await H.isAvailable();
     if (avail && avail.available === false) return null;
-    await H.requestAuthorization({ read: HK_READ, write: HK_WRITE });
+    await requestHealthAuth(H);
     markHealthConnected();
   } catch (e) { /* if the user denies, the reads below just come back empty */ }
   const now = new Date();
