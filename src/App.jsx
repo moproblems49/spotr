@@ -1,4 +1,4 @@
-// v178091716705
+// v178091716706
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4100,10 +4100,15 @@ function computeBodyBattery(store) {
   let charge0;
   if (hasRecovery) {
     charge0 = Math.round(55 + rec.recoveryScore * 45);
-    // Apply sleep modifier on top of HRV recovery: <6h costs up to −10, ≥8h adds up to +5.
+    // Sleep modifier on top of HRV recovery — a smooth sliding scale centered at 7.5h (was
+    // crude stair-steps). Short nights bite harder than good nights reward, matching how the
+    // wearable apps treat it (a rough night pulls the number down even when HRV looks fine).
+    // 4h→−16, 6h→−10.5, 7h→−3.5, 7.5h→0, 8h→+2.5, 9h+→+7. (Sleep is also ~25% of recoveryScore,
+    // so this is the *extra* nudge specific to the Morning Charge number.)
     if (rec.sleepHours != null) {
-      const sleepMod = rec.sleepHours < 5 ? -10 : rec.sleepHours < 6 ? -7 : rec.sleepHours < 7 ? -3 : rec.sleepHours >= 8 ? 5 : 0;
-      charge0 = Math.max(10, Math.min(100, charge0 + sleepMod));
+      const d = rec.sleepHours - 7.5;
+      const sleepMod = d >= 0 ? Math.min(7, d * 5) : Math.max(-16, d * 7);
+      charge0 = Math.max(10, Math.min(100, Math.round(charge0 + sleepMod)));
     }
   } else if (rec && typeof rec.sleepHours === "number") {
     charge0 = Math.max(40, Math.min(90, Math.round(40 + rec.sleepHours * 6)));
