@@ -1,4 +1,4 @@
-// v178091716701
+// v178091716702
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2030,13 +2030,40 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     <span style={{ color:_readyColor(rec.recoveryScore) }}>· {recoveryVerdict(rec.recoveryScore)}</span>
                   </span>
                   {(() => {
-                    const drivers = [];
-                    if (rec.hrv != null && rec.hrvBaseline) drivers.push(`HRV ${rec.hrv} vs ${Math.round(rec.hrvBaseline)}`);
-                    if (rec.restingHr != null && rec.rhrBaseline) drivers.push(`RHR ${rec.restingHr} vs ${Math.round(rec.rhrBaseline)}`);
-                    if (rec.sleepHours != null) drivers.push(`${rec.sleepHours}h sleep`);
-                    return drivers.length ? (
-                      <span style={{ fontSize:10, color:C.muted, fontWeight:600, textAlign:"center" }}>{drivers.join(" · ")}</span>
-                    ) : null;
+                    // Plain-English driver tiles ("HRV 42 vs 32" meant nothing to normal
+                    // humans): each metric gets a value, a direction arrow, and a worded
+                    // comparison against the user's own baseline, colored good/off.
+                    const GOOD = "#4ade80", OFF = "#f59e0b";
+                    const tiles = [];
+                    if (rec.hrv != null && rec.hrvBaseline) {
+                      const base = Math.round(rec.hrvBaseline); const good = rec.hrv >= base;
+                      tiles.push({ label:"Heart recovery", value:`${Math.round(rec.hrv)}`, unit:"ms HRV", arrow: good ? "▲" : "▼", note:`${good ? "above" : "below"} your usual ${base}`, good });
+                    }
+                    if (rec.restingHr != null && rec.rhrBaseline) {
+                      const base = Math.round(rec.rhrBaseline); const good = rec.restingHr <= base;
+                      tiles.push({ label:"Resting pulse", value:`${rec.restingHr}`, unit:"bpm", arrow: good ? "▼" : "▲", note:`${good ? "below" : "above"} your usual ${base}`, good });
+                    }
+                    if (rec.sleepHours != null) {
+                      const h = rec.sleepHours; const good = h >= 7;
+                      tiles.push({ label:"Sleep", value:`${h}`, unit:"hours", arrow:"", note: h >= 8 ? "a full night" : h >= 7 ? "a solid night" : h >= 6 ? "a bit short" : "a short night", good });
+                    }
+                    if (!tiles.length) return null;
+                    return (
+                      <div style={{ width:"100%", maxWidth:340, margin:"2px auto 0" }}>
+                        <div style={{ display:"grid", gridTemplateColumns:`repeat(${tiles.length}, 1fr)`, gap:6 }}>
+                          {tiles.map((t, i) => (
+                            <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 6px", textAlign:"center" }}>
+                              <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{t.label}</div>
+                              <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, color:C.text, marginTop:3 }}>{t.value}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>{t.unit}</span></div>
+                              <div style={{ fontSize:8.5, fontWeight:600, marginTop:3, lineHeight:1.3, color: t.good ? GOOD : OFF }}>{t.arrow ? `${t.arrow} ` : ""}{t.note}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize:9, color:C.muted, textAlign:"center", marginTop:5, lineHeight:1.4 }}>
+                          Measured against your own recent baseline — higher HRV and a lower resting pulse mean you're recovered.
+                        </div>
+                      </div>
+                    );
                   })()}
                 </div>
               )}

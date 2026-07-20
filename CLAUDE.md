@@ -279,6 +279,12 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Ashley checklist below.**
 
+**⚠️ PRE-APP-STORE-SUBMISSION CHECKLIST (do these the day Mo says "submit"):**
+(1) **Remove the tiny `d1 ·` boot-diagnostic line from the sign-in screen** — AuthScreen's
+`bootDiagLine`/`diagEl` (marked TODO in code); it's TestFlight-phase debugging only.
+(2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
+(demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
+
 Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). Email confirmation is still OFF — SMTP is live now, flip "Confirm email" in Supabase Auth around public launch, not before TestFlight. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`) and a "Seshd" sender name in Supabase SMTP settings. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
 ### MAC DAY — ✅ COMPLETE (July 19-20, 2026; historical checklist below)
