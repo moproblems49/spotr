@@ -114,7 +114,64 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 - Memory/safety: never reduce the app's own safety behavior; this is a consumer fitness app.
 
 ## Current state / roadmap (as of last session)
-Recently shipped & verified (newest first): **Polish run** (5 Playwright-verified visual fixes:
+
+**★ MAC DAY HAPPENED (July 19-20, 2026) — APP IS LIVE ON TESTFLIGHT, ALL NATIVE FEATURES
+DEVICE-VERIFIED.** Mo executed the whole checklist himself on Ashley's Mac (no Ashley needed).
+Two builds archived + uploaded; the second carries every fix below. Verified working ON DEVICE:
+login + Keychain session persistence (kill/reopen stays signed in), HealthKit permission sheet
+(all types), native share sheet, offline queue, and the FULL push pipeline (DM insert → webhook
+→ edge function → APNs → lock-screen banner → tap opens the right chat). First-device-run bugs
+found + fixed (each verified by committed sims and/or on-device):
+- **CapacitorHttp enabled** (`capacitor.config.json`) — the WebView origin can't make ANY
+  cross-origin fetch ("TypeError: type error" on login and everything else). Uploads switched
+  `Blob`→`File` (CapacitorHttp mangles bare Blobs). Consequences handled: offline queue can't
+  sniff `e.name==="TypeError"` anymore (query() sets `err.transportFailure` / `err.httpStatus`;
+  the queue keeps only transport failures), and CapacitorHttp ignores AbortSignal so query()
+  races a manual timeout.
+- **main.jsx never called `hydrateFromNative()`** — the exported boot hydration was never wired
+  in, so every launch booted signed-out and the Preferences mirror never armed. Now awaited
+  before React mounts.
+- **The localStorage mirror NEVER worked anywhere** — assigning `localStorage.setItem = fn` is a
+  spec-level no-op (Storage routes property-sets into stored items). Patch `Storage.prototype`
+  instead (scoped to window.localStorage).
+- **Session paranoia rule** (saveSession/hydrateSessionFromKeychain): never destroy a session
+  copy until its replacement write is CONFIRMED; broken Keychain degrades to
+  localStorage+Preferences fallback (signed-in-unencrypted beats signed-out); 4s timeouts on
+  plugin calls; every step records `seshd_boot_diag`/`seshd_kc_save`, shown as a tiny `d1 ·` line
+  on the auth screen (**TODO: remove before App Store submission**).
+- **HealthKit auth RACE** — readRecovery/readTodayActivity/readHourlyActivity fired concurrent
+  `requestAuthorization` calls; iOS honors one, the losers rejected silently → only Steps/Active
+  Energy ever registered. ALL auth now goes through `requestHealthAuth(H)` (serialized, always
+  the full union of types). Also: type strings MUST be from the plugin's HealthDataType union
+  (invalid ones reject the whole request → no permission sheet); HK_WRITE is `["calories"]` only
+  and the workout write uses `saveSample` (plugin has no writeWorkout/saveWorkout).
+- **AppDelegate.swift was missing the APNs token forwarding methods**
+  (`didRegisterForRemoteNotificationsWithDeviceToken` → NotificationCenter post) — the push
+  token never reached JS, `profiles.push_token` stayed null. **The APNs .p8 key is
+  PRODUCTION-ONLY** (sandbox send → 403 BadEnvironmentKeyInToken): debug builds can NEVER
+  receive pushes — test pushes on TestFlight builds only. Both push edge functions retry the
+  other APNs host on BadDeviceToken so env never needs flipping. To fire a test push: INSERT
+  into `messages` from coach_kai (id 75748f50-b4a2-4cc8-bd27-53b94198875c) via MCP SQL.
+- **Local Mac builds need `.env.local`** (VITE_SUPABASE_URL/ANON_KEY live in Vercel, not the
+  repo) or sign-in fails; the golden rule after every `git pull` is `npm run build` THEN
+  `npx cap sync ios` (sync copies the COMPILED dist). Both are in mac-day-guide.md.
+Also shipped this era: **@capacitor/share** plugin via `shareLink()` helper (web
+navigator.share is unreliable in WKWebView; a cancelled sheet is treated as done, not a
+fallthrough); **Remember me** (email prefill + persisted opt-out `seshd_remember_optout`);
+**Body Battery overhaul** — true 24h timeline (4 phases: prev-night recharge tail, yesterday
+drain backward-anchored to sleepStartLevel, last-night recharge, today drain; contiguous-segment
+rendering), steps-gated estimated bedtime (steps prove AWAKE only, push bedtime later, cap 4am,
+only when `activityHourlyDate` is today; `activityPrevEvening` carries yesterday 8pm-midnight),
+Garmin-style dot axis (hourly dots, bigger+labeled every 3h, green across the sleep stretch),
+light gridlines, 2-column stat boxes incl. Resting HR + HRV (shown once Apple Health records
+them), honest "Apple Health is connected — waiting for data" copy via `isHealthConnected()`
+(flag = permission flow completed; Apple hides read-grant state). **Sim note: the container
+recycle wiped the old gitignored build/ sim battery (jsdom-bootstrap.mjs and the sweep/flows/etc
+sims are GONE — recreate as needed); the new self-contained sims ARE committed via `git add -f`:
+sim_bootkeychain, sim_kcfail, sim_bb24, sim_bbgate.** A Fable-5 audit of the era's diffs found
+no correctness bugs (hardening applied: gate date-stamp, noon-anchor for legacy sessions).
+
+Earlier shipped & verified (newest first): **Polish run** (5 Playwright-verified visual fixes:
 global sans fallback in index.css; profile cover scrim only over a real photo; PR modal `firstEver`
 handling; zero-delta "▲ 0%" suppressed in Wrapped modal + wrapped PostCard + shared SVG;
 "1 member" pluralization ×4 sites). **Story delete** — trash button in StoryViewer for your own
@@ -224,7 +281,7 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). Email confirmation is still OFF — SMTP is live now, flip "Confirm email" in Supabase Auth around public launch, not before TestFlight. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`) and a "Seshd" sender name in Supabase SMTP settings. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
-### MAC DAY — the complete checklist (Mac access expected ~July 12, 2026)
+### MAC DAY — ✅ COMPLETE (July 19-20, 2026; historical checklist below)
 Everything that needs a Mac, in the order to do it. Code/server side is DONE for all of these.
 
 **Step 0a — set the last APNs secret (the `.p8` key file LIVES ON THE MAC):**
