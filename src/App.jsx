@@ -1,4 +1,4 @@
-// v178091716706
+// v178091716707
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20427,13 +20427,15 @@ function AppInner() {
           scrolls under it and the blur becomes real — needs per-screen scroller padding. */}
       <div style={{
         background: C.isDark
-          ? "linear-gradient(165deg, rgba(70,70,78,0.45) 0%, rgba(24,24,28,0.92) 55%, rgba(32,32,38,0.96) 100%)"
-          : "linear-gradient(165deg, rgba(255,255,255,0.92) 0%, rgba(244,246,250,0.9) 55%, rgba(238,241,246,0.95) 100%)",
-        borderBottom:`1px solid ${C.isDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.9)"}`,
+          ? "linear-gradient(180deg, rgba(28,28,34,0.72) 0%, rgba(20,20,24,0.62) 100%)"
+          : "linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(246,248,252,0.66) 100%)",
+        backdropFilter:"blur(22px) saturate(1.7)", WebkitBackdropFilter:"blur(22px) saturate(1.7)",
+        borderBottom:`1px solid ${C.isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.06)"}`,
         boxShadow: C.isDark
-          ? "inset 0 1px 1px rgba(255,255,255,0.1), 0 1px 0 rgba(0,0,0,0.25)"
-          : "inset 0 1px 1px rgba(255,255,255,0.95), 0 1px 0 rgba(0,0,0,0.05)",
-        padding: isGuest ? "10px calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)" : "calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) 10px calc(env(safe-area-inset-left) + 14px)",
+          ? "inset 0 1px 0 rgba(255,255,255,0.08)"
+          : "inset 0 1px 0 rgba(255,255,255,0.9)",
+        // Moved up: tighter top gap under the notch (+4 vs +10) and slimmer bottom pad.
+        padding: isGuest ? "7px calc(env(safe-area-inset-right) + 14px) 7px calc(env(safe-area-inset-left) + 14px)" : "calc(env(safe-area-inset-top) + 4px) calc(env(safe-area-inset-right) + 14px) 7px calc(env(safe-area-inset-left) + 14px)",
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
         <SeshdLogo C={C}/>
