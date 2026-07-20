@@ -4,6 +4,10 @@
    Matches the `F` stack in App.jsx; keep the two in sync. */
 html, body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  /* Dark default so any pixel a transform/drag momentarily exposes (e.g. the strip behind the
+     chat screen during the iOS edge-swipe-back) is the app background, not the WebView's white.
+     Matches the native launch screen (#0a0a0a); JS repaints this to the exact theme bg on mount. */
+  background: #0a0a0a;
 }
 /* Form controls don't inherit font by default. */
 input, textarea, button, select {

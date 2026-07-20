@@ -1,4 +1,4 @@
-// v178091716703
+// v178091716705
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18050,9 +18050,14 @@ function AppInner() {
   // `C` isn't declared until later in this component, so referencing it here would TDZ-crash.)
   useEffect(() => {
     try {
+      const bg = THEMES[(store.theme || "light")].bg;
       let meta = document.querySelector('meta[name="theme-color"]');
       if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; document.head.appendChild(meta); }
-      meta.content = THEMES[(store.theme || "light")].bg;
+      meta.content = bg;
+      // Paint the page root too, so any pixel exposed mid-gesture (the strip behind the chat
+      // screen during the edge-swipe-back) shows the theme bg instead of the WebView's white.
+      document.documentElement.style.background = bg;
+      document.body.style.background = bg;
     } catch (e) {}
   }, [store.theme]);
   const [showMessages, setShowMessages] = useState(false);
@@ -19668,7 +19673,11 @@ function AppInner() {
     const body = document.body;
     const root = document.getElementById("root");
     html.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;";
-    body.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;-webkit-tap-highlight-color:transparent;";
+    // Use the THEME background here, not a hardcoded #fff — this fixed body is what shows through
+    // whenever a transform/drag momentarily exposes a strip (the iOS edge-swipe-back off the chat
+    // screen was revealing this white band). The theme-color effect above repaints it on toggle.
+    const _shellBg = THEMES[(store.theme || "light")].bg;
+    body.style.cssText = `margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:${_shellBg};-webkit-tap-highlight-color:transparent;`;
     if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
 
     // Prevent iOS Safari from auto-zooming on input focus
