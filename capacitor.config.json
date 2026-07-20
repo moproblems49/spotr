@@ -5,6 +5,15 @@
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
+    },
+    "CapacitorUpdater": {
+      "autoUpdate": true,
+      "updateUrl": "https://spotr-drab.vercel.app/api/app-update",
+      "statsUrl": "",
+      "channelUrl": "",
+      "appReadyTimeout": 10000,
+      "autoDeleteFailed": true,
+      "autoDeletePrevious": true
     }
   }
 }

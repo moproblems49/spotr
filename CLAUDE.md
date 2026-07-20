@@ -287,6 +287,29 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). Email confirmation is still OFF — SMTP is live now, flip "Confirm email" in Supabase Auth around public launch, not before TestFlight. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`) and a "Seshd" sender name in Supabase SMTP settings. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
+### OTA UPDATES (@capgo/capacitor-updater, self-hosted — set up July 20, 2026)
+Purpose: ship app-code updates to installed phones WITHOUT the Mac/TestFlight. Fully wired on
+the code side; goes live after ONE more Mac build (see next-Mac-day checklist below).
+- **Plugin**: `@capgo/capacitor-updater@^8.51.2` in package.json; config in
+  `capacitor.config.json` → `CapacitorUpdater` (autoUpdate:true, updateUrl points at our own
+  `/api/app-update`, statsUrl/channelUrl empty = zero Capgo-cloud calls). `main.jsx` calls
+  `notifyAppReady()` (guarded global) on every launch — without it the plugin auto-reverts the
+  bundle after 10s, which is the rollback safety net for a broken OTA push.
+- **Endpoint**: `api/app-update.js` (Vercel function). The full publish recipe is in its header
+  comment. Summary: build dist with real env → zip dist CONTENTS (index.html at zip ROOT) to
+  `public/bundles/seshd-<ver>.zip` → set `LATEST_VERSION` in api/app-update.js → delete the old
+  zip → push to main. Phones fetch on next launch, apply on the one after. "No update" reply is
+  `{version:null}` (documented capacitor-updater self-hosted contract).
+- **Force rollback**: point LATEST_VERSION back at an older published version (restore its zip).
+- **HARD LIMIT**: OTA can only ship web-bundle changes. Anything needing a new native
+  plugin/capability/entitlement still requires a real Mac build + TestFlight upload — and the
+  FIRST build containing the updater plugin itself is exactly that.
+
+**NEXT MAC DAY checklist (one-time, activates OTA):** `git pull && npm install &&
+npm run build && npx cap sync ios` (with .env.local present) → verify the plugin list shows
+`@capgo/capacitor-updater` → bump Build number → Archive → Distribute to TestFlight. From then
+on, app-code updates ship OTA from any sandbox session; the Mac is only for native changes.
+
 ### MAC DAY — ✅ COMPLETE (July 19-20, 2026; historical checklist below)
 Everything that needs a Mac, in the order to do it. Code/server side is DONE for all of these.
 
