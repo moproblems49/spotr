@@ -115,6 +115,52 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 ## Current state / roadmap (as of last session)
 
+**★★ POST-TESTFLIGHT DEVICE-FEEDBACK ERA (July 20-21, 2026) — Mo testing on his phone, reporting
+bugs live; each fix below is committed + pushed to main and rides the NEXT build/OTA.** A real
+device build is expected "in a few hours" from the last session, so everything below ships then.
+Highlights (newest first):
+- **Workout finish "0m time" + duplicate-post bug (real, Mo hit it once).** The start time lived
+  only in the resettable `wStart`/`elapsed` state, which the first finish nulls — a glitched-then-
+  retried finish then recorded `duration = 0` and minted a NEW sid → duplicate. Fixes: a stable
+  `session.startedAt` stamp drives duration (floors to real time, never 0 when sets exist); a
+  `_finishedSid` tag makes a retry upsert the SAME workout_history row; and the SHARE path had the
+  SAME bug in TWO more spots (the post card's `duration` read `elapsed` = the actual "0m" on the
+  feed post; feed+group inserts had no idempotency). Both post tables got a `client_id` column
+  (plain UNIQUE index — partial indexes can't be a PostgREST `on_conflict` target; NULLs stay
+  distinct so non-workout posts are unaffected) + `on_conflict` upsert. RLS UPDATE policies already
+  existed; proven with a rolled-back role-sim.
+- **Apple Health feature set (all read-only, all behind the serialized `requestHealthAuth(H)` union
+  auth — the boot sync fires reads concurrently and iOS honors ONE permission sheet, so a
+  per-read auth call = losers rejected silently; always request the full HK_READ union).** Shipped:
+  VO₂ Max 6-month sparkline card; per-workout heart rate (avg/peak, new `workout_history.hr_summary`
+  jsonb, shown in History); overnight illness/overtraining signals (respiratory rate + wrist temp vs
+  30-day baseline → plain-English heads-up); Resting-HR 60-day trend sparkline (down = fitter);
+  auto body-weight into the body log (`readBodyWeightLog`, MANUAL entries always win, only fills
+  un-logged dates / refreshes prior `source:"health"` ones, kg→user-unit, tagged "Apple Health").
+  Recovery drivers rewritten from "HRV 42 vs 32" shorthand into plain-English tiles.
+- **Body Battery**: sleep now moves Morning Charge on a smooth sliding scale (short nights bite
+  harder); Garmin-style hourly-dot axis (green across the sleep stretch), lighter gridlines,
+  2-column stat boxes; honest "Apple Health connected — waiting for data" copy via
+  `isHealthConnected()` (a flag, since Apple hides read-grant state).
+- **Liquid-Glass UI (partial, device-test remainder)**: translucent blurred top bar + status-bar
+  OVERLAY mode (`setOverlaysWebView({overlay:true})`) so the clock/battery float over the glass;
+  moved the bar up. The FULL "body content scrolls under real glass" is DEFERRED to a device pass
+  (per the in-code TODO — it's the tab-swipe co-move engine + per-screen scroller clearance, exactly
+  the thing that looks fine in Playwright and breaks on iOS). White-flash on chat edge-swipe-back
+  FIXED (a scroll-lock effect hardcoded `body background:#fff`; now theme-bg, + dark CSS default).
+- **OTA UPDATES fully wired** (@capgo/capacitor-updater, self-hosted via `/api/app-update` — see the
+  OTA section below). Goes live after the NEXT Mac build includes the plugin; after that, app-code
+  updates ship from any sandbox session with no Mac.
+- **AppDelegate APNs fix**: the two `didRegister…RemoteNotifications` methods were missing, so the
+  push token never reached JS. Added → device-verified: real DM from coach_kai buzzed the lock
+  screen, tap opened the chat. **The .p8 key is PRODUCTION-ONLY** (sandbox → 403
+  BadEnvironmentKeyInToken); Xcode debug builds can't receive pushes, TestFlight builds can.
+- Two Fable-5 audits this era found NO correctness bugs (only low-severity hardening, applied:
+  bedtime-gate date-stamp, legacy-session noon-anchor). A third audit is running as of this note.
+- **Sim battery note (container recycle wiped the old gitignored build/ sims):** the committed ones
+  (`git add -f`) are `sim_bootkeychain`, `sim_kcfail`, `sim_bb24`, `sim_bbgate`, `sim_health2`.
+  jsdom-bootstrap.mjs is GONE — the committed sims are self-contained (inline JSDOM setup).
+
 **★ MAC DAY HAPPENED (July 19-20, 2026) — APP IS LIVE ON TESTFLIGHT, ALL NATIVE FEATURES
 DEVICE-VERIFIED.** Mo executed the whole checklist himself on Ashley's Mac (no Ashley needed).
 Two builds archived + uploaded; the second carries every fix below. Verified working ON DEVICE:
