@@ -65,9 +65,9 @@ click(qa('button[aria-label="Profile"]')[0]); await settle(500);
 click(btnByText("Body")); await settle(500);
 const txt = document.body.textContent || "";
 check("VO₂ Max card renders (label + value)", /Cardio fitness/i.test(txt) && txt.includes("45.2"), `slice: ${txt.slice(0,80)}`);
-check("VO₂ Max shows the 6-month trend delta", /\+3\.2 over 6 months/.test(txt));
+check("VO₂ Max shows the trend delta (zero-delta suppressed elsewhere)", /▲ \+3\.2 vs earlier/.test(txt));
 check("elevated overnight signals show a heads-up warning", /Heads up/i.test(txt) && /breathing rate up/i.test(txt), `has-signals`);
-check("Resting-HR trend card renders (down = stronger heart)", /Resting heart rate . trend/i.test(txt) && /-6 bpm over 60 days/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
+check("Resting-HR trend card renders (down = stronger heart)", /Resting heart rate . trend/i.test(txt) && /-6 bpm vs earlier/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
 
 // Tracker tab → History sub-tab — per-workout HR line.
 click(qa('button[aria-label="Workout"]')[0]); await settle(500);

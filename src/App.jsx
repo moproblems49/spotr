@@ -1,4 +1,4 @@
-// v178091716713
+// v178091716714
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2082,7 +2082,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         <div>
                           <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.vo2Max}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>ml/kg·min</span></div>
-                          <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲" : down ? "▼" : "•"} {d > 0 ? "+" : ""}{d} over 6 months</div>
+                          {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲ +" : "▼ "}{d} vs earlier</div>}
                         </div>
                         {spark}
                       </div>
@@ -2101,7 +2101,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         <div>
                           <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · trend</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
-                          <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼" : up ? "▲" : "•"} {d > 0 ? "+" : ""}{d} bpm over 60 days{down ? " — stronger heart" : ""}</div>
+                          {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm vs earlier{down ? " — stronger heart" : ""}</div>}
                         </div>
                         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible" }}><polyline points={pts} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </div>
@@ -4439,7 +4439,12 @@ function isHealthConnected() { try { return localStorage.getItem("seshd_health_c
 // in Settings → Health). Keep every entry within the plugin's HealthDataType union.
 // Core recovery reads + the extras we surface: VO₂ Max (cardio-fitness trend), per-workout
 // heart rate, and the overnight illness/overtraining signals (respiratory rate, wrist temp).
-const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep", "vo2Max", "heartRate", "respiratoryRate", "appleSleepingWristTemperature", "weight"];
+// NOTE: NO "vo2Max" here. @capgo/capacitor-health v8.7.1 implements vo2Max on ANDROID ONLY — its
+// iOS HealthDataType enum has no vo2Max case, so including it makes the native requestAuthorization
+// THROW on the whole union → the permission sheet never appears for new users. (The VO₂ Max read/
+// card below are harmless: readSamples("vo2Max") just throws-and-is-caught on iOS, so the card
+// stays hidden. Re-add here only if the plugin gains iOS vo2Max support.)
+const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep", "heartRate", "respiratoryRate", "appleSleepingWristTemperature", "weight"];
 // Only request WRITE scope for what we actually write. This plugin can't save a full HKWorkout
 // (no writeWorkout/saveWorkout — saveSample only), so we write the session's active energy and
 // request only `calories`. Requesting write scopes we never use is an App Review smell.
@@ -9662,7 +9667,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
-      return saved ? JSON.parse(saved) : null;
+      const s = saved ? JSON.parse(saved) : null;
+      // A session tagged _finishedSid was already saved (the summary just hadn't been dismissed).
+      // If the app was force-killed before dismiss, DON'T resurrect it as in-progress — a later
+      // Finish would upsert the saved row with a bogus (now − startedAt) duration and today's date.
+      if (s && s._finishedSid) { try { localStorage.removeItem(SESSION_KEY); } catch {} return null; }
+      return s;
     } catch { return null; }
   });
   const [elapsed, setElapsed] = useState(() => {
@@ -15272,7 +15282,8 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
                   </div>
                 </div>
                 {e.photoData && <img src={e.photoData} alt="" style={{ width:36, height:48, objectFit:"cover", borderRadius:7 }}/>}
-                <button onClick={() => { setStore(p => { const nextLog = (p.bodyLog||[]).filter(x => x.id !== e.id); const tok = (typeof loadSession === "function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b=>({...b, photoData:null})) }) }, tok).catch(()=>{}); } return { ...p, bodyLog: nextLog }; }); haptic("tap"); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
+                <button onClick={() => { setStore(p => { const nextLog = (p.bodyLog||[]).filter(x => x.id !== e.id); const tok = (typeof loadSession === "function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b=>({...b, photoData:null})) }) }, tok).catch(()=>{}); } // Remember a deleted date so the Apple-Health auto-sync doesn't resurrect it every 15 min.
+                  const skip = Array.from(new Set([...(p.bodyLogHealthSkip || []), e.date])); return { ...p, bodyLog: nextLog, bodyLogHealthSkip: skip }; }); haptic("tap"); }} style={{ background:"none", border:"none", color:C.muted, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>Delete</button>
               </div>
             ))}
           </>
@@ -18289,9 +18300,11 @@ function AppInner() {
           setStore(p => {
             const unitNow = p.unit || "lbs";
             const existing = p.bodyLog || [];
+            const skip = new Set(p.bodyLogHealthSkip || []);
             const byDate = Object.fromEntries(existing.map(e => [e.date, e]));
             let changed = false;
             for (const w of weightLog) {
+              if (skip.has(w.date)) continue;               // user deleted this date — don't resurrect
               const cur = byDate[w.date];
               if (cur && cur.source !== "health") continue; // manual entry wins
               const wt = Math.round((unitNow === "lbs" ? w.kg * LBS_PER_KG : w.kg) * 10) / 10;
@@ -19250,10 +19263,12 @@ function AppInner() {
         achievement: postData.achievement || null,
         unit: store.unit || "lbs",
         is_pr: postData.isPR || false,
-        created_at: nowIso,
         // Idempotency key for workout posts — a retry/re-share upserts the same row (unique
         // index on client_id) instead of creating a duplicate feed post. Null for other posts.
-        ...(postData.clientId ? { client_id: postData.clientId } : {}),
+        // For those we OMIT created_at so an on-conflict UPDATE can't bump the timestamp (which
+        // would jump the post to the top of the feed / clobber an edited caption on a retry) —
+        // the DB keeps the original. Non-idempotent posts keep the explicit client wall-clock.
+        ...(postData.clientId ? { client_id: postData.clientId } : { created_at: nowIso }),
       };
       const result = await sb.query(
         postData.clientId ? "posts?on_conflict=client_id" : "posts",
@@ -19272,7 +19287,9 @@ function AppInner() {
           // Use the timestamp we set on the row (client wall-clock) instead of trusting whatever DB returned
           createdAt: new Date(newPost.created_at || nowIso).getTime(),
         };
-        setStore(prev => ({ ...prev, posts: [appPost, ...prev.posts] }));
+        // Replace-or-prepend: a re-shared workout upserts the SAME id, so drop any existing copy
+        // first instead of prepending a visual duplicate until reload.
+        setStore(prev => ({ ...prev, posts: [appPost, ...prev.posts.filter(p => p.id !== appPost.id)] }));
         track("post_created", { type: appPost.type, hasImage: !!appPost.imageData, isWorkout: !!appPost.workout });
       }
       if (groupFailures > 0) {
@@ -20029,21 +20046,22 @@ function AppInner() {
   const C = THEMES[(store.theme || "light")];
   const unit = store.unit || "lbs";
 
-  // Native iOS status bar. OVERLAY mode: the WebView extends under the clock/battery so they
-  // float over the app's translucent glass top bar (Liquid-Glass look — the clock/battery sit
-  // ON the frosted bar, not in a separate solid block). Safe because every screen already pads
-  // by env(safe-area-inset-top), which becomes the status-bar height in overlay mode. The bar
-  // TEXT tint is the inverse of the theme (dark theme → light text). No setBackgroundColor in
-  // overlay mode — the glass top bar is the background now.
+  // Native iOS status bar — match text tint to the theme, content BELOW it (overlay:false).
+  // The clock/battery-over-glass OVERLAY effect is DEFERRED to the device glass pass: overlay:true
+  // put the clock over the ~6 full-screen editor overlays (ProgramBuilder, EditHistoryModal, day
+  // editor, reorder screens, etc.) whose headers sit 14-16px from the physical top with NO
+  // env(safe-area-inset-top) padding. Ship it with the full scroll-under glass, on-device, where
+  // those overlays get proper safe-area clearance too.
   useEffect(() => {
     const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
     const SB = (Cap?.isNativePlatform?.() && Cap.Plugins?.StatusBar) ? Cap.Plugins.StatusBar : null;
     if (!SB) return;
     try {
       SB.setStyle({ style: C.isDark ? "DARK" : "LIGHT" }); // Style.Dark = light content
-      SB.setOverlaysWebView?.({ overlay: true });
+      SB.setOverlaysWebView?.({ overlay: false });
+      if (SB.setBackgroundColor) SB.setBackgroundColor({ color: C.bg }).catch(() => {});
     } catch (e) { /* status bar styling is best-effort */ }
-  }, [store.theme, C.isDark]);
+  }, [store.theme, C.isDark, C.bg]);
 
   // HOOKS — must be before any early returns (React rules of hooks)
   // Stores the timestamp of the last time the user "checked" their notifications.
