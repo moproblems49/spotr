@@ -1,4 +1,4 @@
-// v178091716711
+// v178091716712
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4420,7 +4420,7 @@ function isHealthConnected() { try { return localStorage.getItem("seshd_health_c
 // in Settings → Health). Keep every entry within the plugin's HealthDataType union.
 // Core recovery reads + the extras we surface: VO₂ Max (cardio-fitness trend), per-workout
 // heart rate, and the overnight illness/overtraining signals (respiratory rate, wrist temp).
-const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep", "vo2Max", "heartRate", "respiratoryRate", "appleSleepingWristTemperature"];
+const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep", "vo2Max", "heartRate", "respiratoryRate", "appleSleepingWristTemperature", "weight"];
 // Only request WRITE scope for what we actually write. This plugin can't save a full HKWorkout
 // (no writeWorkout/saveWorkout — saveSample only), so we write the session's active energy and
 // request only `calories`. Requesting write scopes we never use is an App Review smell.
@@ -4704,6 +4704,30 @@ async function readRecovery() {
 
   if (out.hrv == null && out.restingHr == null && out.sleepHours == null && out.vo2Max == null) return null;
   return out;
+}
+
+// Latest body-weight readings from Apple Health (smart scales / manual Health entries sync here),
+// so the body log can auto-fill instead of the user re-typing. Returns the most recent reading
+// per calendar date over the last ~30 days: [{ date:"YYYY-MM-DD", kg }] newest-first. Null on web.
+async function readBodyWeightLog() {
+  const H = nativeHealth();
+  if (!H) return null;
+  try {
+    await requestHealthAuth(H).catch(() => {});
+    const startIso = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString();
+    const r = await H.readSamples({ dataType: "weight", startDate: startIso, endDate: new Date().toISOString(), limit: 500 });
+    const rows = ((r && r.samples) || []).map(s => ({ kg: parseFloat(s.value), t: s.startDate || s.endDate }))
+      .filter(s => !isNaN(s.kg) && s.kg > 0 && s.t);
+    if (!rows.length) return null;
+    // Keep the latest sample per local date.
+    const byDate = {};
+    for (const s of rows) {
+      const d = new Date(s.t);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      if (!byDate[key] || s.t > byDate[key].t) byDate[key] = s;
+    }
+    return Object.entries(byDate).map(([date, s]) => ({ date, kg: Math.round(s.kg * 100) / 100 })).sort((a, b) => b.date.localeCompare(a.date));
+  } catch (e) { return null; }
 }
 
 // Per-workout heart rate summary from HealthKit — read the heart-rate samples between a workout's
@@ -15200,7 +15224,10 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
             {[...log].reverse().map(e => (
               <div key={e.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:6 }}>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{new Date(e.date + "T12:00:00").toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text, display:"flex", alignItems:"center", gap:6 }}>
+                    {new Date(e.date + "T12:00:00").toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})}
+                    {e.source === "health" && <span style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.3, color:C.muted, border:`1px solid ${C.border}`, borderRadius:5, padding:"1px 5px" }}>Apple Health</span>}
+                  </div>
                   <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
                     {[e.weight != null ? `${e.weight} ${unit}` : null, ...Object.entries(e.measurements||{}).map(([k,v]) => `${MEASURE_FIELDS.find(m=>m.key===k)?.label||k} ${v}`)].filter(Boolean).join(" · ") || "Photo only"}
                   </div>
@@ -18208,7 +18235,7 @@ function AppInner() {
       if (Date.now() - healthSyncRef.current < 15 * 60 * 1000) return;
       healthSyncRef.current = Date.now();
       try {
-        const [rec, act, actHourly] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity()]);
+        const [rec, act, actHourly, weightLog] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity(), readBodyWeightLog()]);
         if (cancelled) return;
         if (rec || act || actHourly) setStore(p => ({
           ...p, recovery: rec || p.recovery, activity: act || p.activity,
@@ -18216,6 +18243,32 @@ function AppInner() {
           activityPrevEvening: (actHourly && actHourly.prevEvening) || p.activityPrevEvening,
           activityHourlyDate: (actHourly && actHourly.date) || p.activityHourlyDate,
         }));
+        // Auto-fill the body log from Apple Health weight readings. A MANUAL entry for a date
+        // always wins (never overwritten); we only add dates you haven't logged, or refresh a
+        // prior Health-sourced entry. Entries are tagged source:"health" so the UI can label them.
+        if (weightLog && weightLog.length) {
+          setStore(p => {
+            const unitNow = p.unit || "lbs";
+            const existing = p.bodyLog || [];
+            const byDate = Object.fromEntries(existing.map(e => [e.date, e]));
+            let changed = false;
+            for (const w of weightLog) {
+              const cur = byDate[w.date];
+              if (cur && cur.source !== "health") continue; // manual entry wins
+              const wt = Math.round((unitNow === "lbs" ? w.kg * LBS_PER_KG : w.kg) * 10) / 10;
+              if (cur && cur.source === "health" && Math.abs((parseFloat(cur.weight) || 0) - wt) < 0.05) continue;
+              byDate[w.date] = { id: cur?.id || uid(), date: w.date, weight: wt, measurements: cur?.measurements || {}, photoData: cur?.photoData || null, source: "health" };
+              changed = true;
+            }
+            if (!changed) return p;
+            const nextLog = Object.values(byDate).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+            const tok = tokenRef.current || loadSession()?.access_token;
+            if (tok && currentUserId && !isGuest) {
+              sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok).catch(() => {});
+            }
+            return { ...p, bodyLog: nextLog };
+          });
+        }
       } catch (e) {}
     }
     sync();
