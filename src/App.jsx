@@ -1,4 +1,4 @@
-// v178091716708
+// v178091716709
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2062,6 +2062,51 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         <div style={{ fontSize:9, color:C.muted, textAlign:"center", marginTop:5, lineHeight:1.4 }}>
                           Measured against your own recent baseline — higher HRV and a lower resting pulse mean you're recovered.
                         </div>
+                      </div>
+                    );
+                  })()}
+                  {/* VO₂ Max — cardio-fitness trend (Apple estimates it from outdoor walks/runs). */}
+                  {rec.vo2Max != null && (() => {
+                    const s = rec.vo2MaxSeries && rec.vo2MaxSeries.length >= 2 ? rec.vo2MaxSeries : null;
+                    const d = rec.vo2MaxDelta || 0;
+                    const up = d > 0.05, down = d < -0.05;
+                    const col = up ? "#4ade80" : down ? "#f59e0b" : C.sub;
+                    let spark = null;
+                    if (s) {
+                      const W = 120, H = 26, lo = Math.min(...s), hi = Math.max(...s), rng = Math.max(0.1, hi - lo);
+                      const pts = s.map((v, i) => `${(i / (s.length - 1)) * W},${H - ((v - lo) / rng) * H}`).join(" ");
+                      spark = <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible" }}><polyline points={pts} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+                    }
+                    return (
+                      <div style={{ width:"100%", maxWidth:340, margin:"8px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                        <div>
+                          <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
+                          <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.vo2Max}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>ml/kg·min</span></div>
+                          <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲" : down ? "▼" : "•"} {d > 0 ? "+" : ""}{d} over 6 months</div>
+                        </div>
+                        {spark}
+                      </div>
+                    );
+                  })()}
+                  {/* Overnight signals — respiratory rate + wrist temp drifting ABOVE your normal is
+                      an early illness/overtraining flag (how Oura/Whoop use them). */}
+                  {(() => {
+                    const flags = [];
+                    if (rec.resp != null && rec.respBaseline) {
+                      const hi = rec.resp >= rec.respBaseline + 1.5;
+                      if (hi) flags.push(`breathing rate up (${rec.resp} vs ${rec.respBaseline}/min)`);
+                    }
+                    if (rec.wristTemp != null && rec.wristTempBaseline) {
+                      const hi = rec.wristTemp >= rec.wristTempBaseline + 0.4;
+                      if (hi) flags.push("wrist temperature elevated");
+                    }
+                    const hasAny = (rec.resp != null || rec.wristTemp != null);
+                    if (!hasAny) return null;
+                    return (
+                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", fontSize:9.5, color: flags.length ? "#f59e0b" : C.muted, textAlign:"center", fontWeight:600, lineHeight:1.4 }}>
+                        {flags.length
+                          ? `Heads up: ${flags.join(" · ")} — your body may be fighting something or under-recovered. Consider an easier day.`
+                          : "Overnight signals (breathing rate, wrist temp) look normal for you."}
                       </div>
                     );
                   })()}
@@ -4373,7 +4418,9 @@ function isHealthConnected() { try { return localStorage.getItem("seshd_health_c
 // requestAuthorization THROWS on any unrecognized identifier, which rejects the whole request
 // before iOS shows the permission sheet (so a bad string = no popup AND the app never registers
 // in Settings → Health). Keep every entry within the plugin's HealthDataType union.
-const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep"];
+// Core recovery reads + the extras we surface: VO₂ Max (cardio-fitness trend), per-workout
+// heart rate, and the overnight illness/overtraining signals (respiratory rate, wrist temp).
+const HK_READ = ["heartRateVariability", "restingHeartRate", "sleep", "vo2Max", "heartRate", "respiratoryRate", "appleSleepingWristTemperature"];
 // Only request WRITE scope for what we actually write. This plugin can't save a full HKWorkout
 // (no writeWorkout/saveWorkout — saveSample only), so we write the session's active energy and
 // request only `calories`. Requesting write scopes we never use is an App Review smell.
@@ -4622,8 +4669,56 @@ async function readRecovery() {
     out.recoveryScore = Math.round((comps.reduce((a, [v, w]) => a + v * w, 0) / wsum) * 100) / 100;
   }
 
-  if (out.hrv == null && out.restingHr == null && out.sleepHours == null) return null;
+  // ── VO₂ Max trend (cardio fitness) — Apple estimates it ~weekly from outdoor walks/runs.
+  // Build a compact series over ~6 months for a sparkline + current value + change since oldest.
+  try {
+    const vo2StartIso = new Date(now.getTime() - 1000 * 60 * 60 * 24 * 183).toISOString();
+    const vr = await H.readSamples({ dataType: "vo2Max", startDate: vo2StartIso, endDate: endIso, limit: 400 });
+    const vs = ((vr && vr.samples) || []).map(s => ({ v: parseFloat(s.value), t: s.startDate ? new Date(s.startDate).getTime() : null }))
+      .filter(s => !isNaN(s.v) && s.v > 0 && s.t).sort((a, b) => a.t - b.t);
+    if (vs.length) {
+      out.vo2Max = Math.round(vs[vs.length - 1].v * 10) / 10;
+      out.vo2MaxDelta = Math.round((vs[vs.length - 1].v - vs[0].v) * 10) / 10;
+      const step = Math.max(1, Math.ceil(vs.length / 12)); // down-sample to ~12 points for a clean sparkline
+      out.vo2MaxSeries = vs.filter((_, i) => i % step === 0 || i === vs.length - 1).map(s => Math.round(s.v * 10) / 10);
+    }
+  } catch (e) {}
+
+  // ── Overnight illness / overtraining signals — respiratory rate + wrist temperature. Both drift
+  // ABOVE your normal when the body is fighting something or badly under-recovered (Oura/Whoop use
+  // them as early-warning). Report last night vs a 30-day median so it's personal, not absolute.
+  try {
+    const sigStartIso = new Date(now.getTime() - 1000 * 60 * 60 * 24 * 30).toISOString();
+    const lastNightMs = now.getTime() - 1000 * 60 * 60 * 20;
+    for (const [dt, key] of [["respiratoryRate", "resp"], ["appleSleepingWristTemperature", "wristTemp"]]) {
+      const rr = await H.readSamples({ dataType: dt, startDate: sigStartIso, endDate: endIso, limit: 1000 });
+      const rows = ((rr && rr.samples) || []).map(s => ({ v: parseFloat(s.value), t: s.startDate ? new Date(s.startDate).getTime() : null })).filter(s => !isNaN(s.v) && s.t);
+      if (!rows.length) continue;
+      const recent = rows.filter(s => s.t >= lastNightMs);
+      const latest = recent.length ? recent.reduce((a, b) => a + b.v, 0) / recent.length : rows[rows.length - 1].v;
+      const base = median(rows.map(s => s.v));
+      out[key] = Math.round(latest * 10) / 10;
+      out[key + "Baseline"] = base != null ? Math.round(base * 10) / 10 : null;
+    }
+  } catch (e) {}
+
+  if (out.hrv == null && out.restingHr == null && out.sleepHours == null && out.vo2Max == null) return null;
   return out;
+}
+
+// Per-workout heart rate summary from HealthKit — read the heart-rate samples between a workout's
+// start and end and return { avg, peak, min, minutes }. Null on web / no watch data for that window.
+async function readWorkoutHeartRate(startMs, endMs) {
+  const H = nativeHealth();
+  if (!H || !startMs || !endMs || endMs <= startMs) return null;
+  try {
+    await requestHealthAuth(H).catch(() => {});
+    const r = await H.readSamples({ dataType: "heartRate", startDate: new Date(startMs - 60000).toISOString(), endDate: new Date(endMs + 60000).toISOString(), limit: 5000 });
+    const vals = ((r && r.samples) || []).map(s => parseFloat(s.value)).filter(v => !isNaN(v) && v > 30 && v < 240);
+    if (vals.length < 3) return null;
+    const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    return { avg, peak: Math.round(Math.max(...vals)), min: Math.round(Math.min(...vals)), samples: vals.length };
+  } catch (e) { return null; }
 }
 const REST_NOTIF_ID = 7711; // fixed id so we can reliably cancel/replace the rest notification
 let __notifPermAsked = false;
@@ -10335,7 +10430,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       track("workout_logged", { sets: totalSets, exercises: session.exercises.filter(e => e.name).length, prs: newPRsList.length, duration: recordedDuration });
       try {
         const volLbs = unit === "lbs" ? (workoutSummary?.volumeRaw || 0) : cvt(workoutSummary?.volumeRaw || 0, "kg", "lbs");
-        writeWorkoutToHealth(wStart || (Date.now() - recordedDuration * 1000), recordedDuration, volLbs);
+        const wStartMs = wStart || (Date.now() - recordedDuration * 1000);
+        writeWorkoutToHealth(wStartMs, recordedDuration, volLbs);
+        // If the user wore an Apple Watch, pull this session's heart-rate summary and attach it to
+        // the saved workout (avg/peak/min). Fire-and-forget — no watch data just leaves it off.
+        readWorkoutHeartRate(wStartMs, Date.now()).then(hr => {
+          if (!hr) return;
+          setStore(p => {
+            const day = p.history?.[dk]; if (!day || !day[sid]) return p;
+            return { ...p, history: { ...p.history, [dk]: { ...day, [sid]: { ...day[sid], hrSummary: hr } } } };
+          });
+          const tok = tokenRef.current || loadSession()?.access_token;
+          if (tok && currentUserId && !isGuest) {
+            sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ hr_summary: hr }) }, tok).catch(() => {});
+          }
+        }).catch(() => {});
       } catch (e) {}
       // App Store review prompt — native only, once, after the 10th finished workout,
       // delayed so it never competes with the summary confetti.
@@ -12138,7 +12247,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {sess.hrSummary.avg} avg · {sess.hrSummary.peak} peak</span> : null}</div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                           {prExercises.length > 0 && (
@@ -18494,6 +18603,7 @@ function AppInner() {
         appHistory[dk][w.id] = {
           dayName: w.day_name, exercises: w.exercises,
           duration: w.duration_secs, unit: w.unit, note: w.note,
+          hrSummary: w.hr_summary || undefined,
           // Capture the actual finish timestamp (Supabase auto-populates created_at on insert)
           finishedAt: w.created_at ? new Date(w.created_at).getTime() : new Date(dk + "T12:00:00").getTime(),
         };
