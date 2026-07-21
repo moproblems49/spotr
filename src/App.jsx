@@ -1,4 +1,4 @@
-// v178091716710
+// v178091716711
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10392,7 +10392,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           .filter(ex => ex.sets.length > 0);
         const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
         const hasPR = postEx.some(ex => ex.isPR);
-        return { type:"workout", caption:`${session.dayName} — done.`, unit, workout:{ name:session.dayName, duration:elapsed, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
+        // duration: recordedDuration (the robust value), NOT the resettable `elapsed` — else a
+        // glitched-then-retried share posts "0m". clientId: sid dedups the feed post so a retry
+        // upserts the same row instead of duplicating.
+        return { type:"workout", caption:`${session.dayName} — done.`, unit, clientId: sid, workout:{ name:session.dayName, duration:recordedDuration, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
       })();
 
       // If user picked "Save & send to groups", post to groups. Normally we skip the summary
@@ -19112,9 +19115,9 @@ function AppInner() {
       if (groupIds.length > 0) {
         for (const gid of groupIds) {
           try {
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts${postData.clientId ? "?on_conflict=group_id,client_id" : ""}`, {
               method: "POST",
-              headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}`, "Content-Type": "application/json" },
+              headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}`, "Content-Type": "application/json", ...(postData.clientId ? { "Prefer": "resolution=merge-duplicates" } : {}) },
               body: JSON.stringify({
                 group_id: gid,
                 user_id: currentUserId,
@@ -19122,6 +19125,8 @@ function AppInner() {
                 caption: postData.caption || "",
                 image_url: imageUrl,
                 workout: postData.workout || null,
+                // Dedup a re-shared workout per group (unique group_id,client_id) — no duplicate.
+                ...(postData.clientId ? { client_id: postData.clientId } : {}),
               })
             });
             if (!res.ok) throw new Error("group_post_http_" + res.status);
@@ -19154,10 +19159,14 @@ function AppInner() {
         unit: store.unit || "lbs",
         is_pr: postData.isPR || false,
         created_at: nowIso,
+        // Idempotency key for workout posts — a retry/re-share upserts the same row (unique
+        // index on client_id) instead of creating a duplicate feed post. Null for other posts.
+        ...(postData.clientId ? { client_id: postData.clientId } : {}),
       };
-      const result = await sb.query("posts", {
-        method: "POST", body: JSON.stringify(row)
-      }, tok);
+      const result = await sb.query(
+        postData.clientId ? "posts?on_conflict=client_id" : "posts",
+        { method: "POST", headers_extra: postData.clientId ? { "Prefer": "resolution=merge-duplicates,return=representation" } : undefined, body: JSON.stringify(row) },
+        tok);
       const newPost = Array.isArray(result) ? result[0] : result;
       if (newPost) {
         const appPost = {
