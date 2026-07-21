@@ -1,4 +1,4 @@
-// v178091716712
+// v178091716713
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2085,6 +2085,25 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲" : down ? "▼" : "•"} {d > 0 ? "+" : ""}{d} over 6 months</div>
                         </div>
                         {spark}
+                      </div>
+                    );
+                  })()}
+                  {/* Resting-HR trend — a DROPPING resting pulse means a stronger heart (down = good,
+                      the opposite of VO₂ Max direction). */}
+                  {rec.restingHr != null && rec.rhrSeries && rec.rhrSeries.length >= 2 && (() => {
+                    const s = rec.rhrSeries, d = rec.rhrTrendDelta || 0;
+                    const down = d < -0.5, up = d > 0.5;
+                    const col = down ? "#4ade80" : up ? "#f59e0b" : C.sub;
+                    const W = 120, H = 26, lo = Math.min(...s), hi = Math.max(...s), rng = Math.max(0.1, hi - lo);
+                    const pts = s.map((v, i) => `${(i / (s.length - 1)) * W},${H - ((v - lo) / rng) * H}`).join(" ");
+                    return (
+                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                        <div>
+                          <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · trend</div>
+                          <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
+                          <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼" : up ? "▲" : "•"} {d > 0 ? "+" : ""}{d} bpm over 60 days{down ? " — stronger heart" : ""}</div>
+                        </div>
+                        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible" }}><polyline points={pts} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </div>
                     );
                   })()}
@@ -4648,6 +4667,26 @@ async function readRecovery() {
   out.hrvBaseline = median(basePool.map(s => s.v));
   out.rhrBaseline = median(rhrHist.map(s => s.v));
   out.baselineDays = Math.max(hrvHist.length, rhrHist.length);
+
+  // Resting-HR trend — a resting pulse that drifts DOWN over weeks is a classic getting-fitter
+  // signal. Collapse the 60-day history to one median per day, then down-sample to ~12 points for
+  // a sparkline. rhrTrendDelta is latest − oldest (negative = improving).
+  if (rhrHist.length >= 4) {
+    const perDay = {};
+    for (const s of rhrHist) {
+      if (s.t == null) continue;
+      const d = new Date(s.t);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      (perDay[key] = perDay[key] || []).push(s.v);
+    }
+    const days = Object.keys(perDay).sort();
+    const dayVals = days.map(k => median(perDay[k]));
+    if (dayVals.length >= 4) {
+      const step = Math.max(1, Math.ceil(dayVals.length / 12));
+      out.rhrSeries = dayVals.filter((_, i) => i % step === 0 || i === dayVals.length - 1).map(v => Math.round(v));
+      out.rhrTrendDelta = Math.round(dayVals[dayVals.length - 1] - dayVals[0]);
+    }
+  }
 
   // Recovery score 0..1 from whatever signals are available, weighted toward HRV.
   const comps = [];

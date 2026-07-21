@@ -28,6 +28,7 @@ window.localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId:"u1", the
   users:[{id:"u1",username:"mo",name:"Mo",unit:"lbs",theme:"dark"}],
   recovery: { recoveryScore:0.9, hrv:44, hrvBaseline:33, restingHr:58, rhrBaseline:61, sleepHours:7.6,
     vo2Max:45.2, vo2MaxSeries:[42,42.5,43,44,44.6,45.2], vo2MaxDelta:3.2,
+    rhrSeries:[64,63,62,61,60,58], rhrTrendDelta:-6,
     resp:18.5, respBaseline:14.5, wristTemp:36.9, wristTempBaseline:36.4 } }));
 window.localStorage.setItem("seshd_session", JSON.stringify({ access_token:"tok", refresh_token:"ref", expires_in:3600, user:{id:"u1", email:"t@t.com"} }));
 window.localStorage.setItem("seshd_onboarded","1"); window.localStorage.setItem("seshd_custom_merge_v1","1");
@@ -66,6 +67,7 @@ const txt = document.body.textContent || "";
 check("VO₂ Max card renders (label + value)", /Cardio fitness/i.test(txt) && txt.includes("45.2"), `slice: ${txt.slice(0,80)}`);
 check("VO₂ Max shows the 6-month trend delta", /\+3\.2 over 6 months/.test(txt));
 check("elevated overnight signals show a heads-up warning", /Heads up/i.test(txt) && /breathing rate up/i.test(txt), `has-signals`);
+check("Resting-HR trend card renders (down = stronger heart)", /Resting heart rate . trend/i.test(txt) && /-6 bpm over 60 days/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
 
 // Tracker tab → History sub-tab — per-workout HR line.
 click(qa('button[aria-label="Workout"]')[0]); await settle(500);
