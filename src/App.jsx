@@ -1,4 +1,4 @@
-// v178091716709
+// v178091716710
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9951,6 +9951,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       dayId: day?.id || null,
       dayName: day?.name || "Quick Workout",
       programId: progId || store.activeProgramId || null,
+      startedAt: Date.now(), // stable start stamp — finish derives duration from this, not the
+      // resettable `elapsed`/`wStart`, so a glitched-then-retried finish can't record "0m".
       exercises: exs
     });
     setWStart(Date.now());
@@ -9985,6 +9987,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       dayId: null,
       dayName: pastSession.dayName || "Repeat workout",
       programId: store.activeProgramId || null,
+      startedAt: Date.now(),
       exercises: exs,
     });
     setWStart(Date.now());
@@ -10112,7 +10115,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Reuse the sid carried over from an "Undo finish & edit" so re-finishing upserts
       // the SAME server row instead of leaving the original behind as an orphaned duplicate
       // if the undo's best-effort delete didn't land.
-      const sid = session._resumeSid || genUUID();
+      // Reuse a sid across finishes of the SAME session (undo-edit's _resumeSid, or a prior
+      // glitched finish's _finishedSid) so a retry upserts the same workout_history row (on_conflict
+      // =id) instead of leaving a duplicate. Fresh sessions mint a new id.
+      const sid = session._resumeSid || session._finishedSid || genUUID();
       const originalPRs = { ...store.prs }; // snapshot before any updates
       const originalPRsE1rm = { ...store.prsE1rm };
       const originalPRsVolume = { ...store.prsVolume };
@@ -10127,11 +10133,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       const IDLE_THRESHOLD = 20 * 60 * 1000; // 20 minutes
       const now = Date.now();
       const gap = now - lastActivityRef.current;
-      let recordedDuration = elapsed;
-      if (gap > IDLE_THRESHOLD && wStart) {
-        const activeMs = (lastActivityRef.current - wStart) + 5 * 60 * 1000; // + 5 min buffer
+      // Derive duration from the STABLE session start stamp, not the live `elapsed`/`wStart`
+      // state — those get reset to 0/null the first time finish runs, so a glitched-then-retried
+      // finish would otherwise record "0m" (this shipped as a real bug once). Fall back through
+      // wStart → live elapsed for older in-progress sessions that predate startedAt.
+      const startMs = session.startedAt || wStart || (elapsed > 0 ? now - elapsed * 1000 : null);
+      let recordedDuration = startMs ? Math.max(0, Math.floor((now - startMs) / 1000)) : (elapsed || 0);
+      if (gap > IDLE_THRESHOLD && startMs) {
+        const activeMs = (lastActivityRef.current - startMs) + 5 * 60 * 1000; // + 5 min buffer
         recordedDuration = Math.max(60, Math.floor(activeMs / 1000));
       }
+      // Never post a 0-length workout that actually has completed sets — a floor beats a "0m" ghost.
+      const anyDone = session.exercises.some(ex => (ex.sets || []).some(s => s.done && s.type !== "warmup"));
+      if (recordedDuration < 1 && anyDone) recordedDuration = elapsed > 0 ? elapsed : 60;
 
       const cleanEx = session.exercises.filter(e => e.name).map(ex => ({
         name: ex.name,
@@ -10342,6 +10356,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       setWStart(null);
       setElapsed(0);
       setRest(null);
+      // Tag the still-visible session with the sid it saved under, so if the summary glitches and
+      // the user hits Finish again, the retry upserts the SAME row (no 0m duplicate post).
+      setSession(p => (p && !p._finishedSid) ? { ...p, _finishedSid: sid, startedAt: p.startedAt || (session.startedAt) } : p);
 
       // Compute progressions hit — exercises where user matched or beat suggested target
       let progressionsHit = 0;
@@ -11465,7 +11482,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     });
                     // 2. Restore the session — carry the original sid forward so a re-finish
                     // upserts onto the same server row (see finishWorkout's _resumeSid read).
-                    setSession({ ...u.session, _resumeSid: u.sid });
+                    setSession({ ...u.session, _resumeSid: u.sid, startedAt: Date.now() - (u.elapsed || 0) * 1000 });
                     setElapsed(u.elapsed || 0);
                     setWStart(Date.now() - (u.elapsed || 0) * 1000);
                     setShowWorkoutSummary(false);
