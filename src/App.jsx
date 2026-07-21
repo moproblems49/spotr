@@ -1,4 +1,4 @@
-// v178091716707
+// v178091716708
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19801,20 +19801,21 @@ function AppInner() {
   const C = THEMES[(store.theme || "light")];
   const unit = store.unit || "lbs";
 
-  // Keep the native iOS status bar in sync with the app theme. Without this it can render as a
-  // blank black bar (overlay mode) — instead, match the bar text to the theme and put content
-  // below it (no overlay) so nothing hides behind the clock/battery.
+  // Native iOS status bar. OVERLAY mode: the WebView extends under the clock/battery so they
+  // float over the app's translucent glass top bar (Liquid-Glass look — the clock/battery sit
+  // ON the frosted bar, not in a separate solid block). Safe because every screen already pads
+  // by env(safe-area-inset-top), which becomes the status-bar height in overlay mode. The bar
+  // TEXT tint is the inverse of the theme (dark theme → light text). No setBackgroundColor in
+  // overlay mode — the glass top bar is the background now.
   useEffect(() => {
     const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
     const SB = (Cap?.isNativePlatform?.() && Cap.Plugins?.StatusBar) ? Cap.Plugins.StatusBar : null;
     if (!SB) return;
     try {
-      // Dark theme → light text; light theme → dark text. (Style.Dark = light content.)
-      SB.setStyle({ style: C.isDark ? "DARK" : "LIGHT" });
-      SB.setOverlaysWebView?.({ overlay: false });
-      if (SB.setBackgroundColor) SB.setBackgroundColor({ color: C.bg }).catch(() => {});
+      SB.setStyle({ style: C.isDark ? "DARK" : "LIGHT" }); // Style.Dark = light content
+      SB.setOverlaysWebView?.({ overlay: true });
     } catch (e) { /* status bar styling is best-effort */ }
-  }, [store.theme, C.isDark, C.bg]);
+  }, [store.theme, C.isDark]);
 
   // HOOKS — must be before any early returns (React rules of hooks)
   // Stores the timestamp of the last time the user "checked" their notifications.
