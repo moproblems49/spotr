@@ -1,4 +1,4 @@
-// v178091716719
+// v178091716720
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10332,6 +10332,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       const cleanEx = session.exercises.filter(e => e.name).map(ex => ({
         name: ex.name,
+        ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}),
         sets: ex.sets.map(s => ({ weight: s.weight, reps: s.reps, done: s.done, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) }))
       }));
 
@@ -10586,11 +10587,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // to show the summary so the "Update program?" prompt appears (it lives on the summary).
       if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && !programChange) {
         onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
-        const gSave = await onSaveWorkout({ clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
+        const gSave = await onSaveWorkout({ clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
         if (gSave && gSave.ok === false) {
           try {
             const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
-            pending.push({ dk, sid, savedAt: Date.now(), data: { clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
+            pending.push({ dk, sid, savedAt: Date.now(), data: { clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
             localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
           } catch {}
           toast("Saved on this device — couldn't reach server. Will retry.", "error");
@@ -10669,7 +10670,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         clientId: sid,
         workoutDate: dk,
         dayName: session.dayName,
-        exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
+        exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
         duration: recordedDuration,
         unit, note: "", prs: newPRs
       });
@@ -10682,7 +10683,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             clientId: sid,
             workoutDate: dk,
             dayName: session.dayName,
-            exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
+            exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
             duration: recordedDuration, unit, note: "", prs: newPRs
           }});
           localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
@@ -12513,6 +12514,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                                 <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
                                   {setsLabel} reps{topWeight > 0 ? ` · ${topWeight} ${sess.unit||"lbs"}` : ""}
                                 </div>
+                                {ex.note && ex.note.trim() && (
+                                  <div style={{ fontSize:11, color:C.sub, marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap", lineHeight:1.4, opacity:0.85 }}>{ex.note}</div>
+                                )}
                               </div>
                             </div>
                           );
