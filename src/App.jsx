@@ -1,4 +1,4 @@
-// v178091716717
+// v178091716718
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18629,7 +18629,7 @@ function AppInner() {
           devWarn("Foreground token refresh failed:", e.message);
         }
       }
-      loadUserData();
+      loadUserData(0, { background: true });
     }
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
@@ -18767,8 +18767,13 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isGuest, currentUserId]);
 
-  async function loadUserData(attempt = 0) {
-    setDataLoading(true);
+  async function loadUserData(attempt = 0, opts = {}) {
+    // `background:true` = a foreground/visibility re-fetch while we ALREADY have data on screen.
+    // Skip the global loading-state toggle so the feed doesn't flash a re-render (and never
+    // shows the empty/spinner branch) just because the app came back to the foreground — the
+    // "page reloads when I switch back to the app" annoyance. Fresh data still swaps in silently.
+    const background = opts.background && dbReady;
+    if (!background) setDataLoading(true);
     // Until this load succeeds, hold off the prefs save effect — prevents a user switch (or a
     // failed load) from pushing the wrong/empty notes-bar-types-closeFriends back to the server.
     // Clear the sync baseline too so the first post-load effect run re-records it (and skips a
@@ -19067,12 +19072,12 @@ function AppInner() {
       // cold start, flaky mobile signal) shouldn't flash "check connection" at login.
       if (attempt === 0) {
         await new Promise(r => setTimeout(r, 1500));
-        return loadUserData(1);
+        return loadUserData(1, opts);
       }
       toast("Couldn't load your data — check connection", "error");
       setDbReady(true);
     } finally {
-      setDataLoading(false);
+      if (!background) setDataLoading(false);
     }
   }
 
@@ -19147,6 +19152,22 @@ function AppInner() {
         );
         const all = [...merged, ...carried];
         all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        // Bail if the refresh returned exactly what's already on screen (the common case when the
+        // app just came back to the foreground) — returning `prev` unchanged makes React skip the
+        // whole feed re-render, so no flicker/reflow. Both arrays are sorted createdAt-desc, so an
+        // index walk is valid. Length changes in kudos/comments still fall through and update.
+        const sameFeed = (a, b) => {
+          if (!a || !b || a.length !== b.length) return false;
+          for (let i = 0; i < a.length; i++) {
+            const x = a[i], y = b[i];
+            if (x.id !== y.id || (x.caption || "") !== (y.caption || "") || (x.imageData || "") !== (y.imageData || "")
+              || (x._localImage || "") !== (y._localImage || "")
+              || (x.kudos?.length || 0) !== (y.kudos?.length || 0)
+              || (x.comments?.length || 0) !== (y.comments?.length || 0)) return false;
+          }
+          return true;
+        };
+        if (sameFeed(all, prev.posts)) return prev;
         // Cache the feed (sans heavy image blobs) so it's viewable offline. Capped to 40 posts.
         try {
           const slim = all.slice(0, 40).map(p => ({ ...p, imageData: p.imageData && p.imageData.startsWith("data:") ? null : p.imageData }));
