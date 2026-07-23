@@ -1,4 +1,4 @@
-// v178091716721
+// v178091716722
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9745,6 +9745,51 @@ function SortableProgramRow({ p, C, isActive, onOpen }) {
   );
 }
 
+// Encouraging line shown on the finish summary — contextual (PR / progress / streak) with a
+// rotating base set so it doesn't feel canned. Picked once when the summary is built (stored on
+// workoutSummary.hype) so it doesn't reshuffle on every re-render.
+const FINISH_PHRASES = {
+  pr: [
+    "NEW PR! You're built different. 🔥",
+    "PR city — add it to the collection. 🏆",
+    "That's a personal record. Certified. 💪",
+    "New PR locked in. Unstoppable.",
+    "Record broken. Who's gonna stop you? 😤",
+  ],
+  progress: [
+    "You beat last time. That's how it's done. 📈",
+    "Stronger than last session. Keep climbing.",
+    "Progress made — the work is working. 💪",
+    "Up from last time. Momentum is yours.",
+  ],
+  streak: [
+    "{n} weeks strong. Consistency is king. 👑",
+    "{n}-week streak alive. Don't stop now. 🔥",
+    "{n} weeks in a row. Built for this.",
+    "{n} straight weeks. This is who you are now.",
+  ],
+  base: [
+    "LET'S GO!!! 🔥",
+    "Work put in. Respect. 💪",
+    "Another one in the books. 📓",
+    "You showed up — that's everything.",
+    "Done and dusted. Beast mode. 🦍",
+    "That's a wrap. Proud of you.",
+    "Sesh complete. Recover like a champ. 🧊",
+    "Effort banked. See you next time. 💥",
+    "No zero days. You did the thing. ✅",
+    "Sweat equity paid. 💰",
+    "That's the standard. Keep it up. 🎯",
+  ],
+};
+function pickFinishPhrase({ prs = 0, progressions = 0, volVsLast = 0, streakWeeks = 0 } = {}) {
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  if (prs > 0) return pick(FINISH_PHRASES.pr);
+  if (progressions > 0 || volVsLast > 0) return pick(FINISH_PHRASES.progress);
+  if (streakWeeks >= 2) return pick(FINISH_PHRASES.streak).replace("{n}", streakWeeks);
+  return pick(FINISH_PHRASES.base);
+}
+
 // Auto-growing note field. Notes used to live in a single-line <input>, which truncated a long
 // note to an unreadable sliver (while typing you saw only its tail) — that "I can't see the whole
 // thing" also read as "the note didn't save". A <textarea> that grows to fit shows the whole note;
@@ -10633,6 +10678,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         musclesTrained,
         programChange,
         streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count,
+        hype: pickFinishPhrase({ prs: newPRsList.length, progressions: progressionsHit, volVsLast: volVsLast || 0, streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count }),
         share,
         shareData,
         undo: {
@@ -11346,6 +11392,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <Confetti duration={2.5}/>
             <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"90dvh", display:"flex", flexDirection:"column" }}>
               <div style={{ overflowY:"auto", flex:1, padding:"24px 18px 0" }}>
+                {workoutSummary.hype && (
+                  <div className="seshd-content-fade" style={{ textAlign:"center", margin:"0 4px 18px" }}>
+                    <div style={{ fontSize:21, fontWeight:800, color:C.text, letterSpacing:-0.3, lineHeight:1.2, fontFamily:F }}>{workoutSummary.hype}</div>
+                  </div>
+                )}
                 {/* Shareable card — magazine-quality art piece */}
                 <div id="workout-card" className="seshd-scale-enter" style={{
                   background: "#0A0A0A",
@@ -11634,8 +11685,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         const finalCaption = progCode
                           ? (userCaption ? `${userCaption} · Try my program: ${progCode}` : `Try my program: ${progCode}`)
                           : userCaption;
-                        // Share to feed AND any selected groups in one shot
-                        onShareWorkout({ ...workoutSummary.shareData, caption: finalCaption, groupIds: selectedGroups, groupOnly: false });
+                        // Share to feed AND any selected groups in one shot. The feed post carries the
+                        // program plug; the group copy uses the plain caption (no "Try my program").
+                        onShareWorkout({ ...workoutSummary.shareData, caption: finalCaption, groupCaption: userCaption, groupIds: selectedGroups, groupOnly: false });
                       }
                       // (External/native share removed — it could only send plain text, not the
                       // summary card, and any link has nowhere public to point yet. In-app feed +
@@ -19381,7 +19433,9 @@ function AppInner() {
                 group_id: gid,
                 user_id: currentUserId,
                 type: postData.workout ? "workout" : (postData.type || "text"),
-                caption: postData.caption || "",
+                // Groups get their own caption when provided — a workout shared to a group doesn't
+                // need the "Try my program: CODE" program plug that the feed post carries.
+                caption: (postData.groupCaption != null ? postData.groupCaption : postData.caption) || "",
                 image_url: imageUrl,
                 workout: postData.workout || null,
                 // Dedup a re-shared workout per group (unique group_id,client_id) — no duplicate.
