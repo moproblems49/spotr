@@ -1,4 +1,4 @@
-// v178091716716
+// v178091716717
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4326,7 +4326,10 @@ export { computeBodyBatteryTimeline, computeBodyBattery }; // for the sim harnes
 function BodyBatteryChart({ store, fill, C }) {
   const [scrub, setScrub] = useState(null); // { xPct, yPct, level, timeLabel } | null while pressed
   const wrapRef = useRef(null);
-  const timeline = computeBodyBatteryTimeline(store);
+  // Memoize on `store` — scrub is LOCAL state, so a drag re-renders this component every frame
+  // without changing `store`; recomputing the whole 24h timeline (it walks 24h and calls
+  // computeBodyBattery) on each touchmove would jank the scrub on a real phone.
+  const timeline = useMemo(() => computeBodyBatteryTimeline(store), [store]);
   if (!timeline?.points || timeline.points.length < 2) return null;
   const { points, hasSleepData, sleepStartMs } = timeline;
   const W = 300, H = 110, PAD = 4;
