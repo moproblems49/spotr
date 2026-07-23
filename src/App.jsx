@@ -1,4 +1,4 @@
-// v178091716715
+// v178091716716
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1887,122 +1887,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       <div style={{ height:10, borderRadius:5, background:C.divider, overflow:"hidden", marginBottom:18 }}>
                         <div style={{ width:`${bb.level}%`, height:"100%", borderRadius:5, background:fill }}/>
                       </div>
-                      {(() => {
-                        const timeline = computeBodyBatteryTimeline(store);
-                        if (!timeline?.points || timeline.points.length < 2) return null;
-                        const { points, wakeTimeMs, hasSleepData } = timeline;
-                        const W = 300, H = 110, PAD = 4;
-                        const tStart = points[0].ts, tSpan = Math.max(1, points[points.length - 1].ts - tStart);
-                        const xAt = ts => PAD + ((ts - tStart) / tSpan) * (W - PAD * 2);
-                        // Fixed 0-100 y-axis — shows the full recharge + drain story.
-                        const yAt = lvl => PAD + (1 - lvl / 100) * (H - PAD * 2);
-                        const ptStr = pts => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(p.ts).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
-                        // Contiguous phase segments. The 24h window holds two drain phases split
-                        // by the overnight recharge — a global filter-by-phase would join them
-                        // with a line straight across the recharge dip. Each segment reuses the
-                        // previous segment's last point so the curves stay visually continuous.
-                        const segs = [];
-                        for (const p of points) {
-                          const last = segs[segs.length - 1];
-                          if (!last || last.phase !== p.phase) segs.push({ phase: p.phase, pts: last ? [last.pts[last.pts.length - 1], p] : [p] });
-                          else last.pts.push(p);
-                        }
-                        const drawSegs = segs.filter(s => s.pts.length >= 2).map((s, i) => {
-                          const line = ptStr(s.pts);
-                          const area = `${line} L ${xAt(s.pts[s.pts.length - 1].ts).toFixed(1)} ${H} L ${xAt(s.pts[0].ts).toFixed(1)} ${H} Z`;
-                          return { key: i, line, area, recharge: s.phase === "recharge" };
-                        });
-                        const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
-                        const GREEN = "#4ade80";
-                        // Garmin-style clock axis: a dot at every hour (local-clock aligned), a
-                        // bigger dot + label every 3 hours, and dots turn GREEN across the sleep
-                        // stretch so the night reads at a glance.
-                        const rechargeRanges = segs.filter(s => s.phase === "recharge" && s.pts.length >= 2).map(s => [s.pts[0].ts, s.pts[s.pts.length - 1].ts]);
-                        const _d0 = new Date(tStart); _d0.setMinutes(0, 0, 0);
-                        let _t0 = _d0.getTime(); if (_t0 < tStart) _t0 += 36e5;
-                        const hourDots = [];
-                        for (let t = _t0; t <= tStart + tSpan; t += 36e5) {
-                          const h = new Date(t).getHours();
-                          const xPct = (xAt(t) / W) * 100;
-                          const major = h % 3 === 0;
-                          const asleep = rechargeRanges.some(([a, b]) => t >= a && t <= b);
-                          // Edge labels would clip half-off the card — keep their dots, drop the text.
-                          hourDots.push({ xPct, major, asleep, label: major && xPct > 4 && xPct < 96 ? fmtHour(h) : "" });
-                        }
-                        // Gridlines, kept light (user-friendliness beats precision): horizontal
-                        // every 10 levels (slightly stronger at the labeled 25s), vertical only
-                        // at the labeled 3-hour marks.
-                        const levelLines = [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90].map(lvl => ({ y: yAt(lvl), major: lvl % 25 === 0 }));
-                        return (
-                          <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
-                              <span style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>BODY BATTERY · 24H</span>
-                              <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>0–100</span>
-                            </div>
-                            <div style={{ display:"flex", gap:6 }}>
-                              <div style={{ position:"relative", width:22, height:150, flexShrink:0 }}>
-                                {[100, 75, 50, 25, 0].map(lvl => (
-                                  <span key={lvl} style={{
-                                    position:"absolute", right:0, top:`${(yAt(lvl) / H) * 150}px`,
-                                    transform:"translateY(-50%)", fontSize:8.5, color:C.muted, fontWeight:600, fontFamily:MONO,
-                                  }}>{lvl}</span>
-                                ))}
-                              </div>
-                              <div style={{ flex:1, minWidth:0 }}>
-                                <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:150, display:"block" }} preserveAspectRatio="none">
-                                  <defs>
-                                    <linearGradient id="bbGreenGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor={GREEN} stopOpacity="0.4"/>
-                                      <stop offset="100%" stopColor={GREEN} stopOpacity="0"/>
-                                    </linearGradient>
-                                    <linearGradient id="bbDrainGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor={fill} stopOpacity="0.35"/>
-                                      <stop offset="100%" stopColor={fill} stopOpacity="0"/>
-                                    </linearGradient>
-                                  </defs>
-                                  {levelLines.map((l, i) => (
-                                    <line key={`h${i}`} x1={PAD} y1={l.y} x2={W - PAD} y2={l.y} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity={l.major ? 0.28 : 0.1}/>
-                                  ))}
-                                  {hourDots.filter(d => d.major).map((d, i) => (
-                                    <line key={`v${i}`} x1={(d.xPct / 100) * W} y1={PAD} x2={(d.xPct / 100) * W} y2={H - PAD} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.14"/>
-                                  ))}
-                                  {drawSegs.map(s => (
-                                    <path key={`a${s.key}`} d={s.area} fill={s.recharge ? "url(#bbGreenGrad)" : "url(#bbDrainGrad)"} stroke="none"/>
-                                  ))}
-                                  {drawSegs.map(s => (
-                                    <path key={`l${s.key}`} d={s.line} fill="none" stroke={s.recharge ? GREEN : fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
-                                  ))}
-                                </svg>
-                                <div style={{ position:"relative", height:10, marginTop:5 }}>
-                                  {hourDots.map((d, i) => (
-                                    <span key={i} style={{
-                                      position:"absolute", top:"50%", left:`${d.xPct}%`, transform:"translate(-50%, -50%)",
-                                      width: d.major ? 5 : 2.5, height: d.major ? 5 : 2.5, borderRadius:999,
-                                      background: d.asleep ? GREEN : C.muted,
-                                      opacity: d.asleep ? 0.9 : (d.major ? 0.85 : 0.4),
-                                    }}/>
-                                  ))}
-                                </div>
-                                <div style={{ position:"relative", height:12, marginTop:3 }}>
-                                  {hourDots.filter(d => d.label).map((d, i) => (
-                                    <span key={i} style={{
-                                      position:"absolute", top:0, left:`${d.xPct}%`, transform:"translateX(-50%)",
-                                      fontSize:8.5, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
-                                    }}>{d.label}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                            {!hasSleepData && (
-                              <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
-                                {isHealthConnected()
-                                  ? "Apple Health connected — the recharge curve sharpens once a night of sleep is recorded."
-                                  : "Connect Apple Health for sleep-based recharge accuracy."}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
+                      <BodyBatteryChart store={store} fill={fill} C={C} />
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
                         {rows.map((r, i) => (
                           <div key={i} style={{ background:C.surface, borderRadius:12, padding:"11px 12px" }}>
@@ -4429,9 +4314,190 @@ function computeBodyBatteryTimeline(store) {
   if (clipped.length >= 2 && clipped[clipped.length - 1].phase !== "recharge") {
     clipped[clipped.length - 1] = { ...clipped[clipped.length - 1], level: clampLvl(bb.level) };
   }
-  return clipped.length >= 2 ? { points: clipped, wakeTimeMs: wakeTime.getTime(), hasSleepData } : null;
+  return clipped.length >= 2 ? { points: clipped, wakeTimeMs: wakeTime.getTime(), sleepStartMs: sleepStart.getTime(), hasSleepData } : null;
 }
 export { computeBodyBatteryTimeline, computeBodyBattery }; // for the sim harness — pure functions
+
+// The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
+// so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
+// Per-frame setState here only re-renders this small chart (not the whole screen), so the
+// house "ref-write on every frame" rule doesn't buy anything: the tooltip needs React to
+// paint the number + marker anyway.
+function BodyBatteryChart({ store, fill, C }) {
+  const [scrub, setScrub] = useState(null); // { xPct, yPct, level, timeLabel } | null while pressed
+  const wrapRef = useRef(null);
+  const timeline = computeBodyBatteryTimeline(store);
+  if (!timeline?.points || timeline.points.length < 2) return null;
+  const { points, hasSleepData, sleepStartMs } = timeline;
+  const W = 300, H = 110, PAD = 4;
+  const tStart = points[0].ts, tSpan = Math.max(1, points[points.length - 1].ts - tStart);
+  const tEnd = tStart + tSpan;
+  const xAt = ts => PAD + ((ts - tStart) / tSpan) * (W - PAD * 2);
+  // Fixed 0-100 y-axis — shows the full recharge + drain story.
+  const yAt = lvl => PAD + (1 - lvl / 100) * (H - PAD * 2);
+  const ptStr = pts => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(p.ts).toFixed(1)} ${yAt(p.level).toFixed(1)}`).join(" ");
+  // Contiguous phase segments. The 24h window holds two drain phases split by the overnight
+  // recharge — a global filter-by-phase would join them with a line straight across the
+  // recharge dip. Each segment reuses the previous segment's last point so the curves stay
+  // visually continuous.
+  const segs = [];
+  for (const p of points) {
+    const last = segs[segs.length - 1];
+    if (!last || last.phase !== p.phase) segs.push({ phase: p.phase, pts: last ? [last.pts[last.pts.length - 1], p] : [p] });
+    else last.pts.push(p);
+  }
+  const drawSegs = segs.filter(s => s.pts.length >= 2).map((s, i) => {
+    const line = ptStr(s.pts);
+    const area = `${line} L ${xAt(s.pts[s.pts.length - 1].ts).toFixed(1)} ${H} L ${xAt(s.pts[0].ts).toFixed(1)} ${H} Z`;
+    return { key: i, line, area, recharge: s.phase === "recharge" };
+  });
+  const fmtHour = h => h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
+  const GREEN = "#4ade80";
+  // Garmin-style clock axis: a dot at every hour (local-clock aligned), a bigger dot + label
+  // every 3 hours, and dots turn GREEN across the sleep stretch so the night reads at a glance.
+  const rechargeRanges = segs.filter(s => s.phase === "recharge" && s.pts.length >= 2).map(s => [s.pts[0].ts, s.pts[s.pts.length - 1].ts]);
+  const _d0 = new Date(tStart); _d0.setMinutes(0, 0, 0);
+  let _t0 = _d0.getTime(); if (_t0 < tStart) _t0 += 36e5;
+  const hourDots = [];
+  for (let t = _t0; t <= tEnd; t += 36e5) {
+    const h = new Date(t).getHours();
+    const xPct = (xAt(t) / W) * 100;
+    const major = h % 3 === 0;
+    const asleep = rechargeRanges.some(([a, b]) => t >= a && t <= b);
+    // Edge labels would clip half-off the card — keep their dots, drop the text.
+    hourDots.push({ xPct, major, asleep, label: major && xPct > 4 && xPct < 96 ? fmtHour(h) : "" });
+  }
+  // Gridlines, kept light (user-friendliness beats precision): horizontal every 10 levels
+  // (slightly stronger at the labeled 25s), vertical only at the labeled 3-hour marks.
+  const levelLines = [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90].map(lvl => ({ y: yAt(lvl), major: lvl % 25 === 0 }));
+  // Bedtime marker — a small 💤 where last night's sleep began, but only when that moment
+  // actually falls inside the visible 24h window (in the evening it hasn't happened yet).
+  const sleepXPct = (sleepStartMs != null && sleepStartMs >= tStart && sleepStartMs <= tEnd) ? (xAt(sleepStartMs) / W) * 100 : null;
+
+  // Hold-to-read: touch (primary, iOS) or hover (desktop) maps an x to the nearest curve
+  // point and shows its number + clock time. Level colors match the headline thresholds.
+  const fmtClock = (ts) => { const d = new Date(ts); let h = d.getHours(); const m = d.getMinutes(); const ap = h < 12 ? "AM" : "PM"; h = h % 12 || 12; return `${h}:${String(m).padStart(2, "0")} ${ap}`; };
+  const scrubTo = (clientX) => {
+    const el = wrapRef.current; if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const ts = tStart + frac * tSpan;
+    let best = points[0], bd = Infinity;
+    for (const p of points) { const d = Math.abs(p.ts - ts); if (d < bd) { bd = d; best = p; } }
+    setScrub({ xPct: (xAt(best.ts) / W) * 100, yPct: (yAt(best.level) / H) * 100, level: best.level, timeLabel: fmtClock(best.ts) });
+  };
+  const scrubColor = scrub ? (scrub.level >= 60 ? C.accent : scrub.level >= 30 ? "#f59e0b" : "#ef4444") : fill;
+
+  return (
+    <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
+        <span style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>BODY BATTERY · 24H</span>
+        <span style={{ fontSize:10, fontWeight:600, color:C.muted }}>{scrub ? "Hold to read" : "0–100"}</span>
+      </div>
+      <div style={{ display:"flex", gap:6 }}>
+        <div style={{ position:"relative", width:22, height:150, flexShrink:0 }}>
+          {[100, 75, 50, 25, 0].map(lvl => (
+            <span key={lvl} style={{
+              position:"absolute", right:0, top:`${(yAt(lvl) / H) * 150}px`,
+              transform:"translateY(-50%)", fontSize:8.5, color:C.muted, fontWeight:600, fontFamily:MONO,
+            }}>{lvl}</span>
+          ))}
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div
+            ref={wrapRef}
+            style={{ position:"relative", height:150, touchAction:"none", cursor:"crosshair" }}
+            onTouchStart={e => { if (e.touches[0]) scrubTo(e.touches[0].clientX); }}
+            onTouchMove={e => { if (e.touches[0]) scrubTo(e.touches[0].clientX); }}
+            onTouchEnd={() => setScrub(null)}
+            onTouchCancel={() => setScrub(null)}
+            onMouseDown={e => scrubTo(e.clientX)}
+            onMouseMove={e => { if (e.buttons === 1 || e.buttons === undefined) scrubTo(e.clientX); }}
+            onMouseLeave={() => setScrub(null)}
+          >
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:150, display:"block" }} preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="bbGreenGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={GREEN} stopOpacity="0.4"/>
+                  <stop offset="100%" stopColor={GREEN} stopOpacity="0"/>
+                </linearGradient>
+                <linearGradient id="bbDrainGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={fill} stopOpacity="0.35"/>
+                  <stop offset="100%" stopColor={fill} stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              {levelLines.map((l, i) => (
+                <line key={`h${i}`} x1={PAD} y1={l.y} x2={W - PAD} y2={l.y} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity={l.major ? 0.28 : 0.1}/>
+              ))}
+              {hourDots.filter(d => d.major).map((d, i) => (
+                <line key={`v${i}`} x1={(d.xPct / 100) * W} y1={PAD} x2={(d.xPct / 100) * W} y2={H - PAD} stroke={C.divider} strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.14"/>
+              ))}
+              {drawSegs.map(s => (
+                <path key={`a${s.key}`} d={s.area} fill={s.recharge ? "url(#bbGreenGrad)" : "url(#bbDrainGrad)"} stroke="none"/>
+              ))}
+              {drawSegs.map(s => (
+                <path key={`l${s.key}`} d={s.line} fill="none" stroke={s.recharge ? GREEN : fill} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+              ))}
+            </svg>
+            {/* Bedtime 💤 — sits just above the curve at the moment sleep began. */}
+            {sleepXPct != null && (
+              <span style={{
+                position:"absolute", top:2, left:`${Math.max(4, Math.min(96, sleepXPct))}%`,
+                transform:"translateX(-50%)", fontSize:13, lineHeight:1, pointerEvents:"none",
+                filter:"grayscale(0.1)",
+              }} aria-label="Sleep started">💤</span>
+            )}
+            {/* Scrub readout — vertical guide, a dot on the curve, and a floating number+time. */}
+            {scrub && (
+              <>
+                <div style={{ position:"absolute", top:0, bottom:0, left:`${scrub.xPct}%`, width:1, background:C.text, opacity:0.35, pointerEvents:"none" }}/>
+                <div style={{ position:"absolute", top:`${scrub.yPct}%`, left:`${scrub.xPct}%`, width:9, height:9, borderRadius:999, background:scrubColor, border:`2px solid ${C.bg}`, transform:"translate(-50%, -50%)", pointerEvents:"none", boxShadow:"0 0 0 1px rgba(0,0,0,0.15)" }}/>
+                <div style={{
+                  position:"absolute", top:`${Math.max(scrub.yPct, 14)}%`, left:`${Math.max(16, Math.min(84, scrub.xPct))}%`,
+                  transform:"translate(-50%, -125%)", pointerEvents:"none", whiteSpace:"nowrap",
+                  background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"4px 8px", textAlign:"center",
+                  boxShadow:"0 4px 12px rgba(0,0,0,0.25)",
+                }}>
+                  <div style={{ fontFamily:MONO, fontSize:15, fontWeight:800, color:scrubColor, letterSpacing:-0.3 }}>{scrub.level}</div>
+                  <div style={{ fontSize:8.5, fontWeight:600, color:C.muted, marginTop:1 }}>{scrub.timeLabel}</div>
+                </div>
+              </>
+            )}
+          </div>
+          <div style={{ position:"relative", height:10, marginTop:5 }}>
+            {hourDots.map((d, i) => (
+              <span key={i} style={{
+                position:"absolute", top:"50%", left:`${d.xPct}%`, transform:"translate(-50%, -50%)",
+                width: d.major ? 5 : 2.5, height: d.major ? 5 : 2.5, borderRadius:999,
+                background: d.asleep ? GREEN : C.muted,
+                opacity: d.asleep ? 0.9 : (d.major ? 0.85 : 0.4),
+              }}/>
+            ))}
+          </div>
+          <div style={{ position:"relative", height:12, marginTop:3 }}>
+            {hourDots.filter(d => d.label).map((d, i) => (
+              <span key={i} style={{
+                position:"absolute", top:0, left:`${d.xPct}%`, transform:"translateX(-50%)",
+                fontSize:8.5, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
+              }}>{d.label}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+      {!hasSleepData && (
+        <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.4 }}>
+          {isHealthConnected()
+            ? "Apple Health connected — the recharge curve sharpens once a night of sleep is recorded."
+            : "Connect Apple Health for sleep-based recharge accuracy."}
+        </div>
+      )}
+      <div style={{ fontSize:9.5, color:C.muted, marginTop:hasSleepData?6:4, lineHeight:1.4 }}>
+        Hold anywhere on the graph to read your battery at that time.{sleepXPct != null ? " 💤 marks when sleep began." : ""}
+      </div>
+    </div>
+  );
+}
 
 function nativeHealth() {
   const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
