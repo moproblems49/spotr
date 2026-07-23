@@ -1,4 +1,4 @@
-// v178091716714
+// v178091716715
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4204,22 +4204,31 @@ function computeBodyBattery(store) {
   }
   const awakeHours = Math.max(0, (now - wakeAnchor) / 36e5);
   const baselineDrain = Math.min(18, Math.round(awakeHours * 0.9));
-  // Workout drain from today's logged sessions.
+  // Workout drain from sessions SINCE WAKE — spans yesterday+today keys and filters by
+  // finishedAt >= wake, so a reading after midnight still counts the day's training (the headline
+  // used to read only the calendar `todayKey`, which reset the drain to 0 at 12am and dropped the
+  // 'Training drain' box — the exact number-vs-curve mismatch Mo saw at 2am).
+  const wakeMs = wakeAnchor.getTime();
+  const keyFor = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const winKeys = [...new Set([keyFor(wakeMs), todayKey])];
   let workoutDrain = 0;
-  for (const sess of Object.values((store.history || {})[todayKey] || {})) {
-    let sets = 0, rpeSum = 0, rpeN = 0;
-    for (const ex of (sess.exercises || [])) {
-      for (const s of (ex.sets || [])) {
-        if (s.type === "warmup") continue;
-        if (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) {
-          sets++;
-          const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
+  for (const dk of winKeys) {
+    for (const sess of Object.values((store.history || {})[dk] || {})) {
+      if (sess.finishedAt != null && sess.finishedAt < wakeMs) continue; // finished before this wake window
+      let sets = 0, rpeSum = 0, rpeN = 0;
+      for (const ex of (sess.exercises || [])) {
+        for (const s of (ex.sets || [])) {
+          if (s.type === "warmup") continue;
+          if (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) {
+            sets++;
+            const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
+          }
         }
       }
+      if (!sets) continue;
+      const avgRpe = rpeN ? rpeSum / rpeN : null;
+      workoutDrain += Math.max(5, Math.min(30, Math.round(6 + sets * 0.9 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
     }
-    if (!sets) continue;
-    const avgRpe = rpeN ? rpeSum / rpeN : null;
-    workoutDrain += Math.max(5, Math.min(30, Math.round(6 + sets * 0.9 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
   }
   workoutDrain = Math.min(45, workoutDrain);
   // Activity drain from steps/active energy (dampened when a workout is logged,
@@ -4414,9 +4423,15 @@ function computeBodyBatteryTimeline(store) {
 
   // Clip to the 24h window (the recharge loop can start up to 2h before it late in the evening).
   const clipped = points.filter(p => p.ts >= windowStartMs);
+  // Pin the LAST point to the headline number so the curve's end and the big "50/100" always
+  // agree (they used to be two independent models that diverged badly past midnight). Only nudge
+  // the final drain point — the recharge phases keep their shape.
+  if (clipped.length >= 2 && clipped[clipped.length - 1].phase !== "recharge") {
+    clipped[clipped.length - 1] = { ...clipped[clipped.length - 1], level: clampLvl(bb.level) };
+  }
   return clipped.length >= 2 ? { points: clipped, wakeTimeMs: wakeTime.getTime(), hasSleepData } : null;
 }
-export { computeBodyBatteryTimeline }; // for the sim harness — pure function, safe to expose
+export { computeBodyBatteryTimeline, computeBodyBattery }; // for the sim harness — pure functions
 
 function nativeHealth() {
   const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
@@ -9978,7 +9993,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     } else {
       cancelRestNotification();
     }
-    return () => { cancelRestNotification(); };
+    // NOTE: deliberately NO cleanup-cancel here. This effect's cleanup runs on unmount (leaving
+    // the workout screen / a background→foreground remount), and cancelling there was killing a
+    // legitimately-pending rest notification — the exact "no alert when I'm on another screen/app"
+    // bug. The reschedule path self-cancels (scheduleRestNotification cancels the prior id first),
+    // and stopping rest cancels via the else branch, so an orphaned notification can't linger.
   }, [rest?.running, rest?.startedAt, rest?.total]);
 
   // Keep the screen awake while a workout is in progress so the phone doesn't lock
