@@ -1,4 +1,4 @@
-// v178091716722
+// v178091716723
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18686,7 +18686,7 @@ function AppInner() {
     if (!prefsLoadedRef.current || isGuest) return;
     const tok = tokenRef.current || token;
     if (!tok || !currentUserId) return;
-    const sig = JSON.stringify({ n: store.exerciseNotes || {}, b: store.barTypes || {}, c: store.closeFriends || [] });
+    const sig = JSON.stringify({ n: store.exerciseNotes || {}, b: store.barTypes || {}, c: store.closeFriends || [], w: store.workoutNotes || {} });
     if (lastPrefsSyncRef.current === null) { lastPrefsSyncRef.current = sig; return; } // baseline from the load
     if (sig === lastPrefsSyncRef.current) return; // nothing actually changed
     lastPrefsSyncRef.current = sig;
@@ -18694,8 +18694,9 @@ function AppInner() {
       exercise_notes: store.exerciseNotes || {},
       bar_types: store.barTypes || {},
       close_friends: store.closeFriends || [],
+      workout_notes: store.workoutNotes || {}, // private per-workout notes (owner-only column)
     }) }, tok).catch(() => {});
-  }, [store.exerciseNotes, store.barTypes, store.closeFriends]);
+  }, [store.exerciseNotes, store.barTypes, store.closeFriends, store.workoutNotes]);
 
   // Re-fetch when the app comes back to foreground — keeps phone & desktop in sync
   // when user has switched between them or backgrounded the app for a while.
@@ -19092,6 +19093,9 @@ function AppInner() {
         // keys the server lacks (e.g. an offline edit not yet synced). Skip the local merge on a
         // user switch so one account's settings can't leak into another's.
         exerciseNotes: { ...((prev.currentUserId === currentUserId) ? (prev.exerciseNotes || {}) : {}), ...(me?.exercise_notes || {}) },
+        // Private per-workout notes (profiles.workout_notes is owner-only; not in public_profiles).
+        // Merge local-unsynced over the server copy, but drop a previous user's notes on account switch.
+        workoutNotes: { ...((prev.currentUserId === currentUserId) ? (prev.workoutNotes || {}) : {}), ...(me?.workout_notes || {}) },
         barTypes: { ...((prev.currentUserId === currentUserId) ? (prev.barTypes || {}) : {}), ...(me?.bar_types || {}) },
         closeFriends: (Array.isArray(me?.close_friends) && me.close_friends.length)
           ? me.close_friends
