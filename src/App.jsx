@@ -1,4 +1,4 @@
-// v178091716720
+// v178091716721
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10332,9 +10332,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       const cleanEx = session.exercises.filter(e => e.name).map(ex => ({
         name: ex.name,
-        ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}),
         sets: ex.sets.map(s => ({ weight: s.weight, reps: s.reps, done: s.done, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) }))
       }));
+      // Per-exercise notes are kept in a SEPARATE local-only map (store.workoutNotes[sid]) — never
+      // inside the exercises jsonb, which is written to the shared workout_history row that followers
+      // and public-profile viewers can read. Keeping notes out of that row keeps them private.
+      const sessionNotes = (() => {
+        const m = {};
+        session.exercises.forEach(ex => { const n = (ex.note || "").trim(); if (ex.name && n) m[ex.name] = n; });
+        return m;
+      })();
 
       // Compute PRs — Strong/Hevy-style: weight, estimated 1RM, and single-set volume each
       // tracked independently per exercise; a session can hit more than one category at once.
@@ -10403,6 +10410,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         prsVolume: newPRsVolume,
         prEvents: newPrEvents,
         workoutDates: { ...p.workoutDates, [dk]: true },
+        // Local-only per-workout notes, keyed by sid → { exerciseName: note }. Capped so the
+        // localStorage blob stays bounded. Never synced to the shared workout_history row.
+        workoutNotes: (() => {
+          if (!Object.keys(sessionNotes).length) return p.workoutNotes || {};
+          const next = { ...(p.workoutNotes || {}), [sid]: sessionNotes };
+          const keys = Object.keys(next);
+          if (keys.length > 400) for (const k of keys.slice(0, keys.length - 400)) delete next[k];
+          return next;
+        })(),
         // Standing per-exercise notes, keyed by exercise name. For every exercise that was in
         // this session: a non-empty note is stored (so it resurfaces next time you train it),
         // and a cleared note deletes the standing note (so stale cues don't stick forever).
@@ -10587,11 +10603,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // to show the summary so the "Update program?" prompt appears (it lives on the summary).
       if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && !programChange) {
         onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
-        const gSave = await onSaveWorkout({ clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
+        const gSave = await onSaveWorkout({ clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
         if (gSave && gSave.ok === false) {
           try {
             const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
-            pending.push({ dk, sid, savedAt: Date.now(), data: { clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
+            pending.push({ dk, sid, savedAt: Date.now(), data: { clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
             localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
           } catch {}
           toast("Saved on this device — couldn't reach server. Will retry.", "error");
@@ -10670,7 +10686,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         clientId: sid,
         workoutDate: dk,
         dayName: session.dayName,
-        exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
+        exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
         duration: recordedDuration,
         unit, note: "", prs: newPRs
       });
@@ -10683,7 +10699,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             clientId: sid,
             workoutDate: dk,
             dayName: session.dayName,
-            exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, ...(ex.note && ex.note.trim() ? { note: ex.note.trim() } : {}), sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
+            exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })),
             duration: recordedDuration, unit, note: "", prs: newPRs
           }});
           localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
@@ -12514,9 +12530,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                                 <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
                                   {setsLabel} reps{topWeight > 0 ? ` · ${topWeight} ${sess.unit||"lbs"}` : ""}
                                 </div>
-                                {ex.note && ex.note.trim() && (
-                                  <div style={{ fontSize:11, color:C.sub, marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap", lineHeight:1.4, opacity:0.85 }}>{ex.note}</div>
-                                )}
+                                {(() => {
+                                  const exNote = store.workoutNotes?.[sid]?.[ex.name];
+                                  return exNote && exNote.trim() ? (
+                                    <div style={{ fontSize:11, color:C.sub, marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap", overflowWrap:"anywhere", lineHeight:1.4, opacity:0.85 }}>{exNote}</div>
+                                  ) : null;
+                                })()}
                               </div>
                             </div>
                           );
