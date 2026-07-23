@@ -1,4 +1,4 @@
-// v178091716718
+// v178091716719
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7593,8 +7593,8 @@ function ProgramBuilder({ C, onCancel, onSave }) {
               </div>
 
               {/* Note */}
-              <input value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note (optional)..."
-                style={{ width:"100%", background:"transparent", border:"none", borderTop:`1px solid ${border}`, padding:"8px 0 0", fontSize:12, color:labelClr, outline:"none", fontFamily:F, boxSizing:"border-box" }}/>
+              <NoteField value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note (optional)..."
+                style={{ width:"100%", background:"transparent", border:"none", borderTop:`1px solid ${border}`, padding:"8px 0 0", fontSize:12, color:labelClr, outline:"none", fontFamily:F }}/>
             </div>
           );
         })}
@@ -8596,7 +8596,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 
                 {/* Note */}
                 <div style={{ borderTop:`1px solid ${BORD}`, padding:"10px 16px" }}>
-                  <input value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note (optional)..."
+                  <NoteField value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note (optional)..."
                     style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:12, color:SUB, fontFamily:F }} />
                 </div>
               </div>
@@ -9742,6 +9742,28 @@ function SortableProgramRow({ p, C, isActive, onOpen }) {
         </div>
       </button>
     </div>
+  );
+}
+
+// Auto-growing note field. Notes used to live in a single-line <input>, which truncated a long
+// note to an unreadable sliver (while typing you saw only its tail) — that "I can't see the whole
+// thing" also read as "the note didn't save". A <textarea> that grows to fit shows the whole note;
+// height caps at 320px so a very long note scrolls instead of taking over the screen. Drop-in: same
+// value/onChange/placeholder/style contract as the inputs it replaced (onChange still reads
+// e.target.value).
+function NoteField({ value, onChange, placeholder, style }) {
+  const ref = useRef(null);
+  const grow = (el) => { if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 320) + "px"; };
+  useEffect(() => { grow(ref.current); }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value || ""}
+      onChange={e => { grow(e.target); onChange(e); }}
+      placeholder={placeholder}
+      rows={1}
+      style={{ resize:"none", overflowY:"auto", lineHeight:1.4, display:"block", ...style, boxSizing:"border-box" }}
+    />
   );
 }
 
@@ -10984,10 +11006,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         )}
                       </div>
                     )}
-                    <input value={ex.note||""}
+                    <NoteField value={ex.note||""}
                       onChange={e => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,note:e.target.value}) }))}
                       placeholder="Add note..."
-                      style={{ width:"100%", background:"none", border:"none", padding:"3px 0", fontSize:11, color:C.sub, outline:"none", fontFamily:F, boxSizing:"border-box", marginTop:4 }}
+                      style={{ width:"100%", background:"none", border:"none", padding:"3px 0", fontSize:11, color:C.sub, outline:"none", fontFamily:F, marginTop:4 }}
                     />
                   </div>
                   <div style={{ display:"flex", gap:6, flexShrink:0, alignItems:"center" }}>
@@ -12987,8 +13009,8 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     </div>
                     <div>
                       <div style={{ fontSize:10, fontWeight:600, color:SUB, letterSpacing:0.5, marginBottom:4 }}>NOTE</div>
-                      <input value={ex.note||""} onChange={e => updateEx(i,{note:e.target.value})} placeholder="Optional..."
-                        style={{ width:"100%", background:isDark?"#1a1a1a":"#F8FAFC", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 10px", fontSize:13, color:TXT, outline:"none", fontFamily:F, boxSizing:"border-box" }}/>
+                      <NoteField value={ex.note||""} onChange={e => updateEx(i,{note:e.target.value})} placeholder="Optional..."
+                        style={{ width:"100%", background:isDark?"#1a1a1a":"#F8FAFC", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 10px", fontSize:13, color:TXT, outline:"none", fontFamily:F }}/>
                     </div>
                   </div>
                 </div>
