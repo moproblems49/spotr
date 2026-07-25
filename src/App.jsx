@@ -1,4 +1,4 @@
-// v178091716723
+// v178091716724
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6857,12 +6857,17 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
     return out.slice(0, 3);
   })();
 
+  // The card is taller than a phone screen, so the backdrop scrolls and the card is centred with
+  // `margin:auto` rather than `alignItems:center` — flex centering clips the TOP of an over-tall
+  // child, which put the close button and header under the status bar (unreachable). Safe-area
+  // padding keeps the header clear of the notch/Dynamic Island.
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:400, display:"flex", justifyContent:"center", overflowY:"auto", WebkitOverflowScrolling:"touch",
+      padding:"calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px)" }}>
       <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
-        background:"#0A0A0A", borderRadius:24, padding:"28px 24px",
-        width:"100%", maxWidth:360, color:"#fff", position:"relative",
-        fontFamily:F, overflow:"hidden",
+        background:"#0A0A0A", borderRadius:24, padding:"24px 20px",
+        width:"100%", maxWidth:340, color:"#fff", position:"relative",
+        fontFamily:F, overflow:"hidden", margin:"auto", flexShrink:0,
       }}>
         {/* Grid texture */}
         <div style={{
@@ -8612,9 +8617,9 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
         }} style={{ width:"100%", marginTop:10, padding:"13px", background:"none", border:`1.5px dashed ${isDark?"#333":"#CBD5E1"}`, borderRadius:16, color:SUB, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Day</button>
 
         {editorReorder && (
-          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:400, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column" }}>
+          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:400, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
-              <button onClick={() => setEditorReorder(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:BLUE, cursor:"pointer", fontFamily:F }}>Done</button>
+              <button onClick={() => setEditorReorder(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:BLUE, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
               <div style={{ fontSize:18, fontWeight:700, color:TXT, letterSpacing:0.5, fontFamily:DISPLAY, textTransform:"uppercase" }}>Reorder exercises</div>
               <div style={{ width:48 }}/>
             </div>
@@ -9812,7 +9817,12 @@ function NoteField({ value, onChange, placeholder, style }) {
   );
 }
 
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, currentUserId, token, C, dataLoading }) {
+// NOTE: `isGuest` MUST stay in this prop list. Two server writes inside finishWorkout gate on it
+// (pr_events and the workout's hr_summary). It used to be missing, so those lines threw a
+// ReferenceError that the surrounding catch swallowed — PR history silently stopped syncing
+// (Wrapped then showed "0 PRs" for weeks that had real ones) and heart-rate summaries never
+// reached the server. Nothing surfaced because both failures were caught and ignored.
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, currentUserId, token, C, dataLoading, isGuest = false }) {
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
   const [session, setSession] = useState(() => {
@@ -11775,9 +11785,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
         {/* Reorder modal — collapsed cards you can drag freely */}
         {reorderMode && session && (
-          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column" }}>
+          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
-              <button onClick={() => setReorderMode(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F }}>Done</button>
+              <button onClick={() => setReorderMode(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
               <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Reorder exercises</div>
               <div style={{ width:48 }}/>
             </div>
@@ -21226,7 +21236,7 @@ function AppInner() {
         )}
 
         {which === "tracker" && (
-          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={tokenRef.current} dataLoading={dataLoading}
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={tokenRef.current} dataLoading={dataLoading} isGuest={isGuest}
             onDeleteHistory={async (date, sid) => {
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
