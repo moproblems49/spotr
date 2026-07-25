@@ -8,6 +8,9 @@
 //      cd dist && zip -r ../public/bundles/seshd-<NEW_VERSION>.zip . && cd ..
 // 3. Set LATEST_VERSION below to "<NEW_VERSION>" (any new unique string, e.g. "2026-07-22a").
 // 4. Delete the previous zip from public/bundles/ (keep the repo lean).
+//    ORDER MATTERS: delete the OLD zip BEFORE running `npm run build`. Vite copies public/ into
+//    dist/, so a zip left in public/bundles/ gets baked into the next bundle — each release would
+//    otherwise carry every previous release inside it.
 // 5. Commit + push to main → Vercel deploys both this endpoint and the zip →
 //    every installed app downloads it in the background and applies it on next launch.
 // Rollback safety: the app calls notifyAppReady() on boot; if a bundle is so broken the app
@@ -16,7 +19,7 @@
 // NEVER OTA a change that needs new native plugins/capabilities — that requires a real
 // TestFlight build (cap sync + archive on the Mac).
 
-const LATEST_VERSION = null; // e.g. "2026-07-22a" — null = no OTA update published yet
+const LATEST_VERSION = "2026-07-25a"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 
 export default async function handler(req, res) {
