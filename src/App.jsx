@@ -1,4 +1,4 @@
-// v178091716724
+// v178091716725
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5380,16 +5380,8 @@ function MuscleBalance({ store, C, days = 30 }) {
     );
   }
 
-  // Push/Pull balance insight
-  const push = data.groups.find(g => g.name === "Push")?.sets || 0;
-  const pull = data.groups.find(g => g.name === "Pull")?.sets || 0;
-  let balanceNote = null;
-  if (push && pull) {
-    const ratio = push / pull;
-    if (ratio >= 1.5) balanceNote = `You're training push ${ratio.toFixed(1)}× more than pull — consider more back/biceps work.`;
-    else if (ratio <= 0.67) balanceNote = `You're training pull ${(1/ratio).toFixed(1)}× more than push — balanced, or add pressing if that's not intended.`;
-    else balanceNote = "Your push/pull balance looks solid.";
-  }
+  // (The push/pull ratio sentence that used to live here was removed as clutter — the group bars
+  // above already show the same split visually, and more precisely.)
 
   return (
     <div style={{ padding:"16px 0 8px" }}>
@@ -5435,11 +5427,6 @@ function MuscleBalance({ store, C, days = 30 }) {
         );
       })}
 
-      {balanceNote && (
-        <div style={{ marginTop:12, padding:"10px 12px", background:C.divider, borderRadius:10, fontSize:12, color:C.sub, lineHeight:1.45 }}>
-          {balanceNote}
-        </div>
-      )}
     </div>
   );
 }
@@ -14722,11 +14709,21 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   if (viewingExercise) {
     return <ExerciseDetail name={viewingExercise} store={store} unit={store.unit||"lbs"} C={C} onClose={() => setViewingExercise(null)}/>;
   }
+  // Pushed sub-screens animate in from the right (same feel as switching tabs) instead of
+  // swapping instantly. The wrapper is a plain flex column so the screen still fills the tab body.
   if (subTab === "groups") {
-    return <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")} token={token}/>;
+    return (
+      <div className="seshd-push-in" style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+        <GroupsScreen store={store} setStore={setStore} currentUserId={currentUserId} C={C} onBack={() => setSubTab("discover")} token={token}/>
+      </div>
+    );
   }
   if (subTab === "activity") {
-    return <FriendsActivityScreen store={store} currentUserId={currentUserId} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick} token={token}/>;
+    return (
+      <div className="seshd-push-in" style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+        <FriendsActivityScreen store={store} currentUserId={currentUserId} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick} token={token}/>
+      </div>
+    );
   }
 
   return (
@@ -20237,6 +20234,16 @@ function AppInner() {
         @keyframes seshd-pulse-soft { 0%,100%{opacity:1} 50%{opacity:0.55} }
         @keyframes seshd-slide-up { from{transform:translateY(100%)} to{transform:translateY(0)} }
         @keyframes seshd-scale-in { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:scale(1)} }
+        /* Pushed screens (Messages, Groups) slide in from the right, matching the tab-change
+           animation and the edge-swipe-back gesture that dismisses them. Same duration/easing as
+           the tab slide so navigation feels like one system. */
+        @keyframes seshd-push-in { from{transform:translateX(100%)} to{transform:translateX(0)} }
+        /* Deliberately NO fill-mode: a lingering transform (even translateX(0)) makes this element
+           the containing block for any position:fixed descendant, which clips/mis-sizes nested
+           modals — the same trap documented for the tab-swipe track. Without fill-mode the
+           transform is gone the moment the 0.3s animation ends. */
+        .seshd-push-in { animation: seshd-push-in 0.3s cubic-bezier(0.25,0.46,0.45,0.94); }
+        @media (prefers-reduced-motion: reduce) { .seshd-push-in { animation: none; } }
         @keyframes seshd-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         @keyframes seshd-fresh-pulse { 0%,100%{opacity:0.5;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.15)} }
 
@@ -21537,7 +21544,7 @@ function AppInner() {
           data-no-tab-swipe keeps the shell's tab-swipe from fighting the edge-swipe-back.
           The wrapper is transparent so the drag reveals the live tab underneath, iOS-style. */}
       {showMessages && (
-        <div data-no-tab-swipe style={{ position:"absolute", inset:0, zIndex:40 }}>
+        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:40 }}>
           <EdgeSwipeBack onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
             style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
             <MessagesScreen store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
