@@ -1,4 +1,4 @@
-// v178091716725
+// v178091716726
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1956,12 +1956,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const d = rec.vo2MaxDelta || 0;
                     const up = d > 0.05, down = d < -0.05;
                     const col = up ? "#4ade80" : down ? "#f59e0b" : C.sub;
-                    let spark = null;
-                    if (s) {
-                      const W = 120, H = 26, lo = Math.min(...s), hi = Math.max(...s), rng = Math.max(0.1, hi - lo);
-                      const pts = s.map((v, i) => `${(i / (s.length - 1)) * W},${H - ((v - lo) / rng) * H}`).join(" ");
-                      spark = <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible" }}><polyline points={pts} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-                    }
+                    // VO₂ Max carries one decimal (45.2), so keep it in the range labels.
+                    const spark = s ? <TrendSparkline series={s} color={col} C={C} format={v => v.toFixed(1)}/> : null;
                     return (
                       <div style={{ width:"100%", maxWidth:340, margin:"8px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div>
@@ -1979,8 +1975,6 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const s = rec.rhrSeries, d = rec.rhrTrendDelta || 0;
                     const down = d < -0.5, up = d > 0.5;
                     const col = down ? "#4ade80" : up ? "#f59e0b" : C.sub;
-                    const W = 120, H = 26, lo = Math.min(...s), hi = Math.max(...s), rng = Math.max(0.1, hi - lo);
-                    const pts = s.map((v, i) => `${(i / (s.length - 1)) * W},${H - ((v - lo) / rng) * H}`).join(" ");
                     return (
                       <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div>
@@ -1988,7 +1982,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
                           {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm vs earlier{down ? " — stronger heart" : ""}</div>}
                         </div>
-                        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible" }}><polyline points={pts} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <TrendSparkline series={s} color={col} C={C}/>
                       </div>
                     );
                   })()}
@@ -9780,6 +9774,38 @@ function pickFinishPhrase({ prs = 0, progressions = 0, volVsLast = 0, streakWeek
   if (progressions > 0 || volVsLast > 0) return pick(FINISH_PHRASES.progress);
   if (streakWeeks >= 2) return pick(FINISH_PHRASES.streak).replace("{n}", streakWeeks);
   return pick(FINISH_PHRASES.base);
+}
+
+// Trend sparkline with its lowest and highest values labelled. These charts (resting HR, VO₂ Max)
+// are only ~120x26 — far too small to scrub with a finger (~10px per point vs a ~44px fingertip),
+// so instead of an interactive readout they just state their range. The line is drawn in an inset
+// band so the labels have room without overflowing the card.
+function TrendSparkline({ series, color, C, format = (v) => String(Math.round(v)) }) {
+  if (!series || series.length < 2) return null;
+  const W = 120, TOP = 11, BOT = 27, H = 38;
+  const lo = Math.min(...series), hi = Math.max(...series), rng = Math.max(0.1, hi - lo);
+  const xAt = (i) => (i / (series.length - 1)) * W;
+  const yAt = (v) => BOT - ((v - lo) / rng) * (BOT - TOP);
+  const pts = series.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(" ");
+  const loIdx = series.indexOf(lo), hiIdx = series.indexOf(hi);
+  // Keep labels inside the card even when the extreme sits at either end.
+  const clampX = (x) => Math.max(13, Math.min(W - 13, x));
+  const flat = hi - lo < 0.05;
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible", flexShrink:0 }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      {!flat && (
+        <>
+          <circle cx={xAt(hiIdx)} cy={yAt(hi)} r="2.2" fill={color}/>
+          <circle cx={xAt(loIdx)} cy={yAt(lo)} r="2.2" fill={color}/>
+          <text x={clampX(xAt(hiIdx))} y={TOP - 4} textAnchor="middle" fontSize="8" fontWeight="700"
+            fill={C.sub} fontFamily={MONO}>{format(hi)}</text>
+          <text x={clampX(xAt(loIdx))} y={BOT + 9} textAnchor="middle" fontSize="8" fontWeight="700"
+            fill={C.sub} fontFamily={MONO}>{format(lo)}</text>
+        </>
+      )}
+    </svg>
+  );
 }
 
 // Auto-growing note field. Notes used to live in a single-line <input>, which truncated a long
