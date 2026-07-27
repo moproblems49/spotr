@@ -1,4 +1,4 @@
-// v178091716726
+// v178091716727
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9776,6 +9776,53 @@ function pickFinishPhrase({ prs = 0, progressions = 0, volVsLast = 0, streakWeek
   return pick(FINISH_PHRASES.base);
 }
 
+// Which code the app is actually running, plus a manual update check. Without this there is no way
+// to tell whether an over-the-air update landed — the app looks identical either way, which made a
+// silent OTA failure impossible to diagnose. "Bundle" is the OTA payload (or "built-in" when the
+// app is still on the code that shipped inside the TestFlight/App Store build).
+function AppVersionRow({ C }) {
+  const [bundle, setBundle] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [note, setNote] = useState("");
+  const plugin = () => { try { return window.Capacitor?.Plugins?.CapacitorUpdater || null; } catch { return null; } };
+
+  useEffect(() => {
+    const p = plugin();
+    if (!p?.current) { setBundle({ version: "web" }); return; }
+    p.current().then(r => setBundle(r?.bundle || { version: "built-in" })).catch(() => setBundle({ version: "built-in" }));
+  }, []);
+
+  async function checkNow() {
+    const p = plugin();
+    if (!p) { setNote("Updates only work in the installed app."); return; }
+    setChecking(true); setNote("");
+    try {
+      const latest = await p.getLatest();
+      const cur = (bundle?.version || "").toString();
+      if (!latest?.version || latest.version === cur) setNote("You're on the latest version.");
+      else setNote(`Update ${latest.version} found — it installs next time you reopen the app.`);
+    } catch (e) {
+      setNote("Couldn't reach the update server.");
+    } finally { setChecking(false); }
+  }
+
+  const shown = bundle?.version === "builtin" ? "built-in" : (bundle?.version || "…");
+  return (
+    <button onClick={checkNow} disabled={checking} style={{
+      width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+      display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
+      cursor: checking ? "default" : "pointer", fontFamily:F, textAlign:"left",
+    }}>
+      <div style={{ minWidth:0 }}>
+        <div style={{ fontSize:14, color:C.text }}>App version</div>
+        {note && <div style={{ fontSize:11, color:C.sub, marginTop:3, lineHeight:1.35 }}>{note}</div>}
+        {!note && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>Tap to check for updates</div>}
+      </div>
+      <div style={{ fontFamily:MONO, fontSize:11, color:C.sub, flexShrink:0 }}>{checking ? "checking…" : shown}</div>
+    </button>
+  );
+}
+
 // Trend sparkline with its lowest and highest values labelled. These charts (resting HR, VO₂ Max)
 // are only ~120x26 — far too small to scrub with a finger (~10px per point vs a ~44px fingertip),
 // so instead of an interactive readout they just state their range. The line is drawn in an inset
@@ -16626,6 +16673,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ fontSize:14, color:C.text }}>Signed in as</div>
                   <div style={{ fontSize:12, color:C.sub }}>{email || ""}</div>
                 </div>
+                <AppVersionRow C={C}/>
                 <button onClick={exportData} style={{
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
                   display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F

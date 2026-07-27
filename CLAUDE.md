@@ -36,6 +36,13 @@ git add src/App.jsx
 git commit -m "<clear message>"
 git push
 ```
+**★ ALWAYS PUBLISH THE OTA BUNDLE WITH EVERY CHANGE** (Mo's standing instruction: "always push the
+app"). Pushing to git alone does NOTHING for his phone — the installed app only updates when a new
+bundle is published. So finish every change with the publish recipe in `api/app-update.js`:
+delete the old zip FIRST → build with the real `.env.local` → `cd dist && zip -rq
+../public/bundles/seshd-<ver>.zip .` → bump `LATEST_VERSION` → commit + push. Bump the version
+suffix (…a → …b → …c) each time. Sanity-check the built bundle carries the REAL supabase URL (a
+stub-built bundle breaks sign-in for everyone).
 In remote (claude.ai) sessions the standing directive is to push every change to BOTH the
 session branch AND `main` (`git push -u origin <branch> && git branch -f main HEAD && git push origin main`
 — main has always been a fast-forward so far). Version-bump one-liner that avoids hand-editing:
@@ -414,6 +421,9 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
 **Step 4 — TestFlight:** archive, upload, add Mo as internal tester.
 
 **Deferred Mac-side (post-TestFlight):** Live Activity rest timer, home-screen widgets,
+**Apple Watch app** (log sets from the wrist — Mo confirmed "later", it's a full native target),
+**video posting** (needs a native picker/recorder plugin — do it the Hevy way: 1 short clip per
+workout, thumbnail + tap-to-play, ~30-60s cap, so bandwidth stays sane),
 share-to-Instagram-Stories plugin, converting the top bar to a true scroll-under glass
 overlay (marked TODO(device-test) in App.jsx), iOS 18 light/dark icon variants (light art exists at `assets/AppIcon-1024-light.png`,
 decision was to stay single dark icon).
