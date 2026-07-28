@@ -1,4 +1,4 @@
-// v178091716732
+// v178091716733
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4310,7 +4310,7 @@ function computeBodyBatteryTimeline(store) {
   }
   return clipped.length >= 2 ? { points: clipped, wakeTimeMs: wakeTime.getTime(), sleepStartMs: sleepStart.getTime(), hasSleepData } : null;
 }
-export { computeBodyBatteryTimeline, computeBodyBattery }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -4653,6 +4653,24 @@ async function readHourlyActivity() {
 
 // Pull the most recent recovery snapshot. Returns null on web or if unavailable/denied.
 // Shape: { hrv: number|null, restingHr: number|null, sleepHours: number|null, capturedAt: iso }
+// Reduce a pool of {v,t} HRV samples to the SINGLE most recent night.
+// Prefers HealthKit's real sleep window; if that's missing, falls back to the newest contiguous
+// block (samples within 14h of the newest one), which still excludes an older night. Exported for
+// the sim harness — pure, no HealthKit needed.
+function pinToLastNight(pool, sleepStartIso, sleepEndIso) {
+  if (!pool || pool.length < 2) return pool || [];
+  const ss = sleepStartIso ? new Date(sleepStartIso).getTime() : NaN;
+  const se = sleepEndIso ? new Date(sleepEndIso).getTime() : NaN;
+  if (!isNaN(ss) && !isNaN(se) && se > ss) {
+    const inSleep = pool.filter(s => s.t != null && s.t >= ss && s.t <= se);
+    if (inSleep.length) return inSleep;
+  }
+  const newest = pool.reduce((m, s) => (s.t != null && s.t > m ? s.t : m), 0);
+  if (!newest) return pool;
+  const clustered = pool.filter(s => s.t != null && newest - s.t <= 14 * 3600 * 1000);
+  return clustered.length ? clustered : pool;
+}
+
 async function readRecovery() {
   const H = nativeHealth();
   if (!H) return null;
@@ -4744,7 +4762,13 @@ async function readRecovery() {
   // fall back to all samples on BOTH sides. This guarantees the ratio is always apples-to-apples
   // (e.g. a night you didn't wear the watch won't compare daytime HRV against an overnight baseline).
   const useNight = hrvNightToday.length > 0 && hrvHistNight.length > 0;
-  const todayPool = useNight ? hrvNightToday : hrvAll;
+  // Pin to ONE night. Two things made the score wander during the day: the lookback is a rolling
+  // 36h (so it can straddle two nights, and old samples fall out of the back of it as the clock
+  // advances), and the overnight hour-rule counts 22:00 onwards — so once it's past 10pm, samples
+  // taken while you're awake on the couch get averaged into "recovery" and push the number UP at
+  // night. Pinning to last night's actual sleep window makes the score a property of that night,
+  // so it stops drifting between syncs and holds steady all day.
+  const todayPool = pinToLastNight(useNight ? hrvNightToday : hrvAll, out.sleepStart, out.sleepEnd);
   const basePool = useNight ? hrvHistNight : hrvHist;
   if (todayPool.length) out.hrv = Math.round(todayPool.reduce((a, b) => a + b.v, 0) / todayPool.length);
   out.hrvBaseline = median(basePool.map(s => s.v));
@@ -12144,8 +12168,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               rendering glitch rather than emphasis. It now sits on the same surface as every other
               card and earns its prominence from the accent icon + chevron instead of raw contrast. */}
           <button onClick={() => startWorkout(null)} className="seshd-pressable" style={{
-            width:"100%", background:C.surface, color:C.text,
-            border:`1px solid ${C.border}`, borderRadius:16, padding:"18px",
+            width:"100%", background:C.bg, color:C.text,
+            border:`1px solid ${C.accent}55`, borderRadius:16, padding:"18px",
+            boxShadow:`0 0 0 1px ${C.accent}14, 0 6px 20px -8px ${C.accent}66`,
             marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F,
           }}>
             <div style={{ width:40, height:40, borderRadius:10, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
