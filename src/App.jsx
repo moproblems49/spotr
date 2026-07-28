@@ -1,4 +1,4 @@
-// v178091716734
+// v178091716735
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1960,7 +1960,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const spark = s ? <TrendSparkline series={s} color={col} C={C} format={v => v.toFixed(1)}/> : null;
                     return (
                       <div style={{ width:"100%", maxWidth:340, margin:"8px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
-                        <div>
+                        <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.vo2Max}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>ml/kg·min</span></div>
                           {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲ +" : "▼ "}{d} vs earlier</div>}
@@ -1977,7 +1977,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const col = down ? "#4ade80" : up ? "#f59e0b" : C.sub;
                     return (
                       <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
-                        <div>
+                        <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · trend</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
                           {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm vs earlier{down ? " — stronger heart" : ""}</div>}
