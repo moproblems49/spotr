@@ -1,4 +1,4 @@
-// v178091716729
+// v178091716730
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1854,7 +1854,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       <span style={{ fontFamily:MONO, fontSize:20, fontWeight:800, color:fill, letterSpacing:-0.5 }}>{bb.level}<span style={{ fontSize:11, color:C.sub, fontWeight:600 }}>/100</span></span>
                     </div>
                     <div style={{ height:8, borderRadius:4, background:C.divider, overflow:"hidden" }}>
-                      <div style={{ width:`${bb.level}%`, height:"100%", borderRadius:4, background:fill, transition:"width 0.5s ease" }}/>
+                      <div style={{ width:"100%", height:"100%", background:fill, transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, bb.level/100))})`, transition:`transform 0.5s ${EASE_NAV}` }}/>
                     </div>
                     <div style={{ marginTop:7, fontSize:10, color:C.muted, fontWeight:600 }}>
                       {bb.hasRecovery ? `Woke at ${bb.charge0}` : `Est. start ${bb.charge0}`}{parts.length ? ` · ${parts.join(" · ")}` : ""}
@@ -7746,7 +7746,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
       {/* Progress bar */}
       <div style={{ display:"flex", gap:3, padding:"10px 12px 0", flexShrink:0 }}>
         <div style={{ flex:1, height:3, background:"rgba(255,255,255,0.3)", borderRadius:2, overflow:"hidden" }}>
-          <div style={{ height:"100%", width:`${progress}%`, background:"#fff", transition:"width 0.05s linear" }}/>
+          <div style={{ height:"100%", width:"100%", background:"#fff", transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, (progress||0)/100))})`, transition:"transform 0.05s linear", willChange:"transform" }}/>
         </div>
       </div>
 
@@ -9782,16 +9782,13 @@ function pickFinishPhrase({ prs = 0, progressions = 0, volVsLast = 0, streakWeek
   return pick(FINISH_PHRASES.base);
 }
 
-// ── MOTION + TYPE TOKENS ─────────────────────────────────────────────────────
-// The app had grown NINE different easing curves, so no two transitions felt related. These are
-// the only curves anything should use now:
-//   EASE_NAV  — screen/tab movement. A decelerate curve with a long tail (the shape iOS uses),
-//               which is what reads as "buttery" versus the flatter ease-out it replaced.
-//   EASE_UI   — small state changes (fades, colour, height).
-//   EASE_POP  — deliberate overshoot, for press feedback and celebratory pops only.
+// ── MOTION ───────────────────────────────────────────────────────────────────
+// The app had grown NINE different easing curves, so no two transitions felt related. Everything
+// that moves at SCREEN scale — tab switches, pushed screens, swipe-back, progress fills — uses
+// this one curve: a decelerate shape with a long tail (what iOS itself uses), which is what reads
+// as "buttery" next to the flatter ease-out it replaced. Micro-interactions (button press, PR pop)
+// keep their own overshoot curve deliberately; they're punctuation, not navigation.
 const EASE_NAV = "cubic-bezier(0.32, 0.72, 0, 1)";
-const EASE_UI = "cubic-bezier(0.4, 0, 0.2, 1)";
-const EASE_POP = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 
 // One section heading treatment for the whole app. These labels had drifted into two sizes and
 // two letter-spacings across History/Profile, which is the kind of thing that reads as "slightly
@@ -10972,7 +10969,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             </div>
           </div>
           <div style={{ height:4, background:C.divider, borderRadius:4, overflow:"hidden" }}>
-            <div style={{ height:"100%", background:C.accent, width:`${(done/Math.max(total,1))*100}%`, transition:"width 0.4s", borderRadius:4 }}/>
+            <div style={{ height:"100%", width:"100%", background:C.accent, transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, done/Math.max(total,1)))})`, transition:`transform 0.4s ${EASE_NAV}`, willChange:"transform" }}/>
           </div>
         </div>
 
@@ -11096,7 +11093,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               {fmtTime(rest.secs)}
             </div>
             <div style={{ flex:1, height:5, background:C.divider, borderRadius:999, overflow:"hidden" }}>
-              <div style={{ width:`${Math.round((rest.secs/rest.total)*100)}%`, height:"100%", background: rest.secs<=10 ? "#EF4444" : C.accent, transition:"width 0.3s linear" }}/>
+              <div style={{ width:"100%", height:"100%", background: rest.secs<=10 ? "#EF4444" : C.accent, transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, rest.secs/Math.max(1, rest.total)))})`, transition:"transform 0.3s linear", willChange:"transform" }}/>
             </div>
             <button onClick={() => setRest(p => {
               if (!p) return null;
@@ -17886,7 +17883,7 @@ function EdgeSwipeBack({ onBack, children, style }) {
   };
   return (
     <div ref={nodeRef} onTouchStart={start} onTouchMove={move} onTouchEnd={end} onTouchCancel={end}
-      style={{ ...style, transition: dragging ? "none" : "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)", willChange:"transform" }}>
+      style={{ ...style, transition: dragging ? "none" : `transform 0.22s ${EASE_NAV}`, willChange:"transform" }}>
       {children}
     </div>
   );
@@ -20354,7 +20351,7 @@ function AppInner() {
            the containing block for any position:fixed descendant, which clips/mis-sizes nested
            modals — the same trap documented for the tab-swipe track. Without fill-mode the
            transform is gone the moment the 0.3s animation ends. */
-        .seshd-push-in { animation: seshd-push-in 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+        .seshd-push-in { animation: seshd-push-in 0.3s ${EASE_NAV}; }
         @media (prefers-reduced-motion: reduce) { .seshd-push-in { animation: none; } }
         @keyframes seshd-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         @keyframes seshd-fresh-pulse { 0%,100%{opacity:0.5;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.15)} }
@@ -21540,7 +21537,7 @@ function AppInner() {
                 // translateX(-33.3333%) requires marginLeft:-100% here, not -33.3333%.
                 marginLeft: "-100%",
                 transform: dragPx ? `translateX(${dragPx}px)` : "none",
-                transition: swipeRelease ? "transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)" : "none",
+                transition: swipeRelease ? `transform 0.24s ${EASE_NAV}` : "none",
                 willChange: isActive ? "transform" : "auto",
               }}
             >
@@ -21552,7 +21549,7 @@ function AppInner() {
               <div key={animKey} style={{
                 width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
                 animation: (prevTab && swipeX === 0 && !swipeRelease && tabSwitchSourceRef.current !== "swipe")
-                  ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.32, 0.72, 0, 1)` : "none",
+                  ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s ${EASE_NAV}` : "none",
               }}>
                 {TabBody(tab)}
               </div>

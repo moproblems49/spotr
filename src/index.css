@@ -4,6 +4,11 @@
    Matches the `F` stack in App.jsx; keep the two in sync. */
 html, body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  /* Stop the whole WebView from rubber-banding past its own edges. Without this, dragging at the
+     top or bottom of any list bounces the ENTIRE app like a web page — the clearest "this isn't a
+     real app" tell on iOS. Scrolling inside the app's own scrollers is unaffected, and the custom
+     PullToRefresh is driven by touch events rather than native overscroll, so it still works. */
+  overscroll-behavior: none;
   /* Dark default so any pixel a transform/drag momentarily exposes (e.g. the strip behind the
      chat screen during the iOS edge-swipe-back) is the app background, not the WebView's white.
      Matches the native launch screen (#0a0a0a); JS repaints this to the exact theme bg on mount. */
