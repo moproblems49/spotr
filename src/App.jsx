@@ -1,4 +1,4 @@
-// v178091716727
+// v178091716728
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9802,7 +9802,13 @@ function AppVersionRow({ C }) {
       if (!latest?.version || latest.version === cur) setNote("You're on the latest version.");
       else setNote(`Update ${latest.version} found — it installs next time you reopen the app.`);
     } catch (e) {
-      setNote("Couldn't reach the update server.");
+      // getLatest() rejects with the SERVER's own message when the response carries one, so a
+      // rejection is not necessarily a network failure. Only call it unreachable for the plugin's
+      // actual transport errors; otherwise show what came back.
+      const m = String(e?.message || e || "");
+      if (/up to date|no update|latest/i.test(m)) setNote("You're on the latest version.");
+      else if (!m || /timeout|request_error|response_error|decode_error|rate_limit/i.test(m)) setNote("Couldn't reach the update server.");
+      else setNote(m);
     } finally { setChecking(false); }
   }
 

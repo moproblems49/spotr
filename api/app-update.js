@@ -19,7 +19,7 @@
 // NEVER OTA a change that needs new native plugins/capabilities — that requires a real
 // TestFlight build (cap sync + archive on the Mac).
 
-const LATEST_VERSION = "2026-07-25c"; // null = no OTA update published
+const LATEST_VERSION = "2026-07-25d"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 
 export default async function handler(req, res) {
@@ -37,8 +37,13 @@ export default async function handler(req, res) {
 
   // No published bundle, or the device already runs it → "no update" (version: null is the
   // documented no-op reply for capacitor-updater's self-hosted contract).
+  // NEVER add a `message` field here. The plugin's getLatest() REJECTS the call whenever the
+  // response carries a non-empty message (CapacitorUpdaterPlugin.swift: `else if let message =
+  // res.message ... rejectCall`), so a friendly "up to date" string surfaced in the app as
+  // "couldn't reach the update server". Auto-update ignores `message`, which is why background
+  // updates still worked and only the manual check appeared broken.
   if (!LATEST_VERSION || current === LATEST_VERSION) {
-    return res.status(200).json({ version: null, message: "up to date" });
+    return res.status(200).json({ version: null });
   }
   return res.status(200).json({
     version: LATEST_VERSION,
