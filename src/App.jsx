@@ -1,4 +1,4 @@
-// v178091716733
+// v178091716734
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4770,7 +4770,11 @@ async function readRecovery() {
   // so it stops drifting between syncs and holds steady all day.
   const todayPool = pinToLastNight(useNight ? hrvNightToday : hrvAll, out.sleepStart, out.sleepEnd);
   const basePool = useNight ? hrvHistNight : hrvHist;
-  if (todayPool.length) out.hrv = Math.round(todayPool.reduce((a, b) => a + b.v, 0) / todayPool.length);
+  // MEDIAN on both sides, deliberately. Today's figure used to be a mean while the baseline was a
+  // median, so the two halves of the ratio weren't the same statistic. That mattered little when
+  // the pool was 36h of samples, but pinning it to one night makes it small enough that a single
+  // odd reading (a wake-up, a bad contact) could visibly move the score. A median ignores that.
+  if (todayPool.length) out.hrv = Math.round(median(todayPool.map(s => s.v)));
   out.hrvBaseline = median(basePool.map(s => s.v));
   out.rhrBaseline = median(rhrHist.map(s => s.v));
   out.baselineDays = Math.max(hrvHist.length, rhrHist.length);
@@ -10004,7 +10008,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [subTab, _setSubTab] = useState(() => _trackerSubTab);
-  const setSubTab = useCallback((v) => { _trackerSubTab = v; _setSubTab(v); }, []);
+  const setSubTab = useCallback((v) => { _trackerSubTab = typeof v === "function" ? v(_trackerSubTab) : v; _setSubTab(_trackerSubTab); }, []);
   const [histQuery, setHistQuery] = useState("");
   const [histLimit, setHistLimit] = useState(30); // cap mounted date-groups; "Show more" reveals older ones
   // Memoized so it only recomputes on history/query change — this screen also hosts the
@@ -14768,7 +14772,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
   const [q, setQ] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [subTab, _setSubTab] = useState(() => _discoverSubTab);
-  const setSubTab = useCallback((v) => { _discoverSubTab = v; _setSubTab(v); }, []);
+  const setSubTab = useCallback((v) => { _discoverSubTab = typeof v === "function" ? v(_discoverSubTab) : v; _setSubTab(_discoverSubTab); }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
   const [showAllLifts, setShowAllLifts] = useState(false);
   const [boardMode, setBoardMode] = useState("all"); // "all" | "close" — which leaderboard is shown
