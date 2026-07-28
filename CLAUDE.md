@@ -420,7 +420,10 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
 
 **Step 4 — TestFlight:** archive, upload, add Mo as internal tester.
 
-**Deferred Mac-side (post-TestFlight):** Live Activity rest timer, home-screen widgets,
+**Deferred Mac-side (post-TestFlight):** **`@capacitor/keyboard`** (the last big "this is a website"
+tell: iOS shows the grey `‹ › Done` accessory bar above the keyboard for web inputs, and without the
+plugin there's no keyboard-will-show event to scroll the focused field clear — needs a native
+install + `setAccessoryBarVisible(false)`), Live Activity rest timer, home-screen widgets,
 **Apple Watch app** (log sets from the wrist — Mo confirmed "later", it's a full native target),
 **video posting** (needs a native picker/recorder plugin — do it the Hevy way: 1 short clip per
 workout, thumbnail + tap-to-play, ~30-60s cap, so bandwidth stays sane),

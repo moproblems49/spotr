@@ -1,4 +1,4 @@
-// v178091716730
+// v178091716731
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9909,6 +9909,14 @@ function NoteField({ value, onChange, placeholder, style }) {
   );
 }
 
+// Sub-tab choice survives the tab unmounting. The tab-swipe track only keeps the CURRENT tab
+// mounted, so switching tabs destroys this component — which used to dump you back on the first
+// sub-tab (reading History, tap Profile, come back, you're on Workout again). Native tab bars
+// remember where you were; resetting is a "the page reloaded" tell. Module-level so it persists
+// for the session without touching the (fragile) swipe track's mounting.
+let _trackerSubTab = "workout";
+let _discoverSubTab = "discover";
+
 // NOTE: `isGuest` MUST stay in this prop list. Two server writes inside finishWorkout gate on it
 // (pr_events and the workout's hr_summary). It used to be missing, so those lines threw a
 // ReferenceError that the surrounding catch swallowed — PR history silently stopped syncing
@@ -9971,7 +9979,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
-  const [subTab, setSubTab] = useState("workout");
+  const [subTab, _setSubTab] = useState(() => _trackerSubTab);
+  const setSubTab = useCallback((v) => { _trackerSubTab = v; _setSubTab(v); }, []);
   const [histQuery, setHistQuery] = useState("");
   const [histLimit, setHistLimit] = useState(30); // cap mounted date-groups; "Show more" reveals older ones
   // Memoized so it only recomputes on history/query change — this screen also hosts the
@@ -14733,7 +14742,8 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
 function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow }) {
   const [q, setQ] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
-  const [subTab, setSubTab] = useState("discover");
+  const [subTab, _setSubTab] = useState(() => _discoverSubTab);
+  const setSubTab = useCallback((v) => { _discoverSubTab = v; _setSubTab(v); }, []);
   const [viewingExercise, setViewingExercise] = useState(null);
   const [showAllLifts, setShowAllLifts] = useState(false);
   const [boardMode, setBoardMode] = useState("all"); // "all" | "close" — which leaderboard is shown
