@@ -1,4 +1,4 @@
-// v178091716731
+// v178091716732
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20336,7 +20336,15 @@ function AppInner() {
            html/body are restricted. Set it on every element directly as the real fix; anything
            that needs touch-action:none (drag handles) sets it inline and still wins over this. */
         *, *::before, *::after { touch-action: pan-x pan-y; }
-        input, textarea, select { font-size: 16px !important; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+        /* No forced 16px here. That's the classic trick to stop mobile Safari zooming when you focus
+           a sub-16px input, but it was flagged !important, so it overrode every inline fontSize
+           and rendered small fields (exercise notes especially) noticeably larger than the labels
+           around them. The native shell locks zoom at the viewport (maximum-scale=1,
+           user-scalable=no), which WKWebView honours, so the override isn't buying anything there.
+           The 15px below is only a floor for inputs that never set their own size — inline styles
+           win over it. NOTE: mobile Safari ignores user-scalable=no, so if the web build ever gets
+           real users, focus-zoom on small inputs comes back and this needs revisiting. */
+        input, textarea, select { font-size: 15px; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
         input[type=number] { -moz-appearance: textfield; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         /* Micro-feel: kill the iOS gray tap-flash, and give every button a crisp press-down.
