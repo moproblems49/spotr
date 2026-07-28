@@ -1,4 +1,4 @@
-// v178091716728
+// v178091716729
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5380,7 +5380,7 @@ function MuscleBalance({ store, C, days = 30 }) {
   return (
     <div style={{ padding:"16px 0 8px" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-        <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>MUSCLE BALANCE</div>
+        <SectionLabel C={C} style={{ marginBottom:0 }}>Muscle balance</SectionLabel>
         <div style={{ fontSize:11, color:C.sub }}>{data.total} set{data.total === 1 ? "" : "s"} · last {days}d</div>
       </div>
 
@@ -5449,7 +5449,7 @@ function MostTrainedMuscles({ store, C, days = 30 }) {
   if (!muscles.length) return null;
   return (
     <div style={{ padding:"4px 0 12px" }}>
-      <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:8 }}>MOST TRAINED · LAST {days}D</div>
+      <SectionLabel C={C} style={{ marginBottom:8 }}>{`Most trained · last ${days}d`}</SectionLabel>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
         {muscles.slice(0, 8).map(mu => (
           <div key={mu.name} style={{ padding:"5px 10px", background:C.divider, borderRadius:20, fontSize:11.5, color:C.text }}>
@@ -5554,7 +5554,13 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
             <div style={{ width:24, height:24, borderRadius:7, background:`${color}22`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:8 }}>
               <Icon name={icon} size={13} color={color}/>
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1 }}>{val}</div>
+            {/* Count up on mount — a static number appearing instantly feels inert next to the
+                rest of the app's motion. Non-numeric values (e.g. "29.2K") fall back to plain text. */}
+            <div style={{ fontSize:22, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1 }}>
+              {typeof val === "number"
+                ? <AnimatedNumber value={val} duration={750} animateOnMount/>
+                : val}
+            </div>
             <div style={{ fontSize:9.5, color:C.sub, fontWeight:600, letterSpacing:0.5, marginTop:3 }}>{cap}</div>
           </div>
         ))}
@@ -9776,6 +9782,29 @@ function pickFinishPhrase({ prs = 0, progressions = 0, volVsLast = 0, streakWeek
   return pick(FINISH_PHRASES.base);
 }
 
+// ── MOTION + TYPE TOKENS ─────────────────────────────────────────────────────
+// The app had grown NINE different easing curves, so no two transitions felt related. These are
+// the only curves anything should use now:
+//   EASE_NAV  — screen/tab movement. A decelerate curve with a long tail (the shape iOS uses),
+//               which is what reads as "buttery" versus the flatter ease-out it replaced.
+//   EASE_UI   — small state changes (fades, colour, height).
+//   EASE_POP  — deliberate overshoot, for press feedback and celebratory pops only.
+const EASE_NAV = "cubic-bezier(0.32, 0.72, 0, 1)";
+const EASE_UI = "cubic-bezier(0.4, 0, 0.2, 1)";
+const EASE_POP = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+
+// One section heading treatment for the whole app. These labels had drifted into two sizes and
+// two letter-spacings across History/Profile, which is the kind of thing that reads as "slightly
+// cheap" without anyone being able to say why.
+function SectionLabel({ children, C, style }) {
+  return (
+    <div style={{
+      fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase",
+      color: C.sub, fontFamily: F, marginBottom: 10, ...style,
+    }}>{children}</div>
+  );
+}
+
 // Which code the app is actually running, plus a manual update check. Without this there is no way
 // to tell whether an over-the-air update landed — the app looks identical either way, which made a
 // silent OTA failure impossible to diagnose. "Bundle" is the OTA payload (or "built-in" when the
@@ -12105,19 +12134,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           })()}
 
             {/* Quick Start */}
-          <button onClick={() => startWorkout(null)} style={{
-            width:"100%", background:C.text, color:C.bg,
-            border:"none", borderRadius:16, padding:"18px",
+          {/* Primary action. This used to be a solid white slab, which on a dark screen read as a
+              rendering glitch rather than emphasis. It now sits on the same surface as every other
+              card and earns its prominence from the accent icon + chevron instead of raw contrast. */}
+          <button onClick={() => startWorkout(null)} className="seshd-pressable" style={{
+            width:"100%", background:C.surface, color:C.text,
+            border:`1px solid ${C.border}`, borderRadius:16, padding:"18px",
             marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F,
           }}>
-            <div style={{ width:40, height:40, borderRadius:10, background:C.bg, color:C.text, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <Icon name="zap" size={20}/>
+            <div style={{ width:40, height:40, borderRadius:10, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="zap" size={20} color={C.onAccent}/>
             </div>
             <div style={{ textAlign:"left", flex:1 }}>
               <div style={{ fontSize:15, fontWeight:700, letterSpacing:-0.3 }}>Quick Start</div>
-              <div style={{ fontSize:12, opacity:0.6, marginTop:2 }}>Start an empty workout</div>
+              <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>Start an empty workout</div>
             </div>
-            <Icon name="chevron-right" size={18} color={C.bg}/>
+            <Icon name="chevron-right" size={18} color={C.sub}/>
           </button>
 
           {/* Calculators */}
@@ -12491,7 +12523,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             const maxVol = Math.max(...weekData.map(w => w.vol), 1);
             return weekData.some(w => w.vol > 0) ? (
               <div style={{ padding:"0 14px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>VOLUME BY WEEK ({(store.unit||"lbs").toUpperCase()})</div>
+                <SectionLabel C={C} style={{ marginBottom:12 }}>{`Volume by week (${store.unit||"lbs"})`}</SectionLabel>
                 <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80 }}>
                   {weekData.map((w, i) => (
                     <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
@@ -12513,7 +12545,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {/* PRs strip */}
           {Object.keys(store.prs||{}).length > 0 && (
             <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
-              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:10 }}>PERSONAL RECORDS</div>
+              <SectionLabel C={C} style={{ marginBottom:10 }}>Personal records</SectionLabel>
               <div style={{ display:"flex", flexDirection:"column", gap:0, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
                 {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i, arr) => (
                   <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", borderBottom:i<arr.length-1?`1px solid ${C.divider}`:"none" }}>
@@ -12529,7 +12561,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
           {/* Workout list */}
           <div style={{ padding:"14px 14px 0" }}>
-            <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:12 }}>WORKOUT LOG</div>
+            <SectionLabel C={C} style={{ marginBottom:12 }}>Workout log</SectionLabel>
             {Object.keys(store.history || {}).length > 0 && (
               <div style={{ marginBottom:14 }}>
                 <input value={histQuery} onChange={e => setHistQuery(e.target.value)}
@@ -17854,7 +17886,7 @@ function EdgeSwipeBack({ onBack, children, style }) {
   };
   return (
     <div ref={nodeRef} onTouchStart={start} onTouchMove={move} onTouchEnd={end} onTouchCancel={end}
-      style={{ ...style, transition: dragging ? "none" : "transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)", willChange:"transform" }}>
+      style={{ ...style, transition: dragging ? "none" : "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)", willChange:"transform" }}>
       {children}
     </div>
   );
@@ -20322,7 +20354,7 @@ function AppInner() {
            the containing block for any position:fixed descendant, which clips/mis-sizes nested
            modals — the same trap documented for the tab-swipe track. Without fill-mode the
            transform is gone the moment the 0.3s animation ends. */
-        .seshd-push-in { animation: seshd-push-in 0.3s cubic-bezier(0.25,0.46,0.45,0.94); }
+        .seshd-push-in { animation: seshd-push-in 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
         @media (prefers-reduced-motion: reduce) { .seshd-push-in { animation: none; } }
         @keyframes seshd-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         @keyframes seshd-fresh-pulse { 0%,100%{opacity:0.5;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.15)} }
@@ -21508,7 +21540,7 @@ function AppInner() {
                 // translateX(-33.3333%) requires marginLeft:-100% here, not -33.3333%.
                 marginLeft: "-100%",
                 transform: dragPx ? `translateX(${dragPx}px)` : "none",
-                transition: swipeRelease ? "transform 0.24s cubic-bezier(0.25,0.46,0.45,0.94)" : "none",
+                transition: swipeRelease ? "transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)" : "none",
                 willChange: isActive ? "transform" : "auto",
               }}
             >
@@ -21520,7 +21552,7 @@ function AppInner() {
               <div key={animKey} style={{
                 width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
                 animation: (prevTab && swipeX === 0 && !swipeRelease && tabSwitchSourceRef.current !== "swipe")
-                  ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.25,0.46,0.45,0.94)` : "none",
+                  ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s cubic-bezier(0.32, 0.72, 0, 1)` : "none",
               }}>
                 {TabBody(tab)}
               </div>
