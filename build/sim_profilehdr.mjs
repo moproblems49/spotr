@@ -100,6 +100,31 @@ await run("one", 1, 1, ({ qa, check }) => {
   const cover = back ? back.parentElement : null;
   check("the cover grows by the inset so 132px stays visible",
     !!cover && /safe-area-inset-top/.test(cover.getAttribute("style")||""), (cover&&cover.getAttribute("style")||"").slice(0,120));
+  // Swipe from the left edge to go back (the same EdgeSwipeBack the chat view uses). The screen
+  // early-returns outside the main shell, so it never had the shell's handlers and the back-swipe
+  // branch that lived in handleSwipeEnd was unreachable.
+  const panel = qa("div").find(d => /transition:\s*transform/.test(d.getAttribute("style")||"")
+    && /height:\s*100dvh/.test(d.getAttribute("style")||""));
+  check("the profile screen is wrapped in a swipe-back panel", !!panel, "no transform panel");
+  if (panel) {
+    const mk = (type, x) => { const ev = new window.Event(type, { bubbles:true, cancelable:true });
+      const t = { clientX:x, clientY:400, identifier:0, target:panel };
+      ev.touches = type === "touchend" ? [] : [t]; ev.changedTouches = [t]; return ev; };
+    // Starting mid-screen must NOT arm — only the left edge does, so horizontal scrollers inside
+    // the profile keep working.
+    act(()=>panel.dispatchEvent(mk("touchstart", 240)));
+    act(()=>panel.dispatchEvent(mk("touchmove", 340)));
+    check("a mid-screen drag does not arm the back gesture", !panel.style.transform || panel.style.transform === "", `transform="${panel.style.transform}"`);
+    act(()=>panel.dispatchEvent(mk("touchend", 340)));
+    // From the left edge it tracks the finger.
+    act(()=>panel.dispatchEvent(mk("touchstart", 10)));
+    act(()=>panel.dispatchEvent(mk("touchmove", 40)));
+    act(()=>panel.dispatchEvent(mk("touchmove", 130)));
+    check("an edge drag follows the finger", /translateX\(1[0-9]{2}px\)/.test(panel.style.transform||""), `transform="${panel.style.transform}"`);
+    act(()=>panel.dispatchEvent(mk("touchend", 130)));
+    check("releasing past the threshold slides it off", /translateX\(105%\)/.test(panel.style.transform||""), `transform="${panel.style.transform}"`);
+  }
+
   grammatical(check, "1 follower");
   // Singular must actually be reachable, or the check above passes vacuously.
   // No \b here: "1Follower" runs straight into the next stat's digit ("0Following"), and both

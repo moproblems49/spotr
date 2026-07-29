@@ -1,4 +1,4 @@
-// v178091716747
+// v178091716748
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -21170,7 +21170,11 @@ function AppInner() {
 
   if (profileUserId) {
     return (
-      <div style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
+      // Swipe from the left edge to go back, same as the chat view. This screen early-returns
+      // OUTSIDE the main shell, so it never had the shell's touch handlers — the back-swipe branch
+      // that used to sit in handleSwipeEnd could never fire (removed there; see the note).
+      <EdgeSwipeBack onBack={() => setProfileUserId(null)}
+        style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
         <ProfileScreen
           userId={profileUserId}
           store={store}
@@ -21203,7 +21207,7 @@ function AppInner() {
           onRefresh={handleRefresh}
           token={tokenRef.current}
         />
-      </div>
+      </EdgeSwipeBack>
     );
   }
 
@@ -21297,12 +21301,10 @@ function AppInner() {
   const passed = velocity > 0.18 || Math.abs(dx) > vw * 0.25;
   const idx = TABS_ORDER.indexOf(tab);
 
-  // Back-swipe on a nested user profile is handled separately (no co-move track).
-  if (dx > 0 && profileUserId) {
-    setSwipeX(0);
-    if (passed) setProfileUserId(null);
-    return;
-  }
+  // NOTE: there is deliberately no profileUserId branch here. A nested profile early-returns from
+  // AppInner before this shell renders, so its touches never reach these handlers — the branch that
+  // used to live here was dead code, which is why swiping back on a profile did nothing. That screen
+  // wraps itself in <EdgeSwipeBack> instead.
 
   const canGo = dx > 0 ? idx > 0 : idx < TABS_ORDER.length - 1;
   if (!passed || !canGo || dx === 0) {
