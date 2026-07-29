@@ -1,4 +1,4 @@
-// v178091716738
+// v178091716739
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4368,7 +4368,7 @@ function BodyBatteryChart({ store, fill, C }) {
   // computeBodyBattery) on each touchmove would jank the scrub on a real phone.
   const timeline = useMemo(() => computeBodyBatteryTimeline(store), [store]);
   if (!timeline?.points || timeline.points.length < 2) return null;
-  const { points, hasSleepData, sleepStartMs } = timeline;
+  const { points, hasSleepData, sleepStartMs, wakeTimeMs } = timeline;
   const W = 300, H = 110, PAD = 4;
   const tStart = points[0].ts, tSpan = Math.max(1, points[points.length - 1].ts - tStart);
   const tEnd = tStart + tSpan;
@@ -4413,6 +4413,13 @@ function BodyBatteryChart({ store, fill, C }) {
   // Bedtime marker — a small 💤 where last night's sleep began, but only when that moment
   // actually falls inside the visible 24h window (in the evening it hasn't happened yet).
   const sleepXPct = (sleepStartMs != null && sleepStartMs >= tStart && sleepStartMs <= tEnd) ? (xAt(sleepStartMs) / W) * 100 : null;
+  // Wake marker — the ☀️ end of the same night. Pairing it with 💤 turns the green stretch into a
+  // legible band ("this is the night we think you had") instead of a bedtime with no closing
+  // bracket, which is what makes a wrong window obvious at a glance rather than something you
+  // have to infer. Suppressed when it would collide with the 💤 (a very short window) so the two
+  // glyphs can't overlap into mush.
+  const wakeXPctRaw = (wakeTimeMs != null && wakeTimeMs >= tStart && wakeTimeMs <= tEnd) ? (xAt(wakeTimeMs) / W) * 100 : null;
+  const wakeXPct = (wakeXPctRaw != null && (sleepXPct == null || wakeXPctRaw - sleepXPct > 6)) ? wakeXPctRaw : null;
 
   // Hold-to-read: touch (primary, iOS) or hover (desktop) maps an x to the nearest curve
   // point and shows its number + clock time. Level colors match the headline thresholds.
@@ -4488,6 +4495,14 @@ function BodyBatteryChart({ store, fill, C }) {
                 filter:"grayscale(0.1)",
               }} aria-label="Sleep started">💤</span>
             )}
+            {/* Wake ☀️ — the closing bracket of the same night. */}
+            {wakeXPct != null && (
+              <span style={{
+                position:"absolute", top:2, left:`${Math.max(4, Math.min(96, wakeXPct))}%`,
+                transform:"translateX(-50%)", fontSize:13, lineHeight:1, pointerEvents:"none",
+                filter:"grayscale(0.1)",
+              }} aria-label="Woke up">☀️</span>
+            )}
             {/* Scrub readout — vertical guide, a dot on the curve, and a floating number+time. */}
             {scrub && (
               <>
@@ -4533,7 +4548,7 @@ function BodyBatteryChart({ store, fill, C }) {
         </div>
       )}
       <div style={{ fontSize:9.5, color:C.muted, marginTop:hasSleepData?6:4, lineHeight:1.4 }}>
-        Hold anywhere on the graph to read your battery at that time.{sleepXPct != null ? " 💤 marks when sleep began." : ""}
+        Hold anywhere on the graph to read your battery at that time.{sleepXPct != null ? (wakeXPct != null ? " 💤 and ☀️ mark when you fell asleep and woke up." : " 💤 marks when sleep began.") : (wakeXPct != null ? " ☀️ marks when you woke up." : "")}
       </div>
     </div>
   );

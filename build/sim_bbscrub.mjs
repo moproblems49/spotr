@@ -73,6 +73,13 @@ const svg = qa('svg').find(s => s.getAttribute("viewBox") === "0 0 300 110");
 check("24h Body Battery chart renders (svg viewBox 0 0 300 110)", !!svg, `svgs: ${qa('svg').length}`);
 const detailTxt = document.body.textContent || "";
 check("bedtime 💤 marker renders (sleep in window)", detailTxt.includes("💤"), `no zzz`);
+check("wake ☀️ marker renders (wake in window)", detailTxt.includes("☀"), `no sun`);
+// The pair has to read as a band: 💤 left of ☀️, both inside the plot.
+const markX = (lbl) => { const el = qa("span").find(x => x.getAttribute("aria-label") === lbl);
+  return el ? parseFloat((el.getAttribute("style")||"").match(/left:\s*([\d.]+)%/)?.[1]) : null; };
+const zzzX = markX("Sleep started"), sunX = markX("Woke up");
+check("💤 sits left of ☀️ (bedtime before wake)", zzzX != null && sunX != null && zzzX < sunX, `zzz=${zzzX}% sun=${sunX}%`);
+check("both markers sit inside the plot", zzzX >= 4 && zzzX <= 96 && sunX >= 4 && sunX <= 96, `zzz=${zzzX}% sun=${sunX}%`);
 check("hold-to-read hint copy present", /Hold anywhere on the graph/i.test(detailTxt));
 
 // Drive the scrub: stub the wrap rect (jsdom returns 0-width), dispatch touches at 3 x's.
