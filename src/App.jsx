@@ -1,4 +1,4 @@
-// v178091716741
+// v178091716742
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3133,10 +3133,22 @@ if (typeof window !== "undefined" && !window.__seshdErrHooked) {
 
 function parseRepRange(reps) {
   if (!reps) return null;
-  const s = String(reps).replace(/\s/g,"");
+  let s = String(reps).replace(/\s/g,"");
+  // Program days store reps as "4×8-12" / "3x5" — a SET COUNT then the rep target. This used to
+  // fall through to `null`, so double progression never ran for anything started from a program:
+  // suggestNextSet silently dropped to its no-range path and could only ever offer "+1 rep" or a
+  // bump at 10+ reps. Strip the leading count (only when a × / x separator makes it unambiguous,
+  // so a genuine "3-5" range is never mistaken for a set count).
+  s = s.replace(/^\d+[×x*]/i, "");
+  // Trailing words like "8-12 reps" or "5 each side".
+  s = s.replace(/[a-z].*$/i, "");
   // Range with dash or en-dash
   const m = s.match(/^(\d+)[–-](\d+)$/);
-  if (m) return { low: parseInt(m[1]), high: parseInt(m[2]) };
+  if (m) {
+    const low = parseInt(m[1]), high = parseInt(m[2]);
+    // A reversed range ("12-8") would make every comparison against `high` nonsense.
+    return { low: Math.min(low, high), high: Math.max(low, high) };
+  }
   // Single number
   const n = parseInt(s);
   if (!isNaN(n) && /^\d+$/.test(s)) return { low: n, high: n };
@@ -3789,6 +3801,47 @@ function detectDeloadNeeded(store, exName, unit) {
 
 // Progressive overload — double progression model
 // Returns { type, weight, reps, note, deltaWeight, deltaReps, reason }
+// The smallest jump a real gym can make. Everything else snaps to a multiple of this.
+function plateStep(unit) { return unit === "lbs" ? 5 : 2.5; }
+
+// How much to add, scaled to the load. A flat +5 lb is ~1.5% on a 315 deadlift (too timid, you
+// stall on the calendar not the bar) and 20% on a 25 lb lateral raise (impossible to sustain).
+// ~2.5% per session is the standard week-to-week jump; snap it to a real plate and clamp so the
+// suggestion never becomes a 4-plate leap on a heavy lift.
+function loadIncrement(weight, unit) {
+  const step = plateStep(unit);
+  const snapped = Math.round((weight * 0.025) / step) * step;
+  return Math.max(step, Math.min(step * 4, snapped));
+}
+
+// The last N sessions of one exercise, newest first, reduced to the set at `setIndex` (falling
+// back to that session's last working set). This is what makes the engine trend-aware instead of
+// judging everything off a single previous session — without it, three failed attempts at the same
+// weight each produce the same cheerful "+5" and the user never gets told to back off.
+function getExerciseTrend(store, exName, unit, setIndex = 0, n = 4) {
+  const out = [];
+  const dates = Object.keys(store.history || {}).sort().reverse();
+  const todayMs = new Date(dKey() + "T12:00:00").getTime();
+  for (const d of dates) {
+    if (out.length >= n) break;
+    for (const sess of Object.values(store.history[d] || {})) {
+      const ex = sess.exercises?.find(e => e.name === exName);
+      if (!ex) continue;
+      const working = (ex.sets || []).filter(s => s.type !== "warmup" &&
+        (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
+      if (!working.length) continue;
+      const s = working[setIndex] || working[working.length - 1];
+      const w = cvt(parseFloat(s.weight) || 0, sess.unit || "lbs", unit);
+      if (!w) continue;
+      const rpe = parseFloat(s.rpe);
+      out.push({ date: d, w, r: parseFloat(s.reps) || 0, rpe: (!isNaN(rpe) && rpe > 0) ? rpe : null,
+        daysSince: Math.max(0, Math.floor((todayMs - new Date(d + "T12:00:00").getTime()) / 86400000)) });
+      break;
+    }
+  }
+  return out;
+}
+
 function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
   const last = getLastExerciseSession(store, exName);
   if (!last) return null;
@@ -3800,7 +3853,17 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
 
   const lastWeight = setMatch.w;
   const lastReps = setMatch.r;
-  const inc = unit === "lbs" ? 5 : 2.5;
+  const step = plateStep(unit);
+  const inc = loadIncrement(lastWeight, unit);
+  const trend = getExerciseTrend(store, exName, unit, setIndex, 4);
+  const lastRpe = trend[0]?.rpe ?? null;
+  // RPE 9.5+ is a grinder — at or next to failure. Adding load on top of that is how people get
+  // hurt and how a program stalls; consolidate instead. RPE <=6.5 means there was plenty left.
+  const grinder = lastRpe != null && lastRpe >= 9.5;
+  const easy = lastRpe != null && lastRpe <= 6.5;
+  // On light isolation work the smallest plate is a huge relative jump (5 lb on a 20 lb raise is
+  // 25%). Earn it with reps first, and only jump once you're clear of the top of the range.
+  const jumpIsBig = lastWeight > 0 && (step / lastWeight) > 0.10;
 
   // Deload if it's been 14+ days
   if (last.daysSince >= 14) {
@@ -3815,12 +3878,58 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
     };
   }
 
+  // STALL — three sessions at the same weight with no rep improvement. Three sessions at the same
+  // weight while reps climb (5 → 6 → 7) is double progression working exactly as intended, so the
+  // rep test is what separates a stall from normal progress. Backing off 10% and building again
+  // beats a fourth identical failed attempt, which is all the old engine could ever suggest.
+  if (trend.length >= 3) {
+    const [a, b, c] = trend; // newest first
+    const sameWeight = Math.abs(a.w - b.w) < 0.01 && Math.abs(b.w - c.w) < 0.01;
+    const noRepGain = a.r <= c.r;
+    const notYetAtTop = !range || a.r < range.high;
+    if (sameWeight && noRepGain && notYetAtTop) {
+      const dl = Math.max(step, Math.round((lastWeight * 0.9) / step) * step);
+      return {
+        type: "deload",
+        weight: dl,
+        reps: range ? range.high : Math.max(lastReps, 1),
+        note: `−${Math.round(lastWeight - dl)} ${unit}`,
+        deltaWeight: dl - lastWeight,
+        reason: `Stuck at ${lastWeight} ${unit} for 3 sessions — drop 10% and build back`,
+      };
+    }
+  }
+
   // Double progression — judged PER-SET against the matching set from last session.
   // Old logic checked `every set hit the range top`, which meant a fatigued last set
   // (e.g. 5 reps on a 6-8 range) blocked the suggestion to add weight on set 1 — even
   // when set 1 cleanly hit 8 last time. Real progression is per-set.
   if (range) {
     const setHitTop = lastReps >= range.high;
+    // Hit the top but it was a grinder — bank the rep quality before adding load.
+    if (setHitTop && grinder) {
+      return {
+        type: "match",
+        weight: lastWeight,
+        reps: lastReps,
+        note: "repeat",
+        deltaReps: 0,
+        reason: `Last one was an RPE ${lastRpe} grind — repeat it before adding weight`,
+      };
+    }
+    // Light isolation work: keep earning reps until you're clearly past the top of the range,
+    // because the smallest jump available is a >10% increase in load.
+    if (setHitTop && jumpIsBig && lastReps < range.high + 2) {
+      const target = Math.min(range.high + 2, lastReps + 1);
+      return {
+        type: "reps",
+        weight: lastWeight,
+        reps: target,
+        note: "same weight",
+        deltaReps: target - lastReps,
+        reason: `+${step} ${unit} is a big jump here — get ${target} first`,
+      };
+    }
     if (setHitTop) {
       // The matching set hit the top of the range last time → add weight.
       // If they went way past the top (e.g. 15 reps on a 5-8 range), bump weight
@@ -3836,13 +3945,17 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
           reason: `Way above target reps — add ${inc} ${unit}, keep reps high`,
         };
       }
+      // Plenty left in the tank — take a double jump rather than creeping.
+      const bump = easy ? Math.min(step * 4, inc * 2) : inc;
       return {
         type: "weight",
-        weight: lastWeight + inc,
+        weight: lastWeight + bump,
         reps: range.low,
-        note: `+${inc} ${unit}`,
-        deltaWeight: inc,
-        reason: `Hit ${range.high} on this set — add ${inc} ${unit}`,
+        note: `+${bump} ${unit}`,
+        deltaWeight: bump,
+        reason: easy
+          ? `Hit ${range.high} at RPE ${lastRpe} — add ${bump} ${unit}`
+          : `Hit ${range.high} on this set — add ${bump} ${unit}`,
       };
     } else {
       // Same weight, push for more reps — but never suggest a jump of more than 2 reps
@@ -3862,8 +3975,9 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
     }
   }
 
-  // No range: simple bump on +2 reps
-  if (lastReps >= 10) {
+  // No range: simple bump on +2 reps — unless it was a grind, or the only available jump is
+  // disproportionate to the load (same reasoning as the ranged path above).
+  if (lastReps >= 10 && !grinder && !jumpIsBig) {
     return {
       type: "weight",
       weight: lastWeight + inc,
@@ -3871,6 +3985,16 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
       note: `+${inc} ${unit}`,
       deltaWeight: inc,
       reason: `Strong last time — add ${inc} ${unit}`,
+    };
+  }
+  if (lastReps >= 10 && grinder) {
+    return {
+      type: "match",
+      weight: lastWeight,
+      reps: lastReps,
+      note: "repeat",
+      deltaReps: 0,
+      reason: `RPE ${lastRpe} last time — repeat before adding weight`,
     };
   }
   return {
@@ -4353,7 +4477,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
