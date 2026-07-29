@@ -1,4 +1,4 @@
-// v178091716735
+// v178091716736
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9889,14 +9889,18 @@ function AppVersionRow({ C }) {
 // band so the labels have room without overflowing the card.
 function TrendSparkline({ series, color, C, format = (v) => String(Math.round(v)) }) {
   if (!series || series.length < 2) return null;
-  const W = 120, TOP = 11, BOT = 27, H = 38;
+  // PAD_X insets the plot from its own box. Without it the line ran edge-to-edge and its 2px
+  // round-capped stroke painted right into the card's border — which reads as the chart being cut
+  // off even though the box fits. It also means the first/last points sit far enough in that their
+  // min/max labels can centre over their dots instead of being clamped away from them.
+  const W = 120, PAD_X = 12, TOP = 11, BOT = 27, H = 38;
   const lo = Math.min(...series), hi = Math.max(...series), rng = Math.max(0.1, hi - lo);
-  const xAt = (i) => (i / (series.length - 1)) * W;
+  const xAt = (i) => PAD_X + (i / (series.length - 1)) * (W - PAD_X * 2);
   const yAt = (v) => BOT - ((v - lo) / rng) * (BOT - TOP);
   const pts = series.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(" ");
   const loIdx = series.indexOf(lo), hiIdx = series.indexOf(hi);
-  // Keep labels inside the card even when the extreme sits at either end.
-  const clampX = (x) => Math.max(13, Math.min(W - 13, x));
+  // Now only a hair of clamping is needed, so a label stays visually attached to its own dot.
+  const clampX = (x) => Math.max(9, Math.min(W - 9, x));
   const flat = hi - lo < 0.05;
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible", flexShrink:0 }}>
