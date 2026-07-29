@@ -1,4 +1,4 @@
-// v178091716745
+// v178091716746
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2932,6 +2932,18 @@ function getPrev(store, exName, si, unit) {
 }
 
 // Get the most recent COMPLETED session for an exercise (across all sets)
+// Working sets only: marked done, and not a warmup. Volume and set counts have to agree
+// everywhere, and they didn't — the finish summary excluded warmups while History, the feed,
+// Profile and the weekly stats all counted them, so the SAME workout read a few thousand pounds
+// heavier depending on which screen you were looking at. One definition, used by all of them.
+function workingDone(sets) { return (sets || []).filter(s => s.done && s.type !== "warmup"); }
+// Volume in the session's OWN unit (callers convert if they need to) — matches what every one of
+// these call sites was already doing with raw weights.
+function sessionVolume(sess) {
+  return (sess?.exercises || []).reduce((a, ex) => a + workingDone(ex.sets)
+    .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+}
+
 function getLastExerciseSession(store, exName) {
   const dates = Object.keys(store.history||{}).sort().reverse();
   for (const d of dates) {
@@ -4506,7 +4518,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, alreadyWroteHealth, markWroteHealth }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -4773,9 +4785,31 @@ async function requestHealthPermission() {
 // Tries the common dataType spellings across capacitor health plugins; returns what sticks.
 // Shape: { date: "YYYY-MM-DD", steps: number|null, activeKcal: number|null }
 // Write a finished workout to Apple Health so it shows in Fitness app + Activity rings.
-async function writeWorkoutToHealth(startMs, durationSecs, totalVolumeLbs) {
+// Every finish used to write this unconditionally, but a finish can legitimately happen more than
+// once for the SAME session: "Undo finish & edit" then finish again is a normal, deliberate flow,
+// and a glitched-then-retried finish is one Mo actually hit. The workout_history row is idempotent
+// (the sid is reused so it upserts), but these calories were not — so the same session could be
+// written into Apple Health twice, permanently inflating the Move ring with data we don't own and
+// can't clean up. Keyed on the sid and persisted, because the retry can follow a reload.
+const HEALTH_WRITTEN_KEY = "seshd_health_written";
+function alreadyWroteHealth(sid) {
+  if (!sid) return false;
+  try { return (JSON.parse(localStorage.getItem(HEALTH_WRITTEN_KEY) || "[]")).includes(sid); }
+  catch { return false; }
+}
+function markWroteHealth(sid) {
+  if (!sid) return;
+  try {
+    const prev = JSON.parse(localStorage.getItem(HEALTH_WRITTEN_KEY) || "[]");
+    if (prev.includes(sid)) return;
+    // Keep the list short — only recent sessions can plausibly be re-finished.
+    localStorage.setItem(HEALTH_WRITTEN_KEY, JSON.stringify([...prev, sid].slice(-50)));
+  } catch {}
+}
+async function writeWorkoutToHealth(startMs, durationSecs, totalVolumeLbs, sid) {
   const H = nativeHealth();
   if (!H) return;
+  if (alreadyWroteHealth(sid)) return;
   try {
     await requestHealthAuth(H);
     const startDate = new Date(startMs).toISOString();
@@ -4785,6 +4819,9 @@ async function writeWorkoutToHealth(startMs, durationSecs, totalVolumeLbs) {
     // only saveSample. Write the session's active energy so training still counts toward Apple
     // Health activity/rings, which is what the write permission is for.
     if (kcal > 0 && H.saveSample) {
+      // Mark BEFORE awaiting: a second finish can fire while this is still in flight, and two
+      // concurrent writes are exactly the case the guard exists to stop.
+      markWroteHealth(sid);
       await H.saveSample({ dataType: "calories", value: kcal, unit: "kilocalorie", startDate, endDate }).catch(() => {});
     }
   } catch (e) {}
@@ -10360,11 +10397,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // Memoized running volume — recomputed only when session changes, not on every keystroke
   const runningVolume = useMemo(() => {
     if (!session) return 0;
-    return session.exercises.reduce(
-      (a, ex) => a + (ex.sets || []).filter(s => s.done).reduce(
-        (b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0
-      ), 0
-    );
+    return sessionVolume(session);
   }, [session]);
 
   // Listen for code-import requests from feed posts
@@ -11068,7 +11101,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       try {
         const volLbs = unit === "lbs" ? (workoutSummary?.volumeRaw || 0) : cvt(workoutSummary?.volumeRaw || 0, "kg", "lbs");
         const wStartMs = wStart || (Date.now() - recordedDuration * 1000);
-        writeWorkoutToHealth(wStartMs, recordedDuration, volLbs);
+        writeWorkoutToHealth(wStartMs, recordedDuration, volLbs, sid);
         // If the user wore an Apple Watch, pull this session's heart-rate summary and attach it to
         // the saved workout (avg/peak/min). Fire-and-forget — no watch data just leaves it off.
         readWorkoutHeartRate(wStartMs, Date.now()).then(hr => {
@@ -12875,7 +12908,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 </div>
                 {Object.entries(sessions).map(([sid, sess], i) => {
                   const done = sess.exercises?.reduce((a,ex) => a+(ex.sets?.filter(s=>s.done).length||0),0)||0;
-                  const vol = sess.exercises?.reduce((a,ex) => a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0)||0;
+                  const vol = sessionVolume(sess);
                   const prExercises = sess.exercises?.filter(ex => {
                     if (!ex.name) return false;
                     const maxW = Math.max(0,...(ex.sets||[]).filter(s=>s.done&&s.weight).map(s=>parseFloat(s.weight)||0));
@@ -14844,7 +14877,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                   </div>
                 ) : recents.map((sess,i) => {
                   const done = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);
-                  const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+                  const vol = sessionVolume(sess);
                   return (
                     <div key={i} onClick={async () => {
                       if (!token) return;
@@ -15536,8 +15569,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       if (dayMs < weekAgo) continue;
       const daySessions = Object.values(history[dk] || {});
       sessions += daySessions.length;
-      volume += daySessions.reduce((a, s) => a + (s.exercises||[]).reduce((b, ex) =>
-        b + (ex.sets||[]).filter(st=>st.done).reduce((c,st) => c + (parseFloat(st.weight)||0)*(parseFloat(st.reps)||0), 0), 0), 0);
+      volume += daySessions.reduce((a, s) => a + sessionVolume(s), 0);
     }
     const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
     return { sessions, volume: Math.round(volume), streak: ws.count, prs: Object.keys(store.prs||{}).length, loaded:true };
@@ -15562,9 +15594,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       if (dayMs >= weekAgo) {
         sessions += 1;
         const exercises = row.exercises || [];
-        volume += exercises.reduce((a, ex) => a + (ex.sets||[]).filter(s => s.done).reduce(
-          (b, s) => b + (parseFloat(s.weight)||0) * (parseFloat(s.reps)||0), 0
-        ), 0);
+        volume += sessionVolume(row);
       }
     });
     // Convert to viewer's unit so the volume number is meaningful across friends
@@ -16131,7 +16161,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     Object.values(sessions).map(sess => {
       const key = `${sess.dayName}|${date}`;
       if (sharedWorkoutKeys.has(key)) return null;
-      const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+      const vol = sessionVolume(sess);
       return {
         id: "hist_"+date+"_"+sess.dayName,
         userId,
@@ -17323,7 +17353,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
               ) : (
                 <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
                   {recentWorkouts.map((w, i) => {
-                    const vol = (w.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+                    const vol = sessionVolume(w);
                     const done = (w.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);
                     const isSelected = selectedWorkout === w;
                     return (
