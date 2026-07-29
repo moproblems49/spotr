@@ -57,6 +57,23 @@ const napsOnly = [frag(at(0,13,0), at(0,13,25)), frag(at(0,17,0), at(0,18,10))];
 const no = pickSleepBlock(napsOnly);
 check("naps-only falls back to the longest nap", hhmm(no.startMs) === "17:00" && hhmm(no.endMs) === "18:10", `${hhmm(no.startMs)} → ${hhmm(no.endMs)}`);
 
+// AUDIT REGRESSION: two sources (Apple Watch + a sleep app) writing the SAME night must not be
+// summed — that reported one 8h night as 16h of sleep inside an 8h window.
+const oneSource = [];
+for (let t = at(-1,23,0); t < at(0,7,0); t += 2*H) oneSource.push(frag(t, t + 2*H));
+const dup = pickSleepBlock([...oneSource, ...oneSource.map(f => ({ ...f }))]);
+const solo = pickSleepBlock(oneSource);
+check("duplicate sources don't inflate sleep hours", Math.abs(dup.minutes - solo.minutes) < 1, `solo ${(solo.minutes/60).toFixed(1)}h vs dup ${(dup.minutes/60).toFixed(1)}h`);
+check("duplicate sources keep the right window", hhmm(dup.startMs) === "23:00" && hhmm(dup.endMs) === "07:00", `${hhmm(dup.startMs)} → ${hhmm(dup.endMs)}`);
+check("sleep never exceeds the window it sits in", dup.minutes <= (dup.endMs - dup.startMs)/60000 + 1, `${(dup.minutes/60).toFixed(1)}h in a ${((dup.endMs-dup.startMs)/H).toFixed(1)}h window`);
+// Partially overlapping (not identical) samples also only count once.
+const overlap = [frag(at(-1,23,0), at(0,3,0)), frag(at(0,1,0), at(0,7,0))];
+const ov = pickSleepBlock(overlap);
+check("partial overlap counts the union, not the sum", Math.abs(ov.minutes/60 - 8) < 0.1, `${(ov.minutes/60).toFixed(1)}h (sum would be 10)`);
+// A sample reporting LESS sleep than its own span (aggregate row net of time awake) is respected.
+const netOfAwake = [{ startMs: at(-1,23,0), endMs: at(0,7,0), minutes: 400 }]; // 8h window, 6.7h asleep
+check("a row reporting less than its span keeps its own number", Math.abs(pickSleepBlock(netOfAwake).minutes - 400) < 1, `${pickSleepBlock(netOfAwake).minutes}`);
+
 // ── Degenerate input ─────────────────────────────────────────────────────────────────────────
 check("empty input returns null", pickSleepBlock([]) === null);
 check("null input returns null", pickSleepBlock(null) === null);
@@ -76,10 +93,15 @@ const badStart = NOW - 15*H, badEnd = NOW - 2*H;     // 13h window around 7.5h o
 const goodStart = NOW - 10.5*H, goodEnd = NOW - 2*H; // 8.5h window around 7.5h of sleep = a night
 const bad = computeBodyBatteryTimeline(mkStore(badStart, badEnd));
 const good = computeBodyBatteryTimeline(mkStore(goodStart, goodEnd));
+// Assert on the SPAN the chart ended up using, not on the start time: the 10pm fallback can land
+// within half an hour of the fixture's start depending on the wall-clock hour the sim runs at,
+// which made a distance-from-fixture check flaky rather than wrong.
+const spanOf = (t) => (t.wakeTimeMs - t.sleepStartMs) / H;
 check("chart REJECTS a persisted 13h window that claims only 7.5h of sleep",
-  bad && Math.abs(bad.sleepStartMs - badStart) > 30*60000, `chart used ${hhmm(bad.sleepStartMs)} (fixture said ${hhmm(badStart)})`);
+  bad && Math.abs(spanOf(bad) - 13) > 1, `chart used a ${spanOf(bad).toFixed(1)}h window`);
 check("chart still accepts a plausible 8.5h window",
-  good && Math.abs(good.sleepStartMs - goodStart) < 60000, `chart used ${hhmm(good.sleepStartMs)} (fixture said ${hhmm(goodStart)})`);
+  good && Math.abs(spanOf(good) - 8.5) < 0.1 && Math.abs(good.sleepStartMs - goodStart) < 60000,
+  `chart used a ${spanOf(good).toFixed(1)}h window starting ${hhmm(good.sleepStartMs)}`);
 
 console.log(`\n${fails===0?"ALL PASS":fails+" FAIL(S)"}`);
 process.exit(fails?1:0);

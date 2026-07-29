@@ -1,4 +1,4 @@
-// v178091716742
+// v178091716743
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3882,18 +3882,21 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
   // weight while reps climb (5 → 6 → 7) is double progression working exactly as intended, so the
   // rep test is what separates a stall from normal progress. Backing off 10% and building again
   // beats a fourth identical failed attempt, which is all the old engine could ever suggest.
-  if (trend.length >= 3) {
+  // Requires a rep range: "stuck" means repeatedly failing to reach a target, and without a range
+  // there IS no target — holding 100x12 on an accessory three weeks running is a deliberate steady
+  // load, not a failure, and telling that user to drop 10% is the opposite of the right advice.
+  if (trend.length >= 3 && range) {
     const [a, b, c] = trend; // newest first
     const sameWeight = Math.abs(a.w - b.w) < 0.01 && Math.abs(b.w - c.w) < 0.01;
     const noRepGain = a.r <= c.r;
-    const notYetAtTop = !range || a.r < range.high;
+    const notYetAtTop = a.r < range.high;
     if (sameWeight && noRepGain && notYetAtTop) {
       const dl = Math.max(step, Math.round((lastWeight * 0.9) / step) * step);
       return {
         type: "deload",
         weight: dl,
-        reps: range ? range.high : Math.max(lastReps, 1),
-        note: `−${Math.round(lastWeight - dl)} ${unit}`,
+        reps: range.high,
+        note: `−${+(lastWeight - dl).toFixed(1)} ${unit}`,
         deltaWeight: dl - lastWeight,
         reason: `Stuck at ${lastWeight} ${unit} for 3 sessions — drop 10% and build back`,
       };
@@ -4459,16 +4462,25 @@ function pickSleepBlock(samples) {
     .filter(s => s && s.startMs != null && s.endMs != null && s.endMs > s.startMs)
     .sort((a, b) => a.startMs - b.startMs);
   if (!clean.length) return null;
+  // Track the reported minutes AND the union of the intervals actually covered. More than one
+  // source can write the same night (Apple Watch plus a sleep app, each with its own sourceName),
+  // and simply summing turned one 8h night into "16h of sleep in an 8h window". Taking the smaller
+  // of the two is right in both directions: it discards duplicate coverage, and it still respects a
+  // sample that reports LESS sleep than its own span (an aggregate row net of time awake).
   const blocks = [];
   for (const s of clean) {
     const b = blocks[blocks.length - 1];
     if (b && s.startMs - b.endMs <= SLEEP_GAP_MIN * 60000) {
+      b.reported += s.minutes || 0;
+      b.coveredMs += Math.max(0, s.endMs - Math.max(s.startMs, b.covEnd));
+      b.covEnd = Math.max(b.covEnd, s.endMs);
       b.endMs = Math.max(b.endMs, s.endMs);
-      b.minutes += s.minutes || 0;
     } else {
-      blocks.push({ startMs: s.startMs, endMs: s.endMs, minutes: s.minutes || 0 });
+      blocks.push({ startMs: s.startMs, endMs: s.endMs, reported: s.minutes || 0,
+        coveredMs: s.endMs - s.startMs, covEnd: s.endMs });
     }
   }
+  for (const b of blocks) b.minutes = Math.min(b.reported, b.coveredMs / 60000);
   const sane = blocks.filter(b => (b.endMs - b.startMs) <= MAX_SLEEP_SPAN_H * 36e5);
   const pool = sane.length ? sane : blocks;
   const main = pool.filter(b => b.minutes >= MIN_MAIN_SLEEP_H * 60);
@@ -18665,16 +18677,17 @@ function AppInner() {
   }, []);
   const [prevTab, setPrevTab] = useState(null);
   const TABS_ORDER = ["feed", "tracker", "discover", "profile"];
-  // "swipe" source skips the slide-in keyframe on the next render — the drag/glide already
-  // animated the transition, so replaying the keyframe caused a visible double-animation.
-  const tabSwitchSourceRef = useRef("tap");
   // The slide-in has to be a ONE-SHOT signal, not a condition derived from swipe state. It used to
   // render as `prevTab && swipeX === 0 && !swipeRelease && source !== "swipe"`, which is still TRUE
   // once the animation has long finished — so it sat there permanently satisfied. A small swipe
   // that never switched tabs flipped it to "none" for the drag and back afterwards, and going from
   // animation-name:none to a name RESTARTS the keyframe: the screen visibly slid in again even
   // though nothing had changed. That was the "screen rerenders if I swipe a little and let go".
-  const [slideAnim, setSlideAnim] = useState(null); // "left" | "right" | null, cleared once played
+  // An OBJECT, not a bare "left"/"right" string. Two switches the same way inside 320ms set the
+  // same string, React bails on the identical value, the [slideAnim] effect never re-runs, and the
+  // FIRST switch's timer stays pending — disarming the second slide part-way through. A fresh
+  // object every time guarantees the effect re-runs and the timer restarts.
+  const [slideAnim, setSlideAnim] = useState(null); // { dir: "left" | "right" } | null
   function switchTab(t, source = "tap") {
     // Nav taps land while the messages overlay is up (the nav floats above it) — close it
     // so the tap actually shows the chosen tab instead of switching underneath the overlay.
@@ -18683,9 +18696,9 @@ function AppInner() {
     // A swipe already animated the transition with the drag/glide — replaying the keyframe on top
     // of it was a visible double-animation, so only non-swipe switches arm the slide.
     if (t !== tab && source !== "swipe") {
-      setSlideAnim(TABS_ORDER.indexOf(tab) < TABS_ORDER.indexOf(t) ? "left" : "right");
+      setSlideAnim({ dir: TABS_ORDER.indexOf(tab) < TABS_ORDER.indexOf(t) ? "left" : "right" });
     }
-    tabSwitchSourceRef.current = source; setPrevTab(tab); setTab(t);
+    setPrevTab(tab); setTab(t);
   }
   // Disarm once the keyframe has had time to play, so nothing can re-trigger it later.
   useEffect(() => {
@@ -21858,7 +21871,7 @@ function AppInner() {
               <div key={animKey} style={{
                 width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
                 animation: slideAnim
-                  ? `${slideAnim === "left" ? "slideInLeft" : "slideInRight"} 0.3s ${EASE_NAV}` : "none",
+                  ? `${slideAnim.dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s ${EASE_NAV}` : "none",
               }}>
                 {TabBody(tab)}
               </div>

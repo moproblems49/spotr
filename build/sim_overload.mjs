@@ -77,6 +77,32 @@ const twice = mkStore("Bench Press", [
 ]);
 check("two flat sessions do not deload yet", suggestNextSet(twice, "Bench Press", "3×5-8", "lbs", 0)?.type !== "deload");
 
+// AUDIT REGRESSION: a stall needs a rep RANGE. Without one there is no target to fail against, so
+// holding a steady load on an accessory (Quick Workout logs reps as "") is deliberate, not stuck —
+// the first version deloaded it, which is the opposite of the right advice.
+const steady = mkStore("Cable Fly", [
+  { daysAgo: 3,  sets: sets(100, 12) },
+  { daysAgo: 10, sets: sets(100, 12) },
+  { daysAgo: 17, sets: sets(100, 12) },
+]);
+for (const target of ["", null, undefined, "AMRAP"]) {
+  const r = suggestNextSet(steady, "Cable Fly", target, "lbs", 0);
+  check(`no rep range (${JSON.stringify(target)}) never deloads`, r?.type !== "deload", `got ${r?.type} "${r?.reason}"`);
+}
+check("no-range steady load still progresses", suggestNextSet(steady, "Cable Fly", "", "lbs", 0)?.type === "weight");
+// ...while the SAME history with a range is judged on the range (12 is the top → add weight).
+check("with a range, the same history adds weight", suggestNextSet(steady, "Cable Fly", "3×10-12", "lbs", 0)?.type === "weight");
+
+// AUDIT REGRESSION: the deload note rounded a 2.5 kg drop to "-3 kg".
+const kgStall = mkStore("Curl", [
+  { daysAgo: 3,  sets: sets(25, 8) },
+  { daysAgo: 10, sets: sets(25, 8) },
+  { daysAgo: 17, sets: sets(25, 8) },
+], "kg");
+const rKg = suggestNextSet(kgStall, "Curl", "3×10-12", "kg", 0);
+check("kg deload note matches the actual drop", rKg?.type === "deload" && rKg.note === `−${25 - rKg.weight} kg`,
+  `weight ${rKg?.weight}, note "${rKg?.note}"`);
+
 // ── 3. RPE awareness ─────────────────────────────────────────────────────────────────────────
 const grind = mkStore("Back Squat", [{ daysAgo: 4, sets: sets(225, 8, 10) }]);
 const sGrind = suggestNextSet(grind, "Back Squat", "3×6-8", "lbs", 0);

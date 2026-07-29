@@ -115,6 +115,20 @@ check("small swipe does NOT switch tabs", tabAfter === tabBefore, `${tabBefore} 
 check("small swipe does NOT re-arm the slide mid-release", !/slideIn/.test(animMidRelease||""), `animation="${animMidRelease}"`);
 check("small swipe does NOT replay the slide after settling", !/slideIn/.test(animAfterSwipe||""), `animation="${animAfterSwipe}"`);
 
+// AUDIT REGRESSION: two switches the SAME direction inside 320ms used to set an identical
+// slideAnim value, so React bailed, the effect never re-ran, and the FIRST switch's timer disarmed
+// the SECOND slide part-way through. Tab order is feed/tracker/discover/profile, so Home → Discover
+// → Profile is two rightward moves in a row.
+click(navBtn("Home")); await settle(400);
+click(navBtn("Discover"));
+await settle(200);
+click(navBtn("Profile"));      // same direction, well inside the 320ms disarm window
+await settle(140);             // the first switch's timer has now come due
+check("a second same-direction switch is not cut short by the first one's timer",
+  /slideIn/.test(centerAnim()||""), `animation="${centerAnim()}"`);
+await settle(400);
+check("...and it still disarms once IT has played", !/slideIn/.test(centerAnim()||""), `animation="${centerAnim()}"`);
+
 // ── A real swipe still works ─────────────────────────────────────────────────────────────────
 await swipe([20, 80, 160, 220], 60); // 55% of the width — over the distance threshold
 await settle(500);
