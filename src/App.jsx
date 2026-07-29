@@ -1,4 +1,4 @@
-// v178091716743
+// v178091716744
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4489,7 +4489,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -4773,6 +4773,28 @@ async function writeWorkoutToHealth(startMs, durationSecs, totalVolumeLbs) {
   } catch (e) {}
 }
 
+// Cumulative HealthKit quantities (steps, active energy) are recorded by EVERY device that
+// happens to be tracking — an iPhone in your pocket and an Apple Watch on your wrist both write
+// their own step samples for the same walk. The plugin reads via HKSampleQuery, which returns the
+// raw samples from all of them with no merging (Apple's own HKStatisticsQuery deduplicates by
+// source priority; a plain sample query does not). Summing them straight was double-counting:
+// inflated step/calorie totals, and — worse — the Body Battery bedtime gate treats an hour with
+// 120+ steps as proof you were AWAKE, so phantom steps push the estimated bedtime later and
+// corrupt the sleep window.
+// Keep the single most complete source rather than adding them together, which is the same call
+// Apple's priority merge effectively makes.
+function dominantSource(samples) {
+  const bySource = new Map();
+  for (const s of samples || []) {
+    const k = s.sourceName || "";
+    bySource.set(k, (bySource.get(k) || 0) + (parseFloat(s.value) || 0));
+  }
+  if (bySource.size <= 1) return samples || [];
+  let best = null, bestTotal = -Infinity;
+  for (const [k, total] of bySource) if (total > bestTotal) { bestTotal = total; best = k; }
+  return (samples || []).filter(s => (s.sourceName || "") === best);
+}
+
 async function readTodayActivity() {
   const H = nativeHealth();
   if (!H) return null;
@@ -4788,7 +4810,7 @@ async function readTodayActivity() {
         const r = await H.readSamples({ dataType, startDate: startIso, endDate: endIso, limit: 1000 });
         const samples = (r && r.samples) || [];
         if (!samples.length) continue;
-        const total = samples.reduce((a, s) => a + (parseFloat(s.value) || 0), 0);
+        const total = dominantSource(samples).reduce((a, s) => a + (parseFloat(s.value) || 0), 0);
         if (total > 0) return Math.round(total);
       } catch (e) { /* try next spelling */ }
     }
@@ -4823,7 +4845,7 @@ async function readHourlyActivity() {
         const r = await H.readSamples({ dataType, startDate: startIso, endDate: endIso, limit: 2000 });
         const samples = (r && r.samples) || [];
         if (!samples.length) continue;
-        for (const s of samples) {
+        for (const s of dominantSource(samples)) {
           const v = parseFloat(s.value) || 0;
           if (!v) continue;
           const t = s.startDate || s.endDate;
