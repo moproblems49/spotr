@@ -1,4 +1,4 @@
-// v178091716740
+// v178091716741
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13851,7 +13851,16 @@ function niceAxis(min, max, targetTicks = 4) {
   return { lo, hi, values };
 }
 
+// Hold-to-read is implemented HERE rather than at the strength-score call site so all three charts
+// that use this component (exercise progress, body-log metrics, strength score history) get it from
+// one place. Same interaction as BodyBatteryChart: press/drag to pin the nearest point and read its
+// date + value. Per-frame setState only re-renders this small chart, so the house ref-write rule
+// buys nothing — React has to paint the tooltip and the highlighted dot anyway.
 function ExerciseVolumeChart({ data, unit, C }) {
+  const [scrub, setScrub] = useState(null); // { i, xPct, yPct } | null while pressed
+  const wrapRef = useRef(null);
+  // Hooks must come before the early return below, or a chart going from empty to populated
+  // changes the hook count between renders.
   if (!data || data.length === 0) return (
     <div style={{ textAlign:"center", padding:"30px 0", color:C.sub, fontSize:13 }}>
       No history yet — log this exercise to see your progress
@@ -13881,7 +13890,40 @@ function ExerciseVolumeChart({ data, unit, C }) {
   const pathD = data.map((d, i) => `${i===0?"M":"L"}${px(i)},${py(d.value)}`).join(" ");
   const areaD = `${pathD} L${px(data.length-1)},${PAD.t+iH} L${PAD.l},${PAD.t+iH} Z`;
 
+  // Map a screen x onto the nearest data point. The svg is width:100% over a fixed viewBox, so
+  // scale the pointer offset by the rendered width before comparing against viewBox coordinates.
+  const scrubTo = (clientX) => {
+    const el = wrapRef.current; if (!el) return;
+    const r = el.getBoundingClientRect(); if (!r.width) return;
+    const vbX = ((clientX - r.left) / r.width) * W;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < data.length; i++) { const d = Math.abs(px(i) - vbX); if (d < bestD) { bestD = d; best = i; } }
+    setScrub({ i: best, xPct: (px(best) / W) * 100, yPct: (py(data[best].value) / H) * 100 });
+  };
+  const endScrub = () => setScrub(null);
+  // Prefer a real date over the axis shorthand — the strength chart's last point is labelled "Now"
+  // and its monthly points just "Jul", which is exactly what holding is meant to disambiguate.
+  const fmtPointDate = (d) => {
+    if (!d?.date) return d?.label || "";
+    const dt = new Date(String(d.date).length <= 10 ? d.date + "T12:00:00" : d.date);
+    return isNaN(dt) ? (d.label || "") : dt.toLocaleDateString("en", { weekday:"short", month:"short", day:"numeric" });
+  };
+  const fmtVal = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+
   return (
+    <div
+      ref={wrapRef}
+      data-no-tab-swipe
+      style={{ position:"relative", touchAction:"pan-y", cursor:"crosshair" }}
+      onTouchStart={(e) => scrubTo(e.touches[0].clientX)}
+      onTouchMove={(e) => scrubTo(e.touches[0].clientX)}
+      onTouchEnd={endScrub}
+      onTouchCancel={endScrub}
+      onMouseDown={(e) => scrubTo(e.clientX)}
+      onMouseMove={(e) => { if (scrub) scrubTo(e.clientX); }}
+      onMouseUp={endScrub}
+      onMouseLeave={endScrub}
+    >
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
       {/* Y gridlines + labels at nice round values — fills out the axis instead of a bare min/max */}
       {ticks.map((tv, i) => {
@@ -13905,7 +13947,29 @@ function ExerciseVolumeChart({ data, unit, C }) {
       {/* X labels — first and last */}
       <text x={PAD.l} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[0]?.label}</text>
       {data.length > 1 && <text x={px(data.length-1)} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[data.length-1]?.label}</text>}
+      {/* Hold guide — drawn inside the svg so it lands in viewBox space with the dots */}
+      {scrub && (
+        <>
+          <line x1={px(scrub.i)} y1={PAD.t} x2={px(scrub.i)} y2={PAD.t+iH} stroke={C.text} strokeWidth="1" opacity="0.3"/>
+          <circle cx={px(scrub.i)} cy={py(data[scrub.i].value)} r="5" fill={C.accent} stroke={C.bg} strokeWidth="2"/>
+        </>
+      )}
     </svg>
+    {/* Readout — clamped away from both edges so it can't be clipped by the card */}
+    {scrub && (
+      <div style={{
+        position:"absolute", top:`${Math.max(scrub.yPct, 12)}%`, left:`${Math.max(18, Math.min(82, scrub.xPct))}%`,
+        transform:"translate(-50%, -120%)", pointerEvents:"none", whiteSpace:"nowrap",
+        background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"4px 8px", textAlign:"center",
+        boxShadow:"0 4px 12px rgba(0,0,0,0.25)",
+      }}>
+        <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1.1 }}>
+          {fmtVal(data[scrub.i].value)}{unit ? ` ${unit}` : ""}
+        </div>
+        <div style={{ fontSize:9.5, color:C.sub, marginTop:1 }}>{fmtPointDate(data[scrub.i])}</div>
+      </div>
+    )}
+    </div>
   );
 }
 
@@ -13945,6 +14009,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
 
   const chartData = historyData.map(p => ({
     label: p.label,
+    date: p.date,
     value: chartMode === "weight" ? p.weight : chartMode === "e1rm" ? p.e1rm : p.volume
   }));
   const totalSets = historyData.reduce((a, p) => a + p.sets, 0);
@@ -15499,7 +15564,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
       const d = new Date(e.date + "T12:00:00");
       const label = `${d.getMonth()+1}/${d.getDate()}`;
       const value = metric === "weight" ? e.weight : e.measurements?.[metric];
-      return value != null && value !== "" ? { label, value: parseFloat(value) } : null;
+      return value != null && value !== "" ? { label, date: e.date, value: parseFloat(value) } : null;
     })
     .filter(Boolean);
 
@@ -15743,7 +15808,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         unit_, sex_, d.getTime()
       );
       if (!snap.ready) return null;
-      return { value: snap.score, label: i === snapshots.length - 1 ? "Now" : (weekly ? `${d.getMonth()+1}/${d.getDate()}` : MONTHS[d.getMonth()]) };
+      return { value: snap.score, date: cutoff, label: i === snapshots.length - 1 ? "Now" : (weekly ? `${d.getMonth()+1}/${d.getDate()}` : MONTHS[d.getMonth()]) };
     }).filter(Boolean);
     return pts.length >= 2 ? pts : null;
   }, [isMe, store.history, store.bodyLog, store.prEvents, store.strengthSex, displayUnit, store.unit]);
