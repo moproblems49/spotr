@@ -1,4 +1,4 @@
-// v178091716737
+// v178091716738
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4141,7 +4141,18 @@ function computeBodyBatteryTimeline(store) {
   // Night-shift schedules work automatically once Apple Health is connected.
   const recSS = store.recovery?.sleepStart ? new Date(store.recovery.sleepStart) : null;
   const recSE = store.recovery?.sleepEnd ? new Date(store.recovery.sleepEnd) : null;
-  const realWindow = recSS && recSE && recSE > recSS
+  // Defence in depth for a bad window already written to the store: before pickSleepBlock existed,
+  // an evening nap merged with last night could persist as "7am → 8pm", and it would keep driving
+  // this chart until the next HealthKit sync overwrote it. Length alone can't catch that (13h is
+  // not obviously absurd, and night-shift sleep is legitimately a daytime block) — but a MERGED
+  // window is always far longer than the sleep it claims to contain, so cross-check the two.
+  // A real night is its sleep hours plus a little tossing and turning; 13h of window around
+  // 7.5h of sleep is two blocks stitched together.
+  const recSpanH = (recSS && recSE) ? (recSE - recSS) / 36e5 : 0;
+  const recSleepH = store.recovery?.sleepHours;
+  const spanPlausible = recSpanH >= 1 && recSpanH <= MAX_SLEEP_SPAN_H
+    && (!recSleepH || recSpanH <= recSleepH + 3);
+  const realWindow = recSS && recSE && recSE > recSS && spanPlausible
     && (now - recSE) < 20 * 36e5 && recSE <= now;
   let sleepStart, wakeTime;
   if (realWindow) {
@@ -4310,7 +4321,39 @@ function computeBodyBatteryTimeline(store) {
   }
   return clipped.length >= 2 ? { points: clipped, wakeTimeMs: wakeTime.getTime(), sleepStartMs: sleepStart.getTime(), hasSleepData } : null;
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight }; // for the sim harness — pure functions
+// Reduce a pile of HealthKit sleep samples to ONE night. HealthKit hands back many short
+// per-stage samples, and an evening nap (or a brief "asleep" detection while you sat still)
+// lands in the same lookback as last night. The old rule — keep everything ending within 14h of
+// the newest end, then take min(start)/max(end) — MERGED those into a window that described
+// neither: last night's tail fragment started ~7am and the evening nap ended ~8pm, so the app
+// reported "you slept 7am to 8pm". Group into contiguous blocks instead and pick one.
+const SLEEP_GAP_MIN = 60;      // a gap this short is a brief wake INSIDE one night, not a new sleep
+const MIN_MAIN_SLEEP_H = 2.5;  // anything shorter is a nap, never "last night"
+const MAX_SLEEP_SPAN_H = 16;   // no real night spans longer — that's duplicated/garbage data
+function pickSleepBlock(samples) {
+  const clean = (samples || [])
+    .filter(s => s && s.startMs != null && s.endMs != null && s.endMs > s.startMs)
+    .sort((a, b) => a.startMs - b.startMs);
+  if (!clean.length) return null;
+  const blocks = [];
+  for (const s of clean) {
+    const b = blocks[blocks.length - 1];
+    if (b && s.startMs - b.endMs <= SLEEP_GAP_MIN * 60000) {
+      b.endMs = Math.max(b.endMs, s.endMs);
+      b.minutes += s.minutes || 0;
+    } else {
+      blocks.push({ startMs: s.startMs, endMs: s.endMs, minutes: s.minutes || 0 });
+    }
+  }
+  const sane = blocks.filter(b => (b.endMs - b.startMs) <= MAX_SLEEP_SPAN_H * 36e5);
+  const pool = sane.length ? sane : blocks;
+  const main = pool.filter(b => b.minutes >= MIN_MAIN_SLEEP_H * 60);
+  // Most RECENT real sleep wins, so night-shift schedules work on their own. If the lookback
+  // only caught naps, take the longest rather than inventing a night out of a 20-minute doze.
+  if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
+  return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
+}
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -4723,25 +4766,20 @@ async function readRecovery() {
     const asleepSamples = sleep.filter(s => {
       const st = (s.sleepState || "").toLowerCase();
       return st === "asleep" || st === "rem" || st === "deep" || st === "light";
-    }).map(s => ({
-      ...s,
-      _startMs: s.startDate ? new Date(s.startDate).getTime() : null,
-      _endMs: s.endDate ? new Date(s.endDate).getTime() : null,
-    }));
-    const latestEnd = Math.max(0, ...asleepSamples.map(s => s._endMs || 0));
-    const night = latestEnd > 0 ? asleepSamples.filter(s => (s._endMs || 0) >= latestEnd - 14 * 36e5) : asleepSamples;
-    let mins = 0, minStart = Infinity, maxEnd = 0;
-    for (const s of night) {
+    }).map(s => {
+      const startMs = s.startDate ? new Date(s.startDate).getTime() : null;
+      const endMs = s.endDate ? new Date(s.endDate).getTime() : null;
+      const span = (startMs != null && endMs != null && endMs > startMs) ? (endMs - startMs) / 60000 : 0;
+      // `value` is minutes on aggregate rows but the per-stage rows carry a stage code, so trust
+      // it only when it doesn't exceed the sample's own span. Either shape lands on real minutes.
       const v = parseFloat(s.value);
-      if (!isNaN(v)) mins += v;                         // value is minutes
-      else if (s._startMs && s._endMs) mins += (s._endMs - s._startMs) / 60000;
-      if (s._startMs) minStart = Math.min(minStart, s._startMs);
-      if (s._endMs) maxEnd = Math.max(maxEnd, s._endMs);
-    }
-    if (mins > 0) out.sleepHours = Math.round((mins / 60) * 10) / 10;
-    if (isFinite(minStart) && maxEnd > 0) {
-      out.sleepStart = new Date(minStart).toISOString();
-      out.sleepEnd = new Date(maxEnd).toISOString();
+      return { startMs, endMs, minutes: (!isNaN(v) && v > 0) ? (span ? Math.min(v, span) : v) : span };
+    });
+    const block = pickSleepBlock(asleepSamples);
+    if (block) {
+      if (block.minutes > 0) out.sleepHours = Math.round((block.minutes / 60) * 10) / 10;
+      out.sleepStart = new Date(block.startMs).toISOString();
+      out.sleepEnd = new Date(block.endMs).toISOString();
     }
   }
 
