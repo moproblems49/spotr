@@ -1,4 +1,4 @@
-// v178091716744
+// v178091716745
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1865,6 +1865,17 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               {showBatteryDetail && (() => {
                 const bb = computeBodyBattery(store);
                 const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
+                // Steps and active energy are shown here — next to the drain they cause — and
+                // NOWHERE else in the app. Seshd isn't a step tracker (your phone, the Fitness
+                // rings and Health all already do that); the reason to surface them is that they
+                // silently steer two things you CAN see: the drain curve, and the estimated
+                // bedtime the gate derives from hourly steps. When a duplicate-source bug made
+                // them read ~2x high, nothing on screen could have given it away. Same argument
+                // as the ☀️ wake marker: show the input so a wrong input is visible.
+                // Gated on the sync being from TODAY — the same freshness check computeBodyBattery
+                // uses — so a stale reading can't be presented as today's.
+                const act = store.activity;
+                const actFresh = !!(act && act.date === dKey());
                 const rows = [
                   { label: "Morning charge", value: `${bb.charge0}`, detail: bb.hasRecovery ? "From your HRV + sleep" : "Estimated from recent training" },
                   bb.baselineDrain ? { label: "Awake drain", value: `−${bb.baselineDrain}`, detail: "Normal energy use through the day" } : null,
@@ -1874,6 +1885,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   // both for the readiness math — surfacing them costs no extra permission.
                   rec?.restingHr ? { label: "Resting HR", value: `${rec.restingHr}`, detail: "bpm — from Apple Health" } : null,
                   rec?.hrv ? { label: "HRV", value: `${Math.round(rec.hrv)}`, detail: rec.hrvBaseline ? `ms — your baseline is ${Math.round(rec.hrvBaseline)}` : "ms — from Apple Health" } : null,
+                  (actFresh && act.steps) ? { label: "Steps", value: act.steps.toLocaleString(), detail: "Today — from Apple Health" } : null,
+                  (actFresh && act.activeKcal) ? { label: "Active energy", value: `${act.activeKcal}`, detail: "kcal today — from Apple Health" } : null,
                 ].filter(Boolean);
                 const tip = bb.level >= 80 ? "Well recovered — a great day to push hard." : bb.level >= 60 ? "Decent energy. Train smart, warm up well." : bb.level >= 40 ? "Moderate fatigue — consider a lighter session." : "Low battery. Prioritise sleep and recovery today.";
                 return createPortal((
@@ -1890,7 +1903,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       <BodyBatteryChart store={store} fill={fill} C={C} />
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
                         {rows.map((r, i) => (
-                          <div key={i} style={{ background:C.surface, borderRadius:12, padding:"11px 12px" }}>
+                          // The stat count varies 4-7 with what Apple Health has recorded, so an odd
+                          // count is normal rather than an edge case. Let a trailing orphan span both
+                          // columns instead of sitting next to dead space.
+                          <div key={i} style={{ background:C.surface, borderRadius:12, padding:"11px 12px",
+                            gridColumn: (i === rows.length - 1 && rows.length % 2 === 1) ? "span 2" : "auto" }}>
                             <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.6, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
                             <div style={{ fontFamily:MONO, fontSize:20, fontWeight:800, marginTop:4, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent }}>{r.value}</div>
                             <div style={{ fontSize:10, color:C.sub, marginTop:3, lineHeight:1.35 }}>{r.detail}</div>
