@@ -1,4 +1,4 @@
-// v178091716746
+// v178091716747
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16439,7 +16439,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     <PullToRefresh onRefresh={onRefresh} C={C}>
     <div style={{ paddingBottom:20 }}>
       {/* Cover photo — user image with gradient fallback. Tap "Edit cover" (own profile) to change. */}
-      <div style={{ height:132, marginBottom:-28, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
+      {/* The status bar OVERLAYS the WebView (setOverlaysWebView), so the cover bleeds up behind
+          the clock on purpose — but its buttons must not. Grow the cover by the inset to keep 132px
+          of it actually visible, and push the buttons below the clock. Without this the back
+          chevron rendered underneath the time (Mo hit it opening a profile from a followers list). */}
+      <div style={{ height:"calc(132px + env(safe-area-inset-top))", marginBottom:-28, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
         {user?.coverUrl
           ? <img src={user.coverUrl} alt="" onClick={() => setShowCoverView(true)}
               style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${user?.coverPos ?? 50}%`, cursor:"pointer" }}/>
@@ -16450,12 +16454,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))", pointerEvents:"none" }}/>
         )}
         {onBack && (
-          <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:8, left:10, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:19, fontSize:19, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
+          <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 8px)", left:10, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:19, fontSize:19, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
         )}
         {isMe && (
           <>
             <input ref={coverRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleCover}/>
-            <button onClick={() => coverRef.current?.click()} style={{ position:"absolute", top:8, right:10, background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, padding:"5px 11px", fontSize:11, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Edit cover</button>
+            <button onClick={() => coverRef.current?.click()} style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 8px)", right:10, background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, padding:"5px 11px", fontSize:11, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Edit cover</button>
           </>
         )}
       </div>
@@ -16471,10 +16475,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             )}
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>Workouts</div></div>
+            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>{posts.length === 1 ? "Workout" : "Workouts"}</div></div>
             <button onClick={() => setListModal("followers")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
-              <div style={{ fontSize:12, color:C.sub }}>Followers</div>
+              <div style={{ fontSize:12, color:C.sub }}>{followers === 1 ? "Follower" : "Followers"}</div>
             </button>
             <button onClick={() => setListModal("following")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={following2} duration={500}/></div>
