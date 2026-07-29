@@ -127,6 +127,21 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   stay true at rest — a half-swipe that changed nothing flipped it off and back on, and the screen
   visibly slid in again. Drive animations from a one-shot signal that disarms itself. (Conditions
   that are *false* at rest, like `refreshing ? spin : none`, are fine.)
+- **Volume/set counts have ONE definition: `sessionVolume()` / `workingDone()`.** Never inline
+  another `sets.filter(s => s.done).reduce(...)`. Seven inline copies had drifted apart — the
+  finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats
+  counted them, so the same workout read ~34% heavier in History than on the summary that saved it.
+  A working set is `done && type !== "warmup"`; sets with no `type` are legacy working sets and
+  must still count.
+- **Anything written OUT of the app must be idempotent per session id.** A workout can be finished
+  more than once on purpose — "Undo finish & edit" then finish again — and a glitched finish gets
+  retried. `workout_history` handles this by reusing the sid so the row upserts; the Apple Health
+  calorie write did NOT, so the Move ring got the session twice (external data, permanent, not ours
+  to clean up). `writeWorkoutToHealth` now guards on the sid via `seshd_health_written`, persisted
+  (a retry can follow a reload) and marked BEFORE the await (two concurrent finishes).
+- **The tell for a double-count is a SUM.** When sweeping, the reads that take a median or the most
+  recent sample (HRV, resting HR) can't be inflated by duplicates — only the ones that add things
+  up. Steps, active energy, sleep minutes and workout volume were all wrong; the medians were fine.
 - **HealthKit sample reads are NOT deduplicated.** `readSamples` uses `HKSampleQuery`, which returns
   every source's samples — an iPhone and an Apple Watch both record steps/energy for the same walk,
   and multiple apps can write sleep for the same night. Apple's `HKStatisticsQuery` merges by source
@@ -148,6 +163,35 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 - Memory/safety: never reduce the app's own safety behavior; this is a consumer fitness app.
 
 ## Current state / roadmap (as of last session)
+
+**★★★ OTA ERA — DEVICE FEEDBACK SHIPS SAME-DAY, NO MAC (July 29, 2026).** OTA is live and proven:
+six bundles published in one session (`2026-07-29a` → `f`), each reaching Mo's phone after two
+relaunches. Nothing this session needed a Mac. Shipped, newest last:
+- **Body Battery sleep window** — Mo saw "bed 7am, up 8pm". HealthKit returns per-stage sleep
+  fragments, and the old rule kept everything ending within 14h of the newest end then took
+  min(start)/max(end), so an evening nap merged with the tail of last night into a window
+  describing neither. `pickSleepBlock()` groups into contiguous blocks (≤60min gap = a brief wake)
+  and takes the most recent real sleep; night shift still works. The chart also rejects an
+  already-persisted bad window by cross-checking span against reported sleep hours.
+- **☀️ wake marker** beside the 💤, so the green stretch reads as a band and a wrong window is
+  visible instead of inferred.
+- **Tab-swipe replay fix** — a half-swipe that changed nothing replayed the screen's slide-in (see
+  the CSS-animation convention above).
+- **Hold-to-read on every progress chart** (`ExerciseVolumeChart`, so strength score + exercise
+  progress + body-log all got it); all three data sources now carry a real `date`.
+- **Progressive overload rewritten** — and note `parseRepRange` couldn't parse `"4×8-12"`, the
+  format program days actually use, so double progression had NEVER run for a program workout.
+  Now trend-aware (stall → deload, requires a rep range), load-scaled increments (~2.5%, snapped to
+  a real plate), and RPE-aware (no loading a grinder; double jump at RPE ≤6.5).
+- **Steps + active energy surfaced** in the Body Battery sheet only — the app is not a step
+  tracker, but these steer the drain curve and the bedtime gate, and were invisible while ~2× wrong.
+- **Two audit rounds + an app-wide sweep** for the bug classes, not just the instances. Found:
+  accessory deload false-positive, duplicate-source step double-count, warmups inflating volume on
+  every screen but the finish summary, and duplicate Apple Health calorie writes. All four are in
+  the Conventions list above as rules.
+**Sim battery is 16 and green — `node build/run_sims.mjs`.** New this session: `sim_sleepblock`,
+`sim_swipenoop`, `sim_chartscrub`, `sim_overload`, `sim_stepsbox`, `sim_dupsource`,
+`sim_doublecount`, `sim_setswipe`, plus `bodymap_tip`/`bodymap_full` checkers.
 
 **★★ POST-TESTFLIGHT DEVICE-FEEDBACK ERA (July 20-21, 2026) — Mo testing on his phone, reporting
 bugs live; each fix below is committed + pushed to main and rides the NEXT build/OTA.** A real
@@ -385,10 +429,13 @@ the code side; goes live after ONE more Mac build (see next-Mac-day checklist be
   plugin/capability/entitlement still requires a real Mac build + TestFlight upload — and the
   FIRST build containing the updater plugin itself is exactly that.
 
-**NEXT MAC DAY checklist (one-time, activates OTA):** `git pull && npm install &&
-npm run build && npx cap sync ios` (with .env.local present) → verify the plugin list shows
-`@capgo/capacitor-updater` → bump Build number → Archive → Distribute to TestFlight. From then
-on, app-code updates ship OTA from any sandbox session; the Mac is only for native changes.
+**~~NEXT MAC DAY checklist (one-time, activates OTA)~~ — ✅ DONE.** The installed build carries
+`@capgo/capacitor-updater` and OTA is device-verified: six bundles shipped to Mo's phone on
+July 29 alone. **No Mac is needed for app-code changes any more** — publish per the recipe in
+`api/app-update.js` and it reaches installed phones after two relaunches. The Mac is now needed
+ONLY for: a new native plugin/capability/entitlement, a build for App Store submission, or a
+TestFlight build refresh once the current one nears its 90-day expiry. (Adding a new TestFlight
+tester to the EXISTING build does NOT need a Mac.)
 
 ### MAC DAY — ✅ COMPLETE (July 19-20, 2026; historical checklist below)
 Everything that needs a Mac, in the order to do it. Code/server side is DONE for all of these.
