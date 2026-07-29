@@ -1,4 +1,4 @@
-// v178091716736
+// v178091716737
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1955,11 +1955,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const s = rec.vo2MaxSeries && rec.vo2MaxSeries.length >= 2 ? rec.vo2MaxSeries : null;
                     const d = rec.vo2MaxDelta || 0;
                     const up = d > 0.05, down = d < -0.05;
-                    const col = up ? "#4ade80" : down ? "#f59e0b" : C.sub;
+                    const col = up ? "#4ade80" : down ? "#f59e0b" : C.accent;   // steady = accent, never grey
                     // VO₂ Max carries one decimal (45.2), so keep it in the range labels.
                     const spark = s ? <TrendSparkline series={s} color={col} C={C} format={v => v.toFixed(1)}/> : null;
                     return (
-                      <div style={{ width:"100%", maxWidth:340, margin:"8px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                      <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"8px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.vo2Max}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>ml/kg·min</span></div>
@@ -1974,9 +1974,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   {rec.restingHr != null && rec.rhrSeries && rec.rhrSeries.length >= 2 && (() => {
                     const s = rec.rhrSeries, d = rec.rhrTrendDelta || 0;
                     const down = d < -0.5, up = d > 0.5;
-                    const col = down ? "#4ade80" : up ? "#f59e0b" : C.sub;
+                    const col = down ? "#4ade80" : up ? "#f59e0b" : C.accent;   // steady = accent, never grey
                     return (
-                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                      <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · trend</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
