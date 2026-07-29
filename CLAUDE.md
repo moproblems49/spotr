@@ -53,7 +53,13 @@ sandbox network policy (use MCP, not curl). Vercel note: pushes to main DO deplo
 policy page turned out to be pure browser cache (incognito confirmed live), don't chase deploy ghosts.
 
 ## Verification methodology (how we catch regressions)
-There are jsdom simulation scripts that mount the real app bundle and exercise flows. Before running them, rebuild the ESM bundle (stale bundle = false failures):
+**Run the whole battery with one command: `node build/run_sims.mjs`** (~40s). It rebuilds the
+bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
+skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
+code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
+
+There are jsdom simulation scripts that mount the real app bundle and exercise flows. To run one by
+hand, rebuild the ESM bundle first (stale bundle = false failures):
 ```
 npx esbuild src/App.jsx --bundle --format=esm --loader:.jsx=jsx --jsx=automatic \
   --outfile=build/app.mjs --external:react --external:react-dom \
@@ -106,6 +112,27 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 - Helpers: `posNum()` (input sanitize), `LBS_PER_KG` (=2.2046), `cvt()` (unit conversion), `EXERCISE_ALIASES` (dedup), `IS_DEV` (dev-only logging).
 - **Number inputs use `type="text"` + `inputMode`, never `type="number"`** — `type="number"` triggers the iOS autofill pill. Keep it this way.
 - **Touch/swipe:** React's synthetic touch listeners are passive (preventDefault is a no-op). The tab swipe relies on `touch-action: pan-y` on the root container. **Never swap the DOM structure mid-gesture** — that orphans the touch on iOS and freezes the drag (this broke the co-move twice). The current co-move uses a stable 3-panel track `[prev|current|next]` where the center (touched) node never unmounts.
+- **Identical `setState` values are a silent no-op — never let one own a timer.** Setting state to
+  the value React already committed makes it bail: the component doesn't re-render AND any
+  `useEffect` keyed on that state does NOT re-run, so a timer the effect owns is never reset. This
+  shipped twice: the tab slide-in held a bare `"left"`/`"right"`, so two switches the same way
+  inside 320ms left the FIRST switch's timer to disarm the second animation part-way through. If a
+  state value is a *signal that something happened* rather than a description of what something is,
+  make it unique per occurrence — an object (`{ dir }`), or a counter (`b => b + 1`, the pattern
+  `prBurst` already uses correctly). Same root cause as the ref-write trap in the gesture note
+  below: both are `Object.is` bail-outs.
+- **A CSS animation retriggers whenever `animation-name` goes `none` → a name.** So an animation
+  driven by a *condition* rather than a one-shot event replays every time anything toggles that
+  condition. The tab slide-in used `prevTab && swipeX === 0 && !swipeRelease && …`, all of which
+  stay true at rest — a half-swipe that changed nothing flipped it off and back on, and the screen
+  visibly slid in again. Drive animations from a one-shot signal that disarms itself. (Conditions
+  that are *false* at rest, like `refreshing ? spin : none`, are fine.)
+- **HealthKit sample reads are NOT deduplicated.** `readSamples` uses `HKSampleQuery`, which returns
+  every source's samples — an iPhone and an Apple Watch both record steps/energy for the same walk,
+  and multiple apps can write sleep for the same night. Apple's `HKStatisticsQuery` merges by source
+  priority; this doesn't. Summing raw samples double-counts. Use `dominantSource()` for cumulative
+  quantities (keeps the single most complete source) and union-of-intervals for durations (see
+  `pickSleepBlock`). Both bugs shipped: ~2× steps, and one 8h night reported as 16h.
 - **Gesture perf pattern (house style — follow this for any NEW drag/swipe code):** don't call `setState` on every `touchmove`/`mousemove` frame, it re-renders the whole screen per frame. Instead: call `setState` exactly once on the first frame that crosses a real threshold (flips the CSS `transition` off via a render and mounts/reveals anything needed), then every later frame writes directly to a ref'd DOM node's `.style` (transform/opacity/height/etc), then on gesture end read the **live ref value** (not the possibly-stale state var) to decide the outcome and commit it back via one final `setState`. Used in `PullToRefresh`, `SetRow`, `StoryViewer`, `InsightCards`, `ProfileScreen`'s cover-drag, and the feed/tab-swipe in `AppInner`. Two traps this pattern has actually hit: (1) if the final reset `setState` value is ever equal (via `Object.is`) to the last value React already committed, React skips the DOM write and a directly-ref-written style gets stuck — make sure the first-frame commit is always meaningfully non-rest so the final reset always differs (see `StoryViewer`'s `settleBack()` helper for the case where it doesn't); (2) **mouse drags need `window`-level `mousemove`/`mouseup` listeners, not element-level ones** — `onMouseMove`/`onMouseUp` JSX props only fire while the cursor is physically over that element, so a drag that exits a small drop target before the button is released would silently freeze state at the first frame (this happened to the cover-photo drag; fixed by adding/removing `window.addEventListener` pairs in the start/end handlers instead).
 - **Any `position:fixed` overlay rendered inside the tab-swipe track MUST `createPortal` to
   `document.body`.** The track's CSS transform creates a containing block (very visibly on iOS),
