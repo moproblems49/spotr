@@ -1,4 +1,4 @@
-// v178091716739
+// v178091716740
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18479,13 +18479,31 @@ function AppInner() {
   // "swipe" source skips the slide-in keyframe on the next render — the drag/glide already
   // animated the transition, so replaying the keyframe caused a visible double-animation.
   const tabSwitchSourceRef = useRef("tap");
+  // The slide-in has to be a ONE-SHOT signal, not a condition derived from swipe state. It used to
+  // render as `prevTab && swipeX === 0 && !swipeRelease && source !== "swipe"`, which is still TRUE
+  // once the animation has long finished — so it sat there permanently satisfied. A small swipe
+  // that never switched tabs flipped it to "none" for the drag and back afterwards, and going from
+  // animation-name:none to a name RESTARTS the keyframe: the screen visibly slid in again even
+  // though nothing had changed. That was the "screen rerenders if I swipe a little and let go".
+  const [slideAnim, setSlideAnim] = useState(null); // "left" | "right" | null, cleared once played
   function switchTab(t, source = "tap") {
     // Nav taps land while the messages overlay is up (the nav floats above it) — close it
     // so the tap actually shows the chosen tab instead of switching underneath the overlay.
     if (showMessages) { setShowMessages(false); refreshMsgUnread(); }
     if (t !== tab) { haptic("tab"); track("tab_viewed", { tab: t }); }
+    // A swipe already animated the transition with the drag/glide — replaying the keyframe on top
+    // of it was a visible double-animation, so only non-swipe switches arm the slide.
+    if (t !== tab && source !== "swipe") {
+      setSlideAnim(TABS_ORDER.indexOf(tab) < TABS_ORDER.indexOf(t) ? "left" : "right");
+    }
     tabSwitchSourceRef.current = source; setPrevTab(tab); setTab(t);
   }
+  // Disarm once the keyframe has had time to play, so nothing can re-trigger it later.
+  useEffect(() => {
+    if (!slideAnim) return;
+    const id = setTimeout(() => setSlideAnim(null), 320);
+    return () => clearTimeout(id);
+  }, [slideAnim]);
 
   // When user taps an Import button on a feed code, switch to tracker and re-dispatch
   useEffect(() => {
@@ -21189,9 +21207,7 @@ function AppInner() {
       {/* CONTENT — 3-panel co-move track [prev|current|next]; see comment below for details.
           The center panel never unmounts mid-gesture (that's what froze the drag on iOS before). */}
       {(() => {
-        const prevIdx = TABS_ORDER.indexOf(prevTab);
         const curIdx = TABS_ORDER.indexOf(tab);
-        const dir = prevIdx < curIdx ? "left" : "right";
         const animKey = tab + "_" + (prevTab || "");
         const isDragging = swipeStart.current.type === "horizontal";
 
@@ -21652,8 +21668,8 @@ function AppInner() {
               {/* CENTER (current tab) — always mounted; this is the touched node */}
               <div key={animKey} style={{
                 width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
-                animation: (prevTab && swipeX === 0 && !swipeRelease && tabSwitchSourceRef.current !== "swipe")
-                  ? `${dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s ${EASE_NAV}` : "none",
+                animation: slideAnim
+                  ? `${slideAnim === "left" ? "slideInLeft" : "slideInRight"} 0.3s ${EASE_NAV}` : "none",
               }}>
                 {TabBody(tab)}
               </div>
