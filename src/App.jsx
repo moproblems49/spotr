@@ -1,4 +1,4 @@
-// v178091716752
+// v178091716753
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8684,6 +8684,26 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   );
 });
 
+// One draggable exercise card in the program-day editor. Takes its contents as a FUNCTION so it
+// can hand back the drag-handle props — the handle is the muscle tile, not the whole card, because
+// the card is full of text fields (see the note at the call site).
+function SortableEditorCard({ id, CARD, BORD, isDark, children }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div ref={setNodeRef} style={{
+      transform: CSS.Transform.toString(transform), transition,
+      marginBottom:12, background:CARD, borderRadius:16, overflow:"visible",
+      border:`1px solid ${isDragging ? "#2563EB" : BORD}`,
+      position:"relative", zIndex: isDragging ? 100 : 1,
+      boxShadow: isDragging
+        ? "0 16px 36px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.10)"
+        : (isDark ? "none" : "0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)"),
+    }}>
+      {children({ ref: setActivatorNodeRef, ...attributes, ...listeners })}
+    </div>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // PROGRAM DETAIL VIEW
 // ═════════════════════════════════════════════════════════════════════════════
@@ -8733,7 +8753,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
       {/* Top bar — this view is a fullscreen overlay anchored at top:0, so it owns the status-bar
           area itself (the app's own top bar is behind it). Without the inset the Save button and
           program name sit under the clock/battery. */}
-      <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"calc(env(safe-area-inset-top) + 14px) 18px 14px", flexShrink:0 }}>
+      <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"calc(env(safe-area-inset-top) + 6px) 16px 10px", flexShrink:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <button onClick={onBack} style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
@@ -8858,49 +8878,44 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
       )}
 
 
-      {/* Day name + Start */}
-      <div style={{ background:isDark?"#111":"#fff", borderBottom:`1px solid ${BORD}`, padding:"12px 18px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+      {/* Day name + actions. The two ‹ › buttons that used to lead this row MOVED THE DAY within
+          the program and then followed it with setActiveDay — so the screen was byte-identical
+          afterwards and they read as dead buttons. Day order is already draggable on the program's
+          day cards, where you can actually see it happen, so they're gone. That frees the width
+          the Start button was being pushed off the screen edge by (the name input also lacked
+          minWidth:0, so it refused to shrink below its intrinsic size). */}
+      <div style={{ background:isDark?"#111":"#fff", borderBottom:`1px solid ${BORD}`, padding:"9px 16px", display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
         {(localProg.days||[]).length > 1 && (
-          <div style={{ display:"flex", gap:2, flexShrink:0 }}>
-            <button onClick={() => {
-              if (activeDay === 0) return;
-              const ds = [...localProg.days]; [ds[activeDay], ds[activeDay-1]] = [ds[activeDay-1], ds[activeDay]];
-              patch({ ...localProg, days: ds }); setActiveDay(activeDay-1); haptic("tap");
-            }} disabled={activeDay === 0} aria-label="Move day left" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color: activeDay === 0 ? SUB : TXT, fontSize:13, cursor: activeDay === 0 ? "default" : "pointer", fontFamily:F, opacity: activeDay === 0 ? 0.4 : 1 }}>‹</button>
-            <button onClick={() => {
-              if (activeDay === localProg.days.length-1) return;
-              const ds = [...localProg.days]; [ds[activeDay], ds[activeDay+1]] = [ds[activeDay+1], ds[activeDay]];
-              patch({ ...localProg, days: ds }); setActiveDay(activeDay+1); haptic("tap");
-            }} disabled={activeDay === localProg.days.length-1} aria-label="Move day right" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color: activeDay === localProg.days.length-1 ? SUB : TXT, fontSize:13, cursor: activeDay === localProg.days.length-1 ? "default" : "pointer", fontFamily:F, opacity: activeDay === localProg.days.length-1 ? 0.4 : 1 }}>›</button>
-            {confirmDelDay ? (
-              <>
-                <button onClick={() => {
-                  const ds = localProg.days.filter((_, i) => i !== activeDay);
-                  const newIdx = Math.min(activeDay, ds.length - 1);
-                  patch({ ...localProg, days: ds });
-                  setActiveDay(newIdx);
-                  setConfirmDelDay(false);
-                  haptic("tap");
-                }} aria-label="Confirm delete day" style={{ background:"#EF4444", border:"1px solid #EF4444", borderRadius:8, padding:"9px 10px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F }}>Delete?</button>
-                <button onClick={() => setConfirmDelDay(false)} aria-label="Cancel delete day" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color:TXT, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>✕</button>
-              </>
-            ) : (
-              <button onClick={() => setConfirmDelDay(true)} aria-label="Delete day" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"9px 10px", color:"#EF4444", fontSize:13, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center" }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              </button>
-            )}
-          </div>
+          confirmDelDay ? (
+            <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+              <button onClick={() => {
+                const ds = localProg.days.filter((_, i) => i !== activeDay);
+                const newIdx = Math.min(activeDay, ds.length - 1);
+                patch({ ...localProg, days: ds });
+                setActiveDay(newIdx);
+                setConfirmDelDay(false);
+                haptic("tap");
+              }} aria-label="Confirm delete day" style={{ background:"#EF4444", border:"1px solid #EF4444", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F }}>Delete?</button>
+              <button onClick={() => setConfirmDelDay(false)} aria-label="Cancel delete day" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 10px", color:TXT, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F }}>✕</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDelDay(true)} aria-label="Delete day" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 9px", color:"#EF4444", cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", flexShrink:0 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          )
         )}
         <input value={day.name} onChange={e => patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, name:e.target.value})})}
-          placeholder="Day name..." style={{ flex:1, border:"none", outline:"none", background:"none", color:TXT, fontSize:15, fontWeight:700, fontFamily:F }} />
-        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:DAY_COLORS[activeDay%7], border:"none", borderRadius:10, padding:"10px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0, boxShadow:`0 4px 12px ${DAY_COLORS[activeDay%7]}55` }}>Start ›</button>
+          placeholder="Day name..." style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"none", color:TXT, fontSize:15, fontWeight:700, fontFamily:F }} />
+        {(day.exercises||[]).length > 1 && (
+          <button onClick={() => setEditorReorder(true)} aria-label="Reorder exercises" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 9px", color:SUB, cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", flexShrink:0 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 8l2-2 2 2"/><path d="M3 16l2 2 2-2"/></svg>
+          </button>
+        )}
+        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:DAY_COLORS[activeDay%7], border:"none", borderRadius:10, padding:"9px 15px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0, whiteSpace:"nowrap", boxShadow:`0 4px 12px ${DAY_COLORS[activeDay%7]}55` }}>Start ›</button>
       </div>
 
       {/* Exercise list */}
-      <div style={{ flex:1, overflowY:"auto", padding:"12px 16px 100px" }}>
-        {(day.exercises||[]).length > 1 && (
-          <button onClick={() => setEditorReorder(true)} style={{ display:"block", marginLeft:"auto", marginBottom:10, background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"6px 12px", fontSize:11, fontWeight:700, letterSpacing:0.5, color:SUB, cursor:"pointer", fontFamily:F }}>REORDER</button>
-        )}
+      <div style={{ flex:1, overflowY:"auto", padding:"10px 16px 100px" }}>
         {(day.exercises||[]).length === 0 ? (
           <div style={{ padding:"40px 20px", borderRadius:20, background:CARD, color:SUB, textAlign:"center", marginTop:8, border:`1px solid ${BORD}` }}>
             <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="barbell" size={30} color="currentColor"/></div>
@@ -8908,16 +8923,23 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
             <div style={{ fontSize:12 }}>Tap below to add your first exercise</div>
           </div>
         ) : (
-          day.exercises.map((ex, ei) => {
+          <DndContext sensors={editorSensors} collisionDetection={closestCenter} onDragEnd={handleEditorDragEnd} onDragStart={() => haptic("medium")}>
+          <SortableContext items={day.exercises.map((_, ei) => `eed-${ei}`)} strategy={verticalListSortingStrategy}>
+          {day.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             const sets = Math.max(1, progSetCount(ex));
             const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#c8f135",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
             const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
             return (
-              <div key={ei} style={{ marginBottom:12, background:CARD, borderRadius:16, overflow:"visible", border:`1px solid ${BORD}`, boxShadow:isDark?"none":"0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)" }}>
-                {/* Exercise header */}
+              <SortableEditorCard key={ei} id={`eed-${ei}`} CARD={CARD} BORD={BORD} isDark={isDark}>
+                {(handleProps) => (<>
+                {/* Exercise header. The muscle tile is the DRAG HANDLE — press and hold it to pick
+                    the card up. The listeners deliberately do NOT cover the whole card: it's full
+                    of text fields, and a long-press inside one of those is how iOS positions the
+                    caret and opens the magnifier, so a hold-anywhere drag would fight typing. Same
+                    call made on the program rows, where conflating tap and drag was a real bug. */}
                 <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderLeft:`4px solid ${mColor}` }}>
-                  <div style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <div {...handleProps} aria-label="Drag to reorder" style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"grab", touchAction:"none", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none" }}>
                     <MuscleIcon muscle={exInfo?.muscle||""} size={22} name={ex.name} C={C}/>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -8960,9 +8982,12 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                   <NoteField value={ex.note||""} onChange={e => updateEx(ei,{note:e.target.value})} placeholder="Add a note (optional)..."
                     style={{ width:"100%", background:"none", border:"none", outline:"none", fontSize:12, color:SUB, fontFamily:F }} />
                 </div>
-              </div>
+                </>)}
+              </SortableEditorCard>
             );
-          })
+          })}
+          </SortableContext>
+          </DndContext>
         )}
 
         <button onClick={addEx} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${isDark?"#2563eb44":"#BFDBFE"}`, borderRadius:16, color:BLUE, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
@@ -21259,48 +21284,6 @@ function AppInner() {
   // showMessages no longer early-returns: it renders as an overlay INSIDE the main shell
   // (below, above the tab track) so the floating bottom nav stays visible over the list.
 
-  if (profileUserId) {
-    return (
-      // Swipe from the left edge to go back, same as the chat view. This screen early-returns
-      // OUTSIDE the main shell, so it never had the shell's touch handlers — the back-swipe branch
-      // that used to sit in handleSwipeEnd could never fire (removed there; see the note).
-      <EdgeSwipeBack onBack={() => setProfileUserId(null)}
-        style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
-        <ProfileScreen
-          userId={profileUserId}
-          store={store}
-          setStore={setStore}
-          onOpenCoach={() => setShowCoach(true)}
-          currentUserId={currentUserId}
-          onBack={() => setProfileUserId(null)}
-          onMessage={isGuest ? undefined : (uid_) => { setChatPeerId(uid_); }}
-          displayUnit={unit}
-          C={C}
-          onToggleTheme={async (t) => {
-            setStore(p => ({ ...p, theme: t }));
-            const tok = tokenRef.current || loadSession()?.access_token;
-            if (tok) {
-              try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
-              catch (e) { devError("theme save error:", e); }
-            }
-          }}
-          onUserClick={setProfileUserId}
-          onFollow={handleFollow}
-          onRemoveFollower={handleRemoveFollower}
-          onBlock={handleBlock}
-          onPostKudos={handleKudos}
-          onPostComment={handleComment}
-          onPostEditComment={handleEditComment}
-          onPostDeleteComment={handleDeleteComment}
-          onPostLikeComment={handleLikeComment}
-          onPostEdit={(p)=>setEditingPost(p)}
-          onPostDelete={handleDelete}
-          onRefresh={handleRefresh}
-          token={tokenRef.current}
-        />
-      </EdgeSwipeBack>
-    );
-  }
 
   // Swipe handlers attached as NON-PASSIVE native listeners (see effect below) so
   // e.preventDefault() actually works on iOS — React's synthetic touch listeners are
@@ -22148,6 +22131,52 @@ function AppInner() {
               onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
               onOpenChat={(uid_) => setChatPeerId(uid_)}/>
           </EdgeSwipeBack>
+        </div>
+      )}
+
+      {profileUserId && (
+        // Rendered as an overlay INSIDE the shell, not as an early return. When this screen was
+        // early-returned the rest of the app wasn't rendered at all, so sliding it away with the
+        // edge-swipe revealed the bare page background — a black gap where iOS shows the screen
+        // you're going back to. Keeping the shell mounted underneath means the previous screen is
+        // simply there. Same pattern (and z-order slot) as the Messages overlay above; zIndex sits
+        // above it and above the floating bottom nav, which a profile should cover.
+        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:60 }}>
+        <EdgeSwipeBack onBack={() => setProfileUserId(null)}
+          style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
+          <ProfileScreen
+            userId={profileUserId}
+            store={store}
+            setStore={setStore}
+            onOpenCoach={() => setShowCoach(true)}
+            currentUserId={currentUserId}
+            onBack={() => setProfileUserId(null)}
+            onMessage={isGuest ? undefined : (uid_) => { setChatPeerId(uid_); }}
+            displayUnit={unit}
+            C={C}
+            onToggleTheme={async (t) => {
+              setStore(p => ({ ...p, theme: t }));
+              const tok = tokenRef.current || loadSession()?.access_token;
+              if (tok) {
+                try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
+                catch (e) { devError("theme save error:", e); }
+              }
+            }}
+            onUserClick={setProfileUserId}
+            onFollow={handleFollow}
+            onRemoveFollower={handleRemoveFollower}
+            onBlock={handleBlock}
+            onPostKudos={handleKudos}
+            onPostComment={handleComment}
+            onPostEditComment={handleEditComment}
+            onPostDeleteComment={handleDeleteComment}
+            onPostLikeComment={handleLikeComment}
+            onPostEdit={(p)=>setEditingPost(p)}
+            onPostDelete={handleDelete}
+            onRefresh={handleRefresh}
+            token={tokenRef.current}
+          />
+        </EdgeSwipeBack>
         </div>
       )}
 

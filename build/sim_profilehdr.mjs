@@ -100,12 +100,23 @@ await run("one", 1, 1, ({ qa, check }) => {
   const cover = back ? back.parentElement : null;
   check("the cover grows by the inset so 132px stays visible",
     !!cover && /safe-area-inset-top/.test(cover.getAttribute("style")||""), (cover&&cover.getAttribute("style")||"").slice(0,120));
-  // Swipe from the left edge to go back (the same EdgeSwipeBack the chat view uses). The screen
-  // early-returns outside the main shell, so it never had the shell's handlers and the back-swipe
-  // branch that lived in handleSwipeEnd was unreachable.
-  const panel = qa("div").find(d => /transition:\s*transform/.test(d.getAttribute("style")||"")
-    && /height:\s*100dvh/.test(d.getAttribute("style")||""));
-  check("the profile screen is wrapped in a swipe-back panel", !!panel, "no transform panel");
+  // Swipe from the left edge to go back (the same EdgeSwipeBack the chat view uses). This screen
+  // is an OVERLAY inside the shell, not an early return — that's what leaves the previous screen
+  // rendered underneath, so the swipe reveals it instead of a black gap. The panel therefore fills
+  // its absolutely-positioned host (height:100%), not the viewport (it used to be 100dvh).
+  // Find the OVERLAY first (absolute + inset:0), then its swipe panel — matching on
+  // "transition: transform" alone also hits the scaleX progress bars.
+  const host = qa("div").find(d => {
+    const st = d.getAttribute("style") || "";
+    return /position:\s*absolute/.test(st) && /inset:\s*0/.test(st)
+      && /transition:\s*transform/.test(d.firstElementChild?.getAttribute("style") || "");
+  });
+  check("...and that panel sits in an overlay, so the shell stays mounted behind it", !!host,
+    "no absolute inset:0 host — is the profile early-returning again?");
+  const panel = host ? host.firstElementChild : null;
+  check("the profile screen is wrapped in a swipe-back panel",
+    !!panel && /will-change:\s*transform/.test(panel.getAttribute("style") || ""),
+    (panel && panel.getAttribute("style") || "").slice(0, 140));
   if (panel) {
     const mk = (type, x) => { const ev = new window.Event(type, { bubbles:true, cancelable:true });
       const t = { clientX:x, clientY:400, identifier:0, target:panel };

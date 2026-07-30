@@ -47,8 +47,58 @@ await page.waitForTimeout(800);
 await page.screenshot({ path: "build/shot_editor.png" });
 
 // The set-count fallback: what does the editor stepper say vs the reorder row?
-const reorderBtn = page.getByRole("button", { name: "REORDER" });
-check("REORDER button is present", await reorderBtn.count() > 0);
+// ── The editor list is directly sortable: drag the muscle tile of row 0 down past row 1 ──────
+const handles = page.getByRole("button", { name: "Drag to reorder" });
+check("every exercise card has a drag handle", await handles.count() === 5, String(await handles.count()));
+{
+  const a = await handles.nth(0).boundingBox();
+  const c = await handles.nth(2).boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) { await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + (c.y - a.y) * i / 10); await page.waitForTimeout(25); }
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const inline = await page.evaluate(() =>
+    [...document.querySelectorAll("input")].map(i => i.value).filter(v => /Squat|Leg (Extension|Press|Curl)|Calf/.test(v)));
+  console.log("AFTER IN-LIST DRAG:", JSON.stringify(inline));
+  check("dragging the handle reorders the list in place", inline[0] !== "Barbell Back Squat", JSON.stringify(inline));
+  // Put it back so the rest of the run starts from the known order.
+  const a2 = await handles.nth(2).boundingBox();
+  const c2 = await handles.nth(0).boundingBox();
+  await page.mouse.move(a2.x + a2.width / 2, a2.y + a2.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) { await page.mouse.move(a2.x + a2.width / 2, a2.y + a2.height / 2 + (c2.y - a2.y) * i / 10); await page.waitForTimeout(25); }
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+}
+
+// Typing must still work in a card that is now draggable — the handle is the tile, not the card.
+const repsField = page.locator('input[placeholder="8–12"]').first();
+await repsField.click();
+await repsField.fill("6-9");
+await page.waitForTimeout(200);
+check("the reps field is still editable inside a draggable card", await repsField.inputValue() === "6-9", await repsField.inputValue());
+await repsField.fill("5-8");
+await page.waitForTimeout(200);
+
+const reorderBtn = page.getByRole("button", { name: "Reorder exercises" });
+check("the reorder button moved into the day bar", await reorderBtn.count() === 1, String(await reorderBtn.count()));
+check("the dead day-move arrows are gone",
+  await page.getByRole("button", { name: /^Move day/ }).count() === 0);
+// Start must be fully on screen, not pushed past the edge.
+// Two "Start ›" exist — the day card on the screen behind, and the editor's. Take the editor's.
+const startBox = await page.evaluate(() => {
+  const bar = [...document.querySelectorAll("button")].find(b => b.getAttribute("aria-label") === "Reorder exercises")?.parentElement;
+  const btn = [...(bar?.querySelectorAll("button") || [])].find(b => b.textContent.includes("Start"));
+  if (!btn) return null;
+  const r = btn.getBoundingClientRect();
+  return { x: r.x, width: r.width, right: r.right };
+});
+const vw = page.viewportSize().width;
+console.log("START BUTTON:", JSON.stringify(startBox), "viewport", vw);
+check("the Start button sits fully within the screen",
+  startBox && startBox.x >= 0 && startBox.x + startBox.width <= vw, JSON.stringify(startBox));
+
 await reorderBtn.click();
 await page.waitForTimeout(500);
 await page.screenshot({ path: "build/shot_reorder.png" });
