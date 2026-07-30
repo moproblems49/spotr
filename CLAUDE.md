@@ -127,6 +127,30 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   stay true at rest — a half-swipe that changed nothing flipped it off and back on, and the screen
   visibly slid in again. Drive animations from a one-shot signal that disarms itself. (Conditions
   that are *false* at rest, like `refreshing ? spin : none`, are fine.)
+- **Never let the client resolve a username to an email.** Supabase auth keys on email, so username
+  sign-in needs the lookup — it happens in the `username-auth` edge function with the service role,
+  and `email_for_username` has EXECUTE revoked from public/anon/authenticated. Doing it client-side
+  (the original design) meant anyone signed out could turn a public username into that person's real
+  email and harvest the lot. Also: never verify a password in SQL to avoid the round trip — that
+  creates an unthrottled credential-testing oracle. Go through `/auth/v1/token` so Supabase's own
+  rate limiting applies, and return ONE generic error for both "no such user" and "wrong password".
+- **Never forward a caller-supplied `redirect_to` into an auth email.** Anyone can call a public
+  edge function, so an attacker can request a genuine password-reset email for someone else's
+  account pointing at their own site — the victim clicks and the recovery token lands on the
+  attacker's page. Pin it to an allowlist in the function; don't rely on the dashboard's Redirect
+  URLs setting, which the code can't see.
+- **A "private" account has THREE layers and they must agree.** `posts`, `workout_history` and
+  `personal_records` are all `owner OR profile_is_public(user_id) OR follower`; `public_profiles`
+  additionally allows any signed-in caller so people stay findable in search. Net effect (and the
+  intended model, same as a private Instagram account): signed out → can't find them, can't see
+  posts; signed in → can find them, can't see posts; following → sees posts. `posts` was
+  `USING (true)` and broke this for every private user, and the Settings toggle DEFAULTS TO OFF, so
+  it applied to every new tester. If you add a table holding user content, copy that three-way
+  policy — don't write `USING (true)`.
+- **Storage buckets need a size limit AND a MIME allowlist.** `images` is publicly readable and had
+  neither, so a signed-in user could upload arbitrary files of unbounded size served from the project
+  domain (free file hosting, uncapped bill, SVG/HTML carrying script). All three buckets are now
+  capped with an image-only allowlist; SVG is excluded on purpose.
 - **Volume/set counts have ONE definition: `sessionVolume()` / `workingDone()`.** Never inline
   another `sets.filter(s => s.done).reduce(...)`. Seven inline copies had drifted apart — the
   finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats
