@@ -1,4 +1,4 @@
-// v178091716750
+// v178091716751
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -125,6 +125,32 @@ const IS_DEV = !!(import.meta.env && import.meta.env.DEV); // true in `vite dev`
 const NAV_CLEARANCE = "calc(86px + env(safe-area-inset-bottom))"; // bottom-padding so scrollable content clears the floating bottom nav overlay
 const devWarn = (...args) => { if (IS_DEV) console.warn(...args); };
 const devError = (...args) => { if (IS_DEV) console.error(...args); };
+
+// ── Auth callback fragment ────────────────────────────────────────────────────
+// OAuth callbacks and password-recovery links both land with the tokens in the URL FRAGMENT
+// (#access_token=…&refresh_token=…&type=recovery). Capture them and strip the fragment HERE, at
+// module load, before a single component mounts or any third-party script initialises.
+//
+// This is a takeover-prevention measure, not tidiness. A recovery fragment carries a LIVE
+// access_token and refresh_token for the account — whoever holds them owns it. PostHog's
+// automatic pageview capture reads window.location.href verbatim into `$current_url`, and it
+// fires on load; the boot code that used to clear the fragment ran inside a React effect, after
+// an `await fetch` to /auth/v1/user. That window was wide enough to hand a working account
+// takeover to a third-party analytics store for every user who ever reset a password. PostHog is
+// currently unconfigured, so it never happened — this closes the door before it can.
+//
+// Anything downstream must read AUTH_CALLBACK, never window.location.hash. Other hash routes
+// (#/u/<username>) don't contain access_token and are left untouched.
+const AUTH_CALLBACK = (() => {
+  try {
+    if (typeof window === "undefined") return null;
+    const h = window.location.hash || "";
+    if (!h.includes("access_token=")) return null;
+    const params = new URLSearchParams(h.slice(1));
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    return params;
+  } catch { return null; }
+})();
 
 // ── Analytics (PostHog) ────────────────────────────────────────────────────────
 // No-op until VITE_POSTHOG_KEY is set in Vercel env vars. We send behavioral
@@ -7890,9 +7916,9 @@ function ProgramBuilder({ C, onCancel, onSave }) {
                 <div>
                   <div style={{ fontSize:10, fontWeight:600, color:labelClr, letterSpacing:0.5, marginBottom:4 }}>SETS</div>
                   <div style={{ display:"flex", alignItems:"center", gap:4, background: isDark?"#111":"#F1F5F9", borderRadius:8, padding:"6px 10px" }}>
-                    <button onClick={() => updateEx(ei,{sets:Math.max(1,(ex.sets||3)-1)})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>−</button>
-                    <span style={{ flex:1, textAlign:"center", fontSize:16, fontWeight:700, color:bodyClr, fontFamily:MONO }}>{ex.sets||3}</span>
-                    <button onClick={() => updateEx(ei,{sets:(ex.sets||3)+1})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>+</button>
+                    <button onClick={() => updateEx(ei,{sets:Math.max(1,progSetCount(ex)-1)})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>−</button>
+                    <span style={{ flex:1, textAlign:"center", fontSize:16, fontWeight:700, color:bodyClr, fontFamily:MONO }}>{progSetCount(ex)}</span>
+                    <button onClick={() => updateEx(ei,{sets:progSetCount(ex)+1})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>+</button>
                   </div>
                 </div>
                 <div>
@@ -9661,7 +9687,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
       position:"fixed", inset:0, background:C.bg, zIndex:600,
       maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column",
     }}>
-      <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
+      <div style={{ padding:"calc(env(safe-area-inset-top) + 14px) 16px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
         <button onClick={onClose} style={{ background:"none", border:"none", color:C.sub, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Cancel</button>
         <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Edit workout</div>
         <button onClick={handleSave} disabled={saving} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor: saving ? "default" : "pointer", fontFamily:F, opacity: saving ? 0.5 : 1 }}>{saving ? "..." : "Save"}</button>
@@ -19137,10 +19163,12 @@ function AppInner() {
   const swipeContainerRef = useRef(null);
   useEffect(() => {
     async function init() {
-      // Check for OAuth callback (Supabase redirects with #access_token=... in URL hash)
-      if (typeof window !== "undefined" && window.location.hash.includes("access_token=")) {
+      // OAuth callback / password-recovery link. The fragment was captured and stripped at module
+      // load (see AUTH_CALLBACK) — never read window.location.hash for these, the whole point is
+      // that the tokens are out of the URL before anything else can observe them.
+      if (AUTH_CALLBACK) {
         try {
-          const params = new URLSearchParams(window.location.hash.slice(1));
+          const params = AUTH_CALLBACK;
           const access_token = params.get("access_token");
           const refresh_token = params.get("refresh_token");
           const expires_in = params.get("expires_in");
@@ -19157,8 +19185,7 @@ function AppInner() {
             saveSession(sess);
             setSession(sess);
             if (isRecovery) setRecoveryNeeded(true);
-            // Clear the hash so it doesn't stick
-            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+            // (the fragment is already gone — stripped at module load, see AUTH_CALLBACK)
             // If user was a guest, migrate their data
             if (localStorage.getItem("seshd_guest") === "1") {
               await migrateGuestData(sess);
@@ -20731,7 +20758,23 @@ function AppInner() {
           e._i.push([i, s, a]);
         }, e.__SV = 1);
       })(document, window.posthog || []);
-      window.posthog.init(POSTHOG_KEY, { api_host: "https://us.i.posthog.com", person_profiles: "identified_only" });
+      window.posthog.init(POSTHOG_KEY, {
+        api_host: "https://us.i.posthog.com",
+        person_profiles: "identified_only",
+        // Belt and braces over AUTH_CALLBACK: never let a URL fragment reach the analytics store.
+        // Auth callbacks carry live access/refresh tokens there, and a captured $current_url is a
+        // handed-over account. AUTH_CALLBACK strips them before this ever runs; this guarantees it
+        // even if a fragment arrives some other way (a link we haven't thought of, a future flow).
+        sanitize_properties: (props) => {
+          const strip = (v) => (typeof v === "string" && v.includes("#")) ? v.split("#")[0] : v;
+          for (const k of ["$current_url", "$referrer", "$pathname", "$initial_current_url", "$initial_referrer"]) {
+            if (props[k]) props[k] = strip(props[k]);
+          }
+          return props;
+        },
+        // Session replay would record the screen, including anything typed into a password field.
+        disable_session_recording: true,
+      });
     }
 
     // Inject global style: ensure all inputs are >=16px to disable iOS zoom-on-focus, plus motion utilities
