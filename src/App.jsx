@@ -1,4 +1,4 @@
-// v178091716748
+// v178091716749
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -150,19 +150,6 @@ function identifyUser(userId) {
 // on tap — App Review taps every button, and a dead login is a rejection.
 const OAUTH_ENABLED = { apple: false, google: false };
 
-// email_for_username is a scalar RPC, so PostgREST normally returns the bare email string.
-// Be tolerant of it also arriving wrapped (["a@b.com"] or [{email_for_username:"a@b.com"}] /
-// {email:"a@b.com"}) so username sign-in / password reset never silently fails on a shape quirk.
-function extractRpcEmail(raw) {
-  if (typeof raw === "string") return raw || null;
-  if (Array.isArray(raw)) {
-    const v = raw[0];
-    return (typeof v === "string" ? v : (v && (v.email_for_username ?? v.email))) || null;
-  }
-  if (raw && typeof raw === "object") return (raw.email_for_username ?? raw.email) || null;
-  return null;
-}
-
 // Lightweight Supabase client — no npm package needed
 const sb = (() => {
   const headers = {
@@ -246,22 +233,38 @@ const sb = (() => {
   }
 
   async function signIn(emailOrUsername, password) {
-    // Username login: look up email from profiles table (we store it there for this purpose).
-    let email = emailOrUsername.trim();
-    if (!email.includes("@")) {
+    const input = (emailOrUsername || "").trim();
+    // USERNAME sign-in goes through the `username-auth` edge function, which resolves the username
+    // with the service role and returns a session. The email never comes back to the client. It
+    // used to: the client called the email_for_username RPC with the public anon key, so anyone
+    // signed out could turn a public username into that person's real email address and harvest
+    // every user's email by walking the usernames in the feed.
+    //
+    // The EMAIL branch below is deliberately left exactly as it was. It is the overwhelmingly
+    // common path, and keeping it a direct call to Supabase auth means a problem with the new
+    // username path can never lock anybody out — the worst case is "sign in with your email".
+    if (!input.includes("@")) {
+      let res;
       try {
-        // Resolve username -> email via a SECURITY DEFINER RPC (returns only this one email),
-        // so the email column doesn't have to be world-readable on the profiles table.
-        const raw = await fetch(
-          `${SUPABASE_URL}/rest/v1/rpc/email_for_username`,
-          { method: "POST", headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_username: email.toLowerCase() }) }
-        ).then(r => r.json()).catch(() => null);
-        // A scalar RPC normally returns the bare string, but tolerate array/object wrappers too.
-        const found = extractRpcEmail(raw);
-        if (!found) throw new Error("No account found with that username.");
-        email = found;
-      } catch (e) { throw e; }
+        res = await fetch(`${SUPABASE_URL}/functions/v1/username-auth`, {
+          method: "POST",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "signin", username: input, password }),
+        });
+      } catch (e) {
+        // Same transport flag the email path sets, so the UI can tell "offline" from "wrong password".
+        if (e) e.transportFailure = true;
+        throw e;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.access_token) return data;
+      if (res.status === 429) throw new Error(data.message || "Too many attempts. Please try again shortly.");
+      if (data.error === "invalid_credentials") throw new Error("Incorrect username or password.");
+      // Anything else is our problem, not theirs — send them to the path that always works instead
+      // of leaving them staring at a dead login.
+      throw new Error("Couldn't sign in with a username just now. Please use your email address.");
     }
+    const email = input;
     let res;
     try {
       res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
@@ -427,19 +430,20 @@ const sb = (() => {
   // lookup as signIn). The link redirects back to the app, which lands with #type=recovery in
   // the hash — handled at boot alongside the OAuth callback.
   async function recover(emailOrUsername) {
-    let email = (emailOrUsername || "").trim();
-    if (!email.includes("@")) {
-      // Username -> email via the SECURITY DEFINER RPC (email column isn't world-readable).
-      const raw = await fetch(
-        `${SUPABASE_URL}/rest/v1/rpc/email_for_username`,
-        { method: "POST", headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_username: email.toLowerCase() }) }
-      ).then(r => r.json()).catch(() => null);
-      const found = extractRpcEmail(raw);
-      if (!found) return; // silent — UI always shows "if an account exists" (no enumeration)
-      email = found;
-    }
+    const email = (emailOrUsername || "").trim();
     const redirectTo = (typeof window !== "undefined" && /^https?:/.test(window.location?.origin || ""))
       ? window.location.origin : "https://spotr-drab.vercel.app";
+    // A username reset also goes through the edge function, for the same reason as sign-in: the
+    // address is resolved server-side and never returned. The function always answers ok whether
+    // or not the account exists, which matches the UI's "if an account exists" copy.
+    if (!email.includes("@")) {
+      await fetch(`${SUPABASE_URL}/functions/v1/username-auth`, {
+        method: "POST",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recover", username: email, redirectTo }),
+      }).catch(() => {});
+      return;
+    }
     await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
       method: "POST", headers, body: JSON.stringify({ email }),
     });
@@ -4518,7 +4522,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, alreadyWroteHealth, markWroteHealth }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
