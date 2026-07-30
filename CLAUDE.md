@@ -134,6 +134,21 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   email and harvest the lot. Also: never verify a password in SQL to avoid the round trip — that
   creates an unthrottled credential-testing oracle. Go through `/auth/v1/token` so Supabase's own
   rate limiting applies, and return ONE generic error for both "no such user" and "wrong password".
+- **The `public_profiles` SECURITY DEFINER view is DELIBERATE — do not "fix" the CRITICAL advisor
+  warning.** Supabase's linter flags every SECURITY DEFINER view because the pattern *can* bypass
+  RLS; here the bypass is the point. The base `profiles` table is owner-only (verified: a signed-in
+  user reads exactly their own row, 0 other rows, 0 emails, 0 push tokens), and this view is the
+  narrow window that lets people see each other at all — 13 safe columns, no email/push_token/
+  body_log/age, plus its own `is_public = true OR auth.uid() IS NOT NULL` filter. Switching it to
+  `security_invoker` blanks search, follower lists and feed avatars, and an RLS policy can't replace
+  it because RLS is row-level, not column-level (allowing the row hands over the email too). The
+  real hazard is the opposite one: if a sensitive column is ever added to `profiles`, don't add it
+  to this view. It lists columns explicitly so nothing leaks automatically.
+- **Auth Redirect URLs must stay EMPTY with Site URL pinned to the prod domain** (verified July 30:
+  Site URL `https://spotr-drab.vercel.app`, allow list empty). Supabase falls back to Site URL when a
+  `redirect_to` doesn't match the allow list, so an empty list means every redirect — including an
+  attacker's — lands on prod. Adding a wildcard entry here would open password-reset account
+  takeover, since anyone can POST `/auth/v1/recover?redirect_to=…` with the public anon key.
 - **Never forward a caller-supplied `redirect_to` into an auth email.** Anyone can call a public
   edge function, so an attacker can request a genuine password-reset email for someone else's
   account pointing at their own site — the victim clicks and the recovery token lands on the
