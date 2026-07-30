@@ -1,4 +1,4 @@
-// v178091716751
+// v178091716752
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6020,7 +6020,14 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // EXERCISE SEARCH INPUT
 // ═════════════════════════════════════════════════════════════════════════════
-const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentExercises, store, setStore, currentUserId, token }) {
+// `onChange` fires on EVERY keystroke — it's for the row editors, which bind it to a name field.
+// `onSelect` fires only when a name is actually COMMITTED (picked from the dropdown, created as a
+// custom exercise, or Enter pressed on typed text). The "+ ADD EXERCISE" boxes must use onSelect:
+// wiring an add-an-exercise handler to onChange meant typing "Bench Press" added an exercise named
+// "B" on the first keystroke, and the caller's `key={…exercises.length}` remount then wiped the box
+// — so the rest of the name went nowhere and the list could never be filtered. Adding an exercise
+// by typing was impossible; you got a one-letter row instead.
+const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, clearOnSelect = false, C, recentExercises, store, setStore, currentUserId, token }) {
   const [q, setQ] = useState(value || "");
   const [open, setOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -6069,9 +6076,14 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
       ? recent.map(name => getExEntry(name) || { name, muscle: getMuscle(name) || "" }).filter(Boolean)
       : EXERCISE_DB.filter(e => selectedCategory === "All" || e.muscle === selectedCategory).slice(0, 10);
 
+  // Commit a chosen name. `clearOnSelect` empties the box afterwards, which is what an
+  // "+ add exercise" field wants — the name has moved into the list, so leaving it behind reads
+  // like it didn't take.
   function select(ex) {
-    setQ(ex.name);
-    onChange(ex.name);
+    const name = typeof ex === "string" ? ex : ex.name;
+    if (!name) return;
+    setQ(clearOnSelect ? "" : name);
+    if (onSelect) onSelect(name); else onChange(name);
     setOpen(false);
   }
 
@@ -6084,8 +6096,12 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
     <div ref={ref} style={{ position:"relative", flex:1 }}>
       <input
         value={q}
-        onChange={e => { setQ(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onChange={e => { setQ(e.target.value); if (onChange) onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
+        // Enter commits what's typed. Without it an onSelect-only field (the "+ add exercise"
+        // boxes) can ONLY take a name that already exists in the library — there'd be no way to
+        // type one in at all.
+        onKeyDown={e => { if (e.key === "Enter" && onSelect && q.trim()) { e.preventDefault(); select(q.trim()); } }}
         placeholder="Search exercises..."
         autoCapitalize="words"
         style={{
@@ -7946,8 +7962,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
         <div style={{ background:inputBg, border:`1.5px dashed ${isDark?C.accent+"55":"#BFDBFE"}`, borderRadius:16, padding:"12px 14px" }}>
           <div style={{ fontSize:11, fontWeight:600, color:C.accent, marginBottom:8, letterSpacing:0.3 }}>+ ADD EXERCISE</div>
           <ExerciseInput
-            key={`builder-${activeDayIdx}-${activeDay.exercises.length}`}
-            value="" onChange={v => { if (v) addExercise(v); }} C={C}
+            value="" onSelect={v => addExercise(v)} clearOnSelect C={C}
           />
         </div>
       </div>
@@ -13562,8 +13577,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             <div style={{ background:CARD, border:`1.5px dashed ${isDark?"#2563eb55":"#BFDBFE"}`, borderRadius:14, padding:"12px 14px" }}>
               <div style={{ fontSize:11, fontWeight:700, color:BLUE, marginBottom:8 }}>+ ADD EXERCISE</div>
               <ExerciseInput
-                key={`preview-edit-${editDay.exercises.length}`}
-                value="" onChange={v => { if(v) addEx(v); }} C={C}
+                value="" onSelect={v => addEx(v)} clearOnSelect C={C}
               />
             </div>
           </>

@@ -43,6 +43,19 @@ delete the old zip FIRST → build with the real `.env.local` → `cd dist && zi
 ../public/bundles/seshd-<ver>.zip .` → bump `LATEST_VERSION` → commit + push. Bump the version
 suffix (…a → …b → …c) each time. Sanity-check the built bundle carries the REAL supabase URL (a
 stub-built bundle breaks sign-in for everyone).
+**Where the "real `.env.local`" comes from in a sandbox session:** it isn't in the repo (the values
+live in Vercel), so RECOVER IT FROM THE LAST PUBLISHED BUNDLE — that bundle was built with the real
+values, so they're sitting in its JS:
+```
+cd <scratch> && unzip -qo /home/user/spotr/public/bundles/seshd-<prev>.zip
+KEY=$(grep -rohE 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' assets/*.js | sort -u | head -1)
+printf 'VITE_SUPABASE_URL=https://zwsoxvekobvtvsphesef.supabase.co\nVITE_SUPABASE_ANON_KEY=%s\nVITE_POSTHOG_KEY=\n' "$KEY" > /home/user/spotr/.env.local
+```
+Do this BEFORE deleting the old zip. Delete `.env.local` right after the build, and always confirm
+`grep -roh 'https://[a-z]*\.supabase\.co' dist/assets/*.js` shows `zwsoxvekobvtvsphesef`, not `stub`.
+(VITE_POSTHOG_KEY is deliberately empty in every published bundle so far — analytics is off.)
+Shell note: never put `pkill` in a `&&` chain — it kills the whole shell (exit 144) and the rest of
+the chain silently never runs. A version bump chained after a `pkill` got skipped exactly that way.
 In remote (claude.ai) sessions the standing directive is to push every change to BOTH the
 session branch AND `main` (`git push -u origin <branch> && git branch -f main HEAD && git push origin main`
 — main has always been a fast-forward so far). Version-bump one-liner that avoids hand-editing:
@@ -57,6 +70,14 @@ policy page turned out to be pure browser cache (incognito confirmed live), don'
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
+
+**A new sim/test must be shown to FAIL against the old code before you trust it.** Stash the fix,
+rebuild the bundle, run it, confirm red, then `git stash pop`. Two tests written this way turned
+out to be measuring the wrong thing — one asserted on a locator that matched the day-name input,
+another double-counted cards because a DOM heuristic matched every ancestor whose textContent
+merely *started* with the label. Both printed a confident PASS/FAIL that said nothing about the
+app. When a Playwright assertion disagrees with the app, screenshot it and LOOK before changing
+the app — twice now the app was right and the test's DOM query was wrong.
 
 There are jsdom simulation scripts that mount the real app bundle and exercise flows. To run one by
 hand, rebuild the ESM bundle first (stale bundle = false failures):
@@ -127,6 +148,18 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   stay true at rest — a half-swipe that changed nothing flipped it off and back on, and the screen
   visibly slid in again. Drive animations from a one-shot signal that disarms itself. (Conditions
   that are *false* at rest, like `refreshing ? spin : none`, are fine.)
+- **Auth tokens must never sit in `window.location`.** OAuth callbacks and password-recovery links
+  land with `#access_token=…&refresh_token=…` in the FRAGMENT, and those two values ARE the
+  account. `AUTH_CALLBACK` (module top of App.jsx) captures and `history.replaceState`s them away
+  at module load, before any component mounts or any third-party script initialises; `init()` reads
+  AUTH_CALLBACK, never `window.location.hash`. This matters because PostHog's automatic pageview
+  reads `window.location.href` into `$current_url` on load — the old code cleared the fragment in a
+  React effect AFTER an `await fetch`, so switching analytics on would have shipped a working
+  account takeover to a third party for every password reset. Anything new that reads the URL at
+  boot must not reintroduce a window where the fragment is observable. PostHog's init also carries
+  `sanitize_properties` (strips fragments) and `disable_session_recording` (replay would film the
+  password field) — keep both. Note the recovery link opens in SAFARI, not the app: the AASA file
+  claims only `/u/*` and `/p/*`, and a reset link is `/#…`. That's fine and deliberate.
 - **Never let the client resolve a username to an email.** Supabase auth keys on email, so username
   sign-in needs the lookup — it happens in the `username-auth` edge function with the service role,
   and `email_for_username` has EXECUTE revoked from public/anon/authenticated. Doing it client-side
@@ -176,6 +209,15 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   `sets` field, and the three readers each guessed differently (start=4, editor stepper=3,
   reorder list="0 sets"). `progSetCount` handles both shapes: a live session's `sets` ARRAY (0 is
   a real answer) and a program's count-or-absent (leading `N×` in reps, else 3).
+- **`ExerciseInput` has TWO callbacks and picking the wrong one is a shipped bug.** `onChange`
+  fires on every KEYSTROKE (for the row editors, which bind it to a name field); `onSelect` fires
+  only when a name is COMMITTED — dropdown pick, custom-exercise create, or Enter. Both "+ ADD
+  EXERCISE" boxes had an add-an-exercise handler on `onChange`, so typing "Bench Press" in Build
+  Your Own added an exercise named **"B"** on the first keystroke, and the caller's
+  `key={…exercises.length}` remount then wiped the box — the rest of the name went nowhere and the
+  dropdown could never filter. Adding by typing was impossible. If a new call site means "give me
+  the finished name", use `onSelect` (+ `clearOnSelect` for an add box), never `onChange`. A
+  `key` that remounts on list length is the tell that someone was papering over this.
 - **A component that copies a prop into `useState` goes stale, and index keys are what expose it.**
   `useState(value)` runs once; if the parent later changes `value` without remounting, the mirror
   never updates. The program editor keys its exercise rows by INDEX, so reordering a day reused
@@ -246,14 +288,18 @@ relaunches. Nothing this session needed a Mac. Shipped, newest last:
   accessory deload false-positive, duplicate-source step double-count, warmups inflating volume on
   every screen but the finish summary, and duplicate Apple Health calorie writes. All four are in
   the Conventions list above as rules.
-**Sim battery is 19 and green — `node build/run_sims.mjs`.** New this session: `sim_sleepblock`,
+**Sim battery is 20 and green — `node build/run_sims.mjs`.** New this session: `sim_sleepblock`,
 `sim_swipenoop`, `sim_chartscrub`, `sim_overload`, `sim_stepsbox`, `sim_dupsource`,
-`sim_doublecount`, `sim_setswipe`, `sim_profilehdr`, `sim_usernameauth`, `sim_progsets`, plus
-`bodymap_tip`/`bodymap_full` checkers. **`build/pw_reorder.mjs` is the worked Playwright example
-for dnd-kit** — drag-and-drop needs real pointer events, so jsdom can't test a reorder at all; it
-seeds a program, opens the day editor, drags a row and asserts the reorder list, the editor's own
-fields and the persisted store all agree. Run it with the dist server on :8199 (see the Playwright
-recipe above); it is NOT part of `run_sims.mjs`.
+`sim_doublecount`, `sim_setswipe`, `sim_profilehdr`, `sim_usernameauth`, `sim_progsets`,
+`sim_authhash`, plus `bodymap_tip`/`bodymap_full` checkers.
+**Two Playwright runs are NOT in `run_sims.mjs` — run them by hand for any program-editor change**
+(dist server on :8199, see the recipe above):
+- `build/pw_reorder.mjs` — the worked example for **dnd-kit**. Drag-and-drop needs real pointer
+  events, so jsdom can't test a reorder at all. Seeds a program, opens the day editor, drags a row,
+  and asserts the reorder list, the editor's own fields, the set steppers and the persisted store
+  all agree.
+- `build/pw_addex.mjs` — the "+ ADD EXERCISE" contract (typing adds nothing, the dropdown filters,
+  a pick or Enter commits once, the box clears).
 
 **★★ POST-TESTFLIGHT DEVICE-FEEDBACK ERA (July 20-21, 2026) — Mo testing on his phone, reporting
 bugs live; each fix below is committed + pushed to main and rides the NEXT build/OTA.** A real
