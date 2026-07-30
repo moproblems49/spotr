@@ -1,4 +1,4 @@
-// v178091716753
+// v178091716754
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8998,7 +8998,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
         }} style={{ width:"100%", marginTop:10, padding:"13px", background:"none", border:`1.5px dashed ${isDark?"#333":"#CBD5E1"}`, borderRadius:16, color:SUB, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Day</button>
 
         {editorReorder && (
-          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:400, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
+          <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:C.bg, zIndex:400, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setEditorReorder(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:BLUE, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
               <div style={{ fontSize:18, fontWeight:700, color:TXT, letterSpacing:0.5, fontFamily:DISPLAY, textTransform:"uppercase" }}>Reorder exercises</div>
@@ -9723,7 +9723,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
   }
 
   return (
-    <div style={{
+    <div data-fullscreen-overlay="true" style={{
       position:"fixed", inset:0, background:C.bg, zIndex:600,
       maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column",
     }}>
@@ -12279,7 +12279,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
         {/* Reorder modal — collapsed cards you can drag freely */}
         {reorderMode && session && (
-          <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
+          <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setReorderMode(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
               <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Reorder exercises</div>
@@ -13312,7 +13312,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const accentColor = DAY_COLORS[colorIdx];
 
   return (
-    <div style={{ position:"fixed", inset:0, background:BG, zIndex:200, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto" }}>
+    <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:BG, zIndex:200, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto" }}>
 
       {/* Top bar */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"calc(env(safe-area-inset-top) + 14px) 18px 14px", background:CARD, borderBottom:`1px solid ${BORD}`, flexShrink:0 }}>
@@ -21297,6 +21297,14 @@ function AppInner() {
   // be trying to select/edit text.
   const target = e.target;
   if (target && target.closest && target.closest("[data-no-tab-swipe]")) return;
+  // A full-screen takeover (program editor/builder, day preview, edit-workout) covers the tabs
+  // entirely, so a horizontal drag inside it must never reach the tab swipe. This was doing real
+  // visible damage, not just switching tabs underneath: those overlays are `position:fixed`, and a
+  // fixed element inside a TRANSFORMED ancestor resolves against that ancestor — so the instant the
+  // track picked up a transform, `right:0` meant the right edge of the 3-panel TRACK and the
+  // overlay stretched to three screen widths. It read as the whole app suddenly zooming in.
+  // (Same containing-block trap as the portal rule for fixed elements inside the track.)
+  if (target && target.closest && target.closest("[data-fullscreen-overlay]")) return;
   if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
   // A new gesture always wins — cancel any still-pending release settle from a prior swipe so
   // its delayed setSwipeRelease(null)/setSwipeX(0) can't fire mid-drag and snap the track.
