@@ -1,7 +1,7 @@
 # Seshd — project context for Claude Code
 
 ## What this is
-Seshd is a gym/workout tracker built as a **single-file React + Vite PWA**, shipped to iOS via **Capacitor 8**. Almost all app code lives in **`src/App.jsx`** (very large — ~20,800+ lines). Treat that file as the whole app unless told otherwise.
+Seshd is a gym/workout tracker built as a **single-file React + Vite PWA**, shipped to iOS via **Capacitor 8**. Almost all app code lives in **`src/App.jsx`** (very large — ~22,300 lines). Treat that file as the whole app unless told otherwise.
 
 - Repo: `github.com/moproblems49/spotr` → deploys to `spotr-drab.vercel.app` (Vercel)
 - Bundle id: `com.seshd.app` · Apple Team ID: `66M7SCD5GA`
@@ -122,9 +122,40 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 ## Conventions & gotchas
 - **`C` theme object** holds all colors. Inline styles everywhere — no CSS classes/files, with ONE
-  exception: `src/index.css` sets the app-wide `font-family` fallback (same stack as `F`; keep them
-  in sync). It exists because any element missing an inline `fontFamily` used to render in the
-  WebView's default Times serif (this actually shipped on ExerciseDetail). Don't delete it.
+  exception: `src/index.css`, which carries exactly three things and each is load-bearing:
+  the app-wide `font-family` fallback (same stack as `F`; keep them in sync — any element missing
+  an inline `fontFamily` used to render in the WebView's default Times serif, and that shipped on
+  ExerciseDetail); `overscroll-behavior:none`; and a dark `background:#0a0a0a` so any pixel a
+  transform momentarily exposes (the strip behind the chat screen during an iOS edge-swipe-back) is
+  the app background rather than WebView white. Read the comments in it before changing anything —
+  they say which rule is the real fix and which is only covering the frames before React mounts.
+- **One easing token: `EASE_NAV`** (`cubic-bezier(0.32, 0.72, 0, 1)`, the iOS decelerate curve).
+  The app had grown NINE different curves and no two transitions felt related. Every
+  screen-scale movement — tab slide, pushed screens, swipe release, edge-swipe-back, progress
+  fills — goes through it. Don't add a tenth curve; and if you add a token, WIRE it, because the
+  first attempt declared three and applied raw literals, leaving all three as dead code (two have
+  since been removed — `EASE_NAV` is the one that's real).
+- **Animate `transform: scaleX()`, never `width`.** Four progress bars animated width, which forces
+  layout + paint every frame; the rest-timer bar does that 4×/sec for the whole rest period. They
+  use `transformOrigin:"left center"` + `scaleX()` + `willChange:"transform"` now, which the GPU
+  composites. Parents already clip with `overflow:hidden` + radius so rounded ends still work.
+- **Section headings render through `SectionLabel`** — they had drifted into two sizes and two
+  letter-spacings across History and Profile.
+- **Don't reintroduce a global `font-size:16px !important` on inputs.** It was there as the standard
+  stop-mobile-Safari-zooming-on-focus trick, but `!important` beat every inline `fontSize` in the
+  app (exercise notes rendered larger than their own labels). The native shell locks zoom at the
+  viewport, so it bought nothing. There's a plain 15px FLOOR now for inputs that set no size of
+  their own; inline styles win. Caveat recorded in the code: mobile Safari ignores
+  `user-scalable=no`, so focus-zoom returns if the WEB build ever gets real users.
+- **A prop you forgot to pass is a `ReferenceError`, and a surrounding `catch` will eat it.**
+  `WorkoutTracker` referenced `isGuest` twice without receiving it as a prop and with no
+  module-level binding, so both lines threw into a swallowing catch: `pr_events` was NEVER synced
+  to the server (Wrapped read "0 PRs" for weeks that had real ones) and `hr_summary` never reached
+  it either. Nothing logged, nothing looked broken. When a sync "just doesn't happen", check the
+  component actually receives every identifier it names before looking at the network.
+- **`alignItems:"center"` on a scrollable backdrop clips the TOP of an over-tall child**, not the
+  bottom — so a tall modal loses its header and close button under the status bar. Centre with
+  `margin:auto` on the card and let the backdrop scroll.
 - **Pluralize user-facing counts** (`{n} member{n===1?"":"s"}`) and **suppress zero/meaningless
   deltas** ("▲ 0% volume", "+225 over your previous best" on a first-ever PR — `hitPRs` carries a
   `firstEver` flag for this). Both classes of bug shipped once; check for them in new stat UI.
@@ -176,7 +207,9 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   `security_invoker` blanks search, follower lists and feed avatars, and an RLS policy can't replace
   it because RLS is row-level, not column-level (allowing the row hands over the email too). The
   real hazard is the opposite one: if a sensitive column is ever added to `profiles`, don't add it
-  to this view. It lists columns explicitly so nothing leaks automatically.
+  to this view. It lists columns explicitly so nothing leaks automatically. `workout_notes` (added
+  July 23 so session notes survive a reinstall) is the worked example: owner-only on `profiles`,
+  deliberately NOT in the view, and still never written into the shared `workout_history` row.
 - **Auth Redirect URLs must stay EMPTY with Site URL pinned to the prod domain** (verified July 30:
   Site URL `https://spotr-drab.vercel.app`, allow list empty). Supabase falls back to Site URL when a
   `redirect_to` doesn't match the allow list, so an empty list means every redirect — including an
@@ -300,6 +333,42 @@ relaunches. Nothing this session needed a Mac. Shipped, newest last:
   all agree.
 - `build/pw_addex.mjs` — the "+ ADD EXERCISE" contract (typing adds nothing, the dropdown filters,
   a pick or Enter commits once, the box clears).
+
+**★★★ FIRST-OTA + POLISH ERA (July 23–28, 2026) — the week OTA started carrying real work, and
+the look-and-feel pass.** Bundles `2026-07-25a` → `2026-07-28d`. Shipped, newest last:
+- **PR history had NEVER synced** — `WorkoutTracker` named `isGuest` without receiving it, so a
+  swallowed ReferenceError killed both the `pr_events` and `hr_summary` writes. Wrapped read
+  "0 PRs" for weeks that had real ones (confirmed against live data: last PR event June 29 despite
+  10 exercises beating their stored PR Jul 13–19). See the ReferenceError rule in Conventions.
+- **Two overlays trapped under the status bar** (both reorder screens' "Done" was untappable) and
+  the **Wrapped modal clipped its own header** via `alignItems:center` — both rules are in
+  Conventions now.
+- **Notes**: auto-growing textarea, per-exercise notes attached to history and shown in History,
+  per-workout notes kept OUT of the shared `workout_history` row, then synced to an owner-only
+  `profiles.workout_notes` so they survive a reinstall without becoming public.
+- **Recovery % stopped drifting through the day** — `pinToLastNight()`. The HRV lookback was a
+  rolling 36h so it straddled two nights and shed samples as the clock advanced, and the "overnight"
+  rule counted from 22:00, so evening-while-awake samples raised the score at night. It now reduces
+  the pool to ONE night (HealthKit's real sleep window, else the newest contiguous block), so the
+  number holds steady once you wake. Formula unchanged: 50% HRV vs baseline, 25% RHR, 25% sleep.
+  Sim: `sim_recovery_pin`.
+- **Polish/motion pass**: one easing token, `scaleX` progress bars, no page rubber-band, unified
+  section labels, de-whitened Quick Start, sparkline fixes (inset plot, hi/lo labels, no overflow),
+  History stat tiles counting up. All in Conventions. Restore point: branch
+  `restore-point-pre-polish`.
+- **Sub-tab memory** (`_trackerSubTab` / `_discoverSubTab`, module-level) — the swipe track only
+  keeps the CURRENT tab mounted, so leaving a tab used to dump you back on its first sub-tab.
+  Deliberately module-level so it does NOT touch the track's mounting (that engine has broken twice).
+- **Feed foreground-refresh flicker** — a background re-fetch flipped the global loading state and
+  replaced the whole array even when nothing changed. It now skips the loading toggle and bails
+  when the incoming posts are identical.
+- **Manual OTA update check reported "couldn't reach update server"** — the plugin REJECTS
+  `getLatest()` whenever the reply carries a non-empty `message`, and the no-update reply said
+  "up to date". Auto-update ignores `message`, which is why only the manual check looked broken.
+  The reply is bare `{version:null}` now.
+- **Settings shows which bundle is running** ("App version", tappable to check for an update).
+  This is the ONLY way to tell whether an OTA landed — the app looks identical either way — so use
+  it first when Mo says an update didn't arrive.
 
 **★★ POST-TESTFLIGHT DEVICE-FEEDBACK ERA (July 20-21, 2026) — Mo testing on his phone, reporting
 bugs live; each fix below is committed + pushed to main and rides the NEXT build/OTA.** A real
@@ -481,7 +550,15 @@ per-side borders; guest auth-gate Back now returns to the app, not the marketing
 the earlier era: co-move swipe, Wrapped share-to-story, block users, native confirm sheets,
 female body map, and the full security/perf audit (RLS gaps, webhook auth, race conditions).
 
-**Sim battery (build/*.mjs, all currently passing):** `sim_sweep.mjs` (full-app fuzz tour, run
+**⚠️ THE SIM LIST BELOW IS HISTORY, NOT AN INVENTORY — most of these files NO LONGER EXIST.** A
+container recycle wiped everything in the gitignored `build/`, and only the sims re-added with
+`git add -f` survived. `ls build/sim_*.mjs` is the truth; `node build/run_sims.mjs` runs whatever
+is actually there. The descriptions are kept because they record what each flow's tricky parts
+were, so recreating one is quick — but don't go hunting for a file that isn't there, and don't
+report a sim as "passing" because it's named here. The harness gotchas below the list are all
+still live and worth reading before writing any new sim.
+
+**Historic sim battery (build/*.mjs):** `sim_sweep.mjs` (full-app fuzz tour, run
 plain AND with `guest` arg), `sim_flows.mjs` (finish-workout → recap + kg-unit smell scan),
 `sim_reset.mjs` (password reset both halves), `sim_retry.mjs` (login blip/persistent failure),
 `sim_merge.mjs` (custom-name migration), `sim_keypad.mjs` (div set fields + NumberPad),
@@ -517,7 +594,7 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
 
-Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). Email confirmation is still OFF — SMTP is live now, flip "Confirm email" in Supabase Auth around public launch, not before TestFlight. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`) and a "Seshd" sender name in Supabase SMTP settings. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
+Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). **Email confirmation is ON** (Mo flipped it July 30, before opening the beta). Leaked-password protection is a PAID Supabase feature and is deliberately deferred — it's the single best remaining defence for tester accounts, so re-raise it when he's on a paid plan. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`). **Branded auth email templates are written and waiting in `supabase/email-templates/`** (confirm-signup / reset-password / change-email, plus `preview/*.png` and `_shared.md` with install steps) — they go in the Supabase dashboard, so no deploy; still Mo-side, along with setting the SMTP **Sender name to "Seshd"**. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
 ### OTA UPDATES (@capgo/capacitor-updater, self-hosted — set up July 20, 2026)
 Purpose: ship app-code updates to installed phones WITHOUT the Mac/TestFlight. Fully wired on
