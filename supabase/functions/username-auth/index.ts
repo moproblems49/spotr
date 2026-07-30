@@ -49,7 +49,9 @@ Deno.serve(async (req: Request) => {
 
   const action = String(body.action || "signin");
   const username = String(body.username || "").trim();
-  if (!username) return json(INVALID, 400);
+  // Cap the inputs. Nothing downstream needs more than this, and it keeps a caller from posting a
+  // megabyte of text to be pushed through a database lookup on every request.
+  if (!username || username.length > 64) return json(INVALID, 400);
   // An email here means the caller should have used the normal auth endpoints directly; refuse
   // rather than quietly acting as an open proxy for arbitrary email addresses.
   if (username.includes("@")) return json({ error: "use_email_endpoint" }, 400);
@@ -70,7 +72,16 @@ Deno.serve(async (req: Request) => {
   } catch { /* fall through to the generic failure */ }
 
   if (action === "recover") {
-    const redirectTo = String(body.redirectTo || "https://spotr-drab.vercel.app");
+    // NEVER forward a caller-supplied redirect straight into the recovery email. Anyone can call
+    // this function, so an attacker could ask for a genuine Seshd password-reset email for someone
+    // else's username pointing at their own site -- the victim clicks, and the recovery token
+    // arrives on the attacker's page. That is account takeover.
+    // Supabase does enforce its own Redirect URLs allowlist, but this function must not depend on a
+    // dashboard setting it cannot see, so pin the destination here too. Anything unrecognised
+    // silently falls back to production rather than erroring (no signal to probe with).
+    const ALLOWED = ["https://spotr-drab.vercel.app", "http://localhost:5173", "http://localhost:4173"];
+    const asked = String(body.redirectTo || "");
+    const redirectTo = ALLOWED.includes(asked) ? asked : "https://spotr-drab.vercel.app";
     // Always report success — revealing "no such user" here would undo the enumeration fix.
     if (email) {
       try {
@@ -86,7 +97,7 @@ Deno.serve(async (req: Request) => {
 
   // ── sign in ──────────────────────────────────────────────────────────────────────────────────
   const password = String(body.password || "");
-  if (!password) return json(INVALID, 400);
+  if (!password || password.length > 200) return json(INVALID, 400);
   if (!email) return json(INVALID, 400);   // same shape as a wrong password, deliberately
 
   try {
