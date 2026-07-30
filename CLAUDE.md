@@ -171,7 +171,25 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats
   counted them, so the same workout read ~34% heavier in History than on the summary that saved it.
   A working set is `done && type !== "warmup"`; sets with no `type` are legacy working sets and
-  must still count.
+  must still count. Same rule, second instance: a PROGRAM exercise's set count is `progSetCount()`
+  — the built-in templates and the day-preview "+ add" path write only `reps:"4×5–8"` and no
+  `sets` field, and the three readers each guessed differently (start=4, editor stepper=3,
+  reorder list="0 sets"). `progSetCount` handles both shapes: a live session's `sets` ARRAY (0 is
+  a real answer) and a program's count-or-absent (leading `N×` in reps, else 3).
+- **A component that copies a prop into `useState` goes stale, and index keys are what expose it.**
+  `useState(value)` runs once; if the parent later changes `value` without remounting, the mirror
+  never updates. The program editor keys its exercise rows by INDEX, so reordering a day reused
+  every `ExerciseInput` instance and each name field kept showing the exercise it mounted with —
+  while the genuinely controlled reps/rest fields beside it moved. The save was correct the whole
+  time; it just looked like "reordering doesn't stick". Either key by a stable id or resync the
+  mirror on an external `value` change (compare against a `useRef` of the last prop so typing,
+  which keeps the two in lockstep, can't be clobbered). When a reorder "doesn't stick", check what
+  the STORE holds before believing the screen.
+- **A fullscreen overlay owns the status-bar area itself** — it's anchored at `top:0` over the
+  app's own top bar, so it needs `calc(env(safe-area-inset-top) + Npx)` on its header or the title
+  and buttons sit under the clock/battery. `ProgramDetailView`, `ProgramBuilder` and
+  `DayPreviewModal` all shipped without it (their reorder modals had it, which is why only the
+  screen behind looked wrong). Check this on every new `position:fixed; inset:0` screen.
 - **Anything written OUT of the app must be idempotent per session id.** A workout can be finished
   more than once on purpose — "Undo finish & edit" then finish again — and a glitched finish gets
   retried. `workout_history` handles this by reusing the sid so the row upserts; the Apple Health
@@ -228,9 +246,14 @@ relaunches. Nothing this session needed a Mac. Shipped, newest last:
   accessory deload false-positive, duplicate-source step double-count, warmups inflating volume on
   every screen but the finish summary, and duplicate Apple Health calorie writes. All four are in
   the Conventions list above as rules.
-**Sim battery is 16 and green — `node build/run_sims.mjs`.** New this session: `sim_sleepblock`,
+**Sim battery is 19 and green — `node build/run_sims.mjs`.** New this session: `sim_sleepblock`,
 `sim_swipenoop`, `sim_chartscrub`, `sim_overload`, `sim_stepsbox`, `sim_dupsource`,
-`sim_doublecount`, `sim_setswipe`, plus `bodymap_tip`/`bodymap_full` checkers.
+`sim_doublecount`, `sim_setswipe`, `sim_profilehdr`, `sim_usernameauth`, `sim_progsets`, plus
+`bodymap_tip`/`bodymap_full` checkers. **`build/pw_reorder.mjs` is the worked Playwright example
+for dnd-kit** — drag-and-drop needs real pointer events, so jsdom can't test a reorder at all; it
+seeds a program, opens the day editor, drags a row and asserts the reorder list, the editor's own
+fields and the persisted store all agree. Run it with the dist server on :8199 (see the Playwright
+recipe above); it is NOT part of `run_sims.mjs`.
 
 **★★ POST-TESTFLIGHT DEVICE-FEEDBACK ERA (July 20-21, 2026) — Mo testing on his phone, reporting
 bugs live; each fix below is committed + pushed to main and rides the NEXT build/OTA.** A real
