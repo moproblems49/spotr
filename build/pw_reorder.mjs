@@ -1,0 +1,140 @@
+// Drives the REAL program-day editor in Chromium: open a program, tap REORDER, drag the first
+// exercise below the third, tap Done, and check the order in the editor list AND in the persisted
+// store. jsdom can't do this — dnd-kit needs real pointer events.
+import { chromium } from "playwright-core";
+
+const EXE = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const PROG = {
+  id: "prog-1", name: "No Mercy PPL",
+  days: [{
+    id: "day-1", name: "Legs A",
+    exercises: [
+      { name: "Barbell Back Squat", sets: 3, reps: "5-8", rest: "180" },
+      { name: "Leg Extension", reps: "3×12-15" },      // no `sets` — the "0 sets" case
+      { name: "Leg Press", reps: "4×10-12" },          // no `sets`
+      { name: "Seated Leg Curl", reps: "3×12" },       // no `sets`
+      { name: "Standing Calf Raise", reps: "4×15" },   // no `sets`
+    ],
+  }],
+};
+const STORE = {
+  programs: [PROG], activeProgramId: "prog-1", history: {}, prEvents: [],
+  bodyLog: [], profile: { username: "momo", name: "Mo" }, unit: "lbs",
+};
+
+const b = await chromium.launch({ executablePath: EXE, args: ["--no-sandbox"] });
+const page = await b.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2 });
+page.setDefaultTimeout(4000);
+await page.addInitScript(([store]) => {
+  localStorage.setItem("seshd_v1", JSON.stringify(store));
+  localStorage.setItem("seshd_session", JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: "u1", email: "mo@example.com" } }));
+  localStorage.setItem("seshd_onboarded", "1");
+  localStorage.setItem("seshd_custom_merge_v1", "1");
+}, [STORE]);
+await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
+  body: JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: "u1", email: "mo@example.com" } }) }));
+await page.route("**/rest/v1/**", r => r.abort());
+
+let fails = 0;
+const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
+
+await page.goto("http://127.0.0.1:8199/", { waitUntil: "load", timeout: 20000 });
+await page.waitForTimeout(1200);
+
+// Workout tab → Programs sub-tab → open the program.
+await page.getByText("1 days · 5 exercises").click({ timeout: 8000 });
+await page.waitForTimeout(800);
+await page.screenshot({ path: "build/shot_editor.png" });
+
+// The set-count fallback: what does the editor stepper say vs the reorder row?
+const reorderBtn = page.getByRole("button", { name: "REORDER" });
+check("REORDER button is present", await reorderBtn.count() > 0);
+await reorderBtn.click();
+await page.waitForTimeout(500);
+await page.screenshot({ path: "build/shot_reorder.png" });
+
+const rowText = async () => page.evaluate(() => {
+  const modal = [...document.querySelectorAll("div")].find(d => d.textContent?.includes("DRAG TO MOVE") && d.style.position === "fixed");
+  if (!modal) return null;
+  const list = modal.querySelector('[style*="overflow"]') || modal;
+  return [...list.querySelectorAll("div")]
+    .filter(d => d.style.touchAction === "none" && d.style.borderRadius === "14px")
+    .map(d => d.innerText.replace(/\n/g, " | ").trim());
+});
+const before = await rowText();
+console.log("ROWS BEFORE:", JSON.stringify(before, null, 1));
+check("reorder modal lists all 5 exercises", before?.length === 5, String(before?.length));
+check("no row reads '0 sets'", !before?.some(t => /\b0 sets\b/.test(t)), JSON.stringify(before));
+check("no row ends with a dangling separator", !before?.some(t => /·\s*$/.test(t)), JSON.stringify(before));
+
+// Drag row 0 (Barbell Back Squat) down past row 2.
+const rows = page.locator('div[style*="touch-action: none"]').filter({ hasText: /set/ });
+const n = await rows.count();
+const boxes = [];
+for (let i = 0; i < n; i++) boxes.push(await rows.nth(i).boundingBox());
+const src = boxes[0], dst = boxes[2];
+await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+await page.mouse.down();
+for (let s = 1; s <= 12; s++) {
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2 + (dst.y + dst.height / 2 - src.y - src.height / 2) * s / 12);
+  await page.waitForTimeout(30);
+}
+await page.waitForTimeout(200);
+await page.mouse.up();
+await page.waitForTimeout(600);
+await page.screenshot({ path: "build/shot_after_drag.png" });
+
+const after = await rowText();
+console.log("ROWS AFTER: ", JSON.stringify(after, null, 1));
+check("the dragged exercise moved in the reorder list",
+  after && after[0] && !/Barbell Back Squat/.test(after[0]), JSON.stringify(after));
+
+// Done → the main editor list must show the same order.
+await page.getByRole("button", { name: "Done" }).click();
+await page.waitForTimeout(600);
+await page.screenshot({ path: "build/shot_after_done.png" });
+const EXPECTED = ["Leg Extension", "Leg Press", "Barbell Back Squat", "Seated Leg Curl", "Standing Calf Raise"];
+const editorOrder = await page.evaluate(() =>
+  [...document.querySelectorAll("input")].map(i => i.value).filter(v => /Squat|Leg (Extension|Press|Curl)|Calf/.test(v)));
+console.log("EDITOR ORDER:", JSON.stringify(editorOrder));
+check("the main editor's NAME fields show the new order",
+  JSON.stringify(editorOrder) === JSON.stringify(EXPECTED), JSON.stringify(editorOrder));
+
+// The reps field is controlled, the name field mirrors its prop into local state — they must not
+// disagree. "Barbell Back Squat" is the only row carrying a bare rep range and rest 180.
+const pairs = await page.evaluate(() => {
+  const out = [];
+  document.querySelectorAll("input").forEach(i => {
+    if (!/Squat|Leg (Extension|Press|Curl)|Calf/.test(i.value)) return;
+    const card = i.closest('div[style*="border-radius: 16px"]');
+    const fields = card ? [...card.querySelectorAll("input")].map(x => x.value) : [];
+    out.push(fields);
+  });
+  return out;
+});
+console.log("NAME/REPS/REST:", JSON.stringify(pairs));
+const squat = pairs.find(p => p[0] === "Barbell Back Squat");
+check("the name and the reps beside it belong to the same exercise",
+  squat && squat[1] === "5-8", JSON.stringify(squat));
+
+// And it must persist to the store (this is the "doesn't stick" claim).
+await page.waitForTimeout(500);
+const persisted = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem("seshd_v1") || "{}");
+  return s.programs?.[0]?.days?.[0]?.exercises?.map(e => e.name);
+});
+console.log("PERSISTED: ", JSON.stringify(persisted));
+check("the reorder is persisted to the store",
+  JSON.stringify(persisted) === JSON.stringify(EXPECTED), JSON.stringify(persisted));
+
+// Set counts must agree between the editor stepper and the reorder list.
+const steppers = await page.evaluate(() =>
+  [...document.querySelectorAll("span")].filter(s => s.previousElementSibling?.textContent === "−")
+    .map(s => s.textContent));
+console.log("STEPPERS:  ", JSON.stringify(steppers));
+check("the editor stepper reads the count out of the reps string",
+  JSON.stringify(steppers) === JSON.stringify(["3", "4", "3", "3", "4"]), JSON.stringify(steppers));
+
+await b.close();
+console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
+process.exit(fails ? 1 : 0);

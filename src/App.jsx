@@ -1,4 +1,4 @@
-// v178091716749
+// v178091716750
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2948,6 +2948,21 @@ function sessionVolume(sess) {
     .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
 }
 
+// How many sets an exercise represents. ONE definition — the program editor, the reorder list and
+// startWorkout must all agree, and they didn't: the built-in templates and the day-preview "+ add"
+// path write only `reps:"3×12-15"` and no `sets` field, so the editor's stepper showed the default
+// 3 while the reorder list showed "0 sets" for the same exercise. Handles both shapes:
+//   - a LIVE session exercise, where `sets` is the array of actual sets (0 is a real answer)
+//   - a PROGRAM day exercise, where `sets` is a count, possibly absent — then fall back to the
+//     leading "N×" in the reps string ("4×8-12" → 4), else 3, exactly as startWorkout does.
+function progSetCount(ex) {
+  if (Array.isArray(ex?.sets)) return ex.sets.length;
+  const n = parseInt(ex?.sets);
+  if (n > 0) return n;
+  const lead = String(ex?.reps || "").match(/^\s*(\d+)\s*[×x*]/i);
+  return lead ? parseInt(lead[1]) : 3;
+}
+
 function getLastExerciseSession(store, exName) {
   const dates = Object.keys(store.history||{}).sort().reverse();
   for (const d of dates) {
@@ -4522,7 +4537,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -5995,6 +6010,19 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, C, recentEx
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // `q` is a local MIRROR of the `value` prop, so it goes stale the moment the parent changes
+  // value without remounting us. The program editor keys its exercise rows by INDEX, so
+  // reordering a day swapped the names underneath these inputs while every instance kept showing
+  // the name it mounted with — the reorder saved correctly but the editor still read like nothing
+  // had moved, and the (controlled) reps/rest fields disagreed with the name beside them.
+  // Typing keeps q and value in lockstep, so this only fires on a genuine external change.
+  const lastValue = useRef(value);
+  useEffect(() => {
+    if (value === lastValue.current) return;
+    lastValue.current = value;
+    setQ(value || "");
+  }, [value]);
 
   const categories = ["All", "Chest", "Back", "Shoulders", "Biceps", "Triceps", "Quads", "Hamstrings", "Glutes", "Calves", "Core"];
 
@@ -7794,7 +7822,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden", background:C.bg }}>
       {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px 14px", borderBottom:`1px solid ${border}`, flexShrink:0 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"calc(env(safe-area-inset-top) + 16px) 18px 14px", borderBottom:`1px solid ${border}`, flexShrink:0 }}>
         <button onClick={onCancel} style={{ fontSize:14, color:labelClr, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
         <input
           value={name} onChange={e => setName(e.target.value)}
@@ -8624,6 +8652,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   const editorSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   function handleEditorDragEnd({ active, over }) {
     if (!over || active.id === over.id) return;
@@ -8660,8 +8689,10 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   return (
     <div style={{ position:"absolute", inset:0, background:BG, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-      {/* Top bar */}
-      <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"14px 18px", flexShrink:0 }}>
+      {/* Top bar — this view is a fullscreen overlay anchored at top:0, so it owns the status-bar
+          area itself (the app's own top bar is behind it). Without the inset the Save button and
+          program name sit under the clock/battery. */}
+      <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"calc(env(safe-area-inset-top) + 14px) 18px 14px", flexShrink:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <button onClick={onBack} style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
@@ -8838,7 +8869,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
         ) : (
           day.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
-            const sets = Math.max(1, parseInt(ex.sets) || 3);
+            const sets = Math.max(1, progSetCount(ex));
             const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#c8f135",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
             const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
             return (
@@ -9992,7 +10023,7 @@ function SortableExerciseRow({ id, ex, C }) {
       <MuscleIcon muscle={exInfo?.muscle||""} size={32} name={ex.name} C={C}/>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:14, fontWeight:700, color:C.text, letterSpacing:-0.2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ex.name || "Unnamed"}</div>
-        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(() => { const n = Array.isArray(ex.sets) ? ex.sets.length : (parseInt(ex.sets) || 0); return `${n} set${n === 1 ? "" : "s"}`; })()} · {exInfo?.muscle || ""}</div>
+        <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(() => { const n = progSetCount(ex); return `${n} set${n === 1 ? "" : "s"}`; })()}{exInfo?.muscle ? ` · ${exInfo.muscle}` : ""}</div>
       </div>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}>
         <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
@@ -10563,10 +10594,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     const exs = day
       ? day.exercises.map(ex => {
           // Use the day's saved set count if present, else fall back to the leading "N×"
-          // in the reps string (e.g. "4×8-12" → 4), else default to 3.
-          const repsLead = String(ex.reps || "").match(/^\s*(\d+)\s*[×x]/i);
-          const setCount = (typeof ex.sets === "number" && ex.sets > 0) ? ex.sets
-            : (repsLead ? parseInt(repsLead[1]) : 3);
+          // in the reps string (e.g. "4×8-12" → 4), else default to 3. Shared with the editor
+          // and the reorder list so all three read the same number off the same exercise.
+          const setCount = progSetCount(ex);
           return {
             ...ex, id: uid(),
             // Surface the standing per-exercise note when the program day doesn't define one,
@@ -13219,7 +13249,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
     <div style={{ position:"fixed", inset:0, background:BG, zIndex:200, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto" }}>
 
       {/* Top bar */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 18px", background:CARD, borderBottom:`1px solid ${BORD}`, flexShrink:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"calc(env(safe-area-inset-top) + 14px) 18px 14px", background:CARD, borderBottom:`1px solid ${BORD}`, flexShrink:0 }}>
         <button onClick={onClose} style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
         </button>
