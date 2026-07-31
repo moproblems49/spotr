@@ -70,6 +70,21 @@ const scrolled = await page.evaluate(async () => {
   return { found: true, before, after: sc.scrollTop };
 });
 console.log("BEHIND-SCROLL:", JSON.stringify(scrolled));
+
+// The dim area must not initiate a scroll, and the list must not chain its overscroll to the
+// screen behind when it hits either end.
+const containment = await page.evaluate(() => {
+  const back = [...document.querySelectorAll("div")].find(d =>
+    /rgba\(0, 0, 0, 0\.6\)/.test(d.style.background || "") && d.style.position === "fixed");
+  const list = back?.querySelector('[style*="overflow-y: auto"], [style*="overflowY"]')
+    || [...(back?.querySelectorAll("div") || [])].find(d => /auto|scroll/.test(getComputedStyle(d).overflowY));
+  return { backdropTouchAction: back ? getComputedStyle(back).touchAction : null,
+           listOverscroll: list ? getComputedStyle(list).overscrollBehavior : null };
+});
+console.log("CONTAINMENT:", JSON.stringify(containment));
+check("the dimmed area can't start a scroll", containment.backdropTouchAction === "none", JSON.stringify(containment));
+check("the list doesn't chain its overscroll to the screen behind",
+  /contain/.test(containment.listOverscroll || ""), JSON.stringify(containment));
 // NB: body.style.overflow is pinned "hidden" for the whole app by AppInner, so it says nothing
 // about whether this sheet contains its scroll. What actually contains it is the backdrop covering
 // the full viewport — asserted above — so that touches can't reach the profile at all.

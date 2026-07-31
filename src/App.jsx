@@ -1,4 +1,4 @@
-// v178091716755
+// v178091716756
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17241,14 +17241,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         // showed through under the list and kept scrolling. Every other overlay in this component
         // was already portaled; this one was missed.
         return createPortal((
-          <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", margin:"0 16px" }}>
+          // touchAction:"none" on the dim area: covering the viewport stops the profile RECEIVING
+          // the touch, but a drag that starts on a non-scrollable element still scrolls the
+          // nearest scrollable ancestor, so the screen behind kept moving.
+          <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", touchAction:"none" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.45)", border:`1px solid ${C.border}`, overflow:"hidden", margin:"0 16px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px", borderBottom:`1px solid ${C.divider}` }}>
                 <div style={{ width:44 }}/>
                 <div style={{ fontSize:14, fontWeight:700, color:C.text, textTransform:"capitalize" }}>{listModal} · {listUsers.length}</div>
                 <button onClick={() => setListModal(null)} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
               </div>
-              <div style={{ overflowY:"auto", flex:1, paddingBottom:20 }}>
+              <div style={{ overflowY:"auto", flex:1, paddingBottom:20, overscrollBehavior:"contain", WebkitOverflowScrolling:"touch" }}>
                 {listUsers.length === 0 && (
                   <div style={{ textAlign:"center", color:C.sub, padding:"50px 20px" }}>
                     <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="users" size={36} color="currentColor"/></div>
@@ -17259,7 +17262,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   const amFollowing = myFollowing.includes(u.id);
                   const isMyself = u.id === currentUserId;
                   return (
-                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}` }}>
+                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.border}` }}>
                       <div onClick={() => { setListModal(null); if (onUserClick) onUserClick(u.id); }} style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
                         <Avatar user={u} size={44} C={C}/>
                         <div style={{ flex:1, minWidth:0 }}>
@@ -17278,14 +17281,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               onConfirm: () => onRemoveFollower && onRemoveFollower(u.id),
                             })} style={{
                               padding:"7px 12px", borderRadius:8, fontSize:12, fontWeight:600,
-                              background:"transparent", color:C.text, border:`1px solid ${C.border}`,
+                              background:"transparent", color:"#EF4444", border:`1px solid #EF444455`,
                               cursor:"pointer", fontFamily:F
                             }}>Remove</button>
                           )}
                           <button onClick={() => onFollow && onFollow(u.id)} style={{
                             padding:"7px 16px", borderRadius:8, fontSize:12, fontWeight:600,
-                            background: amFollowing ? "transparent" : C.accent,
-                            color: amFollowing ? C.text : "#fff",
+                            // "Following" is the resting state, so it stays quiet — but quiet on a
+                            // dark sheet still needs a surface of its own, or the button vanishes
+                            // into the card. "Follow" is the action, so it takes the accent.
+                            background: amFollowing ? C.divider : C.accent,
+                            color: amFollowing ? C.text : C.onAccent,
                             border: `1px solid ${amFollowing ? C.border : C.accent}`,
                             cursor:"pointer", fontFamily:F
                           }}>{amFollowing ? "Following" : "Follow"}</button>
