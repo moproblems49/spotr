@@ -28,7 +28,7 @@ const HISTORY = {
   "2026-07-22": { [UUID_SID]: { dayName: "Pull A", exercises: [{ name: "Row", sets: [{ weight: "155", reps: "8", done: true, type: "normal" }] }], duration: 2800, unit: "lbs" } },
 };
 
-async function runMigration(label) {
+async function runMigration(label, historyOverride) {
   // Drive the BOOT migration path: an auth callback landing while `seshd_guest` is still set is
   // exactly the interrupted-migration replay this has to survive. AUTH_CALLBACK is captured at
   // module load, so the fragment must be on the URL before the dynamic import below.
@@ -49,7 +49,7 @@ async function runMigration(label) {
   navigator.vibrate = () => {};
 
   // A GUEST with local history, mid-signup: the app migrates on the next authenticated boot.
-  window.localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: "guest", history: HISTORY, users: [], programs: [], prs: {} }));
+  window.localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: "guest", history: historyOverride === undefined ? HISTORY : historyOverride, users: [], programs: [], prs: {} }));
   window.localStorage.setItem("seshd_guest", "1");
   window.localStorage.setItem("seshd_onboarded", "1");
   window.localStorage.setItem("seshd_custom_merge_v1", "1");
@@ -111,6 +111,13 @@ check("a second run reuses the SAME uuid for the already-uuid session",
   second.some(w => w.body?.id === UUID_SID), JSON.stringify(second.map(w => w.body?.id)));
 check("every second-run write is an upsert, so nothing accumulates",
   second.length > 0 && second.every(w => /on_conflict=id/.test(w.url) && /merge-duplicates/.test(w.prefer || "")));
+
+// A LINGERING FLAG WITH NOTHING TO MOVE MUST BE SILENT. `seshd_guest` outlives the guest data —
+// it's cleared only at the end of a successful run — so it re-fired on every later sign-in and
+// announced "Account created — your progress is saved" to people who had merely logged in.
+const empty = await runMigration("three", {});
+console.log("RUN 3 (no guest data) history writes:", empty.length);
+check("a lingering guest flag with no data writes nothing", empty.length === 0, JSON.stringify(empty.map(w => w.body)));
 
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

@@ -1,4 +1,4 @@
-// v178091716757
+// v178091716758
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19921,6 +19921,18 @@ function AppInner() {
     const tok = authData.access_token;
     const newUserId = authData.user.id;
     if (!tok || !newUserId) return;
+    // Nothing to move? Clear the flag and say nothing. `seshd_guest` can outlive the guest data —
+    // it's only removed at the very END of a successful run, so an interrupted one leaves it set,
+    // and it then re-fires on every later sign-in. That's why a plain LOGIN announced "Account
+    // created — your progress is saved": the migration was re-running over an empty store.
+    const hasGuestData = Object.keys(store.history || {}).length > 0
+      || (store.programs || []).length > 0
+      || Object.keys(store.prs || {}).length > 0;
+    if (!hasGuestData) {
+      try { localStorage.removeItem("seshd_guest"); } catch {}
+      setIsGuest(false);
+      return;
+    }
     try {
       // Upload programs
       for (const prog of (store.programs || [])) {
@@ -20006,7 +20018,9 @@ function AppInner() {
       }));
       saveSession(authData);
       setSession(authData);
-      toast("Account created — your progress is saved", "success");
+      // Neutral wording: this path also runs when a guest signs IN to an account they already
+      // have, where "Account created" is simply untrue.
+      toast("Your progress is saved to your account", "success");
     } catch (e) {
       devError("guest migration error:", e);
       toast("Account created — some data didn't transfer", "error");
@@ -21495,6 +21509,10 @@ function AppInner() {
       <ConfirmHost C={C}/>
       <ReportHost C={C} token={token} currentUserId={currentUserId}/>
 
+      {/* Exactly ONE of these three may reserve the status-bar area: the topmost one actually on
+          screen. They each added env(safe-area-inset-top) independently, so any two at once —
+          offline + guest, or offline while signed in — stacked TWO full status bars of dead space
+          above the content. That's the empty band Mo saw under the offline bar in guest mode. */}
       {/* OFFLINE INDICATOR — non-intrusive; auto-hides on reconnect */}
       {!online && (
         <div style={{
@@ -21512,7 +21530,7 @@ function AppInner() {
       {isGuest && (
         <div style={{
           background:C.text, color:C.bg,
-          padding:"max(env(safe-area-inset-top), 8px) 16px 8px",
+          padding: `${online ? "max(env(safe-area-inset-top), 8px)" : "8px"} 16px 8px`,
           display:"flex", alignItems:"center", gap:10, flexShrink:0
         }}>
           <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
@@ -21546,7 +21564,7 @@ function AppInner() {
           ? "inset 0 1px 0 rgba(255,255,255,0.08)"
           : "inset 0 1px 0 rgba(255,255,255,0.9)",
         // Moved up: tighter top gap under the notch (+4 vs +10) and slimmer bottom pad.
-        padding: isGuest ? "7px calc(env(safe-area-inset-right) + 14px) 7px calc(env(safe-area-inset-left) + 14px)" : "calc(env(safe-area-inset-top) + 4px) calc(env(safe-area-inset-right) + 14px) 7px calc(env(safe-area-inset-left) + 14px)",
+        padding: `${(isGuest || !online) ? "7px" : "calc(env(safe-area-inset-top) + 4px)"} calc(env(safe-area-inset-right) + 14px) 7px calc(env(safe-area-inset-left) + 14px)`,
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
         <SeshdLogo C={C}/>

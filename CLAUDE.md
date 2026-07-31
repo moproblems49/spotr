@@ -260,6 +260,12 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   mirror on an external `value` change (compare against a `useRef` of the last prop so typing,
   which keeps the two in lockstep, can't be clobbered). When a reorder "doesn't stick", check what
   the STORE holds before believing the screen.
+- **Only ONE shell element may reserve the status bar.** The offline bar, the guest banner and the
+  top bar each padded by `env(safe-area-inset-top)` independently, so any two on screen at once —
+  offline + guest, or offline while signed in — stacked TWO full status bars of dead space. The
+  rule is: the topmost VISIBLE one owns it (offline > guest > top bar) and the others use flat
+  padding. Sim: `pw_topbanners` (env() is 0 in Chromium, so it counts which elements *ask* for the
+  inset rather than measuring pixels).
 - **A fullscreen overlay owns the status-bar area itself** — it's anchored at `top:0` over the
   app's own top bar, so it needs `calc(env(safe-area-inset-top) + Npx)` on its header or the title
   and buttons sit under the clock/battery. `ProgramDetailView`, `ProgramBuilder` and
