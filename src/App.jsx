@@ -1,4 +1,4 @@
-// v178091716759
+// v178091716760
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8945,7 +8945,14 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                     caret and opens the magnifier, so a hold-anywhere drag would fight typing. Same
                     call made on the program rows, where conflating tap and drag was a real bug. */}
                 <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderLeft:`4px solid ${mColor}` }}>
-                  <div {...handleProps} aria-label="Drag to reorder" style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"grab", touchAction:"none", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none" }}>
+                  <div {...handleProps} aria-label="Drag to reorder" style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"grab",
+                    // pan-y, NOT none. `none` would make this 38px tile a scroll dead-zone in a
+                    // long editor form — a thumb resting on an exercise icon couldn't scroll the
+                    // page at all. With pan-y the browser still scrolls a moving swipe, while a
+                    // stationary long-press starts no pan, so the delay sensor activates cleanly
+                    // and preventDefaults from there. (The dedicated ⠿ grips elsewhere use `none`
+                    // because they're obviously handles and nobody scrolls from them.)
+                    touchAction:"pan-y", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none" }}>
                     <MuscleIcon muscle={exInfo?.muscle||""} size={22} name={ex.name} C={C}/>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -16551,11 +16558,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     <PullToRefresh onRefresh={onRefresh} C={C}>
     <div style={{ paddingBottom:20 }}>
       {/* Cover photo — user image with gradient fallback. Tap "Edit cover" (own profile) to change. */}
-      {/* The status bar OVERLAYS the WebView (setOverlaysWebView), so the cover bleeds up behind
-          the clock on purpose — but its buttons must not. Grow the cover by the inset to keep 132px
-          of it actually visible, and push the buttons below the clock. Without this the back
-          chevron rendered underneath the time (Mo hit it opening a profile from a followers list). */}
-      <div style={{ height:"calc(132px + env(safe-area-inset-top))", marginBottom:-28, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
+      {/* The status bar OVERLAYS the WebView (setOverlaysWebView), so a cover that reaches the top
+          of the screen bleeds up behind the clock on purpose — but its buttons must not. Grow the
+          cover by the inset to keep 132px of it actually visible, and push the buttons below the
+          clock. Without this the back chevron rendered underneath the time.
+          ONLY WHEN THIS SCREEN IS AT THE TOP, though. `onBack` is the tell: it's passed for the
+          pushed overlay (someone else's profile), which is portaled and fixed at inset:0 and so
+          does own the status-bar area. The Profile TAB sits below the app's own top bar, which has
+          already cleared the clock — reserving it a second time there added ~59px of dead cover
+          and pushed "Edit cover" a third of the way down instead of into the corner. Same
+          one-owner rule as the offline/guest banners. */}
+      <div style={{ height: onBack ? "calc(132px + env(safe-area-inset-top))" : "132px", marginBottom:-28, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
         {user?.coverUrl
           ? <img src={user.coverUrl} alt="" onClick={() => setShowCoverView(true)}
               style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${user?.coverPos ?? 50}%`, cursor:"pointer" }}/>
@@ -16566,12 +16579,15 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           <div style={{ position:"absolute", inset:0, background:"linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.35))", pointerEvents:"none" }}/>
         )}
         {onBack && (
-          <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 8px)", left:10, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:19, fontSize:19, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
+          <button onClick={onBack} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 4px)", left:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:19, fontSize:19, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1 }}>‹</button>
         )}
         {isMe && (
           <>
             <input ref={coverRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleCover}/>
-            <button onClick={() => coverRef.current?.click()} style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 8px)", right:10, background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, padding:"5px 11px", fontSize:11, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F }}>Edit cover</button>
+            {/* Tucked into the top-right corner. The vertical offset is status-bar clearance and
+                can't go to zero — the cover deliberately bleeds up behind the clock, and this
+                button used to sit underneath it. +4 is as tight as it gets. */}
+            <button onClick={() => coverRef.current?.click()} aria-label="Edit cover" style={{ position:"absolute", top: onBack ? "calc(env(safe-area-inset-top) + 4px)" : "6px", right:8, background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, padding:"5px 10px", fontSize:11, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1.5 }}>Edit cover</button>
           </>
         )}
       </div>
