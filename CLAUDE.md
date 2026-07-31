@@ -265,6 +265,16 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   and buttons sit under the clock/battery. `ProgramDetailView`, `ProgramBuilder` and
   `DayPreviewModal` all shipped without it (their reorder modals had it, which is why only the
   screen behind looked wrong). Check this on every new `position:fixed; inset:0` screen.
+- **The guest→account migration must be idempotent, and `seshd_guest` is cleared LAST.** It POSTed
+  every local session with no id, so each run inserted fresh copies — and the flag only clears
+  after dozens of awaited requests, so any interruption re-migrated everything next launch. Mo's
+  account reached **202 rows for 55 workouts**. Nothing looked broken because `loadUserData` keys
+  history by ROW ID: every copy survived into the local store and inflated volume, streaks, the
+  workout count, Wrapped and Body Battery's training drain ~3.7×. It now sends the session's own id
+  (minting a UUID for legacy short `uid()` keys and writing it back to the store so a retry reuses
+  it) and upserts `on_conflict=id`. Sim: `sim_guestmigrate`. The duplicates identify themselves by
+  `created_at` at exactly midnight UTC — the old code used `new Date(date)`, which is also the
+  previous EVENING for anyone west of Greenwich; it's noon local now.
 - **Anything written OUT of the app must be idempotent per session id.** A workout can be finished
   more than once on purpose — "Undo finish & edit" then finish again — and a glitched finish gets
   retried. `workout_history` handles this by reusing the sid so the row upserts; the Apple Health

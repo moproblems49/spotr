@@ -104,15 +104,21 @@ await run("one", 1, 1, ({ qa, check }) => {
   // is an OVERLAY inside the shell, not an early return — that's what leaves the previous screen
   // rendered underneath, so the swipe reveals it instead of a black gap. The panel therefore fills
   // its absolutely-positioned host (height:100%), not the viewport (it used to be 100dvh).
-  // Find the OVERLAY first (absolute + inset:0), then its swipe panel — matching on
-  // "transition: transform" alone also hits the scaleX progress bars.
+  // Find the OVERLAY first, then its swipe panel — matching on "transition: transform" alone also
+  // hits the scaleX progress bars. The overlay is `position:fixed; inset:0` and PORTALED to
+  // document.body: fixed so it covers the app's own top bar the way the old early return did, and
+  // portaled so its own fixed children (the followers sheet) aren't trapped by EdgeSwipeBack's
+  // will-change:transform. What matters for THIS check is that it isn't an early return, i.e. the
+  // shell is still in the tree beside it.
   const host = qa("div").find(d => {
     const st = d.getAttribute("style") || "";
-    return /position:\s*absolute/.test(st) && /inset:\s*0/.test(st)
+    return /position:\s*fixed/.test(st) && /inset:\s*0/.test(st)
       && /transition:\s*transform/.test(d.firstElementChild?.getAttribute("style") || "");
   });
   check("...and that panel sits in an overlay, so the shell stays mounted behind it", !!host,
-    "no absolute inset:0 host — is the profile early-returning again?");
+    "no fixed inset:0 host — is the profile early-returning again?");
+  check("...portaled to document.body, so its own fixed children escape the transformed track",
+    !!host && host.parentElement === document.body, host ? host.parentElement?.tagName : "n/a");
   const panel = host ? host.firstElementChild : null;
   check("the profile screen is wrapped in a swipe-back panel",
     !!panel && /will-change:\s*transform/.test(panel.getAttribute("style") || ""),

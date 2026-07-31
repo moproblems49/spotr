@@ -1,4 +1,4 @@
-// v178091716756
+// v178091716757
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19951,25 +19951,51 @@ function AppInner() {
           }, tok);
         } catch (e) { devError("migrate PR:", e); }
       }
-      // Upload workout history
+      // Upload workout history.
+      // MUST BE IDEMPOTENT. This used to be a bare POST with no id, so every run inserted a fresh
+      // copy of every session — and the run only clears `seshd_guest` at the very end, after
+      // dozens of awaited requests, so any interruption (lost connection, app backgrounded, kill)
+      // left the flag set and re-migrated the lot on the next launch. One real account ended up
+      // with 202 rows for 55 workouts. Nothing looked broken: loadUserData keys history by ROW ID,
+      // so the copies all survived into the local store and silently inflated volume, streaks,
+      // the workout count, Wrapped and Body Battery's training drain by ~3.7x.
+      // Sending the session's own id and upserting on it makes a re-run a no-op.
+      const migratedHistory = {};
       for (const [date, daySessions] of Object.entries(store.history || {})) {
-        for (const sess of Object.values(daySessions)) {
+        migratedHistory[date] = { ...daySessions };
+        for (const [sid, sess] of Object.entries(daySessions)) {
+          // Guest sessions predating genUUID() are keyed by the short uid(), which a Postgres
+          // `uuid` column rejects. Mint one, and keep it in the local store so a retry reuses the
+          // same id instead of minting another (which would defeat the whole point).
+          const rowId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid) ? sid : genUUID();
+          if (rowId !== sid) {
+            delete migratedHistory[date][sid];
+            migratedHistory[date][rowId] = sess;
+          }
           try {
-            await sb.query("workout_history", {
+            await sb.query("workout_history?on_conflict=id", {
               method: "POST",
+              headers_extra: { "Prefer": "resolution=merge-duplicates" },
               body: JSON.stringify({
+                id: rowId,
                 user_id: newUserId, day_name: sess.dayName,
                 exercises: sess.exercises, duration_secs: sess.duration || 0,
                 unit: sess.unit || "lbs", note: sess.note || "",
                 // workout_date defaults to CURRENT_DATE server-side if omitted — without this,
                 // every guest workout lands on the migration day instead of its real date.
                 workout_date: date,
-                created_at: new Date(date).toISOString(),
+                // Noon LOCAL on the workout's own date, matching the fallback loadUserData uses
+                // when a row has no timestamp. `new Date(date)` parses as midnight UTC, which is
+                // the PREVIOUS evening anywhere west of Greenwich — it put every migrated workout
+                // an evening early and is what made these rows identifiable at all.
+                created_at: new Date(date + "T12:00:00").toISOString(),
               })
             }, tok);
           } catch (e) { devError("migrate history:", e); }
         }
       }
+      // Persist any re-keyed sessions so the ids the server now holds match the local ones.
+      setStore(p => ({ ...p, history: { ...p.history, ...migratedHistory } }));
       // Clear guest flag and update session
       try { localStorage.removeItem("seshd_guest"); } catch {}
       setIsGuest(false);
