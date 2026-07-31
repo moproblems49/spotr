@@ -25,6 +25,11 @@ const fmt = (ts) => new Date(ts).toString().slice(16,21);
 // Recharge points of the modeled night = recharge phase within [yesterday 8pm, today noon].
 const nightRecharge = (tl) => tl.points.filter(p => p.phase === "recharge" && p.ts >= y22 - 2*H && p.ts <= todayAt(12));
 const firstNightRecharge = (tl) => { const r = nightRecharge(tl); return r.length ? r[0].ts : null; };
+// The timeline is a rolling 24h window, so once the clock passes ~10pm, YESTERDAY's 10pm bedtime
+// has dropped off the back of it and the earliest recharge point is simply the window's first
+// bucket. Comparing against a hard y22 made every "bedtime stays 10pm" check fail after 22:00 —
+// a sim that only passes for part of the day says nothing for the rest of it.
+const defaultBedtime = (tl) => Math.max(y22, tl.points[0].ts);
 
 // Gate only trusts data stamped with TODAY's date (stale buckets must not steer the night).
 const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
@@ -37,13 +42,13 @@ const span1 = tl1.points[tl1.points.length-1].ts - tl1.points[0].ts;
 check("baseline: spans ~24h", span1 > 23.4*H && span1 <= 24.05*H, `span=${(span1/H).toFixed(1)}h`);
 check("baseline: no future points", tl1.points.every(p => p.ts <= Date.now()+1000));
 const fr1 = firstNightRecharge(tl1);
-check("baseline: recharge starts at the 10pm default", fr1 !== null && Math.abs(fr1 - y22) < 31*60000, `first recharge at ${fr1 && fmt(fr1)}`);
+check("baseline: recharge starts at the 10pm default", fr1 !== null && Math.abs(fr1 - defaultBedtime(tl1)) < 31*60000, `first recharge at ${fr1 && fmt(fr1)}`);
 
 // ── Case 2: quiet evening (steps ≈ 0 all night) → bedtime unchanged (steps can't prove sleep) ──
 const quietHours = Array.from({length:24}, () => ({ steps: 0, kcal: 0 }));
 const tl2 = computeBodyBatteryTimeline({ history:{}, activityHourlyDate: todayKey, activityHourly: quietHours, activityPrevEvening: { 20:10, 21:0, 22:5, 23:0 } });
 const fr2 = firstNightRecharge(tl2);
-check("quiet night: bedtime stays 10pm", fr2 !== null && Math.abs(fr2 - y22) < 31*60000, `first recharge at ${fr2 && fmt(fr2)}`);
+check("quiet night: bedtime stays 10pm", fr2 !== null && Math.abs(fr2 - defaultBedtime(tl2)) < 31*60000, `first recharge at ${fr2 && fmt(fr2)}`);
 
 // ── Case 3: night out — steps 10pm→2am → bedtime pushed past the active hours, capped 4am ──
 const outHours = Array.from({length:24}, () => ({ steps: 0, kcal: 0 }));
@@ -52,7 +57,13 @@ outHours[1] = { steps: 600, kcal: 20 };  // 1-2am walking
 const tl3 = computeBodyBatteryTimeline({ history:{}, activityHourlyDate: todayKey, activityHourly: outHours, activityPrevEvening: { 22: 900, 23: 1200 } });
 const fr3 = firstNightRecharge(tl3);
 const expected3 = todayAt(2); // last active hour is 1-2am → bedtime 2am
-check("night out: recharge starts ~2am (after last active hour), not 10pm", fr3 !== null && Math.abs(fr3 - expected3) < 31*60000, `first recharge at ${fr3 && fmt(fr3)} want ~${fmt(expected3)}`);
+// Same clock caveat as case 4: run this before 2am and the gated bedtime is still in the future,
+// so the only correct answer is "no recharge yet".
+if (Date.now() >= expected3) {
+  check("night out: recharge starts ~2am (after last active hour), not 10pm", fr3 !== null && Math.abs(fr3 - expected3) < 31*60000, `first recharge at ${fr3 && fmt(fr3)} want ~${fmt(expected3)}`);
+} else {
+  check("night out: before 2am, still active — no recharge yet", fr3 === null, `first recharge at ${fr3 && fmt(fr3)}`);
+}
 check("night out: NO recharge during the active 10pm-2am stretch", nightRecharge(tl3).every(p => p.ts >= expected3 - 31*60000), `earliest=${fmt(firstNightRecharge(tl3))}`);
 check("night out: drain covers the 10pm-2am stretch instead", tl3.points.some(p => p.phase === "drain" && p.ts > y22 && p.ts < expected3));
 
@@ -61,14 +72,21 @@ const rageHours = Array.from({length:24}, () => ({ steps: 0, kcal: 0 }));
 for (const h of [0,1,2,3]) rageHours[h] = { steps: 700, kcal: 25 };
 const tl4 = computeBodyBatteryTimeline({ history:{}, activityHourlyDate: todayKey, activityHourly: rageHours, activityPrevEvening: { 20:500, 21:600, 22: 900, 23: 1200 } });
 const fr4 = firstNightRecharge(tl4);
-check("rager: bedtime capped at 4am", fr4 !== null && Math.abs(fr4 - t4a) < 31*60000, `first recharge at ${fr4 && fmt(fr4)} want ~${fmt(t4a)}`);
+// Between midnight and 4am the cap hasn't been reached yet, so the honest expectation flips: the
+// step data says still awake, so there must be NO recharge yet at all. Asserting a 4am recharge
+// point at 2am was demanding the timeline predict the future.
+if (Date.now() >= t4a) {
+  check("rager: bedtime capped at 4am", fr4 !== null && Math.abs(fr4 - t4a) < 31*60000, `first recharge at ${fr4 && fmt(fr4)} want ~${fmt(t4a)}`);
+} else {
+  check("rager: before 4am, still active — no recharge yet", fr4 === null, `first recharge at ${fr4 && fmt(fr4)}`);
+}
 check("rager: points still monotonic in time", tl4.points.every((p,i,a) => i===0 || p.ts >= a[i-1].ts));
 check("rager: levels stay in 5..100", tl4.points.every(p => p.level >= 5 && p.level <= 100));
 
 // ── Case 5: SAME night-out data but stamped with YESTERDAY's date → stale, gate must ignore ──
 const tl5 = computeBodyBatteryTimeline({ history:{}, activityHourlyDate: ydKey, activityHourly: outHours, activityPrevEvening: { 22: 900, 23: 1200 } });
 const fr5 = firstNightRecharge(tl5);
-check("stale-stamped data: gate ignored, bedtime stays 10pm", fr5 !== null && Math.abs(fr5 - y22) < 31*60000, `first recharge at ${fr5 && fmt(fr5)}`);
+check("stale-stamped data: gate ignored, bedtime stays 10pm", fr5 !== null && Math.abs(fr5 - defaultBedtime(tl5)) < 31*60000, `first recharge at ${fr5 && fmt(fr5)}`);
 
 console.log(`\n${fails===0?"ALL PASS":fails+" FAIL(S)"}`);
 process.exit(fails?1:0);

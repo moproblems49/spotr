@@ -304,6 +304,17 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   means the right edge of the 3-panel track — the overlay stretches to three screen widths and the
   whole app appears to zoom in and slide away. Mo hit exactly that dragging to reorder an exercise.
   Tag any new full-screen overlay with `data-fullscreen-overlay="true"`.
+- **A portal is still "inside" you for EVENTS.** React bubbles synthetic events along the COMPONENT
+  tree, not the DOM tree, so a touch inside a modal portaled to `document.body` still reaches the
+  handlers of whatever rendered it. Dragging the followers list pulled the profile behind it to
+  refresh for exactly this reason. `PullToRefresh` now ignores any touch whose target isn't a real
+  DOM descendant of its own scroller (`el.contains(e.target)`), which covers every portaled overlay
+  at once — don't fix these one modal at a time.
+- **A sim that reads the wall clock must pass at every hour.** `sim_bbgate` asserted a recharge at
+  "yesterday 10pm", which drops off the back of the rolling 24h window once the clock passes 22:00,
+  and at "today 4am", which hasn't happened yet if you run it at 2am. It went red overnight on
+  code that was fine. Loop a clock-dependent sim over all 24 hours before trusting it:
+  `for h in $(seq 0 23); do TZ=<zone whose local hour is $h> node build/sim_x.mjs; done`.
 - **Any `position:fixed` overlay rendered inside the tab-swipe track MUST `createPortal` to
   `document.body`.** The track's CSS transform creates a containing block (very visibly on iOS),
   so "fixed" elements get positioned/clipped inside the scrolling panel — the rest timer shipped

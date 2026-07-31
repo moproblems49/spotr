@@ -85,6 +85,32 @@ console.log("CONTAINMENT:", JSON.stringify(containment));
 check("the dimmed area can't start a scroll", containment.backdropTouchAction === "none", JSON.stringify(containment));
 check("the list doesn't chain its overscroll to the screen behind",
   /contain/.test(containment.listOverscroll || ""), JSON.stringify(containment));
+// PULL-TO-REFRESH. React bubbles events along the COMPONENT tree, so a drag inside the portaled
+// sheet still reaches the profile's PullToRefresh handlers and pulled the page behind it. Drag
+// down from inside the list and check the profile doesn't start refreshing.
+const pulled = await page.evaluate(async () => {
+  const card = [...document.querySelectorAll("div")].find(d => /Followers ·/.test(d.innerText || "") && d.style.borderRadius === "20px");
+  const target = card || document.body;
+  const r = target.getBoundingClientRect();
+  const x = Math.round(r.left + r.width / 2), y0 = Math.round(r.top + 60);
+  const fire = (type, y) => {
+    const t = new Touch({ identifier: 1, target: document.body, clientX: x, clientY: y });
+    document.elementFromPoint(x, Math.min(y, innerHeight - 1))?.dispatchEvent(
+      new TouchEvent(type, { touches: type === "touchend" ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true }));
+  };
+  fire("touchstart", y0);
+  for (let dy = 20; dy <= 200; dy += 20) { fire("touchmove", y0 + dy); await new Promise(r => setTimeout(r, 25)); }
+  await new Promise(r => setTimeout(r, 120));
+  // The pull writes translateY straight onto the refresh indicator / content nodes.
+  const pulledNodes = [...document.querySelectorAll("div")]
+    .map(d => d.style.transform).filter(t => /translateY\((?!0px)\d/.test(t || ""));
+  fire("touchend", y0 + 200);
+  return pulledNodes;
+});
+console.log("PULL BEHIND:", JSON.stringify(pulled));
+check("dragging down inside the sheet does not pull-to-refresh the profile behind it",
+  pulled.length === 0, JSON.stringify(pulled));
+
 // NB: body.style.overflow is pinned "hidden" for the whole app by AppInner, so it says nothing
 // about whether this sheet contains its scroll. What actually contains it is the backdrop covering
 // the full viewport — asserted above — so that touches can't reach the profile at all.

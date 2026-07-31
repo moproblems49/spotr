@@ -1,4 +1,4 @@
-// v178091716758
+// v178091716759
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5469,6 +5469,12 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
     if (refreshing) return;
     const el = scrollRef.current;
     if (!el) return;
+    // A touch inside a PORTAL rendered by our own subtree (the followers/following sheet, the
+    // settings sheet, any modal) still reaches these handlers: React bubbles events along the
+    // COMPONENT tree, not the DOM tree, so a portal to document.body is still "inside" us as far
+    // as synthetic events are concerned. Dragging down the followers list was therefore pulling
+    // the profile behind it to refresh. Only touches that are genuinely within our own DOM count.
+    if (e.target && !el.contains(e.target)) return;
     // Only initiate pull when at the very top of the scrollable
     if (el.scrollTop > 1) return;
     startYRef.current = e.touches[0].clientY;
