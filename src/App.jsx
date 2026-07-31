@@ -1,4 +1,4 @@
-// v178091716754
+// v178091716755
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16366,9 +16366,19 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const [showBody, setShowBody] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false); // overflow menu (Report / Block) for other users
   const [showDelete, setShowDelete] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [listModal, setListModal] = useState(null); // "followers" | "following" | null
   // Lock the page behind full-screen/bottom-sheet overlays so scrolling inside them
-  // doesn't bleed through to the profile underneath (iOS overscroll-behavior alone
-  // isn't enough for a bottom sheet that doesn't cover the full viewport).
+  // doesn't bleed through to the profile underneath.
+  // ⚠️ THIS IS EFFECTIVELY A NO-OP AND MUST NOT BE RELIED ON: AppInner pins
+  // `body { overflow:hidden; position:fixed }` for the whole app's lifetime, so the body was
+  // never scrollable and `prev` is always already "hidden". Scrolling happens in inner
+  // containers. If content bleeds through an overlay, the fix is the overlay itself — cover the
+  // full viewport (portal it out of the transformed track so inset:0 means the viewport) — not
+  // another entry in this list. That's what the followers/following sheet needed.
+  // Declared after the state it reads: a deps array is evaluated during render, so naming a
+  // `const [x] = useState()` from further down is a TDZ ReferenceError, not a stale value.
   useEffect(() => {
     const open = showSettings || showBody || showDelete || showEdit;
     if (!open) return;
@@ -16376,9 +16386,6 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, [showSettings, showBody, showDelete, showEdit]);
-  const [deleteText, setDeleteText] = useState("");
-  const [deleting, setDeleting] = useState(false);
-  const [listModal, setListModal] = useState(null); // "followers" | "following" | null
   const [editName, setEditName] = useState(user?.name || "");
   const [editUsername, setEditUsername] = useState(user?.username || "");
   const [editBio, setEditBio] = useState(user?.bio || "");
@@ -17227,7 +17234,13 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         const idList = listModal === "followers" ? (targetUser?.followers || []) : (targetUser?.following || []);
         const listUsers = idList.map(id => store.users.find(u => u.id === id)).filter(Boolean);
         const myFollowing = me?.following || [];
-        return (
+        // PORTAL. This sheet is `position:fixed`, but ProfileScreen renders inside the tab-swipe
+        // track, whose transform makes it the containing block for fixed descendants — so the
+        // inset:0 backdrop was resolving against the track panel instead of the viewport. It began
+        // 56px down (below the app's top bar) and ended 56px short, which is why the profile
+        // showed through under the list and kept scrolling. Every other overlay in this component
+        // was already portaled; this one was missed.
+        return createPortal((
           <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.3)", margin:"0 16px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px", borderBottom:`1px solid ${C.divider}` }}>
@@ -17284,7 +17297,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               </div>
             </div>
           </div>
-        );
+        ), document.body);
       })()}
     </div>
     </PullToRefresh>
@@ -22142,14 +22155,20 @@ function AppInner() {
         </div>
       )}
 
-      {profileUserId && (
-        // Rendered as an overlay INSIDE the shell, not as an early return. When this screen was
-        // early-returned the rest of the app wasn't rendered at all, so sliding it away with the
-        // edge-swipe revealed the bare page background — a black gap where iOS shows the screen
-        // you're going back to. Keeping the shell mounted underneath means the previous screen is
-        // simply there. Same pattern (and z-order slot) as the Messages overlay above; zIndex sits
-        // above it and above the floating bottom nav, which a profile should cover.
-        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:60 }}>
+      {profileUserId && createPortal((
+        // NOT an early return. When this screen early-returned, the rest of the app wasn't
+        // rendered at all, so sliding it away with the edge-swipe revealed the bare page
+        // background — a black gap where iOS shows the screen you're going back to. Rendering it
+        // as an overlay keeps the shell mounted underneath, so the previous screen is simply there.
+        //
+        // PORTALED TO document.body, and fixed rather than absolute, for two reasons. It has to
+        // cover the app's own top bar the way the early return did. And it contains `position:
+        // fixed` children of its own (the followers/following sheet), which resolve against the
+        // nearest ancestor carrying a transform — EdgeSwipeBack's `will-change: transform` is
+        // enough to create one. Left inside the shell, that sheet's inset:0 backdrop resolved
+        // against the shell's content area: it started 56px down, ended 56px short, and the
+        // profile showed through below it and still scrolled. Same rule as the rest timer.
+        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"fixed", inset:0, zIndex:60, maxWidth:480, margin:"0 auto" }}>
         <EdgeSwipeBack onBack={() => setProfileUserId(null)}
           style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
           <ProfileScreen
@@ -22186,7 +22205,7 @@ function AppInner() {
           />
         </EdgeSwipeBack>
         </div>
-      )}
+      ), document.body)}
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
         recentWorkouts={newPostRecentWorkouts}

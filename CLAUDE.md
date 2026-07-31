@@ -291,8 +291,18 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 - **Any `position:fixed` overlay rendered inside the tab-swipe track MUST `createPortal` to
   `document.body`.** The track's CSS transform creates a containing block (very visibly on iOS),
   so "fixed" elements get positioned/clipped inside the scrolling panel — the rest timer shipped
-  as a broken clipped band this way. Already-portaled precedents: NumberPad, Edit Profile modal,
-  Close Friends picker, share sheet, rest timer (modal + mini bar).
+  as a broken clipped band this way, and the followers/following sheet shipped with its `inset:0`
+  backdrop starting 56px down (below the top bar) and ending 56px short, so the profile showed
+  through under the list and still scrolled. Every other overlay in ProfileScreen was portaled;
+  that one was missed. `will-change: transform` creates the same containing block as an actual
+  transform, so an EdgeSwipeBack panel traps fixed children too. Already-portaled precedents:
+  NumberPad, Edit Profile modal, Close Friends picker, share sheet, rest timer (modal + mini bar),
+  followers/following sheet, the profile overlay itself.
+- **ProfileScreen's body-scroll-lock effect is a NO-OP — don't add to it.** AppInner pins
+  `body { overflow:hidden; position:fixed }` for the app's whole lifetime, so the body was never
+  scrollable and the effect's saved `prev` is always already `hidden`. Scrolling happens in inner
+  containers. When content bleeds through an overlay, fix the OVERLAY (cover the full viewport,
+  portal it out of the track) — adding another flag to that list does nothing.
 - **State is stale inside touch handlers / setTimeout.** Use refs (`useRef`) as the source of truth for values read inside `onTouchEnd` etc.
 - **Hooks must stay above the component's early returns** (`if (profileUserId) return ...`, etc.) or you get "rendered more hooks than previous render".
 - **Windows CRLF** can make git report "nothing to commit" even when the file changed.
