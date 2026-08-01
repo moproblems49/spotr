@@ -282,13 +282,29 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   built in FIVE places — the write at finish, the local post rebuild after an edit, the server feed
   post rebuild, the server group-post rebuild, and the history→feed item — and four of the five
   counted WARMUPS into `volume` and listed them on the card, while History/Profile/the finish
-  summary use `sessionVolume()` and exclude them. So the feed disagreed with History about the same
-  session (a real leg day: 8,440 in History, 9,920 on the feed — 17.5%), and merely EDITING a shared
-  workout re-inflated a card that had been written correctly at finish. Two more bugs fell out of
-  consolidating: a heavy warmup single could flag a fake PR, and the `isPR` fallback compared a raw
-  session-unit weight against `store.prs`, which is held in LBS — so a kg user's cards never showed
-  a PR flag. `prNames` (the PRs actually hit) beats the stored-max guess when the caller knows it.
-  Sim: `sim_cardvol`.
+  summary use `sessionVolume()` and exclude them. The write at finish was correct, so the reachable
+  damage was the EDIT path: editing a previously-shared workout re-inflated a card that had been
+  written correctly. Confirmed on live data — exactly ONE real card (momo, "Push B · Shoulders/Arms",
+  2026-06-12: 12,465 shown vs 11,765 working, ~6%); the rest match their history row. **Scope the
+  blast radius before reporting one** — the first pass quoted a 17.5% leg-day gap computed in SQL as
+  a hypothetical, but that session had never been edited, and the history→feed path that would also
+  have shown it is dead (see `sharedToFeed` below). Two more bugs fell out of consolidating: a heavy
+  warmup single could flag a fake PR, and the `isPR` fallback compared a raw session-unit weight
+  against `store.prs`, which is held in LBS — so a kg user's cards never showed a PR flag. `prNames`
+  (the PRs actually hit) beats the stored-max guess when the caller knows it. Sim: `sim_cardvol`.
+- **`sess.sharedToFeed` is READ once and WRITTEN nowhere** (`historyFeedItems` in AppInner), and
+  there's no `shared_to_feed` column on `workout_history` — so that whole block returns `null` for
+  every session and a logged-but-not-posted workout can never surface in the feed. It's dead code,
+  not a bug with symptoms; decide whether to implement the flag or delete the block before writing
+  any test against it (a Playwright run for it can never pass).
+- **Consolidating N copies into one helper changes edge cases the copies handled by accident.**
+  Routing `detectDeloadNeeded` through `epley1RM()` was right, but the helper correctly refuses to
+  estimate from a 0-rep set and returns 0, where the inlined `w × (1 + Math.min(r,12)/30)` returned
+  `w`. `topReps` is the reps of the HEAVIEST set, so one set ticked done with a blank reps box
+  produces it — and a 0 in that series reads as catastrophic strength loss and can fire a false
+  deload banner telling the lifter to drop weight. Guarded with `Math.max(1, s.topReps || 0)`.
+  Sim: `sim_deload0`. When you unify duplicated maths, diff the OLD behaviour at every boundary
+  (0, 1, negative, NaN, empty), not just the case that motivated the change.
 - **Volume/set counts have ONE definition: `sessionVolume()` / `workingDone()`.** Never inline
   another `sets.filter(s => s.done).reduce(...)`. Seven inline copies had drifted apart — the
   finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats

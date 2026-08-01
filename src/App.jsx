@@ -1,4 +1,4 @@
-// v178091716768
+// v178091716769
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3950,7 +3950,12 @@ function detectDeloadNeeded(store, exName, unit) {
   if (sessions.length < 4) return { stalled: false };
   const norm = sessions.map(s => ({
     wU: cvt(s.topWeight, s.unit, unit),
-    e1rm: epley1RM(cvt(s.topWeight, s.unit, unit), s.topReps, 12),
+    // `Math.max(1, …)`: a set marked done with a blank reps field gives topReps 0, and epley1RM
+    // rightly refuses to estimate from that — but a 0 dropped into this series reads as a
+    // catastrophic strength LOSS and can fire a false "deload" banner telling the lifter to drop
+    // weight they haven't actually lost. Treat it as the single it effectively is (the weight
+    // itself), which is what this line computed before the estimator was consolidated.
+    e1rm: epley1RM(cvt(s.topWeight, s.unit, unit), Math.max(1, s.topReps || 0), 12),
   }));
   const recentRaw = sessions.slice(0, 4);
   const recent = norm.slice(0, 4);
@@ -11272,7 +11277,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Build share data (used by both feed share and groups-only share)
       const hitPRNames = new Set(hitPRs.map(pr => pr.name));
       const shareData = (() => {
-        const { exercises: postEx, volume: vol } = postWorkoutPayload(session.exercises, null, hitPRNames);
+        // `unit` is passed even though hitPRNames makes it unused today — leaving it to default to
+        // "lbs" would silently mis-compare a kg session the moment anyone drops the prNames arg.
+        const { exercises: postEx, volume: vol } = postWorkoutPayload(session.exercises, store.prs, hitPRNames, unit);
         const hasPR = postEx.some(ex => ex.isPR);
         // duration: recordedDuration (the robust value), NOT the resettable `elapsed` — else a
         // glitched-then-retried share posts "0m". clientId: sid dedups the feed post so a retry
@@ -21443,11 +21450,13 @@ function AppInner() {
       // (they remain in the History tab). This respects the user's sharing choice.
       if (!sess.sharedToFeed) return null;
       // Skip sessions with zero done sets — these are ghost workouts.
-      // Volume via sessionVolume(), same as History/Profile: this counted WARMUPS, so the feed card
-      // read up to 17.5% heavier than the History row for the very same session.
-      const doneSets = (sess.exercises||[]).flatMap(ex => workingDone(ex.sets));
-      if (doneSets.length === 0) return null;
-      const vol = sessionVolume(sess);
+      // Card and volume come from the SAME walk: this used to count WARMUPS, so the feed read up to
+      // 17.5% heavier than the History row for the very same session. Taking the volume from the
+      // payload rather than sessionVolume() also keeps the headline equal to the sum of the sets
+      // actually listed underneath it — the payload drops unnamed/empty exercises that
+      // sessionVolume() would still total.
+      const card = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
+      if (card.exercises.length === 0) return null;
       const histId = "hist_"+date+"_"+sess.dayName;
       const hi = store.historyInteractions?.[histId] || {};
       return {
@@ -21460,8 +21469,8 @@ function AppInner() {
         workout: {
           name: sess.dayName,
           duration: sess.duration||0,
-          volume: Math.round(vol),
-          exercises: postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs").exercises,
+          volume: card.volume,
+          exercises: card.exercises,
         },
         kudos: hi.kudos || [],
         comments: hi.comments || [],

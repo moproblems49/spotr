@@ -84,5 +84,25 @@ check("undefined input doesn't throw", postWorkoutPayload(undefined, undefined, 
 check("sets are emitted as {w,r} NUMBER pairs, the shape the card renders",
   typeof card.exercises[0].sets[0].w === "number" && typeof card.exercises[0].sets[0].r === "number");
 
+// ── The headline must equal the sets printed under it ────────────────────────────────────────
+// The card's volume and its exercise list have to come from the SAME walk. sessionVolume() totals
+// every exercise in the session, while the payload drops unnamed and empty ones — so deriving the
+// two separately lets a card claim a total its own rows don't add up to.
+const mixed = { unit: "lbs", exercises: [
+  { name: "Bench", sets: [set(225, 5)] },
+  { name: "", sets: [set(100, 10)] },          // unnamed — never rendered on the card
+  { name: "Ghost", sets: [warm(45, 20)] },     // warmups only — never rendered either
+]};
+const mixedCard = postWorkoutPayload(mixed.exercises, {}, null, "lbs");
+const printed = mixedCard.exercises.reduce((a, e) => a + e.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
+console.log(`headline = ${mixedCard.volume}, sum of printed sets = ${printed}, sessionVolume = ${sessionVolume(mixed)}`);
+check("the card's headline volume equals the sum of the sets it actually lists",
+  mixedCard.volume === Math.round(printed), `${mixedCard.volume} vs ${printed}`);
+check("...which is NOT sessionVolume here, because that totals rows the card never shows",
+  Math.round(sessionVolume(mixed)) !== mixedCard.volume, String(sessionVolume(mixed)));
+
+
+
+
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);
