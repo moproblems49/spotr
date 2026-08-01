@@ -254,6 +254,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   pairs silently yields zero sets, so "no previous data" — which the finish summary rendered as
   "first time" on lifts done for years. `topSet()` takes live sets, `bestPair()` takes `{w,r}`.
   Caught by `sim_wins`; it would have shipped invisible otherwise.
+- **`getLastExerciseSession()` returns RAW numbers in the PREVIOUS session's unit** — that's why it
+  hands back `.unit` alongside `.sets`. Every caller must `cvt(s.w, last.unit, unit)`;
+  `suggestNextSet` does. `sessionWins` didn't, and comparing raw numbers across a unit switch both
+  invents wins and hides real ones: 100kg last time vs 225lbs today reported "+125", a *lighter*
+  200lbs session reported "+100", and a genuine PR logged in kg against lbs history reported
+  nothing at all. A session's `unit` is stamped per session precisely because it can change.
+  Sim: the units block in `sim_wins`.
+- **Moving a control into a conditional menu: check the condition where that control matters MOST.**
+  The live workout's remove-exercise `×` moved into the `···` overflow menu, whose trigger was
+  gated on `ex.name`. But Quick Start seeds an exercise with `name:""` and "+ Add Exercise" appends
+  more — so the blank rows, the ones you most need to delete, were the exact rows with no way to
+  delete them, and cancelling the whole workout was the only escape. Gate the ITEMS that need the
+  data ("How to do it" needs a name), never the door. Sim: `pw_addex`-style probe in
+  `build/pw_audit.mjs`.
 - **Volume/set counts have ONE definition: `sessionVolume()` / `workingDone()`.** Never inline
   another `sets.filter(s => s.done).reduce(...)`. Seven inline copies had drifted apart — the
   finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats
