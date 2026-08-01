@@ -1,4 +1,4 @@
-// v178091716771
+// v178091716772
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10647,6 +10647,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   }, []);
   const rtRef = useRef(null);
   const rtFiredRef = useRef(false); // ensures rest-end fanfare fires exactly once at 250ms tick
+  const rtPreCancelRef = useRef(false); // pre-emptive native-notification cancel, once per rest period
 
   useEffect(() => {
     if (!session) { try { localStorage.removeItem(SESSION_KEY); } catch {} return; }
@@ -10710,12 +10711,24 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     clearInterval(rtRef.current);
     if (rest?.running && rest.secs > 0) {
       rtFiredRef.current = false; // new rest period — arm the end fanfare
+      rtPreCancelRef.current = false;
       rtRef.current = setInterval(() => setRest(p => {
         if (!p || !p.running) return p;
         // Always recalculate from startedAt if available (handles backgrounding)
         if (p.startedAt) {
           const elapsed = Math.floor((Date.now() - p.startedAt) / 1000);
           const remaining = Math.max(0, p.total - elapsed);
+          // PRE-EMPTIVE CANCEL. The native notification is scheduled up front so the alert still
+          // lands if the phone locks — but cancelling it only at completion is a race the banner
+          // WINS: iOS fires it at T while this interval notices at T+0..250ms, so a system alert
+          // appeared on top of the workout screen you were already looking at. Cancel a few
+          // seconds early whenever the app is actually on screen, so the in-app chime + toast are
+          // the only things that happen. If the app is backgrounded again before the end, the
+          // visibilitychange handler below re-arms it.
+          if (remaining <= 3 && !rtPreCancelRef.current && document.visibilityState === "visible") {
+            rtPreCancelRef.current = true;
+            try { cancelRestNotification(); } catch {}
+          }
           if (remaining <= 0) {
             clearInterval(rtRef.current);
             if (rtFiredRef.current) return null; // already fired — don't double-fire at 250ms cadence
@@ -10779,12 +10792,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // fires even if the app is backgrounded or the phone is locked (a JS timer can't — iOS
   // suspends the WebView). Cancel it whenever rest stops/changes. No-op on web / non-native.
   useEffect(() => {
-    if (rest?.running && rest.startedAt && rest.total) {
-      const elapsed = Math.floor((Date.now() - rest.startedAt) / 1000);
-      const remaining = Math.max(0, rest.total - elapsed);
+    const armed = !!(rest?.running && rest.startedAt && rest.total);
+    const remainingNow = () => Math.max(0, rest.total - Math.floor((Date.now() - rest.startedAt) / 1000));
+    if (armed) {
+      const remaining = remainingNow();
       if (remaining >= 1) scheduleRestNotification(remaining);
     } else {
       cancelRestNotification();
+    }
+    // If the app is backgrounded near the end of a rest, the pre-emptive cancel above may already
+    // have dropped the system alert — re-arm it, because a banner is now the ONLY way to find out
+    // rest is over. Removing the listener is the only cleanup; see the NOTE below on why this
+    // effect must never cancel on unmount.
+    if (armed) {
+      const onVis = () => {
+        if (document.visibilityState === "visible") return;
+        const remaining = remainingNow();
+        if (remaining >= 1) scheduleRestNotification(remaining);
+      };
+      document.addEventListener("visibilitychange", onVis);
+      return () => document.removeEventListener("visibilitychange", onVis);
     }
     // NOTE: deliberately NO cleanup-cancel here. This effect's cleanup runs on unmount (leaving
     // the workout screen / a background→foreground remount), and cancelling there was killing a
@@ -11521,9 +11548,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               />
               {" "}{unit.toUpperCase()}
             </span>
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={() => setShow1RM(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>1RM</button>
-              <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:11, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F, fontWeight:600 }}>Plates</button>
+            {/* Pills, not bare accent text. Unbordered coloured words read as a label — there was
+                nothing to say "tap me", and they sat right beside the stats they could be mistaken
+                for. A filled chip with an icon is unmistakably a control, and the wider hit area
+                matters mid-set with chalky hands. */}
+            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+              {[["activity", "1RM", () => setShow1RM(true)], ["barbell", "Plates", () => setShowPlateCalc(true)]].map(([icon, label, fn]) => (
+                <button key={label} onClick={fn} aria-label={label === "1RM" ? "1RM Calculator" : "Plate Calculator"} style={{
+                  display:"flex", alignItems:"center", gap:5,
+                  background:C.accentSoft, border:`1px solid ${C.accent}33`, borderRadius:999,
+                  padding:"6px 12px", cursor:"pointer", fontFamily:F,
+                }}>
+                  <Icon name={icon} size={12} color={C.accent}/>
+                  <span style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.2 }}>{label}</span>
+                </button>
+              ))}
             </div>
           </div>
           <div style={{ height:4, background:C.divider, borderRadius:4, overflow:"hidden" }}>
