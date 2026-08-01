@@ -278,6 +278,17 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   silently substitute a rep count the user didn't type. Sim: `sim_1rm`. Note `prsE1rm` in the local
   store keeps the MAX of history-derived and previously-stored values, so an e1RM PR banked from a
   1-rep set before this fix stays 3.3% high until it's genuinely beaten.
+- **A shared workout card has ONE builder: `postWorkoutPayload()`.** The post's `workout` payload was
+  built in FIVE places — the write at finish, the local post rebuild after an edit, the server feed
+  post rebuild, the server group-post rebuild, and the history→feed item — and four of the five
+  counted WARMUPS into `volume` and listed them on the card, while History/Profile/the finish
+  summary use `sessionVolume()` and exclude them. So the feed disagreed with History about the same
+  session (a real leg day: 8,440 in History, 9,920 on the feed — 17.5%), and merely EDITING a shared
+  workout re-inflated a card that had been written correctly at finish. Two more bugs fell out of
+  consolidating: a heavy warmup single could flag a fake PR, and the `isPR` fallback compared a raw
+  session-unit weight against `store.prs`, which is held in LBS — so a kg user's cards never showed
+  a PR flag. `prNames` (the PRs actually hit) beats the stored-max guess when the caller knows it.
+  Sim: `sim_cardvol`.
 - **Volume/set counts have ONE definition: `sessionVolume()` / `workingDone()`.** Never inline
   another `sets.filter(s => s.done).reduce(...)`. Seven inline copies had drifted apart — the
   finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats

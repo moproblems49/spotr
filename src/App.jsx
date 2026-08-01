@@ -1,4 +1,4 @@
-// v178091716767
+// v178091716768
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2990,6 +2990,33 @@ function sessionVolume(sess) {
     .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
 }
 
+// The workout payload a feed / group post carries. ONE definition.
+//
+// This gets rebuilt in three places when a workout is edited (the local post, the server feed post,
+// the server group posts) as three identical copy-pasted blocks — and all three had drifted from
+// the ORIGINAL write at finish: they counted WARMUPS into `volume` and listed warmup sets on the
+// card. So sharing a workout showed working-set volume, then editing it silently inflated the same
+// card (up to 17.5% on real data — a leg day History reports as 8,440 read 9,920), and the feed
+// disagreed with History about a session neither had meaningfully changed. Warmups also can't set
+// a PR, so `isPR` reads the working sets too.
+// `prNames` is the set of exercises that ACTUALLY hit a PR this session — the finish path knows
+// this and it's the truthful answer. A rebuild long after the fact doesn't, so it falls back to
+// comparing the top working set against the stored max. `store.prs` is held in LBS, so that
+// comparison must convert first (`unit` = the SESSION's unit): comparing a raw 100kg top set
+// against a 220lb stored max meant a kg user's card never showed a PR flag.
+function postWorkoutPayload(exercises, prs, prNames, unit = "lbs") {
+  const out = (exercises || []).filter(e => e.name).map(ex => {
+    const done = workingDone(ex.sets);
+    const maxLbs = cvt(Math.max(0, ...done.map(s => parseFloat(s.weight) || 0)), unit, "lbs");
+    return {
+      name: ex.name,
+      isPR: prNames ? prNames.has(ex.name) : (maxLbs > 0 && maxLbs >= ((prs || {})[ex.name] || 0) * 0.99),
+      sets: done.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
+    };
+  }).filter(ex => ex.sets.length > 0);   // an exercise with nothing logged isn't part of the card
+  return { exercises: out, volume: Math.round(out.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0)) };
+}
+
 // How many sets an exercise represents. ONE definition — the program editor, the reorder list and
 // startWorkout must all agree, and they didn't: the built-in templates and the day-preview "+ add"
 // path write only `reps:"3×12-15"` and no `sets` field, so the editor's stepper showed the default
@@ -4641,7 +4668,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -9740,19 +9767,8 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         const finishedAt = sess.finishedAt || new Date(date + "T12:00:00").getTime();
         if (Math.abs((p.createdAt || 0) - finishedAt) > 86400000) return p; // > 24h apart, not the same workout
         // Rebuild the post.workout.exercises to reflect new numbers
-        const postEx = exercises.filter(e => e.name).map(ex => {
-          const doneSets = (ex.sets || []).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
-          const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
-          return {
-            name: ex.name,
-            isPR: maxW > 0 && maxW >= ((prev.prs || {})[ex.name] || 0) * 0.99,
-            sets: doneSets.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-          };
-        });
-        const newVolume = exercises.reduce((a, ex) => a + (ex.sets || [])
-          .filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
-          .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
-        return { ...p, workout: { ...p.workout, exercises: postEx, volume: Math.round(newVolume) } };
+        const rebuilt = postWorkoutPayload(exercises, prev.prs, null, eu);
+        return { ...p, workout: { ...p.workout, exercises: rebuilt.exercises, volume: rebuilt.volume } };
       });
       return { ...prev, posts: newPosts };
     });
@@ -9767,21 +9783,10 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         );
         if (match && !String(match.id).startsWith("hist_")) {
           // Recompute the workout payload to mirror local state
-          const postEx = exercises.filter(e => e.name).map(ex => {
-            const doneSets = (ex.sets || []).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
-            const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
-            return {
-              name: ex.name,
-              isPR: maxW > 0 && maxW >= ((store.prs || {})[ex.name] || 0) * 0.99,
-              sets: doneSets.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-            };
-          });
-          const newVolume = exercises.reduce((a, ex) => a + (ex.sets || [])
-            .filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
-            .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+          const rebuilt = postWorkoutPayload(exercises, store.prs, null, eu);
           await sb.query(`posts?id=eq.${match.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: postEx, volume: Math.round(newVolume) } })
+            body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: rebuilt.exercises, volume: rebuilt.volume } })
           }, token);
         }
       }
@@ -9799,18 +9804,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         );
         if (myGroups.length > 0) {
           // Recompute the workout payload once (same shape used for feed posts)
-          const postEx = exercises.filter(e => e.name).map(ex => {
-            const doneSets = (ex.sets || []).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
-            const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
-            return {
-              name: ex.name,
-              isPR: maxW > 0 && maxW >= ((store.prs || {})[ex.name] || 0) * 0.99,
-              sets: doneSets.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-            };
-          });
-          const newVolume = exercises.reduce((a, ex) => a + (ex.sets || [])
-            .filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))
-            .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+          const rebuilt = postWorkoutPayload(exercises, store.prs, null, eu);
 
           // For each group I'm in, fetch my recent workout posts and patch the matching one.
           // Run all groups in parallel — sequential awaits would be slow for users in many groups.
@@ -9828,7 +9822,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
               if (match) {
                 await sb.query(`group_posts?id=eq.${match.id}`, {
                   method: "PATCH",
-                  body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: postEx, volume: Math.round(newVolume) } })
+                  body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: rebuilt.exercises, volume: rebuilt.volume } })
                 }, token);
               }
             } catch (e) { devError(`group post sync failed for group ${g.id}:`, e); }
@@ -11278,15 +11272,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Build share data (used by both feed share and groups-only share)
       const hitPRNames = new Set(hitPRs.map(pr => pr.name));
       const shareData = (() => {
-        const postEx = session.exercises
-          .filter(ex => ex.name && ex.sets.some(s => s.done === true && s.type !== "warmup"))
-          .map(ex => ({
-            name: ex.name,
-            sets: ex.sets.filter(s => s.done === true && s.type !== "warmup").map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
-            isPR: hitPRNames.has(ex.name)
-          }))
-          .filter(ex => ex.sets.length > 0);
-        const vol = postEx.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
+        const { exercises: postEx, volume: vol } = postWorkoutPayload(session.exercises, null, hitPRNames);
         const hasPR = postEx.some(ex => ex.isPR);
         // duration: recordedDuration (the robust value), NOT the resettable `elapsed` — else a
         // glitched-then-retried share posts "0m". clientId: sid dedups the feed post so a retry
@@ -21456,10 +21442,12 @@ function AppInner() {
       // Workouts that were only saved, or sent to groups only, stay out of the feed
       // (they remain in the History tab). This respects the user's sharing choice.
       if (!sess.sharedToFeed) return null;
-      // Skip sessions with zero done sets — these are ghost workouts
-      const doneSets = (sess.exercises||[]).flatMap(ex => (ex.sets||[]).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
+      // Skip sessions with zero done sets — these are ghost workouts.
+      // Volume via sessionVolume(), same as History/Profile: this counted WARMUPS, so the feed card
+      // read up to 17.5% heavier than the History row for the very same session.
+      const doneSets = (sess.exercises||[]).flatMap(ex => workingDone(ex.sets));
       if (doneSets.length === 0) return null;
-      const vol = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done===true||(s.done===undefined&&parseFloat(s.reps)>0)).reduce((b,s)=>b+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0);
+      const vol = sessionVolume(sess);
       const histId = "hist_"+date+"_"+sess.dayName;
       const hi = store.historyInteractions?.[histId] || {};
       return {
@@ -21473,19 +21461,7 @@ function AppInner() {
           name: sess.dayName,
           duration: sess.duration||0,
           volume: Math.round(vol),
-          exercises: (sess.exercises||[])
-            .filter(e => e.name && (e.sets||[]).some(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)))
-            .map(ex => {
-              const doneOnly = (ex.sets||[]).filter(s => s.done === true || (s.done === undefined && parseFloat(s.reps) > 0));
-              const maxW = Math.max(0, ...doneOnly.map(s => parseFloat(s.weight) || 0));
-              const sessUnit = sess.unit || "lbs";
-              const maxLbs = sessUnit === "lbs" ? maxW : cvt(maxW, "kg", "lbs");
-              return {
-                name: ex.name,
-                isPR: maxLbs > 0 && maxLbs >= ((store.prs||{})[ex.name] || 0) * 0.99,
-                sets: doneOnly.map(s => ({ w: parseFloat(s.weight)||0, r: parseFloat(s.reps)||0 })),
-              };
-            })
+          exercises: postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs").exercises,
         },
         kudos: hi.kudos || [],
         comments: hi.comments || [],
