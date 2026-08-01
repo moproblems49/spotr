@@ -88,5 +88,35 @@ const fracStore = { history: hist("2026-07-20", "o", [{ name: "DB Curl", sets: [
 const frac = sessionWins(sess([{ name: "DB Curl", sets: [set(30, 10)] }]), fracStore);
 check("fractional weights give a clean delta", frac[0]?.by === 2.5, JSON.stringify(frac));
 
+// ── UNITS. getLastExerciseSession returns RAW numbers in the previous session's own unit and
+// hands back `.unit` so the caller converts (suggestNextSet does). Comparing raw across a unit
+// switch both invents wins and hides real ones — and a session's unit is stamped per session
+// precisely because it can change.
+const kgStore = { history: { "2026-07-20": { o: { unit: "kg",
+  exercises: [{ name: "Barbell Back Squat", sets: [set(100, 5)] }] } } } };
+
+// 100kg = 220.5lbs. Today's 225lbs IS a win, but only by ~4.5lbs — not by 125.
+const upgraded = sessionWins(sess([{ name: "Barbell Back Squat", sets: [set(225, 5)] }]), kgStore, null, "lbs");
+console.log("KG→LBS:", JSON.stringify(upgraded));
+check("a kg history compared in lbs reports the REAL delta, not the raw number difference",
+  upgraded[0]?.kind === "weight" && upgraded[0]?.by > 3 && upgraded[0]?.by < 6, JSON.stringify(upgraded));
+
+// The opposite direction is the one that silently swallows a PR: 102.5kg today vs 225lbs last
+// time is a genuine increase, but 102.5 < 225 as raw numbers, so it reported nothing at all.
+const lbStore = { history: { "2026-07-20": { o: { unit: "lbs",
+  exercises: [{ name: "Barbell Bench Press", sets: [set(225, 5)] }] } } } };
+const inKg = sessionWins(sess([{ name: "Barbell Bench Press", sets: [set(105, 5)] }]), lbStore, null, "kg");
+console.log("LBS→KG:", JSON.stringify(inKg));
+check("a real PR isn't swallowed when the user logs in kg against lbs history",
+  inKg[0]?.kind === "weight", JSON.stringify(inKg));
+
+// And a genuinely lighter session across units still isn't dressed up as a win.
+const lighterKg = sessionWins(sess([{ name: "Barbell Back Squat", sets: [set(200, 5)] }]), kgStore, null, "lbs");
+check("a lighter session across units is still not a win", lighterKg.length === 0, JSON.stringify(lighterKg));
+
+// Same unit on both sides must be untouched by the conversion.
+const same = sessionWins(sess([{ name: "Barbell Bench Press", sets: [set(235, 5)] }]), lbStore, null, "lbs");
+check("same-unit comparisons are unaffected", same[0]?.by === 10, JSON.stringify(same));
+
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

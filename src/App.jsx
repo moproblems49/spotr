@@ -1,4 +1,4 @@
-// v178091716765
+// v178091716766
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3023,7 +3023,7 @@ function bestPair(pairs) {
 function topSet(sets) {
   return bestPair(workingDone(sets).map(sx => ({ w: parseFloat(sx.weight) || 0, r: parseFloat(sx.reps) || 0 })));
 }
-function sessionWins(session, store, sid) {
+function sessionWins(session, store, sid, unit = "lbs") {
   const out = [];
   for (const ex of (session?.exercises || [])) {
     if (!ex.name) continue;
@@ -3032,7 +3032,13 @@ function sessionWins(session, store, sid) {
     // getLastExerciseSession walks history newest-first; this session may already be saved into
     // history by the time the summary renders, so skip the row this finish just wrote.
     const prev = getLastExerciseSession(store, ex.name, sid);
-    const prevTop = prev ? bestPair(prev.sets) : null;   // already {w,r} pairs — see bestPair
+    // CONVERT. getLastExerciseSession returns raw numbers in the PREVIOUS session's own unit and
+    // hands back `.unit` precisely so the caller converts — suggestNextSet does. Comparing raw
+    // across a unit switch invents wins and hides real ones: 100kg last time vs 225lbs today
+    // reads as "+125", and 225lbs vs 102.5kg today reads as no win at all.
+    const prevTop = prev                                 // already {w,r} pairs — see bestPair
+      ? (p => p && { w: cvt(p.w, prev.unit || "lbs", unit), r: p.r })(bestPair(prev.sets))
+      : null;
     if (!prevTop || (!prevTop.w && !prevTop.r)) { out.push({ name: ex.name, kind: "first", w: now.w, r: now.r }); continue; }
     if (now.w > prevTop.w) out.push({ name: ex.name, kind: "weight", w: now.w, r: now.r, by: Math.round((now.w - prevTop.w) * 10) / 10 });
     else if (now.w === prevTop.w && now.r > prevTop.r) out.push({ name: ex.name, kind: "reps", w: now.w, r: now.r, by: now.r - prevTop.r });
@@ -6887,7 +6893,10 @@ function OneRMModal({ onClose, unit, C }) {
   // has seen; showing the weight without the reps makes it a maths result rather than something
   // you can program from.
   const PCT_REPS = [[100,1],[95,2],[90,4],[85,6],[80,8],[75,10],[70,12],[65,16],[60,20],[55,24],[50,30]];
-  const rows = oneRM ? PCT_REPS.map(([p, r]) => ({ p, r, w: Math.round(oneRM * p) / 100 })) : [];
+  // Whole numbers. `Math.round(oneRM * p) / 100` left one decimal on most rows (185×5 gave
+  // "205.2 lbs", 8 of the 11), and you can't load two tenths of a pound — a training table has to
+  // read as a weight you can put on the bar.
+  const rows = oneRM ? PCT_REPS.map(([p, r]) => ({ p, r, w: Math.round(oneRM * p / 100) })) : [];
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
@@ -10631,6 +10640,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
   const unit = store.unit || "lbs";
   const prog = store.programs?.find(p => p.id === store.activeProgramId);
+  // Every exercise name you've ever completed a working set of. This is the same question
+  // `getLastExerciseSession(store, name)` answers as a boolean, asked ONCE per history change
+  // instead of once per exercise on every render — and this component re-renders every second
+  // (the elapsed timer). The never-logged case is the expensive one: it finds nothing, so it walks
+  // the whole history before returning null, and that's exactly the case the FirstTimeCues gate
+  // asks about. Same working-set rule as getLastExerciseSession — keep them in step.
+  const loggedExercises = useMemo(() => {
+    const seen = new Set();
+    for (const day of Object.values(store.history || {})) {
+      for (const sess of Object.values(day || {})) {
+        for (const ex of (sess?.exercises || [])) {
+          if (!ex.name || seen.has(ex.name)) continue;
+          const worked = (ex.sets || []).some(s =>
+            s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
+          if (worked) seen.add(ex.name);
+        }
+      }
+    }
+    return seen;
+  }, [store.history]);
   // Memoized so it doesn't recompute on every render (every keystroke, every 30s tick).
   // Recomputes only when the inputs that actually affect insights change.
   const memoInsights = useMemo(() => getProgressInsights(store, unit), [store.history, store.prs, store.workoutDates, store.dismissedInsights, store.weeklyTarget, unit]);
@@ -11288,7 +11317,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         // Lift-by-lift comparison against the last time each exercise was trained. Computed here,
         // once, off the session and the store as they are at finish — not in render, where the
         // store has already absorbed this workout.
-        wins: sessionWins(session, store, sid),
+        wins: sessionWins(session, store, sid, unit),
         share,
         shareData,
         undo: {
@@ -11714,16 +11743,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     )}
                     {/* Overflow menu — superset link + swap moved here so long exercise names
                         aren't squeezed by a wide action row. Accent border when a superset is
-                        active so that state is still visible at a glance. */}
-                    {ex.name && <button onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
+                        active so that state is still visible at a glance.
+                        NOT gated on ex.name: Remove lives in this menu now, and a blank row
+                        (Quick Start seeds one, "+ Add Exercise" appends more) is exactly the row
+                        you most need to remove. Gating the trigger made those rows permanent —
+                        the only way out was cancelling the whole workout. Items that genuinely
+                        need a name gate themselves. */}
+                    <button onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
                       aria-label="More exercise options"
                       style={{ background: (moreMenuEx === ei || ex.superset) ? C.accentSoft : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? C.accent : C.sub} strokeWidth="2.6" strokeLinecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
-                    </button>}
+                    </button>
                   </div>
                 </div>
                 {/* Never logged this lift? Teach it here, once. */}
-                {ex.name && !getLastExerciseSession(store, ex.name) && (
+                {ex.name && !loggedExercises.has(ex.name) && (
                   <FirstTimeCues name={ex.name} muscle={exInfo?.muscle} C={C}
                     onOpenGuide={() => setViewingExercise(ex.name)}/>
                 )}
@@ -12707,21 +12741,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               </div>
             );
           })()}
-          {(() => {
-            const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
-            const hasStreak = !!(ws.count || ws.thisWeek);
-            return (
-              <button onClick={() => setShow1RM(true)} aria-label="1RM Calculator" style={{
-                flex:"0 0 auto", background:C.surface, border:`1px solid ${C.border}`,
-                borderRadius:14, padding:"11px 16px",
-                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-                cursor:"pointer", fontFamily:F,
-              }}>
-                <Icon name="activity" size={16} color={C.text}/>
-                <span style={{ fontSize:12, fontWeight:700, color:C.text, whiteSpace:"nowrap" }}>1RM</span>
-              </button>
-            );
-          })()}
+          <button onClick={() => setShow1RM(true)} aria-label="1RM Calculator" style={{
+            flex:"0 0 auto", background:C.surface, border:`1px solid ${C.border}`,
+            borderRadius:14, padding:"11px 16px",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+            cursor:"pointer", fontFamily:F,
+          }}>
+            <Icon name="activity" size={16} color={C.text}/>
+            <span style={{ fontSize:12, fontWeight:700, color:C.text, whiteSpace:"nowrap" }}>1RM</span>
+          </button>
           </div>
 
 
