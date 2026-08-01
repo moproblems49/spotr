@@ -1,4 +1,4 @@
-// v178091716763
+// v178091716764
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2999,11 +2999,57 @@ function stripProgramPlug(caption) {
     .trim();
 }
 
-function getLastExerciseSession(store, exName) {
+// What you actually BEAT this session, lift by lift.
+//
+// The summary already showed total volume vs last time, but session tonnage is an abstract number
+// an experienced lifter doesn't train for — they train the LIFT. This compares each exercise's top
+// working set against the last time that exercise was trained and reports the concrete win:
+// heavier, or the same weight for more reps. That's the sentence people screenshot.
+//
+// `topSet` ranks by weight first, then reps, so "225x3" beats "205x8" — matching how a lifter
+// reads their own log. First-time exercises are reported separately rather than as a "win": there
+// was nothing to beat.
+// Two set shapes exist and they are NOT interchangeable: a LIVE session set is
+// {weight,reps,done,type} (strings, needs the warmup/done filter), while getLastExerciseSession
+// hands back already-filtered {w,r} number pairs. Mixing them up silently yields "no previous
+// data" for every lift, which reads as "first time" on a lift you've done for years.
+function bestPair(pairs) {
+  return (pairs || []).reduce((best, p) => {
+    if (!best) return p;
+    if (p.w > best.w || (p.w === best.w && p.r > best.r)) return p;
+    return best;
+  }, null);
+}
+function topSet(sets) {
+  return bestPair(workingDone(sets).map(sx => ({ w: parseFloat(sx.weight) || 0, r: parseFloat(sx.reps) || 0 })));
+}
+function sessionWins(session, store, sid) {
+  const out = [];
+  for (const ex of (session?.exercises || [])) {
+    if (!ex.name) continue;
+    const now = topSet(ex.sets);
+    if (!now || (!now.w && !now.r)) continue;
+    // getLastExerciseSession walks history newest-first; this session may already be saved into
+    // history by the time the summary renders, so skip the row this finish just wrote.
+    const prev = getLastExerciseSession(store, ex.name, sid);
+    const prevTop = prev ? bestPair(prev.sets) : null;   // already {w,r} pairs — see bestPair
+    if (!prevTop || (!prevTop.w && !prevTop.r)) { out.push({ name: ex.name, kind: "first", w: now.w, r: now.r }); continue; }
+    if (now.w > prevTop.w) out.push({ name: ex.name, kind: "weight", w: now.w, r: now.r, by: Math.round((now.w - prevTop.w) * 10) / 10 });
+    else if (now.w === prevTop.w && now.r > prevTop.r) out.push({ name: ex.name, kind: "reps", w: now.w, r: now.r, by: now.r - prevTop.r });
+  }
+  // Heavier beats more reps beats first-time; biggest jump first within a kind.
+  const rank = { weight: 0, reps: 1, first: 2 };
+  return out.sort((a, b) => (rank[a.kind] - rank[b.kind]) || ((b.by || 0) - (a.by || 0)));
+}
+
+// `skipSid` lets a caller ignore one session — the finish summary needs the PREVIOUS time an
+// exercise was trained, and by the time it renders, this workout is already in history.
+function getLastExerciseSession(store, exName, skipSid) {
   const dates = Object.keys(store.history||{}).sort().reverse();
   for (const d of dates) {
-    const sessions = Object.values(store.history[d]||{});
-    for (const sess of sessions) {
+    const entries = Object.entries(store.history[d]||{});
+    for (const [sessId, sess] of entries) {
+      if (skipSid && sessId === skipSid) continue;
       const ex = sess.exercises?.find(e => e.name === exName);
       if (!ex) continue;
       // Filter to WORKING sets only — exclude warmups (their light weight + low reps would
@@ -4573,7 +4619,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -11216,6 +11262,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         programChange,
         streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count,
         hype: pickFinishPhrase({ prs: newPRsList.length, progressions: progressionsHit, volVsLast: volVsLast || 0, streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count }),
+        // Lift-by-lift comparison against the last time each exercise was trained. Computed here,
+        // once, off the session and the store as they are at finish — not in render, where the
+        // store has already absorbed this workout.
+        wins: sessionWins(session, store, sid),
         share,
         shareData,
         undo: {
@@ -11649,6 +11699,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     </button>}
                   </div>
                 </div>
+                {/* Never logged this lift? Teach it here, once. */}
+                {ex.name && !getLastExerciseSession(store, ex.name) && (
+                  <FirstTimeCues name={ex.name} muscle={exInfo?.muscle} C={C}
+                    onOpenGuide={() => setViewingExercise(ex.name)}/>
+                )}
                 {/* Overflow menu reveal — superset link, swap, the exercise guide, and remove. */}
                 {moreMenuEx === ei && (
                   <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 14px 10px", flexWrap:"wrap" }}>
@@ -11942,6 +11997,39 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ fontSize:21, fontWeight:800, color:C.text, letterSpacing:-0.3, lineHeight:1.2, fontFamily:F }}>{workoutSummary.hype}</div>
                   </div>
                 )}
+                {/* WHAT YOU BEAT — the evidence under the celebration. The hype line is a mood; a
+                    lifter wants the receipt, and "session volume vs last time" isn't it: nobody
+                    trains for tonnage, they train the lift. Each row is one exercise's top set
+                    against the last time it was trained. Only real wins appear — a session where
+                    nothing improved shows nothing rather than a padded list. */}
+                {(() => {
+                  const wins = (workoutSummary.wins || []).filter(w => w.kind !== "first").slice(0, 4);
+                  if (!wins.length) return null;
+                  return (
+                    <div className="seshd-content-fade" style={{ margin:"0 2px 18px", background:C.surface, border:`1px solid ${C.accent}44`, borderRadius:16, overflow:"hidden" }}>
+                      <div style={{ padding:"11px 14px 8px", fontSize:10, fontWeight:800, letterSpacing:1.6, color:C.accent }}>
+                        YOU BEAT LAST TIME
+                      </div>
+                      {wins.map((w, i) => (
+                        <div key={w.name} style={{
+                          display:"flex", alignItems:"center", gap:10, padding:"9px 14px",
+                          borderTop:`1px solid ${C.divider}`,
+                        }}>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13.5, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{w.name}</div>
+                            <div style={{ fontSize:11.5, color:C.sub, fontFamily:MONO, marginTop:1 }}>{w.w ? `${w.w}${unit} × ${w.r}` : `${w.r} reps`}</div>
+                          </div>
+                          <div style={{
+                            flexShrink:0, fontSize:12, fontWeight:800, fontFamily:MONO,
+                            color:C.accent, background:C.accentSoft, borderRadius:8, padding:"5px 10px",
+                          }}>
+                            {w.kind === "weight" ? `+${w.by}${unit}` : `+${w.by} rep${w.by === 1 ? "" : "s"}`}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {/* Shareable card — magazine-quality art piece */}
                 <div id="workout-card" className="seshd-scale-enter" style={{
                   background: "#0A0A0A",
@@ -14152,6 +14240,45 @@ function useExerciseCues() {
   const [data, setData] = useState(_exerciseCuesCache);
   useEffect(() => { if (!data) loadExerciseCues().then(setData); }, [data]);
   return data;
+}
+
+// FIRST-TIME CUE STRIP — shown on the live workout card for an exercise you've never logged.
+//
+// The exercise-detail screen (body map, full how-to, form tips, common mistakes) is the best thing
+// in the app and it was reachable from a workout only if you happened to know that tapping the
+// little muscle icon opened it. This puts the two cues that matter where you're standing when you
+// need them — under the exercise you're about to do for the first time — with a way through to
+// the rest. It renders nothing once you've logged the lift once; it's a teaching moment, not
+// permanent furniture.
+//
+// Mounted ONLY for first-time exercises, which is what keeps the ~75KB cues module off the
+// critical path of every other workout: the lazy import fires from this component's own hook.
+function FirstTimeCues({ name, muscle, C, onOpenGuide }) {
+  const exerciseCues = useExerciseCues();
+  if (!exerciseCues) return null;                    // still loading — show nothing rather than a spinner
+  const g = getCues(name, muscle, exerciseCues);
+  const cues = (g.cues || []).slice(0, 2);
+  if (!cues.length) return null;
+  return (
+    <div style={{
+      margin:"0 14px 8px", background:C.accentSoft, border:`1px solid ${C.accent}33`,
+      borderRadius:12, padding:"9px 11px",
+    }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:5 }}>
+        <span style={{ fontSize:9, fontWeight:800, letterSpacing:1.3, color:C.accent }}>FIRST TIME</span>
+        <button onClick={onOpenGuide} style={{
+          background:"none", border:"none", padding:0, cursor:"pointer", fontFamily:F,
+          fontSize:11, fontWeight:700, color:C.accent,
+        }}>Full guide ›</button>
+      </div>
+      {cues.map((c, i) => (
+        <div key={i} style={{ display:"flex", gap:7, alignItems:"flex-start", marginTop: i ? 3 : 0 }}>
+          <span style={{ color:C.accent, fontSize:11, lineHeight:1.5, flexShrink:0 }}>•</span>
+          <span style={{ fontSize:11.5, color:C.text, lineHeight:1.45 }}>{c}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function getCues(name, muscle, exerciseCues) {

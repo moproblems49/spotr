@@ -248,6 +248,12 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   neither, so a signed-in user could upload arbitrary files of unbounded size served from the project
   domain (free file hosting, uncapped bill, SVG/HTML carrying script). All three buckets are now
   capped with an image-only allowlist; SVG is excluded on purpose.
+- **TWO set shapes exist and they are not interchangeable.** A LIVE session set is
+  `{weight, reps, done, type}` (strings, needs the warmup/done filter); `getLastExerciseSession()`
+  hands back already-filtered `{w, r}` NUMBER pairs. Running the live-shape filter over `{w,r}`
+  pairs silently yields zero sets, so "no previous data" — which the finish summary rendered as
+  "first time" on lifts done for years. `topSet()` takes live sets, `bestPair()` takes `{w,r}`.
+  Caught by `sim_wins`; it would have shipped invisible otherwise.
 - **Volume/set counts have ONE definition: `sessionVolume()` / `workingDone()`.** Never inline
   another `sets.filter(s => s.done).reduce(...)`. Seven inline copies had drifted apart — the
   finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats
