@@ -1,4 +1,4 @@
-// v178091716761
+// v178091716762
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17085,7 +17085,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
                   <div style={{ flex:1, paddingRight:12 }}>
                     <div style={{ fontSize:14, color:C.text }}>Public profile</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>When on, anyone with your share link can view your profile and recent workouts. When off, your link shows nothing.</div>
+                    {/* Follow approval changed what this toggle actually does, and the old copy
+                        only mentioned the share link — the far bigger consequence is that people
+                        now have to ask before they can see anything. */}
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>On: anyone can see your workouts and follow you straight away. Off: people must ask to follow, and until you approve them they see nothing.</div>
                   </div>
                   <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1, flexShrink:0 }}>
                     {[["On", true], ["Off", false]].map(([label, val]) => {
