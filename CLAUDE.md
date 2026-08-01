@@ -66,10 +66,18 @@ sandbox network policy (use MCP, not curl). Vercel note: pushes to main DO deplo
 policy page turned out to be pure browser cache (incognito confirmed live), don't chase deploy ghosts.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (~40s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (~85s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
+
+**`node build/run_sims.mjs --pw` also runs the 10 Playwright suites** (+~2min): it builds dist with
+STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
+in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
+anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
+exactly how a suite rots; run `--pw` before any commit touching layout, gestures, overlays or the
+volume/set/PR maths. **Never chain `pkill` to clean up the server** — it kills the whole shell
+(exit 144, cost a run here).
 
 **A new sim/test must be shown to FAIL against the old code before you trust it.** Stash the fix,
 rebuild the bundle, run it, confirm red, then `git stash pop`. Two tests written this way turned
