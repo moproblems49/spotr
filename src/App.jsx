@@ -1,4 +1,4 @@
-// v178091716775
+// v178091716776
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4411,28 +4411,45 @@ function aiAuthHeaders() {
 // Returns null rather than a misleading number when there isn't enough history to mean anything:
 // the chronic average is the denominator, and four sessions spread over ten days is not a
 // "28-day average". Bands are the standard ones (0.8 / 1.3 / 1.5).
-const ACWR_MIN_DAYS = 21;      // history must span this before a 28-day average is honest
-const ACWR_MIN_SESSIONS = 6;   // ...and hold at least this many sessions
+// Guards. These exist to make the function REFUSE rather than mislead, and the first version of
+// them was defeated by a single old row: `oldestMs` was taken over ALL history while the sums came
+// only from the 28-day window, so six sessions on ONE day plus one row from 400 days ago passed
+// every check and returned "4.00 — Spike — this is where injuries happen". A confident red injury
+// warning computed from one training day is the worst failure this screen can have, and anyone
+// with imported history who comes back from a break hits it. So the checks now all look INSIDE
+// the window, and the chronic baseline must have older days in it to be a baseline at all.
+const ACWR_MIN_SESSIONS = 6;      // ...in the 28-day window
+const ACWR_MIN_DAYS = 4;          // ...spread over at least this many distinct days
+const ACWR_MIN_OLDER_DAYS = 2;    // ...at least this many of them OUTSIDE the acute week
 function trainingLoadRatio(store, unit = "lbs") {
   const hist = store?.history || {};
-  const now = Date.now();
+  // Bucket by CALENDAR DAY, not by elapsed milliseconds. Anchoring both ends at local noon makes
+  // today = 0 and yesterday = 1 whatever the clock says; the previous version compared a noon
+  // timestamp against `Date.now()`, so before local noon today's own session had a NEGATIVE age
+  // and was silently dropped by the future-date guard — the ratio ignored the morning workout that
+  // most changes it, then jumped a band at 12:00 with no new data. Noon anchoring also absorbs DST
+  // (a 23- or 25-hour day still rounds to one day apart).
+  const nd = new Date();
+  const todayNoon = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate(), 12).getTime();
   const dayMs = 864e5;
-  let acute = 0, chronic = 0, sessions28 = 0, oldestMs = null;
+  let acute = 0, chronic = 0, sessions28 = 0;
+  const daysInWindow = new Set(), olderDays = new Set();
   for (const [dk, day] of Object.entries(hist)) {
     const ts = new Date(dk + "T12:00:00").getTime();
     if (isNaN(ts)) continue;
-    if (oldestMs == null || ts < oldestMs) oldestMs = ts;
-    const ageDays = (now - ts) / dayMs;
-    if (ageDays < 0 || ageDays > 28) continue;
+    const ageDays = Math.round((todayNoon - ts) / dayMs);
+    if (ageDays < 0 || ageDays > 28) continue;      // future-dated rows and anything older
+    let dayHadVolume = false;
     for (const sess of Object.values(day || {})) {
       const v = cvt(sessionVolume(sess), sess.unit || "lbs", unit);
       if (v <= 0) continue;
-      chronic += v; sessions28++;
+      chronic += v; sessions28++; dayHadVolume = true;
       if (ageDays <= 7) acute += v;
     }
+    if (dayHadVolume) { daysInWindow.add(ageDays); if (ageDays > 7) olderDays.add(ageDays); }
   }
-  const spanDays = oldestMs == null ? 0 : (now - oldestMs) / dayMs;
-  if (spanDays < ACWR_MIN_DAYS || sessions28 < ACWR_MIN_SESSIONS || chronic <= 0) return null;
+  if (sessions28 < ACWR_MIN_SESSIONS || daysInWindow.size < ACWR_MIN_DAYS
+      || olderDays.size < ACWR_MIN_OLDER_DAYS || chronic <= 0) return null;
   const acutePerDay = acute / 7;
   const chronicPerDay = chronic / 28;
   if (chronicPerDay <= 0) return null;
@@ -4538,6 +4555,7 @@ function computeBodyBattery(store) {
   const keyFor = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
   const winKeys = [...new Set([keyFor(wakeMs), todayKey])];
   let workoutDrain = 0;
+  const sessionSpans = [];   // {startMs, endMs, drain} — the recharge walk below needs WHEN, not just how much
   for (const dk of winKeys) {
     for (const sess of Object.values((store.history || {})[dk] || {})) {
       if (sess.finishedAt != null && sess.finishedAt < wakeMs) continue; // finished before this wake window
@@ -4559,7 +4577,10 @@ function computeBodyBattery(store) {
       // one at ~20, in line with what the wearables charge for an hour of lifting, and RPE still
       // moves it either way. The point of this number is to tell you when to back off; it can't
       // do that if every session lands in the red.
-      workoutDrain += sessionDrain(sets, avgRpe);
+      const d = sessionDrain(sets, avgRpe);
+      workoutDrain += d;
+      const endMs = sess.finishedAt || new Date(dk + "T12:00:00").getTime();
+      sessionSpans.push({ startMs: endMs - (sess.duration || 0) * 1000, endMs: Math.max(endMs, endMs + 1), drain: d });
     }
   }
   workoutDrain = Math.min(32, workoutDrain);
@@ -4573,11 +4594,37 @@ function computeBodyBattery(store) {
     if (workoutDrain > 0) activityDrain *= 0.6;
     activityDrain = Math.min(18, Math.round(activityDrain));
   }
-  // Daytime recovery from genuinely still hours since waking. Capped at charge0: the number means
-  // "energy left", so a restful day can return you to what you woke with but never above it.
+  // Daytime recovery from genuinely still hours since waking, walked IN ORDER.
+  //
+  // Order matters and summing first does not work: a still hour while the battery sits at charge0
+  // stores nothing (you cannot fill a full tank), so banking every still hour and clamping the
+  // TOTAL at the end let a restful morning refund an afternoon workout — measured, a 20-set
+  // session was erased completely by an evening of sitting still, and the headline drifted 7-9
+  // points above the curve, which caps hour by hour. This mirrors the curve's own walk: drop the
+  // hour's drain first, then credit only what there is room for.
+  //
+  // The hour a session overlaps is NOT a rest hour, however still the phone was — a lifter's phone
+  // sits in a locker recording ~0 steps for exactly that hour. And only COMPLETED hours count, or
+  // the number ticks up the instant a new hour begins.
   let restRecharge = 0;
-  for (let t = Math.ceil(wakeMs / 36e5) * 36e5; t < now.getTime(); t += 36e5) {
-    restRecharge += restfulHourRecharge(store, t, todayKey);
+  {
+    const spanH = Math.max(1, (now.getTime() - wakeMs) / 36e5);
+    const actPerHour = activityDrain / spanH;
+    let lvl = charge0;
+    for (let t = Math.ceil(wakeMs / 36e5) * 36e5; t + 36e5 <= now.getTime(); t += 36e5) {
+      lvl -= 0.9 + actPerHour;
+      let inWorkout = false;
+      for (const sp of sessionSpans) {
+        const ov = Math.max(0, Math.min(sp.endMs, t + 36e5) - Math.max(sp.startMs, t));
+        if (ov > 0) { inWorkout = true; lvl -= sp.drain * (ov / Math.max(1, sp.endMs - sp.startMs)); }
+      }
+      if (inWorkout) continue;
+      const c = restfulHourRecharge(store, t, todayKey);
+      if (c > 0) {
+        const applied = Math.min(c, charge0 - lvl);
+        if (applied > 0) { lvl += applied; restRecharge += applied; }
+      }
+    }
   }
   const spent = charge0 - baselineDrain - workoutDrain - activityDrain;
   restRecharge = Math.round(Math.max(0, Math.min(restRecharge, charge0 - spent)));
@@ -4650,6 +4697,14 @@ function computeBodyBatteryTimeline(store) {
     for (let t = sleepStart.getTime(); t < gateEnd; t += 36e5) {
       if (stepsInHour(t) >= ACTIVE_STEPS) sleepStart = new Date(Math.min(t + 36e5, gateEnd));
     }
+    // YOU ARE NOT ASLEEP WHILE READING THIS. Pre-dawn, with no real HealthKit window, the estimate
+    // above claims you went to bed at 10pm and draws a rising recharge — while computeBodyBattery
+    // rolls its wake anchor back to yesterday 7am and keeps DRAINING. The endpoint pin can't
+    // reconcile them because it deliberately skips recharge points, so at 05:30 the headline read
+    // 40 and the curve beneath it ended at 71. The app being open is direct evidence of being
+    // awake, and it's the one signal that needs no permission — so push the estimated bedtime to
+    // now and let the drain continue, which is the honest reading and the one the headline takes.
+    if (now < wakeTime) sleepStart = new Date(Math.max(sleepStart.getTime(), now.getTime()));
   }
 
   // The chart always spans the full trailing 24 hours (the header says "24H" — make it true).
@@ -4689,6 +4744,7 @@ function computeBodyBatteryTimeline(store) {
   })).filter(Boolean);
 
   const hourlyActivity = store.activityHourly;
+  const hourlyIsFresh = store.activityHourlyDate === keyOf(now);
   const points = [];
   const clampLvl = (l) => Math.round(Math.max(5, Math.min(100, l)));
 
@@ -4701,7 +4757,12 @@ function computeBodyBatteryTimeline(store) {
       const overlapMs = Math.max(0, Math.min(s.endMs, hourEnd) - Math.max(s.startMs, hourStart));
       if (overlapMs > 0) drain += s.drain * (overlapMs / Math.max(1, s.endMs - s.startMs));
     }
-    if (useActivity) {
+    if (useActivity && hourlyIsFresh && keyOf(new Date(hourStart)) === keyOf(now)) {
+      // Freshness + same-day gate, matching the headline's `act.date === todayKey` and
+      // restfulHourRecharge's own check. Without it the curve applied YESTERDAY's buckets as
+      // today's drain (a whole day of phantom sag, then a 15-point cliff where the endpoint pin
+      // snapped back to the headline), and applied today's hour-of-day buckets to yesterday's
+      // same-numbered hours whenever phase D spanned a midnight.
       const act = hourlyActivity?.[new Date(hourStart).getHours()];
       if (act && (act.steps || act.kcal)) {
         const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
@@ -4795,6 +4856,19 @@ function computeBodyBatteryTimeline(store) {
 // Minutes per sleep STAGE inside a window, de-duplicated by UNION of intervals. More than one
 // source can write the same night (Apple Watch plus a sleep app), and naively summing samples is
 // exactly what once turned an 8h night into "16h" — same hazard pickSleepBlock guards for totals.
+// How much the STAGE COMPOSITION of a night moves its duration factor. Typical adult proportions
+// are ~16% deep and ~21% REM, so q = 1 at typical and the multiplier is exactly 1.0 — most people
+// see no change. Range is [0.85, 1.15]: poor composition costs at most 15%, excellent gains at most
+// 15%. Duration is applied by the CALLER and still gates, so great stages can't rescue a short
+// night. Lives here as one exported definition because a sim that re-implements the formula would
+// pass against any constants, including wrong ones.
+function sleepQualityMult(deepMin, remMin, totalMin) {
+  if (!(totalMin > 0)) return 1;
+  const q = 0.5 * ((deepMin || 0) / totalMin / 0.16) + 0.5 * ((remMin || 0) / totalMin / 0.21);
+  if (!isFinite(q)) return 1;
+  return 0.85 + 0.15 * Math.min(2, Math.max(0, q));
+}
+
 function stageMinutes(samples, startMs, endMs) {
   const byStage = { deep: [], rem: [], core: [] };
   for (const s of samples || []) {
@@ -4853,7 +4927,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, pinToLastNight, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -5325,16 +5399,29 @@ async function readRecovery() {
   // of an assumed 10pm-7am (night-shift lifters exist).
   const sleep = await read("sleep");
   if (sleep.length) {
+    // ACCEPT BOTH "light" AND "core" — they are the same stage under two names, and this filter
+    // is the ONLY input pickSleepBlock and stageMinutes ever see. The installed plugin maps
+    // HKCategoryValueSleepAnalysis.asleepCore to "light" (Health.swift), so "core" never arrives
+    // today; the dependency is pinned "^8.7.1" though, and adopting Apple's own naming is exactly
+    // the sort of thing a minor bump does. Dropping it here is CATASTROPHIC and silent: core is
+    // most of a night, so the surviving deep/REM fragments fall more than SLEEP_GAP_MIN apart,
+    // pickSleepBlock splits them into blocks that all miss MIN_MAIN_SLEEP_H, and a 7.8h night is
+    // reported as a 50-minute one with zero deep sleep. Nothing throws — the numbers just look
+    // short. stageMinutes already handles both spellings; now the two agree.
     const asleepSamples = sleep.filter(s => {
       const st = (s.sleepState || "").toLowerCase();
-      return st === "asleep" || st === "rem" || st === "deep" || st === "light";
+      return st === "asleep" || st === "rem" || st === "deep" || st === "light" || st === "core";
     }).map(s => {
       const stage = (s.sleepState || "").toLowerCase();
       const startMs = s.startDate ? new Date(s.startDate).getTime() : null;
       const endMs = s.endDate ? new Date(s.endDate).getTime() : null;
       const span = (startMs != null && endMs != null && endMs > startMs) ? (endMs - startMs) / 60000 : 0;
-      // `value` is minutes on aggregate rows but the per-stage rows carry a stage code, so trust
-      // it only when it doesn't exceed the sample's own span. Either shape lands on real minutes.
+      // `value` is DURATION IN MINUTES for every sleep row from this plugin (Health.swift writes
+      // durationMinutes). `min(v, span)` therefore just guards the one real case: an aggregate row
+      // reporting LESS sleep than its own span, i.e. net of time awake. (An older comment here
+      // claimed per-stage rows carry a stage CODE in `value` — they don't, and if they ever did,
+      // `min` would pick the code (3/4/5) as the minutes and collapse the night. Left as `min`
+      // because it is correct for the payload we actually get; revisit if the plugin changes.)
       const v = parseFloat(s.value);
       return { startMs, endMs, stage, minutes: (!isNaN(v) && v > 0) ? (span ? Math.min(v, span) : v) : span };
     });
@@ -5428,11 +5515,7 @@ async function readRecovery() {
     // the number (±15% of the duration factor). Skipped entirely when the device reported no
     // stages, because unknown must not read as bad.
     if (out.sleepDeepMin != null && sh > 0) {
-      const totalMin = sh * 60;
-      const deepPct = out.sleepDeepMin / totalMin;
-      const remPct = (out.sleepRemMin || 0) / totalMin;
-      const q = 0.5 * (deepPct / 0.16) + 0.5 * (remPct / 0.21);
-      sf = Math.max(0, Math.min(1, sf * (0.85 + 0.15 * Math.min(2, q))));
+      sf = Math.max(0, Math.min(1, sf * sleepQualityMult(out.sleepDeepMin, out.sleepRemMin, sh * 60)));
     }
     comps.push([sf, 0.25]);
   }
@@ -11000,6 +11083,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       const onVis = () => {
         if (document.visibilityState === "visible") return;
         const remaining = remainingNow();
+        // Re-arm AND re-open the pre-cancel. The pre-cancel latches once per rest period, so a
+        // background→foreground round-trip inside the final 3s used to leave the banner armed with
+        // only the cancel-at-completion path left — the exact race this whole change exists to
+        // avoid. Clearing the latch lets the interval cancel again if the user comes back.
+        rtPreCancelRef.current = false;
         if (remaining >= 1) scheduleRestNotification(remaining);
       };
       document.addEventListener("visibilitychange", onVis);

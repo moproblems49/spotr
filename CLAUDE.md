@@ -407,7 +407,14 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   history read in lbs gives the same ratio). **It returns `null` rather than a number when the
   history can't support one** (span < 21 days or < 6 sessions in the window): a ratio off a handful
   of sessions is noise dressed as insight, and this number is meant to change what someone does.
-  Sim: `sim_acwr`.
+  Sim: `sim_acwr`. **The guard must look INSIDE the window**: the first version measured `oldestMs`
+  over ALL history while the sums came only from the last 28 days, so six sessions on ONE day plus a
+  single 400-day-old row returned "4.00 — Spike — this is where injuries happen". Anyone with
+  imported history returning from a break hit it. Now: >=6 sessions, spread over >=4 distinct days,
+  >=2 of which are OUTSIDE the acute week. Also bucket by CALENDAR DAY anchored at local noon on
+  BOTH ends — comparing a noon timestamp against `Date.now()` gave today's own session a negative
+  age, so the future-date guard silently dropped the morning workout that most changes the number,
+  and the band flipped at 12:00 with no new data.
 - **Missing health signals are EXCLUDED, never scored as zero.** `recoveryScore` is a weighted mean
   of whatever exists — HRV 0.5, resting HR 0.25, sleep 0.25 — renormalised by the weights actually
   present, so a night the watch didn't record doesn't read as "no recovery". The fallback ladder
@@ -426,6 +433,24 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   treated as no data; and the total is capped at `charge0`, because the number means "energy left",
   not "energy earned". Surfaced as a "Rest recovery +N" tile so a rising line has a visible cause.
   Sim: `sim_bbrest`.
+- **The headline and the 24h curve have diverged THREE times — sweep it, don't spot-check it.**
+  `computeBodyBattery()` and `computeBodyBatteryTimeline()` model the same day twice, and the
+  symptom is always the big number disagreeing with the end of the chart directly beneath it. A
+  Fable-5 audit found three more on Aug 1: (a) pre-dawn with NO HealthKit sleep window — every
+  phone-only user, every night — the headline rolled its wake anchor to yesterday 7am and kept
+  draining while the curve assumed a 10pm bedtime and drew a RECHARGE, and the endpoint pin can't
+  reconcile them because it deliberately skips recharge points (05:30 read headline 40 / curve 71).
+  Fixed by treating the app being OPEN as evidence of being awake: pre-dawn with no real window,
+  push the estimated bedtime to `now`. (b) the curve applied STALE `activityHourly` buckets with no
+  freshness gate, unlike its two siblings. (c) `restRecharge` was order-blind. `sim_bbmatch` and
+  `sim_bbrest` pin single clock times and missed all three; **`sim_bbdiverge` sweeps the rollover**
+  and is the one to extend.
+- **Rest credit must be walked IN ORDER, not summed and clamped.** A still hour while the battery
+  sits at `charge0` stores nothing — you cannot fill a full tank. Summing every still hour and
+  clamping the TOTAL let a restful morning refund an afternoon workout: measured, a 20-set session
+  was erased completely (headline 91 = charge0) while the curve, which caps hour by hour, said 84.
+  The headline now walks hours with the same rule. The training hour is also never a rest hour
+  however still the phone was — it sits in a locker recording ~0 steps.
 - **`sessionDrain()` is the ONE workout-drain formula.** The headline and the 24h curve each had
   their own copy; moving the headline to `4 + 0.6/set` while the curve kept `6 + 0.9/set` made the
   chart dive to ~10 under a headline reading 23 — visible in Mo's screenshot, and `sim_bbmatch`

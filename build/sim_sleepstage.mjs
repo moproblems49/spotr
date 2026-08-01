@@ -15,7 +15,8 @@ globalThis.window = undefined;
 let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
 
-const { stageMinutes, computeBodyBattery } = await import("./app.mjs");
+import { readFileSync } from "fs";
+const { stageMinutes, computeBodyBattery, sleepQualityMult, pickSleepBlock } = await import("./app.mjs");
 
 // ── stageMinutes: union per stage, because two sources can write the same night ───────────────
 // The night CROSSES MIDNIGHT: 11pm on the 22nd through 6am on the 23rd. Writing both ends as
@@ -71,22 +72,73 @@ check("a night with no stage data is unchanged (unknown must not read as bad)",
   noStages.charge0 === withStages.charge0,
   `${noStages.charge0} vs ${withStages.charge0} — computeBodyBattery must not itself re-weight stages`);
 
-// ── The quality curve itself, applied the way readRecovery applies it ────────────────────────
-// sf * (0.85 + 0.15 * min(2, q)), q = 0.5*(deep/0.16) + 0.5*(rem/0.21) of total.
-const q = (deepMin, remMin, hours) => {
-  const t = hours * 60;
-  return 0.5 * ((deepMin / t) / 0.16) + 0.5 * ((remMin / t) / 0.21);
+// ── The quality curve — asserted against the REAL exported function ──────────────────────────
+// This block used to re-implement q and the multiplier locally and assert on its own copy, which
+// would have passed against ANY constants in App.jsx, including wrong ones. It calls the shipped
+// sleepQualityMult now, so editing those constants breaks these checks.
+const M = (deepMin, remMin, hours) => sleepQualityMult(deepMin, remMin, hours * 60);
+const typical = M(0.16 * 480, 0.21 * 480, 8);
+console.log(`multiplier — typical:${typical.toFixed(3)} poor:${M(20,40,8).toFixed(3)} great:${M(140,130,8).toFixed(3)}`);
+check("a TYPICAL night is neutral (multiplier = 1.0)", Math.abs(typical - 1) < 0.01, typical.toFixed(3));
+check("a poor-composition night is penalised", M(20, 40, 8) < 0.95, M(20, 40, 8).toFixed(3));
+check("...but never below the 0.85 floor", M(0, 0, 8) === 0.85, String(M(0, 0, 8)));
+check("an excellent night is rewarded, capped at 1.15", M(140, 130, 8) > 1.02 && M(300, 300, 8) === 1.15,
+  `${M(140,130,8).toFixed(3)} / ${M(300,300,8)}`);
+check("great stages can't rescue a short night — duration gates (caller applies it)",
+  0.28 * M(90, 70, 5) < 0.78, (0.28 * M(90, 70, 5)).toFixed(3));
+check("zero/!finite total is neutral, never NaN",
+  M(60, 60, 0) === 1 && sleepQualityMult(60, 60, null) === 1 && isFinite(M(60, 60, 8)));
+check("a missing REM field is treated as zero, not NaN", isFinite(sleepQualityMult(80, undefined, 480)));
+
+// ── END-TO-END through a REPLICA of readRecovery's own filter ────────────────────────────────
+// The previous version of this sim fed "core" samples STRAIGHT into stageMinutes and passed —
+// while the shipped filter dropped "core" before stageMinutes ever saw it. A helper test that
+// skips the pipeline green-lights exactly the string the app throws away. This replica is copied
+// from src/App.jsx readRecovery; if the two drift again, these checks go red.
+// A replica can itself drift from the app, so pin the REAL filter too: assert the shipped bundle
+// still accepts both spellings. This is the check that actually fails if someone edits App.jsx.
+{
+  const src = readFileSync(new URL("./app.mjs", import.meta.url), "utf8");
+  const filterLine = src.split("\n").find(l => /st === "asleep" \|\| st === "rem"/.test(l)) || "";
+  check("the SHIPPED sleep filter accepts \"core\" as well as \"light\"",
+    /st === "core"/.test(filterLine), filterLine.trim().slice(0, 160) || "(filter line not found)");
+  check("...and the shipped stage classifier still maps both to core",
+    /"light" \|\| st === "core"/.test(src), "stageMinutes classifier changed");
+}
+
+const readRecoveryFilter = (raw) => raw.filter(x => {
+  const st = (x.sleepState || "").toLowerCase();
+  return st === "asleep" || st === "rem" || st === "deep" || st === "light" || st === "core";
+}).map(x => ({
+  stage: (x.sleepState || "").toLowerCase(),
+  startMs: x.startMs, endMs: x.endMs,
+  minutes: Math.min((x.endMs - x.startMs) / 60000, (x.endMs - x.startMs) / 60000),
+}));
+
+// A realistic watch night: 23:00-07:00, mostly core, deep early, REM late.
+const night = (coreName) => {
+  const out = [];
+  const push = (state, from, to) => out.push({ sleepState: state, startMs: from, endMs: to });
+  push(coreName, PM(23), AM(0, 30));
+  push("deep", AM(0, 30), AM(1, 55));      // 85 min deep
+  push(coreName, AM(1, 55), AM(3, 30));
+  push("rem", AM(3, 30), AM(5, 10));       // 100 min rem
+  push(coreName, AM(5, 10), AM(7));
+  return out;
 };
-const mult = (deepMin, remMin, hours) => 0.85 + 0.15 * Math.min(2, q(deepMin, remMin, hours));
-const typical = mult(0.16 * 480, 0.21 * 480, 8);
-console.log(`multiplier — typical:${typical.toFixed(3)} poor:${mult(20, 40, 8).toFixed(3)} great:${mult(140, 130, 8).toFixed(3)}`);
-check("a TYPICAL night is neutral (multiplier ≈ 1.0)", Math.abs(typical - 1) < 0.01, typical.toFixed(3));
-check("a poor-composition night is penalised", mult(20, 40, 8) < 0.95, mult(20, 40, 8).toFixed(3));
-check("...but never catastrophically (floor 0.85)", mult(0, 0, 8) >= 0.85, mult(0, 0, 8).toFixed(3));
-check("an excellent night is rewarded modestly", mult(140, 130, 8) > 1.02 && mult(140, 130, 8) <= 1.15,
-  mult(140, 130, 8).toFixed(3));
-check("great stages can't rescue a short night — duration still gates",
-  0.28 * mult(90, 70, 5) < 0.78, (0.28 * mult(90, 70, 5)).toFixed(3));
+for (const coreName of ["light", "core"]) {
+  const samples = readRecoveryFilter(night(coreName));
+  const block = pickSleepBlock(samples);
+  const st = block ? stageMinutes(samples, block.startMs, block.endMs) : null;
+  const hours = block ? Math.round((block.minutes / 60) * 10) / 10 : 0;
+  console.log(`"${coreName}" night → ${hours}h, deep ${st?.deep}, rem ${st?.rem}, core ${st?.core}`);
+  check(`a "${coreName}"-named night survives the filter as ONE 8h block`, hours >= 7.5, String(hours));
+  check(`..."${coreName}": the 85 minutes of deep sleep are counted`, st?.deep === 85, String(st?.deep));
+  check(`..."${coreName}": the 100 minutes of REM are counted`, st?.rem === 100, String(st?.rem));
+  check(`..."${coreName}": quality is near neutral, not a penalty`,
+    Math.abs(sleepQualityMult(st.deep, st.rem, block.minutes) - 1) < 0.12,
+    String(sleepQualityMult(st.deep, st.rem, block.minutes)));
+}
 
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);
