@@ -1,4 +1,4 @@
-// v178091716766
+// v178091716767
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2778,11 +2778,27 @@ function posNum(v, max = 100000) {
   return n;
 }
 
+// ONE definition of an estimated 1RM. Epley is `w × (1 + reps/30)`, which ESTIMATES a max from a
+// multi-rep set — but at ONE rep there is nothing to estimate: the weight you just lifted IS your
+// one-rep max. The raw formula still multiplies by 31/30 and adds 3.3%, so entering 225×1 reported
+// a max of 233. The formula was inlined in seven places and every one of them had this bug, so the
+// calculator and the Est-1RM PR badge could disagree about the same set. They all come here now.
+//
+// `cap` clamps the rep count first: Epley overstates badly past ~12 reps (a 20-rep burnout set
+// would mint a fake PR), so the PR/trend callers pass a cap while the user-facing calculator
+// doesn't — there the user chose the number and we shouldn't silently substitute another.
+// Returns an unrounded number, or 0 for junk input; callers round if they display it.
+function epley1RM(weight, reps, cap = 0) {
+  const w = parseFloat(weight), rRaw = parseInt(reps);
+  if (!isFinite(w) || !isFinite(rRaw) || w <= 0 || rRaw < 1) return 0;
+  const r = cap ? Math.min(rRaw, cap) : rRaw;
+  return r === 1 ? w : w * (1 + r / 30);
+}
+
 function calc1RM(weight, reps) {
   if (!weight || !reps) return null;
-  const w = parseFloat(weight), r = parseInt(reps);
-  if (isNaN(w) || isNaN(r) || r < 1) return null;
-  return Math.round(w * (1 + r / 30));
+  const v = epley1RM(weight, reps);
+  return v ? Math.round(v) : null;
 }
 
 const PR_TYPE_LABEL = { weight: "Weight", e1rm: "Est. 1RM", volume: "Volume" };
@@ -2796,7 +2812,7 @@ function getSetPRTypes(store, exName, weight, reps, unit) {
   const w = parseFloat(weight), r = parseInt(reps);
   if (!exName || !w || !r || w <= 0 || r < 1) return { types: [], wLbs: 0, e1rmLbs: 0, volLbs: 0 };
   const wLbs = unit === "lbs" ? w : cvt(w, "kg", "lbs");
-  const e1rmLbs = Math.round(wLbs * (1 + Math.min(r, 12) / 30));
+  const e1rmLbs = Math.round(epley1RM(wLbs, r, 12));
   const volLbs = wLbs * r;
   const types = [];
   if (wLbs > (store.prs?.[exName] || 0)) types.push("weight");
@@ -2839,7 +2855,7 @@ function reconstructPrEvents(history) {
         const wt = parseFloat(s.weight), r = parseInt(s.reps);
         if (!wt || wt <= 0 || !r || r < 1) continue;
         const lbs = toLbs(wt);
-        const e1 = Math.round(lbs * (1 + Math.min(r, 12) / 30));
+        const e1 = Math.round(epley1RM(lbs, r, 12));
         const v = lbs * r;
         if (lbs > bw) bw = lbs;
         if (e1 > be) be = e1;
@@ -3907,7 +3923,7 @@ function detectDeloadNeeded(store, exName, unit) {
   if (sessions.length < 4) return { stalled: false };
   const norm = sessions.map(s => ({
     wU: cvt(s.topWeight, s.unit, unit),
-    e1rm: s.topWeight ? cvt(s.topWeight, s.unit, unit) * (1 + Math.min(s.topReps, 12) / 30) : 0,
+    e1rm: epley1RM(cvt(s.topWeight, s.unit, unit), s.topReps, 12),
   }));
   const recentRaw = sessions.slice(0, 4);
   const recent = norm.slice(0, 4);
@@ -4625,7 +4641,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -11034,7 +11050,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const maxLbs = toLbs(maxW);
         const maxE1rmLbs = Math.max(0, ...doneSets.map(s => {
           const wLbs = toLbs(parseFloat(s.weight) || 0), r = parseInt(s.reps) || 0;
-          return r > 0 ? Math.round(wLbs * (1 + Math.min(r, 12) / 30)) : 0;
+          return Math.round(epley1RM(wLbs, r, 12));
         }));
         const maxVolLbs = Math.max(0, ...doneSets.map(s => toLbs(parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0)));
 
@@ -19900,7 +19916,7 @@ function AppInner() {
               if (!wt || wt <= 0 || !r || r < 1) return;
               const lbs = wu === "lbs" ? wt : cvt(wt, "kg", "lbs");
               if (lbs > (historyPRs[ex.name] || 0)) historyPRs[ex.name] = lbs;
-              const e1 = Math.round(lbs * (1 + Math.min(r, 12) / 30));
+              const e1 = Math.round(epley1RM(lbs, r, 12));
               if (e1 > (historyE1rm[ex.name] || 0)) historyE1rm[ex.name] = e1;
               const vol = lbs * r;
               if (vol > (historyVolume[ex.name] || 0)) historyVolume[ex.name] = vol;

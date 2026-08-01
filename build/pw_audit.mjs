@@ -43,8 +43,8 @@ await page.waitForTimeout(1500);
 await page.getByText("1RM", { exact: true }).first().click();
 await page.waitForTimeout(500);
 const inputs = page.locator('input[inputmode="decimal"]');
-await inputs.nth(0).fill("185");
-await inputs.nth(1).fill("5");
+await inputs.nth(0).fill("225");
+await inputs.nth(1).fill("1");
 await page.waitForTimeout(500);
 await page.screenshot({ path: "build/audit_1rm.png" });
 
