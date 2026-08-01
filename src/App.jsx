@@ -1,4 +1,4 @@
-// v178091716770
+// v178091716771
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3015,6 +3015,16 @@ function postWorkoutPayload(exercises, prs, prNames, unit = "lbs") {
     };
   }).filter(ex => ex.sets.length > 0);   // an exercise with nothing logged isn't part of the card
   return { exercises: out, volume: Math.round(out.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0)) };
+}
+
+// Which exercises in a SAVED session stand at (or within 1% of) their stored PR. One rule, shared
+// with the cards via postWorkoutPayload. History had two separate copies of this and both were
+// wrong: they used a 0.98 threshold where the cards used 0.99, and one of them "converted" by
+// scaling the stored LBS pr UP by LBS_PER_KG for a kg session — the wrong direction, so a kg
+// lifter's top set had to beat ~2.2× its real PR and the badge could never appear.
+function sessionPRNames(sess, prs) {
+  const payload = postWorkoutPayload(sess?.exercises, prs, null, sess?.unit || "lbs");
+  return new Set(payload.exercises.filter(e => e.isPR).map(e => e.name));
 }
 
 // How many sets an exercise represents. ONE definition — the program editor, the reorder list and
@@ -11417,8 +11427,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
   // ── ACTIVE WORKOUT ──────────────────────────────────────────────────────────
   if (session) {
-    const done = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done).length, 0);
-    const total = session.exercises.reduce((a, ex) => a + ex.sets.length, 0);
+    // Working sets on BOTH sides. The volume printed beside this counter is sessionVolume(), which
+    // excludes warmups — so counting them here made "5/7 sets · 3,850 lbs" describe two different
+    // set lists. Excluding them from `total` too keeps the counter able to reach its own target.
+    const done = session.exercises.reduce((a, ex) => a + workingDone(ex.sets).length, 0);
+    const total = session.exercises.reduce((a, ex) => a + (ex.sets || []).filter(s => s.type !== "warmup").length, 0);
 
     return (
       <div style={{ background:C.bg, flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
@@ -13209,13 +13222,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   {new Date(date + "T12:00:00").toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric"})}
                 </div>
                 {Object.entries(sessions).map(([sid, sess], i) => {
-                  const done = sess.exercises?.reduce((a,ex) => a+(ex.sets?.filter(s=>s.done).length||0),0)||0;
+                  // Working sets, so this count agrees with the volume printed beside it — it used
+                  // to include warmups, giving "5 sets · 3,850 lbs" for a volume drawn from 3.
+                  const done = (sess.exercises || []).reduce((a, ex) => a + workingDone(ex.sets).length, 0);
                   const vol = sessionVolume(sess);
-                  const prExercises = sess.exercises?.filter(ex => {
-                    if (!ex.name) return false;
-                    const maxW = Math.max(0,...(ex.sets||[]).filter(s=>s.done&&s.weight).map(s=>parseFloat(s.weight)||0));
-                    return maxW > 0 && (store.prs||{})[ex.name] && maxW >= (store.prs[ex.name] * (sess.unit==="kg"?LBS_PER_KG:1) * 0.98);
-                  }) || [];
+                  const sessPRs = sessionPRNames(sess, store.prs);
+                  const prExercises = (sess.exercises || []).filter(ex => ex.name && sessPRs.has(ex.name));
                   return (
                     <div key={i} className="seshd-content-fade seshd-float" style={{ animationDelay:`${Math.min(i * 0.03, 0.2)}s`, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
@@ -13265,7 +13277,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                         {(() => {
                           const named = sess.exercises?.filter(e=>e.name) || [];
-                          const withSets = named.filter(ex => (ex.sets||[]).some(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0))));
+                          const withSets = named.filter(ex => workingDone(ex.sets).length > 0);
                           const COLLAPSE_AT = 4;
                           const isExpanded = expandedSessions[sid];
                           const visible = isExpanded ? withSets : withSets.slice(0, COLLAPSE_AT);
@@ -13273,13 +13285,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           return (
                             <>
                               {visible.map((ex,j) => {
-                          const doneSets = (ex.sets||[]).filter(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0)));
+                          // Working sets only: warmups were being listed here AND counted into the
+                          // "N × reps" label, whose rep figure reads the FIRST set — a warmup's.
+                          const doneSets = workingDone(ex.sets);
                           if (!doneSets.length) return null;
-                          const isPR = (store.prs||{})[ex.name] && doneSets.some(s=>{
-                            const w = parseFloat(s.weight||s.w)||0;
-                            const wLbs = (sess.unit||unit)==="kg" ? w*LBS_PER_KG : w;
-                            return wLbs > 0 && wLbs >= ((store.prs[ex.name]||0)*0.98);
-                          });
+                          const isPR = sessPRs.has(ex.name);
                           const setsLabel = doneSets.length + " × " + (doneSets[0]?.reps||doneSets[0]?.r||"—");
                           const topWeight = Math.max(0,...doneSets.map(s=>parseFloat(s.weight||s.w)||0));
                           return (
@@ -15226,7 +15236,8 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                     <div style={{ fontSize:13 }}>Complete a workout first to share it</div>
                   </div>
                 ) : recents.map((sess,i) => {
-                  const done = (sess.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);
+                  // workingDone: this count sits next to sessionVolume(), which excludes warmups.
+                  const done = (sess.exercises||[]).reduce((a,ex)=>a+workingDone(ex.sets).length,0);
                   const vol = sessionVolume(sess);
                   return (
                     <div key={i} onClick={async () => {
@@ -17773,7 +17784,8 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                 <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
                   {recentWorkouts.map((w, i) => {
                     const vol = sessionVolume(w);
-                    const done = (w.exercises||[]).reduce((a,ex)=>a+(ex.sets||[]).filter(s=>s.done).length,0);
+                    // workingDone: same set list the volume beside it is drawn from.
+                    const done = (w.exercises||[]).reduce((a,ex)=>a+workingDone(ex.sets).length,0);
                     const isSelected = selectedWorkout === w;
                     return (
                       <div key={i} onClick={() => setSelectedWorkout(isSelected ? null : w)} style={{
@@ -18395,7 +18407,8 @@ function PublicProfileView({ userId, C, onOpenApp }) {
               // workout_history columns: day_name, exercises (JSON), workout_date, created_at.
               const dateStr = w.workout_date || w.created_at;
               let setCount = 0;
-              try { (w.exercises || []).forEach(ex => { setCount += (ex.sets || []).filter(s => s.done).length; }); } catch {}
+              // workingDone so "N sets" means the same thing here as everywhere else.
+              try { (w.exercises || []).forEach(ex => { setCount += workingDone(ex.sets).length; }); } catch {}
               return (
               <div key={w.id || i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px 16px", marginBottom:8 }}>
                 <div style={{ fontSize:15, fontWeight:700 }}>{w.day_name || "Workout"}</div>

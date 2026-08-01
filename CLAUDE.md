@@ -302,6 +302,25 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   consolidate, grep for the CONCEPT (`set.done`, `weight`×`reps`) and not just the variant you
   already found — the copies that look correct are still copies, and the weekly chart proved they
   drift.
+- **A PR badge has ONE rule: `sessionPRNames(sess, prs)`** (which defers to `postWorkoutPayload`).
+  History carried two more copies at a **0.98** threshold where the cards used 0.99, and one of them
+  compared units backwards — it scaled the stored LBS pr UP by `LBS_PER_KG` for a kg session, so a
+  kg lifter's top set had to beat ~2.2× its real PR and the badge could never appear. `store.prs` is
+  LBS: convert the SESSION's weight *to* lbs, never the stored PR away from it.
+- **A set COUNT and the volume printed beside it must come from the same list.** Four places paired
+  `filter(s => s.done).length` (warmups included) with `sessionVolume()` (warmups excluded), so the
+  same line read "5 sets · 3,850 lbs" for a volume drawn from 3 sets — including the LIVE workout
+  header you stare at all session, History's session cards, the group-share picker and the
+  new-post picker. All use `workingDone()` now; the live counter's `total` excludes warmups too, or
+  the counter could never reach its own target. `{done}/{total}` is display-only — no division — so
+  a warmup-only session showing "0/0 sets" is honest, not a divide-by-zero.
+- **`pw_consistency` is the tool for this class.** Grep finds duplicated formulas; that run seeds ONE
+  workout containing warmups and reads every screen that reports a number about it (History lifetime
+  tile, weekly chart, session card, profile card, exercise detail), asserting they agree. It is what
+  caught the weekly chart printing 6.1k under a lifetime tile reading 3,850. Run it after touching
+  any volume/set/PR maths. `pw_unposted` is its companion: an unposted workout must stay out of the
+  FEED while still counting toward workouts, lifetime volume, the weekly chart, PRs, muscle balance,
+  streak and Body Battery — all 17 checks assert exactly that.
 - **Where an UNPOSTED workout belongs (settled, Aug 1):** History and your OWN profile — never the
   feed. `ProfileScreen.profileHistoryItems` builds cards from all of `store.history` when `isMe`,
   minus the ones already shared as posts, so your Workouts count = posted + unposted; viewers other

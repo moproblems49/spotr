@@ -95,6 +95,25 @@ check("the profile card shows the WORKING-set volume", showsWorking, prof.slice(
 check("...and never the warmup-inflated total", !showsInflated, prof.slice(0, 300));
 check("no warmup set row is printed on the card", !/135\s*[x×]\s*10/i.test(prof), prof.slice(0, 300));
 
+// ── AND IT COUNTS TOWARDS EVERYTHING ─────────────────────────────────────────────────────────
+// Not posting is a SHARING choice, not a "doesn't count" choice. Every derived number is computed
+// from store.history, so an unposted session has to move all of them.
+check("it counts toward the profile's Workouts number", /\b1 Workout\b/.test(prof), prof.slice(0, 160));
+check("it counts toward Muscle Balance (3 working sets, warmups excluded)",
+  /3 sets · last 30d/.test(prof), prof.slice(0, 300));
+check("it counts toward the weekly streak badge", /1\/3/.test(prof), prof.slice(0, 160));
+check("it drains Body Battery (training load registered)", /training/.test(prof), prof.slice(0, 400));
+
+await page.mouse.click(164, 869); await page.waitForTimeout(800);
+const h2 = page.getByText("History", { exact: false }).first();
+if (await h2.count()) { await h2.click(); await page.waitForTimeout(1200); }
+const hist2 = await bodyText();
+check("it counts toward History's TOTAL workouts", /1 TOTAL/.test(hist2), hist2.slice(0, 200));
+check("it counts toward LIFETIME volume", forms(WORKING).test(hist2), hist2.slice(0, 240));
+check("it counts toward the weekly volume chart", forms(WORKING).test(hist2), hist2.slice(0, 260));
+check("it sets a PERSONAL RECORD", /PERSONAL RECORDS[\s\S]*Barbell Back Squat/.test(hist2), hist2.slice(0, 320));
+check("it counts toward Most Trained muscles", /MOST TRAINED[\s\S]*Quads/.test(hist2), hist2.slice(0, 300));
+
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);
