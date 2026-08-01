@@ -390,6 +390,24 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   if every session lands in the red — but "fixing" it must not make it flattering either.**
   `sim_bbscale` pins BOTH ends (a good day must clear 80, a wrecked day must stay under 40 so the
   "Low battery" copy still fires); `build/bb_probe.mjs` prints the whole distribution for tuning.
+- **Sleep STAGES feed recovery, not just duration (built Aug 1).** Apple Health returns sleep split
+  into deep / core / REM; the app read those samples and threw the stage away, so eight broken hours
+  scored identically to eight restorative ones. `stageMinutes()` now unions the per-stage intervals
+  for the chosen night (union, not sum — two sources writing the same night is the bug that once
+  turned 8h into "16h"), and `readRecovery`'s sleep component multiplies its duration factor by
+  `0.85 + 0.15 × min(2, q)` where `q = 0.5·(deep%/0.16) + 0.5·(rem%/0.21)`. Design constraints worth
+  keeping: a TYPICAL night is neutral (q = 1 → ×1.0) so most people see no change, duration still
+  gates (five perfect hours are still five hours), the floor is 0.85 and the ceiling 1.15, and a
+  device reporting an undifferentiated "asleep" with no stages is treated as UNKNOWN — skipped
+  entirely — because unknown must never read as bad. Sim: `sim_sleepstage`.
+- **`trainingLoadRatio()` is the acute:chronic workload ratio** — last 7 days' average daily volume
+  over the 28-day average, i.e. Garmin's "training load" and the best-established injury-risk signal
+  in sports science. Bands are the standard 0.8 / 1.3 / 1.5. It needs no data we didn't already have
+  (a lifter against their own history, so units and exercise selection cancel — verified: a kg
+  history read in lbs gives the same ratio). **It returns `null` rather than a number when the
+  history can't support one** (span < 21 days or < 6 sessions in the window): a ratio off a handful
+  of sessions is noise dressed as insight, and this number is meant to change what someone does.
+  Sim: `sim_acwr`.
 - **Missing health signals are EXCLUDED, never scored as zero.** `recoveryScore` is a weighted mean
   of whatever exists — HRV 0.5, resting HR 0.25, sleep 0.25 — renormalised by the weights actually
   present, so a night the watch didn't record doesn't read as "no recovery". The fallback ladder
@@ -793,6 +811,15 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
 
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
+- **Naps should count toward the Body Battery recharge** (Mo parked this Aug 1, from the Garmin
+  comparison). `pickSleepBlock()` deliberately picks ONE main block and discards anything under
+  `MIN_MAIN_SLEEP_H` (2.5h), so a real afternoon nap is thrown away — Garmin credits it. The
+  ingredients exist: the sleep samples are already read and `stageMinutes()` can score a short
+  block. The care needed is in NOT double-counting it against the daytime `restfulHourRecharge`
+  (a nap hour is also a still hour), and in not letting a 20-minute doze read as recovery.
+- **Recovery time advisor** ("22 hours until recovered", Garmin-style). Computable today from
+  `sessionDrain` + `recoveryScore`; skipped in the Aug 1 round to avoid adding a fourth number to
+  a screen that had just been decluttered.
 - **Trainer tier (paid).** A client list in the Workout tab; tap a client to see their workouts and
   weights. Trainers are the one segment that reliably pays in fitness (they charge $50-100/session
   and TrueCoach/Trainerize live on $20-30/mo), and the VIEWING half is nearly free — workout_history

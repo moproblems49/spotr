@@ -1,4 +1,4 @@
-// v178091716774
+// v178091716775
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1914,6 +1914,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   // Shown whenever it's non-zero so a rising line has a visible cause — otherwise
                   // the number going UP mid-afternoon looks like a glitch.
                   bb.restRecharge ? { label: "Rest recovery", value: `+${bb.restRecharge}`, detail: "Hours you were genuinely still" } : null,
+                  // Deep sleep drives the recharge, so show the input — same argument as steps.
+                  (rec?.sleepDeepMin != null) ? { label: "Deep sleep",
+                    value: `${Math.floor(rec.sleepDeepMin / 60)}h ${rec.sleepDeepMin % 60}m`,
+                    detail: rec.sleepHours ? `${Math.round((rec.sleepDeepMin / (rec.sleepHours * 60)) * 100)}% of the night — typical is 13-23%` : "from Apple Health" } : null,
                   // Real vitals from Apple Health, shown as soon as they exist. We already read
                   // both for the readiness math — surfacing them costs no extra permission.
                   rec?.restingHr ? { label: "Resting HR", value: `${rec.restingHr}`, detail: "bpm — from Apple Health" } : null,
@@ -1965,6 +1969,34 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     </div>
                   </div>
                 ), document.body);
+              })()}
+              {/* TRAINING LOAD — this week against what you're conditioned for. Hidden until there's
+                  enough history for the 28-day average to mean anything (trainingLoadRatio returns
+                  null), because a ratio off four sessions is noise dressed as insight. */}
+              {(() => {
+                const tl = trainingLoadRatio(store, store.unit || "lbs");
+                if (!tl) return null;
+                const col = tl.status === "high" ? "#ef4444" : tl.status === "caution" ? "#f59e0b"
+                  : tl.status === "low" ? C.sub : C.accent;
+                // 0.8 / 1.3 / 1.5 mapped onto the bar so the marker reads against the bands.
+                const pos = Math.max(0, Math.min(1, tl.ratio / 2));
+                return (
+                  <div style={{ margin:"2px 16px 10px", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
+                      <span style={{ fontSize:11, fontWeight:700, letterSpacing:1.2, color:C.sub, fontFamily:DISPLAY }}>TRAINING LOAD</span>
+                      <span style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:col, letterSpacing:-0.5 }}>
+                        {tl.ratio.toFixed(2)}<span style={{ fontSize:10, color:C.sub, fontWeight:600 }}>×</span>
+                      </span>
+                    </div>
+                    <div style={{ position:"relative", height:6, borderRadius:3, background:C.divider, overflow:"visible", marginBottom:8 }}>
+                      {/* the optimal band, 0.8-1.3 of a 0-2 scale */}
+                      <div style={{ position:"absolute", left:"40%", width:"25%", top:0, bottom:0, background:`${C.accent}44`, borderRadius:3 }}/>
+                      <div style={{ position:"absolute", left:`calc(${pos * 100}% - 4px)`, top:-2, width:8, height:10, borderRadius:2, background:col }}/>
+                    </div>
+                    <div style={{ fontSize:11.5, fontWeight:700, color:col, marginBottom:2 }}>{tl.label}</div>
+                    <div style={{ fontSize:10.5, color:C.muted, lineHeight:1.4 }}>{tl.note}</div>
+                  </div>
+                );
               })()}
               {rec && typeof rec.recoveryScore === "number" && (
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"2px 16px 6px" }}>
@@ -4368,6 +4400,51 @@ function aiAuthHeaders() {
 //   drain:    logged workouts (volume + intensity), today's steps/active energy,
 //             and a small baseline awake drain
 // No all-day heart-rate stream (that needs a watch), so no intra-day stress drain.
+// ACUTE : CHRONIC WORKLOAD RATIO — Garmin's "training load", and the best-established
+// injury-risk signal in sports science. It compares what you've done THIS week against what your
+// body is conditioned for (the 28-day average). A sharp spike is what hurts people, not hard
+// training per se.
+//
+// Load is session volume normalised to one unit. Absolute magnitude doesn't matter — this is a
+// ratio of a lifter against their own history, so bodyweight/exercise selection cancel out.
+//
+// Returns null rather than a misleading number when there isn't enough history to mean anything:
+// the chronic average is the denominator, and four sessions spread over ten days is not a
+// "28-day average". Bands are the standard ones (0.8 / 1.3 / 1.5).
+const ACWR_MIN_DAYS = 21;      // history must span this before a 28-day average is honest
+const ACWR_MIN_SESSIONS = 6;   // ...and hold at least this many sessions
+function trainingLoadRatio(store, unit = "lbs") {
+  const hist = store?.history || {};
+  const now = Date.now();
+  const dayMs = 864e5;
+  let acute = 0, chronic = 0, sessions28 = 0, oldestMs = null;
+  for (const [dk, day] of Object.entries(hist)) {
+    const ts = new Date(dk + "T12:00:00").getTime();
+    if (isNaN(ts)) continue;
+    if (oldestMs == null || ts < oldestMs) oldestMs = ts;
+    const ageDays = (now - ts) / dayMs;
+    if (ageDays < 0 || ageDays > 28) continue;
+    for (const sess of Object.values(day || {})) {
+      const v = cvt(sessionVolume(sess), sess.unit || "lbs", unit);
+      if (v <= 0) continue;
+      chronic += v; sessions28++;
+      if (ageDays <= 7) acute += v;
+    }
+  }
+  const spanDays = oldestMs == null ? 0 : (now - oldestMs) / dayMs;
+  if (spanDays < ACWR_MIN_DAYS || sessions28 < ACWR_MIN_SESSIONS || chronic <= 0) return null;
+  const acutePerDay = acute / 7;
+  const chronicPerDay = chronic / 28;
+  if (chronicPerDay <= 0) return null;
+  const ratio = Math.round((acutePerDay / chronicPerDay) * 100) / 100;
+  const band =
+    ratio < 0.8 ? { status: "low",     label: "Detraining",  note: "Well under your usual load — an easy week is fine, but a longer dip loses fitness." } :
+    ratio <= 1.3 ? { status: "optimal", label: "Sweet spot",  note: "This week matches what your body is conditioned for." } :
+    ratio <= 1.5 ? { status: "caution", label: "Ramping up",  note: "Noticeably above your usual — fine briefly, worth easing if it holds." } :
+                   { status: "high",    label: "Spike",       note: "Well above what you're conditioned for. This is where injuries happen." };
+  return { ratio, acutePerDay: Math.round(acutePerDay), chronicPerDay: Math.round(chronicPerDay), sessions28, ...band };
+}
+
 // What ONE session costs the battery. Used by the headline number AND the 24h curve — they had
 // drifted (the curve still charged the old 6 + 0.9/set after the headline moved to 4 + 0.6/set),
 // so the chart dived to ~10 while the number beside it read 23. Same class as every other
@@ -4715,6 +4792,32 @@ function computeBodyBatteryTimeline(store) {
 // the newest end, then take min(start)/max(end) — MERGED those into a window that described
 // neither: last night's tail fragment started ~7am and the evening nap ended ~8pm, so the app
 // reported "you slept 7am to 8pm". Group into contiguous blocks instead and pick one.
+// Minutes per sleep STAGE inside a window, de-duplicated by UNION of intervals. More than one
+// source can write the same night (Apple Watch plus a sleep app), and naively summing samples is
+// exactly what once turned an 8h night into "16h" — same hazard pickSleepBlock guards for totals.
+function stageMinutes(samples, startMs, endMs) {
+  const byStage = { deep: [], rem: [], core: [] };
+  for (const s of samples || []) {
+    if (s.startMs == null || s.endMs == null || s.endMs <= s.startMs) continue;
+    const a = Math.max(s.startMs, startMs), b = Math.min(s.endMs, endMs);
+    if (b <= a) continue;
+    const st = (s.stage || "").toLowerCase();
+    const key = st === "deep" ? "deep" : st === "rem" ? "rem"
+      : (st === "light" || st === "core") ? "core" : null;   // bare "asleep" carries no stage
+    if (key) byStage[key].push([a, b]);
+  }
+  const out = { deep: 0, rem: 0, core: 0 };
+  for (const k of Object.keys(byStage)) {
+    let total = 0, curEnd = -Infinity;
+    for (const [a, b] of byStage[k].sort((x, y) => x[0] - y[0])) {
+      const from = Math.max(a, curEnd);
+      if (b > from) { total += b - from; curEnd = b; }
+    }
+    out[k] = Math.round(total / 60000);
+  }
+  return out;
+}
+
 const SLEEP_GAP_MIN = 60;      // a gap this short is a brief wake INSIDE one night, not a new sleep
 const MIN_MAIN_SLEEP_H = 2.5;  // anything shorter is a nap, never "last night"
 const MAX_SLEEP_SPAN_H = 16;   // no real night spans longer — that's duplicated/garbage data
@@ -4750,7 +4853,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, pinToLastNight, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -5226,19 +5329,28 @@ async function readRecovery() {
       const st = (s.sleepState || "").toLowerCase();
       return st === "asleep" || st === "rem" || st === "deep" || st === "light";
     }).map(s => {
+      const stage = (s.sleepState || "").toLowerCase();
       const startMs = s.startDate ? new Date(s.startDate).getTime() : null;
       const endMs = s.endDate ? new Date(s.endDate).getTime() : null;
       const span = (startMs != null && endMs != null && endMs > startMs) ? (endMs - startMs) / 60000 : 0;
       // `value` is minutes on aggregate rows but the per-stage rows carry a stage code, so trust
       // it only when it doesn't exceed the sample's own span. Either shape lands on real minutes.
       const v = parseFloat(s.value);
-      return { startMs, endMs, minutes: (!isNaN(v) && v > 0) ? (span ? Math.min(v, span) : v) : span };
+      return { startMs, endMs, stage, minutes: (!isNaN(v) && v > 0) ? (span ? Math.min(v, span) : v) : span };
     });
     const block = pickSleepBlock(asleepSamples);
     if (block) {
       if (block.minutes > 0) out.sleepHours = Math.round((block.minutes / 60) * 10) / 10;
       out.sleepStart = new Date(block.startMs).toISOString();
       out.sleepEnd = new Date(block.endMs).toISOString();
+      // Per-stage minutes for the chosen night. We were reading these and throwing them away:
+      // eight broken hours scored identically to eight restorative ones, and DEEP sleep is what
+      // actually drives physical recovery. Absent (deep and REM both 0) means the device reported
+      // an undifferentiated "asleep" — unknown, not bad, so quality is skipped in that case.
+      const st = stageMinutes(asleepSamples, block.startMs, block.endMs);
+      if (st.deep > 0 || st.rem > 0) {
+        out.sleepDeepMin = st.deep; out.sleepRemMin = st.rem; out.sleepCoreMin = st.core;
+      }
     }
   }
 
@@ -5308,7 +5420,20 @@ async function readRecovery() {
   }
   if (out.sleepHours != null) {
     const sh = out.sleepHours;
-    const sf = sh >= 8 ? 1 : sh >= 7 ? 0.78 : sh >= 6 ? 0.5 : sh >= 5 ? 0.28 : 0.12;
+    let sf = sh >= 8 ? 1 : sh >= 7 ? 0.78 : sh >= 6 ? 0.5 : sh >= 5 ? 0.28 : 0.12;
+    // STAGE QUALITY. Duration still gates — five perfect hours are still five hours — but two
+    // eight-hour nights are not equal if one had 20 minutes of deep sleep and the other 90.
+    // Typical adult proportions are ~16% deep and ~21% REM of total sleep; `q` is 1.0 at those,
+    // so a typical night is NEUTRAL and only genuinely poor or genuinely good composition moves
+    // the number (±15% of the duration factor). Skipped entirely when the device reported no
+    // stages, because unknown must not read as bad.
+    if (out.sleepDeepMin != null && sh > 0) {
+      const totalMin = sh * 60;
+      const deepPct = out.sleepDeepMin / totalMin;
+      const remPct = (out.sleepRemMin || 0) / totalMin;
+      const q = 0.5 * (deepPct / 0.16) + 0.5 * (remPct / 0.21);
+      sf = Math.max(0, Math.min(1, sf * (0.85 + 0.15 * Math.min(2, q))));
+    }
     comps.push([sf, 0.25]);
   }
   if (comps.length) {
