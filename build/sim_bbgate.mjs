@@ -12,7 +12,22 @@ global.localStorage=window.localStorage; global.CustomEvent=window.CustomEvent; 
 let fails = 0;
 const check = (l,c,d)=>{ if(c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d?" — "+d:""}`);} };
 
-const { computeBodyBatteryTimeline } = await import("./app.mjs");
+// FREEZE THE CLOCK at a POST-WAKE hour. Two reasons, both learned the hard way:
+//   1. This sim reads the wall clock, and a clock-dependent sim silently changes what it tests
+//      depending on when (and in which timezone) it runs — it went red at 04:24 in Asia/Kolkata
+//      on code that was fine, which is the second time this file has had that problem.
+//   2. The steps gate only has anything to gate PAST wake time. Pre-dawn with no real HealthKit
+//      window the timeline now deliberately draws NO recharge at all (the app being open is
+//      evidence of being awake — see the pre-dawn block at the end of this file), so running this
+//      before 7am tests the suppression, not the gate.
+const RealDate = Date;
+const FROZEN = new RealDate(2026, 6, 22, 10, 0, 0);   // today 10:00 local, well after wake
+global.Date = class extends RealDate {
+  constructor(...a) { if (!a.length) return new RealDate(FROZEN.getTime()); return new RealDate(...a); }
+  static now() { return FROZEN.getTime(); }
+};
+
+const { computeBodyBatteryTimeline, computeBodyBattery } = await import("./app.mjs");
 check("computeBodyBatteryTimeline exported", typeof computeBodyBatteryTimeline === "function");
 
 const now = new Date();
