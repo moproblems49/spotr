@@ -1,4 +1,4 @@
-// v178091716762
+// v178091716763
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5920,6 +5920,10 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
         ))}
       </div>
 
+      {/* Nothing logged yet? Skip the whole calendar block. Six months of empty squares plus a
+          Less/More legend is the largest thing on a new user's History screen and says nothing —
+          the empty state below already tells them what to do. It appears with the first workout. */}
+      {Object.keys(workoutDates || {}).length === 0 ? null : (<>
       {/* View toggle — segmented */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
         <div style={{ display:"flex", background:C.divider, borderRadius:8, padding:2 }}>
@@ -6029,6 +6033,7 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
           </div>
         </div>
       )}
+      </>)}
     </div>
   );
 }
@@ -10343,7 +10348,7 @@ let _discoverSubTab = "discover";
 // ReferenceError that the surrounding catch swallowed — PR history silently stopped syncing
 // (Wrapped then showed "0 PRs" for weeks that had real ones) and heart-rate summaries never
 // reached the server. Nothing surfaced because both failures were caught and ignored.
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, currentUserId, token, C, dataLoading, isGuest = false }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, onSessionChange, currentUserId, token, C, dataLoading, isGuest = false }) {
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
   const [session, setSession] = useState(() => {
@@ -10357,6 +10362,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       return s;
     } catch { return null; }
   });
+
+  // Tell the shell whether a workout is in progress. Mid-set you don't need the logo, the DM and
+  // activity icons, or four nav tabs — that chrome was eating ~15% of the screen on the one screen
+  // where every row matters. Only a boolean crosses the boundary; the session itself stays here.
+  useEffect(() => { if (onSessionChange) onSessionChange(!!session); }, [!!session, onSessionChange]);
   const [elapsed, setElapsed] = useState(() => {
     try {
       const ws = localStorage.getItem(WSTART_KEY);
@@ -11367,8 +11377,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           />
         )}
 
-        {/* Header */}
-        <div style={{ background:C.bg, padding:"10px 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        {/* Header. With the app's own top bar hidden during a workout, this row is the topmost
+            thing on screen, so it owns the status-bar inset — otherwise Cancel, the timer and
+            Finish sit under the clock. Same one-owner rule as the offline/guest banners; the
+            condition matches exactly (a session is what hides the bar). */}
+        <div style={{ background:C.bg, padding:"calc(env(safe-area-inset-top) + 10px) 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <button onClick={() => { clearInterval(elRef.current); try { localStorage.removeItem(SESSION_KEY); } catch {} setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ textAlign:"center" }}>
             <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
@@ -11626,7 +11639,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         <span style={{ fontSize:10, fontWeight:700, color: barPickerEx === ei ? "#fff" : C.sub, fontFamily:MONO }}>{getBarWeight(ex.barType, unit)}{unit}</span>
                       </button>
                     )}
-                    {ex.name && <button onClick={() => setViewingExercise(ex.name)} style={{ background:C.accentSoft, border:"none", borderRadius:6, padding:"5px 8px", fontSize:10, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F }}>?</button>}
                     {/* Overflow menu — superset link + swap moved here so long exercise names
                         aren't squeezed by a wide action row. Accent border when a superset is
                         active so that state is still visible at a glance. */}
@@ -11635,19 +11647,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       style={{ background: (moreMenuEx === ei || ex.superset) ? C.accentSoft : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? C.accent : C.sub} strokeWidth="2.6" strokeLinecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
                     </button>}
-                    <button onClick={() => {
-                      const removeNow = () => { setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); };
-                      // Only confirm when there's logged progress to lose — an exercise added but not yet
-                      // touched can be removed instantly, matching the fast swipe-to-delete-a-set behavior.
-                      if ((ex.sets||[]).some(s => s.done)) {
-                        confirmAction({ title:"Remove exercise?", message:`This removes "${ex.name || "this exercise"}" and its logged sets from this workout.`, confirmLabel:"Remove", destructive:true, onConfirm:removeNow });
-                      } else {
-                        removeNow();
-                      }
-                    }} aria-label="Remove exercise" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:"2px 4px" }}>×</button>
                   </div>
                 </div>
-                {/* Overflow menu reveal — superset link (if there's a next exercise) + swap. */}
+                {/* Overflow menu reveal — superset link, swap, the exercise guide, and remove. */}
                 {moreMenuEx === ei && (
                   <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 14px 10px", flexWrap:"wrap" }}>
                     {ei < session.exercises.length - 1 && (
@@ -11661,6 +11663,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></svg>
                       <span style={{ fontSize:12, fontWeight:600, color:C.text }}>Swap exercise</span>
+                    </button>
+                    {ex.name && (
+                      <button onClick={() => { setMoreMenuEx(null); setViewingExercise(ex.name); }}
+                        style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.2 2.4c-.7.2-1.2.9-1.2 1.6v.5"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+                        <span style={{ fontSize:12, fontWeight:600, color:C.text }}>How to do it</span>
+                      </button>
+                    )}
+                    <button onClick={() => {
+                      const removeNow = () => { setMoreMenuEx(null); setRestPickerEx(null); setSession(p => ({ ...p, exercises: p.exercises.filter((_,i)=>i!==ei) })); };
+                      if ((ex.sets||[]).some(s => s.done)) {
+                        confirmAction({ title:"Remove exercise?", message:`This removes "${ex.name || "this exercise"}" and its logged sets from this workout.`, confirmLabel:"Remove", destructive:true, onConfirm:removeNow });
+                      } else { removeNow(); }
+                    }} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:`1px solid #EF444455`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      <span style={{ fontSize:12, fontWeight:600, color:"#EF4444" }}>Remove exercise</span>
                     </button>
                   </div>
                 )}
@@ -12493,68 +12511,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {subTab === "workout" && (
         <div style={{ padding:"16px 14px" }}>
-          {/* Weekly streak banner */}
-          {(() => {
-            const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
-            if (!ws.count && !ws.thisWeek) return null;
-            const isAtRisk = ws.status === "at-risk";
-            const isBuilding = !ws.count && ws.thisWeek > 0;
-            return (
-              <div style={{
-                background: isAtRisk ? "#f59e0b" : (isBuilding ? C.surface : C.text),
-                color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg),
-                border: isBuilding ? `1px solid ${C.border}` : "none",
-                borderRadius:16, padding:"16px 18px", marginBottom:12,
-                display:"flex", alignItems:"center", gap:14,
-              }}>
-                {/* Week-progress pips: one per target workout, filled by this week's count.
-                    Makes the streak feel alive during the week, not just when it ticks over. */}
-                {(() => {
-                  const onColor = isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg);
-                  const offColor = isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.18)");
-                  const pips = Math.min(7, Math.max(1, ws.target || 3));
-                  const filled = Math.min(pips, ws.thisWeek);
-                  return (
-                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0 }}>
-                      <div style={{
-                        width:40, height:40, borderRadius:12,
-                        background: isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.2)" : C.bg),
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.text),
-                      }}>
-                        <Icon name="flame" size={20}/>
-                      </div>
-                      <div style={{ display:"flex", gap:3 }}>
-                        {Array.from({ length: pips }).map((_, i) => (
-                          <div key={i} style={{
-                            width:6, height:6, borderRadius:3,
-                            background: i < filled ? onColor : offColor,
-                            transition:"background 0.3s ease",
-                          }}/>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:11, fontWeight:700, opacity:0.6, letterSpacing:1.5, marginBottom:2 }}>
-                    {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
-                  </div>
-                  <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
-                    <div style={{ fontFamily:MONO, fontSize:28, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>
-                      {ws.count > 0 ? ws.count : `${ws.thisWeek}/${ws.target}`}
-                    </div>
-                    <div style={{ fontSize:12, fontWeight:600, opacity:0.6 }}>
-                      {ws.count > 0
-                        ? `week${ws.count === 1 ? "" : "s"} · ${ws.thisWeek}/${ws.target} done`
-                        : "workouts this week"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
             {/* Quick Start */}
           {/* Primary action. This used to be a solid white slab, which on a dark screen read as a
               rendering glitch rather than emphasis. It now sits on the same surface as every other
@@ -12575,18 +12531,88 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <Icon name="chevron-right" size={18} color={C.sub}/>
           </button>
 
-          {/* Calculators */}
-          <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-            {[["activity","1RM Calc",() => setShow1RM(true)],["barbell","Plates",() => setShowPlateCalc(true)]].map(([icon,label,fn]) => (
-              <button key={label} onClick={fn} style={{
-                flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
-                padding:"11px 12px", display:"flex", alignItems:"center", gap:10, cursor:"pointer", fontFamily:F
+          {/* Streak + 1RM share one compact row. The streak used to be a full-width slab and the
+              calculators a second full-width row below it, so two utilities ate the top third of
+              the screen before Quick Start. Plates moved out entirely — it already lives in the
+              workout screen, which is where you're standing at the rack. */}
+          <div style={{ display:"flex", gap:8, marginTop:10, marginBottom:12, alignItems:"stretch", justifyContent:"flex-end" }}>
+          {(() => {
+            const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+            if (!ws.count && !ws.thisWeek) return null;
+            const isAtRisk = ws.status === "at-risk";
+            const isBuilding = !ws.count && ws.thisWeek > 0;
+            return (
+              <div style={{
+                background: isAtRisk ? "#f59e0b" : (isBuilding ? C.surface : C.text),
+                color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg),
+                border: isBuilding ? `1px solid ${C.border}` : "none",
+                borderRadius:14, padding:"11px 13px", flex:1, minWidth:0,
+                display:"flex", alignItems:"center", gap:10,
               }}>
-                <Icon name={icon} size={18} color={C.text}/>
-                <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{label}</span>
+                {/* Week-progress pips: one per target workout, filled by this week's count.
+                    Makes the streak feel alive during the week, not just when it ticks over. */}
+                {(() => {
+                  const onColor = isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg);
+                  const offColor = isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.18)");
+                  const pips = Math.min(7, Math.max(1, ws.target || 3));
+                  const filled = Math.min(pips, ws.thisWeek);
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0 }}>
+                      <div style={{
+                        width:32, height:32, borderRadius:10,
+                        background: isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.2)" : C.bg),
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.text),
+                      }}>
+                        <Icon name="flame" size={17}/>
+                      </div>
+                      <div style={{ display:"flex", gap:3 }}>
+                        {Array.from({ length: pips }).map((_, i) => (
+                          <div key={i} style={{
+                            width:6, height:6, borderRadius:3,
+                            background: i < filled ? onColor : offColor,
+                            transition:"background 0.3s ease",
+                          }}/>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:9.5, fontWeight:700, opacity:0.6, letterSpacing:1.2, marginBottom:1 }}>
+                    {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
+                  </div>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:6, minWidth:0 }}>
+                    <div style={{ fontFamily:MONO, fontSize:21, fontWeight:700, letterSpacing:-0.8, lineHeight:1, flexShrink:0 }}>
+                      {ws.count > 0 ? ws.count : `${ws.thisWeek}/${ws.target}`}
+                    </div>
+                    <div style={{ fontSize:10.5, fontWeight:600, opacity:0.6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {ws.count > 0
+                        ? `wk${ws.count === 1 ? "" : "s"} · ${ws.thisWeek}/${ws.target}`
+                        : "this week"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+          {(() => {
+            const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+            const hasStreak = !!(ws.count || ws.thisWeek);
+            return (
+              <button onClick={() => setShow1RM(true)} aria-label="1RM Calculator" style={{
+                flex:"0 0 auto", background:C.surface, border:`1px solid ${C.border}`,
+                borderRadius:14, padding:"11px 16px",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                cursor:"pointer", fontFamily:F,
+              }}>
+                <Icon name="activity" size={16} color={C.text}/>
+                <span style={{ fontSize:12, fontWeight:700, color:C.text, whiteSpace:"nowrap" }}>1RM</span>
               </button>
-            ))}
+            );
+          })()}
           </div>
+
 
           {show1RM && <OneRMModal onClose={() => setShow1RM(false)} unit={unit} C={C}/>}
           {showPlateCalc && <PlateCalcModal onClose={() => setShowPlateCalc(false)} unit={unit} C={C}/>}
@@ -12693,14 +12719,24 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               />
             </>
           ) : (
-            <div style={{ background:C.surface, border:`1px dashed ${C.border}`, borderRadius:14, padding:"28px 20px", textAlign:"center", marginTop:4 }}>
-              <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={30} color="currentColor"/></div>
-              <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:4 }}>No active program</div>
-              <div style={{ fontSize:12, color:C.sub, marginBottom:16 }}>Import a template to get started</div>
+            /* ONE way in. This screen used to ask the same question three times — a "Browse
+               Templates" card, then a "Use Template" button that went to the identical place, then
+               "Build Your Own" as the BIGGEST, brightest control even though building a 6-day split
+               from scratch is the hardest thing a new lifter could pick. The template is the easy
+               on-ramp, so it's the button; building your own is the quiet alternative. */
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"26px 20px", textAlign:"center", marginTop:4 }}>
+              <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={30} color={C.accent}/></div>
+              <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:5, letterSpacing:-0.2 }}>Start your first program</div>
+              <div style={{ fontSize:12.5, color:C.sub, marginBottom:18, lineHeight:1.45 }}>Pick a proven split and make it yours — you can change every exercise, set and rep.</div>
               <button onClick={() => setShowTemplates(true)} style={{
-                background:C.accent, color:C.onAccent, border:"none", borderRadius:10,
-                padding:"10px 22px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F
-              }}>Browse Templates</button>
+                background:C.accent, color:C.onAccent, border:"none", borderRadius:12,
+                padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
+              }}>Browse templates</button>
+              <button onClick={() => setShowBuilder(true)} style={{
+                display:"block", margin:"14px auto 0", background:"none", border:"none",
+                color:C.sub, fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:F,
+                textDecoration:"underline", textUnderlineOffset:3,
+              }}>or build your own from scratch</button>
             </div>
           )}
         </div>
@@ -12708,32 +12744,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {subTab === "workout" && !viewingProgram && !showBuilder && (
         <div style={{ padding:"16px 14px" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-            <button onClick={() => setShowBuilder(true)} style={{
-              background:C.accent, color:C.onAccent, border:"none",
-              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ marginBottom:6, display:"flex", justifyContent:"center" }}><Icon name="spark" size={18} color="currentColor"/></div>
-              Build Your Own
-            </button>
-            <button onClick={() => setShowTemplates(true)} style={{
-              background:"none", color:C.text, border:`1px solid ${C.border}`,
-              borderRadius:10, padding:"13px 10px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-            }}>
-              <div style={{ marginBottom:6, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={18} color="currentColor"/></div>
-              Use Template
-            </button>
-          </div>
-
-          <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>
-            MY PROGRAMS · {store.programs?.length || 0}
-          </div>
-          {(!store.programs || !store.programs.length) && (
-            <div style={{ textAlign:"center", color:C.sub, padding:"32px 0", fontSize:13 }}>
-              <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="dumbbell" size={32} color="currentColor"/></div>
-              <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:6 }}>No programs yet</div>
-              <div style={{ fontSize:13 }}>Build one below or import a template</div>
-            </div>
+          {/* With no programs, the card above already asks the question — a second empty state and
+              a duplicate pair of buttons here just said it all over again. Both only appear once
+              there's something to add to. */}
+          {(store.programs && store.programs.length > 0) && (
+            <>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1 }}>
+                  MY PROGRAMS · {store.programs.length}
+                </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <button onClick={() => setShowTemplates(true)} style={{
+                    background:"none", color:C.sub, border:`1px solid ${C.border}`, borderRadius:8,
+                    padding:"6px 11px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
+                  }}>Template</button>
+                  <button onClick={() => setShowBuilder(true)} style={{
+                    background:"none", color:C.sub, border:`1px solid ${C.border}`, borderRadius:8,
+                    padding:"6px 11px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
+                  }}>+ New</button>
+                </div>
+              </div>
+            </>
           )}
           <DndContext sensors={exReorderSensors} collisionDetection={closestCenter}
             onDragStart={() => haptic("medium")}
@@ -12872,7 +12903,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             const shown = browsingAll ? exercises.slice(0, 6) : exercises;
             return (
               <div key={group} style={{ marginBottom:16 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.5, marginBottom:6 }}>{group.toUpperCase()}</div>
+                {browsingAll && exercises.length > shown.length ? (
+                  <button onClick={() => setExerciseFilter(group)} style={{
+                    display:"flex", alignItems:"center", gap:5, background:"none", border:"none", padding:"0 0 6px",
+                    cursor:"pointer", fontFamily:F,
+                  }}>
+                    <span style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.5 }}>{group.toUpperCase()}</span>
+                    <span style={{ fontSize:11, fontWeight:600, color:C.sub }}>· {exercises.length}</span>
+                    <span style={{ fontSize:12, color:C.sub }}>›</span>
+                  </button>
+                ) : (
+                  <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.5, marginBottom:6 }}>{group.toUpperCase()}</div>
+                )}
                 {shown.map(ex => (
                   <button key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{
                     width:"100%", background:"none", border:"none", borderBottom:`1px solid ${C.divider}`,
@@ -12884,12 +12926,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <span style={{ fontSize:14, color:C.sub }}>›</span>
                   </button>
                 ))}
-                {browsingAll && exercises.length > shown.length && (
-                  <button onClick={() => setExerciseFilter(group)} style={{
-                    width:"100%", background:"none", border:"none", padding:"9px 0",
-                    fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", textAlign:"left", fontFamily:F
-                  }}>+ {exercises.length - shown.length} more in {group}</button>
-                )}
               </div>
             );
           }); })()}
@@ -15407,13 +15443,13 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
           {/* Quick access cards */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
             <button onClick={() => setSubTab("activity")} style={{
-              background:C.text, color:C.bg,
-              border:"none", borderRadius:16, padding:"18px 16px",
+              background:C.surface, color:C.text,
+              border:`1px solid ${C.border}`, borderRadius:16, padding:"18px 16px",
               cursor:"pointer", textAlign:"left", fontFamily:F,
               display:"flex", flexDirection:"column", alignItems:"flex-start", gap:14,
             }}>
-              <div style={{ width:32, height:32, borderRadius:10, background:C.bg, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <Icon name="activity" size={18}/>
+              <div style={{ width:32, height:32, borderRadius:10, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <Icon name="activity" size={18} color={C.onAccent}/>
               </div>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Friends Activity</div>
@@ -19294,6 +19330,10 @@ function AppInner() {
   const swipeReleaseTimeoutRef = useRef(null); // lets a new gesture cancel a still-pending release settle
   // Co-move release animation: when set, the track glides to completion before switching.
   const swipeContainerRef = useRef(null);
+  // True while a workout is being logged. Drives hiding the shell chrome on the tracker tab —
+  // see the note in WorkoutTracker. Swiping to another tab mid-workout brings the nav straight
+  // back, because there you DO need it.
+  const [workoutActive, setWorkoutActive] = useState(false);
   useEffect(() => {
     async function init() {
       // OAuth callback / password-recovery link. The fragment was captured and stripped at module
@@ -21682,6 +21722,11 @@ function AppInner() {
         </div>
       )}
 
+      {/* Hidden while a workout is in progress on the tracker tab — see the note in
+          WorkoutTracker. Everything below (offline bar, guest banner) still shows, and the
+          status-bar owner falls through to whichever of those is visible. */}
+      {!(workoutActive && tab === "tracker") && (
+      <>
       {/* TOP BAR — thin, minimal, SVG icons, dressed in the same liquid-glass material as the
           bottom nav pill so the two shell edges read as one system. It's still an in-flow
           element (content does NOT scroll beneath it), so no backdrop-filter — the old
@@ -21751,6 +21796,8 @@ function AppInner() {
           </button>
         </div>
       </div>
+      </>
+      )}
 
       {/* Global offline banner — persistent trust signal so users always know their state and
           that nothing is lost. Cached data stays readable; changes queue and sync on reconnect. */}
@@ -22030,6 +22077,7 @@ function AppInner() {
 
         {which === "tracker" && (
           <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={tokenRef.current} dataLoading={dataLoading} isGuest={isGuest}
+          onSessionChange={setWorkoutActive}
             onDeleteHistory={async (date, sid) => {
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
@@ -22243,7 +22291,10 @@ function AppInner() {
       {/* BOTTOM NAV — floating "liquid glass" pill, positioned as an absolute overlay (not a
           flex sibling) so tab content actually scrolls underneath it — that's what gives
           backdrop-filter real content to blur, instead of just a flat background color.
-          Shrinks/fades slightly on scroll-down, restores on scroll-up (see navShrunk above). */}
+          Shrinks/fades slightly on scroll-down, restores on scroll-up (see navShrunk above).
+          Hidden while logging a workout: you're not switching tabs between sets, and those four
+          icons were sitting on top of the set rows. */}
+      {!(workoutActive && tab === "tracker") && (
       <div style={{
         position:"absolute", left:0, right:0, bottom:0, zIndex:50, pointerEvents:"none",
         paddingTop:8, paddingBottom:"calc(8px + env(safe-area-inset-bottom))",
@@ -22325,6 +22376,7 @@ function AppInner() {
         })}
       </div>
       </div>
+      )}
 
       {/* Messages overlay — sits above the tab track (zIndex 40) but UNDER the floating
           bottom nav (zIndex 50), so the nav stays visible and tappable over the list.
