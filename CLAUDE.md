@@ -398,14 +398,22 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   **nothing at all (dead/unworn watch) → estimated from training recency**, `70 + daysSinceWorkout`
   steps, i.e. 70 trained-today / 74 / 78 / 82+, capped 88. Don't "fix" a missing signal by
   substituting 0 — that's the difference between "we don't know" and "you're wrecked".
-- **The daytime curve only ever FALLS — this is a known limitation, not a bug.** After wake the
-  level is `charge0 − awakeDrain − trainingDrain − activityDrain`, and every term only grows, so a
-  morning lifter drops early and then declines all day no matter how much they rest (measured:
-  70 → 57 across 16h of doing nothing). Garmin recharges during restful daytime periods because it
-  has a continuous HR/HRV stream; we don't. `store.activityHourly` (per-hour steps + active energy)
-  IS enough to detect genuinely restful hours, so a modest daytime recharge is buildable — Mo asked
-  about exactly this on Aug 1 and it's un-started. If you build it, keep the wake-time charge as the
-  day's ceiling or the number stops meaning "energy left".
+- **The daytime curve RECHARGES during still hours (built Aug 1).** It used to only ever fall —
+  `charge0 − awakeDrain − trainingDrain − activityDrain`, every term growing — so a morning lifter
+  dropped early and declined all day regardless of rest (70 → 57 across 16h of doing nothing).
+  `restfulHourRecharge()` credits +2/h for an hour with ≤250 steps AND ≤40 kcal (net ≈ +1.1/h once
+  the 0.9/h awake drain is netted off). **Guards that matter:** only counted when
+  `activityHourlyDate` is TODAY — without fresh buckets you cannot tell "resting" from "no data",
+  and assuming rest would hand a free recharge to everyone without a watch; an all-empty read is
+  treated as no data; and the total is capped at `charge0`, because the number means "energy left",
+  not "energy earned". Surfaced as a "Rest recovery +N" tile so a rising line has a visible cause.
+  Sim: `sim_bbrest`.
+- **`sessionDrain()` is the ONE workout-drain formula.** The headline and the 24h curve each had
+  their own copy; moving the headline to `4 + 0.6/set` while the curve kept `6 + 0.9/set` made the
+  chart dive to ~10 under a headline reading 23 — visible in Mo's screenshot, and `sim_bbmatch`
+  missed it because its fixture sits at 2am where the last curve point is in the recharge phase,
+  not the drain phase. `sim_bbrest` covers the afternoon case: the last drain point must equal the
+  headline exactly.
 - **A tall BOTTOM sheet pushes its own header off the TOP.** `align-items:flex-end` with a child
   taller than the viewport clips the top — the Body Battery sheet's title and score ended up behind
   the clock once steps/energy/HRV/RHR were added to it. Cap the sheet

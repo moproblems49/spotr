@@ -66,9 +66,12 @@ async function run(label, activity, expect) {
   const card = qa("div").find(d => (d.textContent||"").includes("BODY BATTERY") && /cursor:\s*pointer/i.test(d.getAttribute("style")||""));
   click(card); await settle(500);
 
-  // Stat boxes are the uppercase labels inside the sheet's 2-column grid.
-  const boxes = qa("div").filter(d => /letter-spacing:\s*0\.6px/.test(d.getAttribute("style")||"")
-    && /text-transform:\s*uppercase/.test(d.getAttribute("style")||""));
+  // Stat boxes are the uppercase labels inside the sheet's 2-column grid. Identify them by
+  // STRUCTURE (uppercase label + a sibling value), not by an exact letter-spacing value — pinning
+  // the selector to `0.6px` meant a routine tightening of the box padding/typography failed nine
+  // assertions that had nothing to do with the change.
+  const boxes = qa("div").filter(d => /text-transform:\s*uppercase/.test(d.getAttribute("style")||"")
+    && d.children.length === 0 && !!d.nextElementSibling);
   const labels = boxes.map(d => (d.textContent||"").trim());
   const valueOf = (lbl) => { const b = boxes.find(d => (d.textContent||"").trim() === lbl);
     return b ? (b.nextElementSibling?.textContent||"").trim() : null; };

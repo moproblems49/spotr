@@ -1,4 +1,4 @@
-// v178091716773
+// v178091716774
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1911,6 +1911,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   bb.baselineDrain ? { label: "Awake drain", value: `−${bb.baselineDrain}`, detail: "Normal energy use through the day" } : null,
                   bb.workoutDrain ? { label: "Training drain", value: `−${bb.workoutDrain}`, detail: "Today's sets and effort" } : null,
                   bb.activityDrain ? { label: "Activity drain", value: `−${bb.activityDrain}`, detail: "Steps and active energy" } : null,
+                  // Shown whenever it's non-zero so a rising line has a visible cause — otherwise
+                  // the number going UP mid-afternoon looks like a glitch.
+                  bb.restRecharge ? { label: "Rest recovery", value: `+${bb.restRecharge}`, detail: "Hours you were genuinely still" } : null,
                   // Real vitals from Apple Health, shown as soon as they exist. We already read
                   // both for the readiness math — surfacing them costs no extra permission.
                   rec?.restingHr ? { label: "Resting HR", value: `${rec.restingHr}`, detail: "bpm — from Apple Health" } : null,
@@ -1936,29 +1939,29 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         <span style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Body Battery</span>
                         <span style={{ fontFamily:MONO, fontSize:32, fontWeight:900, color:fill, letterSpacing:-1 }}>{bb.level}<span style={{ fontSize:14, color:C.sub, fontWeight:600 }}>/100</span></span>
                       </div>
-                      <div style={{ height:10, borderRadius:5, background:C.divider, overflow:"hidden", marginBottom:18 }}>
+                      <div style={{ height:8, borderRadius:4, background:C.divider, overflow:"hidden", marginBottom:14 }}>
                         <div style={{ width:`${bb.level}%`, height:"100%", borderRadius:5, background:fill }}/>
                       </div>
                       <BodyBatteryChart store={store} fill={fill} C={C} />
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:12 }}>
                         {rows.map((r, i) => (
                           // The stat count varies 4-7 with what Apple Health has recorded, so an odd
                           // count is normal rather than an edge case. Let a trailing orphan span both
                           // columns instead of sitting next to dead space.
-                          <div key={i} style={{ background:C.surface, borderRadius:12, padding:"11px 12px",
+                          <div key={i} style={{ background:C.surface, borderRadius:10, padding:"8px 10px",
                             gridColumn: (i === rows.length - 1 && rows.length % 2 === 1) ? "span 2" : "auto" }}>
-                            <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.6, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
-                            <div style={{ fontFamily:MONO, fontSize:20, fontWeight:800, marginTop:4, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent }}>{r.value}</div>
-                            <div style={{ fontSize:10, color:C.sub, marginTop:3, lineHeight:1.35 }}>{r.detail}</div>
+                            <div style={{ fontSize:9, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
+                            <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, marginTop:2, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent }}>{r.value}</div>
+                            <div style={{ fontSize:9.5, color:C.sub, marginTop:2, lineHeight:1.3 }}>{r.detail}</div>
                           </div>
                         ))}
                       </div>
-                      <div style={{ fontSize:11, color:C.muted, lineHeight:1.6, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
+                      <div style={{ fontSize:10.5, color:C.muted, lineHeight:1.5, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
                         {!bb.hasRecovery && (isHealthConnected()
                           ? "Apple Health is connected — readings switch to your real HRV, resting heart rate, and sleep as soon as your iPhone or Apple Watch records them. "
                           : "Connect Apple Health on iPhone for readings based on your real HRV, resting heart rate, and sleep. ")}{tip}
                       </div>
-                      <button onClick={() => setShowBatteryDetail(false)} style={{ marginTop:14, width:"100%", padding:"13px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
+                      <button onClick={() => setShowBatteryDetail(false)} style={{ marginTop:12, width:"100%", padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
                     </div>
                   </div>
                 ), document.body);
@@ -4365,6 +4368,40 @@ function aiAuthHeaders() {
 //   drain:    logged workouts (volume + intensity), today's steps/active energy,
 //             and a small baseline awake drain
 // No all-day heart-rate stream (that needs a watch), so no intra-day stress drain.
+// What ONE session costs the battery. Used by the headline number AND the 24h curve — they had
+// drifted (the curve still charged the old 6 + 0.9/set after the headline moved to 4 + 0.6/set),
+// so the chart dived to ~10 while the number beside it read 23. Same class as every other
+// duplicated formula in this file: one definition, both callers.
+function sessionDrain(sets, avgRpe) {
+  return Math.max(4, Math.min(24, Math.round(4 + sets * 0.6 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
+}
+
+// DAYTIME RECOVERY. Garmin's battery climbs back during calm periods because a watch feeds it a
+// continuous heart-rate stream. We don't have that — but HealthKit's per-hour step/energy buckets
+// are enough to tell a still afternoon from a walk, which is the distinction that matters.
+//
+// Only counted when the buckets were synced TODAY: without fresh data we cannot tell "resting"
+// from "no data", and assuming rest would hand a free recharge to everyone without a watch. A
+// missing bucket for a past hour DOES count as still (a quiet hour records nothing), but only once
+// some other bucket today has data — that proves the read actually returned something.
+const REST_STEPS_PER_H = 250;   // sedentary; a walk to the kitchen won't break this
+const REST_KCAL_PER_H = 40;     // active energy, above resting burn
+const REST_RECHARGE_PER_H = 2;  // net ≈ +1.1/h once the 0.9/h awake drain is netted off
+function restfulHourRecharge(store, hourStartMs, todayKey) {
+  if (store?.activityHourlyDate !== todayKey) return 0;
+  const hourly = store.activityHourly;
+  if (!hourly) return 0;
+  const anyData = Object.values(hourly).some(a => a && (a.steps || a.kcal));
+  if (!anyData) return 0;
+  const d = new Date(hourStartMs);
+  const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  if (k !== todayKey) return 0;   // buckets are hour-of-day for TODAY only
+  const a = hourly[d.getHours()];
+  const steps = a?.steps || 0, kcal = a?.kcal || 0;
+  if (steps > REST_STEPS_PER_H || kcal > REST_KCAL_PER_H) return 0;
+  return REST_RECHARGE_PER_H;
+}
+
 function computeBodyBattery(store) {
   const now = new Date();
   const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
@@ -4445,7 +4482,7 @@ function computeBodyBattery(store) {
       // one at ~20, in line with what the wearables charge for an hour of lifting, and RPE still
       // moves it either way. The point of this number is to tell you when to back off; it can't
       // do that if every session lands in the red.
-      workoutDrain += Math.max(4, Math.min(24, Math.round(4 + sets * 0.6 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
+      workoutDrain += sessionDrain(sets, avgRpe);
     }
   }
   workoutDrain = Math.min(32, workoutDrain);
@@ -4459,8 +4496,16 @@ function computeBodyBattery(store) {
     if (workoutDrain > 0) activityDrain *= 0.6;
     activityDrain = Math.min(18, Math.round(activityDrain));
   }
-  const level = Math.max(5, Math.min(100, charge0 - baselineDrain - workoutDrain - activityDrain));
-  return { level, charge0, baselineDrain, workoutDrain, activityDrain, hasRecovery, hasActivity };
+  // Daytime recovery from genuinely still hours since waking. Capped at charge0: the number means
+  // "energy left", so a restful day can return you to what you woke with but never above it.
+  let restRecharge = 0;
+  for (let t = Math.ceil(wakeMs / 36e5) * 36e5; t < now.getTime(); t += 36e5) {
+    restRecharge += restfulHourRecharge(store, t, todayKey);
+  }
+  const spent = charge0 - baselineDrain - workoutDrain - activityDrain;
+  restRecharge = Math.round(Math.max(0, Math.min(restRecharge, charge0 - spent)));
+  const level = Math.max(5, Math.min(100, spent + restRecharge));
+  return { level, charge0, baselineDrain, workoutDrain, activityDrain, restRecharge, hasRecovery, hasActivity };
 }
 
 // Hour-by-hour Body Battery curve from wake (or 7am) to now, walked one hour at a time instead
@@ -4562,7 +4607,7 @@ function computeBodyBatteryTimeline(store) {
     }
     if (!sets) return null;
     const avgRpe = rpeN ? rpeSum / rpeN : null;
-    const drain = Math.max(5, Math.min(30, Math.round(6 + sets * 0.9 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
+    const drain = sessionDrain(sets, avgRpe);
     return { startMs, endMs: Math.max(endMs, startMs + 60000), drain };
   })).filter(Boolean);
 
@@ -4585,6 +4630,9 @@ function computeBodyBatteryTimeline(store) {
         const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
         drain += Math.min(6, a);
       }
+      // A still hour RECHARGES — the delta goes negative and the curve ticks back up. Same rule
+      // the headline uses, so the chart and the big number tell the same story.
+      drain -= restfulHourRecharge(store, hourStart, keyOf(now));
     }
     return drain;
   };
@@ -4645,7 +4693,8 @@ function computeBodyBatteryTimeline(store) {
     for (let h = 0; h < hoursElapsed; h++) {
       const hourStart = wakeTime.getTime() + h * 36e5;
       const ts = Math.min(hourStart + 36e5, now.getTime());
-      level = Math.max(5, level - drainForHour(hourStart, ts, true));
+      // Ceiling is the wake-time charge — rest can give back what the day took, never more.
+      level = Math.max(5, Math.min(bb.charge0, level - drainForHour(hourStart, ts, true)));
       pushPt(ts, level, "drain");
     }
   }
