@@ -292,11 +292,23 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   warmup single could flag a fake PR, and the `isPR` fallback compared a raw session-unit weight
   against `store.prs`, which is held in LBS — so a kg user's cards never showed a PR flag. `prNames`
   (the PRs actually hit) beats the stored-max guess when the caller knows it. Sim: `sim_cardvol`.
-- **`sess.sharedToFeed` is READ once and WRITTEN nowhere** (`historyFeedItems` in AppInner), and
-  there's no `shared_to_feed` column on `workout_history` — so that whole block returns `null` for
-  every session and a logged-but-not-posted workout can never surface in the feed. It's dead code,
-  not a bug with symptoms; decide whether to implement the flag or delete the block before writing
-  any test against it (a Playwright run for it can never pass).
+  The one affected card was repaired in prod (volume + sets rebuilt from its history row, isPR and
+  ordering preserved); all 11 cards whose sessions contain warmups now match their history row.
+  **The count was EIGHT, not five** — a sixth copy lived in `ProfileScreen.profileHistoryItems`
+  (warmups right, but a 0.98 PR threshold vs the feed's 0.99, so the same session could show a PR
+  badge on one screen and not the other), a seventh in History's "Volume by week" chart (`filter(set
+  => set.done)`, no warmup exclusion and no per-session `cvt` — it printed 6.1k directly beneath a
+  LIFETIME tile reading 3,850 for the same data), and an eighth in `lifetimeVolume`. When you
+  consolidate, grep for the CONCEPT (`set.done`, `weight`×`reps`) and not just the variant you
+  already found — the copies that look correct are still copies, and the weekly chart proved they
+  drift.
+- **Where an UNPOSTED workout belongs (settled, Aug 1):** History and your OWN profile — never the
+  feed. `ProfileScreen.profileHistoryItems` builds cards from all of `store.history` when `isMe`,
+  minus the ones already shared as posts, so your Workouts count = posted + unposted; viewers other
+  than you see only real posts (`isMe ? … : []`). The feed shows what you chose to POST. The old
+  `historyFeedItems` block in AppInner, gated on a `sess.sharedToFeed` flag that nothing ever set
+  and that has no column behind it, was dead code and is DELETED — don't reintroduce it; putting
+  un-posted training in the feed publishes what the user didn't share. Sim: `pw_unposted`.
 - **Consolidating N copies into one helper changes edge cases the copies handled by accident.**
   Routing `detectDeloadNeeded` through `epley1RM()` was right, but the helper correctly refuses to
   estimate from a 0-rep set and returns 0, where the inlined `w × (1 + Math.min(r,12)/30)` returned

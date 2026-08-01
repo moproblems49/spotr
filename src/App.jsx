@@ -1,4 +1,4 @@
-// v178091716769
+// v178091716770
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5941,15 +5941,11 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
   // it already has a home on the Workout tab's streak card, so showing it again in History
   // was redundant. Lifetime volume below replaces it with something History-specific.
   const weeklyStreak = calcWeeklyStreak(workoutDates || {});
-  const lifetimeVolume = Object.values(history || {}).reduce((total, sessions) => {
-    return total + Object.values(sessions || {}).reduce((sTotal, sess) => {
-      const sessUnit = sess.unit || "lbs";
-      const raw = (sess.exercises || []).reduce((exTotal, ex) =>
-        exTotal + (ex.sets || []).filter(s => s.done && s.type !== "warmup")
-          .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
-      return sTotal + (sessUnit === unit ? raw : cvt(raw, sessUnit, unit));
-    }, 0);
-  }, 0);
+  // sessionVolume() rather than another inline filter+reduce — this was already correct, but it
+  // was the eighth hand-rolled copy of the same sum and the copies are how they drift apart.
+  const lifetimeVolume = Object.values(history || {}).reduce((total, sessions) =>
+    total + Object.values(sessions || {}).reduce((sTotal, sess) =>
+      sTotal + cvt(sessionVolume(sess), sess.unit || "lbs", unit), 0), 0);
   // Abbreviate large totals (e.g. 245800 -> "246K") so it sits comfortably in a third-width tile.
   const lifetimeVolumeDisplay = lifetimeVolume >= 1000000
     ? `${(lifetimeVolume / 1000000).toFixed(1)}M`
@@ -13117,11 +13113,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 if (d >= wStart && d <= wEnd) {
                   Object.values(sess).forEach(s => {
                     sessions++;
-                    (s.exercises||[]).forEach(ex => {
-                      (ex.sets||[]).filter(set => set.done).forEach(set => {
-                        vol += (parseFloat(set.weight)||0) * (parseFloat(set.reps)||0);
-                      });
-                    });
+                    // sessionVolume() + cvt(): this counted WARMUPS and summed raw numbers across
+                    // units, so the chart disagreed with the LIFETIME total on the same screen
+                    // (3,850 vs 6.1k on a session with two warmup sets).
+                    vol += cvt(sessionVolume(s), s.unit || "lbs", store.unit || "lbs");
                   });
                 }
               });
@@ -15924,7 +15919,9 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       if (dayMs < weekAgo) continue;
       const daySessions = Object.values(history[dk] || {});
       sessions += daySessions.length;
-      volume += daySessions.reduce((a, s) => a + sessionVolume(s), 0);
+      // Per-session cvt: a session's unit is stamped per session because it can change, so raw
+      // addition would mix kg and lbs totals for anyone who has switched.
+      volume += daySessions.reduce((a, s) => a + cvt(sessionVolume(s), s.unit || "lbs", unit || "lbs"), 0);
     }
     const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
     return { sessions, volume: Math.round(volume), streak: ws.count, prs: Object.keys(store.prs||{}).length, loaded:true };
@@ -16521,25 +16518,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     Object.values(sessions).map(sess => {
       const key = `${sess.dayName}|${date}`;
       if (sharedWorkoutKeys.has(key)) return null;
-      const vol = sessionVolume(sess);
+      // Same builder as every other workout card (see postWorkoutPayload). This was a sixth
+      // hand-rolled copy: it got the warmup exclusion right but used a 0.98 PR threshold where the
+      // feed used 0.99, so the same session could show a PR badge here and not there.
+      const card = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
       return {
         id: "hist_"+date+"_"+sess.dayName,
         userId,
         type: "workout",
         caption: "",
         unit: sess.unit || displayUnit || "lbs",
-        // Exclude warmup sets from the displayed workout (they were showing up on the
-        // history-derived profile card).
-        workout: { name: sess.dayName, duration: sess.duration||0, volume: Math.round(vol), exercises: (sess.exercises||[]).filter(e=>e.name).map(ex=>{
-          const doneSets = (ex.sets||[]).filter(s=>s.done && s.type!=="warmup").map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0}));
-          // PR badge — same heuristic as the friends-activity cards: a top set within 2% of the
-          // stored PR (kept in lbs) marks this as the PR session for that exercise.
-          const isPR = !!(store.prs||{})[ex.name] && doneSets.some(s=>{
-            const wLbs = (sess.unit||"lbs")==="kg" ? s.w*LBS_PER_KG : s.w;
-            return wLbs > 0 && wLbs >= ((store.prs[ex.name]||0)*0.98);
-          });
-          return { name:ex.name, sets:doneSets, isPR };
-        }) },
+        workout: { name: sess.dayName, duration: sess.duration||0, volume: card.volume, exercises: card.exercises },
         kudos: [], comments: [],
         // Local noon for the workout's date — avoids the UTC-midnight parse that pushed the
         // displayed date a day earlier in negative-offset timezones (e.g. EST).
@@ -21439,50 +21428,15 @@ function AppInner() {
   const storyUsers = storyUserIds.map(id => store.users.find(u => u.id === id)).filter(Boolean);
   const weeklyStreak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
   const streak = weeklyStreak.count;
-  // Build synthetic feed items from own workout history (not shared)
-  const sharedWorkoutIds = new Set((store.posts||[]).filter(p=>p.type==="workout"&&p.userId===currentUserId).map(p=>p.workout?.name+p.createdAt));
-  const historyFeedItems = Object.entries(store.history||{}).flatMap(([date, sessions]) =>
-    Object.entries(sessions).map(([sid, sess]) => {
-      const key = sess.dayName + new Date(date + "T12:00:00").getTime();
-      if (sharedWorkoutIds.has(key)) return null;
-      // Only show a history workout in the FEED if the user explicitly shared it to feed.
-      // Workouts that were only saved, or sent to groups only, stay out of the feed
-      // (they remain in the History tab). This respects the user's sharing choice.
-      if (!sess.sharedToFeed) return null;
-      // Skip sessions with zero done sets — these are ghost workouts.
-      // Card and volume come from the SAME walk: this used to count WARMUPS, so the feed read up to
-      // 17.5% heavier than the History row for the very same session. Taking the volume from the
-      // payload rather than sessionVolume() also keeps the headline equal to the sum of the sets
-      // actually listed underneath it — the payload drops unnamed/empty exercises that
-      // sessionVolume() would still total.
-      const card = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
-      if (card.exercises.length === 0) return null;
-      const histId = "hist_"+date+"_"+sess.dayName;
-      const hi = store.historyInteractions?.[histId] || {};
-      return {
-        id: histId,
-        sessionId: sid, // for deletion
-        userId: currentUserId,
-        type: "workout",
-        caption: "",
-        unit: sess.unit || unit,
-        workout: {
-          name: sess.dayName,
-          duration: sess.duration||0,
-          volume: card.volume,
-          exercises: card.exercises,
-        },
-        kudos: hi.kudos || [],
-        comments: hi.comments || [],
-        // Use the actual finish timestamp if available, else local noon of the workout date
-        createdAt: sess.finishedAt || new Date(date + "T12:00:00").getTime(),
-        _isHistory: true,
-        _date: date,
-      };
-    }).filter(Boolean)
-  );
-
-  const feedPosts = [...(store.posts || []).filter(p => (p.userId === currentUserId || following.includes(p.userId)) && p.type !== "story"), ...historyFeedItems.filter(i => !((store.posts||[]).some(p=>p.type==="workout"&&p.userId===currentUserId&&p.workout?.name===i.workout?.name&&Math.abs(p.createdAt-i.createdAt)<86400000)))]
+  // NOTE: there is deliberately NO "unposted workouts in the feed" path. The feed shows what you
+  // chose to POST; a workout you only logged still appears in History and on your own profile
+  // (ProfileScreen's profileHistoryItems), which is where you'd look for it. This used to be a
+  // synthetic-feed-item block gated on `sess.sharedToFeed` — a flag nothing in the app ever set
+  // and with no column behind it, so it returned null for every session and the whole block was
+  // unreachable. Removed rather than wired up: putting un-posted workouts in the feed would
+  // publish training the user never chose to share.
+  const feedPosts = (store.posts || [])
+    .filter(p => (p.userId === currentUserId || following.includes(p.userId)) && p.type !== "story")
     .sort((a, b) => b.createdAt - a.createdAt);
 
   async function handleEditSave(id, cap) {
