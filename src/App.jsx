@@ -1,4 +1,4 @@
-// v178091716760
+// v178091716761
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2989,6 +2989,16 @@ function progSetCount(ex) {
   return lead ? parseInt(lead[1]) : 3;
 }
 
+// A group post never carries the feed's "Try my program: CODE" plug — groups are people who
+// already train together, not an audience to pitch a program to. Strips the plug whether it's the
+// whole caption or appended to one with the " · " separator.
+function stripProgramPlug(caption) {
+  return String(caption || "")
+    .replace(/\s*·?\s*try my program:\s*[A-Z0-9-]+/gi, "")
+    .replace(/\s*·\s*$/, "")
+    .trim();
+}
+
 function getLastExerciseSession(store, exName) {
   const dates = Object.keys(store.history||{}).sort().reverse();
   for (const d of dates) {
@@ -4563,7 +4573,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { computeBodyBatteryTimeline, computeBodyBattery, pinToLastNight, pickSleepBlock, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -16071,11 +16081,16 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
   );
 }
 
-function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, onRemoveFollower, onBlock, onRefresh, token, onPostKudos, onPostComment, onPostEditComment, onPostDeleteComment, onPostLikeComment, onPostEdit, onPostDelete, onMessage }) {
+function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, onBack, displayUnit, C, onToggleTheme, onUserClick, email, onSignOut, onFollow, onRemoveFollower, onFollowRequest, onBlock, onRefresh, token, onPostKudos, onPostComment, onPostEditComment, onPostDeleteComment, onPostLikeComment, onPostEdit, onPostDelete, onMessage }) {
   const user = store.users.find(u => u.id === userId);
   const isMe = userId === currentUserId;
   const me = store.users.find(u => u.id === currentUserId);
   const isFollowing = me?.following?.includes(userId);
+  // Following a PRIVATE account creates a REQUEST, not a follow — it grants nothing until they
+  // approve. The button has to say so, or it claims access the user doesn't have.
+  const requestPending = (store.pendingFollows || []).includes(userId);
+  const incomingRequests = (store.followRequests || [])
+    .map(id => store.users.find(u => u.id === id)).filter(Boolean);
   // computeStrengthScore() scans the full lift history — memoize so it doesn't recompute on
   // every Profile render (e.g. every keystroke in the age field). Only relevant on your own
   // profile (the only place it's shown), so skip the scan entirely when viewing someone else's.
@@ -16625,11 +16640,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         {!isMe ? (
           <div style={{ display:"flex", gap:6 }}>
             <button onClick={toggleFollow} style={{
-              flex:1, padding:"8px", background:isFollowing?"transparent":C.accent,
-              border:`1px solid ${isFollowing?C.border:C.accent}`, borderRadius:8,
-              fontSize:13, fontWeight:600, color:isFollowing?C.text:"#fff",
+              flex:1, padding:"8px", background:(isFollowing||requestPending)?"transparent":C.accent,
+              border:`1px solid ${(isFollowing||requestPending)?C.border:C.accent}`, borderRadius:8,
+              fontSize:13, fontWeight:600, color:(isFollowing||requestPending)?C.text:"#fff",
               cursor:"pointer", fontFamily:F
-            }}>{isFollowing ? "Following" : "Follow"}</button>
+            }}>{isFollowing ? "Following" : requestPending ? "Requested" : "Follow"}</button>
             {onMessage && (
               <button onClick={() => onMessage(userId)} style={{
                 flex:1, padding:"8px", background:"transparent",
@@ -17256,6 +17271,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         const idList = listModal === "followers" ? (targetUser?.followers || []) : (targetUser?.following || []);
         const listUsers = idList.map(id => store.users.find(u => u.id === id)).filter(Boolean);
         const myFollowing = me?.following || [];
+        // Requests are MINE, so they only belong on MY followers list — otherwise viewing a
+        // stranger's empty followers list would suppress its empty state because I happen to
+        // have a request waiting.
+        const showRequests = isMe && listModal === "followers" && incomingRequests.length > 0;
         // PORTAL. This sheet is `position:fixed`, but ProfileScreen renders inside the tab-swipe
         // track, whose transform makes it the containing block for fixed descendants — so the
         // inset:0 backdrop was resolving against the track panel instead of the viewport. It began
@@ -17274,7 +17293,38 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 <button onClick={() => setListModal(null)} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
               </div>
               <div style={{ overflowY:"auto", flex:1, paddingBottom:20, overscrollBehavior:"contain", WebkitOverflowScrolling:"touch" }}>
-                {listUsers.length === 0 && (
+                {/* Pending requests sit at the TOP of your own followers list — that's where you'd
+                    go looking, and they're the only place in the app they can be actioned. They're
+                    not followers yet: until you accept, they see nothing at all. */}
+                {showRequests && (
+                  <>
+                    <div style={{ padding:"10px 16px 6px", fontSize:11, fontWeight:700, letterSpacing:0.6, color:C.accent }}>
+                      {incomingRequests.length} REQUEST{incomingRequests.length === 1 ? "" : "S"}
+                    </div>
+                    {incomingRequests.map(u => (
+                      <div key={`req-${u.id}`} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.border}`, background:C.accentSoft }}>
+                        <div onClick={() => { setListModal(null); if (onUserClick) onUserClick(u.id); }} style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
+                          <Avatar user={u} size={44} C={C}/>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
+                            <div style={{ fontSize:12, color:C.sub }}>wants to follow you</div>
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                          <button onClick={() => onFollowRequest && onFollowRequest(u.id, false)} style={{
+                            padding:"7px 12px", borderRadius:8, fontSize:12, fontWeight:600,
+                            background:"transparent", color:C.sub, border:`1px solid ${C.border}`,
+                            cursor:"pointer", fontFamily:F }}>Decline</button>
+                          <button onClick={() => onFollowRequest && onFollowRequest(u.id, true)} style={{
+                            padding:"7px 16px", borderRadius:8, fontSize:12, fontWeight:700,
+                            background:C.accent, color:C.onAccent, border:`1px solid ${C.accent}`,
+                            cursor:"pointer", fontFamily:F }}>Accept</button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {listUsers.length === 0 && !showRequests && (
                   <div style={{ textAlign:"center", color:C.sub, padding:"50px 20px" }}>
                     <div style={{ marginBottom:12, display:"flex", justifyContent:"center" }}><Icon name="users" size={36} color="currentColor"/></div>
                     <div style={{ fontSize:15, fontWeight:600, color:C.text }}>No {listModal} yet</div>
@@ -19794,8 +19844,12 @@ function AppInner() {
         }
       } catch (e) {}
 
-      // Load follows
-      const follows = await sb.query(`follows?select=follower_id,following_id`, {}, tok);
+      // Load follows. `status` matters: a follow of a PRIVATE account starts as 'pending' and
+      // grants nothing until the target accepts, so only ACCEPTED rows count as following — the
+      // counts on screen must mean the same thing the RLS policies mean.
+      const follows = await sb.query(`follows?select=follower_id,following_id,status`, {}, tok);
+      const accepted = (follows || []).filter(f => (f.status || "accepted") === "accepted");
+      const pending  = (follows || []).filter(f => f.status === "pending");
       // Load my blocked users (best-effort; table may not exist on older DBs)
       let blockedIds = [];
       try {
@@ -19805,10 +19859,14 @@ function AppInner() {
       setStore(prev => ({
         ...prev,
         blockedUsers: blockedIds,
+        // People waiting on ME to approve them, and the requests I've sent that aren't approved
+        // yet (so the button can read "Requested" instead of pretending it worked).
+        followRequests: pending.filter(f => f.following_id === currentUserId).map(f => f.follower_id),
+        pendingFollows: pending.filter(f => f.follower_id === currentUserId).map(f => f.following_id),
         users: prev.users.map(u => ({
           ...u,
-          followers: (follows||[]).filter(f => f.following_id === u.id).map(f => f.follower_id),
-          following: (follows||[]).filter(f => f.follower_id === u.id).map(f => f.following_id),
+          followers: accepted.filter(f => f.following_id === u.id).map(f => f.follower_id),
+          following: accepted.filter(f => f.follower_id === u.id).map(f => f.following_id),
         }))
       }));
 
@@ -20124,8 +20182,11 @@ function AppInner() {
                 user_id: currentUserId,
                 type: postData.workout ? "workout" : (postData.type || "text"),
                 // Groups get their own caption when provided — a workout shared to a group doesn't
-                // need the "Try my program: CODE" program plug that the feed post carries.
-                caption: (postData.groupCaption != null ? postData.groupCaption : postData.caption) || "",
+                // need the "Try my program: CODE" program plug that the feed post carries. Every
+                // caller already passes a plain groupCaption, but STRIP the plug here too so it's
+                // true by construction: this is the single place a group post is written, and a
+                // future caller that forgets can't reintroduce it.
+                caption: stripProgramPlug((postData.groupCaption != null ? postData.groupCaption : postData.caption) || ""),
                 image_url: imageUrl,
                 workout: postData.workout || null,
                 // Dedup a re-shared workout per group (unique group_id,client_id) — no duplicate.
@@ -21224,8 +21285,30 @@ function AppInner() {
     try {
       if (isFollowing) {
         await sb.query(`follows?follower_id=eq.${currentUserId}&following_id=eq.${userId}`, { method:"DELETE" }, tok);
+        setStore(prev => ({ ...prev, pendingFollows: (prev.pendingFollows||[]).filter(id => id !== userId) }));
       } else {
-        await sb.query("follows", { method:"POST", body: JSON.stringify({ follower_id: currentUserId, following_id: userId }) }, tok);
+        // Ask for the row back and read the status the SERVER decided. A private account makes
+        // this 'pending' — the trigger sets it, the client can't choose — and pending grants
+        // nothing, so the optimistic "following" above has to be undone or the UI would claim
+        // access the user doesn't have.
+        const rows = await sb.query("follows", {
+          method:"POST",
+          headers_extra: { "Prefer": "return=representation" },
+          body: JSON.stringify({ follower_id: currentUserId, following_id: userId }),
+        }, tok);
+        const status = Array.isArray(rows) ? rows[0]?.status : rows?.status;
+        if (status === "pending") {
+          setStore(prev => ({
+            ...prev,
+            pendingFollows: [...new Set([...(prev.pendingFollows||[]), userId])],
+            users: prev.users.map(u => {
+              if (u.id === currentUserId) return { ...u, following: (u.following||[]).filter(id => id !== userId) };
+              if (u.id === userId) return { ...u, followers: (u.followers||[]).filter(id => id !== currentUserId) };
+              return u;
+            }),
+          }));
+          toast("Request sent — they'll need to approve it", "success");
+        }
       }
     } catch (e) {
       devError("follow error:", e);
@@ -21248,6 +21331,33 @@ function AppInner() {
 
   // Remove a follower: delete the follow row where THEY follow ME (reverse direction
   // from handleFollow). Updates both my followers list and their following list.
+  // Approve or turn down someone who asked to follow a PRIVATE account. Until this runs they see
+  // nothing — the row sits at status 'pending' and every content policy requires 'accepted'.
+  async function handleFollowRequest(otherId, accept) {
+    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    const prevReqs = store.followRequests || [];
+    const prevUsers = store.users;
+    setStore(prev => ({
+      ...prev,
+      followRequests: (prev.followRequests || []).filter(id => id !== otherId),
+      users: !accept ? prev.users : prev.users.map(u => {
+        if (u.id === currentUserId) return { ...u, followers: [...new Set([...(u.followers||[]), otherId])] };
+        if (u.id === otherId) return { ...u, following: [...new Set([...(u.following||[]), currentUserId])] };
+        return u;
+      }),
+    }));
+    try {
+      const path = `follows?follower_id=eq.${otherId}&following_id=eq.${currentUserId}`;
+      if (accept) await sb.query(path, { method:"PATCH", body: JSON.stringify({ status: "accepted" }) }, tok);
+      else        await sb.query(path, { method:"DELETE" }, tok);
+      haptic("tap");
+    } catch (e) {
+      devError("follow request error:", e);
+      setStore(prev => ({ ...prev, followRequests: prevReqs, users: prevUsers }));
+      toast("Couldn't update that request", "error");
+    }
+  }
+
   async function handleRemoveFollower(otherId) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     const prevUsers = store.users;
@@ -22049,6 +22159,7 @@ function AppInner() {
             onSignOut={handleSignOut}
             onFollow={handleFollow}
           onRemoveFollower={handleRemoveFollower}
+          onFollowRequest={handleFollowRequest}
           onBlock={handleBlock}
             onPostKudos={handleKudos}
             onPostComment={handleComment}
@@ -22264,6 +22375,7 @@ function AppInner() {
             onUserClick={setProfileUserId}
             onFollow={handleFollow}
             onRemoveFollower={handleRemoveFollower}
+            onFollowRequest={handleFollowRequest}
             onBlock={handleBlock}
             onPostKudos={handleKudos}
             onPostComment={handleComment}

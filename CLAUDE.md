@@ -220,6 +220,22 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   account pointing at their own site — the victim clicks and the recovery token lands on the
   attacker's page. Pin it to an allowlist in the function; don't rely on the dashboard's Redirect
   URLs setting, which the code can't see.
+- **"Private" means nothing without follow APPROVAL.** `follows` was insert-anyone, no status, and
+  `posts`/`workout_history`/`personal_records` all grant access to any FOLLOWER — so a stranger who
+  tapped Follow on a private account instantly read everything. Proven on live data: 0 workouts
+  visible, tap Follow, 55 workouts + 53 PRs + 65 posts. `follows.status` is `pending|accepted` now;
+  a BEFORE INSERT trigger sets it from `profile_is_public(following_id)` so the CLIENT CANNOT
+  CHOOSE ITS OWN STATUS (it posts `accepted` and the DB stores `pending`), only the target may
+  UPDATE it, and every content policy requires `status = 'accepted'`. Existing rows were
+  grandfathered as accepted — those people already had access. Client-side: only accepted rows
+  count as followers/following (counts must mean what RLS means), `store.pendingFollows` drives the
+  "Requested" button, `store.followRequests` drives the accept/decline rows at the top of your own
+  followers sheet. Sims: `sim_followreq` + role-sims. **Verify a blocked write by ROW COUNT, not by
+  catching an exception** — an UPDATE the policy filters out changes 0 rows and raises nothing, so
+  an exception-based check reports "ALLOWED" for something that was actually blocked.
+- **DELETE on `follows` now allows the TARGET too** (`follower_id = auth.uid() OR following_id =
+  auth.uid()`). It was follower-only, so "Remove follower" in the UI matched 0 rows and silently
+  did nothing while the local list updated — it looked like it worked until the next refresh.
 - **A "private" account has THREE layers and they must agree.** `posts`, `workout_history` and
   `personal_records` are all `owner OR profile_is_public(user_id) OR follower`; `public_profiles`
   additionally allows any signed-in caller so people stay findable in search. Net effect (and the
@@ -637,6 +653,21 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 `bootDiagLine`/`diagEl` (marked TODO in code); it's TestFlight-phase debugging only.
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
+
+**PARKED IDEAS (not scheduled — raise them when the moment fits):**
+- **Trainer tier (paid).** A client list in the Workout tab; tap a client to see their workouts and
+  weights. Trainers are the one segment that reliably pays in fitness (they charge $50-100/session
+  and TrueCoach/Trainerize live on $20-30/mo), and the VIEWING half is nearly free — workout_history
+  and personal_records are already readable by an accepted follower, so it's mostly screens. Three
+  things make it a later project, not a now project: (1) trainers pay for ASSIGNMENT and compliance
+  (build a program -> push it to the client -> see if they did it), not read-only viewing, and
+  that's the real build; (2) an iOS subscription for in-app features must use Apple IAP (15% under
+  $1M, 30% above) — StoreKit, a native plugin and server-side receipt validation, i.e. a Mac day
+  plus backend, more work than the feature; (3) it doubles the permissions surface before the
+  consumer app has any users. **Cheap way to test demand first:** the app already mints share codes
+  for programs and workouts — a read-only "share my log" code would let a trainer view a client's
+  history with no subscription, no new access class and no Apple cut. If trainers use it
+  constantly, build the tier.
 
 Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). **Email confirmation is ON** (Mo flipped it July 30, before opening the beta). Leaked-password protection is a PAID Supabase feature and is deliberately deferred — it's the single best remaining defence for tester accounts, so re-raise it when he's on a paid plan. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`). **Branded auth email templates are written and waiting in `supabase/email-templates/`** (confirm-signup / reset-password / change-email, plus `preview/*.png` and `_shared.md` with install steps) — they go in the Supabase dashboard, so no deploy; still Mo-side, along with setting the SMTP **Sender name to "Seshd"**. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
