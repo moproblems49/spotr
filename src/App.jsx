@@ -1,4 +1,4 @@
-// v178091716764
+// v178091716765
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6883,46 +6883,69 @@ function OneRMModal({ onClose, unit, C }) {
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const oneRM = calc1RM(weight, reps);
-  const percentages = oneRM
-    ? [100,95,90,85,80,75,70,65,60].map(p => ({ p, w: Math.round(oneRM * p / 100) }))
-    : [];
+  // Percentage → reps you'd expect at that percentage. The standard training table every lifter
+  // has seen; showing the weight without the reps makes it a maths result rather than something
+  // you can program from.
+  const PCT_REPS = [[100,1],[95,2],[90,4],[85,6],[80,8],[75,10],[70,12],[65,16],[60,20],[55,24],[50,30]];
+  const rows = oneRM ? PCT_REPS.map(([p, r]) => ({ p, r, w: Math.round(oneRM * p) / 100 })) : [];
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
+      {/* C.surface + a border, not C.bg: on the dark theme this card was the same colour as the
+          screen behind it and had no edge at all — the same blending the followers sheet had. */}
+      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.border}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>1RM Calculator</div>
           <button onClick={onClose} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
         </div>
-        <div style={{ overflowY:"auto", flex:1, padding:"16px 18px" }}>
-          <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Enter your best set to estimate one-rep max (Epley formula)</div>
+        <div style={{ overflowY:"auto", flex:1, padding:"16px 18px", overscrollBehavior:"contain" }}>
+          <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Enter your best set to estimate your one-rep max (Epley formula).</div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
             {[["Weight", weight, setWeight, unit.toUpperCase()], ["Reps", reps, setReps, "REPS"]].map(([label, val, setter, unit2]) => (
-              <div key={label} style={{ background:C.divider, borderRadius:12, padding:"12px 14px" }}>
+              <div key={label} style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px" }}>
                 <div style={{ fontSize:10, color:C.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>{unit2}</div>
                 <input type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" spellCheck={false} data-1p-ignore data-lpignore="true" value={val} onChange={e => setter(e.target.value)} placeholder="0"
-                  style={{ width:"100%", background:"none", border:"none", fontSize:28, fontWeight:800, color:C.accent, outline:"none", boxSizing:"border-box", fontFamily:MONO }}/>
+                  style={{ width:"100%", background:"none", border:"none", fontSize:28, fontWeight:800, color:C.text, outline:"none", boxSizing:"border-box", fontFamily:MONO }}/>
               </div>
             ))}
           </div>
           {oneRM && (
             <>
-              <div style={{ background:C.accent, borderRadius:14, padding:"18px", textAlign:"center", marginBottom:14 }}>
-                <div style={{ fontSize:10, color:"rgba(255,255,255,0.8)", fontWeight:700, letterSpacing:2, marginBottom:4 }}>ESTIMATED 1RM</div>
-                <div style={{ fontSize:52, fontWeight:800, color:"#fff", fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", marginTop:4 }}>{unit}</div>
+              {/* C.onAccent, not "#fff". The accent is VOLT — a light lime — so white text on it
+                  was very nearly invisible on the dark theme. onAccent is the dark ink that pairs
+                  with it, and is what every other accent surface in the app already uses. */}
+              <div style={{ background:C.accent, borderRadius:14, padding:"16px", textAlign:"center", marginBottom:16 }}>
+                <div style={{ fontSize:10, color:C.onAccent, opacity:0.7, fontWeight:800, letterSpacing:2, marginBottom:4 }}>YOUR ONE REP MAX</div>
+                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:6 }}>
+                  <div style={{ fontSize:46, fontWeight:800, color:C.onAccent, fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
+                  <div style={{ fontSize:15, fontWeight:700, color:C.onAccent, opacity:0.75 }}>{unit}</div>
+                </div>
               </div>
-              <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:8 }}>TRAINING PERCENTAGES</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-                {percentages.map(({ p, w }, i) => (
-                  <div key={p} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderBottom: i < percentages.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <div style={{ width:32, height:3, borderRadius:2, background:C.accent, opacity:p/100 }}/>
-                      <span style={{ fontSize:13, color:C.sub }}>{p}%</span>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1.1fr 0.9fr", background:C.bg, borderBottom:`1px solid ${C.border}` }}>
+                  {["% OF 1RM", "WEIGHT", "REPS"].map((h, i) => (
+                    <div key={h} style={{ fontSize:9.5, fontWeight:800, letterSpacing:1, color:C.sub, padding:"9px 12px", textAlign: i ? "right" : "left" }}>{h}</div>
+                  ))}
+                </div>
+                {rows.map(({ p, w, r }, i) => (
+                  <div key={p} style={{
+                    display:"grid", gridTemplateColumns:"1fr 1.1fr 0.9fr", alignItems:"center",
+                    // Zebra striping, like the table Mo pointed at — 11 near-identical rows of
+                    // numbers are hard to track across without it.
+                    background: i % 2 ? C.bg : "transparent",
+                    borderTop: i ? `1px solid ${C.divider}` : "none",
+                  }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 12px" }}>
+                      <div style={{ width:3, height:16, borderRadius:2, background:C.accent, opacity: 0.25 + (p/100) * 0.75 }}/>
+                      <span style={{ fontSize:13, color:C.text, fontWeight:600 }}>{p}%</span>
                     </div>
-                    <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:MONO }}>{w} {unit}</span>
+                    <div style={{ fontSize:13.5, fontWeight:700, color:C.text, fontFamily:MONO, padding:"10px 12px", textAlign:"right" }}>{w} {unit}</div>
+                    <div style={{ fontSize:13.5, fontWeight:600, color:C.sub, fontFamily:MONO, padding:"10px 12px", textAlign:"right" }}>{r}</div>
                   </div>
                 ))}
+              </div>
+              <div style={{ fontSize:10.5, color:C.muted, marginTop:10, lineHeight:1.45 }}>
+                Rep counts are typical for each percentage — treat them as a starting point, not a test.
               </div>
             </>
           )}
@@ -14494,7 +14517,13 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
         }));
         const d = new Date(dk);
         const label = `${d.getMonth()+1}/${d.getDate()}`;
-        points.push({ label, weight: maxW, volume: vol, e1rm, date: dk, sets: doneSets.length });
+        // Keep the actual sets, not just how many. "3 sets" tells a lifter nothing they want to
+        // know; "205×5 · 205×5 · 195×8" is the session.
+        const setList = doneSets.map(s => ({
+          w: Math.round(cvt(parseFloat(s.weight)||0, sess.unit||"lbs", unit) * 10) / 10,
+          r: parseInt(s.reps) || 0,
+        }));
+        points.push({ label, weight: maxW, volume: vol, e1rm, date: dk, sets: doneSets.length, setList });
       }
     }
     return points;
@@ -14635,13 +14664,17 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
                     padding:"11px 14px",
                     borderBottom: i < recentSessions.length - 1 ? `1px solid ${C.divider}` : "none",
                   }}>
-                    <div>
+                    <div style={{ minWidth:0, flex:1, paddingRight:10 }}>
                       <div style={{ fontSize:13, color:C.text, fontWeight:600 }}>{dateLabel}</div>
-                      <div style={{ fontSize:11, color:C.sub, marginTop:1, fontFamily:MONO }}>
-                        {s.sets} {s.sets === 1 ? "set" : "sets"}
+                      {/* The sets themselves, weight × reps. Capped so a 10-set session can't
+                          push the top-weight column off the row. */}
+                      <div style={{ fontSize:11, color:C.sub, marginTop:2, fontFamily:MONO, lineHeight:1.4 }}>
+                        {(s.setList || []).slice(0, 5).map(x => `${x.w}×${x.r}`).join(" · ")}
+                        {(s.setList || []).length > 5 ? ` +${s.setList.length - 5}` : ""}
+                        {!(s.setList || []).length ? `${s.sets} ${s.sets === 1 ? "set" : "sets"}` : ""}
                       </div>
                     </div>
-                    <div style={{ textAlign:"right" }}>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
                       <div style={{ fontSize:13, color:C.text, fontWeight:700, fontFamily:MONO }}>
                         {Math.round(s.weight)} <span style={{ fontSize:10, color:C.sub, fontWeight:500 }}>{unit}</span>
                       </div>
