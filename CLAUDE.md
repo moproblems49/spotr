@@ -390,6 +390,22 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   if every session lands in the red — but "fixing" it must not make it flattering either.**
   `sim_bbscale` pins BOTH ends (a good day must clear 80, a wrecked day must stay under 40 so the
   "Low battery" copy still fires); `build/bb_probe.mjs` prints the whole distribution for tuning.
+- **Missing health signals are EXCLUDED, never scored as zero.** `recoveryScore` is a weighted mean
+  of whatever exists — HRV 0.5, resting HR 0.25, sleep 0.25 — renormalised by the weights actually
+  present, so a night the watch didn't record doesn't read as "no recovery". The fallback ladder
+  (verified, not assumed): HRV+RHR+sleep → full score; HRV but no sleep → HRV+RHR renormalised and
+  the Morning-Charge sleep nudge skipped; sleep but no HRV → `40 + sleepHours × 6` clamped 40–90;
+  **nothing at all (dead/unworn watch) → estimated from training recency**, `70 + daysSinceWorkout`
+  steps, i.e. 70 trained-today / 74 / 78 / 82+, capped 88. Don't "fix" a missing signal by
+  substituting 0 — that's the difference between "we don't know" and "you're wrecked".
+- **The daytime curve only ever FALLS — this is a known limitation, not a bug.** After wake the
+  level is `charge0 − awakeDrain − trainingDrain − activityDrain`, and every term only grows, so a
+  morning lifter drops early and then declines all day no matter how much they rest (measured:
+  70 → 57 across 16h of doing nothing). Garmin recharges during restful daytime periods because it
+  has a continuous HR/HRV stream; we don't. `store.activityHourly` (per-hour steps + active energy)
+  IS enough to detect genuinely restful hours, so a modest daytime recharge is buildable — Mo asked
+  about exactly this on Aug 1 and it's un-started. If you build it, keep the wake-time charge as the
+  day's ceiling or the number stops meaning "energy left".
 - **A tall BOTTOM sheet pushes its own header off the TOP.** `align-items:flex-end` with a child
   taller than the viewport clips the top — the Body Battery sheet's title and score ended up behind
   the clock once steps/energy/HRV/RHR were added to it. Cap the sheet
