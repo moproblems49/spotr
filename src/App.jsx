@@ -1,4 +1,4 @@
-// v178091716772
+// v178091716773
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1921,7 +1921,16 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 const tip = bb.level >= 80 ? "Well recovered — a great day to push hard." : bb.level >= 60 ? "Decent energy. Train smart, warm up well." : bb.level >= 40 ? "Moderate fatigue — consider a lighter session." : "Low battery. Prioritise sleep and recovery today.";
                 return createPortal((
                   <div onClick={() => setShowBatteryDetail(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-                    <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+                    {/* This sheet grew past the viewport once steps/energy/HRV/RHR were added to
+                        it, and a bottom-anchored child taller than its container has its TOP
+                        pushed off-screen — the title and the score ended up under the clock.
+                        Cap it below the status-bar inset and let it scroll inside itself instead.
+                        Same class as the alignItems:center clipping noted in the conventions. */}
+                    <div onClick={e => e.stopPropagation()} style={{
+                      width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0",
+                      maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
+                      overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+                      padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
                       <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
                         <span style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Body Battery</span>
@@ -4364,14 +4373,17 @@ function computeBodyBattery(store) {
   let charge0;
   if (hasRecovery) {
     charge0 = Math.round(55 + rec.recoveryScore * 45);
-    // Sleep modifier on top of HRV recovery — a smooth sliding scale centered at 7.5h (was
-    // crude stair-steps). Short nights bite harder than good nights reward, matching how the
-    // wearable apps treat it (a rough night pulls the number down even when HRV looks fine).
-    // 4h→−16, 6h→−10.5, 7h→−3.5, 7.5h→0, 8h→+2.5, 9h+→+7. (Sleep is also ~25% of recoveryScore,
-    // so this is the *extra* nudge specific to the Morning Charge number.)
+    // Sleep modifier on top of HRV recovery — a smooth sliding scale centered at 7.5h.
+    // 4h→−8, 6h→−5.25, 7h→−1.75, 7.5h→0, 8h→+2.5, 9h+→+7.
+    //
+    // This is DELIBERATELY gentle, because sleep is already ~25% of recoveryScore: a short night
+    // has therefore pulled the number down once before this line runs. The old −16 floor made it
+    // count twice, and that double-penalty was the single biggest reason a bad night plus a normal
+    // session bottomed the score out (4h + hard session read 7/100). Keep this a nudge; if sleep
+    // needs more weight, change its weight inside recoveryScore, not here.
     if (rec.sleepHours != null) {
       const d = rec.sleepHours - 7.5;
-      const sleepMod = d >= 0 ? Math.min(7, d * 5) : Math.max(-16, d * 7);
+      const sleepMod = d >= 0 ? Math.min(7, d * 5) : Math.max(-8, d * 3.5);
       charge0 = Math.max(10, Math.min(100, Math.round(charge0 + sleepMod)));
     }
   } else if (rec && typeof rec.sleepHours === "number") {
@@ -4427,10 +4439,16 @@ function computeBodyBattery(store) {
       }
       if (!sets) continue;
       const avgRpe = rpeN ? rpeSum / rpeN : null;
-      workoutDrain += Math.max(5, Math.min(30, Math.round(6 + sets * 0.9 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
+      // A normal 20-26 set session used to cost 24-30 of a scale whose realistic top is ~85 — a
+      // third of the whole battery for one ordinary workout, which is what made training on a
+      // mediocre night collapse the score. 4 + 0.6/set puts a 20-set session at 16 and a 26-set
+      // one at ~20, in line with what the wearables charge for an hour of lifting, and RPE still
+      // moves it either way. The point of this number is to tell you when to back off; it can't
+      // do that if every session lands in the red.
+      workoutDrain += Math.max(4, Math.min(24, Math.round(4 + sets * 0.6 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
     }
   }
-  workoutDrain = Math.min(45, workoutDrain);
+  workoutDrain = Math.min(32, workoutDrain);
   // Activity drain from steps/active energy (dampened when a workout is logged,
   // since the workout's own energy is already counted above).
   let activityDrain = 0, hasActivity = false;

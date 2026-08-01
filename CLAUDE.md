@@ -378,6 +378,24 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   rule is: the topmost VISIBLE one owns it (offline > guest > top bar) and the others use flat
   padding. Sim: `pw_topbanners` (env() is 0 in Chromium, so it counts which elements *ask* for the
   inset rather than measuring pixels).
+- **Body Battery must be WINNABLE and still honest.** Mo: "no one will ever have a good score." He
+  was right about a specific case — measured, a normal session on a mediocre night collapsed the
+  number (his real reading: 7/100). Two causes: (1) **sleep was counted twice** — once inside
+  `recoveryScore` (~25% of it) and again as a Morning Charge modifier that could subtract another
+  16; it's a nudge now (max −8), and if sleep needs more weight, change its weight INSIDE
+  `recoveryScore`, not there. (2) one ordinary workout drained 24–30 points of a scale whose
+  realistic top is ~85 — `4 + 0.6/set` now, so 20 sets costs 16 and 26 costs ~20. Post-fix spread:
+  rested rest day 87, rested hard session 67, average night + normal session 48, 4h sleep + hard
+  session 24, ideal 95. **The point of the number is to tell you when to back off, which it can't do
+  if every session lands in the red — but "fixing" it must not make it flattering either.**
+  `sim_bbscale` pins BOTH ends (a good day must clear 80, a wrecked day must stay under 40 so the
+  "Low battery" copy still fires); `build/bb_probe.mjs` prints the whole distribution for tuning.
+- **A tall BOTTOM sheet pushes its own header off the TOP.** `align-items:flex-end` with a child
+  taller than the viewport clips the top — the Body Battery sheet's title and score ended up behind
+  the clock once steps/energy/HRV/RHR were added to it. Cap the sheet
+  (`maxHeight: calc(100dvh - env(safe-area-inset-top) - 10px)`) and give it `overflow-y:auto` +
+  `overscroll-behavior:contain`; fix the SHEET, never the content. Same family as the
+  `alignItems:center` note below. Sim: `pw_bbsheet`.
 - **A fullscreen overlay owns the status-bar area itself** — it's anchored at `top:0` over the
   app's own top bar, so it needs `calc(env(safe-area-inset-top) + Npx)` on its header or the title
   and buttons sit under the clock/battery. `ProgramDetailView`, `ProgramBuilder` and
