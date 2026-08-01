@@ -268,6 +268,16 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   delete them, and cancelling the whole workout was the only escape. Gate the ITEMS that need the
   data ("How to do it" needs a name), never the door. Sim: `pw_addex`-style probe in
   `build/pw_audit.mjs`.
+- **Estimated 1RM has ONE definition: `epley1RM(weight, reps, cap)`.** Epley (`w × (1 + reps/30)`)
+  estimates a max from a MULTI-rep set; at one rep there's nothing to estimate — the weight lifted
+  IS the max — but the raw formula multiplies by 31/30 and adds 3.3%, so `225 × 1` reported **233**
+  (Mo caught it in the calculator). The formula was inlined in SEVEN places and every one was
+  wrong, so the calculator and the Est-1RM PR badge could disagree about the same set. `cap` clamps
+  reps BEFORE the estimate: PR/trend callers pass 12 (Epley overstates badly past ~12 — a 20-rep
+  burnout set would mint a fake PR), the user-facing calculator passes nothing, because it must not
+  silently substitute a rep count the user didn't type. Sim: `sim_1rm`. Note `prsE1rm` in the local
+  store keeps the MAX of history-derived and previously-stored values, so an e1RM PR banked from a
+  1-rep set before this fix stays 3.3% high until it's genuinely beaten.
 - **Volume/set counts have ONE definition: `sessionVolume()` / `workingDone()`.** Never inline
   another `sets.filter(s => s.done).reduce(...)`. Seven inline copies had drifted apart — the
   finish summary excluded warmups while History, the feed, Profile and the weekly/lifetime stats
