@@ -1,4 +1,4 @@
-// v178091716781
+// v178091716782
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9494,6 +9494,9 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 // ═════════════════════════════════════════════════════════════════════════════
 const SESSION_KEY = "seshd_active_session";
 const WSTART_KEY = "seshd_wstart";
+// When the user last logged a set. Persisted because the idle-gap duration cap has to survive the
+// app being killed mid-workout — that IS the case it exists for.
+const LAST_ACTIVITY_KEY = "seshd_last_activity";
 
 // Inline code-redeem row used in the templates modal
 function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, initialCode = null }) {
@@ -10757,7 +10760,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // A session tagged _finishedSid was already saved (the summary just hadn't been dismissed).
       // If the app was force-killed before dismiss, DON'T resurrect it as in-progress — a later
       // Finish would upsert the saved row with a bogus (now − startedAt) duration and today's date.
-      if (s && s._finishedSid) { try { localStorage.removeItem(SESSION_KEY); } catch {} return null; }
+      if (s && s._finishedSid) { try { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(LAST_ACTIVITY_KEY); } catch {} return null; }
       return s;
     } catch { return null; }
   });
@@ -10927,10 +10930,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     haptic("complete");
   }
 
-  // Memoized running volume — recomputed only when session changes, not on every keystroke
+  // Memoized running volume — recomputed only when session changes, not on every keystroke.
+  // Counts only exercises that will actually be SAVED (`e.name`), same as the finish summary and
+  // the server payload. Without the filter the live header credited sets logged under a blank-named
+  // row — measured 2,125 lbs against a saved 1,125 — so the number you watch all session was one
+  // the workout never had.
   const runningVolume = useMemo(() => {
     if (!session) return 0;
-    return sessionVolume(session);
+    return sessionVolume({ exercises: (session.exercises || []).filter(e => e.name) });
   }, [session]);
 
   // Listen for code-import requests from feed posts
@@ -10950,7 +10957,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const rtPreCancelRef = useRef(false); // pre-emptive native-notification cancel, once per rest period
 
   useEffect(() => {
-    if (!session) { try { localStorage.removeItem(SESSION_KEY); } catch {} return; }
+    if (!session) { try { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(LAST_ACTIVITY_KEY); } catch {} return; }
     // Save immediately on every change so a crash/background-kill never loses more
     // than the very last keystroke. The interval is a backup for elapsed-time drift.
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
@@ -11173,7 +11180,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     });
     setWStart(Date.now());
     setElapsed(0);
-    lastActivityRef.current = Date.now(); // reset idle tracker for the new session
+    markActivity(); // reset idle tracker for the new session
   }
 
   // "Repeat workout" — start a new session pre-loaded from a past session's exercises.
@@ -11208,12 +11215,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     });
     setWStart(Date.now());
     setElapsed(0);
-    lastActivityRef.current = Date.now();
+    markActivity();
     setSubTab("workout");
   }
 
   function toggleDone(ei, si) {
-    lastActivityRef.current = Date.now(); // mark activity for idle-gap detection
+    markActivity();
     setSession(p => {
       const nowDone = !p.exercises[ei]?.sets[si]?.done;
 
@@ -11316,7 +11323,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [finishing, setFinishing] = useState(false);
   // Tracks the wall-clock time of the last set completion. Used to cap workout
   // duration if the user forgets to hit Finish for hours (idle gap detection).
-  const lastActivityRef = useRef(Date.now());
+  // THE IDLE-GAP CAP MUST SURVIVE A RELAUNCH — it exists for exactly the case that causes one.
+  // This ref used to be seeded with Date.now() and never persisted, so any remount (and the
+  // session itself IS restored from localStorage) reset the gap to ~0 and the correction never
+  // fired. Last set at 09:00, iOS kills the WebView, reopen at 18:00 and hit Finish: measured
+  // 36,003s — a ten-hour workout — where the live path correctly recorded 3,901s.
+  const [_initialActivityAt] = useState(() => {
+    const v = Number(localStorage.getItem(LAST_ACTIVITY_KEY));
+    return Number.isFinite(v) && v > 0 ? v : Date.now();
+  });
+  const lastActivityRef = useRef(_initialActivityAt);
+  const markActivity = () => {
+    const t = Date.now();
+    lastActivityRef.current = t;
+    try { localStorage.setItem(LAST_ACTIVITY_KEY, String(t)); } catch {}
+  };
   const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
   const [workoutSummary, setWorkoutSummary] = useState(null);
 
@@ -11546,8 +11567,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Build summary — reuse hitPRs (already covers weight/e1RM/volume categories) so the
       // finish-screen card and the PRModal celebration agree on what counts as a PR.
       const newPRsList = hitPRs.map(pr => ({ name: pr.name, weight: pr.weight, types: pr.types }));
-      const totalSets = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").length, 0);
-      const totalVol = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done && s.type !== "warmup").reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+      // COUNT WHAT GETS SAVED. `cleanEx` (and the server payload, and postWorkoutPayload) all
+      // filter `e.name`, but these two walked every exercise — so sets logged under a blank-named
+      // row were on the summary and nowhere else. Quick Start seeds an exercise with name:"" and
+      // "+ Add Exercise" appends more, and their set rows are fully usable: measured, the summary
+      // claimed 3,250 lbs / 3 sets while History, the server row and the feed card all said
+      // 2,250 / 2, with the extra sets simply gone and no warning.
+      const savedEx = session.exercises.filter(e => e.name);
+      const totalSets = savedEx.reduce((a, ex) => a + workingDone(ex.sets).length, 0);
+      const totalVol = sessionVolume({ exercises: savedEx });
 
       // Volume vs the last time this same session (dayName) was trained — the most
       // motivating finish-screen stat ("you beat last Push A by 340 lbs").
@@ -11647,20 +11675,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       // Show summary
       // Capture undo info so user can roll back if they finished by accident
+      // Streak INCLUDING today — see the note on streakWeeks below.
+      const finishStreak = calcWeeklyStreak({ ...(store.workoutDates || {}), [dk]: true }, store.weeklyTarget || 3).count;
+      // The volume in LBS, used for the Apple Health calorie write further down. It read
+      // `workoutSummary?.volumeRaw` — the STATE set on the very next line, which React hasn't
+      // committed — so it was always the previous summary's value, i.e. undefined on every real
+      // finish. volLbs came out 0, kcal came out 0, and the `kcal > 0` guard meant NOTHING was
+      // ever written to the Move ring. Not one workout, since the feature shipped.
+      const volLbsForHealth = unit === "lbs" ? Math.round(totalVol) : cvt(Math.round(totalVol), "kg", "lbs");
       setWorkoutSummary({
         dayName: session.dayName,
         duration: fmtTime(recordedDuration),
         sets: totalSets,
         volume: fmtVol(Math.round(totalVol), unit),
         volumeRaw: Math.round(totalVol),
-        exercises: session.exercises.filter(e => e.name).length,
+        exercises: savedEx.length,
         prs: newPRsList,
         progressions: progressionsHit,
         volVsLast,
         musclesTrained,
         programChange,
-        streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count,
-        hype: pickFinishPhrase({ prs: newPRsList.length, progressions: progressionsHit, volVsLast: volVsLast || 0, streakWeeks: calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count }),
+        // COUNT THE WORKOUT YOU JUST FINISHED. `store` is the closure's copy, and the setStore that
+        // adds today to workoutDates hasn't committed yet — so the streak was computed over a map
+        // missing today. calcWeeklyStreak counts DATES PER WEEK against weeklyTarget, which makes
+        // the workout that COMPLETES the week the one it can't see: measured with a target of 3 and
+        // two days already logged, finishing the third showed no streak chip at all.
+        streakWeeks: finishStreak,
+        hype: pickFinishPhrase({ prs: newPRsList.length, progressions: progressionsHit, volVsLast: volVsLast || 0, streakWeeks: finishStreak }),
         // Lift-by-lift comparison against the last time each exercise was trained. Computed here,
         // once, off the session and the store as they are at finish — not in render, where the
         // store has already absorbed this workout.
@@ -11681,7 +11722,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       haptic("success");
       track("workout_logged", { sets: totalSets, exercises: session.exercises.filter(e => e.name).length, prs: newPRsList.length, duration: recordedDuration });
       try {
-        const volLbs = unit === "lbs" ? (workoutSummary?.volumeRaw || 0) : cvt(workoutSummary?.volumeRaw || 0, "kg", "lbs");
+        const volLbs = volLbsForHealth;
         const wStartMs = wStart || (Date.now() - recordedDuration * 1000);
         writeWorkoutToHealth(wStartMs, recordedDuration, volLbs, sid);
         // If the user wore an Apple Watch, pull this session's heart-rate summary and attach it to
@@ -11723,7 +11764,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         unit, note: "", prs: newPRs
       });
 
-      if (saveResult && saveResult.ok === false) {
+      // A GUEST HAS NO SERVER TO REACH, so "couldn't reach server" is a lie and the retry queue is
+      // pointless. handleSaveWorkout returns {ok:false, reason:"no-token"} for them, which this
+      // branch treated as a network failure: every guest workout fired TWO error toasts and pushed
+      // a full copy of the session into seshd_pending_workouts, a queue that can never drain while
+      // signed out. It grew by one whole workout on every finish.
+      const unreachable = saveResult && saveResult.ok === false && saveResult.reason !== "no-token";
+      if (unreachable) {
         // DB save failed — keep a pending copy so it can be retried, and warn the user
         try {
           const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
@@ -11762,8 +11809,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     // Working sets on BOTH sides. The volume printed beside this counter is sessionVolume(), which
     // excludes warmups — so counting them here made "5/7 sets · 3,850 lbs" describe two different
     // set lists. Excluding them from `total` too keeps the counter able to reach its own target.
-    const done = session.exercises.reduce((a, ex) => a + workingDone(ex.sets).length, 0);
-    const total = session.exercises.reduce((a, ex) => a + (ex.sets || []).filter(s => s.type !== "warmup").length, 0);
+    // Only exercises that will be SAVED — matching runningVolume beside it and the finish summary.
+    // An exercise with no name can't be saved (history, PRs and the cards all key on the name), so
+    // counting its sets here promised work the workout was never going to keep. Leaving them
+    // uncounted is also the visible nudge that the row still needs a name.
+    const savedExercises = session.exercises.filter(e => e.name);
+    const done = savedExercises.reduce((a, ex) => a + workingDone(ex.sets).length, 0);
+    const total = savedExercises.reduce((a, ex) => a + (ex.sets || []).filter(s => s.type !== "warmup").length, 0);
 
     return (
       <div style={{ background:C.bg, flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
@@ -20726,6 +20778,18 @@ function AppInner() {
   async function handleSignOut() {
     try { await sb.signOut(token); } catch {}
     clearSession();
+    // AN IN-PROGRESS WORKOUT IS NOT PART OF THE SESSION KEY, so signing out used to leave it on the
+    // device — and WorkoutTracker's restore has no owner check (the blob carries no userId). Sign
+    // out mid-workout on a shared or handed-over phone, the next person signs in and lands inside
+    // YOUR live workout with your logged sets; if they tap Finish, your sets are written to their
+    // account and posted from their feed. Verified end to end.
+    try {
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(WSTART_KEY);
+      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      localStorage.removeItem("seshd_rest");
+      localStorage.removeItem("seshd_dismissed_deloads");
+    } catch {}
     setSession(null);
     setStore(loadStore());
     setDbReady(false);
@@ -21315,7 +21379,9 @@ function AppInner() {
   async function handleSaveWorkout(workoutData) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) {
-      toast("Not signed in — workout saved on this device only", "error");
+      // Signing out of the save is the NORMAL state for a guest, not an error. finishWorkout
+      // reads `reason` and toasts "Workout saved" itself, so an error toast here just stacks a
+      // second, scarier message on top of a workout that saved fine.
       return { ok: false, reason: "no-token" };
     }
     try {
