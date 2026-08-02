@@ -1,4 +1,4 @@
-// v178091716787
+// v178091716788
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5605,14 +5605,26 @@ async function readRecovery() {
   }
 
   // Recovery score 0..1 from whatever signals are available, weighted toward HRV.
+  //
+  // CENTRING: being exactly AT your own baseline must read as FINE, not as half.
+  // Both heart terms used to map ratio 1.0 to 0.5, so a completely normal day scored 57% and any
+  // ordinary wobble fell into "Take it easy": measured, HRV 5% under baseline + RHR 2% over +
+  // 6.5h sleep = 37%. Mo reported exactly that reading while feeling great, and he was right.
+  // A baseline is by definition your typical day; scoring it 50% guarantees the number spends most
+  // of its life in the red, which is the same flaw the Body Battery scale had.
+  //
+  // Recentred so ratio 1.0 lands near 0.75 (in line with how Whoop/Oura/Garmin present "at
+  // baseline"), WITHOUT softening the bottom: the floor still bites hard, and sim_recovery_scale
+  // pins both ends — a genuinely wrecked day must stay under 40% or the number can no longer do
+  // the one job it has.
   const comps = [];
   if (out.hrv != null && out.hrvBaseline) {
     const ratio = out.hrv / out.hrvBaseline;                  // <1 = HRV suppressed = under-recovered
-    comps.push([Math.max(0, Math.min(1, (ratio - 0.85) / 0.30)), 0.5]);
+    comps.push([Math.max(0, Math.min(1, (ratio - 0.78) / 0.30)), 0.5]);
   }
   if (out.restingHr != null && out.rhrBaseline) {
     const ratio = out.restingHr / out.rhrBaseline;            // >1 = elevated RHR = under-recovered
-    comps.push([Math.max(0, Math.min(1, (1.05 - ratio) / 0.10)), 0.25]);
+    comps.push([Math.max(0, Math.min(1, (1.075 - ratio) / 0.10)), 0.25]);
   }
   if (out.sleepHours != null) {
     const sh = out.sleepHours;
