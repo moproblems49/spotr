@@ -1,4 +1,4 @@
-// v178091716782
+// v178091716783
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3054,6 +3054,46 @@ function postWorkoutPayload(exercises, prs, prNames, unit = "lbs") {
 // wrong: they used a 0.98 threshold where the cards used 0.99, and one of them "converted" by
 // scaling the stored LBS pr UP by LBS_PER_KG for a kg session — the wrong direction, so a kg
 // lifter's top set had to beat ~2.2× its real PR and the badge could never appear.
+// The TRUE best working set (in LBS) for each named exercise, recomputed from a history object.
+// Pass the history you want it measured against — after an edit or a delete that means the
+// post-change history, which the closure's `store` does not yet hold.
+//
+// This exists because nothing in the app could ever LOWER a PR. The edit path only raised
+// store.prs, personal_records kept the old row, and loadUserData merges server ∪ history ∪
+// in-memory taking the MAX of all three — so correcting a mistyped 315 down to 225, or deleting
+// the session that held it, left 315 standing as a PR for a set that exists nowhere in the data,
+// with no way to remove it. A returned 0 means the exercise has no working sets left at all.
+function historyMaxPRs(history, names) {
+  const want = new Set((names || []).filter(Boolean));
+  const out = {};
+  want.forEach(n => { out[n] = 0; });
+  Object.values(history || {}).forEach(day => {
+    Object.values(day || {}).forEach(w => {
+      const wu = w?.unit || "lbs";
+      (w?.exercises || []).forEach(ex => {
+        if (!ex?.name || !want.has(ex.name)) return;
+        (ex.sets || []).forEach(s => {
+          const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
+          if (!done || s?.type === "warmup") return;
+          const wt = parseFloat(s.weight), r = parseInt(s.reps);
+          if (!wt || wt <= 0 || !r || r < 1) return;
+          const lbs = wu === "lbs" ? wt : cvt(wt, "kg", "lbs");
+          if (lbs > out[ex.name]) out[ex.name] = lbs;
+        });
+      });
+    });
+  });
+  return out;
+}
+
+// How long the rest after THIS set actually runs. ONE chain, because there were two and they
+// disagreed: the label read `set.restTime || defaultRestTime || 120` while the timer read
+// `set.restTime || ex.rest || defaultRestTime || 90`. `+ Add Set` creates a set with no restTime,
+// so on a program day with ex.rest = 180 the new set advertised 02:00 and then ran 03:00.
+function restSecondsFor(ex, set, store) {
+  return parseInt(set?.restTime || ex?.rest || store?.defaultRestTime || 90) || 90;
+}
+
 function sessionPRNames(sess, prs) {
   const payload = postWorkoutPayload(sess?.exercises, prs, null, sess?.unit || "lbs");
   return new Set(payload.exercises.filter(e => e.isPR).map(e => e.name));
@@ -4202,7 +4242,14 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
       // Same weight, push for more reps — but never suggest a jump of more than 2 reps
       // over last session ("did 8 → do 14" isn't progression advice). If the program's
       // range starts far above what they did, build toward it gradually.
-      const target = Math.min(range.high, Math.max(range.low, lastReps + 1), lastReps + 2);
+      // A 0-rep "last session" carries no information — getLastExerciseSession accepts a set
+      // ticked done with a blank reps box, and `parseFloat("") || 0` makes it 0. The `lastReps + 2`
+      // cap then wins the min() and the app advises "Build toward 8 — aim for 2". Same family as
+      // the sim_deload0 fix, which guarded detectDeloadNeeded and left this path alone: when
+      // there's no real rep count, start at the bottom of the range instead of two above nothing.
+      const target = lastReps > 0
+        ? Math.min(range.high, Math.max(range.low, lastReps + 1), lastReps + 2)
+        : range.low;
       return {
         type: "reps",
         weight: lastWeight,
@@ -6250,11 +6297,18 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
   allDays.forEach(d => { col.push(d); if (col.length === 7) { cols.push(col); col = []; } });
   if (col.length) cols.push(col);
 
-  const totalWorkouts = Object.keys(workoutDates||{}).length;
-  const thisMonth = allDays.filter(d => {
+  // A WORKOUT IS A SESSION, NOT A DAY. Both tiles counted days in `workoutDates`, so two sessions
+  // on one day read as one — while the LIFETIME tile beside them summed both, and the profile's
+  // own "Workouts" tile (which counts sessions) said two. Three numbers for the same question.
+  // Days with no surviving history detail still count as one, so nothing is lost.
+  const sessionsOn = (k) => Math.max(1, Object.keys((history || {})[k] || {}).length);
+  const totalWorkouts = Object.keys(workoutDates || {}).reduce((a, k) => a + sessionsOn(k), 0);
+  const thisMonth = allDays.reduce((a, d) => {
     const now = new Date();
-    return d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear() && d.active;
-  }).length;
+    if (!d.active) return a;
+    if (d.date.getMonth() !== now.getMonth() || d.date.getFullYear() !== now.getFullYear()) return a;
+    return a + sessionsOn(d.k);
+  }, 0);
   // Weekly "active week" streak — kept available, but no longer shown as its own tile here;
   // it already has a home on the Workout tab's streak card, so showing it again in History
   // was redundant. Lifetime volume below replaces it with something History-specific.
@@ -10030,7 +10084,25 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
       }
       return { ...prev, history: { ...prev.history, [date]: dayHistory } };
     });
-    // 2. Patch DB row
+    // 2. Patch DB row.
+    // If this session hasn't reached the server yet it is sitting in seshd_pending_workouts, and a
+    // PATCH matching zero rows returns 204 with no error — so the edit reported "Workout updated",
+    // the queued copy kept the ORIGINAL numbers, and the correction died on the next loadUserData.
+    // History even offers Edit on these (they render with a SYNCING badge). Retag the queue, the
+    // way mergeExerciseNames already does.
+    try {
+      const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
+      let touched = false;
+      for (const p of pending) {
+        if (String(p?.sid) !== String(sid) || !p?.data) continue;
+        p.data.exercises = exercises
+          .filter(ex => ex?.name && (ex.sets || []).some(s => s.done))
+          .map(ex => ({ name: ex.name, sets: (ex.sets || []).filter(s => s.done)
+            .map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) }));
+        touched = true;
+      }
+      if (touched) localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
+    } catch {}
     try {
       if (token && !String(sid).startsWith("local_")) {
         await sb.query(`workout_history?id=eq.${sid}`, {
@@ -10070,19 +10142,45 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
           if (lbs > (editedPRs[ex.name] || 0)) editedPRs[ex.name] = lbs;
         });
       });
+      // AN EDIT CAN LOWER A PR, so recompute the affected exercises against the history as it
+      // will be AFTER this edit — the closure's store.history still holds the old sets. Every name
+      // that appeared before or after is in scope: renaming or deleting an exercise has to release
+      // the PR it was holding just as much as retyping its weight does.
+      const affected = new Set([
+        ...(sess.exercises || []).map(e => e?.name).filter(Boolean),
+        ...Object.keys(editedPRs),
+      ]);
+      const nextHistory = {
+        ...(store.history || {}),
+        [date]: { ...((store.history || {})[date] || {}), [sid]: { ...sess, exercises } },
+      };
+      const trueMax = historyMaxPRs(nextHistory, [...affected]);
       const curPrs = store.prs || {};
-      const raised = Object.entries(editedPRs).filter(([name, w]) => w > (curPrs[name] || 0));
-      if (raised.length) {
+      const changed = Object.entries(trueMax).filter(([name, w]) => Math.round(w) !== Math.round(curPrs[name] || 0));
+      if (changed.length) {
         setStore(prev => {
           const nextPrs = { ...(prev.prs || {}) };
-          raised.forEach(([name, w]) => { if (w > (nextPrs[name] || 0)) nextPrs[name] = w; });
-          return { ...prev, prs: nextPrs };
+          const nextE1 = { ...(prev.prsE1rm || {}) };
+          const nextVol = { ...(prev.prsVolume || {}) };
+          changed.forEach(([name, w]) => {
+            // 0 = no working sets left for this lift anywhere; drop it rather than pin it at zero.
+            if (w > 0) nextPrs[name] = w; else { delete nextPrs[name]; delete nextE1[name]; delete nextVol[name]; }
+          });
+          return { ...prev, prs: nextPrs, prsE1rm: nextE1, prsVolume: nextVol };
         });
         if (token && currentUserId) {
-          raised.forEach(([name, w]) => {
-            sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, token).catch(()=>{});
+          changed.forEach(([name, w]) => {
+            const path = `personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(name)}`;
+            if (w > 0) {
+              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, token).catch(()=>{});
+            } else {
+              // The server row must go too, or loadUserData's max-wins merge resurrects it.
+              sb.queueWrite(path, { method: "DELETE" }, token).catch(()=>{});
+            }
           });
         }
+        // prEvents recorded against this session describe sets that no longer exist.
+        setStore(prev => ({ ...prev, prEvents: (prev.prEvents || []).filter(e => e.sid !== sid) }));
       }
     } catch (e) { devError("PR recompute on edit failed:", e); }
     // 3. Update the feed post built from THIS session (see matchesSession).
@@ -10163,7 +10261,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         <button onClick={handleSave} disabled={saving} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor: saving ? "default" : "pointer", fontFamily:F, opacity: saving ? 0.5 : 1 }}>{saving ? "..." : "Save"}</button>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px 32px" }}>
-        <div style={{ fontSize:11, color:C.sub, marginBottom:10, letterSpacing:0.4, fontWeight:600 }}>{sess.dayName} · {new Date(date + "T12:00:00").toLocaleDateString()}</div>
+        <div style={{ fontSize:11, color:C.sub, marginBottom:10, letterSpacing:0.4, fontWeight:600 }}>{sess.dayName} · {new Date(date + "T12:00:00").toLocaleDateString()} · logged in {(sess.unit || unit || "lbs").toLowerCase()}</div>
         {exercises.map((ex, ei) => (
           <div key={ei} style={{ marginBottom:18, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 12px 8px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
@@ -10176,7 +10274,11 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"30px 1fr 1fr 28px", gap:8, alignItems:"center", marginBottom:6 }}>
               <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>SET</div>
-              <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>{unit?.toUpperCase() || "LBS"}</div>
+              {/* The SESSION's unit, not the app's. The boxes hold the session's raw numbers, so
+                  labelling the column with store.unit told a lbs-mode user that a 143 logged in kg
+                  was 143 LBS — and "correcting" it to 315 writes 315 KG, 694 lbs, into the log and
+                  the PR. History itself was already right; only the editor lied. */}
+              <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>{(sess.unit || unit || "lbs").toUpperCase()}</div>
               <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5 }}>REPS</div>
               <div/>
             </div>
@@ -10940,6 +11042,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     return sessionVolume({ exercises: (session.exercises || []).filter(e => e.name) });
   }, [session]);
 
+  // Settings can flip the weight unit while a workout is live, and the live session carries no
+  // unit of its own — it reads store.unit and is only stamped at finish. Convert what's already
+  // logged so the numbers keep meaning the same load. Rounded to a tenth, and trailing ".0"
+  // dropped, because these are strings the user edits by hand.
+  useEffect(() => {
+    function handleUnitChange(e) {
+      const { from, to } = e?.detail || {};
+      if (!from || !to || from === to) return;
+      const conv = (v) => {
+        const n = parseFloat(v);
+        if (!isFinite(n) || n === 0) return v;
+        const out = Math.round(cvt(n, from, to) * 10) / 10;
+        return String(out);
+      };
+      setSession(p => p && ({
+        ...p,
+        exercises: (p.exercises || []).map(ex => ({
+          ...ex,
+          ...(ex.barWeight != null ? { barWeight: conv(ex.barWeight) } : {}),
+          sets: (ex.sets || []).map(s => ({ ...s, weight: conv(s.weight) })),
+        })),
+      }));
+    }
+    window.addEventListener("seshd:unit-changed", handleUnitChange);
+    return () => window.removeEventListener("seshd:unit-changed", handleUnitChange);
+  }, []);
+
   // Listen for code-import requests from feed posts
   useEffect(() => {
     function handleOpenCode(e) {
@@ -11279,7 +11408,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           try { LA?.end({}); } catch (e) {}
           setRest(null);
         } else {
-          const restSecs = parseInt(currentSet?.restTime || currentExercise?.rest || store.defaultRestTime || 90) || 90;
+          const restSecs = restSecondsFor(currentExercise, currentSet, store);
           setRest({ secs: restSecs, total: restSecs, running: true, startedAt: Date.now(), exerciseIdx: ei });
           try { LA?.start?.({ totalSeconds: restSecs, exerciseName: currentExercise?.name || "Rest", setsDone: ei + 1, setsTotal: session?.exercises?.length || 1 }); } catch (e) {}
         }
@@ -12375,7 +12504,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
                       <button onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
-                        {fmtTime(set.restTime||store.defaultRestTime||120)}
+                        {fmtTime(restSecondsFor(ex, set, store))}
                       </button>
                       <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
                     </div>
@@ -15249,7 +15378,9 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const [pickerCaption, setPickerCaption] = useState(""); // optional caption for the group workout share
   const workoutPickerRecents = useMemo(() => {
     if (!showWorkoutPicker) return [];
-    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([d,s])=>Object.values(s).map(sess=>({...sess,date:d}))).slice(0,10);
+    // Carry the session id — the card this creates needs it as client_id, or re-sharing the same
+    // workout inserts a duplicate group post (the finish-time group share already dedups on it).
+    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([d,s])=>Object.entries(s).map(([sid,sess])=>({...sess,sid,date:d}))).slice(0,10);
   }, [showWorkoutPicker, store.history]);
   const [loading, setLoading] = useState(true);
   const [caption, setCaption] = useState("");
@@ -15642,12 +15773,17 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                       setPosting(true);
                       const cap = pickerCaption.trim();
                       setPickerCaption("");
-                      const workoutData = { name:sess.dayName, duration:sess.duration, exercises:(sess.exercises||[]).filter(e=>e.name).map(ex=>({ name:ex.name, sets:(ex.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.weight)||0,r:parseFloat(s.reps)||0})) })) };
+                      // A ninth hand-rolled copy of the card payload lived here: `filter(s => s.done)`
+                      // with no warmup exclusion (so warmups were listed on the group card) and no
+                      // `volume` at all (so the card's VOL tile was suppressed, `volume > 0` being
+                      // false). The picker ROW ten lines above already used workingDone() +
+                      // sessionVolume() — the row you tapped and the card it made disagreed.
+                      const workoutData = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
                       try {
                         const r = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
                           method:"POST",
                           headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
-                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, workout:workoutData })
+                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, client_id: sess.sid || null, workout:{ ...workoutData, name: sess.dayName, duration: sess.duration } })
                         });
                         if (r.ok) {
                           const d = await r.json();
@@ -17707,6 +17843,16 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
                     {["lbs","kg"].map(u => (
                       <button key={u} onClick={async () => {
+                        // A LIVE SESSION HAS NO UNIT OF ITS OWN — the workout screen reads
+                        // store.unit live and only stamps it at finish. So flipping this mid-workout
+                        // silently REINTERPRETED every set already logged: 100 lbs of pulldowns
+                        // became 100 kg, the running header read 2,000 KG for 2,000 lb of work, and
+                        // finishing recorded it that way permanently in history, PRs and the shared
+                        // card. Convert the numbers so they still mean what the user lifted.
+                        const from = store.unit || "lbs";
+                        if (from !== u) {
+                          try { window.dispatchEvent(new CustomEvent("seshd:unit-changed", { detail: { from, to: u } })); } catch {}
+                        }
                         setStore(p => ({ ...p, unit: u }));
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
@@ -21257,13 +21403,17 @@ function AppInner() {
         const newDay = { ...(prev.history[date] || {}) };
         sidsToDelete.forEach(sid => delete newDay[sid]);
         const newHistory = { ...prev.history };
-        if (Object.keys(newDay).length === 0) delete newHistory[date];
+        const newDates = { ...(prev.workoutDates || {}) };
+        // A day with no sessions left is not a training day — leaving the key behind left History
+        // reading "1 TOTAL" next to "0 LIFETIME", and kept the heatmap and weekly streak crediting
+        // a day with nothing in it.
+        if (Object.keys(newDay).length === 0) { delete newHistory[date]; delete newDates[date]; }
         else newHistory[date] = newDay;
         // Also clear historyInteractions for this synthetic post
         const newHI = { ...(prev.historyInteractions || {}) };
         delete newHI[postId];
         return {
-          ...prev, history: newHistory, historyInteractions: newHI,
+          ...prev, history: newHistory, workoutDates: newDates, historyInteractions: newHI,
           prEvents: (prev.prEvents || []).filter(e => !sidsToDelete.includes(e.sid)),
         };
       });
@@ -22678,13 +22828,35 @@ function AppInner() {
               const sharedPost = (store.posts || []).find(p =>
                 p.userId === currentUserId && matchesSession(p, sid, sess, date) && !String(p.id).startsWith("hist_")
               );
+              // Deleting the session that HELD a PR has to release it — nothing in the app could
+              // lower one, so a deleted 315 stayed a PR for a set that no longer exists anywhere.
+              const affected = (sess?.exercises || []).map(e => e?.name).filter(Boolean);
+              const afterHistory = (() => {
+                const day = { ...((store.history || {})[date] || {}) };
+                delete day[sid];
+                const h = { ...(store.history || {}) };
+                if (Object.keys(day).length) h[date] = day; else delete h[date];
+                return h;
+              })();
+              const trueMax = affected.length ? historyMaxPRs(afterHistory, affected) : {};
+              const prChanged = Object.entries(trueMax)
+                .filter(([n, w]) => Math.round(w) !== Math.round((store.prs || {})[n] || 0));
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
                 delete dayHistory[sid];
                 const newHistory = { ...prev.history };
-                if (Object.keys(dayHistory).length === 0) delete newHistory[date];
+                const newDates = { ...(prev.workoutDates || {}) };
+                // See the note in handleDelete: an emptied day must stop counting as a workout day.
+                if (Object.keys(dayHistory).length === 0) { delete newHistory[date]; delete newDates[date]; }
                 else newHistory[date] = dayHistory;
-                return { ...prev, history: newHistory,
+                const nextPrs = { ...(prev.prs || {}) };
+                const nextE1 = { ...(prev.prsE1rm || {}) };
+                const nextVol = { ...(prev.prsVolume || {}) };
+                prChanged.forEach(([n, w]) => {
+                  if (w > 0) nextPrs[n] = w; else { delete nextPrs[n]; delete nextE1[n]; delete nextVol[n]; }
+                });
+                return { ...prev, history: newHistory, workoutDates: newDates,
+                  prs: nextPrs, prsE1rm: nextE1, prsVolume: nextVol,
                   prEvents: (prev.prEvents || []).filter(e => e.sid !== sid),
                   posts: sharedPost ? (prev.posts || []).filter(p => p.id !== sharedPost.id) : prev.posts };
               });
@@ -22702,6 +22874,15 @@ function AppInner() {
                   if (currentUserId) {
                     const keptPrEvents = (store.prEvents || []).filter(e => e.sid !== sid);
                     sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
+                    // Push the recomputed PRs up too. Leaving the old personal_records row behind
+                    // lets loadUserData's max-wins merge resurrect the deleted PR on next launch.
+                    for (const [n, w] of prChanged) {
+                      if (w > 0) {
+                        sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: w }) }, tok).catch(()=>{});
+                      } else {
+                        sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(n)}`, { method: "DELETE" }, tok).catch(()=>{});
+                      }
+                    }
                   }
                 }
               } catch(e) { devError("history delete:", e); }
