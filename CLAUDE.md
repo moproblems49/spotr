@@ -43,6 +43,13 @@ delete the old zip FIRST → build with the real `.env.local` → `cd dist && zi
 ../public/bundles/seshd-<ver>.zip .` → bump `LATEST_VERSION` → commit + push. Bump the version
 suffix (…a → …b → …c) each time. Sanity-check the built bundle carries the REAL supabase URL (a
 stub-built bundle breaks sign-in for everyone).
+**"Delete the old zip FIRST" is load-bearing, and it has been getting missed.** `npm run build`
+copies `public/` into `dist/` — so if the previous bundle is still in `public/bundles/` when you
+build, it lands in `dist/bundles/` and the new zip contains the OLD ZIP INSIDE IT. Every phone then
+downloads both. Measured Aug 2: `2026-07-30l` was 3.8MB and 1.9MB of that was the `k` bundle nested
+inside it; built in the right order, `m` is 1.9MB. Nothing breaks — the app ignores the stray file —
+but OTA downloads had roughly doubled. If you build before deleting, `rm -f dist/bundles/*.zip`
+before zipping. Check with `unzip -l <zip> | grep '\.zip$'` — that must print nothing.
 **Where the "real `.env.local`" comes from in a sandbox session:** it isn't in the repo (the values
 live in Vercel), so RECOVER IT FROM THE LAST PUBLISHED BUNDLE — that bundle was built with the real
 values, so they're sitting in its JS:

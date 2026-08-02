@@ -8,6 +8,18 @@ import { JSDOM } from "jsdom";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
 import { writeFileSync } from "node:fs";
+// FREEZE THE CLOCK. This sim seeds no `recovery`, so the sleep stretch it asserts on comes from
+// the app's ESTIMATED bedtime — which depends on the local hour. Run pre-dawn (measured: 05:38
+// UTC) the app correctly collapses that stretch to almost nothing, because "the app is open before
+// dawn with no HealthKit window" is treated as evidence you're AWAKE (the pre-dawn rule
+// sim_bbdiverge pins). The sim then went red on code that was right — the same wall-clock trap
+// that bit sim_bbgate. 10:00 local is a plain mid-morning with a normal night behind it.
+const _RealDate = Date;
+const _FROZEN = new _RealDate(2026, 6, 22, 10, 0, 0);
+global.Date = class extends _RealDate {
+  constructor(...a) { if (!a.length) return new _RealDate(_FROZEN.getTime()); return new _RealDate(...a); }
+  static now() { return _FROZEN.getTime(); }
+};
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let fails = 0;
 const check = (l,c,d)=>{ if(c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d?" — "+d:""}`);} };

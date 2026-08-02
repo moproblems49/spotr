@@ -1,4 +1,4 @@
-// v178091716778
+// v178091716779
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10019,8 +10019,15 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
     // Editing a past workout used to patch only the history row, leaving personal_records (the cache
     // the History "Personal Records" strip + leaderboard read) stale below a set just corrected
     // upward — e.g. fixing a 145 to the 155 you actually lifted wouldn't move your PR.
+    // The session's OWN unit anchors everything below — the PR recompute in 2b AND the three
+    // payload rebuilds in 3/4/5. It was declared inside 2b's try block, so those three uses were a
+    // ReferenceError: step 3 threw during a setStore updater (i.e. in render) and took the whole
+    // app to "Something went sideways", while steps 4 and 5 threw into their own catch and left the
+    // feed post and every group post stale. EVERY edit of a past workout crashed. Mo hit it on
+    // 2026-08-01 (client_errors: "Can't find variable: eu"), which is how it was found.
+    // Keep this ABOVE the try.
+    const eu = sess.unit || store.unit || "lbs";
     try {
-      const eu = sess.unit || store.unit || "lbs";
       const editedPRs = {};
       exercises.forEach(ex => {
         if (!ex?.name) return;
