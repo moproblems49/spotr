@@ -1,4 +1,4 @@
-// v178091716777
+// v178091716778
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1705,7 +1705,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   const data = (bm && (bm.BODYMAPS[sex] || bm.BODYMAP_MALE)) || {};
   const fallback = sex === "female" && bm && !bm.BODYMAP_FEMALE;
   const { region, byMuscle, totalSets, max } = useMemo(() => weeklyMuscleVolume(store, 7), [store.history]);
-  const { readiness, rec, anyData } = useMemo(() => muscleReadiness(store), [store.history, store.recovery]);
+  const { readiness, rec } = useMemo(() => muscleReadiness(store), [store.history, store.recovery]);
   const strength = useMemo(() => muscleStrength(store, unit, store.strengthSex || sex), [store.history, store.prs, store.bodyLog, store.strengthSex, unit]);
 
   const setSex = (val) => {
@@ -1779,21 +1779,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
     };
     return Object.entries(m).map(([n, v]) => [n, Math.round(v)]).sort((a, b) => b[1] - a[1]);
   })();
-  // NEGLECTED muscles — longest since you last trained them. This replaced two captions that
-  // merely restated the colour map in words ("Still recovering: …" and "Lagging: …"): the map
-  // already shows both, and the app's own coach prompt explicitly calls the recovering list
-  // "EXPECTED and not news". Days-since is the thing the map CAN'T show.
-  //
-  // Only muscles you have actually trained at some point qualify — a brand-new user hasn't
-  // "neglected" anything, and listing every muscle on day one would be noise. 5 days is the floor
-  // so a normal split (which leaves 3-4 days between hitting a muscle) doesn't nag.
-  const NEGLECT_MIN_DAYS = 5;
-  const neglected = useMemo(() => Object.entries(daysSinceMuscleTrained(store))
-    .map(([m, days]) => ({ label: _cleanMuscle(m), days }))
-    .filter(x => x.days >= NEGLECT_MIN_DAYS)
-    .sort((a, b) => b.days - a.days)
-    .slice(0, 3), [store.history]);
-
+  // NOTE: the readiness map carries NO caption any more. Three have been tried and all three were
+  // cut: "Still recovering: …" and "Lagging: …" restated the colour map in words, and
+  // "Longest since trained: …" plus the recovery/sleep nudges under it were noise on a screen whose
+  // whole job is the picture. `daysSinceMuscleTrained()` is still live — the coach summary uses it.
   const Tab = ({ id, label }) => (
     <button onClick={() => { setMode(id); haptic("tap"); }} style={{
       flex:1, padding:"7px 0", background: mode === id ? C.accent : "transparent",
@@ -2114,18 +2103,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 </div>
                 <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Ready</span>
               </div>
-              <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
-                {/* The "Still recovering: …" sentence that used to be here restated the colour map
-                    in words. Days-since-trained is what the map can't show. */}
-                {neglected.length
-                  ? <>Longest since trained: {neglected.map((n, i) => (
-                      <span key={n.label}>{i ? " · " : ""}<span style={{ color:C.text, fontWeight:600 }}>{n.label}</span> {n.days}d</span>
-                    ))}</>
-                  : (anyData ? "Everything's been trained in the last few days." : "No recent training logged — everything's fresh.")}
-                {rec && typeof rec.recoveryScore === "number" && rec.recoveryScore < 0.45
-                  ? <><br/>Your recovery is below baseline today — easing off helps.</>
-                  : (rec && typeof rec.recoveryScore !== "number" && typeof rec.sleepHours === "number" && rec.sleepHours < 6 ? <><br/>Low recent sleep is slowing recovery.</> : "")}
-              </div>
+              <div style={{ height:8 }}/>
             </>
           ) : (
             <>
