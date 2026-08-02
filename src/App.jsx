@@ -1,4 +1,4 @@
-// v178091716776
+// v178091716777
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1779,14 +1779,20 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
     };
     return Object.entries(m).map(([n, v]) => [n, Math.round(v)]).sort((a, b) => b[1] - a[1]);
   })();
-  const recoveringUniq = [...new Set(
-    Object.entries(readiness).filter(([, v]) => v < 0.6).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
-  )];
-  // "Lagging" = below the curve's midpoint (Untrained/Novice). The old raw <0.5 cutoff
-  // flagged everything below Advanced — an all-Intermediate lifter saw EVERY muscle listed.
-  const weakUniq = strength.ready ? [...new Set(
-    Object.entries(strength.regionFrac).filter(([, v]) => _strengthDisplayFrac(v) < 0.5).sort((a, b) => a[1] - b[1]).map(([k]) => _regionLabel(k))
-  )] : [];
+  // NEGLECTED muscles — longest since you last trained them. This replaced two captions that
+  // merely restated the colour map in words ("Still recovering: …" and "Lagging: …"): the map
+  // already shows both, and the app's own coach prompt explicitly calls the recovering list
+  // "EXPECTED and not news". Days-since is the thing the map CAN'T show.
+  //
+  // Only muscles you have actually trained at some point qualify — a brand-new user hasn't
+  // "neglected" anything, and listing every muscle on day one would be noise. 5 days is the floor
+  // so a normal split (which leaves 3-4 days between hitting a muscle) doesn't nag.
+  const NEGLECT_MIN_DAYS = 5;
+  const neglected = useMemo(() => Object.entries(daysSinceMuscleTrained(store))
+    .map(([m, days]) => ({ label: _cleanMuscle(m), days }))
+    .filter(x => x.days >= NEGLECT_MIN_DAYS)
+    .sort((a, b) => b.days - a.days)
+    .slice(0, 3), [store.history]);
 
   const Tab = ({ id, label }) => (
     <button onClick={() => { setMode(id); haptic("tap"); }} style={{
@@ -2109,12 +2115,16 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Ready</span>
               </div>
               <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
-                {recoveringUniq.length
-                  ? <>Still recovering: <span style={{ color:C.text, fontWeight:600 }}>{recoveringUniq.slice(0, 3).join(", ")}</span>{recoveringUniq.length > 3 ? "… " : ". "}Everything else is ready.</>
-                  : (anyData ? "All muscles recovered — ready to train anything." : "No recent training logged — everything's fresh.")}
+                {/* The "Still recovering: …" sentence that used to be here restated the colour map
+                    in words. Days-since-trained is what the map can't show. */}
+                {neglected.length
+                  ? <>Longest since trained: {neglected.map((n, i) => (
+                      <span key={n.label}>{i ? " · " : ""}<span style={{ color:C.text, fontWeight:600 }}>{n.label}</span> {n.days}d</span>
+                    ))}</>
+                  : (anyData ? "Everything's been trained in the last few days." : "No recent training logged — everything's fresh.")}
                 {rec && typeof rec.recoveryScore === "number" && rec.recoveryScore < 0.45
-                  ? " Your recovery is below baseline today — easing off helps."
-                  : (rec && typeof rec.recoveryScore !== "number" && typeof rec.sleepHours === "number" && rec.sleepHours < 6 ? " Low recent sleep is slowing recovery." : "")}
+                  ? <><br/>Your recovery is below baseline today — easing off helps.</>
+                  : (rec && typeof rec.recoveryScore !== "number" && typeof rec.sleepHours === "number" && rec.sleepHours < 6 ? <><br/>Low recent sleep is slowing recovery.</> : "")}
               </div>
             </>
           ) : (
@@ -2129,13 +2139,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Stronger</span>
                   </div>
                   <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
-                    {weakUniq.length
-                      ? <>Lagging: <span style={{ color:C.text, fontWeight:600 }}>{weakUniq.slice(0, 3).join(", ")}</span>{weakUniq.length > 3 ? "… " : ". "}Overall: {strength.overall}.</>
-                      : <>Well-balanced — overall: {strength.overall}.</>}
+                    {/* The imbalance line leads now. "Lagging: X, Y" used to sit above it and was
+                        just the colour scale rewritten as a sentence; a RELATIONSHIP between groups
+                        ("your pull is behind your push") is the one thing the map cannot show. */}
                     {strength.imbalances && strength.imbalances.length
-                      ? <><br/><span style={{ color:"#f59e0b", fontWeight:600 }}>{strength.imbalances.join(" · ")}.</span></>
-                      : null}
-                    {" "}Grey = no strength standard for that muscle.
+                      ? <span style={{ color:"#f59e0b", fontWeight:600, fontSize:12 }}>{strength.imbalances.join(" · ")}.</span>
+                      : <>Well-balanced across muscle groups.</>}
+                    <br/>Overall: {strength.overall}. Grey = no strength standard for that muscle.
                   </div>
                   {strength.bodyweightAgeDays > 60 && (
                     <div style={{ margin:"0 16px 14px", padding:"8px 12px", background:C.divider, borderRadius:10, textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.4 }}>
@@ -3871,22 +3881,7 @@ function buildCoachContext(store, unit) {
   // Days since each muscle was last worked — counting BOTH primary and SECONDARY involvement.
   // Without secondaries the coach falsely reports rear delts / traps / biceps / abs as "untouched
   // for weeks" even when rows, face pulls, shrugs, and presses hit them every session.
-  const _cleanMuscle = (m) => ({ RearDelts: "Rear Delts", LowerBack: "Lower Back" }[m] || m);
-  const lastTrained = {};
-  const todayMs = new Date(dKey() + "T12:00:00").getTime();
-  for (const d of dates) {
-    const daysAgo = Math.floor((todayMs - new Date(d + "T12:00:00").getTime()) / 86400000);
-    for (const s of Object.values(store.history[d] || {})) {
-      for (const ex of (s.exercises || [])) {
-        const worked = (ex.sets || []).some(st => st.type !== "warmup" && (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)));
-        if (!worked) continue;
-        const muscles = new Set();
-        const p = resolveMuscle(ex.name); if (p) muscles.add(p);
-        for (const sec of getExerciseSecondaries(ex.name)) muscles.add(_cleanMuscle(sec));
-        for (const m of muscles) if (lastTrained[m] == null) lastTrained[m] = daysAgo;
-      }
-    }
-  }
+  const lastTrained = daysSinceMuscleTrained(store);
   // Effective weekly sets per muscle (secondaries count 0.5×) so the coach has hard numbers on
   // what's actually being trained — including muscles only hit as secondaries — instead of
   // inferring neglect from primary-muscle names alone.
@@ -4462,6 +4457,39 @@ function trainingLoadRatio(store, unit = "lbs") {
   return { ratio, acutePerDay: Math.round(acutePerDay), chronicPerDay: Math.round(chronicPerDay), sessions28, ...band };
 }
 
+// Days since each muscle was last trained (primary + secondary credit), keyed by muscle name.
+// ONE definition: the coach summary needs it and so does the readiness card, and it must be a
+// CALENDAR-day count anchored at local noon on both ends — deriving it from muscleReadiness's
+// fatigue timestamps instead gave 0 days for a session logged yesterday, because those timestamps
+// exist to decay fatigue, not to count days.
+// Display name for an internal muscle key. Module-level because two callers need it now (the
+// coach summary and the readiness card); it used to be a local const inside one function.
+const _cleanMuscle = (m) => ({ RearDelts: "Rear Delts", LowerBack: "Lower Back" }[m] || m);
+
+function daysSinceMuscleTrained(store) {
+  const out = {};
+  const todayMs = new Date(dKey() + "T12:00:00").getTime();
+  const hist = store?.history || {};
+  // Newest first, so the first time a muscle is seen is its most recent session.
+  for (const d of Object.keys(hist).sort().reverse()) {
+    const ts = new Date(d + "T12:00:00").getTime();
+    if (isNaN(ts)) continue;
+    const daysAgo = Math.max(0, Math.round((todayMs - ts) / 86400000));
+    for (const s of Object.values(hist[d] || {})) {
+      for (const ex of (s.exercises || [])) {
+        const worked = (ex.sets || []).some(st => st.type !== "warmup"
+          && (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)));
+        if (!worked) continue;
+        const muscles = new Set();
+        const p = resolveMuscle(ex.name); if (p) muscles.add(p);
+        for (const sec of getExerciseSecondaries(ex.name)) muscles.add(_cleanMuscle(sec));
+        for (const m of muscles) if (out[m] == null) out[m] = daysAgo;
+      }
+    }
+  }
+  return out;
+}
+
 // What ONE session costs the battery. Used by the headline number AND the 24h curve — they had
 // drifted (the curve still charged the old 6 + 0.9/set after the headline moved to 4 + 0.6/set),
 // so the chart dived to ~10 while the number beside it read 23. Same class as every other
@@ -4927,7 +4955,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
