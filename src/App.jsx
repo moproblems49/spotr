@@ -1,4 +1,4 @@
-// v178091716783
+// v178091716784
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3113,13 +3113,43 @@ function sessionPRNames(sess, prs) {
 // `client_id` is the session's own id and has been on both post tables since the duplicate-post
 // fix; it just wasn't mapped client-side. Prefer it absolutely. The name+window guess survives only
 // for posts written before that column existed — for those the ambiguity is already baked in.
+// Convert a live session's typed weights between units. Rounded to a tenth and left as strings,
+// because these are values the user edits by hand; blanks, zeros and non-numerics pass through.
+function convertSessionUnits(sess, from, to) {
+  if (!sess || !from || !to || from === to) return sess;
+  const conv = (v) => {
+    const n = parseFloat(v);
+    if (!isFinite(n) || n === 0) return v;
+    return String(Math.round(cvt(n, from, to) * 10) / 10);
+  };
+  return {
+    ...sess,
+    exercises: (sess.exercises || []).map(ex => ({
+      ...ex,
+      ...(ex.barWeight != null ? { barWeight: conv(ex.barWeight) } : {}),
+      sets: (ex.sets || []).map(s => ({ ...s, weight: conv(s.weight) })),
+    })),
+  };
+}
+
+// `client_id` is a uuid column on both post tables, but history keys written before the UUID
+// switch are short base36 `uid()` strings — sending one 400s the whole insert. Only stamp a real
+// UUID; a legacy session just stays on the (non-destructive) fallback path.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const asUuidOrNull = (v) => (typeof v === "string" && UUID_RE.test(v) ? v : null);
+
+// `strict` refuses the guess entirely. DESTRUCTIVE callers must pass it: a missed deletion is
+// recoverable, a wrong one is not. Deleting a workout used to leave its post alone; wiring the
+// delete through the fuzzy branch meant deleting the morning "Push Day A" could remove the
+// EVENING one's card from the feed forever — a worse bug than the one being fixed.
 const POST_MATCH_WINDOW_MS = 86400000;
-function matchesSession(post, sid, sess, dateKey) {
+function matchesSession(post, sid, sess, dateKey, strict = false) {
   if (!post || post.type !== "workout" || !post.workout) return false;
   const pcid = post.clientId ?? post.client_id ?? null;
   // Only fall back to the guess when the POST genuinely predates client_id. Gating on
   // `pcid || sid` instead would make every legacy post unmatchable the moment a sid is passed.
   if (pcid != null && sid != null) return String(pcid) === String(sid);
+  if (strict) return false;
   if (post.workout.name !== sess?.dayName) return false;
   const finishedAt = sess?.finishedAt || new Date(dateKey + "T12:00:00").getTime();
   const created = post.createdAt ?? (post.created_at ? new Date(post.created_at).getTime() : 0);
@@ -9550,7 +9580,12 @@ const SESSION_KEY = "seshd_active_session";
 const WSTART_KEY = "seshd_wstart";
 // When the user last logged a set. Persisted because the idle-gap duration cap has to survive the
 // app being killed mid-workout — that IS the case it exists for.
-const LAST_ACTIVITY_KEY = "seshd_last_activity";
+// NOT "seshd_last_activity" — that exact key is on cleanupStaleLocalStorage's sweep list, which
+// loadStore() runs on EVERY launch before WorkoutTracker ever mounts. The stamp was therefore
+// deleted before it could be read, and the ten-hour-workout bug it exists to prevent still
+// reproduced with the fix "in place". Verified: seeded stamp present in the init script, null by
+// the time the app had booted.
+const LAST_ACTIVITY_KEY = "seshd_wlast_activity";
 
 // Inline code-redeem row used in the templates modal
 function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, initialCode = null }) {
@@ -10099,6 +10134,12 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
           .filter(ex => ex?.name && (ex.sets || []).some(s => s.done))
           .map(ex => ({ name: ex.name, sets: (ex.sets || []).filter(s => s.done)
             .map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) }));
+        // The queued entry also carries the PR map captured at finish, and the flush upserts every
+        // entry of it. Retagging only the exercises left the PRE-EDIT weight in there, so the flush
+        // re-POSTed the mistyped 315 and the max-wins merge restored it on the next launch —
+        // silently undoing the correction that was just made. loadUserData re-derives real PRs from
+        // history anyway, so dropping the map is the safe move.
+        delete p.data.prs;
         touched = true;
       }
       if (touched) localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
@@ -10146,10 +10187,23 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
       // will be AFTER this edit — the closure's store.history still holds the old sets. Every name
       // that appeared before or after is in scope: renaming or deleting an exercise has to release
       // the PR it was holding just as much as retyping its weight does.
-      const affected = new Set([
-        ...(sess.exercises || []).map(e => e?.name).filter(Boolean),
-        ...Object.keys(editedPRs),
-      ]);
+      //
+      // ONLY exercises this edit actually CHANGED. Scoping it to every exercise in the session
+      // destroys legitimately-higher personal_records rows for lifts the user never touched:
+      // loadUserData's history reconcile "only ever raises", so a stored PR sitting above the local
+      // history max is a supported state (live data has several — e.g. a Leg Press row at 360 with
+      // a history max of 340). Editing the bench in that session would have dragged Leg Press down
+      // to 340, and the equal-to-PR comparison then mints a false PR badge on the rebuilt card.
+      const setsSig = (ex) => JSON.stringify((ex?.sets || []).map(s =>
+        [s?.weight ?? "", s?.reps ?? "", !!s?.done, s?.type || "normal"]));
+      const beforeByName = {};
+      (sess.exercises || []).forEach(ex => { if (ex?.name) beforeByName[ex.name] = setsSig(ex); });
+      const afterByName = {};
+      (exercises || []).forEach(ex => { if (ex?.name) afterByName[ex.name] = setsSig(ex); });
+      const affected = new Set(
+        [...new Set([...Object.keys(beforeByName), ...Object.keys(afterByName)])]
+          .filter(n => beforeByName[n] !== afterByName[n])
+      );
       const nextHistory = {
         ...(store.history || {}),
         [date]: { ...((store.history || {})[date] || {}), [sid]: { ...sess, exercises } },
@@ -10179,8 +10233,18 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
             }
           });
         }
-        // prEvents recorded against this session describe sets that no longer exist.
-        setStore(prev => ({ ...prev, prEvents: (prev.prEvents || []).filter(e => e.sid !== sid) }));
+        // Drop only the PR events for the exercises this edit actually changed — wiping every
+        // event for the session also deleted ones that are still true. And PATCH the server copy,
+        // which both delete paths already do: loadUserData prefers the server's pr_events, so a
+        // local-only filter is undone on the next launch and Wrapped keeps reporting the stale PR.
+        const changedNames = new Set(changed.map(([n]) => n));
+        setStore(prev => {
+          const keptPrEvents = (prev.prEvents || []).filter(e => !(e.sid === sid && changedNames.has(e.name)));
+          if (token && currentUserId) {
+            sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, token).catch(() => {});
+          }
+          return { ...prev, prEvents: keptPrEvents };
+        });
       }
     } catch (e) { devError("PR recompute on edit failed:", e); }
     // 3. Update the feed post built from THIS session (see matchesSession).
@@ -11050,20 +11114,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     function handleUnitChange(e) {
       const { from, to } = e?.detail || {};
       if (!from || !to || from === to) return;
-      const conv = (v) => {
-        const n = parseFloat(v);
-        if (!isFinite(n) || n === 0) return v;
-        const out = Math.round(cvt(n, from, to) * 10) / 10;
-        return String(out);
-      };
-      setSession(p => p && ({
-        ...p,
-        exercises: (p.exercises || []).map(ex => ({
-          ...ex,
-          ...(ex.barWeight != null ? { barWeight: conv(ex.barWeight) } : {}),
-          sets: (ex.sets || []).map(s => ({ ...s, weight: conv(s.weight) })),
-        })),
-      }));
+      setSession(p => p && convertSessionUnits(p, from, to));
     }
     window.addEventListener("seshd:unit-changed", handleUnitChange);
     return () => window.removeEventListener("seshd:unit-changed", handleUnitChange);
@@ -11898,7 +11949,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // branch treated as a network failure: every guest workout fired TWO error toasts and pushed
       // a full copy of the session into seshd_pending_workouts, a queue that can never drain while
       // signed out. It grew by one whole workout on every finish.
-      const unreachable = saveResult && saveResult.ok === false && saveResult.reason !== "no-token";
+      // Gate on isGuest, not on the reason alone: handleSaveWorkout returns "no-token" for ANY
+      // missing token, so a signed-in user who somehow reached finish without one would get
+      // "Workout saved" and nothing queued. No reachable path today, but the queue is the only
+      // thing standing between them and a lost workout.
+      const unreachable = saveResult && saveResult.ok === false && !(isGuest && saveResult.reason === "no-token");
       if (unreachable) {
         // DB save failed — keep a pending copy so it can be retried, and warn the user
         try {
@@ -15780,10 +15835,16 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                       // sessionVolume() — the row you tapped and the card it made disagreed.
                       const workoutData = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
                       try {
-                        const r = await fetch(`${SUPABASE_URL}/rest/v1/group_posts`, {
+                        // `group_posts` has UNIQUE (group_id, client_id), and the finish-time group
+                        // share already writes that row with the same id — so sending client_id
+                        // WITHOUT an upsert target turns "share this again" into a permanent 409
+                        // and a "Couldn't share — try again" that never succeeds. Mirror the
+                        // finish-time call: upsert on conflict, and only when we actually have an id.
+                        const gcid = asUuidOrNull(sess.sid);
+                        const r = await fetch(`${SUPABASE_URL}/rest/v1/group_posts${gcid ? "?on_conflict=group_id,client_id" : ""}`, {
                           method:"POST",
-                          headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer":"return=representation" },
-                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, client_id: sess.sid || null, workout:{ ...workoutData, name: sess.dayName, duration: sess.duration } })
+                          headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer": gcid ? "resolution=merge-duplicates,return=representation" : "return=representation" },
+                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, ...(gcid ? { client_id: gcid } : {}), workout:{ ...workoutData, name: sess.dayName, duration: sess.duration } })
                         });
                         if (r.ok) {
                           const d = await r.json();
@@ -17851,6 +17912,19 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         // card. Convert the numbers so they still mean what the user lifted.
                         const from = store.unit || "lbs";
                         if (from !== u) {
+                          // The tab-swipe track mounts ONLY the current tab, and this toggle lives
+                          // in the Profile tab's Settings sheet — so WorkoutTracker is unmounted
+                          // and the event below reaches nobody. Measured: a 225 lb bench was still
+                          // written to history as 225 KG, a 496 lb PR nobody can beat. Rewrite the
+                          // PERSISTED session, which is what the tracker restores from on return.
+                          // Both paths are idempotent: whichever runs, the result is one conversion.
+                          try {
+                            const raw = localStorage.getItem(SESSION_KEY);
+                            if (raw) {
+                              const converted = convertSessionUnits(JSON.parse(raw), from, u);
+                              localStorage.setItem(SESSION_KEY, JSON.stringify(converted));
+                            }
+                          } catch {}
                           try { window.dispatchEvent(new CustomEvent("seshd:unit-changed", { detail: { from, to: u } })); } catch {}
                         }
                         setStore(p => ({ ...p, unit: u }));
@@ -18225,21 +18299,19 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
     } else if (postKind === "workout") {
       // done===true means explicitly done; done===undefined (old records) with reps means done; done===false means skipped
       const isDoneSet = s => (s.done === true || (s.done === undefined && (parseFloat(s.reps||s.r) > 0))) && s.type !== "warmup";
-      const doneExercises = (selectedWorkout.exercises||[])
-        .filter(e => e.name && (e.sets||[]).some(isDoneSet))
-        .map(ex => ({
-          name: ex.name,
-          sets: (ex.sets||[]).filter(isDoneSet).map(s => ({ w: parseFloat(s.weight||s.w)||0, r: parseFloat(s.reps||s.r)||0 }))
-        }))
-        .filter(ex => ex.sets.length > 0);
-      const vol = doneExercises.reduce((a,ex)=>a+ex.sets.reduce((b,s)=>b+s.w*s.r,0),0);
+      // A TENTH hand-rolled copy of the card payload used to live here: isDoneSet with no warmup
+      // exclusion, so warmups were counted into this card's volume and listed on it — the exact
+      // divergence postWorkoutPayload exists to prevent.
+      const built = postWorkoutPayload(selectedWorkout.exercises, prs, null, selectedWorkout.unit || "lbs");
       onPost({ type:"workout", caption: caption || `${selectedWorkout.dayName} — done.`,
         unit: selectedWorkout.unit || "lbs",
+        // Stamp the session id so this card can always be found again by id rather than guessed at.
+        clientId: asUuidOrNull(selectedWorkout.sid),
         workout: {
           name: selectedWorkout.dayName,
           duration: selectedWorkout.duration,
-          volume: Math.round(vol),
-          exercises: doneExercises
+          volume: built.volume,
+          exercises: built.exercises
         }
       });
     } else if (postKind === "run") {
@@ -19786,7 +19858,9 @@ function AppInner() {
   const [showNewPost, setShowNewPost] = useState(false);
   const newPostRecentWorkouts = useMemo(() => {
     if (!showNewPost) return [];
-    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.values(sessions).map(s=>({...s,_date:date}))).filter(sess=>{
+    // Carry the session id: without it the post is written with client_id NULL and every later
+    // "which post is this workout?" lookup falls back to guessing by name + a 24h window.
+    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.entries(sessions).map(([sid,s])=>({...s,sid,_date:date}))).filter(sess=>{
       const hasDone=(sess.exercises||[]).some(ex=>(ex.sets||[]).some(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0))));
       return hasDone;
     }).slice(0,10);
@@ -21057,6 +21131,7 @@ function AppInner() {
           location: newPost.location, workout: newPost.workout,
           run: newPost.run, yoga: newPost.yoga, achievement: newPost.achievement,
           unit: newPost.unit, isPR: newPost.is_pr,
+          clientId: newPost.client_id || null,
           kudos: [], comments: [],
           // Use the timestamp we set on the row (client wall-clock) instead of trusting whatever DB returned
           createdAt: new Date(newPost.created_at || nowIso).getTime(),
@@ -22825,8 +22900,11 @@ function AppInner() {
               // it, PR badge and all. The edit path goes to considerable trouble to keep this same
               // post in sync — the delete path just didn't.
               const sess = store.history?.[date]?.[sid];
+              // STRICT: only a real client_id match. A post shared before client_id existed keeps
+              // its card — the user can delete it from the feed — which is far better than
+              // guessing and deleting a DIFFERENT workout's card irreversibly.
               const sharedPost = (store.posts || []).find(p =>
-                p.userId === currentUserId && matchesSession(p, sid, sess, date) && !String(p.id).startsWith("hist_")
+                p.userId === currentUserId && matchesSession(p, sid, sess, date, true) && !String(p.id).startsWith("hist_")
               );
               // Deleting the session that HELD a PR has to release it — nothing in the app could
               // lower one, so a deleted 315 stayed a PR for a set that no longer exists anywhere.

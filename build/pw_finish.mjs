@@ -30,67 +30,6 @@ const check = (l, c, dd) => { if (c) console.log(`PASS ${l}`); else { fails++; c
 const PORT = process.env.PORT || "8207";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 
-// Drive a Quick Start workout: fill row 0 of the first (blank-named) exercise, optionally name it.
-async function runFinish({ guest, nameTheExercise, seedDates }) {
-  const page = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  page.setDefaultTimeout(4000);
-  const writes = [];
-  await page.addInitScript(([me, isGuest, dates]) => {
-    const wd = {}; dates.forEach(d => { wd[d] = true; });
-    localStorage.setItem("seshd_v1", JSON.stringify({
-      currentUserId: isGuest ? null : me, theme: "dark", unit: "lbs", programs: [], history: {},
-      workoutDates: wd, weeklyTarget: 3, prEvents: [], bodyLog: [], prs: {}, posts: [],
-      profile: { username: "momo", name: "Mo" },
-      users: [{ id: me, username: "momo", name: "Mo", followers: [], following: [] }],
-    }));
-    if (isGuest) localStorage.setItem("seshd_guest", "1");
-    else localStorage.setItem("seshd_session", JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: me, email: "mo@example.com" } }));
-    localStorage.setItem("seshd_onboarded", "1");
-    localStorage.setItem("seshd_custom_merge_v1", "1");
-  }, [ME, !!guest, seedDates || []]);
-  await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
-    body: JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: ME, email: "mo@example.com" } }) }));
-  await page.route("**/rest/v1/**", r => {
-    const req = r.request(), u = req.url(), m = req.method();
-    if (m !== "GET") writes.push({ method: m, url: u.split("/rest/v1/")[1], body: req.postData() || "" });
-    let body = "[]";
-    if (m === "GET" && /\/rest\/v1\/(profiles|public_profiles)\?/.test(u))
-      body = JSON.stringify([{ id: ME, username: "momo", name: "Mo", unit: "lbs", is_public: true, seen_onboarding: true, theme: "dark" }]);
-    r.fulfill({ status: 200, contentType: "application/json", body });
-  });
-
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "load", timeout: 20000 });
-  await page.waitForTimeout(2400);
-  await page.mouse.click(164, 869);               // Tracker tab
-  await page.waitForTimeout(900);
-
-  const qs = page.getByText("Quick Start", { exact: false }).locator("visible=true").first();
-  if (await qs.count()) { await qs.click(); await page.waitForTimeout(1200); }
-
-  if (nameTheExercise) {
-    const exBox = page.locator('input[placeholder*="xercise" i], input[placeholder*="earch" i]').locator("visible=true").first();
-    if (await exBox.count()) {
-      await exBox.fill("Barbell Bench Press");
-      await page.waitForTimeout(700);
-      const opt = page.getByText("Barbell Bench Press", { exact: true }).locator("visible=true").first();
-      if (await opt.count()) { await opt.click(); await page.waitForTimeout(600); }
-    }
-  }
-
-  // Log one set: the weight/reps fields are DIVs (iOS autofill workaround) driven by the NumberPad.
-  const wCell = page.locator('[data-setfield="weight"]').locator("visible=true").first();
-  if (await wCell.count()) {
-    await wCell.click(); await page.waitForTimeout(500);
-    for (const d of ["1", "0", "0"]) {
-      const k = page.getByText(d, { exact: true }).locator("visible=true").last();
-      if (await k.count()) { await k.dispatchEvent("pointerdown"); await page.waitForTimeout(120); }
-    }
-    const done = page.getByText(/^(Done|Next)$/).locator("visible=true").last();
-    if (await done.count()) { await done.click(); await page.waitForTimeout(700); }
-  }
-  return { page, writes };
-}
-
 // ── 1. Summary must match what is saved (blank-named exercise) ───────────────────────────────
 // Rather than fight the NumberPad, seed the live session directly and read the two numbers.
 async function summaryVsSaved(blankName) {
@@ -158,8 +97,12 @@ async function summaryVsSaved(blankName) {
   console.log("summary volume:", summaryVol, " saved volume:", savedVol, " saved sets:", savedSets);
   // 225×5 = 1125 is saved; the blank-named 100×10 = 1000 is not.
   check("only the named exercise reaches the server", savedVol === 1125, `saved ${savedVol}`);
-  check("the summary reports the SAVED volume, not the dropped-set total",
-    /1,125|1125/.test(r.text) && !/2,125|2125/.test(r.text), `summary said ${summaryVol}`);
+  // Read the TOTAL VOLUME tile itself. A whole-page regex matches the live header behind the
+  // summary, which carries the same number — it could pass with only one of the two corrected.
+  check("the summary's TOTAL VOLUME tile reports the SAVED volume", /^1,125\b/.test(String(summaryVol || "")),
+    `tile said ${summaryVol}`);
+  check("...and the live header behind it agrees", /1\/1 sets · 1,125 LBS/.test(r.text),
+    (r.text.match(/\d+\/\d+ sets · [\d,\.k]+ LBS/) || ["(no header)"])[0]);
   check("...and the saved set count matches", savedSets === 1, `saved ${savedSets} sets`);
 }
 
@@ -196,13 +139,15 @@ async function summaryVsSaved(blankName) {
   await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
     body: JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: ME, email: "mo@example.com" } }) }));
   await page.route("**/rest/v1/**", r => {
-    const u = r.request().url(), m = r.request().method();
+    // `req` must come from THIS handler. An earlier version referenced a `req` that wasn't in
+    // scope here; the ReferenceError was swallowed by the catch below, body stayed "[]", and the
+    // block silently exercised the OFFLINE branch while claiming to test a successful save.
+    const req = r.request(), u = req.url(), m = req.method();
     let body = "[]";
     if (m === "GET" && /\/rest\/v1\/(profiles|public_profiles)\?/.test(u))
       body = JSON.stringify([{ id: ME, username: "momo", name: "Mo", unit: "lbs", is_public: true, seen_onboarding: true, theme: "dark" }]);
     // A real PostgREST insert with return=representation echoes the row back. Answering "[]" reads
-    // as "nothing was written", so the app correctly reported a failed save and the fixture — not
-    // the app — was producing the "couldn't reach server" toast.
+    // as "nothing was written", so the app correctly reports a failed save.
     else if (m === "POST" && /\/rest\/v1\/workout_history/.test(u)) {
       try { body = JSON.stringify([JSON.parse(req.postData() || "{}")]); } catch { body = "[]"; }
     }
@@ -254,7 +199,7 @@ async function summaryVsSaved(blankName) {
   const pending = await page.evaluate(() => localStorage.getItem("seshd_pending_workouts"));
   console.log("guest finish →", t.slice(0, 160), "| pending:", pending);
   check("a guest finish shows no 'couldn't reach server' error", !/couldn't reach server/i.test(t), t.slice(0, 200));
-  check("...and no 'Not signed in' error toast", !/Not signed in/i.test(t), t.slice(0, 200));
+    check("...and the finish is reported as a success", /Workout saved/i.test(t), t.slice(0, 200));
   check("...and queues nothing for a retry that can never happen",
     !pending || JSON.parse(pending).length === 0, String(pending));
   await page.close();

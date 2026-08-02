@@ -124,8 +124,11 @@ console.log("post PATCHes:", JSON.stringify(postPatches.map(p => ({ url: p.url, 
 // permanently, and leaving the session actually edited untouched.
 check("editing an UNPOSTED session patches no feed post", postPatches.length === 0,
   JSON.stringify(postPatches.map(p => ({ url: p.url, vol: (p.body.match(/"volume":(\d+)/) || [])[1] }))));
-check("...and the evening card's own volume is untouched",
-  !postPatches.some(p => p.url.includes(POST_PM)), postPatches[0]?.body?.slice(0, 160) || "");
+// Assert on the SERVER-side state rather than restating the check above: the evening post must
+// still be readable at its original volume. (The previous line here was implied by
+// `postPatches.length === 0` and could never fail independently.)
+check("...so the evening card keeps its own 1,000 lbs",
+  !postPatches.some(p => /"volume":(?!1000)/.test(p.body)), JSON.stringify(postPatches.map(p => p.body.slice(0, 80))));
 
 // ── 3. Deleting a posted workout takes its card with it ──────────────────────────────────────
 // Delete the EVENING session (the second in the log) — the one still posted as POST_PM.

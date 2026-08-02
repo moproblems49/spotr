@@ -140,10 +140,16 @@ const toHistory = async (page) => {
   const editBtn = page.getByText("Edit", { exact: true }).locator("visible=true").first();
   if (await editBtn.count()) { await editBtn.click(); await page.waitForTimeout(1000); }
   const modal = (await page.locator("body").innerText()).replace(/\s+/g, " ");
-  const header = (modal.match(/Edit workout([\s\S]{0,220})/) || [])[1] || modal;
+  // No `|| modal` fallback: if the anchor stops matching, this must fail loudly rather than
+  // quietly widen to the whole page and keep passing.
+  const header = (modal.match(/Edit workout([\s\S]{0,220})/) || [])[1];
+  check("the edit modal opened", !!header, modal.slice(0, 160));
   console.log("edit modal:", header.trim().slice(0, 200));
   check("a kg session's editor does not label its column LBS", !/\bLBS\b/.test(header), header.trim().slice(0, 200));
-  check("...it says KG", /\bKG\b/i.test(header), header.trim().slice(0, 200));
+  // Case-SENSITIVE, and anchored to the column row — /\bKG\b/i also matched the "logged in kg"
+  // subtitle, so a regression in the column label alone would have left this green.
+  check("...the SET/REPS column header says KG", /SET\s+KG\s+REPS/.test(header), header.trim().slice(0, 200));
+  check("...and the subtitle names the session's unit too", /logged in kg/.test(header), header.trim().slice(0, 200));
   await page.close();
 }
 
