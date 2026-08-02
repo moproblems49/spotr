@@ -1,4 +1,4 @@
-// v178091716784
+// v178091716785
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18251,7 +18251,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
 // ═════════════════════════════════════════════════════════════════════════════
 // NEW POST MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkouts = [] }) {
+function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkouts = [], prs = {} }) {
   const [postKind, setPostKind] = useState(initialKind);
   const [caption, setCaption] = useState("");
   const [img, setImg] = useState(null);
@@ -18299,9 +18299,16 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
     } else if (postKind === "workout") {
       // done===true means explicitly done; done===undefined (old records) with reps means done; done===false means skipped
       const isDoneSet = s => (s.done === true || (s.done === undefined && (parseFloat(s.reps||s.r) > 0))) && s.type !== "warmup";
-      // A TENTH hand-rolled copy of the card payload used to live here: isDoneSet with no warmup
-      // exclusion, so warmups were counted into this card's volume and listed on it — the exact
-      // divergence postWorkoutPayload exists to prevent.
+      // Routed through postWorkoutPayload so this card carries the same isPR flags every other
+      // card does, and so there is one definition of a working set rather than a local `isDoneSet`.
+      //
+      // CORRECTION, recorded because it was reported wrongly: an audit claimed this inline copy
+      // counted warmups. It did NOT — its isDoneSet already ended in `&& s.type !== "warmup"`, and
+      // it computed `volume` too. The only REAL defect here was the missing client_id below. (The
+      // GROUP picker's copy is the one that genuinely counted warmups.) One behaviour does change:
+      // workingDone() requires `done` to be truthy, where isDoneSet also accepted a legacy set with
+      // `done === undefined` and reps > 0. Prod has zero such rows, and matching workingDone is
+      // what keeps this card agreeing with History and the profile.
       const built = postWorkoutPayload(selectedWorkout.exercises, prs, null, selectedWorkout.unit || "lbs");
       onPost({ type:"workout", caption: caption || `${selectedWorkout.dayName} — done.`,
         unit: selectedWorkout.unit || "lbs",
@@ -23315,6 +23322,7 @@ function AppInner() {
 
       {showNewPost && <NewPostModal C={C} onClose={() => setShowNewPost(false)} onPost={handleNewPost} initialKind={newPostKind}
         recentWorkouts={newPostRecentWorkouts}
+        prs={store.prs || {}}
       />}
       {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
       {storyIndex !== null && (() => {
