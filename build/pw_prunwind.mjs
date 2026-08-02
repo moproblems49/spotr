@@ -25,7 +25,7 @@ const st = (w, r) => ({ weight: String(w), reps: String(r), done: true, type: "n
 let fails = 0;
 const check = (l, c, dd) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${dd ? " — " + dd : ""}`); } };
 
-const PORT = process.env.PORT || "8207";
+const PORT = process.env.PORT || "8199";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 
 async function open({ rows, prs, unit = "lbs", activeSession = null }) {

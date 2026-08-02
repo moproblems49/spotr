@@ -27,7 +27,7 @@ const ROWS = [{ id: SID, user_id: ME, day_name: "Push Day A", duration_secs: 360
 let fails = 0;
 const check = (l, c, dd) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${dd ? " — " + dd : ""}`); } };
 
-const PORT = process.env.PORT || "8207";
+const PORT = process.env.PORT || "8199";
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 const page = await b.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 page.setDefaultTimeout(4000);
@@ -109,6 +109,18 @@ check("the card's volume excludes the warmup (2,250, not 3,600)", bodyJson?.work
 check("...and the warmup set is not listed on it",
   (bodyJson?.workout?.exercises?.[0]?.sets || []).length === 2,
   JSON.stringify(bodyJson?.workout?.exercises?.[0]?.sets));
+
+// ── NOT COVERED: re-sharing an already-posted workout ────────────────────────────────────────
+// posts.client_id is UNIQUE, so stamping it means "upsert THIS card", never "add another" — for a
+// deliberate second share from the composer that would overwrite the original card (caption, PR
+// flag and image gone; created_at untouched so the "new" post never reaches the top of the feed).
+// handleNewPost guards it: `fromComposer && alreadyShared` drops the client_id so a separate card
+// is created instead.
+//
+// THAT GUARD IS NOT TESTED. Several attempts to drive a second share through this suite failed to
+// reach the Share tap at all (the composer reopens, the picker renders, no POST is issued), and a
+// check that cannot reach the code is worse than no check — it reads as coverage. Recorded here
+// rather than silently dropped. Verified by inspection only; if it regresses, nothing here fires.
 
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

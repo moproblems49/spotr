@@ -29,7 +29,7 @@ const ROWS = [row(SID_AM, 9, 100), row(SID_PM, 19, 200)];
 let fails = 0;
 const check = (l, c, dd) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${dd ? " — " + dd : ""}`); } };
 
-const PORT = process.env.PORT || "8207";
+const PORT = process.env.PORT || "8199";
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 const page = await b.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 page.setDefaultTimeout(4000);

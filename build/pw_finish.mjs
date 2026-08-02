@@ -27,7 +27,7 @@ const dk = (daysAgo) => { const d = new Date(Date.now() - daysAgo * 864e5);
 let fails = 0;
 const check = (l, c, dd) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${dd ? " — " + dd : ""}`); } };
 
-const PORT = process.env.PORT || "8207";
+const PORT = process.env.PORT || "8199";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 
 // ── 1. Summary must match what is saved (blank-named exercise) ───────────────────────────────
@@ -247,7 +247,7 @@ async function summaryVsSaved(blankName) {
     localStorage.setItem("seshd_active_session", JSON.stringify({ dayName: "Pull A", startedAt: Date.now() - 9e5, unit: "lbs",
       exercises: [{ id: "e1", name: "Barbell Row", sets: [{ id: "s1", weight: "185", reps: "8", done: true, type: "normal" }] }] }));
     localStorage.setItem("seshd_wstart", String(Date.now() - 9e5));
-    localStorage.setItem("seshd_last_activity", String(Date.now() - 6e5));
+    localStorage.setItem("seshd_wlast_activity", String(Date.now() - 6e5));
     localStorage.setItem("seshd_rest", JSON.stringify({ running: true, startedAt: Date.now(), total: 120 }));
   });
 
@@ -262,7 +262,7 @@ async function summaryVsSaved(blankName) {
     auth: localStorage.getItem("seshd_session"),
     session: localStorage.getItem("seshd_active_session"),
     wstart: localStorage.getItem("seshd_wstart"),
-    activity: localStorage.getItem("seshd_last_activity"),
+    activity: localStorage.getItem("seshd_wlast_activity"),
     rest: localStorage.getItem("seshd_rest"),
   }));
   console.log("after sign out:", JSON.stringify({ ...left, session: left.session ? "PRESENT" : null }));

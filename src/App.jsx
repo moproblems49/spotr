@@ -1,4 +1,4 @@
-// v178091716785
+// v178091716787
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3110,9 +3110,6 @@ function sessionPRNames(sess, prs) {
 // EVENING card's numbers on the server, permanently, while the card actually edited was never
 // patched at all. A session that was never posted hits the same predicate.
 //
-// `client_id` is the session's own id and has been on both post tables since the duplicate-post
-// fix; it just wasn't mapped client-side. Prefer it absolutely. The name+window guess survives only
-// for posts written before that column existed — for those the ambiguity is already baked in.
 // Convert a live session's typed weights between units. Rounded to a tenth and left as strings,
 // because these are values the user edits by hand; blanks, zeros and non-numerics pass through.
 function convertSessionUnits(sess, from, to) {
@@ -3138,22 +3135,24 @@ function convertSessionUnits(sess, from, to) {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const asUuidOrNull = (v) => (typeof v === "string" && UUID_RE.test(v) ? v : null);
 
-// `strict` refuses the guess entirely. DESTRUCTIVE callers must pass it: a missed deletion is
-// recoverable, a wrong one is not. Deleting a workout used to leave its post alone; wiring the
-// delete through the fuzzy branch meant deleting the morning "Push Day A" could remove the
-// EVENING one's card from the feed forever — a worse bug than the one being fixed.
-const POST_MATCH_WINDOW_MS = 86400000;
-function matchesSession(post, sid, sess, dateKey, strict = false) {
+// Does this post's card come from this session? BY ID ONLY.
+//
+// This used to fall back to "same day name, within 24h" when a post had no client_id, and that
+// guess cost us twice: editing the morning "Push Day A" PATCHED THE EVENING session's card with
+// the morning's numbers (server-side, permanent), and wiring the delete through it could remove a
+// different workout's card from the feed forever. Both were verified end to end.
+//
+// A card written before client_id existed therefore stops auto-syncing on edit and stops being
+// deleted alongside its workout. That is the deliberate trade: a stale card the user can fix or
+// delete by hand beats silently corrupting a DIFFERENT workout's card. Everything written since
+// the duplicate-post fix carries the id, and every share path stamps it now.
+//
+// `sess` and `dateKey` are kept in the signature: callers read better passing what they mean, and
+// they document what identifies a session if this ever needs a smarter rule.
+function matchesSession(post, sid, sess, dateKey) {
   if (!post || post.type !== "workout" || !post.workout) return false;
   const pcid = post.clientId ?? post.client_id ?? null;
-  // Only fall back to the guess when the POST genuinely predates client_id. Gating on
-  // `pcid || sid` instead would make every legacy post unmatchable the moment a sid is passed.
-  if (pcid != null && sid != null) return String(pcid) === String(sid);
-  if (strict) return false;
-  if (post.workout.name !== sess?.dayName) return false;
-  const finishedAt = sess?.finishedAt || new Date(dateKey + "T12:00:00").getTime();
-  const created = post.createdAt ?? (post.created_at ? new Date(post.created_at).getTime() : 0);
-  return Math.abs((created || 0) - finishedAt) < POST_MATCH_WINDOW_MS;
+  return pcid != null && sid != null && String(pcid) === String(sid);
 }
 
 // How many sets an exercise represents. ONE definition — the program editor, the reorder list and
@@ -10194,15 +10193,23 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
       // history max is a supported state (live data has several — e.g. a Leg Press row at 360 with
       // a history max of 340). Editing the bench in that session would have dragged Leg Press down
       // to 340, and the equal-to-PR comparison then mints a false PR badge on the rebuilt card.
+      // Keyed name -> LIST of signatures, one per row. Keying a single signature per name loses a
+      // session that lists the same exercise twice — "top single + back-off sets" is an ordinary
+      // way to log — because only the LAST row survived, so editing an earlier duplicate looked
+      // like no change at all: `affected` came out empty and the whole unwind silently no-opped,
+      // leaving the stale PR standing. That is worse than the over-broad version it replaced.
       const setsSig = (ex) => JSON.stringify((ex?.sets || []).map(s =>
         [s?.weight ?? "", s?.reps ?? "", !!s?.done, s?.type || "normal"]));
-      const beforeByName = {};
-      (sess.exercises || []).forEach(ex => { if (ex?.name) beforeByName[ex.name] = setsSig(ex); });
-      const afterByName = {};
-      (exercises || []).forEach(ex => { if (ex?.name) afterByName[ex.name] = setsSig(ex); });
+      const sigsByName = (list) => {
+        const m = {};
+        (list || []).forEach(ex => { if (ex?.name) (m[ex.name] = m[ex.name] || []).push(setsSig(ex)); });
+        return m;
+      };
+      const beforeByName = sigsByName(sess.exercises);
+      const afterByName = sigsByName(exercises);
       const affected = new Set(
         [...new Set([...Object.keys(beforeByName), ...Object.keys(afterByName)])]
-          .filter(n => beforeByName[n] !== afterByName[n])
+          .filter(n => JSON.stringify(beforeByName[n] || []) !== JSON.stringify(afterByName[n] || []))
       );
       const nextHistory = {
         ...(store.history || {}),
@@ -10233,18 +10240,42 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
             }
           });
         }
-        // Drop only the PR events for the exercises this edit actually changed — wiping every
-        // event for the session also deleted ones that are still true. And PATCH the server copy,
-        // which both delete paths already do: loadUserData prefers the server's pr_events, so a
-        // local-only filter is undone on the next launch and Wrapped keeps reporting the stale PR.
-        const changedNames = new Set(changed.map(([n]) => n));
-        setStore(prev => {
-          const keptPrEvents = (prev.prEvents || []).filter(e => !(e.sid === sid && changedNames.has(e.name)));
+      }
+      // PR EVENTS are judged on their own terms, not on whether the stored PR moved. Driving this
+      // off `changed` missed the case where you correct a mistyped 315 down but genuinely hit 315
+      // for that lift on another day: the stored max doesn't move, so nothing fired, and the event
+      // claiming "315 on THIS session" survived for Wrapped to keep reporting.
+      //
+      // The rule: for an exercise this edit touched, an event against THIS session only stands if
+      // the session still contains a working set at least that heavy.
+      if (affected.size) {
+        const stillHolds = (ev) => {
+          const ex = (exercises || []).find(x => x?.name === ev?.name);
+          if (!ex) return false;
+          const evLbs = Number(ev?.weightLbs ?? ev?.weight ?? 0);
+          if (!isFinite(evLbs) || evLbs <= 0) return false;
+          return (ex.sets || []).some(st => {
+            const done = st?.done === true || (st?.done === undefined && parseFloat(st?.reps) > 0);
+            if (!done || st?.type === "warmup") return false;
+            const wt = parseFloat(st.weight);
+            if (!isFinite(wt) || wt <= 0) return false;
+            const lbs = eu === "lbs" ? wt : cvt(wt, "kg", "lbs");
+            return lbs >= evLbs - 0.5;
+          });
+        };
+        // Compute OUTSIDE the updater and issue the write after it. A setState updater is
+        // render-phase: StrictMode invokes it twice in dev and React may re-run it on a render
+        // restart, so a network call in there double-fires.
+        const keptPrEvents = (store.prEvents || [])
+          .filter(e => !(e.sid === sid && affected.has(e.name) && !stillHolds(e)));
+        if (keptPrEvents.length !== (store.prEvents || []).length) {
+          setStore(prev => ({ ...prev, prEvents: keptPrEvents }));
+          // loadUserData prefers the server's pr_events, so a local-only filter is undone on the
+          // next launch. Both delete paths already PATCH it.
           if (token && currentUserId) {
             sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, token).catch(() => {});
           }
-          return { ...prev, prEvents: keptPrEvents };
-        });
+        }
       }
     } catch (e) { devError("PR recompute on edit failed:", e); }
     // 3. Update the feed post built from THIS session (see matchesSession).
@@ -18314,6 +18345,12 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
         unit: selectedWorkout.unit || "lbs",
         // Stamp the session id so this card can always be found again by id rather than guessed at.
         clientId: asUuidOrNull(selectedWorkout.sid),
+        // Marks this as a NEW card the user is deliberately creating, as opposed to the
+        // finish-time share retrying itself. handleNewPost needs the difference: client_id is
+        // UNIQUE, so an upsert here would OVERWRITE an existing card for the same workout rather
+        // than add one — destroying its caption, PR flag, image, kudos and comments, and keeping
+        // its old created_at so the "new" post silently stays buried in the feed.
+        fromComposer: true,
         workout: {
           name: selectedWorkout.dayName,
           duration: selectedWorkout.duration,
@@ -21106,6 +21143,16 @@ function AppInner() {
       }
 
       const nowIso = new Date().toISOString();
+      // `posts.client_id` is UNIQUE, so stamping it means "upsert THIS card", never "add another".
+      // That is right for the finish-time share retrying itself, and WRONG for the composer: a
+      // deliberate second share of an already-posted workout would silently overwrite the original
+      // card — caption gone, PR flag cleared, image nulled, kudos/comments dropped locally, and
+      // created_at left alone so the "new" post never reaches the top of the feed. When the
+      // composer shares a workout that already has a card, create an unlinked one instead, which
+      // is what it did before the id was stamped at all.
+      const alreadyShared = !!postData.clientId
+        && (store.posts || []).some(p => p.clientId && String(p.clientId) === String(postData.clientId));
+      const clientIdForRow = (postData.fromComposer && alreadyShared) ? null : (postData.clientId || null);
       const row = {
         user_id: currentUserId,
         type: postData.type || "photo",
@@ -21123,11 +21170,11 @@ function AppInner() {
         // For those we OMIT created_at so an on-conflict UPDATE can't bump the timestamp (which
         // would jump the post to the top of the feed / clobber an edited caption on a retry) —
         // the DB keeps the original. Non-idempotent posts keep the explicit client wall-clock.
-        ...(postData.clientId ? { client_id: postData.clientId } : { created_at: nowIso }),
+        ...(clientIdForRow ? { client_id: clientIdForRow } : { created_at: nowIso }),
       };
       const result = await sb.query(
-        postData.clientId ? "posts?on_conflict=client_id" : "posts",
-        { method: "POST", headers_extra: postData.clientId ? { "Prefer": "resolution=merge-duplicates,return=representation" } : undefined, body: JSON.stringify(row) },
+        clientIdForRow ? "posts?on_conflict=client_id" : "posts",
+        { method: "POST", headers_extra: clientIdForRow ? { "Prefer": "resolution=merge-duplicates,return=representation" } : undefined, body: JSON.stringify(row) },
         tok);
       const newPost = Array.isArray(result) ? result[0] : result;
       if (newPost) {
@@ -21479,6 +21526,22 @@ function AppInner() {
       const sidsToDelete = dayHistory[sidPart]
         ? [sidPart]
         : Object.keys(dayHistory).filter(sid => dayHistory[sid]?.dayName === sidPart);
+      // The SAME workout deleted from History unwinds its PRs; deleted from the profile card it
+      // did not, so the stale personal_records row resurrected a phantom PR forever through
+      // loadUserData's max-wins merge — the exact failure the History path was fixed to kill.
+      // Two screens, one workout, one outcome.
+      const delAffected = [...new Set(sidsToDelete.flatMap(sd =>
+        (dayHistory[sd]?.exercises || []).map(e => e?.name).filter(Boolean)))];
+      const afterDelHistory = (() => {
+        const day = { ...dayHistory };
+        sidsToDelete.forEach(sd => { delete day[sd]; });
+        const h = { ...(store.history || {}) };
+        if (Object.keys(day).length) h[date] = day; else delete h[date];
+        return h;
+      })();
+      const delTrueMax = delAffected.length ? historyMaxPRs(afterDelHistory, delAffected) : {};
+      const delPrChanged = Object.entries(delTrueMax)
+        .filter(([n, w]) => Math.round(w) !== Math.round((store.prs || {})[n] || 0));
 
       // Remove from local state immediately
       setStore(prev => {
@@ -21494,8 +21557,15 @@ function AppInner() {
         // Also clear historyInteractions for this synthetic post
         const newHI = { ...(prev.historyInteractions || {}) };
         delete newHI[postId];
+        const nextPrs = { ...(prev.prs || {}) };
+        const nextE1 = { ...(prev.prsE1rm || {}) };
+        const nextVol = { ...(prev.prsVolume || {}) };
+        delPrChanged.forEach(([n, w]) => {
+          if (w > 0) nextPrs[n] = w; else { delete nextPrs[n]; delete nextE1[n]; delete nextVol[n]; }
+        });
         return {
           ...prev, history: newHistory, workoutDates: newDates, historyInteractions: newHI,
+          prs: nextPrs, prsE1rm: nextE1, prsVolume: nextVol,
           prEvents: (prev.prEvents || []).filter(e => !sidsToDelete.includes(e.sid)),
         };
       });
@@ -21510,6 +21580,13 @@ function AppInner() {
         if (currentUserId) {
           const keptPrEvents = (store.prEvents || []).filter(e => !sidsToDelete.includes(e.sid));
           sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
+          for (const [n, w] of delPrChanged) {
+            if (w > 0) {
+              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: w }) }, tok).catch(()=>{});
+            } else {
+              sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(n)}`, { method: "DELETE" }, tok).catch(()=>{});
+            }
+          }
         }
       }
       return;
@@ -22911,7 +22988,7 @@ function AppInner() {
               // its card — the user can delete it from the feed — which is far better than
               // guessing and deleting a DIFFERENT workout's card irreversibly.
               const sharedPost = (store.posts || []).find(p =>
-                p.userId === currentUserId && matchesSession(p, sid, sess, date, true) && !String(p.id).startsWith("hist_")
+                p.userId === currentUserId && matchesSession(p, sid, sess, date) && !String(p.id).startsWith("hist_")
               );
               // Deleting the session that HELD a PR has to release it — nothing in the app could
               // lower one, so a deleted 315 stayed a PR for a set that no longer exists anywhere.
