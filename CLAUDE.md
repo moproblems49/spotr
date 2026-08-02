@@ -49,7 +49,9 @@ build, it lands in `dist/bundles/` and the new zip contains the OLD ZIP INSIDE I
 downloads both. Measured Aug 2: `2026-07-30l` was 3.8MB and 1.9MB of that was the `k` bundle nested
 inside it; built in the right order, `m` is 1.9MB. Nothing breaks — the app ignores the stray file —
 but OTA downloads had roughly doubled. If you build before deleting, `rm -f dist/bundles/*.zip`
-before zipping. Check with `unzip -l <zip> | grep '\.zip$'` — that must print nothing.
+before zipping. Check with `unzip -l <zip> | grep -E '^ +[0-9]+.*\.zip$'` — that must print nothing.
+(Don't grep bare `'\.zip$'`: unzip's own `Archive:  …zip` header line matches it and reads as a
+false positive. Size is the faster tell — a correct bundle is ~1.9MB, a doubled one ~3.8MB.)
 **Where the "real `.env.local`" comes from in a sandbox session:** it isn't in the repo (the values
 live in Vercel), so RECOVER IT FROM THE LAST PUBLISHED BUNDLE — that bundle was built with the real
 values, so they're sitting in its JS:

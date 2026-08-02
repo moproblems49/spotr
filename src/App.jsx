@@ -1,4 +1,4 @@
-// v178091716779
+// v178091716780
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16858,7 +16858,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       .map(p => `${p.workout?.name}|${dKey(new Date(p.createdAt))}`)
   );
   const profileHistoryItems = isMe ? Object.entries(store.history||{}).flatMap(([date, sessions]) =>
-    Object.values(sessions).map(sess => {
+    Object.entries(sessions).map(([sid, sess]) => {
       const key = `${sess.dayName}|${date}`;
       if (sharedWorkoutKeys.has(key)) return null;
       // Same builder as every other workout card (see postWorkoutPayload). This was a sixth
@@ -16866,7 +16866,13 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       // feed used 0.99, so the same session could show a PR badge here and not there.
       const card = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
       return {
-        id: "hist_"+date+"_"+sess.dayName,
+        // The id carries the SESSION ID, not the day name. It used to be
+        // `hist_<date>_<dayName>`, so two same-day sessions with the same name produced two cards
+        // sharing one id — and Delete parsed that id back into a date + name and removed EVERY
+        // session matching both. Confirming one deletion silently destroyed two workouts, locally
+        // and on the server. A sid is base36 or a UUID, so neither it nor the date can contain the
+        // "_" the parse splits on.
+        id: "hist_"+date+"_"+sid,
         userId,
         type: "workout",
         caption: "",
@@ -21142,14 +21148,20 @@ function AppInner() {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     // Handle synthetic history posts (id starts with "hist_")
     if (postId.startsWith("hist_")) {
-      // Parse: "hist_2026-05-03_Push Day A"
+      // Parse: "hist_2026-05-03_<sid>"
       const withoutPrefix = postId.slice(5); // remove "hist_"
       const dateEnd = withoutPrefix.indexOf("_");
       const date = withoutPrefix.slice(0, dateEnd);
-      const dayName = withoutPrefix.slice(dateEnd + 1);
-      // Collect session UUIDs (the keys) to delete from DB
+      const sidPart = withoutPrefix.slice(dateEnd + 1);
       const dayHistory = store.history?.[date] || {};
-      const sidsToDelete = Object.keys(dayHistory).filter(sid => dayHistory[sid]?.dayName === dayName);
+      // Delete EXACTLY the session the card is for. This used to match on dayName, which took
+      // every same-named session that day with it — the user confirmed one deletion and lost two
+      // workouts irrecoverably. Cards minted before this change carry a dayName here rather than a
+      // sid, so fall back to the old match for them (they can only exist in a store written by the
+      // previous build, and for those the ambiguity was already there).
+      const sidsToDelete = dayHistory[sidPart]
+        ? [sidPart]
+        : Object.keys(dayHistory).filter(sid => dayHistory[sid]?.dayName === sidPart);
 
       // Remove from local state immediately
       setStore(prev => {
