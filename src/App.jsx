@@ -1,4 +1,4 @@
-// v178091716780
+// v178091716781
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3057,6 +3057,33 @@ function postWorkoutPayload(exercises, prs, prNames, unit = "lbs") {
 function sessionPRNames(sess, prs) {
   const payload = postWorkoutPayload(sess?.exercises, prs, null, sess?.unit || "lbs");
   return new Set(payload.exercises.filter(e => e.isPR).map(e => e.name));
+}
+
+// Does this post's card come from this session? ONE rule, used by the edit path (local rebuild +
+// the feed and group server patches), the delete path, and the profile's posted/unposted dedup.
+//
+// It used to be `workout.name === dayName && |createdAt − finishedAt| < 24h`, guessed separately in
+// five places. Two same-named sessions in a day — a morning and an evening, or two taps of the same
+// program day — collide on it, and the consequences were not symmetric: the LOCAL rebuild was a
+// `.map` (rewrote every match) while the SERVER patch was a `.find` (patched whichever sat first in
+// a created_at-DESC list, i.e. the NEWEST). Editing the morning workout therefore overwrote the
+// EVENING card's numbers on the server, permanently, while the card actually edited was never
+// patched at all. A session that was never posted hits the same predicate.
+//
+// `client_id` is the session's own id and has been on both post tables since the duplicate-post
+// fix; it just wasn't mapped client-side. Prefer it absolutely. The name+window guess survives only
+// for posts written before that column existed — for those the ambiguity is already baked in.
+const POST_MATCH_WINDOW_MS = 86400000;
+function matchesSession(post, sid, sess, dateKey) {
+  if (!post || post.type !== "workout" || !post.workout) return false;
+  const pcid = post.clientId ?? post.client_id ?? null;
+  // Only fall back to the guess when the POST genuinely predates client_id. Gating on
+  // `pcid || sid` instead would make every legacy post unmatchable the moment a sid is passed.
+  if (pcid != null && sid != null) return String(pcid) === String(sid);
+  if (post.workout.name !== sess?.dayName) return false;
+  const finishedAt = sess?.finishedAt || new Date(dateKey + "T12:00:00").getTime();
+  const created = post.createdAt ?? (post.created_at ? new Date(post.created_at).getTime() : 0);
+  return Math.abs((created || 0) - finishedAt) < POST_MATCH_WINDOW_MS;
 }
 
 // How many sets an exercise represents. ONE definition — the program editor, the reorder list and
@@ -10055,30 +10082,22 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
         }
       }
     } catch (e) { devError("PR recompute on edit failed:", e); }
-    // 3. Update any feed post that links to this workout (best-effort: match by dayName + finishedAt window)
+    // 3. Update the feed post built from THIS session (see matchesSession).
     setStore(prev => {
       const newPosts = (prev.posts || []).map(p => {
         if (p.userId !== currentUserId) return p;
-        if (p.type !== "workout") return p;
-        if (!p.workout) return p;
-        if (p.workout.name !== sess.dayName) return p;
-        // Match if posted around the same time as the workout finished
-        const finishedAt = sess.finishedAt || new Date(date + "T12:00:00").getTime();
-        if (Math.abs((p.createdAt || 0) - finishedAt) > 86400000) return p; // > 24h apart, not the same workout
+        if (!matchesSession(p, sid, sess, date)) return p;
         // Rebuild the post.workout.exercises to reflect new numbers
         const rebuilt = postWorkoutPayload(exercises, prev.prs, null, eu);
         return { ...p, workout: { ...p.workout, exercises: rebuilt.exercises, volume: rebuilt.volume } };
       });
       return { ...prev, posts: newPosts };
     });
-    // 4. Patch any matching feed post on the server too (best-effort)
+    // 4. Patch that same post on the server.
     try {
       if (token) {
         const match = (store.posts || []).find(p =>
-          p.userId === currentUserId &&
-          p.type === "workout" &&
-          p.workout?.name === sess.dayName &&
-          Math.abs((p.createdAt || 0) - (sess.finishedAt || new Date(date + "T12:00:00").getTime())) < 86400000
+          p.userId === currentUserId && matchesSession(p, sid, sess, date)
         );
         if (match && !String(match.id).startsWith("hist_")) {
           // Recompute the workout payload to mirror local state
@@ -10092,12 +10111,9 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
     } catch (e) {
       devError("post sync failed:", e);
     }
-    // 5. Patch any matching GROUP posts on the server (same workout shared to groups).
-    // Group posts store the workout JSONB directly but have no link to workout_history id,
-    // so we match on user_id + workout name + a time window around when the workout finished.
+    // 5. Patch the GROUP posts built from this session (same workout shared to groups).
     try {
       if (token) {
-        const finishedAt = sess.finishedAt || new Date(date + "T12:00:00").getTime();
         const myGroups = (store.groups || []).filter(g =>
           (g.members || g.member_ids || []).includes(currentUserId)
         );
@@ -10110,14 +10126,10 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
           await Promise.all(myGroups.map(async (g) => {
             try {
               const rows = await sb.query(
-                `group_posts?group_id=eq.${g.id}&user_id=eq.${currentUserId}&type=eq.workout&select=id,workout,created_at&order=created_at.desc`,
+                `group_posts?group_id=eq.${g.id}&user_id=eq.${currentUserId}&type=eq.workout&select=id,workout,created_at,client_id&order=created_at.desc`,
                 {}, token
               ).catch(() => []);
-              const match = (rows || []).find(gp => {
-                if (!gp.workout || gp.workout.name !== sess.dayName) return false;
-                const gpTime = gp.created_at ? new Date(gp.created_at).getTime() : 0;
-                return Math.abs(gpTime - finishedAt) < 86400000;
-              });
+              const match = (rows || []).find(gp => matchesSession({ ...gp, type: "workout" }, sid, sess, date));
               if (match) {
                 await sb.query(`group_posts?id=eq.${match.id}`, {
                   method: "PATCH",
@@ -16853,14 +16865,22 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   // Dedup shared workouts vs. history items by DAY + workout name (not exact timestamp —
   // a shared post's createdAt is the share time, while a history item's is the workout day,
   // so timestamp-matching never lined up and the same workout showed up twice on the profile).
-  const sharedWorkoutKeys = new Set(
-    (store.posts||[]).filter(p=>p.type==="workout"&&p.userId===userId)
+  // Sessions already on the feed as real posts, so they aren't listed twice. Keyed by the post's
+  // client_id (the session id) — the old key was name + day, which is wrong in BOTH directions:
+  // one posted workout suppressed EVERY same-named session that day (the morning one vanished from
+  // your profile and your Workouts count while still feeding every stat), and a post created after
+  // midnight for a session dated the previous day missed its own key and showed the workout twice.
+  const myWorkoutPosts = (store.posts||[]).filter(p => p.type === "workout" && p.userId === userId);
+  const sharedSids = new Set(myWorkoutPosts.map(p => p.clientId).filter(Boolean).map(String));
+  // Posts predating client_id can only be matched the old way; scope that to them alone.
+  const legacySharedKeys = new Set(
+    myWorkoutPosts.filter(p => !p.clientId)
       .map(p => `${p.workout?.name}|${dKey(new Date(p.createdAt))}`)
   );
   const profileHistoryItems = isMe ? Object.entries(store.history||{}).flatMap(([date, sessions]) =>
     Object.entries(sessions).map(([sid, sess]) => {
-      const key = `${sess.dayName}|${date}`;
-      if (sharedWorkoutKeys.has(key)) return null;
+      if (sharedSids.has(String(sid))) return null;
+      if (legacySharedKeys.has(`${sess.dayName}|${date}`)) return null;
       // Same builder as every other workout card (see postWorkoutPayload). This was a sixth
       // hand-rolled copy: it got the warmup exclusion right but used a 0.98 PR threshold where the
       // feed used 0.99, so the same session could show a PR badge here and not there.
@@ -16902,7 +16922,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         );
         if (!alive || !Array.isArray(rows)) return;
         const mapped = rows.map(p => ({
-          id: p.id, userId: p.user_id, type: p.type, caption: p.caption || "",
+          id: p.id, clientId: p.client_id || null, userId: p.user_id, type: p.type, caption: p.caption || "",
           imageData: p.image_url, location: p.location, workout: p.workout,
           run: p.run, yoga: p.yoga, achievement: p.achievement,
           unit: p.unit || "lbs", isPR: p.is_pr,
@@ -20492,6 +20512,11 @@ function AppInner() {
         }));
         return {
           id: p.id,
+          // The session this card was built from. Both post tables have carried `client_id` since
+          // the duplicate-post fix, but it was never mapped into the local post — so every place
+          // that needed "which post belongs to this workout?" fell back to guessing from the day
+          // name and a time window. See matchesSession().
+          clientId: p.client_id || null,
           userId: p.user_id,
           type: p.type,
           caption: p.caption || "",
@@ -22579,18 +22604,35 @@ function AppInner() {
           <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={tokenRef.current} dataLoading={dataLoading} isGuest={isGuest}
           onSessionChange={setWorkoutActive}
             onDeleteHistory={async (date, sid) => {
+              // The card this session was shared as, if any. Deleting the workout used to leave the
+              // post live: History said the workout never happened while the feed still advertised
+              // it, PR badge and all. The edit path goes to considerable trouble to keep this same
+              // post in sync — the delete path just didn't.
+              const sess = store.history?.[date]?.[sid];
+              const sharedPost = (store.posts || []).find(p =>
+                p.userId === currentUserId && matchesSession(p, sid, sess, date) && !String(p.id).startsWith("hist_")
+              );
               setStore(prev => {
                 const dayHistory = { ...(prev.history[date] || {}) };
                 delete dayHistory[sid];
                 const newHistory = { ...prev.history };
                 if (Object.keys(dayHistory).length === 0) delete newHistory[date];
                 else newHistory[date] = dayHistory;
-                return { ...prev, history: newHistory, prEvents: (prev.prEvents || []).filter(e => e.sid !== sid) };
+                return { ...prev, history: newHistory,
+                  prEvents: (prev.prEvents || []).filter(e => e.sid !== sid),
+                  posts: sharedPost ? (prev.posts || []).filter(p => p.id !== sharedPost.id) : prev.posts };
               });
               try {
                 const tok = tokenRef.current || loadSession()?.access_token;
                 if (tok) {
                   await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
+                  if (sharedPost) {
+                    await sb.query(`posts?id=eq.${sharedPost.id}`, { method:"DELETE" }, tok).catch(e => devError("post delete:", e));
+                  }
+                  // Group copies key off the same session id.
+                  if (currentUserId) {
+                    await sb.query(`group_posts?user_id=eq.${currentUserId}&client_id=eq.${sid}`, { method:"DELETE" }, tok).catch(() => {});
+                  }
                   if (currentUserId) {
                     const keptPrEvents = (store.prEvents || []).filter(e => e.sid !== sid);
                     sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
