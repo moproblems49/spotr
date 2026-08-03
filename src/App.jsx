@@ -1,4 +1,4 @@
-// v178091716792
+// v178091716793
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1676,8 +1676,9 @@ function _readyColor(t) {
 // Plain-language verdict for a 0..1 recovery score. The scale is intentionally conservative
 // (a solid day lands ~0.70–0.85; 0.90+ means well above your own baseline), so a low-80s reading
 // is "Strong", not mediocre — the label exists to communicate that.
+const READY_TO_PUSH = 0.78;   // also the ceiling a thin read is held under — see recoveryScoreFrom
 function recoveryVerdict(t) {
-  if (t >= 0.78) return "Ready to push";
+  if (t >= READY_TO_PUSH) return "Ready to push";
   if (t >= 0.62) return "Ready";
   if (t >= 0.45) return "Moderate";
   return "Take it easy";
@@ -5483,27 +5484,63 @@ async function readHourlyActivity() {
 
 // Pull the most recent recovery snapshot. Returns null on web or if unavailable/denied.
 // Shape: { hrv: number|null, restingHr: number|null, sleepHours: number|null, capturedAt: iso }
+// A "night" is the local noon-to-noon bucket a sample falls in: shift the timestamp back 12h and
+// take its date, so 23:40 and 03:10 are the same night rather than two. Used for the HRV pool and
+// for the baseline, which must agree or the baseline can end up containing the night it scores.
+const NIGHT_SHIFT_MS = 12 * 36e5;
+const dateKeyOf = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const nightKeyOf = (t) => dateKeyOf(t - NIGHT_SHIFT_MS);
+// A sample in the small hours proves you were ASLEEP in that bucket, as opposed to awake on the
+// sofa at 22:30 — which is the whole distinction the pin has to make.
+const isSmallHours = (t) => { const h = new Date(t).getHours(); return h < 9; };
+
+// Group samples by key and return the newest group, preferring groups that satisfy `qualifies`.
+function newestGroup(pool, keyFn, qualifies) {
+  const groups = new Map();
+  for (const s of pool) {
+    if (s == null || s.t == null) continue;
+    const k = keyFn(s.t);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(s);
+  }
+  const keys = [...groups.keys()].sort();
+  if (!keys.length) return [];
+  if (qualifies) {
+    const q = keys.filter(k => groups.get(k).some(s => qualifies(s.t)));
+    if (q.length) return groups.get(q[q.length - 1]);
+  }
+  return groups.get(keys[keys.length - 1]);
+}
+
 // Reduce a pool of {v,t} HRV samples to the SINGLE most recent night.
-// Prefers HealthKit's real sleep window; if that's missing, falls back to the newest contiguous
-// BLOCK of samples that is long enough to be a night. Exported for the sim harness — pure, no
-// HealthKit needed.
+// Prefers HealthKit's real sleep window; if that's missing, takes the newest noon-to-noon bucket
+// that contains a small-hours sample. Exported for the sim harness — pure, no HealthKit needed.
 //
-// THE FALLBACK USED TO BE "everything within 14h of the newest sample", and that produced a cliff
+// THE ORIGINAL FALLBACK WAS "everything within 14h of the newest sample", which produced a cliff
 // every evening for anyone whose phone has no HealthKit sleep rows (no watch worn to bed, or a
-// device that only writes an undifferentiated total). The pool it is handed on that path is the
-// overnight-hour filter, which starts at 22:00 — so the moment the clock passes 22:00, ONE sample
-// taken awake on the sofa becomes "newest", and 14h back from 22:30 reaches only to 08:30 that
-// morning, i.e. past the end of the night. Last night's samples all fall out and the score is
-// computed entirely from the sofa. Measured against the shipped code on a 55ms night with two
-// 85ms evening readings: 75% at 21:00, 88% at 22:45 — a 13-point jump from two samples taken
-// awake, and it swings the other way just as easily if the evening reading happens to be low.
-// The direction is not the point; that the number moves on no new information is.
-// Contiguity is the right grouping: last night's block and tonight's evening block are separated
-// by the whole waking day, so a 3h gap splits them cleanly, and requiring ~2h of span means a
-// couple of evening readings can never displace a real night. Once tonight genuinely IS a night
-// (you have been asleep two hours) it wins, which is correct — that is new information.
-const HRV_BLOCK_GAP_MS = 3 * 36e5;
-const HRV_MIN_NIGHT_MS = 2 * 36e5;
+// device that writes only an undifferentiated total). The pool on that path is the overnight-hour
+// filter, which starts at 22:00 — so the moment the clock passed 22:00, a sample taken awake on
+// the sofa became "newest", and 14h back from 22:30 reached only to 08:30 that morning. The whole
+// night fell out and the score was computed from the sofa: measured, 75% at 21:00 -> 88% at 22:45,
+// and it swings the other way just as easily if the evening reading is low. The direction isn't
+// the point; that the number moves on no new information is.
+//
+// THE SECOND ATTEMPT — contiguous blocks split on a 3h gap, requiring 2h of span to count as a
+// night — WAS WRONG IN THREE WAYS, all of them because it assumed HRV samples are dense. They are
+// not: an Apple Watch typically writes a handful a night, hours apart. Measured on the shipped
+// build, three separate failures with no fixture change beyond realistic spacing:
+//   * a night whose samples span under 2h never qualified, so the sofa block won anyway and the
+//     cliff was untouched — 3 samples 40 minutes apart still jumped 75% -> 88% at 22:45;
+//   * a real night split by one >3h gap (watch on the charger at 2am) produced an early block that
+//     qualified and a late one that didn't, so the EARLY half won — and the 20h staleness guard
+//     then measured age from the early half's end and deleted HRV entirely at 21:46, taking a
+//     genuinely wrecked 28ms night from 38% to 76% on no new data;
+//   * four samples at 23:20/02:40/03:10/06:50 fragmented into three blocks and the pin returned
+//     ONE of them, so "the median ignores a single odd reading" stopped being true.
+// Bucketing by night has none of these failure modes because it doesn't care how many samples
+// there are or how they're spaced. The small-hours test is what keeps two sofa readings from
+// passing as a night, and it lets a genuinely in-progress night take over the moment you have
+// actually slept into it, which is correct — that IS new information.
 function pinToLastNight(pool, sleepStartIso, sleepEndIso) {
   if (!pool || pool.length < 2) return pool || [];
   const ss = sleepStartIso ? new Date(sleepStartIso).getTime() : NaN;
@@ -5512,47 +5549,46 @@ function pinToLastNight(pool, sleepStartIso, sleepEndIso) {
     const inSleep = pool.filter(s => s.t != null && s.t >= ss && s.t <= se);
     if (inSleep.length) return inSleep;
   }
-  const sorted = pool.filter(s => s.t != null).sort((a, b) => a.t - b.t);
-  if (sorted.length < 2) return pool;
-  const blocks = [[sorted[0]]];
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].t - sorted[i - 1].t > HRV_BLOCK_GAP_MS) blocks.push([]);
-    blocks[blocks.length - 1].push(sorted[i]);
-  }
-  const nights = blocks.filter(b => b[b.length - 1].t - b[0].t >= HRV_MIN_NIGHT_MS);
-  return nights.length ? nights[nights.length - 1] : blocks[blocks.length - 1];
+  const withT = pool.filter(s => s.t != null);
+  if (withT.length < 2) return pool;
+  const g = newestGroup(withT, nightKeyOf, isSmallHours);
+  return g.length ? g : pool;
 }
 
 // A PERSONAL BASELINE IS A MEDIAN OF NIGHTS (or days), NOT OF RAW SAMPLES, AND IT MUST NOT
-// CONTAIN THE READING IT IS BEING COMPARED AGAINST.
+// CONTAIN THE NIGHT IT IS BEING COMPARED AGAINST.
 //
 // Both faults were live. `hrvBaseline` was `median(every sample in the last 60 days)` — which
 // includes the night currently being scored, so on the FIRST night with a watch the baseline IS
 // that night and the ratio is exactly 1.000 no matter what happened: a genuinely wrecked first
-// night read 58% "Moderate" instead of the ~3% it deserved. The self-comparison decays as history
-// builds, but not evenly — nights differ wildly in SAMPLE COUNT (one row on a night you took the
-// watch off at 3am, sixty on a full one), and a raw-sample median is dominated by whichever nights
-// happened to produce the most rows. Collapsing each night to its own median first gives every
-// night one vote, which is what "your normal" means.
+// night read 58% "Moderate" instead of the floor. The self-comparison decays as history builds,
+// but not evenly — nights differ wildly in SAMPLE COUNT (one row on a night you took the watch off
+// at 3am, sixty on a full one), and a raw-sample median is dominated by whichever nights happened
+// to produce the most rows. Collapsing each night to its own median first gives every night one
+// vote, which is what "your normal" means.
 //
-// `cutoffMs` excludes everything at or after the scored reading. `nightly` shifts the grouping key
-// back 12h so a night spans midnight (23:40 and 03:10 are the same night, not two).
-// Returns { value, periods } — `periods` is the real small-sample guard: a baseline built from
-// one or two nights is noise, and the caller refuses to score against it.
+// THE EXCLUSION IS BY KEY, NOT BY TIMESTAMP, and that distinction is a bug I shipped. Cutting at
+// "the first sample of the scored pool" let the SAME night's pre-sleep samples through — the
+// overnight filter starts at 22:00, so a 22:15 reading taken awake sits before a 23:30 bedtime and
+// survived the cutoff. It then landed under the scored night's own key as an extra group, and
+// awake HRV runs low, so the baseline was dragged down and the score up every time. Measured:
+// baseline 60 -> 57.5, score 0.56 -> 0.65. Worse, it could satisfy the small-sample guard with the
+// scored night itself — two prior nights plus tonight's pre-sleep readings made `periods` 3, which
+// flipped the score from a capped 0.75 to 0.26. Dropping whole KEYS cannot do either.
+// Returns { value, periods } — `periods` is the real small-sample guard: a baseline built from one
+// or two nights is noise, and the caller refuses to score against it.
 const medianOf = (a) => { if (!a || !a.length) return null; const x = [...a].sort((p, q) => p - q); const m = Math.floor(x.length / 2); return x.length % 2 ? x[m] : (x[m - 1] + x[m]) / 2; };
-function personalBaseline(samples, cutoffMs, nightly) {
-  const med = medianOf;
+function personalBaseline(samples, cutoffKey, nightly) {
   const groups = {};
   for (const s of (samples || [])) {
     if (s == null || s.t == null || isNaN(s.v)) continue;
-    if (cutoffMs != null && s.t >= cutoffMs) continue;
-    const d = new Date(s.t - (nightly ? 12 * 36e5 : 0));
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const key = nightly ? nightKeyOf(s.t) : dateKeyOf(s.t);
+    if (cutoffKey && key >= cutoffKey) continue;
     (groups[key] = groups[key] || []).push(s.v);
   }
   const keys = Object.keys(groups);
   if (!keys.length) return { value: null, periods: 0 };
-  return { value: med(keys.map(k => med(groups[k]))), periods: keys.length };
+  return { value: medianOf(keys.map(k => medianOf(groups[k]))), periods: keys.length };
 }
 const MIN_BASELINE_PERIODS = 3;
 
@@ -5583,38 +5619,53 @@ const isOvernightSample = (t) => { if (t == null) return false; const h = new Da
 const STALE_HRV_MS = 20 * 36e5;
 function hrvReading(hrvAll, hrvHist, sleepStartIso, sleepEndIso, nowMs) {
   const all = hrvAll || [], hist = hrvHist || [];
-  const nightToday = all.filter(s => isOvernightSample(s.t));
-  const histNight = hist.filter(s => isOvernightSample(s.t));
-  const nightBaselineOnly = histNight.length > 0 && nightToday.length === 0;
-  const useNight = nightToday.length > 0 && histNight.length > 0;
-  // Pin to ONE night. Two things made the score wander during the day: the lookback is a rolling
-  // 36h (so it can straddle two nights, and old samples fall out of the back of it as the clock
-  // advances), and the overnight hour-rule counts 22:00 onwards — so once it's past 10pm, samples
-  // taken while you're awake on the couch got averaged into "recovery" and pushed the number UP at
-  // night. Pinning to last night's actual sleep window makes the score a property of that night.
-  let todayPool = nightBaselineOnly ? [] : pinToLastNight(useNight ? nightToday : all, sleepStartIso, sleepEndIso);
-  const basePool = (useNight || nightBaselineOnly) ? histNight : hist;
+  const isDay = (t) => t != null && !isOvernightSample(t);
   let stale = false;
-  if (todayPool.length) {
-    const newestT = todayPool.reduce((m, s) => (s.t != null && s.t > m ? s.t : m), 0);
-    if (!newestT || (nowMs - newestT) > STALE_HRV_MS) { stale = true; todayPool = []; }
-  }
-  // MEDIAN on both sides, deliberately. Today's figure used to be a mean while the baseline was a
-  // median, so the two halves of the ratio weren't the same statistic. That mattered little when
-  // the pool was 36h of samples, but pinning it to one night makes it small enough that a single
-  // odd reading (a wake-up, a bad contact) could visibly move the score. A median ignores that.
-  const hrv = todayPool.length ? Math.round(medianOf(todayPool.map(s => s.v))) : null;
-  // The cutoff is the START of the pinned night, so every EARLIER night still counts.
-  const scoredStart = todayPool.length
-    ? todayPool.reduce((m, s) => (s.t != null && s.t < m ? s.t : m), Infinity)
-    : (sleepStartIso ? new Date(sleepStartIso).getTime() : NaN);
-  const base = personalBaseline(basePool, Number.isFinite(scoredStart) ? scoredStart : null, true);
-  return {
-    hrv,
-    baseline: base.periods >= MIN_BASELINE_PERIODS ? base.value : null,
-    nights: base.periods,
-    stale, nightBaselineOnly, useNight,
+
+  // One attempt at a comparison: reduce today's samples to a reading, build the baseline from the
+  // SAME kind of samples, and refuse the whole thing if either half doesn't hold up.
+  const attempt = (todaySamples, histSamples, pin, nightly) => {
+    if (!todaySamples.length) return null;
+    let pool = pin ? pinToLastNight(todaySamples, sleepStartIso, sleepEndIso)
+                   : newestGroup(todaySamples, dateKeyOf, null);
+    if (!pool.length) return null;
+    // A reading older than 20h is not today's. The 36h lookback still reaches the night BEFORE
+    // last, so skipping one night would otherwise resurrect a two-day-old reading as this
+    // morning's — the same trap already closed for the sleep block, on the same rule. Elapsed
+    // hours, never a clock anchor: a clock-anchored cutoff sits in a different place relative to
+    // last night depending on when the app is opened.
+    const newestT = pool.reduce((m, x) => (x.t != null && x.t > m ? x.t : m), 0);
+    if (!newestT || (nowMs - newestT) > STALE_HRV_MS) { stale = true; return null; }
+    // Exclude the scored bucket ITSELF from its own baseline, by key — see personalBaseline.
+    const cutoffKey = nightly ? nightKeyOf(newestT) : dateKeyOf(newestT);
+    const base = personalBaseline(histSamples, cutoffKey, nightly);
+    if (base.periods < MIN_BASELINE_PERIODS) return null;
+    // MEDIAN on both sides, deliberately. Today's figure used to be a mean while the baseline was
+    // a median, so the two halves of the ratio weren't the same statistic. Pinning to one night
+    // makes the pool small enough that a single odd reading (a wake-up, a bad contact) would
+    // otherwise visibly move the score.
+    return { hrv: Math.round(medianOf(pool.map(x => x.v))), baseline: base.value, nights: base.periods };
   };
+
+  // OVERNIGHT FIRST, DAYTIME AS A REAL FALLBACK — never nothing just because the watch was off.
+  //
+  // Today and the baseline must be the same KIND of reading: daytime HRV is meaningfully lower
+  // (movement, stress, caffeine — the whole reason the overnight rule exists), so comparing a
+  // daytime reading against an overnight baseline reports a collapse that didn't happen. The first
+  // fix for that simply DELETED the reading whenever today had no overnight samples, and that was
+  // worse in two ways. It fired on almost nothing: `histNight.length > 0` means ONE sample in
+  // sixty days, so a daytime-only wearer who fell asleep in the watch once was silently denied an
+  // HRV reading forever, and a sample landing at 09:01 instead of 08:59 flipped the same switch.
+  // And it failed upward — with the HRV term gone the score ROSE (38% -> 76% on a genuinely
+  // under-recovered day), so the failure mode was telling someone to train when they shouldn't.
+  // Comparing daytime to their own DAYTIME baseline is apples-to-apples too, and it keeps the
+  // signal. Only when neither pairing has a usable baseline do we give up and say nothing — and
+  // recoveryScoreFrom now ceilings that case rather than letting it flatter.
+  const res = attempt(all.filter(s => isOvernightSample(s.t)), hist.filter(s => isOvernightSample(s.t)), true, true)
+           || attempt(all.filter(s => isDay(s.t)), hist.filter(s => isDay(s.t)), false, false);
+  return res
+    ? { hrv: res.hrv, baseline: res.baseline, nights: res.nights, stale, matched: true }
+    : { hrv: null, baseline: null, nights: 0, stale, matched: false };
 }
 
 // THE RECOVERY SCORE, one definition. Takes a readRecovery-shaped object and returns 0..1,
@@ -5660,18 +5711,36 @@ function recoveryScoreFrom(rec) {
   }
   if (!comps.length) return null;
   const wsum = comps.reduce((a, [, w]) => a + w, 0);
-  let score = comps.reduce((a, [v, w]) => a + v * w, 0) / wsum;
-  // A SINGLE QUARTER-WEIGHT SIGNAL CANNOT MEAN "READY TO PUSH". Renormalising over the weights
-  // actually present is right — a missing signal must not read as zero — but it also means one
-  // 0.25 component becomes 100% of the score. A phone with no watch reports nothing but sleep
-  // duration, so eight hours in bed alone produced "100% — Ready to push", stated with the same
-  // confidence as a full HRV + resting-HR + staged-sleep read. The renormalisation is the
-  // mechanism; the cap is the honesty. It only bites at the TOP: a bad night still scores badly,
-  // because the number's one job is telling you when to back off.
-  // 0.75 is deliberately just under recoveryVerdict's 0.78 "Ready to push" band — capping at 0.85
-  // still printed "Ready to push", which is the exact claim the data cannot support. "Ready" is
-  // what one signal can honestly say: train normally, we don't know enough to tell you to send it.
-  if (wsum <= 0.3) score = Math.min(score, 0.75);
+  const wtotal = comps.reduce((a, [v, w]) => a + v * w, 0);
+  let score = wtotal / wsum;
+  // RENORMALISING OVER THE SIGNALS PRESENT IS RIGHT — a missing one must never read as zero — BUT
+  // IT ALSO MEANS AN ABSENT SIGNAL IS SCORED AS WHATEVER THE OTHERS SAY. Two consequences, both
+  // measured, both in the flattering direction:
+  //
+  //   * A phone with no watch reports nothing but sleep duration, and eight hours in bed alone
+  //     produced "100% — Ready to push", stated with exactly the confidence of a full read.
+  //   * Worse, DROPPING HRV RAISED THE SCORE. At-baseline HRV maps to 0.73 while at-baseline
+  //     resting HR maps to 0.75 and 8h sleep to 1.0, so a day where the watch failed to record
+  //     HRV scored 87% against the same day's 80% with a complete, perfectly normal read. "We
+  //     could not measure half your recovery" outranking "we measured it and it's fine" is the
+  //     precise opposite of what this number is for.
+  //
+  // So an unknown HRV is ceilinged at what a TYPICAL one would have produced. Not substituted —
+  // substituting would also lift a genuinely bad day — just used as the upper bound, which is all
+  // "we don't know" entitles you to.
+  if (rec.hrv == null || !rec.hrvBaseline) {
+    const typical = Math.max(0, Math.min(1, (1 - 0.78) / 0.30));   // HRV exactly at baseline
+    score = Math.min(score, (wtotal + typical * 0.5) / (wsum + 0.5));
+  }
+  // ...and a thin read cannot reach the top band at all. Deliberately pinned just under
+  // recoveryVerdict's "Ready to push" threshold rather than written as a literal, so the two can't
+  // drift apart. A FLAT `Math.min(score, 0.75)` was the first cut and it flattened the scale: the
+  // sleep factor is >=0.78 for any night past 7h, so 7h, 8h and 9h all clamped to exactly 0.75 and
+  // a phone-only user's number stopped telling them anything at all. Scaling the ceiling with the
+  // weight present keeps the ordering intact — what a thin read loses is the top of the range,
+  // not its ability to distinguish one night from another.
+  const ceiling = wsum >= 0.75 ? 1 : wsum >= 0.5 ? 0.9 : READY_TO_PUSH - 0.01;
+  score = Math.min(score, ceiling);
   return Math.round(score * 100) / 100;
 }
 
@@ -5816,9 +5885,12 @@ async function readRecovery() {
   if (hr.stale) devWarn("health: newest HRV night is stale (>20h old) — treating HRV as unknown");
   if (hr.hrv != null) out.hrv = hr.hrv;
   out.hrvBaseline = hr.baseline;
-  // Resting HR gets the same treatment: one value per DAY, and the 36h window that fed
-  // out.restingHr is excluded so today's reading isn't part of the median it's compared against.
-  const rhrBase = personalBaseline(rhrHist, new Date(startIso).getTime(), false);
+  // Resting HR gets the same treatment: one value per DAY, and every day the 36h window that fed
+  // out.restingHr touched is excluded, so today's reading isn't part of the median it's compared
+  // against. By whole DAY KEY, not by timestamp — a timestamp cutoff leaves the partial remainder
+  // of that day in as its own group, which is exactly the leak that let the scored night vote on
+  // its own HRV baseline.
+  const rhrBase = personalBaseline(rhrHist, dateKeyOf(now.getTime() - 1000 * 60 * 60 * 36), false);
   out.rhrBaseline = rhrBase.periods >= MIN_BASELINE_PERIODS ? rhrBase.value : null;
   // Now a real count of NIGHTS behind the baseline, not a row count. It used to be
   // `max(hrvHist.length, rhrHist.length)` — samples, not days — under a name that reads as days.
