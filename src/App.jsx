@@ -1,4 +1,4 @@
-// v178091716794
+// v178091716795
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1248,6 +1248,12 @@ const THEMES = {
     accentSoft: "rgba(200,241,53,0.12)",
     accent2: "#a8d426",
     onAccent: "#0d0d10",        // text/icons ON volt surfaces (volt is light — dark ink)
+    // PRIMARY ACTION SURFACE — deliberately NOT the accent. Volt was doing ten unrelated jobs
+    // (every filled button, every icon tile, every avatar, chips, toggles, progress, PRs, the
+    // muscle map), which is what made it read as decoration rather than meaning. Filled buttons
+    // are off-white now; volt is reserved for things you EARNED — PRs, progress, streaks.
+    primary: "#f4f4f6",
+    onPrimary: "#0d0d10",
     orange: "#fb923c",
     green: "#34d399",
     gold: "#fbbf24",
@@ -1272,6 +1278,8 @@ const THEMES = {
     accentSoft: "rgba(101,163,13,0.11)",
     accent2: "#4d7c0f",
     onAccent: "#ffffff",
+    primary: "#1c1b1a",         // see the dark theme's note — inverted for the light canvas
+    onPrimary: "#ffffff",
     orange: "#ea580c",
     green: "#059669",           // success shifted bluer (emerald) so it never reads as the accent
     gold: "#ca8a04",
@@ -1786,8 +1794,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   // whole job is the picture. `daysSinceMuscleTrained()` is still live — the coach summary uses it.
   const Tab = ({ id, label }) => (
     <button onClick={() => { setMode(id); haptic("tap"); }} style={{
-      flex:1, padding:"7px 0", background: mode === id ? C.accent : "transparent",
-      color: mode === id ? C.onAccent : C.sub, border:"none", borderRadius:11,
+      flex:1, padding:"7px 0", background: mode === id ? C.primary : "transparent",
+      color: mode === id ? C.onPrimary : C.sub, border:"none", borderRadius:11,
       fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F
     }}>{label}</button>
   );
@@ -1805,8 +1813,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
           {[["Male","male"],["Female","female"]].map(([label, val]) => (
             <button key={val} onClick={() => setSex(val)} style={{
-              padding:"4px 11px", background: sex === val ? C.accent : "transparent",
-              color: sex === val ? C.onAccent : C.sub, border:"none", borderRadius:12,
+              padding:"4px 11px", background: sex === val ? C.primary : "transparent",
+              color: sex === val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
               fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
             }}>{label}</button>
           ))}
@@ -6766,7 +6774,7 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
                       onClick={() => d.active && onDayTap?.(d.k)}
                       style={{
                         width:12, height:12, borderRadius:3,
-                        background: d.active ? C.accent : C.divider,
+                        background: d.active ? C.primary : C.divider,
                         opacity: d.active ? 1 : 0.5,
                         cursor: d.active ? "pointer" : "default",
                         transition:"opacity 0.2s",
@@ -6806,8 +6814,8 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
                   style={{
                     aspectRatio:"1 / 1",
                     border:"none",
-                    background: cell.active ? C.accent : C.divider,
-                    color: cell.active ? C.onAccent : (cell.isFuture ? C.muted : C.sub),
+                    background: cell.active ? C.primary : C.divider,
+                    color: cell.active ? C.onPrimary : (cell.isFuture ? C.muted : C.sub),
                     opacity: cell.isFuture ? 0.35 : 1,
                     fontSize:13, fontWeight: cell.isToday ? 800 : 600,
                     fontFamily:MONO,
@@ -6952,9 +6960,9 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
                 onClick={() => setSelectedCategory(cat)}
                 style={{
                   padding: "6px 12px",
-                  background: selectedCategory === cat ? C.accent : "transparent",
-                  color: selectedCategory === cat ? C.onAccent : C.sub,
-                  border: `1px solid ${selectedCategory === cat ? C.accent : C.border}`,
+                  background: selectedCategory === cat ? C.primary : "transparent",
+                  color: selectedCategory === cat ? C.onPrimary : C.sub,
+                  border: `1px solid ${selectedCategory === cat ? C.primary : C.border}`,
                   borderRadius: 20,
                   fontSize: 12,
                   fontWeight: 600,
@@ -6970,7 +6978,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
 
           <div style={{ maxHeight: 240, overflowY: "auto" }}>
             {q.length === 0 && selectedCategory === "All" && recent.length > 0 && (
-              <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1 }}>RECENT</div>
+              <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>RECENT</div>
             )}
             {filteredResults.length === 0 && !showCreateOption && (
               <div style={{ padding:"16px", fontSize:14, color:C.sub, textAlign:"center" }}>No exercises found</div>
@@ -6999,7 +7007,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
               <button onClick={() => { setCreating(true); haptic("tap"); }} style={{
                 width:"100%", textAlign:"left", padding:"12px 16px", borderTop:`1px solid ${C.divider}`,
                 background: C.accentSoft,
-                border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
+                border:"none", color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
               }}>+ Create "{trimmedQ}" as a custom exercise</button>
             )}
             {showCreateOption && creating && (
@@ -7110,7 +7118,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
         </div>
         {/* Right action column */}
         <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
-          <Key label="Next" onPress={onNext} bg={C.accent} color={C.onAccent} fontSize={15} flex={3} />
+          <Key label="Next" onPress={onNext} bg={C.accent} color={C.onPrimary} fontSize={15} flex={3} />
           <Key label="Done" onPress={closePad} fontSize={14} />
         </div>
       </div>
@@ -7485,7 +7493,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 {[6,7,8,9,10].map(v => (
                   <button key={v} onClick={() => { onUpdate({ rpe: set.rpe === v ? null : v }); setShowRpe(false); haptic("tap"); }}
                     style={{
-                      background: set.rpe === v ? C.accent : C.divider, color: set.rpe === v ? C.onAccent : C.sub,
+                      background: set.rpe === v ? C.primary : C.divider, color: set.rpe === v ? C.onPrimary : C.sub,
                       border:"none", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700,
                       cursor:"pointer", fontFamily:MONO, minWidth:22,
                     }}>{v}</button>
@@ -7660,14 +7668,14 @@ function OneRMModal({ onClose, unit, C }) {
           </div>
           {oneRM && (
             <>
-              {/* C.onAccent, not "#fff". The accent is VOLT — a light lime — so white text on it
+              {/* C.onPrimary, not "#fff". The accent is VOLT — a light lime — so white text on it
                   was very nearly invisible on the dark theme. onAccent is the dark ink that pairs
                   with it, and is what every other accent surface in the app already uses. */}
               <div style={{ background:C.accent, borderRadius:14, padding:"16px", textAlign:"center", marginBottom:16 }}>
-                <div style={{ fontSize:10, color:C.onAccent, opacity:0.7, fontWeight:800, letterSpacing:2, marginBottom:4 }}>YOUR ONE REP MAX</div>
+                <div style={{ fontSize:10, color:C.onPrimary, opacity:0.7, fontWeight:800, letterSpacing:2, marginBottom:4 }}>YOUR ONE REP MAX</div>
                 <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:6 }}>
-                  <div style={{ fontSize:46, fontWeight:800, color:C.onAccent, fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
-                  <div style={{ fontSize:15, fontWeight:700, color:C.onAccent, opacity:0.75 }}>{unit}</div>
+                  <div style={{ fontSize:46, fontWeight:800, color:C.onPrimary, fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
+                  <div style={{ fontSize:15, fontWeight:700, color:C.onPrimary, opacity:0.75 }}>{unit}</div>
                 </div>
               </div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
@@ -7750,20 +7758,20 @@ function PlateCalcModal({ onClose, unit, C }) {
             {BAR_TYPES.map(bt => (
               <button key={bt.id} onClick={() => setBarTypeId(bt.id)} style={{
                 padding:"5px 10px", borderRadius:7, cursor:"pointer", fontSize:11, fontWeight:700,
-                background: barTypeId === bt.id ? C.accent : C.divider,
-                border:"none", color: barTypeId === bt.id ? C.onAccent : C.text,
+                background: barTypeId === bt.id ? C.primary : C.divider,
+                border:"none", color: barTypeId === bt.id ? C.onPrimary : C.text,
               }}>{bt.label}</button>
             ))}
             <button onClick={() => setBarTypeId("custom")} style={{
               padding:"5px 10px", borderRadius:7, cursor:"pointer", fontSize:11, fontWeight:700,
-              background: barTypeId === "custom" ? C.accent : C.divider, border:"none",
-              color: barTypeId === "custom" ? C.onAccent : C.text, display:"flex", alignItems:"center", gap:4,
+              background: barTypeId === "custom" ? C.primary : C.divider, border:"none",
+              color: barTypeId === "custom" ? C.onPrimary : C.text, display:"flex", alignItems:"center", gap:4,
             }}>
               Custom
               <input type="text" inputMode="decimal" value={customBar} onClick={e => e.stopPropagation()}
                 onChange={e => { setCustomBar(e.target.value); setBarTypeId("custom"); }}
                 placeholder={unit}
-                style={{ width:30, background:"none", border:"none", borderBottom:`1px solid ${barTypeId === "custom" ? C.onAccent : C.border}`, color:"inherit", fontSize:11, fontWeight:700, fontFamily:MONO, outline:"none", padding:0 }}/>
+                style={{ width:30, background:"none", border:"none", borderBottom:`1px solid ${barTypeId === "custom" ? C.onPrimary : C.border}`, color:"inherit", fontSize:11, fontWeight:700, fontFamily:MONO, outline:"none", padding:0 }}/>
             </button>
           </div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>Bar: <strong style={{ color:C.text }}>{BAR_WEIGHT} {unit}</strong> · Enter total target weight</div>
@@ -7816,7 +7824,7 @@ function PlateCalcModal({ onClose, unit, C }) {
                   <div key={p} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderBottom: i < result.length-1 ? `1px solid ${C.divider}` : "none" }}>
                     <div style={{ width:8, height:26, borderRadius:2, background:PLATE_COLORS[p]||C.accent, flexShrink:0 }}/>
                     <div style={{ flex:1, fontSize:14, fontWeight:600, color:C.text }}>{p} {unit}</div>
-                    <div style={{ fontSize:16, fontWeight:800, color:C.accent, fontFamily:MONO }}>× {count}</div>
+                    <div style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:MONO }}>× {count}</div>
                   </div>
                 ))}
               </div>
@@ -8361,7 +8369,7 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
           </>
         ) : inClosing ? (
           <div key="closing" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ width:88, height:88, borderRadius:24, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28, marginLeft:"auto", marginRight:"auto" }}>
+            <div style={{ width:88, height:88, borderRadius:24, background:C.primary, color:C.onPrimary, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28, marginLeft:"auto", marginRight:"auto" }}>
               <Icon name="check" size={42} color="#fff" strokeWidth={2}/>
             </div>
             <div style={{ fontSize:28, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.6, lineHeight:1.15 }}>You're all set</div>
@@ -8406,8 +8414,8 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                 return (
                   <button key={v} onClick={() => setAnswers(a => ({ ...a, sex: v }))} style={{
                     flex:1, padding:"16px", borderRadius:14, cursor:"pointer", fontFamily:F,
-                    background: sel ? C.accent : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
-                    color: sel ? C.onAccent : C.text, fontSize:15, fontWeight:600,
+                    background: sel ? C.primary : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
+                    color: sel ? C.onPrimary : C.text, fontSize:15, fontWeight:600,
                   }}>{label}</button>
                 );
               })}
@@ -8427,9 +8435,9 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                 return (
                   <button key={String(opt.v)} onClick={() => pick(question.key, opt.v)} style={{
                     width:"100%", padding:"16px 18px", borderRadius:14, cursor:"pointer", fontFamily:F,
-                    background: selected ? C.accent : C.surface,
+                    background: selected ? C.primary : C.surface,
                     border:`1.5px solid ${selected ? C.accent : C.border}`,
-                    color: selected ? C.onAccent : C.text,
+                    color: selected ? C.onPrimary : C.text,
                     fontSize:15, fontWeight:600, textAlign:"left", transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
                   }}>{opt.label}</button>
                 );
@@ -8469,7 +8477,7 @@ function Onboarding({ C, onComplete, suggestedUsers = [] }) {
         )}
         {inClosing && (
           <button onClick={() => onComplete(answers, Array.from(followIds))} style={{
-            width:"100%", background:C.accent, color:C.onAccent, border:"none", borderRadius:14, padding:"16px",
+            width:"100%", background:C.primary, color:C.onPrimary, border:"none", borderRadius:14, padding:"16px",
             fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
           }}>
             Let's go
@@ -8554,7 +8562,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
           placeholder="Program name..."
           style={{ flex:1, margin:"0 14px", background:"transparent", border:"none", fontSize:16, fontWeight:700, color:bodyClr, outline:"none", fontFamily:F, textAlign:"center" }}
         />
-        <button onClick={save} style={{ fontSize:14, fontWeight:700, color:C.onAccent, background:C.accent, border:"none", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:F }}>Save</button>
+        <button onClick={save} style={{ fontSize:14, fontWeight:700, color:C.onPrimary, background:C.primary, border:"none", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:F }}>Save</button>
       </div>
 
       {/* Day tabs */}
@@ -8563,14 +8571,14 @@ function ProgramBuilder({ C, onCancel, onSave }) {
           <button key={d.id} onClick={() => setActiveDayIdx(i)} style={{
             padding:"7px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:F,
             fontSize:12, fontWeight:600, whiteSpace:"nowrap", flexShrink:0,
-            background: activeDayIdx === i ? C.accent : (isDark ? C.divider : "#EEF2F7"),
-            color: activeDayIdx === i ? C.onAccent : labelClr,
+            background: activeDayIdx === i ? C.primary : (isDark ? C.divider : "#EEF2F7"),
+            color: activeDayIdx === i ? C.onPrimary : labelClr,
           }}>{d.name}</button>
         ))}
         <button onClick={addDay} style={{
           padding:"7px 14px", borderRadius:20, border:`1.5px dashed ${isDark ? "#333" : "#CBD5E1"}`,
           background:"none", cursor:"pointer", fontFamily:F, fontSize:12, fontWeight:600,
-          color:C.accent, whiteSpace:"nowrap", flexShrink:0
+          color:C.text, whiteSpace:"nowrap", flexShrink:0
         }}>+ Day</button>
       </div>
 
@@ -8615,9 +8623,9 @@ function ProgramBuilder({ C, onCancel, onSave }) {
                 <div>
                   <div style={{ fontSize:10, fontWeight:600, color:labelClr, letterSpacing:0.5, marginBottom:4 }}>SETS</div>
                   <div style={{ display:"flex", alignItems:"center", gap:4, background: isDark?"#111":"#F1F5F9", borderRadius:8, padding:"6px 10px" }}>
-                    <button onClick={() => updateEx(ei,{sets:Math.max(1,progSetCount(ex)-1)})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>−</button>
+                    <button onClick={() => updateEx(ei,{sets:Math.max(1,progSetCount(ex)-1)})} style={{ background:"none", border:"none", color:C.text, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>−</button>
                     <span style={{ flex:1, textAlign:"center", fontSize:16, fontWeight:700, color:bodyClr, fontFamily:MONO }}>{progSetCount(ex)}</span>
-                    <button onClick={() => updateEx(ei,{sets:progSetCount(ex)+1})} style={{ background:"none", border:"none", color:C.accent, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>+</button>
+                    <button onClick={() => updateEx(ei,{sets:progSetCount(ex)+1})} style={{ background:"none", border:"none", color:C.text, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>+</button>
                   </div>
                 </div>
                 <div>
@@ -9102,11 +9110,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
                   <div style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>{Math.floor(post.workout.duration/60)}m</div>
+                    <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{Math.floor(post.workout.duration/60)}m</div>
                     <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>TIME</div>
                   </div>
                   <div style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
+                    <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
                     <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
                   </div>
                 </div>
@@ -9130,7 +9138,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 </div>
               ))}
               {post.workout.exercises.length > 3 && (
-                <button onClick={() => setExpanded(!expanded)} style={{ width:"100%", padding:"10px 16px", fontSize:12, color:C.accent, background:"none", border:"none", cursor:"pointer", fontWeight:700, fontFamily:F, textAlign:"left" }}>
+                <button onClick={() => setExpanded(!expanded)} style={{ width:"100%", padding:"10px 16px", fontSize:12, color:C.text, background:"none", border:"none", cursor:"pointer", fontWeight:700, fontFamily:F, textAlign:"left" }}>
                   {expanded ? "↑ Show less" : `+ ${post.workout.exercises.length-3} more exercises`}
                 </button>
               )}
@@ -9265,7 +9273,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                             onEditComment && onEditComment(post.id, c.id, editCommentText.trim());
                           }
                           setEditingCommentId(null);
-                        }} style={{ fontSize:12, fontWeight:700, color:C.accent, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Save</button>
+                        }} style={{ fontSize:12, fontWeight:700, color:C.text, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Save</button>
                         <button onClick={() => setEditingCommentId(null)} style={{ fontSize:12, color:C.sub, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:F }}>Cancel</button>
                       </div>
                     </div>
@@ -9357,7 +9365,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 style={{ flex:1, background:"transparent", border:"none", fontSize:13, color:C.text, outline:"none", fontFamily:F, padding:"4px 0" }}
               />
               {cmtText.trim() && (
-                <button onClick={() => { onComment(post.id, cmtText); setCmtText(""); setMentionQuery(null); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>Post</button>
+                <button onClick={() => { onComment(post.id, cmtText); setCmtText(""); setMentionQuery(null); }} style={{ background:"none", border:"none", color:C.text, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>Post</button>
               )}
             </div>
           </div>
@@ -9446,7 +9454,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               style={{ width:"100%", background:"transparent", border:"none", outline:"none", fontSize:18, fontWeight:800, color:TXT, fontFamily:F }} />
             <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:2 }}>
               <span style={{ fontSize:11, color:SUB }}>{localProg.days?.length||0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</span>
-              {isActive && <span style={{ fontSize:9, background:C.accent, color:C.onAccent, borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
+              {isActive && <span style={{ fontSize:9, background:C.primary, color:C.onPrimary, borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
             </div>
           </div>
           <button onClick={async () => {
@@ -10064,8 +10072,8 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
         {CUSTOM_MUSCLE_GROUPS.map(m => (
           <button key={m} onClick={() => { setMuscle(m); haptic("tap"); }} style={{
             padding: "7px 11px", borderRadius: 16, cursor: "pointer", fontFamily: F, fontSize: 12, fontWeight: 600,
-            background: muscle === m ? C.accent : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
-            color: muscle === m ? C.onAccent : C.text, border: `1px solid ${muscle === m ? C.accent : C.border}`,
+            background: muscle === m ? C.primary : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
+            color: muscle === m ? C.onPrimary : C.text, border: `1px solid ${muscle === m ? C.primary : C.border}`,
           }}>{m}</button>
         ))}
       </div>
@@ -10074,8 +10082,8 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
         {CUSTOM_EQUIPMENT.map(eq => (
           <button key={eq} onClick={() => { setEquip(equip === eq ? "" : eq); haptic("tap"); }} style={{
             padding: "6px 10px", borderRadius: 16, cursor: "pointer", fontFamily: F, fontSize: 11, fontWeight: 600,
-            background: equip === eq ? C.accent : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
-            color: equip === eq ? C.onAccent : C.sub, border: `1px solid ${equip === eq ? C.accent : C.border}`,
+            background: equip === eq ? C.primary : (C.isDark ? "rgba(255,255,255,0.06)" : "#fff"),
+            color: equip === eq ? C.onPrimary : C.sub, border: `1px solid ${equip === eq ? C.primary : C.border}`,
           }}>{eq}</button>
         ))}
       </div>
@@ -10086,7 +10094,7 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
           if (entry && onCreate) onCreate(entry);
         }} style={{
           flex: 1, padding: "10px", borderRadius: 10, border: "none", fontFamily: F, fontSize: 13, fontWeight: 700,
-          background: muscle ? C.accent : C.divider, color: muscle ? C.onAccent : C.muted, cursor: muscle ? "pointer" : "default",
+          background: muscle ? C.primary : C.divider, color: muscle ? C.onPrimary : C.muted, cursor: muscle ? "pointer" : "default",
         }}>Create & add</button>
         <button onClick={onCancel} style={{
           padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}`, fontFamily: F, fontSize: 13, fontWeight: 600,
@@ -10492,7 +10500,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
       <div style={{ padding:"calc(env(safe-area-inset-top) + 14px) 16px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
         <button onClick={onClose} style={{ background:"none", border:"none", color:C.sub, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Cancel</button>
         <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Edit workout</div>
-        <button onClick={handleSave} disabled={saving} style={{ background:"none", border:"none", color:C.accent, fontSize:14, fontWeight:700, cursor: saving ? "default" : "pointer", fontFamily:F, opacity: saving ? 0.5 : 1 }}>{saving ? "..." : "Save"}</button>
+        <button onClick={handleSave} disabled={saving} style={{ background:"none", border:"none", color:C.text, fontSize:14, fontWeight:700, cursor: saving ? "default" : "pointer", fontFamily:F, opacity: saving ? 0.5 : 1 }}>{saving ? "..." : "Save"}</button>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px 32px" }}>
         <div style={{ fontSize:11, color:C.sub, marginBottom:10, letterSpacing:0.4, fontWeight:600 }}>{sess.dayName} · {new Date(date + "T12:00:00").toLocaleDateString()} · logged in {(sess.unit || unit || "lbs").toLowerCase()}</div>
@@ -10547,7 +10555,7 @@ function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setSt
               style={{ flex:1, background:C.bg, border:`1.5px solid ${C.divider}`, borderRadius:10, padding:"10px 12px", fontSize:14, color:C.text, outline:"none", fontFamily:F, boxSizing:"border-box" }}
             />
             <button onClick={() => addExercise()} disabled={!newExName.trim()} style={{
-              background: newExName.trim() ? C.accent : C.divider, color: newExName.trim() ? C.onAccent : C.muted,
+              background: newExName.trim() ? C.primary : C.divider, color: newExName.trim() ? C.onPrimary : C.muted,
               border:"none", borderRadius:10, padding:"10px 16px", fontSize:14, fontWeight:700,
               cursor: newExName.trim() ? "pointer" : "default", fontFamily:F, flexShrink:0,
             }}>Add</button>
@@ -10688,7 +10696,7 @@ function InsightCards({ insights, C, big, onDismiss }) {
           cursor: dragging ? "grabbing" : "grab", userSelect:"none",
         }}
       >
-        <div style={{ width: big ? 44 : 38, height: big ? 44 : 38, borderRadius: big ? 13 : 11, flexShrink:0, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ width: big ? 44 : 38, height: big ? 44 : 38, borderRadius: big ? 13 : 11, flexShrink:0, background:C.primary, color:C.onPrimary, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <Icon name={insight.icon === "flame" ? "flame" : insight.icon === "trophy" ? "trophy" : "trending-up"} size={big ? 22 : 19} color="#fff"/>
         </div>
         <div style={{ flex:1, minWidth:0 }}>
@@ -10700,7 +10708,7 @@ function InsightCards({ insights, C, big, onDismiss }) {
       {insights.length > 1 && (
         <div style={{ display:"flex", justifyContent:"center", gap:5, marginTop:8 }}>
           {insights.map((_, i) => (
-            <div key={i} style={{ width:5, height:5, borderRadius:3, background: i === index ? C.accent : C.divider, transition:"background 0.2s" }}/>
+            <div key={i} style={{ width:5, height:5, borderRadius:3, background: i === index ? C.primary : C.divider, transition:"background 0.2s" }}/>
           ))}
         </div>
       )}
@@ -10790,7 +10798,7 @@ function SortableDayCard({ day, di, prog, store, C, onPreview, onEdit, onStart }
         }}>Edit</button>
         <button onClick={() => onStart(day)} style={{
           flex:1, padding:"9px", background:"none", border:"none",
-          fontSize:12, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F
+          fontSize:12, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F
         }}>Start ›</button>
       </div>
     </div>
@@ -10844,7 +10852,7 @@ function SortableExerciseRow({ id, ex, C }) {
     transform: CSS.Transform.toString(transform),
     transition,
     display:"flex", alignItems:"center", gap:12, padding:"14px 14px", marginBottom:8,
-    background: C.surface, border:`1px solid ${isDragging ? C.accent : C.border}`, borderRadius:14,
+    background: C.surface, border:`1px solid ${isDragging ? C.primary : C.border}`, borderRadius:14,
     zIndex: isDragging ? 100 : 1, position:"relative",
     boxShadow: isDragging ? "0 16px 36px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.10)" : "none",
     opacity: isDragging ? 0.9 : 1,
@@ -10871,7 +10879,7 @@ function SortableProgramRow({ p, C, isActive, onOpen }) {
   const style = {
     transform: CSS.Transform.toString(transform), transition,
     background: isActive ? C.accentSoft : C.surface,
-    border:`1px solid ${isDragging ? C.accent : (isActive ? C.accent : C.border)}`,
+    border:`1px solid ${isDragging ? C.primary : (isActive ? C.accent : C.border)}`,
     borderRadius:10, padding:"13px 14px", marginBottom:8,
     display:"flex", alignItems:"center", gap:12,
     zIndex: isDragging ? 50 : 1, position:"relative",
@@ -10887,7 +10895,7 @@ function SortableProgramRow({ p, C, isActive, onOpen }) {
       <button onClick={onOpen} style={{ flex:1, minWidth:0, background:"none", border:"none", textAlign:"left", cursor:"pointer", fontFamily:F, padding:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
           <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-          {isActive && <span style={{ fontSize:9, background:C.accent, color:C.onAccent, padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>}
+          {isActive && <span style={{ fontSize:9, background:C.primary, color:C.onPrimary, padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>}
         </div>
         <div style={{ fontSize:11, color:C.sub }}>
           {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
@@ -12241,9 +12249,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <button onClick={() => { clearInterval(elRef.current); try { localStorage.removeItem(SESSION_KEY); } catch {} setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ textAlign:"center" }}>
             <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
-            <div style={{ fontSize:28, fontWeight:800, color:C.accent, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
+            <div style={{ fontSize:28, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
           </div>
-          <button onClick={() => setShowFinish(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
+          <button onClick={() => setShowFinish(true)} style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
         </div>
 
         {/* Progress + tools */}
@@ -12265,11 +12273,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               {[["activity", "1RM", () => setShow1RM(true)], ["barbell", "Plates", () => setShowPlateCalc(true)]].map(([icon, label, fn]) => (
                 <button key={label} onClick={fn} aria-label={label === "1RM" ? "1RM Calculator" : "Plate Calculator"} style={{
                   display:"flex", alignItems:"center", gap:5,
-                  background:C.accentSoft, border:`1px solid ${C.accent}33`, borderRadius:999,
+                  background:C.surface, border:`1px solid ${C.border}`, borderRadius:999,
                   padding:"6px 12px", cursor:"pointer", fontFamily:F,
                 }}>
-                  <Icon name={icon} size={12} color={C.accent}/>
-                  <span style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.2 }}>{label}</span>
+                  <Icon name={icon} size={12} color={C.textDim}/>
+                  <span style={{ fontSize:11, fontWeight:700, color:C.textDim, letterSpacing:0.2 }}>{label}</span>
                 </button>
               ))}
             </div>
@@ -12339,9 +12347,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     onClick={() => { setRest({ secs:s, total:s, running:true, startedAt:Date.now() }); try{navigator.vibrate(10);} catch{} }}
                     style={{
                       padding:"12px 0", borderRadius:14, fontSize:12, fontWeight:700, fontFamily:MONO,
-                      background: rest.total===s ? C.accent : C.surface,
+                      background: rest.total===s ? C.primary : C.surface,
                       border: `2px solid ${rest.total===s ? C.accent : C.divider}`,
-                      color: rest.total===s ? C.onAccent : C.text,
+                      color: rest.total===s ? C.onPrimary : C.text,
                       cursor:"pointer"
                     }}
                   >
@@ -12405,7 +12413,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               if (!p) return null;
               const newRunning = !p.running;
               return newRunning ? { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) } : { ...p, running: newRunning };
-            })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:10, background:C.accent, border:"none", color:C.onAccent, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
+            })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:10, background:C.primary, border:"none", color:C.onPrimary, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
               {rest.running ? "Pause" : "Resume"}
             </button>
             <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:10, background:"transparent", border:`1px solid ${C.border}`, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
@@ -12487,7 +12495,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     {/* Per-exercise rest timer — sets the rest for ALL sets in this exercise */}
                     <button onClick={() => setRestPickerEx(restPickerEx === ei ? null : ei)}
                       title="Rest time for this exercise"
-                      style={{ background: restPickerEx === ei ? C.accent : "none", border:`1px solid ${restPickerEx === ei ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
+                      style={{ background: restPickerEx === ei ? C.primary : "none", border:`1px solid ${restPickerEx === ei ? C.primary : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={restPickerEx === ei ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/>
                       </svg>
@@ -12500,7 +12508,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     {isBarbellExercise(ex.name) && !isOneSidedBarbell(ex.name) && (
                       <button onClick={() => { setBarPickerEx(barPickerEx === ei ? null : ei); setCustomBarInput(""); }}
                         title="Bar type for this exercise"
-                        style={{ background: barPickerEx === ei ? C.accent : "none", border:`1px solid ${barPickerEx === ei ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
+                        style={{ background: barPickerEx === ei ? C.primary : "none", border:`1px solid ${barPickerEx === ei ? C.primary : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={barPickerEx === ei ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="2" y="10" width="20" height="4" rx="1"/><rect x="0" y="9" width="3" height="6" rx="0.5"/><rect x="21" y="9" width="3" height="6" rx="0.5"/>
                         </svg>
@@ -12517,7 +12525,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         need a name gate themselves. */}
                     <button onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
                       aria-label="More exercise options"
-                      style={{ background: (moreMenuEx === ei || ex.superset) ? C.accentSoft : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
+                      style={{ background: (moreMenuEx === ei || ex.superset) ? C.accentSoft : "none", border:`1px solid ${ex.superset ? C.primary : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? C.accent : C.sub} strokeWidth="2.6" strokeLinecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
                     </button>
                   </div>
@@ -12532,7 +12540,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 14px 10px", flexWrap:"wrap" }}>
                     {ei < session.exercises.length - 1 && (
                       <button onClick={() => { setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x, superset: !x.superset}) })); }}
-                        style={{ display:"flex", alignItems:"center", gap:6, background: ex.superset ? C.accent : "none", border:`1px solid ${ex.superset ? C.accent : C.border}`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
+                        style={{ display:"flex", alignItems:"center", gap:6, background: ex.superset ? C.primary : "none", border:`1px solid ${ex.superset ? C.primary : C.border}`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
                         <span style={{ fontSize:12, fontWeight:600, color: ex.superset ? "#fff" : C.text }}>{ex.superset ? "Linked to next" : "Superset with next"}</span>
                       </button>
@@ -12586,8 +12594,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           haptic("tap");
                         }} style={{
                           padding:"6px 11px", borderRadius:8, cursor:"pointer", fontFamily:MONO, fontSize:12, fontWeight:700,
-                          background: active ? C.accent : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
-                          border:`1px solid ${active ? C.accent : C.border}`, color: active ? C.onAccent : C.text,
+                          background: active ? C.primary : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
+                          border:`1px solid ${active ? C.primary : C.border}`, color: active ? C.onPrimary : C.text,
                         }}>{secs >= 60 ? `${secs/60}`.replace(/\.5/,"½") + "m" : `${secs}s`}</button>
                       );
                     })}
@@ -12606,15 +12614,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           haptic("tap");
                         }} style={{
                           padding:"6px 11px", borderRadius:8, cursor:"pointer", fontFamily:F, fontSize:12, fontWeight:700,
-                          background: active ? C.accent : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
-                          border:`1px solid ${active ? C.accent : C.border}`, color: active ? C.onAccent : C.text,
+                          background: active ? C.primary : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
+                          border:`1px solid ${active ? C.primary : C.border}`, color: active ? C.onPrimary : C.text,
                         }}>{bt.label} <span style={{ opacity:0.7, fontFamily:MONO }}>{bt.short}</span></button>
                       );
                     })}
                     <div style={{
                       padding:"6px 11px", borderRadius:8, fontFamily:F, fontSize:12, fontWeight:700,
-                      background: ex.barType?.id === "custom" ? C.accent : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
-                      border:`1px solid ${ex.barType?.id === "custom" ? C.accent : C.border}`, color: ex.barType?.id === "custom" ? C.onAccent : C.text,
+                      background: ex.barType?.id === "custom" ? C.primary : (C.isDark ? "rgba(255,255,255,0.05)" : C.bg),
+                      border:`1px solid ${ex.barType?.id === "custom" ? C.primary : C.border}`, color: ex.barType?.id === "custom" ? C.onPrimary : C.text,
                       display:"flex", alignItems:"center", gap:4,
                     }}>
                       Custom
@@ -12629,7 +12637,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         }}
                         onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
                         placeholder={ex.barType?.id === "custom" ? String(getBarWeight(ex.barType, unit)) : unit}
-                        style={{ width:34, background:"none", border:"none", borderBottom:`1px solid ${ex.barType?.id === "custom" ? C.onAccent : C.border}`, color:"inherit", fontSize:12, fontWeight:700, fontFamily:MONO, outline:"none", padding:0 }}/>
+                        style={{ width:34, background:"none", border:"none", borderBottom:`1px solid ${ex.barType?.id === "custom" ? C.onPrimary : C.border}`, color:"inherit", fontSize:12, fontWeight:700, fontFamily:MONO, outline:"none", padding:0 }}/>
                     </div>
                   </div>
                 )}
@@ -12637,7 +12645,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 {ex.superset && ei < session.exercises.length - 1 && (
                   <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px 4px 20px" }}>
                     <div style={{ width:2, height:14, background:C.accent, borderRadius:2 }}/>
-                    <span style={{ fontSize:10, fontWeight:700, color:C.accent, letterSpacing:0.5 }}>SUPERSET — no rest, straight into next</span>
+                    <span style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:0.5 }}>SUPERSET — no rest, straight into next</span>
                   </div>
                 )}
 
@@ -12725,17 +12733,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       }))}
                     />
                     <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
-                      <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
-                      <button onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:`${C.accent}80`, fontFamily:MONO }}>
+                      <div style={{ flex:1, height:1, background:C.divider }}/>
+                      <button onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:C.sub, fontFamily:MONO }}>
                         {fmtTime(restSecondsFor(ex, set, store))}
                       </button>
-                      <div style={{ flex:1, height:1, background:`${C.accent}18` }}/>
+                      <div style={{ flex:1, height:1, background:C.divider }}/>
                     </div>
                     {restEditor?.ei === ei && restEditor?.si === si && (
                       <div style={{ margin:"10px 14px 0", padding:"12px", border:`1px solid ${C.border}`, borderRadius:18, background:C.surface, display:"grid", gap:10 }}>
                         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:8 }}>
                           {[{s:90,label:"1.5m"},{s:120,label:"2m"},{s:180,label:"3m"},{s:300,label:"5m"}].map(({s,label}) => (
-                            <button key={s} onClick={() => { updateSet(ei, si, { restTime: s }); setRestEditor(null); }} style={{ padding:"10px 0", borderRadius:14, border:`1px solid ${Number(set.restTime)===s ? C.accent : C.divider}`, background:Number(set.restTime)===s ? C.accent : C.bg, color:Number(set.restTime)===s ? C.onAccent : C.text, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                            <button key={s} onClick={() => { updateSet(ei, si, { restTime: s }); setRestEditor(null); }} style={{ padding:"10px 0", borderRadius:14, border:`1px solid ${Number(set.restTime)===s ? C.primary : C.divider}`, background:Number(set.restTime)===s ? C.primary : C.bg, color:Number(set.restTime)===s ? C.onPrimary : C.text, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                               {label}
                             </button>
                           ))}
@@ -12763,7 +12771,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })}
 
                 <div style={{ display:"flex", padding:"8px 14px 12px", borderBottom:`1px solid ${C.divider}`, gap:8, flexWrap:"wrap" }}>
-                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.accent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
+                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.text, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
                   {(() => {
                     // Warmup button — only on compound barbell lifts, when a working weight exists and no warmups present yet
                     const exName = ex.name || "";
@@ -12806,7 +12814,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <button onClick={() => setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name:"",reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }))} style={{
             width:"calc(100% - 28px)", margin:"14px 14px 0", padding:"13px",
             background:C.bg, border:`1px solid ${C.border}`,
-            borderRadius:16, fontSize:13, color:C.accent, fontWeight:700, cursor:"pointer", fontFamily:F
+            borderRadius:16, fontSize:13, color:C.text, fontWeight:700, cursor:"pointer", fontFamily:F
           }}>+ Add Exercise</button>
         </div>
 
@@ -12830,7 +12838,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   if (!wins.length) return null;
                   return (
                     <div className="seshd-content-fade" style={{ margin:"0 2px 18px", background:C.surface, border:`1px solid ${C.accent}44`, borderRadius:16, overflow:"hidden" }}>
-                      <div style={{ padding:"11px 14px 8px", fontSize:10, fontWeight:800, letterSpacing:1.6, color:C.accent }}>
+                      <div style={{ padding:"11px 14px 8px", fontSize:10, fontWeight:800, letterSpacing:1.6, color:C.sub }}>
                         YOU BEAT LAST TIME
                       </div>
                       {wins.map((w, i) => (
@@ -13059,7 +13067,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         setWorkoutSummary(prev => ({ ...prev, programUpdated: true }));
                         haptic("success");
                         toast("Program updated", "success");
-                      }} style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:C.accent, color:C.onAccent, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                      }} style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:C.primary, color:C.onPrimary, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                         Update program
                       </button>
                       <button onClick={() => setWorkoutSummary(prev => ({ ...prev, programChange: null }))}
@@ -13104,7 +13112,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             shareToGroups: checked
                               ? (prev.shareToGroups||[]).filter(id=>id!==g.id)
                               : [...(prev.shareToGroups||[]), g.id]
-                          }))} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:10, background:C.surface, border:`1px solid ${checked?C.accent:C.border}`, marginBottom:6, cursor:"pointer", transition:"border-color 0.15s" }}>
+                          }))} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:10, background:C.surface, border:`1px solid ${checked?C.primary:C.border}`, marginBottom:6, cursor:"pointer", transition:"border-color 0.15s" }}>
                             <div style={{ width:32, height:32, borderRadius:10, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             </div>
@@ -13112,7 +13120,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{g.name}</div>
                               <div style={{ fontSize:11, color:C.sub }}>{(g.members||[]).length} member{(g.members||[]).length===1?"":"s"}</div>
                             </div>
-                            <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${checked?C.accent:C.border}`, background:checked?C.accent:"none", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                            <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${checked?C.accent:C.border}`, background:checked?C.primary:"none", display:"flex", alignItems:"center", justifyContent:"center" }}>
                               {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                             </div>
                           </div>
@@ -13432,8 +13440,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             boxShadow:`0 0 0 1px ${C.accent}14, 0 6px 20px -8px ${C.accent}66`,
             marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F,
           }}>
-            <div style={{ width:40, height:40, borderRadius:10, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <Icon name="zap" size={20} color={C.onAccent}/>
+            <div style={{ width:40, height:40, borderRadius:10, background:C.primary, color:C.onPrimary, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="zap" size={20} color={C.onPrimary}/>
             </div>
             <div style={{ textAlign:"left", flex:1 }}>
               <div style={{ fontSize:15, fontWeight:700, letterSpacing:-0.3 }}>Quick Start</div>
@@ -13611,7 +13619,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>ACTIVE PROGRAM</div>
-                <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>{prog.name}</div>
+                <div style={{ fontSize:12, fontWeight:600, color:C.textDim }}>{prog.name}</div>
               </div>
               <DayCardList
                 prog={prog}
@@ -13634,7 +13642,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:5, letterSpacing:-0.2 }}>Start your first program</div>
               <div style={{ fontSize:12.5, color:C.sub, marginBottom:18, lineHeight:1.45 }}>Pick a proven split and make it yours — you can change every exercise, set and rep.</div>
               <button onClick={() => setShowTemplates(true)} style={{
-                background:C.accent, color:C.onAccent, border:"none", borderRadius:12,
+                background:C.primary, color:C.onPrimary, border:"none", borderRadius:12,
                 padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
               }}>Browse templates</button>
               <button onClick={() => setShowBuilder(true)} style={{
@@ -13754,9 +13762,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <div data-no-tab-swipe style={{ display:"flex", gap:6, marginBottom:14, overflowX:"auto", paddingBottom:4, WebkitOverflowScrolling:"touch", touchAction:"pan-x" }}>
             {["All","Chest","Back","Shoulders","Biceps","Triceps","Quads","Hamstrings","Glutes","Calves","Core","Traps","Forearms","Full Body","Cardio","Yoga"].map(f => (
               <button key={f} onClick={() => setExerciseFilter(f)} style={{
-                padding:"5px 12px", background: exerciseFilter===f ? C.accent : C.divider,
+                padding:"5px 12px", background: exerciseFilter===f ? C.primary : C.divider,
                 border:"none", borderRadius:20, fontSize:11, fontWeight:600,
-                color: exerciseFilter===f ? C.onAccent : C.sub, cursor:"pointer", fontFamily:F, flexShrink:0
+                color: exerciseFilter===f ? C.onPrimary : C.sub, cursor:"pointer", fontFamily:F, flexShrink:0
               }}>{f}</button>
             ))}
           </div>
@@ -13813,12 +13821,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     display:"flex", alignItems:"center", gap:5, background:"none", border:"none", padding:"0 0 6px",
                     cursor:"pointer", fontFamily:F,
                   }}>
-                    <span style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.5 }}>{group.toUpperCase()}</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.5 }}>{group.toUpperCase()}</span>
                     <span style={{ fontSize:11, fontWeight:600, color:C.sub }}>· {exercises.length}</span>
                     <span style={{ fontSize:12, color:C.sub }}>›</span>
                   </button>
                 ) : (
-                  <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:0.5, marginBottom:6 }}>{group.toUpperCase()}</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.5, marginBottom:6 }}>{group.toUpperCase()}</div>
                 )}
                 {shown.map(ex => (
                   <button key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{
@@ -13893,7 +13901,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
                       <div style={{
                         width:"100%", borderRadius:"3px 3px 0 0",
-                        background: i === weeks-1 ? C.accent : `${C.accent}66`,
+                        background: i === weeks-1 ? C.primary : `${C.accent}66`,
                         height: Math.max(4, (w.vol/maxVol)*64),
                         transition:"height 0.3s"
                       }}/>
@@ -13913,7 +13921,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i, arr) => (
                   <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", borderBottom:i<arr.length-1?`1px solid ${C.divider}`:"none" }}>
                     <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{name}</div>
-                    <div style={{ fontSize:14, fontWeight:800, color:C.accent, fontFamily:MONO }}>
+                    <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>
                       {cvt(weight,"lbs",store.unit||"lbs")} {store.unit||"lbs"}
                     </div>
                   </div>
@@ -13957,7 +13965,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   Your completed sessions will show up here. Track your first one to start building your history.
                 </div>
                 <button onClick={() => setSubTab("workout")} style={{
-                  background:C.accent, color:C.onAccent, border:"none", borderRadius:10,
+                  background:C.primary, color:C.onPrimary, border:"none", borderRadius:10,
                   padding:"10px 22px", fontSize:13, fontWeight:700,
                   cursor:"pointer", fontFamily:F
                 }}>Go to workouts</button>
@@ -14129,11 +14137,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 return (
                 <div key={t.id} style={{
                   background: featured ? `linear-gradient(135deg, ${C.accentSoft}, transparent)` : "none",
-                  border:`1px solid ${featured ? C.accent : C.border}`,
+                  border:`1px solid ${featured ? C.primary : C.border}`,
                   borderRadius:12, padding:"14px", marginBottom:10
                 }}>
                   {featured && (
-                    <div style={{ fontSize:9, fontWeight:700, color:C.accent, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
+                    <div style={{ fontSize:9, fontWeight:700, color:C.sub, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
                   )}
                   <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.name}</div>
                   {/* desc already encodes the weekly frequency (e.g. "3-day · …"); don't append
@@ -15074,19 +15082,19 @@ function FirstTimeCues({ name, muscle, C, onOpenGuide }) {
   if (!cues.length) return null;
   return (
     <div style={{
-      margin:"0 14px 8px", background:C.accentSoft, border:`1px solid ${C.accent}33`,
+      margin:"0 14px 8px", background:C.surface, border:`1px solid ${C.border}`,
       borderRadius:12, padding:"9px 11px",
     }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:5 }}>
-        <span style={{ fontSize:9, fontWeight:800, letterSpacing:1.3, color:C.accent }}>FIRST TIME</span>
+        <span style={{ fontSize:9, fontWeight:800, letterSpacing:1.3, color:C.sub }}>FIRST TIME</span>
         <button onClick={onOpenGuide} style={{
           background:"none", border:"none", padding:0, cursor:"pointer", fontFamily:F,
-          fontSize:11, fontWeight:700, color:C.accent,
+          fontSize:11, fontWeight:700, color:C.textDim,
         }}>Full guide ›</button>
       </div>
       {cues.map((c, i) => (
         <div key={i} style={{ display:"flex", gap:7, alignItems:"flex-start", marginTop: i ? 3 : 0 }}>
-          <span style={{ color:C.accent, fontSize:11, lineHeight:1.5, flexShrink:0 }}>•</span>
+          <span style={{ color:C.muted, fontSize:11, lineHeight:1.5, flexShrink:0 }}>•</span>
           <span style={{ fontSize:11.5, color:C.text, lineHeight:1.45 }}>{c}</span>
         </div>
       ))}
@@ -15487,8 +15495,8 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
               {[["weight","Max"],["e1rm","Est 1RM"],["volume","Volume"]].map(([m, label]) => (
                 <button key={m} onClick={() => setChartMode(m)} style={{
                   padding:"4px 10px", borderRadius:14, border:"none",
-                  background: chartMode===m ? C.accent : "transparent",
-                  color: chartMode===m ? C.onAccent : C.sub,
+                  background: chartMode===m ? C.primary : "transparent",
+                  color: chartMode===m ? C.onPrimary : C.sub,
                   fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
                 }}>{label}</button>
               ))}
@@ -15557,7 +15565,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
         {/* Breathing cue */}
         {cueData.breathe && (
           <div style={{ margin:"0 16px 24px", background:C.accentSoft, borderRadius:12, padding:"14px 16px" }}>
-            <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>BREATHING</div>
+            <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:4 }}>BREATHING</div>
             <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{cueData.breathe}</div>
           </div>
         )}
@@ -15761,11 +15769,11 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
               <div style={{ display:"flex", gap:12 }}>
                 {/* Photos upload to the PRIVATE group-images bucket (members-only, signed URLs) —
                     see uploadGroupImage/signGroupImage. Not the public feed bucket. */}
-                <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="plus" size={14} color={C.accent}/> Photo</button>
-                <button onClick={() => { setPickerCaption(""); setShowWorkoutPicker(true); }} style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
+                <button onClick={() => fileRef.current?.click()} style={{ background:"none", border:"none", color:C.text, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="plus" size={14} color={C.accent}/> Photo</button>
+                <button onClick={() => { setPickerCaption(""); setShowWorkoutPicker(true); }} style={{ background:"none", border:"none", color:C.text, fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5 }}><Icon name="dumbbell" size={14} color={C.accent}/> Share Workout</button>
               </div>
               <button onClick={sendPost} disabled={(!caption.trim() && !img) || posting} style={{
-                background:(caption.trim()||img)?C.accent:C.divider, color:(caption.trim()||img)?C.onAccent:C.sub,
+                background:(caption.trim()||img)?C.primary:C.divider, color:(caption.trim()||img)?C.onPrimary:C.sub,
                 border:"none", borderRadius:16, padding:"6px 16px", fontSize:12, fontWeight:700,
                 cursor:(caption.trim()||img)?"pointer":"default", fontFamily:F
               }}>{posting?"...":"Post"}</button>
@@ -15820,7 +15828,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                                   body: JSON.stringify({ caption: t })
                                 });
                               } catch (e) { toast("Couldn't save edit — check connection", "error"); }
-                            }} style={{ padding:"7px 14px", background:C.accent, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:C.onAccent, cursor:"pointer", fontFamily:F }}>Save</button>
+                            }} style={{ padding:"7px 14px", background:C.accent, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F }}>Save</button>
                           </div>
                         </div>
                       ) : (
@@ -15836,13 +15844,13 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                             <div style={{ display:"flex", gap:10 }}>
                               {post.workout.duration && (
                                 <div style={{ textAlign:"right" }}>
-                                  <div style={{ fontSize:12, fontWeight:800, color:C.accent, fontFamily:MONO }}>{Math.floor((post.workout.duration||0)/60)}m</div>
+                                  <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO }}>{Math.floor((post.workout.duration||0)/60)}m</div>
                                   <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>TIME</div>
                                 </div>
                               )}
                               {post.workout.volume > 0 && (
                                 <div style={{ textAlign:"right" }}>
-                                  <div style={{ fontSize:12, fontWeight:800, color:C.accent, fontFamily:MONO }}>{post.workout.volume >= 1000 ? (post.workout.volume/1000).toFixed(1)+"k" : post.workout.volume}</div>
+                                  <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO }}>{post.workout.volume >= 1000 ? (post.workout.volume/1000).toFixed(1)+"k" : post.workout.volume}</div>
                                   <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>VOL</div>
                                 </div>
                               )}
@@ -15906,7 +15914,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                               }
                             }} style={{
                               background: active ? `${C.accent}20` : C.divider,
-                              border: `1px solid ${active ? C.accent : "transparent"}`,
+                              border: `1px solid ${active ? C.primary : "transparent"}`,
                               borderRadius:20, padding:"3px 10px", fontSize:12, cursor:"pointer",
                               display:"flex", alignItems:"center", gap:4, fontFamily:F,
                               color: active ? C.accent : C.sub
@@ -15951,7 +15959,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                     <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                   </div>
                   <button onClick={() => onUpdateMembers(g.id, [...(g.members||[]), u.id])} style={{
-                    background:C.accent, color:C.onAccent, border:"none", borderRadius:6,
+                    background:C.primary, color:C.onPrimary, border:"none", borderRadius:6,
                     padding:"5px 12px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:F
                   }}>Invite</button>
                 </div>
@@ -16151,7 +16159,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
         {onBack && <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"11px 14px 11px 2px" }}>‹</button>}
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Groups</div>
         <button onClick={() => setShowCreate(true)} style={{
-          background:C.accent, color:C.onAccent, border:"none", borderRadius:6,
+          background:C.primary, color:C.onPrimary, border:"none", borderRadius:6,
           padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
         }}>+ New</button>
       </div>
@@ -16168,7 +16176,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
           <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>No groups yet</div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:14 }}>Create one for your gym crew or team</div>
           <button onClick={() => setShowCreate(true)} style={{
-            background:C.accent, color:C.onAccent, border:"none", borderRadius:8,
+            background:C.primary, color:C.onPrimary, border:"none", borderRadius:8,
             padding:"9px 18px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
           }}>Create Group</button>
         </div>
@@ -16207,7 +16215,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
             />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={() => setShowCreate(false)} style={{ flex:1, padding:"11px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borRadius:8, borderRadius:8, color:C.onAccent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
+              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borRadius:8, borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
             </div>
           </div>
         </div>
@@ -16412,8 +16420,8 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
               cursor:"pointer", textAlign:"left", fontFamily:F,
               display:"flex", flexDirection:"column", alignItems:"flex-start", gap:14,
             }}>
-              <div style={{ width:32, height:32, borderRadius:10, background:C.accent, color:C.onAccent, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <Icon name="activity" size={18} color={C.onAccent}/>
+              <div style={{ width:32, height:32, borderRadius:10, background:C.primary, color:C.onPrimary, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <Icon name="activity" size={18} color={C.onPrimary}/>
               </div>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Friends Activity</div>
@@ -16591,7 +16599,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                     <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Close Friends</div>
                     <div style={{ fontSize:11.5, color:C.sub, marginTop:2 }}>{closeFriends.length}/{CLOSE_FRIENDS_MAX} selected</div>
                   </div>
-                  <button onClick={() => setShowCloseFriendPicker(false)} style={{ fontSize:14, fontWeight:700, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Done</button>
+                  <button onClick={() => setShowCloseFriendPicker(false)} style={{ fontSize:14, fontWeight:700, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Done</button>
                 </div>
                 <div style={{ overflowY:"auto", flex:1, padding:"6px 0" }}>
                   {following.length === 0 ? (
@@ -16612,7 +16620,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                         </div>
                         <div style={{
                           width:24, height:24, borderRadius:"50%", flexShrink:0,
-                          border:`2px solid ${picked ? C.accent : C.border}`, background: picked ? C.accent : "transparent",
+                          border:`2px solid ${picked ? C.accent : C.border}`, background: picked ? C.primary : "transparent",
                           display:"flex", alignItems:"center", justifyContent:"center",
                         }}>
                           {picked && <Icon name="check" size={13} color="#fff"/>}
@@ -16951,7 +16959,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"11px 14px 11px 2px", fontFamily:F }}>‹</button>
         <div style={{ flex:1, fontSize:16, fontWeight:700, color:C.text }}>Body</div>
-        {!adding && <button onClick={() => setAdding(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"7px 14px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Log</button>}
+        {!adding && <button onClick={() => setAdding(true)} style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:9, padding:"7px 14px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Log</button>}
       </div>
 
       <div style={{ flex:1, overflowY:"auto", padding:"16px", overscrollBehavior:"contain" }}>
@@ -16990,7 +16998,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
             </div>
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={() => { setAdding(false); setDraftWeight(""); setDraftMeasures({}); setDraftPhoto(null); }} style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, color:C.sub, borderRadius:10, padding:"11px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={saveEntry} style={{ flex:2, background:C.accent, color:C.onAccent, border:"none", borderRadius:10, padding:"11px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>Save entry</button>
+              <button onClick={saveEntry} style={{ flex:2, background:C.primary, color:C.onPrimary, border:"none", borderRadius:10, padding:"11px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>Save entry</button>
             </div>
           </div>
         ) : log.length === 0 ? (
@@ -16998,7 +17006,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
             <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="trending-up" size={40} color="currentColor"/></div>
             <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>Track your body</div>
             <div style={{ fontSize:13, lineHeight:1.5, marginBottom:20 }}>Log your weight, measurements, and progress photos to see how your body changes over time.</div>
-            <button onClick={() => setAdding(true)} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Log your first entry</button>
+            <button onClick={() => setAdding(true)} style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Log your first entry</button>
           </div>
         ) : (
           <>
@@ -17030,8 +17038,8 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
                 return (
                   <button key={m.key} onClick={() => setMetric(m.key)} style={{
                     flexShrink:0, padding:"6px 13px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F,
-                    background: metric === m.key ? C.accent : C.surface, color: metric === m.key ? C.onAccent : C.sub,
-                    border:`1px solid ${metric === m.key ? C.accent : C.border}`,
+                    background: metric === m.key ? C.primary : C.surface, color: metric === m.key ? C.onPrimary : C.sub,
+                    border:`1px solid ${metric === m.key ? C.primary : C.border}`,
                   }}>{m.label}</button>
                 );
               })}
@@ -17621,7 +17629,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {isMe && (
               <>
                 <input ref={avatarRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatar}/>
-                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color:C.onAccent, cursor:"pointer" }}><Icon name="plus" size={12} color={C.onAccent}/></div>
+                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color:C.onPrimary, cursor:"pointer" }}><Icon name="plus" size={12} color={C.onPrimary}/></div>
               </>
             )}
           </div>
@@ -17768,8 +17776,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
                   <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} style={{
-                    padding:"4px 10px", background: sex===val ? C.accent : "transparent",
-                    color: sex===val ? C.onAccent : C.sub, border:"none", borderRadius:12,
+                    padding:"4px 10px", background: sex===val ? C.primary : "transparent",
+                    color: sex===val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
                   }}>{label}</button>
                 ))}
@@ -17857,7 +17865,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             return (
               <button onClick={() => onOpenCoach && onOpenCoach()} style={{
                 width:"100%", marginTop:10, padding:"13px 16px", borderRadius:14, cursor:"pointer", fontFamily:F,
-                background:C.accent, color:C.onAccent,
+                background:C.primary, color:C.onPrimary,
                 border:"none", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
               }}>
                 <span>Weekly Review</span>
@@ -17920,12 +17928,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Edit Profile</div>
-              <button onClick={saveProfile} style={{ fontSize:14, fontWeight:600, color:C.accent, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Done</button>
+              <button onClick={saveProfile} style={{ fontSize:14, fontWeight:600, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Done</button>
             </div>
             <div style={{ padding:"16px", overflowY:"auto" }}>
               <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:18 }}>
                 <Avatar user={user} size={84} C={C} onClick={() => avatarRef.current?.click()}/>
-                <button onClick={() => avatarRef.current?.click()} style={{ marginTop:8, background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Change photo</button>
+                <button onClick={() => avatarRef.current?.click()} style={{ marginTop:8, background:"none", border:"none", color:C.text, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Change photo</button>
               </div>
               <div style={{ marginBottom:14 }}>
                 <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:6 }}>NAME</div>
@@ -17989,7 +17997,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             </div>
             <div style={{ display:"flex", gap:8, padding:"14px 16px calc(env(safe-area-inset-bottom) + 14px)" }}>
               <button onClick={() => setCoverDraft(null)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={saveCover} style={{ flex:1, padding:"12px", background:C.accent, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:C.onAccent, cursor:"pointer", fontFamily:F }}>Use photo</button>
+              <button onClick={saveCover} style={{ flex:1, padding:"12px", background:C.accent, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F }}>Use photo</button>
             </div>
           </div>
         </div>
@@ -18013,7 +18021,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               style={{ width:"100%", boxSizing:"border-box", padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:C.card || "transparent", color:C.text, fontSize:14, outline:"none", fontFamily:F, resize:"none" }}/>
             <div style={{ display:"flex", gap:8, marginTop:12 }}>
               <button onClick={() => setShowFeedback(false)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={submitFeedback} disabled={!feedbackText.trim() || feedbackSending} style={{ flex:1, padding:"12px", background:feedbackText.trim() ? C.accent : C.border, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:feedbackText.trim() ? C.onAccent : "#fff", cursor:"pointer", fontFamily:F }}>{feedbackSending ? "Sending…" : "Send"}</button>
+              <button onClick={submitFeedback} disabled={!feedbackText.trim() || feedbackSending} style={{ flex:1, padding:"12px", background:feedbackText.trim() ? C.primary : C.border, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:feedbackText.trim() ? C.onPrimary : "#fff", cursor:"pointer", fontFamily:F }}>{feedbackSending ? "Sending…" : "Send"}</button>
             </div>
           </div>
         </div>
@@ -18060,8 +18068,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
                     {["light","dark"].map(th => (
                       <button key={th} onClick={() => onToggleTheme(th)} style={{
-                        padding:"6px 14px", background:(store.theme||"light")===th?C.accent:"transparent",
-                        color:(store.theme||"light")===th?C.onAccent:C.sub, border:"none", borderRadius:20,
+                        padding:"6px 14px", background:(store.theme||"light")===th?C.primary:"transparent",
+                        color:(store.theme||"light")===th?C.onPrimary:C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                       }}>{th==="light"?"Light":"Dark"}</button>
                     ))}
@@ -18102,8 +18110,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           catch (e) { devError("unit save error:", e); }
                         }
                       }} style={{
-                        padding:"6px 16px", background:(store.unit||"lbs")===u?C.accent:"transparent",
-                        color:(store.unit||"lbs")===u?C.onAccent:C.sub, border:"none", borderRadius:20,
+                        padding:"6px 16px", background:(store.unit||"lbs")===u?C.primary:"transparent",
+                        color:(store.unit||"lbs")===u?C.onPrimary:C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                       }}>{u.toUpperCase()}</button>
                     ))}
@@ -18135,8 +18143,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           }
                           haptic("tap");
                         }} style={{
-                          padding:"6px 16px", background: active ? C.accent : "transparent",
-                          color: active ? C.onAccent : C.sub, border:"none", borderRadius:20,
+                          padding:"6px 16px", background: active ? C.primary : "transparent",
+                          color: active ? C.onPrimary : C.sub, border:"none", borderRadius:20,
                           fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                         }}>{label}</button>
                       );
@@ -18172,8 +18180,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               }
                               haptic("tap");
                             }} style={{
-                              padding:"6px 14px", background: active ? C.accent : "transparent",
-                              color: active ? C.onAccent : C.sub, border:"none", borderRadius:20,
+                              padding:"6px 14px", background: active ? C.primary : "transparent",
+                              color: active ? C.onPrimary : C.sub, border:"none", borderRadius:20,
                               fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
                             }}>{btnLabel}</button>
                           );
@@ -18201,8 +18209,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           catch (e) { devError("weekly_target save error:", e); }
                         }
                       }} style={{
-                        padding:"6px 12px", background:(store.weeklyTarget||3)===n?C.accent:"transparent",
-                        color:(store.weeklyTarget||3)===n?C.onAccent:C.sub, border:"none", borderRadius:20,
+                        padding:"6px 12px", background:(store.weeklyTarget||3)===n?C.primary:"transparent",
+                        color:(store.weeklyTarget||3)===n?C.onPrimary:C.sub, border:"none", borderRadius:20,
                         fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, minWidth:32
                       }}>{n}</button>
                     ))}
@@ -18332,7 +18340,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     not followers yet: until you accept, they see nothing at all. */}
                 {showRequests && (
                   <>
-                    <div style={{ padding:"10px 16px 6px", fontSize:11, fontWeight:700, letterSpacing:0.6, color:C.accent }}>
+                    <div style={{ padding:"10px 16px 6px", fontSize:11, fontWeight:700, letterSpacing:0.6, color:C.sub }}>
                       {incomingRequests.length} REQUEST{incomingRequests.length === 1 ? "" : "S"}
                     </div>
                     {incomingRequests.map(u => (
@@ -18351,7 +18359,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                             cursor:"pointer", fontFamily:F }}>Decline</button>
                           <button onClick={() => onFollowRequest && onFollowRequest(u.id, true)} style={{
                             padding:"7px 16px", borderRadius:8, fontSize:12, fontWeight:700,
-                            background:C.accent, color:C.onAccent, border:`1px solid ${C.accent}`,
+                            background:C.primary, color:C.onPrimary, border:`1px solid ${C.accent}`,
                             cursor:"pointer", fontFamily:F }}>Accept</button>
                         </div>
                       </div>
@@ -18397,7 +18405,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                             // dark sheet still needs a surface of its own, or the button vanishes
                             // into the card. "Follow" is the action, so it takes the accent.
                             background: amFollowing ? C.divider : C.accent,
-                            color: amFollowing ? C.text : C.onAccent,
+                            color: amFollowing ? C.text : C.onPrimary,
                             border: `1px solid ${amFollowing ? C.border : C.accent}`,
                             cursor:"pointer", fontFamily:F
                           }}>{amFollowing ? "Following" : "Follow"}</button>
@@ -18526,7 +18534,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>New Post</div>
           <button onClick={handleShare} style={{
             fontSize:14, fontWeight:700, color:"#fff",
-            background: canShare() ? C.accent : C.divider,
+            background: canShare() ? C.primary : C.divider,
             border:"none", borderRadius:20, padding:"6px 16px", cursor:canShare()?"pointer":"default", fontFamily:F
           }}>Share</button>
         </div>
@@ -18648,7 +18656,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
               {calcPace() && (
                 <div style={{ background:C.divider, borderRadius:10, padding:"10px 14px", marginBottom:12, textAlign:"center" }}>
                   <span style={{ fontSize:11, color:C.sub }}>Pace  </span>
-                  <span style={{ fontSize:18, fontWeight:800, color:C.accent, fontFamily:MONO }}>{calcPace()}</span>
+                  <span style={{ fontSize:18, fontWeight:800, color:C.text, fontFamily:MONO }}>{calcPace()}</span>
                 </div>
               )}
               <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="Route or location"
@@ -18673,7 +18681,7 @@ function EditPostModal({ C, post, onSave, onClose }) {
           style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", marginBottom:14, fontFamily:F }}/>
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={onClose} style={{ flex:1, padding:"10px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-          <button onClick={() => onSave(post.id, cap)} style={{ flex:1, padding:"10px", background:C.accent, border:"none", borderRadius:8, color:C.onAccent, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Save</button>
+          <button onClick={() => onSave(post.id, cap)} style={{ flex:1, padding:"10px", background:C.accent, border:"none", borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Save</button>
         </div>
       </div>
     </div>
@@ -18823,7 +18831,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         <div style={{ display:"flex", flexDirection:"column", position:"relative", zIndex:1, paddingTop:"4vh" }}>
           {promptReason && (
             <div style={{ marginBottom:24, padding:"14px 18px", borderRadius:14, background:C.surface, border:`1px solid ${C.accent}40` }}>
-              <div style={{ fontSize:11, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
+              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, marginBottom:4 }}>HEADS UP</div>
               <div style={{ fontSize:14, color:C.text, lineHeight:1.4 }}>{promptReason}</div>
             </div>
           )}
@@ -18832,7 +18840,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
 
           {/* Accent eyebrow — small uppercase kicker above the headline for a more editorial,
               premium feel. */}
-          <div style={{ marginTop:30, fontSize:11.5, fontWeight:800, letterSpacing:2.5, color:C.accent, fontFamily:F, textTransform:"uppercase" }}>
+          <div style={{ marginTop:30, fontSize:11.5, fontWeight:800, letterSpacing:2.5, color:C.sub, fontFamily:F, textTransform:"uppercase" }}>
             Built for lifters
           </div>
           {/* Display-face headline — the condensed display font reads bolder/taller than Inter and
@@ -19203,7 +19211,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", marginBottom:28 }}>
           {p.avatar_url
             ? <img src={p.avatar_url} alt="" style={{ width:88, height:88, borderRadius:44, objectFit:"cover", marginBottom:14 }}/>
-            : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color:C.onAccent, marginBottom:14 }}>{initial}</div>}
+            : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color:C.onPrimary, marginBottom:14 }}>{initial}</div>}
           <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{p.name || p.username}</div>
           {p.username && <div style={{ fontSize:14, color:C.sub, marginTop:2 }}>@{p.username}</div>}
           {p.bio && <div style={{ fontSize:14, color:C.text, marginTop:12, maxWidth:300, lineHeight:1.5 }}>{p.bio}</div>}
@@ -19424,8 +19432,8 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
               }}>
                 <span style={{
                   flexShrink:0, width:20, height:20, borderRadius:6, marginTop:1,
-                  border:`2px solid ${a.done ? C.accent : C.border}`, background:a.done ? C.accent : "transparent",
-                  display:"flex", alignItems:"center", justifyContent:"center", color:C.onAccent, fontSize:12, fontWeight:800
+                  border:`2px solid ${a.done ? C.accent : C.border}`, background:a.done ? C.primary : "transparent",
+                  display:"flex", alignItems:"center", justifyContent:"center", color:C.onPrimary, fontSize:12, fontWeight:800
                 }}>{a.done ? "✓" : ""}</span>
                 <span style={{ fontSize:13.5, lineHeight:1.5, color:a.done ? C.muted : C.text, textDecoration:a.done ? "line-through" : "none" }}>{a.text}</span>
               </button>
@@ -19641,7 +19649,7 @@ function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) 
                   {c.last.sender_id === currentUserId ? "You: " : ""}{c.last.text}
                 </div>
               </div>
-              {c.unread > 0 && <span style={{ background:C.accent, color:C.onAccent, borderRadius:10, minWidth:18, height:18, padding:"0 5px", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>{c.unread}</span>}
+              {c.unread > 0 && <span style={{ background:C.primary, color:C.onPrimary, borderRadius:10, minWidth:18, height:18, padding:"0 5px", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>{c.unread}</span>}
             </div>
           );
         })}
@@ -19753,7 +19761,7 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
                 {(!prev || gap) && <div style={{ textAlign:"center", fontSize:10, color:C.sub, margin:"8px 0 4px" }}>{fmtMsgTime(m.created_at)}</div>}
                 <div style={{ display:"flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
                   <div style={{ maxWidth:"78%", padding:"8px 12px", borderRadius:16, borderBottomRightRadius: mine ? 5 : 16, borderBottomLeftRadius: mine ? 16 : 5,
-                    background: mine ? C.accent : (C.card || C.tabBg), color: mine ? C.onAccent : C.text,
+                    background: mine ? C.primary : (C.card || C.tabBg), color: mine ? C.onPrimary : C.text,
                     fontSize:14, lineHeight:1.45, whiteSpace:"pre-wrap", wordBreak:"break-word", opacity: m._tmp ? 0.6 : 1 }}>
                     {m.text}
                   </div>
@@ -19800,8 +19808,8 @@ function ChatView({ peerId, store, currentUserId, token, C, onBack, onRead }) {
           placeholder="Message…" enterKeyHint="send"
           style={{ flex:1, padding:"11px 14px", borderRadius:22, border:`1px solid ${C.border}`, background:C.card || "transparent", color:C.text, fontSize:15, outline:"none", fontFamily:F }}/>
         <button onClick={send} disabled={!draft.trim() || sending} aria-label="Send"
-          style={{ width:40, height:40, borderRadius:20, border:"none", background: draft.trim() ? C.accent : C.border, color: draft.trim() ? C.onAccent : "#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={draft.trim() ? C.onAccent : "#fff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          style={{ width:40, height:40, borderRadius:20, border:"none", background: draft.trim() ? C.primary : C.border, color: draft.trim() ? C.onPrimary : "#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={draft.trim() ? C.onPrimary : "#fff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
       )}
@@ -22930,7 +22938,7 @@ function AppInner() {
                 <div style={{ margin:"12px 14px 0", padding:"14px 16px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, position:"relative" }}>
                   <button onClick={() => dismissRecap(weeklyRecap.key)} aria-label="Dismiss recap"
                     style={{ position:"absolute", top:8, right:10, background:"none", border:"none", color:C.muted, fontSize:15, cursor:"pointer", padding:4 }}>×</button>
-                  <div style={{ fontSize:10, fontWeight:800, letterSpacing:1.5, color:C.accent, marginBottom:6 }}>LAST WEEK</div>
+                  <div style={{ fontSize:10, fontWeight:800, letterSpacing:1.5, color:C.sub, marginBottom:6 }}>LAST WEEK</div>
                   <div style={{ display:"flex", gap:18, alignItems:"baseline", marginBottom:10 }}>
                     <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{weeklyRecap.workouts}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>workout{weeklyRecap.workouts===1?"":"s"}</span></div>
                     {/* fmtVol already appends the unit; strip it (like the other stat callers do)
@@ -22938,7 +22946,7 @@ function AppInner() {
                     <div><span style={{ fontFamily:MONO, fontSize:24, fontWeight:800, color:C.text, letterSpacing:-1 }}>{fmtVol(weeklyRecap.volume, unit).replace(/\s\w+$/, "")}</span><span style={{ fontSize:11, color:C.sub, marginLeft:5 }}>{unit}</span></div>
                     {weeklyRecap.topMuscle && <div style={{ fontSize:11, color:C.sub }}>most trained: <span style={{ color:C.text, fontWeight:700 }}>{weeklyRecap.topMuscle}</span></div>}
                   </div>
-                  <button onClick={() => setShowWrapped({ start: weeklyRecap.start, end: weeklyRecap.end, label: weeklyRecap.label })} style={{ background:C.accent, color:C.onAccent, border:"none", borderRadius:9, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Share recap</button>
+                  <button onClick={() => setShowWrapped({ start: weeklyRecap.start, end: weeklyRecap.end, label: weeklyRecap.label })} style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:9, padding:"8px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F }}>Share recap</button>
                 </div>
               )}
               {/* Stories */}
@@ -22971,7 +22979,7 @@ function AppInner() {
                     </div>
                     </div>
                     {!myStoryPost && (
-                      <div style={{ position:"absolute", bottom:-2, right:-2, width:20, height:20, borderRadius:"50%", background:C.accent, color:C.onAccent, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
+                      <div style={{ position:"absolute", bottom:-2, right:-2, width:20, height:20, borderRadius:"50%", background:C.primary, color:C.onPrimary, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>+</div>
                     )}
                   </div>
                   <div style={{ fontSize:11, color:C.text }}>Your story</div>
