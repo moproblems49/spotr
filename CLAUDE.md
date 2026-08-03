@@ -404,6 +404,31 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   if every session lands in the red — but "fixing" it must not make it flattering either.**
   `sim_bbscale` pins BOTH ends (a good day must clear 80, a wrecked day must stay under 40 so the
   "Low battery" copy still fires); `build/bb_probe.mjs` prints the whole distribution for tuning.
+- **A HEALTH FIXTURE MUST BE AS SPARSE AS THE REAL DATA, or it proves nothing.** An Apple Watch
+  writes a HANDFUL of HRV rows a night, hours apart — not one every 20 minutes. A fix for the
+  recovery HRV window shipped looking correct because every fixture in its sim used 24 samples per
+  night, 8-24x real density. At real density the same code failed three separate ways: a sparse
+  night never cleared its "2h of span = a night" test so the fix was inert; a night split by a
+  charger gap resolved to the EARLY half and the staleness guard then deleted the reading; and a
+  night whose samples were >3h apart collapsed to ONE sample, so "today" was a raw reading while
+  the baseline was a median. Contiguity/density heuristics are the wrong tool here — bucket by
+  local noon-to-noon NIGHT and ask whether the bucket contains a small-hours sample. Same rule for
+  steps/sleep/RHR fixtures: check what the device actually writes before trusting a green sim.
+- **Excluding a self-referencing sample from a baseline must drop the whole KEY, not a timestamp.**
+  Cutting at "the first sample of the scored night" left that night's PRE-SLEEP readings (the
+  overnight filter starts at 22:00, bedtime is later) in the baseline as their own extra group —
+  and awake HRV runs low, so it dragged the baseline down and the score up every night. It could
+  even satisfy the "at least 3 nights of history" guard using the scored night itself.
+- **A missing signal must not be able to RAISE a score.** `recoveryScore` renormalises over the
+  signals present, which is right — but it also means dropping a signal scores it as whatever the
+  others say. At-baseline HRV maps to 0.73 while at-baseline resting HR maps to 0.75 and 8h sleep
+  to 1.0, so a day the watch failed to record HRV scored 87% against the same day's 80% with a
+  complete normal read: "we couldn't measure half your recovery" outranked "we measured it and
+  it's fine". An unknown signal is now CEILINGED at what a typical reading would have produced —
+  ceilinged, not substituted, because substituting also lifts a genuinely bad day. And a thin read
+  can't reach the top verdict band at all. **Don't implement that ceiling as a flat `Math.min`** —
+  the first cut used `min(score, 0.75)` and the sleep factor is >=0.78 past 7h, so 7h, 8h and 9h
+  all clamped to exactly 0.75 and a phone-only user's number stopped distinguishing anything.
 - **Sleep STAGES feed recovery, not just duration (built Aug 1).** Apple Health returns sleep split
   into deep / core / REM; the app read those samples and threw the stage away, so eight broken hours
   scored identically to eight restorative ones. `stageMinutes()` now unions the per-stage intervals
