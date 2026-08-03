@@ -9,29 +9,20 @@
 // This pins BOTH ends, because the failure mode of "fixing" a score like this is making it
 // flattering: if a wrecked day no longer reads as wrecked, the number can't do its one job.
 //
-// The formula lives inside readRecovery, which needs a device, so the scoring maths is replicated
-// here — and the replica is checked against the SHIPPED constants below so the two can't drift.
-import { readFileSync } from "fs";
+// The maths used to be replicated here and pinned to src/App.jsx with regexes, because it lived
+// inside readRecovery and readRecovery needs a device. It is `recoveryScoreFrom` now, so this
+// calls the shipped function and the replica is gone — a replica pinned by regex still silently
+// misses anything the regex doesn't look for, and it did: the one-signal confidence cap was added
+// and every number below was unaffected because the replica had never heard of it.
+import { recoveryScoreFrom } from "./app.mjs";
 
 let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
 
-// ── Pin the replica to the real source ───────────────────────────────────────────────────────
-const src = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
-const hrvLine = src.split("\n").find(l => /ratio - 0\.\d+\) \/ 0\.\d+\)\), 0\.5\]/.test(l)) || "";
-const rhrLine = src.split("\n").find(l => /1\.\d+ - ratio\) \/ 0\.\d+\)\), 0\.25\]/.test(l)) || "";
-const hrvNums = (hrvLine.match(/0\.\d+/g) || []).slice(0, 2);
-const rhrNums = (rhrLine.match(/1\.\d+|0\.\d+/g) || []).slice(0, 2);
-check("the shipped HRV mapping is (ratio - 0.78) / 0.30",
-  hrvNums[0] === "0.78" && hrvNums[1] === "0.30", hrvLine.trim().slice(0, 120));
-check("the shipped RHR mapping is (1.075 - ratio) / 0.10",
-  rhrNums[0] === "1.075" && rhrNums[1] === "0.10", rhrLine.trim().slice(0, 120));
-
-const H = r => Math.max(0, Math.min(1, (r - Number(hrvNums[0])) / Number(hrvNums[1])));
-const R = r => Math.max(0, Math.min(1, (Number(rhrNums[0]) - r) / Number(rhrNums[1])));
-const S = h => h >= 8 ? 1 : h >= 7 ? 0.78 : h >= 6 ? 0.5 : h >= 5 ? 0.28 : 0.12;
-const score = (hrvRatio, rhrRatio, sleepH) =>
-  Math.round((0.5 * H(hrvRatio) + 0.25 * R(rhrRatio) + 0.25 * S(sleepH)) * 100);
+// Ratios in, percent out. Baseline HRV 50ms / resting HR 50bpm, so a ratio is just the reading.
+const score = (hrvRatio, rhrRatio, sleepH) => Math.round(recoveryScoreFrom({
+  hrv: 50 * hrvRatio, hrvBaseline: 50, restingHr: 50 * rhrRatio, rhrBaseline: 50, sleepHours: sleepH,
+}) * 100);
 // recoveryVerdict's bands, kept in step with src/App.jsx.
 const verdict = t => t >= 78 ? "Ready to push" : t >= 62 ? "Ready" : t >= 45 ? "Moderate" : "Take it easy";
 
