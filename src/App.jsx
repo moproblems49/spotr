@@ -1,4 +1,4 @@
-// v178091716789
+// v178091716790
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1867,10 +1867,15 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               {(() => {
                 const bb = computeBodyBattery(store);
                 const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
+                // This line's whole job is explaining the number beside it, so it has to
+                // RECONCILE. Rest recovery was missing, and it's the one positive term: the card
+                // rendered "Woke at 94 · −16 training · −2 activity · −9 today" next to a headline
+                // of 81, where those figures make 67. Measured gaps up to 20 points.
                 const parts = [];
                 if (bb.workoutDrain) parts.push(`−${bb.workoutDrain} training`);
                 if (bb.activityDrain) parts.push(`−${bb.activityDrain} activity`);
                 if (bb.baselineDrain) parts.push(`−${bb.baselineDrain} today`);
+                if (bb.restRecharge) parts.push(`+${bb.restRecharge} rest`);
                 return (
                   <div onClick={() => setShowBatteryDetail(true)} style={{ margin:"2px 16px 10px", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, cursor:"pointer" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:7 }}>
@@ -4687,8 +4692,15 @@ function computeBodyBattery(store) {
       // moves it either way. The point of this number is to tell you when to back off; it can't
       // do that if every session lands in the red.
       const d = sessionDrain(sets, avgRpe);
-      workoutDrain += d;
       const endMs = sess.finishedAt || new Date(dk + "T12:00:00").getTime();
+      // A workout that hasn't happened yet must not drain anything. The filter above only trims
+      // the PAST side (before the wake anchor), so a row dated later today was charged in full:
+      // measured, at 05:00 with a session finishing at 11:00 the headline already read 50 with
+      // workoutDrain 16. Reachable through device-clock skew, and certainly through a legacy
+      // guest row with no finishedAt, which anchors to local NOON and so drains from midnight.
+      // Same guard trainingLoadRatio needed, for the same reason.
+      if (endMs > now.getTime()) continue;
+      workoutDrain += d;
       sessionSpans.push({ startMs: endMs - (sess.duration || 0) * 1000, endMs: Math.max(endMs, endMs + 1), drain: d });
     }
   }
@@ -4847,13 +4859,33 @@ function computeBodyBatteryTimeline(store) {
       }
     }
     if (!sets) return null;
+    if (endMs > now.getTime()) return null;   // see the headline's guard — not yet trained
     const avgRpe = rpeN ? rpeSum / rpeN : null;
     const drain = sessionDrain(sets, avgRpe);
     return { startMs, endMs: Math.max(endMs, startMs + 60000), drain };
   })).filter(Boolean);
+  // THE CURVE MUST HONOUR THE SAME DAILY CAP AS THE HEADLINE. computeBodyBattery clamps total
+  // workout drain to 32/day; the curve applied every session in full, so two 34-set sessions cost
+  // 48 on the chart against 32 in the number — the chart read 35 under a headline of 50 and the
+  // endpoint pin yanked it 15 points at the last pixel. Two-a-days and split sessions are normal
+  // here. Scale proportionally rather than truncating the last session, so the shape is right.
+  {
+    const raw = sessions.reduce((a, x) => a + x.drain, 0);
+    if (raw > 32) { const k = 32 / raw; sessions.forEach(x => { x.drain *= k; }); }
+  }
 
   const hourlyActivity = store.activityHourly;
   const hourlyIsFresh = store.activityHourlyDate === keyOf(now);
+  // Proportional scale that holds the curve's summed activity drain to the headline's 18/day cap.
+  const activityScale = (() => {
+    if (!hourlyIsFresh || !hourlyActivity) return 1;
+    let total = 0;
+    for (const v of Object.values(hourlyActivity)) {
+      if (!v || !(v.steps || v.kcal)) continue;
+      total += Math.min(6, (v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0));
+    }
+    return total > 18 ? 18 / total : 1;
+  })();
   const points = [];
   const clampLvl = (l) => Math.round(Math.max(5, Math.min(100, l)));
 
@@ -4875,11 +4907,21 @@ function computeBodyBatteryTimeline(store) {
       const act = hourlyActivity?.[new Date(hourStart).getHours()];
       if (act && (act.steps || act.kcal)) {
         const a = (act.steps ? act.steps / 1800 : 0) + (act.kcal ? act.kcal / 90 : 0);
-        drain += Math.min(6, a);
+        // `activityScale` holds the curve to the headline's 18/day ceiling. The headline caps the
+        // DAY; the curve capped each HOUR at 6 with no daily limit, so a 30k-step hike cost 35 on
+        // the chart against 18 in the number (45k steps: 58 vs 18), and the pin then jumped the
+        // last point 17-40 points. Long hikes and physical jobs are ordinary for this audience.
+        drain += Math.min(6, a) * activityScale;
       }
       // A still hour RECHARGES — the delta goes negative and the curve ticks back up. Same rule
       // the headline uses, so the chart and the big number tell the same story.
-      drain -= restfulHourRecharge(store, hourStart, keyOf(now));
+      //
+      // ...but NOT an hour you were training in. The headline already refuses this (`if (inWorkout)
+      // continue`) on the documented grounds that a phone in a locker records ~0 steps and is not
+      // evidence of rest. The curve credited it anyway, so every workout hour was 2 points cheaper
+      // on the chart than in the number — 8 points across a 4h session.
+      const inWorkout = sessions.some(x => Math.min(x.endMs, hourEnd) > Math.max(x.startMs, hourStart));
+      if (!inWorkout) drain -= restfulHourRecharge(store, hourStart, keyOf(now));
     }
     return drain;
   };
