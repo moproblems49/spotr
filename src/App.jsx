@@ -1,4 +1,4 @@
-// v178091716790
+// v178091716791
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8041,162 +8041,6 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // PR MODAL
 // ═════════════════════════════════════════════════════════════════════════════
-function PRModal({ prs, unit, onClose }) {
-  const list = (prs || []).filter(Boolean);
-  if (list.length === 0) return null;
-  const hero = list[0];
-  const rest = list.slice(1);
-  const multiple = list.length > 1;
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <Confetti/>
-      <div className="seshd-scale-enter" style={{
-        background:"#0A0A0A", borderRadius:24, padding:"36px 28px",
-        width:"100%", maxWidth:360, color:"#fff", position:"relative",
-        fontFamily:F, overflow:"hidden",
-      }}>
-        {/* Grid texture */}
-        <div style={{
-          position:"absolute", inset:0, opacity:0.04, pointerEvents:"none",
-          backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
-          backgroundSize:"24px 24px",
-        }}/>
-
-        <div style={{ position:"relative", zIndex:1 }}>
-          {/* Header label */}
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:multiple ? 24 : 36 }}>
-            <div>
-              <div style={{ fontSize:11, letterSpacing:4, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:3 }}>SESHD</div>
-              <div style={{ fontSize:10, letterSpacing:2.5, fontWeight:700, color:"#fff" }}>PERSONAL RECORD{multiple ? "S" : ""}</div>
-            </div>
-            <div style={{
-              background:"#fff", color:"#0A0A0A",
-              fontSize:9, fontWeight:800, letterSpacing:1.5,
-              padding:"5px 10px", borderRadius:20,
-            }}>{multiple ? `${list.length} NEW` : "NEW"}</div>
-          </div>
-
-          {/* Hero PR — the big number */}
-          <div style={{ marginBottom:multiple ? 4 : 32 }}>
-            <div style={{
-              fontFamily:MONO, fontSize:multiple ? 64 : 88, lineHeight:0.9, fontWeight:700, letterSpacing:-3,
-              fontVariantNumeric: "tabular-nums",
-            }}>
-              {Number.isInteger(parseFloat(hero.weight))
-                ? <AnimatedNumber value={parseFloat(hero.weight) || 0} duration={900} animateOnMount/>
-                : <span className="seshd-count">{hero.weight}</span>}
-            </div>
-            <div style={{ fontSize:16, color:"rgba(255,255,255,0.5)", marginTop:6, letterSpacing:1, fontWeight:600 }}>{unit.toUpperCase()}</div>
-          </div>
-
-          {/* Hero exercise */}
-          <div style={{ marginBottom:multiple ? 16 : 24 }}>
-            <div style={{ fontSize:11, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:600, marginBottom:6 }}>EXERCISE</div>
-            <div style={{ fontSize:20, fontWeight:800, lineHeight:1.2, letterSpacing:-0.5 }}>{hero.name}</div>
-            {hero.firstEver ? (
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:4, fontFamily:MONO }}>
-                Your first record for this lift
-              </div>
-            ) : hero.increase > 0 && (
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:4, fontFamily:MONO }}>
-                +{hero.increase} {unit} over your previous best
-              </div>
-            )}
-            {hero.types?.length > 0 && (
-              <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap" }}>
-                {hero.types.map(t => (
-                  <span key={t} style={{ fontSize:9, fontWeight:700, letterSpacing:1.2, color:"rgba(255,255,255,0.55)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:20, padding:"3px 9px" }}>{PR_TYPE_LABEL[t].toUpperCase()}</span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Additional PRs hit this session */}
-          {rest.length > 0 && (
-            <div style={{ marginBottom:24, borderTop:"1px solid rgba(255,255,255,0.1)", paddingTop:16 }}>
-              <div style={{ fontSize:10, letterSpacing:1.8, color:"rgba(255,255,255,0.4)", fontWeight:700, marginBottom:10 }}>
-                ALSO SET TODAY
-              </div>
-              {rest.map((pr, i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: i < rest.length-1 ? 10 : 0 }}>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.85)" }}>{pr.name}</div>
-                    {pr.types?.length > 0 && <div style={{ fontSize:9, fontWeight:700, letterSpacing:0.8, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{pr.types.map(t => PR_TYPE_LABEL[t]).join(" + ").toUpperCase()}</div>}
-                  </div>
-                  <span style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-                    <span style={{ fontFamily:MONO, fontSize:15, fontWeight:700, color:"#fff" }}>{pr.weight} {unit}</span>
-                    {!pr.firstEver && pr.increase > 0 && <span style={{ fontFamily:MONO, fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.4)" }}>+{pr.increase}</span>}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Single dismiss — no share button. A clean card invites a screenshot. */}
-          <button onClick={onClose} style={{
-            width:"100%", background:"#fff", color:"#0A0A0A",
-            border:"none", borderRadius:12, padding:"15px",
-            fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2,
-          }}>Let's go</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// PROGRAM TEMPLATES — shared by the Tracker's template picker AND first-run
-// onboarding, which auto-creates a starter program matched to the user's answers.
-// ═════════════════════════════════════════════════════════════════════════════
-const PROGRAM_TEMPLATES = [
-  { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", days:[
-    { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
-    { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (Wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
-    { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lateral Raises (DB)","Cable Crunch"] },
-  ]},
-  { id:"ul4", name:"Upper / Lower", icon:"⚡", desc:"4-day · strength + size", days:[
-    { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (Wide)","Barbell Curl","Tricep Rope Pushdown"] },
-    { name:"Lower A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-    { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","Seated DB Shoulder Press","Seated Cable Row (Narrow)","Hammer Curl","Skull Crushers (EZ Bar)"] },
-    { name:"Lower B", exercises:["Deadlift","Hack Squat (Machine)","Leg Extension","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
-  ]},
-  { id:"ppl6", name:"Push / Pull / Legs", icon:"🔥", desc:"6-day · classic hypertrophy", days:[
-    { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
-    { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (Wide)","Barbell Row","Seated Cable Row (Narrow)","Face Pulls","Barbell Curl","Incline DB Curl"] },
-    { name:"Legs A · Quad Focus", exercises:["Barbell Back Squat","Leg Press","Leg Extension","Romanian Deadlift","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-    { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
-    { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly (DB)","Preacher Curl Machine","Hammer Curl"] },
-    { name:"Legs B · Posterior Chain", exercises:["Romanian Deadlift","Hack Squat (Machine)","Seated Leg Curl","Hip Thrust (Barbell)","Leg Extension","Seated Calf Raise (Machine)"] },
-  ]},
-  { id:"pplul", name:"PPL · Upper / Lower", icon:"🗓️", desc:"5-day · PPLUL hybrid", days:[
-    { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
-    { name:"Pull", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Face Pulls","Barbell Curl","Hammer Curl"] },
-    { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
-    { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lat Pulldown (Wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers (EZ Bar)"] },
-    { name:"Lower", exercises:["Hack Squat (Machine)","Romanian Deadlift","Leg Extension","Seated Leg Curl","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
-  ]},
-  { id:"bro", name:"Bro Split", icon:"💯", desc:"5-day · one muscle per day", days:[
-    { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Weighted Dips"] },
-    { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row (Narrow)","Lat Pulldown (Wide)"] },
-    { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Face Pulls"] },
-    { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers (EZ Bar)","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
-    { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Leg Extension","Standing Calf Raise (Machine)"] },
-  ]},
-  { id:"sl5x5", name:"StrongLifts 5×5", icon:"🏋️", desc:"3-day · beginner strength", days:[
-    { name:"Workout A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row"] },
-    { name:"Workout B", exercises:["Barbell Back Squat","Overhead Press (Barbell)","Deadlift"] },
-  ]},
-  { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"4-day · Wendler strength", days:[
-    { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press","Seated Leg Curl"] },
-    { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row","Tricep Rope Pushdown"] },
-    { name:"Deadlift Day", exercises:["Deadlift","Romanian Deadlift","Standing Calf Raise (Machine)"] },
-    { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises (DB)"] },
-  ]},
-];
-
-// Pick the best starter template from the onboarding answers. Matches the user's
-// available training days first (the hard constraint), then leans strength vs.
-// hypertrophy by stated goal. Falls back to the beginner Full Body 3-day.
 function recommendTemplateId({ goal, experience, daysPerWeek } = {}) {
   const days = parseInt(daysPerWeek) || 3;
   if (days <= 2) return "full3";
@@ -11041,7 +10885,7 @@ let _discoverSubTab = "discover";
 // ReferenceError that the surrounding catch swallowed — PR history silently stopped syncing
 // (Wrapped then showed "0 PRs" for weeks that had real ones) and heart-rate summaries never
 // reached the server. Nothing surfaced because both failures were caught and ignored.
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onPRHit, onDeleteHistory, onRefresh, onSessionChange, currentUserId, token, C, dataLoading, isGuest = false }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onDeleteHistory, onRefresh, onSessionChange, currentUserId, token, C, dataLoading, isGuest = false }) {
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
   const [session, setSession] = useState(() => {
@@ -11870,7 +11714,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       }
 
       // Build summary — reuse hitPRs (already covers weight/e1RM/volume categories) so the
-      // finish-screen card and the PRModal celebration agree on what counts as a PR.
+      // finish-screen card and the PR badges on the saved session agree on what counts as a PR.
       const newPRsList = hitPRs.map(pr => ({ name: pr.name, weight: pr.weight, types: pr.types }));
       // COUNT WHAT GETS SAVED. `cleanEx` (and the server payload, and postWorkoutPayload) all
       // filter `e.name`, but these two walked every exercise — so sets logged under a blank-named
@@ -11974,7 +11818,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         } else {
           toast(`Sent to ${groupShare.groupIds.length} group${groupShare.groupIds.length===1?"":"s"}`, "success");
         }
-        if (hitPRs.length) setTimeout(() => onPRHit(hitPRs), 300);
         return;
       }
 
@@ -12107,7 +11950,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         }
       }
 
-      if (hitPRs.length) setTimeout(() => onPRHit(hitPRs), 300);
     } finally {
       setFinishing(false);
     }
@@ -20006,7 +19848,6 @@ function AppInner() {
   const [newPostKind, setNewPostKind] = useState("photo");
   const [profileUserId, setProfileUserId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
-  const [prModal, setPrModal] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   // Widget shared data: write streak + next-workout to native UserDefaults for WidgetKit.
@@ -22519,7 +22360,7 @@ function AppInner() {
   // the gesture (the drag would move a few px then freeze). touchAction:"pan-y" also
   // tells the browser we own horizontal movement.
   function handleSwipeStart(e) {
-  if (showNewPost || editingPost || prModal || showWrapped || storyIndex !== null) return;
+  if (showNewPost || editingPost || showWrapped || storyIndex !== null) return;
   // Skip tab swipe if the touch started on an interactive element that has its own swipe behavior
   // (e.g. SetRow, story carousel, horizontal scroller), or on a text input where the user may
   // be trying to select/edit text.
@@ -22671,7 +22512,6 @@ function AppInner() {
           -webkit-touch-callout: none;
         }
       `}</style>
-      {prModal && <PRModal prs={Array.isArray(prModal) ? prModal : [prModal]} unit={unit} onClose={() => setPrModal(null)}/>}
       {showCoach && <AICoachSheet store={store} setStore={setStore} unit={unit} C={C} reviewStatus={reviewStatus} onClose={() => setShowCoach(false)}/>}
       {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
@@ -23070,7 +22910,7 @@ function AppInner() {
         )}
 
         {which === "tracker" && (
-          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onPRHit={setPrModal} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={tokenRef.current} dataLoading={dataLoading} isGuest={isGuest}
+          <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={tokenRef.current} dataLoading={dataLoading} isGuest={isGuest}
           onSessionChange={setWorkoutActive}
             onDeleteHistory={async (date, sid) => {
               // The card this session was shared as, if any. Deleting the workout used to leave the

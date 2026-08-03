@@ -104,6 +104,16 @@ async function summaryVsSaved(blankName) {
   check("...and the live header behind it agrees", /1\/1 sets · 1,125 LBS/.test(r.text),
     (r.text.match(/\d+\/\d+ sets · [\d,\.k]+ LBS/) || ["(no header)"])[0]);
   check("...and the saved set count matches", savedSets === 1, `saved ${savedSets} sets`);
+
+  // NO PR CELEBRATION POPUP. It fired 300ms after finishing and covered the summary, which
+  // already lists the same PRs — Mo: "pops up after workout is done and i dont think we need it".
+  // This session sets a first-ever PR on the bench (prs seeded empty), so the popup had every
+  // reason to fire.
+  // Singular with one PR, plural with several — the first cut only matched the plural and so
+  // passed vacuously against the code that still had the popup.
+  check("no PR popup covers the finish summary", !/PERSONAL RECORDS?/.test(r.text), r.text.slice(0, 240));
+  check("...and no 'Let's go' dismiss button is present", !/Let's go/.test(r.text), r.text.slice(0, 240));
+  check("...while the summary itself still reports the PR", /PR|RECORD/i.test(r.text), r.text.slice(0, 240));
 }
 
 // ── 2. The streak counts the workout you just finished ───────────────────────────────────────
