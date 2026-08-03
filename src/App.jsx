@@ -1,4 +1,4 @@
-// v178091716793
+// v178091716794
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5663,8 +5663,11 @@ function hrvReading(hrvAll, hrvHist, sleepStartIso, sleepEndIso, nowMs) {
   // recoveryScoreFrom now ceilings that case rather than letting it flatter.
   const res = attempt(all.filter(s => isOvernightSample(s.t)), hist.filter(s => isOvernightSample(s.t)), true, true)
            || attempt(all.filter(s => isDay(s.t)), hist.filter(s => isDay(s.t)), false, false);
+  // `stale` only means something when we ended up with NOTHING. The overnight attempt sets it and
+  // then the daytime attempt can succeed, so reporting it either way claimed "treating HRV as
+  // unknown" next to a perfectly good reading.
   return res
-    ? { hrv: res.hrv, baseline: res.baseline, nights: res.nights, stale, matched: true }
+    ? { hrv: res.hrv, baseline: res.baseline, nights: res.nights, stale: false, matched: true }
     : { hrv: null, baseline: null, nights: 0, stale, matched: false };
 }
 
