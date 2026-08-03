@@ -1,4 +1,4 @@
-// v178091716788
+// v178091716789
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5478,10 +5478,21 @@ async function readRecovery() {
   // ratio stays apples-to-apples. If nothing is tagged overnight, we fall back to all samples.
   const isOvernight = (t) => { if (t == null) return false; const h = new Date(t).getHours(); return h >= 22 || h < 9; };
 
-  async function read(dataType) {
+  // LIMIT 200 SILENTLY TRUNCATED THE NIGHT. The window is 36h — two nights — and the plugin
+  // returns NEWEST FIRST, so hitting the cap drops the OLDEST rows: the beginning of last night.
+  // An Apple Watch writes one row per stage segment (~30-60/night) and any second sleep source
+  // (AutoSleep, Pillow, Sleep Cycle) doubles that, so the cap is reachable on ordinary setups.
+  // Measured: a true 8.0h night reported as 6.7h at 240 rows and 5.7h at 280 — and because
+  // sleepHours is a quarter of the recovery score, that alone took 87% down to 52%. Nothing
+  // throws; the night just looks short, and sleepStart is wrong too, so the Body Battery recharge
+  // window inherits the error. `ascending: false` is passed explicitly rather than relying on the
+  // plugin's default, because two places below depend on the ordering.
+  async function read(dataType, limit = 2000) {
     try {
-      const r = await H.readSamples({ dataType, startDate: startIso, endDate: endIso, limit: 200 });
-      return (r && r.samples) ? r.samples : [];
+      const r = await H.readSamples({ dataType, startDate: startIso, endDate: endIso, limit, ascending: false });
+      const rows = (r && r.samples) ? r.samples : [];
+      if (rows.length >= limit) devWarn(`health read hit the ${limit}-row cap for ${dataType} — the window may be truncated`);
+      return rows;
     } catch (e) { return []; }
   }
 
@@ -5498,8 +5509,18 @@ async function readRecovery() {
   // Resting HR (bpm) — most recent
   const rhr = await read("restingHeartRate");
   if (rhr.length) {
-    const v = parseFloat(rhr[0].value);
-    if (!isNaN(v)) out.restingHr = Math.round(v);
+    // MEDIAN of the recent samples, not whichever row happens to be first. HealthKit does not
+    // deduplicate and third-party sleep apps write restingHeartRate too, so a single raw sample is
+    // "whichever source wrote last": measured, a watch reading 51 (exactly at baseline, 76%) became
+    // 39% when a second app wrote 68 an hour later, and 89% when it wrote 44. The baseline it is
+    // compared against is a 60-day MEDIAN, so today's figure has to be a median as well or the two
+    // halves of the ratio aren't the same statistic — the same trap already fixed for HRV.
+    const rhrVals = rhr.map(s => parseFloat(s.value)).filter(v => !isNaN(v));
+    if (rhrVals.length) {
+      const sorted = [...rhrVals].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      out.restingHr = Math.round(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
+    }
   }
   // Sleep — most recent night only. The 36h lookback can span two nights, so cluster:
   // keep asleep samples whose end falls within 14h of the latest sample's end. Also keep
@@ -5535,7 +5556,20 @@ async function readRecovery() {
       return { startMs, endMs, stage, minutes: (!isNaN(v) && v > 0) ? (span ? Math.min(v, span) : v) : span };
     });
     const block = pickSleepBlock(asleepSamples);
-    if (block) {
+    // AN ALL-NIGHTER MUST NOT REPORT THE NIGHT BEFORE. pickSleepBlock takes the most recent real
+    // sleep in a 36h window with no recency check, so someone who didn't sleep last night was
+    // handed the previous night's 7.5h and scored 76% — identical to having actually slept it.
+    // The stale window also flows into pinToLastNight (no HRV inside a 24h-old window) and the
+    // Body Battery recharge phase. Anything that ended before yesterday's 18:00 is not last night.
+    // Elapsed hours, not a clock anchor. The first cut of this used "before the last local 18:00,
+    // minus 24h" and the hour sweep in sim_healthinputs caught it accepting a 24-hour-stale block
+    // at every hour from 08:00 to 17:00 — a clock-anchored cutoff lands in a different place
+    // relative to last night depending on when you open the app. 20h keeps a night you woke from
+    // this morning however late in the evening you look, and drops one you woke from yesterday.
+    const STALE_SLEEP_MS = 20 * 36e5;
+    if (block && (now.getTime() - block.endMs) > STALE_SLEEP_MS) {
+      devWarn("health: most recent sleep block is stale (>24h old) — treating sleep as unknown");
+    } else if (block) {
       if (block.minutes > 0) out.sleepHours = Math.round((block.minutes / 60) * 10) / 10;
       out.sleepStart = new Date(block.startMs).toISOString();
       out.sleepEnd = new Date(block.endMs).toISOString();
@@ -5671,7 +5705,13 @@ async function readRecovery() {
       const rows = ((rr && rr.samples) || []).map(s => ({ v: parseFloat(s.value), t: s.startDate ? new Date(s.startDate).getTime() : null })).filter(s => !isNaN(s.v) && s.t);
       if (!rows.length) continue;
       const recent = rows.filter(s => s.t >= lastNightMs);
-      const latest = recent.length ? recent.reduce((a, b) => a + b.v, 0) / recent.length : rows[rows.length - 1].v;
+      // `rows[rows.length - 1]` was the OLDEST sample, not the newest — the plugin returns
+      // newest-first. So on any night the watch wasn't worn, "last night" became a reading up to
+      // 30 days old: an illness a month ago kept firing "breathing rate up (21 vs 14/min) — your
+      // body may be fighting something" every day since. Sort explicitly rather than trusting
+      // order, since this is the second place that assumption has bitten.
+      const newest = rows.reduce((a, b) => (b.t > a.t ? b : a), rows[0]);
+      const latest = recent.length ? recent.reduce((a, b) => a + b.v, 0) / recent.length : newest.v;
       const base = median(rows.map(s => s.v));
       out[key] = Math.round(latest * 10) / 10;
       out[key + "Baseline"] = base != null ? Math.round(base * 10) / 10 : null;
