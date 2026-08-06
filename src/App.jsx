@@ -1,4 +1,4 @@
-// v178091716797
+// v178091716798
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4669,7 +4669,7 @@ function computeBodyBattery(store) {
     if (now < wakeAnchor) wakeAnchor.setDate(wakeAnchor.getDate() - 1); // yesterday's 7am
   }
   const awakeHours = Math.max(0, (now - wakeAnchor) / 36e5);
-  const baselineDrain = Math.min(18, Math.round(awakeHours * 0.9));
+  let baselineDrain = Math.min(18, Math.round(awakeHours * 0.9));
   // Workout drain from sessions SINCE WAKE — spans yesterday+today keys and filters by
   // finishedAt >= wake, so a reading after midnight still counts the day's training (the headline
   // used to read only the calendar `todayKey`, which reset the drain to 0 at 12am and dropped the
@@ -4710,7 +4710,13 @@ function computeBodyBattery(store) {
       // Same guard trainingLoadRatio needed, for the same reason.
       if (endMs > now.getTime()) continue;
       workoutDrain += d;
-      sessionSpans.push({ startMs: endMs - (sess.duration || 0) * 1000, endMs: Math.max(endMs, endMs + 1), drain: d });
+      // `Math.max(endMs, endMs + 1)` — a 1ms extension that is always taken — pushed the span into
+      // the NEXT hour, and the rest walk's `ov > 0` test then marked that whole hour as training
+      // and skipped its 2-point rest credit. The curve uses a strict overlap and a 1-minute floor,
+      // so the two disagreed by 2 points per session whose end landed on an hour boundary: +2/+4/+6
+      // for one/two/three sessions, and 0 when the same sessions ended at :20 instead. Rare for a
+      // real finishedAt, but GUARANTEED for a legacy or guest-migrated row, which anchors to noon.
+      sessionSpans.push({ startMs: endMs - (sess.duration || 0) * 1000, endMs: Math.max(endMs, (endMs - (sess.duration || 0) * 1000) + 60000), drain: d });
     }
   }
   workoutDrain = Math.min(32, workoutDrain);
@@ -4759,6 +4765,21 @@ function computeBodyBattery(store) {
   const spent = charge0 - baselineDrain - workoutDrain - activityDrain;
   restRecharge = Math.round(Math.max(0, Math.min(restRecharge, charge0 - spent)));
   const level = Math.max(5, Math.min(100, spent + restRecharge));
+  // THE CARD PRINTS THESE TERMS, SO THEY MUST ADD UP TO THE NUMBER BESIDE THEM. `level` is
+  // floored at 5 but the parts were not, so on a genuinely terrible day the line read
+  // "Woke at 49 · −24 training · −18 activity · −13 today" — which sums to −6 — under a headline
+  // of 5. The floor is a real modelling decision (a battery doesn't go negative), so the honest
+  // fix is to absorb it into the largest drain rather than leave the arithmetic broken.
+  // sim_bbcliff checks this reconciliation on one gentle fixture, which never reaches the floor.
+  let shortfall = level - (spent + restRecharge);
+  if (shortfall > 0) {
+    for (const k of ["activityDrain", "workoutDrain", "baselineDrain"]) {
+      if (shortfall <= 0) break;
+      const cut = Math.min(shortfall, k === "activityDrain" ? activityDrain : k === "workoutDrain" ? workoutDrain : baselineDrain);
+      if (k === "activityDrain") activityDrain -= cut; else if (k === "workoutDrain") workoutDrain -= cut; else baselineDrain -= cut;
+      shortfall -= cut;
+    }
+  }
   return { level, charge0, baselineDrain, workoutDrain, activityDrain, restRecharge, hasRecovery, hasActivity };
 }
 
@@ -4844,7 +4865,24 @@ function computeBodyBatteryTimeline(store) {
   const hasSleepData = !!(store.recovery?.sleepHours);
   const sleepHours = hasSleepData ? Math.min(9, Math.max(5, store.recovery.sleepHours)) : 7.5;
   const rechargeTotal = Math.min(40, Math.max(15, Math.round(sleepHours * 4)));
-  const sleepStartLevel = Math.max(10, Math.min(55, bb.charge0 - rechargeTotal));
+  let sleepStartLevel = Math.max(10, Math.min(55, bb.charge0 - rechargeTotal));
+  // PRE-DAWN, AWAKE, NO REAL SLEEP WINDOW: the terminal point of the backward walk IS the
+  // present moment, so it must carry the present LEVEL.
+  //
+  // The Aug-1 fix pushed the estimated bedtime to `now` so the curve would stop drawing a
+  // recharge for sleep that hasn't happened. That was right, but it left the chart with nothing
+  // after it: phase C needs `sleepStart < min(now, wakeTime)` and phase D needs `now > wakeTime`,
+  // and pre-dawn both are false. So the last drawn point became phase A+B's terminal — a
+  // CONSTANT, `sleepStartLevel`, with no relationship to today at all. It doesn't move between
+  // 03:00 and 06:30, and because it is tagged "drain" the endpoint pin then yanks it to the
+  // headline: measured on a rested rest day, the real endpoint sat at 55 while the headline read
+  // 81, and the 26-point difference was drawn across ~6px at the right edge. Every night, for
+  // every phone-only user, and worst for the best-rested — 0.5/7h gave 10 points, 1.0/8.5h gave
+  // 27. sim_bbdiverge sweeps exactly these hours but asserts on the PINNED value, so it is a
+  // tautology there; sim_bbcliff had the right shape and excluded pre-dawn on a stated basis that
+  // was simply wrong (it claimed the last two points straddle a phase change — both are "drain").
+  const awakePreDawn = !realWindow && now < wakeTime;
+  if (awakePreDawn) sleepStartLevel = bb.level;
 
   // Workout sessions for the drain phases — same per-session drain formula as
   // computeBodyBattery. The 24h window can touch up to three calendar dates
@@ -4878,9 +4916,17 @@ function computeBodyBatteryTimeline(store) {
   // 48 on the chart against 32 in the number — the chart read 35 under a headline of 50 and the
   // endpoint pin yanked it 15 points at the last pixel. Two-a-days and split sessions are normal
   // here. Scale proportionally rather than truncating the last session, so the shape is right.
+  // ...SCOPED TO THE SAME SESSIONS THE HEADLINE CAPS: those since you woke. The curve gathers up
+  // to three date keys to fill a 24h window, so it was summing YESTERDAY's training into today's
+  // scale factor and shrinking today's whole line. Measured at 20:00 with a 34-set session today:
+  // adding a 30-set session yesterday evening lifted the curve 8 points above the headline — and
+  // adding one at 08:30 yesterday did the same even though it falls outside the window and is
+  // never drawn at all. Back-to-back training days are normal here, so this fired constantly.
   {
-    const raw = sessions.reduce((a, x) => a + x.drain, 0);
-    if (raw > 32) { const k = 32 / raw; sessions.forEach(x => { x.drain *= k; }); }
+    const wakeMs = wakeTime.getTime();
+    const todays = sessions.filter(x => x.endMs >= wakeMs);
+    const raw = todays.reduce((a, x) => a + x.drain, 0);
+    if (raw > 32) { const k = 32 / raw; todays.forEach(x => { x.drain *= k; }); }
   }
 
   const hourlyActivity = store.activityHourly;
@@ -4888,12 +4934,28 @@ function computeBodyBatteryTimeline(store) {
   // Proportional scale that holds the curve's summed activity drain to the headline's 18/day cap.
   const activityScale = (() => {
     if (!hourlyIsFresh || !hourlyActivity) return 1;
+    // DIVIDE BY THE HOURS THE WALK WILL ACTUALLY CONSUME. Today's drain phase runs wake -> now,
+    // but the denominator summed all 24 buckets, so the curve delivered `walkedHours/bucketHours`
+    // of the 18 it was scaling to and never the whole thing. With buckets in all 24 hours and a
+    // 13-hour walk that is 18 x 13/24 = 9.75 against the headline's 18 — the +9 residual that
+    // sim_bbcliff recorded as unexplained and papered over with a loosened tolerance.
+    const fromH = new Date(Math.max(wakeTime.getTime(), now.getTime() - 24 * 36e5)).getHours();
+    const toH = now.getHours();
     let total = 0;
-    for (const v of Object.values(hourlyActivity)) {
+    for (const [k, v] of Object.entries(hourlyActivity)) {
       if (!v || !(v.steps || v.kcal)) continue;
+      const h = Number(k);
+      if (Number.isFinite(h) && (h < fromH || h > toH)) continue;
       total += Math.min(6, (v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0));
     }
-    return total > 18 ? 18 / total : 1;
+    // ...AND THE SAME DAMPING. The headline multiplies activity by 0.6 on a day you also
+    // trained (`if (workoutDrain > 0) activityDrain *= 0.6`) — the gym walk shouldn't be charged
+    // twice — but the curve had no equivalent, so the two diverged by up to 7 points in the band
+    // where neither cap binds yet: at 16k steps + 900kcal with a 20-set session, headline 55 vs
+    // curve 48. It vanishes above ~30 raw only because the headline's own ceiling catches up.
+    const damp = sessions.length ? 0.6 : 1;
+    const capped = total * damp;
+    return capped > 18 ? 18 / total : damp;
   })();
   const points = [];
   const clampLvl = (l) => Math.round(Math.max(5, Math.min(100, l)));

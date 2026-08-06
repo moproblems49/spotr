@@ -80,17 +80,19 @@ const CASES = {
 for (const [name, { store }] of Object.entries(CASES)) {
   const r = await at(D(20), store());
   console.log(`${name}\n   curve … ${r.prev?.level} -> ${r.last?.level} (headline ${r.bb.level}), typical hourly step ${r.typical}, jump ${r.jump}`);
-  // TWO CASES ARE IMPROVED BUT NOT CLOSED, and their tolerances say so rather than pretending
-  // otherwise. Measured before the cap/rest/future fixes -> after:
-  //     two-a-day        +15 -> +4
-  //     45k steps        +40 -> +10
-  //     30k steps        +17 -> +10
-  //     4h session        −9 -> within the strict bound
-  // The remaining residual is NOT explained: the curve does clamp at charge0, so it is something
-  // else in how the two walks accumulate over a very long or doubled day. These bounds still catch
-  // a regression to the old magnitude, which is what a guard is for; they are not a claim that the
-  // divergence is gone. Every other case holds the strict "typical hourly step + 2".
-  const allow = /two-a-day/.test(name) ? 5 : /45k|30k/.test(name) ? 11 : r.typical + 2;
+  // THE RESIDUAL IS EXPLAINED NOW, so the loosened tolerances are gone. This block used to allow
+  // 5 for two-a-day and 11 for the step cases, with a comment saying the cause was "something
+  // else in how the two walks accumulate" — which was simply an unexamined guess. An audit found
+  // three ordinary mismatches, each verified by removing it and watching the residual go to zero:
+  //   * the 18/day activity scale divided by ALL 24 hourly buckets while the drain was applied
+  //     only over wake->now, so the curve delivered 18 x walkedHours/bucketHours (13/24 here);
+  //   * the headline extended every session span by 1ms (`Math.max(endMs, endMs + 1)`), pushing
+  //     it into the next hour so the rest walk skipped that hour's 2-point credit — worth exactly
+  //     2 points per session ending on an hour boundary, which is every fixture in this file;
+  //   * the headline's 0.6 activity damping on a training day had no counterpart in the curve.
+  // All three are fixed, so every case holds the strict bound. If one of these needs loosening
+  // again, find the cause first — a tolerance with a shrug attached is how they hid for a week.
+  const allow = r.typical + 2;
   check(`${name}: the chart does not end in a cliff`, r.jump <= allow,
     `last move ${r.jump} vs allowed ${allow} (typical hourly step ${r.typical})`);
   check(`${name}: ...and it still lands on the headline`, r.last?.level === r.bb.level,
@@ -108,10 +110,35 @@ for (const [name, { store }] of Object.entries(CASES)) {
     String(before.bb.workoutDrain));
   check("...and drains normally once it has happened", after.bb.workoutDrain > 0,
     String(after.bb.workoutDrain));
-  // No cliff check at 05:00: pre-dawn the curve's last point is the recharge/drain boundary, so
-  // the "jump" is the phase transition, and `typical` is computed over a handful of drain points.
-  // The first cut asserted here and failed on correct code — the same fixture fault as the
-  // pre-dawn hours in sim_healthinputs.
+  // PRE-DAWN IS NOT EXEMPT. This used to skip the check here, claiming "the curve's last point is
+  // the recharge/drain boundary, so the jump is a phase transition". That was false — both of the
+  // last two points are tagged "drain", the pin fires, and the one case this file excluded was the
+  // worst one in it. With no real sleep window the estimate pushes bedtime to `now`, which empties
+  // both the recharge phase and today's drain phase, so the last drawn point was a CONSTANT
+  // (`sleepStartLevel`) that did not move between 03:00 and 06:30 while the headline kept
+  // draining: measured 55 against a headline of 81, a 26-point jump drawn across ~6px, every
+  // night, and worst for the best-rested. Checked properly below.
+}
+
+// ── PRE-DAWN: the curve must not end on a constant while the headline drains ─────────────────
+{
+  // Phone-only user, no HealthKit sleep window at all — the shape that produced the 26-point
+  // cliff. Swept across the hours the bug lived in, and at several recovery levels because the
+  // gap grew with how rested you were (0.5/7h gave 10 points, 1.0/8.5h gave 27).
+  for (const [rs, sh] of [[0.5, 7], [0.8, 8], [1.0, 8.5]]) {
+    const store = () => ({ history: {}, activity: null, recovery: { recoveryScore: rs, sleepHours: sh } });
+    for (const h of [0, 2, 3, 5, 6]) {
+      const r = await at(D(h, 30), store());
+      check(`pre-dawn ${String(h).padStart(2, "0")}:30 (recovery ${rs}): the chart does not end in a cliff`,
+        r.jump <= r.typical + 2, `jump ${r.jump} vs typical ${r.typical} (headline ${r.bb.level})`);
+    }
+  }
+  // ...and the endpoint must MOVE as the night goes on, rather than sitting on a constant.
+  const store = () => ({ history: {}, activity: null, recovery: { recoveryScore: 0.9, sleepHours: 8 } });
+  const levels = [];
+  for (const h of [1, 3, 5]) levels.push((await at(D(h, 30), store())).last?.level);
+  check("...and the pre-dawn endpoint actually changes with the clock",
+    new Set(levels).size > 1, `levels ${levels.join(",")}`);
 }
 
 // ── A legacy row with no finishedAt anchors to NOON, so it must be inert before noon ─────────
