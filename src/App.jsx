@@ -1,4 +1,4 @@
-// v178091716795
+// v178091716796
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5087,7 +5087,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -5755,6 +5755,8 @@ function recoveryScoreFrom(rec) {
   return Math.round(score * 100) / 100;
 }
 
+// Device-only half: find the plugin and get permission. Everything that decides a NUMBER lives in
+// readRecoveryFrom, which takes the plugin as an argument so a test can hand it a fake one.
 async function readRecovery() {
   const H = nativeHealth();
   if (!H) return null;
@@ -5765,7 +5767,16 @@ async function readRecovery() {
     await requestHealthAuth(H);
     markHealthConnected();
   } catch (e) { /* if the user denies, the reads below just come back empty */ }
-  const now = new Date();
+  return readRecoveryFrom(H, new Date());
+}
+
+// THE WHOLE RECOVERY PIPELINE, with HealthKit injected. Split out of readRecovery so it can be
+// RUN rather than grepped: `sim_healthinputs` used to assert that certain regexes still matched
+// this file, which can only notice if someone deletes a line — it could not catch the read cap
+// silently truncating a night, a median turning back into a raw sample, or a stale block being
+// accepted, because none of those change the text it was matching. `H` is any object with
+// `readSamples({ dataType, startDate, endDate, limit, ascending })`; `now` is a Date.
+async function readRecoveryFrom(H, now) {
   const endIso = now.toISOString();
   const startIso = new Date(now.getTime() - 1000 * 60 * 60 * 36).toISOString(); // last 36h
   // Overnight window for HRV: samples taken roughly during sleep (10pm–9am local) are the cleanest
