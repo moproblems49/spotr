@@ -169,36 +169,68 @@ const sc = (r, extra = {}) => recoveryScoreFrom({ hrv: r.hrv, hrvBaseline: r.bas
     `values ${[...new Set(p2.map(s => s.v))].join(",")}`);
 }
 
-// ── 3a. Watch off overnight: fall back to a DAYTIME comparison, don't delete the signal ──────
+// ── 3a. Watch off overnight: no HRV reading, and it must not flatter ─────────────────────────
 {
   // This user wears the watch 09:30-21:30 and charges it overnight, so they never produce an
-  // overnight sample — and they are genuinely under-recovered today (34 vs their daytime normal
-  // of 50). The first fix deleted HRV for them entirely, which RAISED the score to 76% "Ready".
+  // overnight sample — and they are genuinely under-recovered today.
+  //
+  // THIS SECTION USED TO ASSERT THE OPPOSITE. A daytime-vs-daytime fallback was added so this
+  // user would keep a reading, and an audit then showed it failed four ways, all flattering: it
+  // discarded a real wrecked overnight night in favour of yesterday's afternoon whenever the
+  // overnight baseline was thin; its pool grew all day so one ordinary low reading walked the
+  // score "Ready" -> "Take it easy" -> "Ready" between 08:30 and 15:30; a 09:15 lie-in sample
+  // counted as daytime and became the best score of the day; and all morning it served yesterday
+  // as today. Deleted. The honest answer for this user is no HRV tile — and the score is held
+  // under a typical-HRV day by recoveryScoreFrom, so silence cannot pay.
   const day = (dayOff, v) => [11, 14, 17, 20].map(h => ({ v, t: at(dayOff, h) }));
   const hist = []; for (let d = 1; d <= 20; d++) hist.push(...day(d, 50));
   const today = day(0, 34);
   const r = hrvReading(today, [...hist, ...today], null, null, at(0, 21));
-  check("a daytime-only wearer keeps their reading", r.hrv != null && r.baseline != null,
+  check("a daytime-only wearer gets no HRV reading", r.hrv == null && r.baseline == null,
     `hrv ${r.hrv} baseline ${r.baseline}`);
-  check("...compared against their own DAYTIME normal", r.hrv === 34 && r.baseline === 50,
-    `${r.hrv} vs ${r.baseline}`);
   const s = sc(r);
-  console.log(`  daytime-only, under-recovered: ${Math.round(s * 100)}% — ${verdict(s)}`);
-  check("...so an under-recovered day still says so", s < 0.5, String(s));
+  const withNormalHrv = recoveryScoreFrom({ hrv: 55, hrvBaseline: 55, restingHr: 51, rhrBaseline: 51, sleepHours: 7.5 });
+  console.log(`  daytime-only wearer: ${Math.round(s * 100)}% — ${verdict(s)} (a measured-normal day reads ${Math.round(withNormalHrv * 100)}%)`);
+  check("...and saying nothing never beats measuring a normal night", s <= withNormalHrv,
+    `${s} vs ${withNormalHrv}`);
 
-  // ONE stray overnight sample in sixty days must not change any of that. `histNight.length > 0`
-  // was the trigger, so a single night they fell asleep in the watch silenced HRV forever.
-  const stray = { v: 60, t: at(30, 3) };
-  const r2 = hrvReading(today, [...hist, ...today, stray], null, null, at(0, 21));
-  check("one stray overnight sample in 60 days changes nothing", r2.hrv === r.hrv && r2.baseline === r.baseline,
-    `hrv ${r2.hrv} baseline ${r2.baseline}`);
+  // THE DRIFT THE FALLBACK CAUSED, pinned so it cannot come back: the same day read at four
+  // different hours must give the SAME number. With the fallback in, this ran 0.75 / 0.40 / 0.40
+  // / 0.66 / 0.66 off one ordinary 30ms reading.
+  const dayHist = []; for (let d = 1; d <= 20; d++) for (const h of [10, 14, 20]) dayHist.push({ v: 38, t: at(d, h, 15) });
+  const spread = [{ v: 38, t: at(0, 8, 5) }, { v: 30, t: at(0, 10, 15) }, { v: 41, t: at(0, 13, 40) }, { v: 36, t: at(0, 17, 5) }];
+  const scores = [8, 10, 11, 15, 21].map(h => {
+    const pool = spread.filter(x => x.t <= at(0, h, 30));
+    return sc(hrvReading(pool, [...dayHist, ...pool], null, null, at(0, h, 30)));
+  });
+  check("the score does not walk through verdict bands during the day",
+    new Set(scores).size === 1, scores.join(" -> "));
+}
 
-  // ...and neither does a reading landing at 09:01 instead of 08:59. The overnight rule is a pure
-  // hour test, so the boundary used to be a 43-point cliff on one minute.
-  const early = hrvReading([...day(0, 34), { v: 34, t: at(0, 8, 59) }], [...hist, ...today, stray], null, null, at(0, 21));
-  const late = hrvReading([...day(0, 34), { v: 34, t: at(0, 9, 1) }], [...hist, ...today, stray], null, null, at(0, 21));
-  check("the 09:00 boundary is not a cliff", Math.abs(sc(early) - sc(late)) < 0.1,
-    `${Math.round(sc(early) * 100)}% vs ${Math.round(sc(late) * 100)}%`);
+// ── 3a2. A thin overnight baseline must not be papered over ──────────────────────────────────
+{
+  // Three nights in the watch, last night genuinely wrecked. Two prior nights is under the
+  // small-sample guard, so there is no honest baseline — and the fallback used to answer that by
+  // serving yesterday's DAYTIME median instead, scoring 0.58 "Moderate" against a truth of 0.21
+  // and beating even the 0.42 that saying nothing gives. Worse than both alternatives.
+  const dayHist = []; for (let d = 1; d <= 21; d++) for (const h of [10, 14, 20]) dayHist.push({ v: 38, t: at(d, h, 15) });
+  const twoGoodNights = [...night(1, 58), ...night(2, 58)];
+  const wrecked = night(0, 28);
+  const r = hrvReading([...wrecked], [...dayHist, ...twoGoodNights, ...wrecked], null, null, at(0, 8));
+  check("a thin overnight baseline yields no reading, not a daytime substitute", r.hrv == null,
+    `hrv ${r.hrv} baseline ${r.baseline}`);
+  const s = sc(r);
+  const measuredNormal = recoveryScoreFrom({ hrv: 55, hrvBaseline: 55, restingHr: 51, rhrBaseline: 51, sleepHours: 7.5 });
+  console.log(`  wrecked night, only 2 nights of history: ${Math.round(s * 100)}% — ${verdict(s)}`);
+  // NOT "this must read as bad". With no baseline the app genuinely cannot know the night was
+  // wrecked, and resting HR and sleep are both normal here — so 75% is the honest answer and an
+  // earlier version of this check, demanding it land under 62%, was asking the code to know
+  // something it has no way to know. What must hold is that ignorance never PAYS...
+  check("...and it never scores above a measured-normal night", s <= measuredNormal,
+    `${s} vs ${measuredNormal}`);
+  // ...and that the signals we DO have still carry the day when they are bad.
+  const badRest = recoveryScoreFrom({ hrv: r.hrv, hrvBaseline: r.baseline, restingHr: 58, rhrBaseline: 51, sleepHours: 4.5 });
+  check("...while bad resting HR and a short night still read as bad", badRest < 0.45, String(badRest));
 }
 
 // ── 3b. No usable baseline of EITHER kind: say nothing, and don't be flattered for it ────────

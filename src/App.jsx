@@ -1,4 +1,4 @@
-// v178091716796
+// v178091716797
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5627,7 +5627,6 @@ const isOvernightSample = (t) => { if (t == null) return false; const h = new Da
 const STALE_HRV_MS = 20 * 36e5;
 function hrvReading(hrvAll, hrvHist, sleepStartIso, sleepEndIso, nowMs) {
   const all = hrvAll || [], hist = hrvHist || [];
-  const isDay = (t) => t != null && !isOvernightSample(t);
   let stale = false;
 
   // One attempt at a comparison: reduce today's samples to a reading, build the baseline from the
@@ -5655,28 +5654,43 @@ function hrvReading(hrvAll, hrvHist, sleepStartIso, sleepEndIso, nowMs) {
     return { hrv: Math.round(medianOf(pool.map(x => x.v))), baseline: base.value, nights: base.periods };
   };
 
-  // OVERNIGHT FIRST, DAYTIME AS A REAL FALLBACK — never nothing just because the watch was off.
+  // OVERNIGHT ONLY. THE DAYTIME FALLBACK IS DELETED — it made things worse in four separate ways,
+  // every one of them in the flattering direction, which is the exact failure it was built to stop.
   //
-  // Today and the baseline must be the same KIND of reading: daytime HRV is meaningfully lower
-  // (movement, stress, caffeine — the whole reason the overnight rule exists), so comparing a
-  // daytime reading against an overnight baseline reports a collapse that didn't happen. The first
-  // fix for that simply DELETED the reading whenever today had no overnight samples, and that was
-  // worse in two ways. It fired on almost nothing: `histNight.length > 0` means ONE sample in
-  // sixty days, so a daytime-only wearer who fell asleep in the watch once was silently denied an
-  // HRV reading forever, and a sample landing at 09:01 instead of 08:59 flipped the same switch.
-  // And it failed upward — with the HRV term gone the score ROSE (38% -> 76% on a genuinely
-  // under-recovered day), so the failure mode was telling someone to train when they shouldn't.
-  // Comparing daytime to their own DAYTIME baseline is apples-to-apples too, and it keeps the
-  // signal. Only when neither pairing has a usable baseline do we give up and say nothing — and
-  // recoveryScoreFrom now ceilings that case rather than letting it flatter.
-  const res = attempt(all.filter(s => isOvernightSample(s.t)), hist.filter(s => isOvernightSample(s.t)), true, true)
-           || attempt(all.filter(s => isDay(s.t)), hist.filter(s => isDay(s.t)), false, false);
-  // `stale` only means something when we ended up with NOTHING. The overnight attempt sets it and
-  // then the daytime attempt can succeed, so reporting it either way claimed "treating HRV as
-  // unknown" next to a perfectly good reading.
+  // The reasoning that produced it was: "watch off overnight -> no HRV -> the score ROSE, so keep
+  // the signal by comparing daytime to a daytime baseline." The first half of that was a real bug.
+  // But it is ALREADY FIXED, in the right place: recoveryScoreFrom now ceilings an unknown HRV at
+  // what a typical one would have scored, so a missing signal can no longer flatter anybody. With
+  // that in place the fallback bought nothing and cost this, all measured on the shipped code:
+  //
+  //   * `attempt(overnight) || attempt(daytime)` cannot tell "no overnight reading" from "a good
+  //     overnight reading whose baseline is only two nights old". Every user's first three nights
+  //     in the watch land there. Measured: a genuinely wrecked 28ms night (against an overnight
+  //     normal of 58) was DISCARDED and yesterday's 38ms afternoon served in its place — 0.58
+  //     "Moderate" where the truth was 0.21, and higher even than the 0.42 that saying nothing
+  //     would have given. Worse than both alternatives, on the day it matters most.
+  //   * The daytime pool was never pinned, so it GREW all day and the median walked with it. One
+  //     ordinary low reading (coffee, a stressful commute) took a user from "Ready" at 08:30 to
+  //     "Take it easy" at 10:30 and back to "Ready" by 15:30. `pinToLastNight` exists precisely
+  //     because the score used to drift; this reintroduced the drift, three times larger than the
+  //     evening cliff that motivated the pin in the first place.
+  //   * `isOvernightSample` cuts at 09:00, so a 09:15 reading during a lie-in counts as DAYTIME —
+  //     and the daytime path never consults the sleep window, so the app held proof the user was
+  //     still asleep and could not use it. Asleep HRV runs ~60% above their daytime normal, so
+  //     that single sample became "61ms, above your usual 38" and the best score of the day.
+  //   * All morning it served YESTERDAY afternoon as today, up to 20h old, with `stale` false and
+  //     nothing in the UI to say so — the same trap the staleness rule closed for the overnight
+  //     path, reintroduced one day shallower.
+  //
+  // A daytime-only wearer now sees no HRV tile, which is the honest answer: at real sampling
+  // density their daytime reading swung across three verdict bands within one day, so it was
+  // noise wearing a number's clothes. The score simply renormalises over resting HR and sleep,
+  // held under what a typical HRV day would have scored.
+  const res = attempt(all.filter(s => isOvernightSample(s.t)), hist.filter(s => isOvernightSample(s.t)), true, true);
+  // `stale` only means something when we ended up with NOTHING.
   return res
-    ? { hrv: res.hrv, baseline: res.baseline, nights: res.nights, stale: false, matched: true }
-    : { hrv: null, baseline: null, nights: 0, stale, matched: false };
+    ? { hrv: res.hrv, baseline: res.baseline, nights: res.nights, stale: false }
+    : { hrv: null, baseline: null, nights: 0, stale };
 }
 
 // THE RECOVERY SCORE, one definition. Takes a readRecovery-shaped object and returns 0..1,
