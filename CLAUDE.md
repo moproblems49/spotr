@@ -454,6 +454,29 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   entire remaining gap once the activity models were unified) — and a fixture must fill buckets
   only for hours that have ELAPSED, because pre-filling the current hour hands the headline steps
   nobody has taken and invents an 8-point gap that is the fixture's fault.
+- **A WINDOW IS A CEILING IN DISGUISE, AND A GUESSED ANCHOR MAKES IT FLAT.** Bounding the day's
+  activity to `[wake, now]` is right — steps recorded while you were genuinely asleep are the
+  watch on the nightstand — but the wake anchor is a GUESS (07:00) whenever no watch recorded a
+  sleep window, i.e. every phone-only user every night. Bounding to a guess discarded everything
+  before it: measured on `2026-07-31j`, a shift walked 03:00-06:59 read at 20:30 gave the SAME
+  battery (71) for 6.5k / 14.5k / 26.5k / 42.5k / 66.5k / 106.5k steps. Same failure class as the
+  hard `min(18, …)`, reached from the opposite direction, and invisible because the sheet still
+  printed the full step count beside the un-charged drain. `earliestActiveHourToday()` is the fix
+  and it is the MIRROR of the existing bedtime gate: steps prove you were AWAKE, never that you
+  were asleep, so evidence only moves an ESTIMATED anchor earlier, only within today, and never
+  over a measured HealthKit window. Both models take the anchor from it — moving only the headline
+  swaps a flat number for a 20-point endpoint cliff. `AWAKE_STEPS_PER_H` is one shared constant
+  because the two sleep gates must agree about what counts as awake. Known limit, deliberate: when
+  activity runs straight through the estimated night (03:00-07:00, no watch) the bedtime gate has
+  already consumed those steps and pushed bedtime to its 04:00 cap, so the pull-back is refused and
+  the chart under-draws there — the headline is right and the pin absorbs it, same as pre-fix.
+  Sim: `sim_wakeanchor`.
+- **A FIXTURE'S "BACKGROUND" VALUE CAN SWITCH OFF THE FEATURE UNDER TEST.** `sim_stepscale` §4b
+  used a 500-steps/hour baseline hour, which sits above `REST_STEPS_PER_H` (250) — so
+  `restfulHourRecharge` returned 0 for every hour of every fixture, `restRecharge` was 0
+  throughout, and the rest-walk half of the fix could be reverted with the whole suite staying
+  green. The assertion was sound; the ambient value made half of it unreachable. When a test
+  covers two changes, revert them SEPARATELY and confirm each goes red on its own.
 - **DON'T MEASURE HEADLINE-vs-CURVE AGREEMENT THROUGH THE PINNED ENDPOINT.** The pin overwrites the
   last point WITH the headline, so it can only ever report agreement — which is exactly why this
   divergence hid for a week. "How far did the last point move" is no better: it conflates a
@@ -669,7 +692,7 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 **★★★ THE HEALTH-ENGINE HARDENING ERA (Aug 3–7, 2026) — the recovery/Body-Battery maths got four
 consecutive rounds of audit, and the pattern worth remembering is that MY OWN FIXES were the
-biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31j`. Battery is **39 sims + 20
+biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31k`. Battery is **40 sims + 20
 Playwright suites**, all green. What shipped, and what it cost:
 
 - **Round 1: four recovery-INPUT bugs** (read cap truncating a night, resting HR read as one raw
@@ -706,6 +729,13 @@ Playwright suites**, all green. What shipped, and what it cost:
   the waking span, and headline-vs-curve agreement on athlete fixtures went from 8–16 points to 1
   — the same as an ordinary day. `sim_stepscale` §4b asserts it directly and goes red on the old
   code. Two audit lessons in the Conventions list came out of this one.
+- **Round 6: the round-5 fix shipped a FLAT SCALE of its own** (`2026-07-31k`). Bounding activity
+  to `[wake, now]` unified the two models by discarding every step taken before an ESTIMATED
+  07:00 anchor — 6.5k and 106.5k step days both read 71. Two cold-context Opus audits found it,
+  plus three smaller ones in the same commit (the window returned null all pre-dawn, a
+  non-numeric bucket key bypassed the guard, and the curve lost its workout damp). Fixed by making
+  the anchor honest rather than the window wider. The same audits found `sim_stepscale` §4b's
+  baseline hour was switching off `restfulHourRecharge`, hiding half of round 5 from its own test.
 - **Also**: the two flat caps and the recovery top end (see Conventions), the strength-chart
   points, the post header + `PRTag` + set ledger, `dateKeyOf` consolidation, and `readRecovery`
   split into a device-only wrapper plus the testable `readRecoveryFrom(H, now)`.
