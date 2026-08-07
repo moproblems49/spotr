@@ -99,13 +99,21 @@ check("zero and nonsense inputs are safe",
 // What is measured instead: the SECOND-to-last point, which the walk produces and the pin never
 // touches, against the headline computed at that same instant. Both models, same moment, no pin.
 //
-// The fixture only fills buckets for hours that have ELAPSED, because that is all a device has
-// written. Pre-filling the current hour hands the headline activity nobody has done yet and
-// manufactures an 8-point gap that is the fixture's fault, not the app's.
+// The fixture only fills buckets for hours that have ELAPSED. Not because a device writes nothing
+// for the current hour — `readHourlyActivity` reads `endDate: now`, so it writes a PARTIAL bucket
+// as the hour fills. The reason is that this comparison is anchored at `h:00`: a bucket carrying a
+// whole hour's steps at that instant is data from the future, and it hands the headline activity
+// nobody has done yet. Filling it manufactures an 8-point gap that is the fixture's fault.
 {
   const elapsedStore = (from, to, v, upto) => {
     const hours = {};
-    for (let h = 7; h <= 22 && h <= upto; h++) hours[h] = { steps: 500, kcal: 30 };
+    // THE BASELINE HOUR MUST BE BELOW THE REST THRESHOLD (250 steps / 40 kcal), or half this
+    // commit goes untested. At 500 steps/hour `restfulHourRecharge` returns 0 for EVERY hour of
+    // EVERY fixture here, `restRecharge` is 0 throughout, and the rest walk — the half of the fix
+    // that stopped smearing the day's activity across the waking span — produces identical output
+    // whichever activity model feeds it. Measured: with a 500-step baseline the smear can be
+    // reverted and this whole section stays green; at 120 steps the same revert reads 6.
+    for (let h = 7; h <= 22 && h <= upto; h++) hours[h] = { steps: 120, kcal: 15 };
     for (let h = from; h <= to && h <= upto; h++) hours[h] = v;
     let steps = 0, kcal = 0;
     for (const x of Object.values(hours)) { steps += x.steps; kcal += x.kcal; }

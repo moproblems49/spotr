@@ -1,4 +1,4 @@
-// v178091716807
+// v178091716808
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4659,6 +4659,11 @@ function sessionDrain(sets, avgRpe) {
 // some other bucket today has data — that proves the read actually returned something.
 const REST_STEPS_PER_H = 250;   // sedentary; a walk to the kitchen won't break this
 const REST_KCAL_PER_H = 40;     // active energy, above resting burn
+// "You were demonstrably up and moving in this hour." Used by BOTH sleep gates — the bedtime one
+// that pushes an estimated bedtime later, and the wake one that pulls an estimated wake earlier.
+// It is one constant on purpose: two copies of the same threshold drift, and these two gates have
+// to agree about what counts as awake or they will disagree about where the day starts.
+const AWAKE_STEPS_PER_H = 120;
 const REST_RECHARGE_PER_H = 2;  // net ≈ +1.1/h once the 0.9/h awake drain is netted off
 function restfulHourRecharge(store, hourStartMs, todayKey) {
   if (store?.activityHourlyDate !== todayKey) return 0;
@@ -4720,6 +4725,43 @@ const softCapHour = (raw) => softCap(raw, HOUR_KNEE, HOUR_MAX);
 // through a 6/hour model, so the line falls further and the pin corrects more (3 points -> 11 on
 // the same fixture). The fix has to be a shared MODEL, not a shared answer.
 //
+// STEPS BEFORE THE ESTIMATED WAKE PROVE YOU WERE ALREADY UP — the mirror of the bedtime gate in
+// computeBodyBatteryTimeline. The 07:00 anchor is a GUESS, used whenever no watch recorded a
+// sleep window (every phone-only user, every night). Both models start their day there, so an
+// early riser's 05:30 gym session and a night-shift worker's entire shift fell outside the day
+// they belonged to: the headline charged nothing for them and the curve never drew them.
+//
+// Same asymmetry the bedtime gate states: steps can prove you were AWAKE, never that you were
+// asleep. So this only ever moves the anchor EARLIER, only within today, and only when the anchor
+// is an estimate in the first place — a real HealthKit window is measured, and beats a guess.
+function earliestActiveHourToday(store, now) {
+  if (!store?.activityHourly || store.activityHourlyDate !== dateKeyOf(now)) return null;
+  const toH = now.getHours();
+  for (let h = 0; h <= toH; h++) {
+    const a = store.activityHourly[h];
+    if (!a) continue;
+    if ((a.steps || 0) >= AWAKE_STEPS_PER_H || (a.kcal || 0) > REST_KCAL_PER_H) {
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h).getTime();
+    }
+  }
+  return null;
+}
+// THE WINDOW IS ONLY AS HONEST AS THE ANCHOR. Bounding to [wake, now] is right — movement while
+// you were genuinely asleep is the watch on the nightstand, not your day — but it becomes a FLAT
+// SCALE the moment the anchor is a guess. With the estimated 07:00 anchor and a shift walked
+// 03:00-06:59, read at 20:30, every one of these reported the SAME battery (71) and the SAME
+// drain (-8): 6,500 / 14,500 / 26,500 / 42,500 / 66,500 / 106,500 steps. A 6.5k day and a 106k
+// day were indistinguishable — the exact failure this era was fixing, reintroduced by windowing
+// rather than by clamping, and invisible because the sheet still prints the day's full step count
+// beside the un-charged drain. `earliestActiveHourToday` above is the fix: make the anchor tell
+// the truth and the bound below costs nothing. Do NOT instead widen this window to the whole day
+// — the curve's drain phase starts at the anchor, so the headline would charge hours the chart
+// never draws, and a real (measured) sleep window would start counting the nightstand again.
+//
+// The window WRAPS when the anchor is yesterday (pre-dawn). A plain `h < fromH || h > toH`
+// excludes EVERY hour in that case, so this returned null all night and the per-hour model was
+// simply not in effect between midnight and the wake hour.
+//
 // Returns null when the hourly buckets can't be trusted — missing, or not today's — so the caller
 // falls back to whole-day totals. "No data" must never read as "no activity".
 function activityRawSinceWake(store, wakeMs, now) {
@@ -4727,11 +4769,15 @@ function activityRawSinceWake(store, wakeMs, now) {
   if (!hourly || store.activityHourlyDate !== dateKeyOf(now)) return null;
   const fromH = new Date(Math.max(wakeMs, now.getTime() - 24 * 36e5)).getHours();
   const toH = now.getHours();
+  const inWindow = (h) => (fromH <= toH ? h >= fromH && h <= toH : h >= fromH || h <= toH);
   let total = 0, any = false;
   for (const [k, v] of Object.entries(hourly)) {
     if (!v || !(v.steps || v.kcal)) continue;
     const h = Number(k);
-    if (Number.isFinite(h) && (h < fromH || h > toH)) continue;
+    // A non-numeric key must be SKIPPED, not waved through. `Number.isFinite(NaN)` is false, so
+    // an `&&` guard here would short-circuit and count the bucket unconditionally — outside the
+    // very window it exists to enforce.
+    if (!Number.isFinite(h) || !inWindow(h)) continue;
     total += softCapHour((v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0));
     any = true;
   }
@@ -4819,6 +4865,12 @@ function computeBodyBattery(store) {
   } else {
     wakeAnchor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
     if (now < wakeAnchor) wakeAnchor.setDate(wakeAnchor.getDate() - 1); // yesterday's 7am
+    // ...and steps before it prove the guess was late. Only when the anchor is TODAY's 7am —
+    // pre-dawn it has rolled back to yesterday, and today's buckets are all after it anyway.
+    const ea = earliestActiveHourToday(store, now);
+    if (ea != null && ea < wakeAnchor.getTime() && dateKeyOf(wakeAnchor) === dateKeyOf(now)) {
+      wakeAnchor = new Date(ea);
+    }
   }
   const awakeHours = Math.max(0, (now - wakeAnchor) / 36e5);
   let baselineDrain = Math.min(18, Math.round(awakeHours * 0.9));
@@ -5008,7 +5060,7 @@ function computeBodyBatteryTimeline(store) {
     // evidence only pushes bedtime LATER (a late night out), capped at 4am, never earlier.
     // Yesterday's 8pm-midnight steps come from activityPrevEvening; post-midnight from
     // activityHourly (today's hour-of-day buckets).
-    const ACTIVE_STEPS = 120;
+    const ACTIVE_STEPS = AWAKE_STEPS_PER_H;
     // The persisted buckets carry no date of their own — only trust them when the last
     // HealthKit sync ran TODAY (activityHourlyDate). Stale buckets from a previous open
     // would otherwise steer the gate off the wrong night (e.g. last opened 11pm yesterday,
@@ -5033,6 +5085,19 @@ function computeBodyBatteryTimeline(store) {
     // awake, and it's the one signal that needs no permission — so push the estimated bedtime to
     // now and let the drain continue, which is the honest reading and the one the headline takes.
     if (now < wakeTime) sleepStart = new Date(Math.max(sleepStart.getTime(), now.getTime()));
+    // ...and the same evidence pulls the estimated WAKE earlier, so the drain phase actually
+    // covers the hours you were up. Kept strictly after sleepStart — a wakeTime at or before it
+    // inverts the curve, which is the trap the pre-dawn note above records. That guard is also
+    // why this does NOT rescue every shape: when activity runs straight through the estimated
+    // night (03:00-07:00, no watch), the BEDTIME gate has already consumed those same steps and
+    // pushed sleepStart to its 04:00 cap, so the pull-back is refused and the chart still under-
+    // draws there. The headline is right in that case and the endpoint pin absorbs the rest —
+    // the same place pre-commit code stood. Measured: early riser (gym 05:30-06:30) headline
+    // 73 -> 58 with the chart tracking 75 -> 60, gap 2; the 03:00-07:00 shift keeps a ~20 gap.
+    const easMs = earliestActiveHourToday(store, now);
+    if (easMs != null && easMs < wakeTime.getTime() && easMs > sleepStart.getTime()) {
+      wakeTime = new Date(easMs);
+    }
   }
 
   // The chart always spans the full trailing 24 hours (the header says "24H" — make it true).
@@ -5115,9 +5180,18 @@ function computeBodyBatteryTimeline(store) {
     // Scale the hourly drains so their sum is exactly what the headline charges. `total` is the
     // same figure computeBodyBattery derives from the same buckets over the same hours, so this
     // is one model evaluated twice rather than two models hoping to agree.
-    const total = activityRawSinceWake(store, wakeTime.getTime(), now);
-    if (total == null || !(total > 0)) return 1;
+    //
+    // THE TWO NULL CASES ARE NOT THE SAME CASE. Stale/absent buckets means we know nothing and
+    // must not scale (1). Fresh buckets that sum to nothing means a genuinely still day, and on a
+    // day with a WORKOUT the damp still applies — a lifter's step count is already discounted
+    // because the session drain covers the effort. Collapsing both onto 1 dropped the damp
+    // exactly when the curve was walking real hours: measured on a night-shift fixture (session
+    // at 01:00, activity every hour since midnight, read 06:30) the chart walked down to 17 under
+    // a headline of 38 and the pin closed 21 points, where the old code closed 6.
     const damp = sessions.length ? 0.6 : 1;
+    const total = activityRawSinceWake(store, wakeTime.getTime(), now);
+    if (total == null) return 1;
+    if (!(total > 0)) return damp;
     return softCapActivity(total * damp) / total;
   })();
   const points = [];
