@@ -80,7 +80,12 @@ const markX = (lbl) => { const el = qa("span").find(x => x.getAttribute("aria-la
 const zzzX = markX("Sleep started"), sunX = markX("Woke up");
 check("💤 sits left of ☀️ (bedtime before wake)", zzzX != null && sunX != null && zzzX < sunX, `zzz=${zzzX}% sun=${sunX}%`);
 check("both markers sit inside the plot", zzzX >= 4 && zzzX <= 96 && sunX >= 4 && sunX <= 96, `zzz=${zzzX}% sun=${sunX}%`);
-check("hold-to-read hint copy present", /Hold anywhere on the graph/i.test(detailTxt));
+// The instructional caption is deliberately GONE (Mo: "people can figure it out on their own").
+// The gesture itself is what matters and it is driven for real a few lines below — asserting on
+// the sentence was pinning copy, not behaviour, and it broke the moment the copy was removed.
+check("the hold-to-read caption is not shown", !/Hold anywhere on the graph/i.test(detailTxt));
+check("...and neither is the verdict sentence",
+  !/Decent energy|Well recovered — |Moderate fatigue|Low battery\. Prior/i.test(detailTxt));
 
 // Drive the scrub: stub the wrap rect (jsdom returns 0-width), dispatch touches at 3 x's.
 const wrap = svg.parentElement;

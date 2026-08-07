@@ -1,4 +1,4 @@
-// v178091716798
+// v178091716799
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1934,7 +1934,6 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   (actFresh && act.steps) ? { label: "Steps", value: act.steps.toLocaleString(), detail: "Today — from Apple Health" } : null,
                   (actFresh && act.activeKcal) ? { label: "Active energy", value: `${act.activeKcal}`, detail: "kcal today — from Apple Health" } : null,
                 ].filter(Boolean);
-                const tip = bb.level >= 80 ? "Well recovered — a great day to push hard." : bb.level >= 60 ? "Decent energy. Train smart, warm up well." : bb.level >= 40 ? "Moderate fatigue — consider a lighter session." : "Low battery. Prioritise sleep and recovery today.";
                 return createPortal((
                   <div onClick={() => setShowBatteryDetail(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
                     {/* This sheet grew past the viewport once steps/energy/HRV/RHR were added to
@@ -1948,7 +1947,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
                       padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
                       <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                         <span style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Body Battery</span>
                         <span style={{ fontFamily:MONO, fontSize:32, fontWeight:900, color:fill, letterSpacing:-1 }}>{bb.level}<span style={{ fontSize:14, color:C.sub, fontWeight:600 }}>/100</span></span>
                       </div>
@@ -1969,11 +1968,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           </div>
                         ))}
                       </div>
-                      <div style={{ fontSize:10.5, color:C.muted, lineHeight:1.5, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
-                        {!bb.hasRecovery && (isHealthConnected()
-                          ? "Apple Health is connected — readings switch to your real HRV, resting heart rate, and sleep as soon as your iPhone or Apple Watch records them. "
-                          : "Connect Apple Health on iPhone for readings based on your real HRV, resting heart rate, and sleep. ")}{tip}
-                      </div>
+                      {!bb.hasRecovery && (
+                        <div style={{ fontSize:10.5, color:C.muted, lineHeight:1.5, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
+                          {isHealthConnected()
+                            ? "Apple Health is connected — readings switch to your real HRV, resting heart rate, and sleep as soon as your iPhone or Apple Watch records them."
+                            : "Connect Apple Health on iPhone for readings based on your real HRV, resting heart rate, and sleep."}
+                        </div>
+                      )}
                       <button onClick={() => setShowBatteryDetail(false)} style={{ marginTop:12, width:"100%", padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
                     </div>
                   </div>
@@ -5343,9 +5344,6 @@ function BodyBatteryChart({ store, fill, C }) {
             : "Connect Apple Health for sleep-based recharge accuracy."}
         </div>
       )}
-      <div style={{ fontSize:9.5, color:C.muted, marginTop:hasSleepData?6:4, lineHeight:1.4 }}>
-        Hold anywhere on the graph to read your battery at that time.{sleepXPct != null ? (wakeXPct != null ? " 💤 and ☀️ mark when you fell asleep and woke up." : " 💤 marks when sleep began.") : (wakeXPct != null ? " ☀️ marks when you woke up." : "")}
-      </div>
     </div>
   );
 }
