@@ -30,12 +30,14 @@
 //     HRV RAISED the score, so the failure mode was telling an under-recovered person to train.
 //   * THE FLAT `min(score, 0.75)` FLATTENED THE SCALE: the sleep factor is >=0.78 past 7h, so 7h,
 //     8h and 9h all clamped to exactly 0.75 for a phone-only user.
-import { pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom } from "./app.mjs";
+import { pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, recoveryVerdict } from "./app.mjs";
 
 let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
 const at = (dayOff, h, m = 0) => new Date(2026, 6, 22 - dayOff, h, m, 0).getTime();
-const verdict = t => t >= 0.78 ? "Ready to push" : t >= 0.62 ? "Ready" : t >= 0.45 ? "Moderate" : "Take it easy";
+// recoveryVerdict IS the shipped function — this used to re-declare its four bands, which
+// is the same replica trap that let a new cap ship invisible past sim_recovery_scale.
+const verdict = t => recoveryVerdict(t);
 
 // FIXTURES ARE SPARSE BY DEFAULT, because that is what HealthKit actually holds. The first cut of
 // this file used 24 samples at 20-minute spacing for every night — 8-24x denser than an Apple

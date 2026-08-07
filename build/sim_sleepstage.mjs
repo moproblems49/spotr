@@ -15,8 +15,7 @@ globalThis.window = undefined;
 let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
 
-import { readFileSync } from "fs";
-const { stageMinutes, computeBodyBattery, sleepQualityMult, pickSleepBlock } = await import("./app.mjs");
+const { stageMinutes, computeBodyBattery, sleepQualityMult, pickSleepBlock, readRecoveryFrom } = await import("./app.mjs");
 
 // ── stageMinutes: union per stage, because two sources can write the same night ───────────────
 // The night CROSSES MIDNIGHT: 11pm on the 22nd through 6am on the 23rd. Writing both ends as
@@ -95,30 +94,32 @@ check("a missing REM field is treated as zero, not NaN", isFinite(sleepQualityMu
 // while the shipped filter dropped "core" before stageMinutes ever saw it. A helper test that
 // skips the pipeline green-lights exactly the string the app throws away. This replica is copied
 // from src/App.jsx readRecovery; if the two drift again, these checks go red.
-// A replica can itself drift from the app, so pin the REAL filter too: assert the shipped bundle
-// still accepts both spellings. This is the check that actually fails if someone edits App.jsx.
-{
-  const src = readFileSync(new URL("./app.mjs", import.meta.url), "utf8");
-  const filterLine = src.split("\n").find(l => /st === "asleep" \|\| st === "rem"/.test(l)) || "";
-  check("the SHIPPED sleep filter accepts \"core\" as well as \"light\"",
-    /st === "core"/.test(filterLine), filterLine.trim().slice(0, 160) || "(filter line not found)");
-  check("...and the shipped stage classifier still maps both to core",
-    /"light" \|\| st === "core"/.test(src), "stageMinutes classifier changed");
-}
-
-const readRecoveryFilter = (raw) => raw.filter(x => {
-  const st = (x.sleepState || "").toLowerCase();
-  return st === "asleep" || st === "rem" || st === "deep" || st === "light" || st === "core";
-}).map(x => ({
-  stage: (x.sleepState || "").toLowerCase(),
-  startMs: x.startMs, endMs: x.endMs,
-  minutes: Math.min((x.endMs - x.startMs) / 60000, (x.endMs - x.startMs) / 60000),
-}));
-
+// ...AND NOW DRIVEN THROUGH THE SHIPPED PIPELINE, NOT A REPLICA OF IT.
+//
+// This block used to copy readRecovery's sleep filter into the test, then pin the copy with
+// REGEXES against the bundle to catch drift — a guard for a guard. `readRecovery` needed a device,
+// which was the excuse; it is split now into a device-only auth wrapper and
+// `readRecoveryFrom(H, now)`, so the night can go in one end and the stage minutes come out the
+// other. The replica and the regexes are gone: what follows exercises the real filter, the real
+// pickSleepBlock, the real stageMinutes and the real quality multiplier in one pass.
+//
+// (Checked when this was rewritten: the replica had NOT drifted — both spellings produced
+// identical output through the real pipeline. The point is that nothing now has to.)
+const iso = (t) => new Date(t).toISOString();
+const NOW = AM(9);                                   // 09:00 the morning after the night below
+const fakeHealth = (rows) => ({
+  async readSamples({ dataType, startDate, endDate, limit }) {
+    if (dataType !== "sleep") return { samples: [] };
+    const a = new Date(startDate).getTime(), b = new Date(endDate).getTime();
+    const r = rows.filter(x => { const t = new Date(x.startDate).getTime(); return t >= a && t <= b; })
+      .sort((x, y) => new Date(y.startDate) - new Date(x.startDate));   // the plugin is newest-first
+    return { samples: r.slice(0, limit) };
+  },
+});
 // A realistic watch night: 23:00-07:00, mostly core, deep early, REM late.
-const night = (coreName) => {
+const nightRows = (coreName) => {
   const out = [];
-  const push = (state, from, to) => out.push({ sleepState: state, startMs: from, endMs: to });
+  const push = (state, from, to) => out.push({ sleepState: state, startDate: iso(from), endDate: iso(to), value: String((to - from) / 60000) });
   push(coreName, PM(23), AM(0, 30));
   push("deep", AM(0, 30), AM(1, 55));      // 85 min deep
   push(coreName, AM(1, 55), AM(3, 30));
@@ -126,18 +127,28 @@ const night = (coreName) => {
   push(coreName, AM(5, 10), AM(7));
   return out;
 };
+// THE SPELLING THAT MATTERS. The installed plugin maps Apple's asleepCore to "light", so "core"
+// never arrives today — but the dependency is pinned "^8.7.1" and adopting Apple's own naming is
+// exactly what a minor bump does. Dropping it would be catastrophic and SILENT: core is most of a
+// night, so the surviving deep/REM fragments fall far enough apart that pickSleepBlock splits them
+// into blocks that all miss the minimum, and a 7.8h night reports as a 50-minute one.
 for (const coreName of ["light", "core"]) {
-  const samples = readRecoveryFilter(night(coreName));
-  const block = pickSleepBlock(samples);
-  const st = block ? stageMinutes(samples, block.startMs, block.endMs) : null;
-  const hours = block ? Math.round((block.minutes / 60) * 10) / 10 : 0;
-  console.log(`"${coreName}" night → ${hours}h, deep ${st?.deep}, rem ${st?.rem}, core ${st?.core}`);
-  check(`a "${coreName}"-named night survives the filter as ONE 8h block`, hours >= 7.5, String(hours));
-  check(`..."${coreName}": the 85 minutes of deep sleep are counted`, st?.deep === 85, String(st?.deep));
-  check(`..."${coreName}": the 100 minutes of REM are counted`, st?.rem === 100, String(st?.rem));
+  const out = await readRecoveryFrom(fakeHealth(nightRows(coreName)), new Date(NOW));
+  const hours = out?.sleepHours ?? 0;
+  console.log(`"${coreName}" night → ${hours}h, deep ${out?.sleepDeepMin}, rem ${out?.sleepRemMin}, core ${out?.sleepCoreMin}`);
+  check(`a "${coreName}"-named night survives the SHIPPED filter as ONE 8h block`, hours >= 7.5, String(hours));
+  check(`..."${coreName}": the 85 minutes of deep sleep are counted`, out?.sleepDeepMin === 85, String(out?.sleepDeepMin));
+  check(`..."${coreName}": the 100 minutes of REM are counted`, out?.sleepRemMin === 100, String(out?.sleepRemMin));
   check(`..."${coreName}": quality is near neutral, not a penalty`,
-    Math.abs(sleepQualityMult(st.deep, st.rem, block.minutes) - 1) < 0.12,
-    String(sleepQualityMult(st.deep, st.rem, block.minutes)));
+    Math.abs(sleepQualityMult(out.sleepDeepMin, out.sleepRemMin, hours * 60) - 1) < 0.12,
+    String(sleepQualityMult(out.sleepDeepMin, out.sleepRemMin, hours * 60)));
+}
+// A night the device reported with NO stages at all must read as unknown, not as bad.
+{
+  const flat = [{ sleepState: "asleep", startDate: iso(PM(23)), endDate: iso(AM(7)), value: String(8 * 60) }];
+  const out = await readRecoveryFrom(fakeHealth(flat), new Date(NOW));
+  check("an undifferentiated night reports hours but no stage breakdown",
+    out?.sleepHours >= 7.5 && out?.sleepDeepMin == null, `${out?.sleepHours}h deep ${out?.sleepDeepMin}`);
 }
 
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

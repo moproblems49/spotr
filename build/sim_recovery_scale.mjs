@@ -14,7 +14,7 @@
 // calls the shipped function and the replica is gone — a replica pinned by regex still silently
 // misses anything the regex doesn't look for, and it did: the one-signal confidence cap was added
 // and every number below was unaffected because the replica had never heard of it.
-import { recoveryScoreFrom } from "./app.mjs";
+import { recoveryScoreFrom, recoveryVerdict } from "./app.mjs";
 
 let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
@@ -24,7 +24,10 @@ const score = (hrvRatio, rhrRatio, sleepH) => Math.round(recoveryScoreFrom({
   hrv: 50 * hrvRatio, hrvBaseline: 50, restingHr: 50 * rhrRatio, rhrBaseline: 50, sleepHours: sleepH,
 }) * 100);
 // recoveryVerdict's bands, kept in step with src/App.jsx.
-const verdict = t => t >= 78 ? "Ready to push" : t >= 62 ? "Ready" : t >= 45 ? "Moderate" : "Take it easy";
+// recoveryVerdict IS the shipped function. This used to re-declare its four bands — the same
+// replica trap that let the new confidence cap ship invisible past this very file. `score`
+// returns percent, recoveryVerdict takes 0..1.
+const verdict = pct => recoveryVerdict(pct / 100);
 
 const show = (l, hr, rr, sh) => { const s = score(hr, rr, sh);
   console.log(`  ${l.padEnd(36)} ${String(s).padStart(3)}%  ${verdict(s)}`); return s; };
