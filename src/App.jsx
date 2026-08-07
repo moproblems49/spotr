@@ -1,4 +1,4 @@
-// v178091716805
+// v178091716806
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4742,8 +4742,18 @@ function computeBodyBattery(store) {
     if (rec.sleepHours != null) {
       const d = rec.sleepHours - 7.5;
       const sleepMod = d >= 0 ? Math.min(7, d * 5) : Math.max(-8, d * 3.5);
-      const earned = Math.round(55 + rec.recoveryScore * 45);
-      charge0 = Math.max(10, Math.min(earned, Math.round(charge0 + sleepMod)));
+      // SCALE THE POSITIVE NUDGE BY THE HEADROOM LEFT, don't clamp it to the score.
+      // The first cut capped the result at `Math.min(earned, …)` where `earned` was the SAME
+      // expression as the pre-nudge charge0 — so the min could only ever bite downward and the
+      // `d >= 0` branch became dead code. Measured at score 0.70: 7.5h, 8.5h, 9h and 10h ALL
+      // produced 87, and a well-slept day lost 7 points against the previous build. The goal was
+      // only ever to stop a good night MANUFACTURING a perfect morning, not to stop it helping.
+      // Sixty percent of the remaining room does both: at charge0 87 there is room for the full
+      // +7 (a long night still pays), at 96 it is worth about +2 (98, not 100), and 100 stays
+      // reachable only from a score that had almost got there on its own.
+      const room = Math.max(0, 100 - charge0);
+      const applied = sleepMod >= 0 ? Math.min(sleepMod, room * 0.6) : sleepMod;
+      charge0 = Math.max(10, Math.min(100, Math.round(charge0 + applied)));
     }
   } else if (rec && typeof rec.sleepHours === "number") {
     charge0 = Math.max(40, Math.min(90, Math.round(40 + rec.sleepHours * 6)));
@@ -5058,15 +5068,18 @@ function computeBodyBatteryTimeline(store) {
       if (Number.isFinite(h) && (h < fromH || h > toH)) continue;
       total += Math.min(6, (v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0));
     }
-    // ...AND THE SAME DAMPING. The headline multiplies activity by 0.6 on a day you also
-    // trained (`if (workoutDrain > 0) activityDrain *= 0.6`) — the gym walk shouldn't be charged
-    // twice — but the curve had no equivalent, so the two diverged by up to 7 points in the band
-    // where neither cap binds yet: at 16k steps + 900kcal with a 20-set session, headline 55 vs
-    // curve 48. It vanishes above ~30 raw only because the headline's own ceiling catches up.
+    // KNOWN, MEASURED, UNRESOLVED — do not "fix" this by targeting bb.activityDrain. The curve
+    // clamps each hour at 6 while the headline works from whole-day totals with no per-hour clamp,
+    // so on a genuinely hard day (4h at 12k steps + 600 kcal) the headline charges 28 where the
+    // curve can only deliver ~21, and the endpoint pin corrects the difference in the last few
+    // pixels. The old hard `Math.min(18, …)` hid it because both sides saturated on exactly 18.
+    // Targeting the headline's figure directly WAS TRIED and is worse: it forces 7/hour through a
+    // 6/hour model, the line falls further, and the same fixture went from a 3-point correction to
+    // an 11-point one. The real fix is to give the headline a per-hour model (it only has day
+    // totals today) or to drop the curve's clamp — both are bigger than a tolerance tweak.
+    // Exposure: only when an hour exceeds ~6 drain units, i.e. ~10.8k steps or ~540 kcal in one
+    // hour. Ordinary days never reach it.
     const damp = sessions.length ? 0.6 : 1;
-    // Scale the hourly drains so their SUM equals what the headline charges for the same day.
-    // `total` is already the sum the walk will produce at scale 1, so the factor is simply
-    // target/total — which also folds in the damping without a second term.
     return total > 0 ? softCapActivity(total * damp) / total : damp;
   })();
   const points = [];
@@ -6039,7 +6052,14 @@ async function readRecoveryFrom(H, now) {
     // added for (several sources writing the same morning) without averaging across days.
     const rhrPts = rhr.map(x => ({ v: parseFloat(x.value), t: x.startDate ? new Date(x.startDate).getTime() : null }))
       .filter(x => !isNaN(x.v) && x.t != null);
-    const todayRhr = newestGroup(rhrPts, dateKeyOf, null);
+    // BY NIGHT (noon-to-noon), NOT BY CALENDAR DAY. A calendar bucket splits at midnight, so a
+    // single stray sample at 00:05 forms a group of ONE and becomes the whole reading — and the
+    // median of one sample is that raw sample, which is exactly the "whichever source wrote last"
+    // failure the median was added to prevent, just reachable across a date boundary instead of
+    // within a window. Measured: watch 52 yesterday morning + a second source writing 80 at 00:05
+    // reported 80. The rest of this file already buckets overnight signals noon-to-noon for the
+    // same reason; the baseline below matches.
+    const todayRhr = newestGroup(rhrPts, nightKeyOf, null);
     if (todayRhr.length) out.restingHr = Math.round(medianOf(todayRhr.map(x => x.v)));
   }
   // Sleep — most recent night only. The 36h lookback can span two nights, so cluster:
@@ -6126,7 +6146,7 @@ async function readRecoveryFrom(H, now) {
   // against. By whole DAY KEY, not by timestamp — a timestamp cutoff leaves the partial remainder
   // of that day in as its own group, which is exactly the leak that let the scored night vote on
   // its own HRV baseline.
-  const rhrBase = personalBaseline(rhrHist, dateKeyOf(now.getTime() - 1000 * 60 * 60 * 36), false);
+  const rhrBase = personalBaseline(rhrHist, nightKeyOf(now.getTime() - 1000 * 60 * 60 * 36), true);
   out.rhrBaseline = rhrBase.periods >= MIN_BASELINE_PERIODS ? rhrBase.value : null;
   // Now a real count of NIGHTS behind the baseline, not a row count. It used to be
   // `max(hrvHist.length, rhrHist.length)` — samples, not days — under a name that reads as days.
@@ -9119,7 +9139,10 @@ function PRTag({ C, size = 9 }) {
   return (
     <span style={{
       fontFamily: MONO, fontSize: size, fontWeight: 800, letterSpacing: 1.5,
-      background: C.accent, color: C.onAccent,
+      // accent2, not accent. White on the light theme's #65a30d is 3.09:1 — under AA for text
+      // this size — while the plain label it replaced was 15.78:1. accent2 (#4d7c0f light,
+      // #a8d426 dark) clears 4.5:1 in both themes and still reads unmistakably as the accent.
+      background: C.accent2, color: C.onAccent,
       padding: `${size < 9 ? 1 : 2}px ${size < 9 ? 5 : 7}px`,
       borderRadius: 3, flexShrink: 0, lineHeight: 1.5,
     }}>PR</span>
@@ -9384,7 +9407,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                         {s.w > 0 ? (
                           <>
                             <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{cvt(s.w, postUnit, displayUnit)}</span>
-                            <span style={{ fontSize:11, fontWeight:600, color:C.muted }}>×</span>
+                            <span style={{ fontSize:11, fontWeight:600, color:C.sub }}>×</span>
                             <span style={{ fontSize:11.5, fontWeight:600, color:C.sub }}>{s.r}</span>
                           </>
                         ) : (

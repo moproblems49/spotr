@@ -74,6 +74,25 @@ check("...and a wrecked day still bottoms out", score(0.75, 1.08, 4.5) < 0.15, S
     `${morning(1.15, 0.95, 5.0)} vs ${sevenHalf}`);
 }
 
+// ── 4b. ...BUT THE POSITIVE HALF OF THE NUDGE MUST STILL WORK ────────────────────────────────
+{
+  // The first cut of the cap above wrote `Math.min(earned, …)` where `earned` was the SAME
+  // expression as the pre-nudge charge0, so the min could only bite downward and the `d >= 0`
+  // branch became dead code. Measured at score 0.70: 7.5h, 8.5h, 9h and 10h ALL produced 87, and
+  // a well-slept day lost 7 points against the previous build. Nothing caught it — all 39 sims
+  // passed — because every check here was about the TOP of the range.
+  const chargeAt = (score, sh) => at(D(7, 15), () => computeBodyBattery({ history: {}, activity: null,
+    recovery: { recoveryScore: score, sleepHours: sh, sleepStart: D(23, 0, 1).toISOString(), sleepEnd: D(7).toISOString() } })).charge0;
+  const ladder = [4, 6.5, 7.5, 8.5, 9, 10].map(h => chargeAt(0.70, h));
+  console.log(`  score 0.70, sleep 4/6.5/7.5/8.5/9/10h -> ${ladder.join(" ")}`);
+  check("a long night still raises Morning Charge", ladder[4] > ladder[2], `9h ${ladder[4]} vs 7.5h ${ladder[2]}`);
+  check("...and a short one still lowers it", ladder[0] < ladder[2], `4h ${ladder[0]} vs 7.5h ${ladder[2]}`);
+  check("...with the middle of the range actually ordered",
+    ladder.slice(0, 5).every((v, i) => i === 0 || v >= ladder[i - 1]), ladder.join(" "));
+  // ...while still not manufacturing a perfect morning from a merely good score.
+  check("a 0.91 score plus a long night is not 100", chargeAt(0.91, 9) < 100, String(chargeAt(0.91, 9)));
+}
+
 // ── 5. Winnability, unchanged ────────────────────────────────────────────────────────────────
 check("a rested rest day still clears 80", morning(1.05, 0.98, 8.0) >= 80, String(morning(1.05, 0.98, 8.0)));
 {

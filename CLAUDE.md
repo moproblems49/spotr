@@ -979,6 +979,18 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
 
 **OPEN, as of Aug 7 2026 (agreed with Mo, none urgent):**
+- **KNOWN DIVERGENCE: the Body Battery curve clamps activity at 6/hour, the headline does not.**
+  The headline works from whole-day totals with no per-hour clamp, so on a genuinely hard day
+  (4h at 12k steps + 600 kcal/h) it charges 28 where the curve can only deliver ~21, and the
+  endpoint pin corrects the difference in the last few pixels. The old hard `Math.min(18, …)` hid
+  it because both sides saturated on exactly 18; the soft cap never saturates, so it surfaced.
+  **Targeting `bb.activityDrain` directly WAS TRIED and is worse** — it forces 7/hour through a
+  6/hour model, the line falls further, and the same fixture went from a 3-point correction to an
+  11-point one. The real fix is a per-hour model for the headline, or dropping the curve's clamp.
+  Exposure is ~10.8k steps or ~540 kcal in a single hour; ordinary days never reach it. There is
+  deliberately NO loosened-tolerance assertion for this in `sim_stepscale` — a tolerance with a
+  shrug attached is how the last residual hid for a week.
+
 - **The lime pass has had no independent audit.** Colour-only, so the failure mode is cosmetic —
   but it is the one recent change nobody has checked.
 - **The rest of the "make it feel less AI-generated" critique**: the post header, `PRTag` and set

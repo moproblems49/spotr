@@ -82,6 +82,15 @@ check("zero and nonsense inputs are safe",
   check("the chart does not end in a cliff at any point on the ladder", bad === 0, `${bad} case(s)`);
 }
 
+// ── 4b. NOT CHECKED HERE, ON PURPOSE: the hard-hour divergence ───────────────────────────────
+// The curve clamps each hour's activity at 6 while the headline works from whole-day totals with
+// no per-hour clamp, so on a genuinely hard day (4h at 12k steps + 600 kcal/h) the headline
+// charges 28 where the curve delivers ~21 and the endpoint pin corrects the rest in the last few
+// pixels. It is real, it is measured, and it is NOT fixed — see the comment on `activityScale`.
+// There is deliberately no assertion with a loosened bound here: a tolerance with a shrug attached
+// is how the previous residual hid for a week. When the headline gets a per-hour model, add the
+// strict check.
+
 // ── 5. Winnability, both ends ────────────────────────────────────────────────────────────────
 // The documented requirement: a good day clears 80, a wrecked day stays under 40. Raising the
 // activity ceiling from 18 to 30 makes big days harsher, so both ends need re-checking.
