@@ -67,7 +67,11 @@ const txt = document.body.textContent || "";
 check("VO₂ Max card renders (label + value)", /Cardio fitness/i.test(txt) && txt.includes("45.2"), `slice: ${txt.slice(0,80)}`);
 check("VO₂ Max shows the trend delta (zero-delta suppressed elsewhere)", /▲ \+3\.2 vs earlier/.test(txt));
 check("elevated overnight signals show a heads-up warning", /Heads up/i.test(txt) && /breathing rate up/i.test(txt), `has-signals`);
-check("Resting-HR trend card renders (down = stronger heart)", /Resting heart rate . trend/i.test(txt) && /-6 bpm vs earlier/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
+// The card now names its window. It was labelled "trend" and "vs earlier", which says nothing
+// about what it covers — Mo read the sparkline as the last 24 hours; it is 60 days, one
+// point per day. The copy has to state that, so the check asserts it.
+check("Resting-HR trend card renders and names its 60-day window",
+  /Resting heart rate . 60 days/i.test(txt) && /-6 bpm over 60 days/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
 
 // Tracker tab → History sub-tab — per-workout HR line.
 click(qa('button[aria-label="Workout"]')[0]); await settle(500);

@@ -1,4 +1,4 @@
-// v178091716802
+// v178091716803
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2079,9 +2079,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     return (
                       <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · trend</div>
+                          <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · 60 days</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
-                          {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm vs earlier{down ? " — stronger heart" : ""}</div>}
+                          {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm over 60 days{down ? " — stronger heart" : ""}</div>}
                         </div>
                         <TrendSparkline series={s} color={col} C={C}/>
                       </div>
@@ -4660,10 +4660,19 @@ function computeBodyBattery(store) {
     // count twice, and that double-penalty was the single biggest reason a bad night plus a normal
     // session bottomed the score out (4h + hard session read 7/100). Keep this a nudge; if sleep
     // needs more weight, change its weight inside recoveryScore, not here.
+    //
+    // ...AND THE NUDGE CANNOT MANUFACTURE A PERFECT MORNING. `55 + score * 45` already reaches 100
+    // at a perfect score, so adding up to +7 on top and clamping meant every score from ~0.91
+    // upward printed the same 100 — the flat top Mo asked about. Sleep is a quarter of the score
+    // that produced charge0 in the first place, so letting it push PAST that score is counting it
+    // twice in the flattering direction; the same argument the −16 floor lost on the way down.
+    // It can still take a good night the rest of the way UP TO what the score earned, and a short
+    // night still bites below it.
     if (rec.sleepHours != null) {
       const d = rec.sleepHours - 7.5;
       const sleepMod = d >= 0 ? Math.min(7, d * 5) : Math.max(-8, d * 3.5);
-      charge0 = Math.max(10, Math.min(100, Math.round(charge0 + sleepMod)));
+      const earned = Math.round(55 + rec.recoveryScore * 45);
+      charge0 = Math.max(10, Math.min(earned, Math.round(charge0 + sleepMod)));
     }
   } else if (rec && typeof rec.sleepHours === "number") {
     charge0 = Math.max(40, Math.min(90, Math.round(40 + rec.sleepHours * 6)));
@@ -5798,14 +5807,32 @@ function recoveryScoreFrom(rec) {
   // baseline"), WITHOUT softening the bottom: the floor still bites hard, and sim_recovery_scale
   // pins both ends — a genuinely wrecked day must stay under 40% or the number can no longer do
   // the one job it has.
+  // THE TOP OF THE SCALE HAS TO BE EARNED. Both heart terms used to CLAMP: HRV hit a perfect 1.0
+  // at just 8% above your own baseline, and resting HR at 2.5% below it. Everything past that —
+  // +12%, +20%, double your baseline — scored identically, so "100/100 Body Battery" was reachable
+  // on a good night rather than an exceptional one, and three genuinely different mornings all
+  // reported the same number. Mo asked whether 100 was too generous; it was.
+  //
+  // Above baseline the curve is compressed and asymptotic instead of clamped, so it keeps rising
+  // and only approaches 1.0 for a reading that is genuinely remarkable. BELOW baseline nothing
+  // changes at all — the floor still bites exactly as hard, and a day at your own normal scores
+  // precisely what it scored before, which is the same rule the activity soft-cap follows.
+  const softTop = (linear, over, scale) => over <= 0 ? linear
+    : linear + (1 - linear) * (1 - Math.exp(-over / scale));
   const comps = [];
   if (rec.hrv != null && rec.hrvBaseline) {
     const ratio = rec.hrv / rec.hrvBaseline;                  // <1 = HRV suppressed = under-recovered
-    comps.push([Math.max(0, Math.min(1, (ratio - 0.78) / 0.30)), 0.5]);
+    const atBase = (1 - 0.78) / 0.30;
+    comps.push([ratio <= 1
+      ? Math.max(0, Math.min(1, (ratio - 0.78) / 0.30))
+      : softTop(atBase, ratio - 1, 0.18), 0.5]);
   }
   if (rec.restingHr != null && rec.rhrBaseline) {
     const ratio = rec.restingHr / rec.rhrBaseline;            // >1 = elevated RHR = under-recovered
-    comps.push([Math.max(0, Math.min(1, (1.075 - ratio) / 0.10)), 0.25]);
+    const atBase = (1.075 - 1) / 0.10;
+    comps.push([ratio >= 1
+      ? Math.max(0, Math.min(1, (1.075 - ratio) / 0.10))
+      : softTop(atBase, 1 - ratio, 0.06), 0.25]);
   }
   if (rec.sleepHours != null) {
     const sh = rec.sleepHours;
@@ -5922,12 +5949,17 @@ async function readRecoveryFrom(H, now) {
     // 39% when a second app wrote 68 an hour later, and 89% when it wrote 44. The baseline it is
     // compared against is a 60-day MEDIAN, so today's figure has to be a median as well or the two
     // halves of the ratio aren't the same statistic — the same trap already fixed for HRV.
-    const rhrVals = rhr.map(s => parseFloat(s.value)).filter(v => !isNaN(v));
-    if (rhrVals.length) {
-      const sorted = [...rhrVals].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      out.restingHr = Math.round(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
-    }
+    // ...OF THE MOST RECENT DAY, NOT OF THE WHOLE 36h WINDOW. A median over the raw window was the
+    // first cut and it quietly blended two days: an Apple Watch writes roughly ONE resting-HR
+    // reading per morning, and a 36h lookback at 09:00 reaches back to 21:00 the day before
+    // yesterday, so the window normally holds two — and the median of two numbers is their
+    // average. Measured: yesterday 66 with today 62 displayed 64, and yesterday 70 with today 58
+    // ALSO displayed 64. Mo saw exactly that. Grouping by day keeps the defence the median was
+    // added for (several sources writing the same morning) without averaging across days.
+    const rhrPts = rhr.map(x => ({ v: parseFloat(x.value), t: x.startDate ? new Date(x.startDate).getTime() : null }))
+      .filter(x => !isNaN(x.v) && x.t != null);
+    const todayRhr = newestGroup(rhrPts, dateKeyOf, null);
+    if (todayRhr.length) out.restingHr = Math.round(medianOf(todayRhr.map(x => x.v)));
   }
   // Sleep — most recent night only. The 36h lookback can span two nights, so cluster:
   // keep asleep samples whose end falls within 14h of the latest sample's end. Also keep
