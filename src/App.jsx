@@ -1,4 +1,4 @@
-// v178091716804
+// v178091716805
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2687,7 +2687,7 @@ function extractMentions(text, users) {
 // heatmap/calendar and day-grouping of workouts).
 const dKey = (d = new Date()) => {
   const dt = (d instanceof Date) ? d : new Date(d);
-  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+  return dateKeyOf(dt);
 };
 
 const LBS_TO_KG = 0.453592;
@@ -3708,7 +3708,7 @@ function strengthScoreHistory(store, unit, sex, now) {
     snapshots.push(now);
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const pts = snapshots.map((d, i) => {
-      const cutoff = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const cutoff = dateKeyOf(d);
       const histCut = {};
       for (const k of dates) { if (k <= cutoff) histCut[k] = hist[k]; }
       if (!Object.keys(histCut).length) return null;
@@ -4667,7 +4667,7 @@ function restfulHourRecharge(store, hourStartMs, todayKey) {
   const anyData = Object.values(hourly).some(a => a && (a.steps || a.kcal));
   if (!anyData) return 0;
   const d = new Date(hourStartMs);
-  const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const k = dateKeyOf(d);
   if (k !== todayKey) return 0;   // buckets are hour-of-day for TODAY only
   const a = hourly[d.getHours()];
   const steps = a?.steps || 0, kcal = a?.kcal || 0;
@@ -4692,16 +4692,32 @@ function restfulHourRecharge(store, hourStartMs, todayKey) {
 //   raw 107 -> 29.8     ~88k steps
 // Both computeBodyBattery and computeBodyBatteryTimeline go through this — the whole point of
 // the previous round of fixes was that the headline and the chart must share one model.
-const ACTIVITY_KNEE = 12, ACTIVITY_MAX = 30;
-function softCapActivity(raw) {
-  if (!(raw > ACTIVITY_KNEE)) return Math.max(0, raw || 0);
-  const span = ACTIVITY_MAX - ACTIVITY_KNEE;
-  return ACTIVITY_KNEE + span * (1 - Math.exp(-(raw - ACTIVITY_KNEE) / span));
+// Linear to `knee`, then compressed but still RISING, asymptotic to `max`. Used for BOTH daily
+// drains, because a hard ceiling makes the top of a scale flat and a flat scale stops saying
+// anything — which is the same complaint twice, once about steps and once about training.
+function softCap(raw, knee, max) {
+  if (!(raw > knee)) return Math.max(0, raw || 0);
+  const span = max - knee;
+  return knee + span * (1 - Math.exp(-(raw - knee) / span));
 }
+const ACTIVITY_KNEE = 12, ACTIVITY_MAX = 30;
+const softCapActivity = (raw) => softCap(raw, ACTIVITY_KNEE, ACTIVITY_MAX);
+// THE WORKOUT CEILING WAS A HARD 32/DAY, and `sessionDrain` already caps ONE session at 24 — so
+// two hard sessions (24+24=48) and three (72) both landed on exactly 32. A two-a-day and a
+// three-a-day were indistinguishable, the same flat top the steps cap had. The knee sits at 24,
+// i.e. at one maximal session, so a single workout of any size is completely unaffected: only
+// people who train twice in a day see any change at all.
+//   raw 16 (an ordinary 20-set session) -> 16.0   unchanged
+//   raw 24 (one maximal session)        -> 24.0   unchanged
+//   raw 40 (a big session + a small one)-> 33.5
+//   raw 48 (two maximal sessions)       -> 38.0
+//   raw 72 (three maximal sessions)     -> 42.2
+const WORKOUT_KNEE = 24, WORKOUT_MAX = 44;
+const softCapWorkout = (raw) => softCap(raw, WORKOUT_KNEE, WORKOUT_MAX);
 
 function computeBodyBattery(store) {
   const now = new Date();
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const todayKey = dateKeyOf(now);
   const rec = store.recovery;
   const hasRecovery = rec && typeof rec.recoveryScore === "number";
   let charge0;
@@ -4739,7 +4755,7 @@ function computeBodyBattery(store) {
         // History keys are LOCAL dates — toISOString() is UTC and shifts a day for
         // evening users west of Greenwich, which made "trained today" read as yesterday.
         const dt = new Date(now_ - d * 864e5);
-        const k = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+        const k = dateKeyOf(dt);
         if (Object.keys((store.history || {})[k] || {}).length > 0) return d;
       }
       return 14;
@@ -4764,7 +4780,7 @@ function computeBodyBattery(store) {
   // used to read only the calendar `todayKey`, which reset the drain to 0 at 12am and dropped the
   // 'Training drain' box — the exact number-vs-curve mismatch Mo saw at 2am).
   const wakeMs = wakeAnchor.getTime();
-  const keyFor = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const keyFor = dateKeyOf;   // dateKeyOf takes a Date or epoch ms
   const winKeys = [...new Set([keyFor(wakeMs), todayKey])];
   let workoutDrain = 0;
   const sessionSpans = [];   // {startMs, endMs, drain} — the recharge walk below needs WHEN, not just how much
@@ -4808,7 +4824,10 @@ function computeBodyBattery(store) {
       sessionSpans.push({ startMs: endMs - (sess.duration || 0) * 1000, endMs: Math.max(endMs, (endMs - (sess.duration || 0) * 1000) + 60000), drain: d });
     }
   }
-  workoutDrain = Math.min(32, workoutDrain);
+  // ROUND. sessionDrain returns integers and the old `Math.min(32, …)` kept it that way, so
+  // nothing downstream rounded — the soft cap returns a float and the headline rendered
+  // "37.023884238244044". Caught by the sim printing the raw level.
+  workoutDrain = Math.round(softCapWorkout(workoutDrain));
   // Activity drain from steps/active energy (dampened when a workout is logged,
   // since the workout's own energy is already counted above).
   let activityDrain = 0, hasActivity = false;
@@ -4925,7 +4944,7 @@ function computeBodyBatteryTimeline(store) {
     // HealthKit sync ran TODAY (activityHourlyDate). Stale buckets from a previous open
     // would otherwise steer the gate off the wrong night (e.g. last opened 11pm yesterday,
     // opened again 9am: yesterday's 0-3h steps would read as last night's).
-    const gateTodayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+    const gateTodayKey = dateKeyOf(now);
     const activityFresh = store.activityHourlyDate === gateTodayKey;
     const stepsInHour = (t) => {
       if (!activityFresh) return 0; // no fresh evidence — keep the 10pm default
@@ -4976,7 +4995,7 @@ function computeBodyBatteryTimeline(store) {
   // Workout sessions for the drain phases — same per-session drain formula as
   // computeBodyBattery. The 24h window can touch up to three calendar dates
   // (yesterday, today, and the day before across a midnight boundary).
-  const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const keyOf = dateKeyOf;
   const dateKeys = [...new Set([keyOf(new Date(windowStartMs)), keyOf(new Date(windowStartMs + 12 * 36e5)), keyOf(now)])];
   const buckets = dateKeys.map(k => (store.history || {})[k] || {});
   // Legacy rows without finishedAt anchor to NOON OF THEIR OWN DATE (same fallback
@@ -5015,7 +5034,8 @@ function computeBodyBatteryTimeline(store) {
     const wakeMs = wakeTime.getTime();
     const todays = sessions.filter(x => x.endMs >= wakeMs);
     const raw = todays.reduce((a, x) => a + x.drain, 0);
-    if (raw > 32) { const k = 32 / raw; todays.forEach(x => { x.drain *= k; }); }
+    const target = softCapWorkout(raw);
+    if (raw > 0 && target < raw) { const k = target / raw; todays.forEach(x => { x.drain *= k; }); }
   }
 
   const hourlyActivity = store.activityHourly;
@@ -5241,7 +5261,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -5593,7 +5613,7 @@ async function readTodayActivity() {
   const steps = await sum(["steps"]);
   const activeKcal = await sum(["calories"]);
   if (steps == null && activeKcal == null) return null;
-  return { date: `${dayStart.getFullYear()}-${String(dayStart.getMonth()+1).padStart(2,"0")}-${String(dayStart.getDate()).padStart(2,"0")}`, steps, activeKcal };
+  return { date: dateKeyOf(dayStart), steps, activeKcal };
 }
 
 // Today's movement bucketed by the hour it actually happened (0-23, local time), straight from
@@ -5637,7 +5657,7 @@ async function readHourlyActivity() {
   await bucket(["steps"], "steps");
   await bucket(["calories"], "kcal");
   // `date` stamps which day the hour buckets belong to — the bedtime gate refuses stale data.
-  const date = `${dayStart.getFullYear()}-${String(dayStart.getMonth()+1).padStart(2,"0")}-${String(dayStart.getDate()).padStart(2,"0")}`;
+  const date = dateKeyOf(dayStart);
   return gotAny ? { hours: buckets, prevEvening, date } : null;
 }
 
@@ -5647,7 +5667,13 @@ async function readHourlyActivity() {
 // take its date, so 23:40 and 03:10 are the same night rather than two. Used for the HRV pool and
 // for the baseline, which must agree or the baseline can end up containing the night it scores.
 const NIGHT_SHIFT_MS = 12 * 36e5;
-const dateKeyOf = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+// ONE local-date key. This exact template literal was written out THIRTEEN times across the
+// file — Body Battery, the activity reads, the RHR trend, the body-weight log, the streak,
+// the strength-score snapshots. All thirteen were byte-identical, so nothing had drifted
+// yet, but the volume maths had eight copies and two of those HAD diverged. A function
+// declaration rather than a const because several callers sit above this line.
+// Accepts a Date or an epoch ms.
+function dateKeyOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 const nightKeyOf = (t) => dateKeyOf(t - NIGHT_SHIFT_MS);
 // A sample in the small hours proves you were ASLEEP in that bucket, as opposed to awake on the
 // sofa at 22:30 — which is the whole distinction the pin has to make.
@@ -6114,7 +6140,7 @@ async function readRecoveryFrom(H, now) {
     for (const s of rhrHist) {
       if (s.t == null) continue;
       const d = new Date(s.t);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const key = dateKeyOf(d);
       (perDay[key] = perDay[key] || []).push(s.v);
     }
     const days = Object.keys(perDay).sort();
@@ -6189,7 +6215,7 @@ async function readBodyWeightLog() {
     const byDate = {};
     for (const s of rows) {
       const d = new Date(s.t);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const key = dateKeyOf(d);
       if (!byDate[key] || s.t > byDate[key].t) byDate[key] = s;
     }
     return Object.entries(byDate).map(([date, s]) => ({ date, kg: Math.round(s.kg * 100) / 100 })).sort((a, b) => b.date.localeCompare(a.date));
@@ -9084,6 +9110,22 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
     </div>
   );
 }
+// THE PR MARK. It was a plain white rounded rect written out four separate times at three
+// different sizes and two different radii — the most meaningful thing on a card, styled like a
+// generic label. One component now, and it is VOLT: a personal record is precisely what the
+// accent was reserved for when lime stopped being the app's default colour. Monospace and tightly
+// letterspaced so it reads as a stamp rather than a button.
+function PRTag({ C, size = 9 }) {
+  return (
+    <span style={{
+      fontFamily: MONO, fontSize: size, fontWeight: 800, letterSpacing: 1.5,
+      background: C.accent, color: C.onAccent,
+      padding: `${size < 9 ? 1 : 2}px ${size < 9 ? 5 : 7}px`,
+      borderRadius: 3, flexShrink: 0, lineHeight: 1.5,
+    }}>PR</span>
+  );
+}
+
 const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onLikeComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
   const bodyMapData = useBodyMapData();
   const user = store.users.find(u => u.id === post.userId);
@@ -9139,7 +9181,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
               {user?.username}
             </span>
             {post.isPR && (
-              <span style={{ fontSize:9, background:C.text, color:C.bg, padding:"2px 8px", borderRadius:8, fontWeight:800, letterSpacing:1 }}>PR</span>
+              <PRTag C={C}/>
             )}
           </div>
           <div style={{ fontSize:11, color:C.sub, display:"flex", alignItems:"center", gap:5 }}>
@@ -9329,12 +9371,28 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 <div key={i} style={{ padding:"10px 16px", borderBottom:`1px solid ${C.divider}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
                     <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{ex.name}</span>
-                    {ex.isPR && <span style={{ fontSize:9, background:C.text, color:C.bg, padding:"2px 7px", borderRadius:6, fontWeight:800, flexShrink:0, letterSpacing:1 }}>PR</span>}
+                    {ex.isPR && <PRTag C={C}/>}
                   </div>
-                  <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                  {/* A LIFTER'S LEDGER, NOT A ROW OF CHIPS. Every set used to sit in its own
+                      bordered pill, which is the app's most-repeated shape and made three sets of
+                      the same lift look like three tags. The weight carries the weight — full
+                      contrast, tabular mono so the columns line up down the card — and the reps
+                      hang off it, dimmer and smaller. No boxes. */}
+                  <div style={{ display:"flex", gap:14, flexWrap:"wrap", alignItems:"baseline" }}>
                     {ex.sets.map((s,j) => (
-                      <span key={j} style={{ fontSize:11, background: isDark ? "#1e1e1e" : "#F1F5F9", border:`1px solid ${C.border}`, borderRadius:6, padding:"3px 8px", color:C.textDim, fontFamily:MONO, fontWeight:600 }}>
-                        {s.w > 0 ? `${cvt(s.w, postUnit, displayUnit)}×${s.r}` : `${s.r} reps`}
+                      <span key={j} style={{ fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1.3 }}>
+                        {s.w > 0 ? (
+                          <>
+                            <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{cvt(s.w, postUnit, displayUnit)}</span>
+                            <span style={{ fontSize:11, fontWeight:600, color:C.muted }}>×</span>
+                            <span style={{ fontSize:11.5, fontWeight:600, color:C.sub }}>{s.r}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{s.r}</span>
+                            <span style={{ fontSize:10.5, fontWeight:600, color:C.sub, marginLeft:3 }}>reps</span>
+                          </>
+                        )}
                       </span>
                     ))}
                   </div>
@@ -14256,7 +14314,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               <div style={{ flex:1, minWidth:0 }}>
                                 <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                                   <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{ex.name}</span>
-                                  {isPR && <span style={{ fontSize:9, background:C.text, color:C.bg, borderRadius:5, padding:"2px 6px", fontWeight:800, letterSpacing:0.8 }}>PR</span>}
+                                  {isPR && <PRTag C={C}/>}
                                 </div>
                                 <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
                                   {setsLabel} reps{topWeight > 0 ? ` · ${topWeight} ${sess.unit||"lbs"}` : ""}
@@ -16064,7 +16122,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                               <div key={i}>
                                 <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
                                   <span style={{ fontSize:12, fontWeight:700, color:C.text }}>{ex.name}</span>
-                                  {ex.isPR && <span style={{ fontSize:8, background:C.text, color:C.bg, padding:"1px 6px", borderRadius:6, fontWeight:800, letterSpacing:1 }}>PR</span>}
+                                  {ex.isPR && <PRTag C={C} size={8}/>}
                                 </div>
                                 <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
                                   {(ex.sets||[]).map((s,j) => (
@@ -19427,7 +19485,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
 // sheet below renders the stored copy — reopening it never re-calls the API.
 function weekKeyFor(d = new Date()) {
   const sun = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay()); // most recent Sunday
-  return `${sun.getFullYear()}-${String(sun.getMonth()+1).padStart(2,"0")}-${String(sun.getDate()).padStart(2,"0")}`;
+  return dateKeyOf(sun);
 }
 function trainedInLastWeek(store) {
   const cutoff = Date.now() - 7 * 864e5;

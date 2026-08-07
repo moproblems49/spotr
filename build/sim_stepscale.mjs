@@ -10,7 +10,7 @@
 // properties that matter — it stays MONOTONIC at the top, it does not move ordinary days, and it
 // stays BOUNDED so a 100k-step day can't erase the whole battery — plus the one that has broken
 // four times: the headline and the 24h curve must still agree.
-import { computeBodyBattery, computeBodyBatteryTimeline, softCapActivity } from "./app.mjs";
+import { computeBodyBattery, computeBodyBatteryTimeline, softCapActivity, softCapWorkout } from "./app.mjs";
 
 let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
@@ -94,6 +94,45 @@ check("zero and nonsense inputs are safe",
     activity: { date: kd(D(0)), steps: 12000, activeKcal: 700 },
     recovery: { recoveryScore: 0.15, sleepHours: 4, sleepStart: D(2, 0, 0).toISOString(), sleepEnd: D(6).toISOString() } }));
   check("...and a wrecked day stays under 40", wrecked.level < 40, String(wrecked.level));
+}
+
+
+// ── 6. THE TRAINING SIDE HAS THE SAME SHAPE ──────────────────────────────────────────────────
+// `sessionDrain` already caps ONE session at 24, and the daily ceiling was a hard 32 — so two
+// maximal sessions (24+24=48) and three (72) both landed on exactly 32. A two-a-day and a
+// three-a-day were the same number. The knee is at 24, i.e. one maximal session, so a single
+// workout of ANY size is untouched: only people who train twice a day see any difference.
+{
+  console.log("workout drain:");
+  const rungs = [8, 16, 24, 32, 40, 48, 72, 96];
+  const out = rungs.map(r => softCapWorkout(r));
+  for (let i = 0; i < rungs.length; i++) console.log(`  raw ${String(rungs[i]).padStart(3)}  ->  ${out[i].toFixed(1)}`);
+  check("one session of any size is unchanged", out[0] === 8 && out[1] === 16 && out[2] === 24,
+    out.slice(0, 3).join(" "));
+  check("a two-a-day and a three-a-day are different numbers",
+    Math.round(softCapWorkout(48)) !== Math.round(softCapWorkout(72)),
+    `${softCapWorkout(48)} vs ${softCapWorkout(72)}`);
+  check("...and every rung above the knee still rises", out.every((v, i) => i === 0 || v >= out[i - 1]), out.join(" "));
+  check("...while staying bounded", softCapWorkout(1000) <= 44.001, String(softCapWorkout(1000)));
+
+  // ...and the chart must still agree with the number on a two-a-day.
+  const kdd = kd(D(0));
+  const two = { history: { [kdd]: { a: sess(34, D(9, 30).getTime()), b: sess(34, D(17, 30).getTime()) } },
+    activity: { date: kdd, steps: 5000, activeKcal: 320 },
+    activityHourly: (() => { const h = {}; for (let x = 7; x <= 19; x++) h[x] = { steps: 380, kcal: 25 }; return h; })(),
+    activityHourlyDate: kdd, recovery: rec };
+  const r = probe(two);
+  console.log(`  two-a-day: headline ${r.bb.level} (workout −${r.bb.workoutDrain}), chart's last move ${Math.abs(r.last.level - r.prev.level)}`);
+  check("a two-a-day's chart does not end in a cliff", Math.abs(r.last.level - r.prev.level) <= 6,
+    String(Math.abs(r.last.level - r.prev.level)));
+  // THE NUMBERS THE CARD PRINTS MUST BE WHOLE. sessionDrain returns integers and the old hard cap
+  // kept them integral, so nothing downstream rounded — the soft cap returns a float and the
+  // headline rendered "37.023884238244044". This check exists because the sim's own console line
+  // is what exposed it.
+  check("every figure the card prints is a whole number",
+    [r.bb.level, r.bb.charge0, r.bb.workoutDrain, r.bb.activityDrain, r.bb.baselineDrain, r.bb.restRecharge]
+      .every(Number.isInteger),
+    JSON.stringify({ level: r.bb.level, workout: r.bb.workoutDrain, activity: r.bb.activityDrain }));
 }
 
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
