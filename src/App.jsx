@@ -1,4 +1,4 @@
-// v178091716801
+// v178091716802
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9042,10 +9042,13 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
     <div style={{ marginBottom:12, borderRadius:0, borderBottom:`1px solid ${C.divider}`, paddingBottom:0 }}>
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px 10px" }}>
-        <Avatar user={user} size={32} C={C} onClick={() => onUserClick(user?.id)}/>
+        {/* THE POST IS BY SOMEBODY. A 32px avatar under a 15px workout title made the card read as
+            a record the app generated rather than something a person put there — the workout name
+            was the biggest thing on it and the author was a caption. The person leads now. */}
+        <Avatar user={user} size={38} C={C} onClick={() => onUserClick(user?.id)}/>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
-            <span onClick={() => onUserClick(user?.id)} style={{ fontSize:13, fontWeight:600, color:C.text, cursor:"pointer" }}>
+            <span onClick={() => onUserClick(user?.id)} style={{ fontSize:14.5, fontWeight:700, color:C.text, cursor:"pointer", letterSpacing:-0.2 }}>
               {user?.username}
             </span>
             {post.isPR && (
@@ -9217,8 +9220,9 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             <div style={{ background: isDark ? "#1a1a1a" : "#F8FAFC", padding:"14px 16px 12px", borderBottom:`1px solid ${C.border}` }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                 <div>
+                  {/* "Strength training" sat here as a subtitle. It is true of every workout post
+                      in the app, so it carried no information and competed with the name above it. */}
                   <div style={{ fontSize:15, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>{post.workout.name}</div>
-                  <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Strength training</div>
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
                   <div style={{ textAlign:"center" }}>
