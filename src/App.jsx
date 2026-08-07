@@ -1,4 +1,4 @@
-// v178091716799
+// v178091716800
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4620,6 +4620,30 @@ function restfulHourRecharge(store, hourStartMs, todayKey) {
   return REST_RECHARGE_PER_H;
 }
 
+// A HARD CEILING MAKES THE TOP OF THE SCALE FLAT, AND A FLAT SCALE STOPS SAYING ANYTHING.
+// Activity drain was `Math.min(18, raw)`, and raw hits 18 at roughly 14k steps plus 880 kcal —
+// a long hike or a busy shift on your feet, not an outlier. Measured on the shipped code, every
+// one of these reported the SAME Body Battery: 14.6k steps, 22k, 36.6k, 58.5k, 87.8k. A moderate
+// day and an ultramarathon were indistinguishable, and the chart agreed with the number only
+// because both had adopted the same flat model.
+//
+// So: linear up to the knee, then compressed but still RISING, asymptotic to `max`. Diminishing
+// returns are the honest shape here — the tenth hour on your feet does cost less than the first —
+// but they should be diminishing, not zero.
+//   raw   9 -> 9.0     (an ordinary day is untouched; the knee is above where most days land)
+//   raw  18 -> 17.0     ~14.6k steps
+//   raw  27 -> 22.3     ~22k steps
+//   raw  45 -> 26.6     ~36.6k steps
+//   raw 107 -> 29.8     ~88k steps
+// Both computeBodyBattery and computeBodyBatteryTimeline go through this — the whole point of
+// the previous round of fixes was that the headline and the chart must share one model.
+const ACTIVITY_KNEE = 12, ACTIVITY_MAX = 30;
+function softCapActivity(raw) {
+  if (!(raw > ACTIVITY_KNEE)) return Math.max(0, raw || 0);
+  const span = ACTIVITY_MAX - ACTIVITY_KNEE;
+  return ACTIVITY_KNEE + span * (1 - Math.exp(-(raw - ACTIVITY_KNEE) / span));
+}
+
 function computeBodyBattery(store) {
   const now = new Date();
   const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
@@ -4729,7 +4753,7 @@ function computeBodyBattery(store) {
     hasActivity = true;
     activityDrain = (act.steps ? act.steps / 1800 : 0) + (act.activeKcal ? act.activeKcal / 90 : 0);
     if (workoutDrain > 0) activityDrain *= 0.6;
-    activityDrain = Math.min(18, Math.round(activityDrain));
+    activityDrain = Math.round(softCapActivity(activityDrain));
   }
   // Daytime recovery from genuinely still hours since waking, walked IN ORDER.
   //
@@ -4932,7 +4956,8 @@ function computeBodyBatteryTimeline(store) {
 
   const hourlyActivity = store.activityHourly;
   const hourlyIsFresh = store.activityHourlyDate === keyOf(now);
-  // Proportional scale that holds the curve's summed activity drain to the headline's 18/day cap.
+  // Proportional scale that holds the curve's summed activity drain to whatever the headline
+  // charges — see softCapActivity. One model, two walks.
   const activityScale = (() => {
     if (!hourlyIsFresh || !hourlyActivity) return 1;
     // DIVIDE BY THE HOURS THE WALK WILL ACTUALLY CONSUME. Today's drain phase runs wake -> now,
@@ -4955,8 +4980,10 @@ function computeBodyBatteryTimeline(store) {
     // where neither cap binds yet: at 16k steps + 900kcal with a 20-set session, headline 55 vs
     // curve 48. It vanishes above ~30 raw only because the headline's own ceiling catches up.
     const damp = sessions.length ? 0.6 : 1;
-    const capped = total * damp;
-    return capped > 18 ? 18 / total : damp;
+    // Scale the hourly drains so their SUM equals what the headline charges for the same day.
+    // `total` is already the sum the walk will produce at scale 1, so the factor is simply
+    // target/total — which also folds in the damping without a second term.
+    return total > 0 ? softCapActivity(total * damp) / total : damp;
   })();
   const points = [];
   const clampLvl = (l) => Math.round(Math.max(5, Math.min(100, l)));
@@ -5150,7 +5177,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
