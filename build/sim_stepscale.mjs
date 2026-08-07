@@ -82,14 +82,65 @@ check("zero and nonsense inputs are safe",
   check("the chart does not end in a cliff at any point on the ladder", bad === 0, `${bad} case(s)`);
 }
 
-// ── 4b. NOT CHECKED HERE, ON PURPOSE: the hard-hour divergence ───────────────────────────────
-// The curve clamps each hour's activity at 6 while the headline works from whole-day totals with
-// no per-hour clamp, so on a genuinely hard day (4h at 12k steps + 600 kcal/h) the headline
-// charges 28 where the curve delivers ~21 and the endpoint pin corrects the rest in the last few
-// pixels. It is real, it is measured, and it is NOT fixed — see the comment on `activityScale`.
-// There is deliberately no assertion with a loosened bound here: a tolerance with a shrug attached
-// is how the previous residual hid for a week. When the headline gets a per-hour model, add the
-// strict check.
+// ── 4b. THE HARD HOUR — athletes, not just walkers ───────────────────────────────────────────
+// This block used to read "NOT CHECKED HERE, ON PURPOSE". The curve clamped each hour at a flat
+// `Math.min(6, …)` — the same shape of bug as the old `min(18, …)` on a day, one level down. A
+// runner doing 12k steps and 600 kcal in ONE hour raws out at 13.3 and the chart recorded 6, the
+// same as a brisk walk; meanwhile the headline worked from whole-day totals with no per-hour
+// limit at all. Both sides now go through `activityRawSinceWake` — the same buckets, the same
+// hours, a per-hour SOFT cap — so they agree by construction rather than by hoping.
+//
+// TWO THINGS NOT TO MEASURE, both of which give a confident number about nothing:
+//   • "How far did the last point move." That conflates a genuinely steep hour with a pin
+//     correction. A hiker really does lose 9 points in an hour at 11k steps, and that line is
+//     being honest.
+//   • The pinned endpoint itself. The pin overwrites the last point WITH the headline, so it can
+//     only ever report agreement. That is the whole reason this divergence hid for a week.
+// What is measured instead: the SECOND-to-last point, which the walk produces and the pin never
+// touches, against the headline computed at that same instant. Both models, same moment, no pin.
+//
+// The fixture only fills buckets for hours that have ELAPSED, because that is all a device has
+// written. Pre-filling the current hour hands the headline activity nobody has done yet and
+// manufactures an 8-point gap that is the fixture's fault, not the app's.
+{
+  const elapsedStore = (from, to, v, upto) => {
+    const hours = {};
+    for (let h = 7; h <= 22 && h <= upto; h++) hours[h] = { steps: 500, kcal: 30 };
+    for (let h = from; h <= to && h <= upto; h++) hours[h] = v;
+    let steps = 0, kcal = 0;
+    for (const x of Object.values(hours)) { steps += x.steps; kcal += x.kcal; }
+    return { history: {}, activity: { date: kd(D(0)), steps, activeKcal: kcal },
+      activityHourly: hours, activityHourlyDate: kd(D(0)), recovery: rec };
+  };
+  const ATHLETES = [
+    ["4h trail run (12k steps + 600 kcal/h)", 14, 17, { steps: 12000, kcal: 600 }],
+    ["all-day hike (11k steps + 550 kcal/h)", 8, 18, { steps: 11000, kcal: 550 }],
+    ["marathon pace (20k steps + 900 kcal/h)", 8, 10, { steps: 20000, kcal: 900 }],
+    ["ultra (10h at 15k steps + 800 kcal/h)", 6, 15, { steps: 15000, kcal: 800 }],
+    ["an ordinary day, as the control", 0, -1, { steps: 0, kcal: 0 }],
+  ];
+  console.log("headline vs curve at the same instant, hard hours (pin not involved):");
+  let worst = 0, worstLabel = "";
+  for (const [label, from, to, v] of ATHLETES) {
+    let w = 0, when = "";
+    for (let h = 9; h <= 22; h++) {
+      const store = elapsedStore(from, to, v, h - 1);
+      const pts = at(D(h, 55), () => computeBodyBatteryTimeline(store)?.points || []);
+      const prev = pts[pts.length - 2];
+      if (!prev || prev.phase === "recharge") continue;
+      const hl = at(new RealDate(prev.ts), () => computeBodyBattery(store));
+      const gap = Math.abs(prev.level - hl.level);
+      if (gap > w) { w = gap; when = `${new RealDate(prev.ts).getHours()}:00 (curve ${prev.level} vs ${hl.level})`; }
+    }
+    console.log(`  ${label.padEnd(38)} worst gap ${String(w).padStart(2)}  ${when}`);
+    if (w > worst) { worst = w; worstLabel = label; }
+  }
+  // Measured on the code this replaced: 8 on the trail run, 9 on the hike, 15 on the marathon,
+  // 16 on the ultra — against 1 for the ordinary day that was the only shape ever tested. An
+  // athlete must not get a worse-agreeing chart than a walker, so the bound is the walker's.
+  check("an athlete's chart agrees with the number as closely as anyone else's",
+    worst <= 2, `${worst} on ${worstLabel}`);
+}
 
 // ── 5. Winnability, both ends ────────────────────────────────────────────────────────────────
 // The documented requirement: a good day clears 80, a wrecked day stays under 40. Raising the

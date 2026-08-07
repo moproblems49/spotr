@@ -1,4 +1,4 @@
-// v178091716806
+// v178091716807
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4700,6 +4700,43 @@ function softCap(raw, knee, max) {
   const span = max - knee;
   return knee + span * (1 - Math.exp(-(raw - knee) / span));
 }
+// PER HOUR, the same shape as the daily cap. The curve used a hard `Math.min(6, …)`, which is a
+// flat ceiling on an hour exactly as `min(18, …)` was on a day: an athlete doing 12k steps and
+// 600 kcal in one hour raws out at 13.3 and was recorded as 6 — the same as a brisk 45-minute
+// walk. The knee sits at 4 (about 7,200 steps in an hour), so an ordinary hour is untouched and
+// only a genuinely hard one compresses, toward 9 rather than stopping at 6.
+const HOUR_KNEE = 4, HOUR_MAX = 9;
+const softCapHour = (raw) => softCap(raw, HOUR_KNEE, HOUR_MAX);
+
+// THE ONE ACTIVITY MODEL, shared by the headline and the 24h curve.
+//
+// They used to compute this differently and that is why they diverged: the curve summed per-hour
+// buckets (clamped at 6 each) while the headline worked from whole-day totals with no per-hour
+// limit at all, so on a hard day the headline charged 28 where the curve could only deliver ~21
+// and the endpoint pin absorbed the difference in the last few pixels. The old hard `min(18, …)`
+// hid it because both sides saturated on exactly 18; a soft cap never saturates, so it surfaced.
+//
+// Targeting `bb.activityDrain` from the curve WAS TRIED and made it worse — it forces 7/hour
+// through a 6/hour model, so the line falls further and the pin corrects more (3 points -> 11 on
+// the same fixture). The fix has to be a shared MODEL, not a shared answer.
+//
+// Returns null when the hourly buckets can't be trusted — missing, or not today's — so the caller
+// falls back to whole-day totals. "No data" must never read as "no activity".
+function activityRawSinceWake(store, wakeMs, now) {
+  const hourly = store.activityHourly;
+  if (!hourly || store.activityHourlyDate !== dateKeyOf(now)) return null;
+  const fromH = new Date(Math.max(wakeMs, now.getTime() - 24 * 36e5)).getHours();
+  const toH = now.getHours();
+  let total = 0, any = false;
+  for (const [k, v] of Object.entries(hourly)) {
+    if (!v || !(v.steps || v.kcal)) continue;
+    const h = Number(k);
+    if (Number.isFinite(h) && (h < fromH || h > toH)) continue;
+    total += softCapHour((v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0));
+    any = true;
+  }
+  return any ? total : null;
+}
 const ACTIVITY_KNEE = 12, ACTIVITY_MAX = 30;
 const softCapActivity = (raw) => softCap(raw, ACTIVITY_KNEE, ACTIVITY_MAX);
 // THE WORKOUT CEILING WAS A HARD 32/DAY, and `sessionDrain` already caps ONE session at 24 — so
@@ -4844,7 +4881,11 @@ function computeBodyBattery(store) {
   const act = store.activity;
   if (act && act.date === todayKey && (act.steps || act.activeKcal)) {
     hasActivity = true;
-    activityDrain = (act.steps ? act.steps / 1800 : 0) + (act.activeKcal ? act.activeKcal / 90 : 0);
+    // PER HOUR when HealthKit gave us buckets, whole-day totals when it didn't. Same function the
+    // curve uses, over the same hours, so the two cannot disagree by construction.
+    const perHour = activityRawSinceWake(store, wakeMs, now);
+    activityDrain = perHour != null ? perHour
+      : (act.steps ? act.steps / 1800 : 0) + (act.activeKcal ? act.activeKcal / 90 : 0);
     if (workoutDrain > 0) activityDrain *= 0.6;
     activityDrain = Math.round(softCapActivity(activityDrain));
   }
@@ -4864,9 +4905,27 @@ function computeBodyBattery(store) {
   {
     const spanH = Math.max(1, (now.getTime() - wakeMs) / 36e5);
     const actPerHour = activityDrain / spanH;
+    // ...AND SPEND THE ACTIVITY IN THE HOURS IT ACTUALLY HAPPENED. Smearing the day's activity
+    // evenly across the waking span is fine for someone who pottered about all day and wrong for
+    // anyone whose effort is CONCENTRATED — which is every runner, cyclist and hiker. On a 4-hour
+    // trail run it charged the quiet morning ~1.6/h of activity that never happened, dropped the
+    // level early, and thereby manufactured room for rest credit the battery had no space for:
+    // the headline banked +20 of rest where the curve, which applies activity hour by hour, banked
+    // about 2. That was the whole remaining endpoint gap once the two activity models were
+    // unified — measured, the last drawn point sat 11 below the headline on exactly this shape.
+    // Falls back to the smear when there are no buckets, because no data must not read as no
+    // activity.
+    const totalRaw = activityRawSinceWake(store, wakeMs, now);
+    const actScale = (totalRaw != null && totalRaw > 0) ? activityDrain / totalRaw : null;
+    const actForHour = (t) => {
+      if (actScale == null) return actPerHour;
+      const v = store.activityHourly?.[new Date(t).getHours()];
+      if (!v || !(v.steps || v.kcal)) return 0;
+      return softCapHour((v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0)) * actScale;
+    };
     let lvl = charge0;
     for (let t = Math.ceil(wakeMs / 36e5) * 36e5; t + 36e5 <= now.getTime(); t += 36e5) {
-      lvl -= 0.9 + actPerHour;
+      lvl -= 0.9 + actForHour(t);
       let inWorkout = false;
       for (const sp of sessionSpans) {
         const ov = Math.max(0, Math.min(sp.endMs, t + 36e5) - Math.max(sp.startMs, t));
@@ -5053,34 +5112,13 @@ function computeBodyBatteryTimeline(store) {
   // Proportional scale that holds the curve's summed activity drain to whatever the headline
   // charges — see softCapActivity. One model, two walks.
   const activityScale = (() => {
-    if (!hourlyIsFresh || !hourlyActivity) return 1;
-    // DIVIDE BY THE HOURS THE WALK WILL ACTUALLY CONSUME. Today's drain phase runs wake -> now,
-    // but the denominator summed all 24 buckets, so the curve delivered `walkedHours/bucketHours`
-    // of the 18 it was scaling to and never the whole thing. With buckets in all 24 hours and a
-    // 13-hour walk that is 18 x 13/24 = 9.75 against the headline's 18 — the +9 residual that
-    // sim_bbcliff recorded as unexplained and papered over with a loosened tolerance.
-    const fromH = new Date(Math.max(wakeTime.getTime(), now.getTime() - 24 * 36e5)).getHours();
-    const toH = now.getHours();
-    let total = 0;
-    for (const [k, v] of Object.entries(hourlyActivity)) {
-      if (!v || !(v.steps || v.kcal)) continue;
-      const h = Number(k);
-      if (Number.isFinite(h) && (h < fromH || h > toH)) continue;
-      total += Math.min(6, (v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0));
-    }
-    // KNOWN, MEASURED, UNRESOLVED — do not "fix" this by targeting bb.activityDrain. The curve
-    // clamps each hour at 6 while the headline works from whole-day totals with no per-hour clamp,
-    // so on a genuinely hard day (4h at 12k steps + 600 kcal) the headline charges 28 where the
-    // curve can only deliver ~21, and the endpoint pin corrects the difference in the last few
-    // pixels. The old hard `Math.min(18, …)` hid it because both sides saturated on exactly 18.
-    // Targeting the headline's figure directly WAS TRIED and is worse: it forces 7/hour through a
-    // 6/hour model, the line falls further, and the same fixture went from a 3-point correction to
-    // an 11-point one. The real fix is to give the headline a per-hour model (it only has day
-    // totals today) or to drop the curve's clamp — both are bigger than a tolerance tweak.
-    // Exposure: only when an hour exceeds ~6 drain units, i.e. ~10.8k steps or ~540 kcal in one
-    // hour. Ordinary days never reach it.
+    // Scale the hourly drains so their sum is exactly what the headline charges. `total` is the
+    // same figure computeBodyBattery derives from the same buckets over the same hours, so this
+    // is one model evaluated twice rather than two models hoping to agree.
+    const total = activityRawSinceWake(store, wakeTime.getTime(), now);
+    if (total == null || !(total > 0)) return 1;
     const damp = sessions.length ? 0.6 : 1;
-    return total > 0 ? softCapActivity(total * damp) / total : damp;
+    return softCapActivity(total * damp) / total;
   })();
   const points = [];
   const clampLvl = (l) => Math.round(Math.max(5, Math.min(100, l)));
@@ -5107,7 +5145,7 @@ function computeBodyBatteryTimeline(store) {
         // DAY; the curve capped each HOUR at 6 with no daily limit, so a 30k-step hike cost 35 on
         // the chart against 18 in the number (45k steps: 58 vs 18), and the pin then jumped the
         // last point 17-40 points. Long hikes and physical jobs are ordinary for this audience.
-        drain += Math.min(6, a) * activityScale;
+        drain += softCapHour(a) * activityScale;
       }
       // A still hour RECHARGES — the delta goes negative and the curve ticks back up. Same rule
       // the headline uses, so the chart and the big number tell the same story.
@@ -5274,7 +5312,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
