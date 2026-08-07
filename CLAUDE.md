@@ -439,6 +439,29 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   headline and the 24h curve must go through it; and ROUND the result, because `sessionDrain`
   returns integers and nothing downstream rounded, so the first cut rendered a headline of
   "37.023884238244044". Sims: `sim_stepscale`, `sim_bbtop`.
+- **A FLAT CEILING ONE LEVEL DOWN IS STILL A FLAT CEILING** — and fixing the daily one is what
+  exposed it. The 24h curve clamped each HOUR at `Math.min(6, …)` while the headline had no
+  per-hour limit at all, so an athlete doing 12k steps + 600 kcal in one hour (raw 13.3) was
+  recorded as 6, the same as a brisk walk. The old hard `min(18, …)` hid the mismatch because both
+  sides saturated on exactly 18; a soft cap never saturates, so it surfaced. `softCapHour` (knee 4,
+  max 9) and `activityRawSinceWake(store, wakeMs, now)` are the fix — ONE function both sides call,
+  same buckets, same hours, so they agree by construction. **Targeting `bb.activityDrain` from the
+  curve WAS TRIED and is worse** (it forces 7/hour through a 6/hour model: a 3-point correction
+  became 11). A shared MODEL, never a shared answer. Two related traps: the headline's rest walk
+  must spend activity in the hours it ACTUALLY happened — smearing the day's total across the
+  waking span charges a runner's quiet morning for effort that never happened, drops the level
+  early and manufactures room for rest credit the battery has no space for (that smear was the
+  entire remaining gap once the activity models were unified) — and a fixture must fill buckets
+  only for hours that have ELAPSED, because pre-filling the current hour hands the headline steps
+  nobody has taken and invents an 8-point gap that is the fixture's fault.
+- **DON'T MEASURE HEADLINE-vs-CURVE AGREEMENT THROUGH THE PINNED ENDPOINT.** The pin overwrites the
+  last point WITH the headline, so it can only ever report agreement — which is exactly why this
+  divergence hid for a week. "How far did the last point move" is no better: it conflates a
+  genuinely steep hour with a pin correction, and a hiker really does lose 9 points in an hour at
+  11k steps. Measure the SECOND-to-last point, which the walk produces and the pin never touches,
+  against the headline computed at that same instant. On the code this replaced that read 8 (trail
+  run) / 9 (hike) / 15 (marathon) / 16 (ultra) against 1 for the ordinary day that was the only
+  shape ever tested; it is 1 everywhere now. Section 4b of `sim_stepscale`.
 - **A "nudge" must not be able to push a number past what the thing it nudges already earned.**
   `charge0` is `55 + recoveryScore * 45`, which already reaches 100 at a perfect score — then the
   sleep modifier added up to +7 on top and clamped, so every score from ~0.91 up printed exactly
@@ -646,7 +669,7 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 **★★★ THE HEALTH-ENGINE HARDENING ERA (Aug 3–7, 2026) — the recovery/Body-Battery maths got four
 consecutive rounds of audit, and the pattern worth remembering is that MY OWN FIXES were the
-biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31h`. Battery is **39 sims + 20
+biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31j`. Battery is **39 sims + 20
 Playwright suites**, all green. What shipped, and what it cost:
 
 - **Round 1: four recovery-INPUT bugs** (read cap truncating a night, resting HR read as one raw
@@ -676,6 +699,13 @@ Playwright suites**, all green. What shipped, and what it cost:
   for PRs, progress, the muscle map and the streak. Live workout 30 accented elements → 12,
   exercise picker 27 → 3, whole app 252 → 164. Tool: `build/accent_audit.mjs` (walks 13 screens and
   inventories every element actually painted in the accent). New `primary`/`onPrimary` tokens.
+- **Round 5: the THIRD flat ceiling — the curve's per-hour activity clamp** (`2026-07-31j`). Mo:
+  "there's athletes that use tracking watches and they'd get way more in an hour and I'd like it
+  to be right." It had been recorded as a known-open divergence; it is closed. Both sides share
+  `activityRawSinceWake` now, the headline's rest walk stopped smearing the day's activity across
+  the waking span, and headline-vs-curve agreement on athlete fixtures went from 8–16 points to 1
+  — the same as an ordinary day. `sim_stepscale` §4b asserts it directly and goes red on the old
+  code. Two audit lessons in the Conventions list came out of this one.
 - **Also**: the two flat caps and the recovery top end (see Conventions), the strength-chart
   points, the post header + `PRTag` + set ledger, `dateKeyOf` consolidation, and `readRecovery`
   split into a device-only wrapper plus the testable `readRecoveryFrom(H, now)`.
@@ -979,18 +1009,6 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
 
 **OPEN, as of Aug 7 2026 (agreed with Mo, none urgent):**
-- **KNOWN DIVERGENCE: the Body Battery curve clamps activity at 6/hour, the headline does not.**
-  The headline works from whole-day totals with no per-hour clamp, so on a genuinely hard day
-  (4h at 12k steps + 600 kcal/h) it charges 28 where the curve can only deliver ~21, and the
-  endpoint pin corrects the difference in the last few pixels. The old hard `Math.min(18, …)` hid
-  it because both sides saturated on exactly 18; the soft cap never saturates, so it surfaced.
-  **Targeting `bb.activityDrain` directly WAS TRIED and is worse** — it forces 7/hour through a
-  6/hour model, the line falls further, and the same fixture went from a 3-point correction to an
-  11-point one. The real fix is a per-hour model for the headline, or dropping the curve's clamp.
-  Exposure is ~10.8k steps or ~540 kcal in a single hour; ordinary days never reach it. There is
-  deliberately NO loosened-tolerance assertion for this in `sim_stepscale` — a tolerance with a
-  shrug attached is how the last residual hid for a week.
-
 - **The lime pass has had no independent audit.** Colour-only, so the failure mode is cosmetic —
   but it is the one recent change nobody has checked.
 - **The rest of the "make it feel less AI-generated" critique**: the post header, `PRTag` and set
