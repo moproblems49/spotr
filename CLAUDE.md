@@ -80,12 +80,12 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (~85s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (39 sims, ~95s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
 
-**`node build/run_sims.mjs --pw` also runs the 10 Playwright suites** (+~2min): it builds dist with
+**`node build/run_sims.mjs --pw` also runs the 20 Playwright suites** (+~2min): it builds dist with
 STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
 in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
 anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
@@ -93,8 +93,29 @@ exactly how a suite rots; run `--pw` before any commit touching layout, gestures
 volume/set/PR maths. **Never chain `pkill` to clean up the server** — it kills the whole shell
 (exit 144, cost a run here).
 
-**A new sim/test must be shown to FAIL against the old code before you trust it.** Stash the fix,
-rebuild the bundle, run it, confirm red, then `git stash pop`. Two tests written this way turned
+**A new sim/test must be shown to FAIL against the old code before you trust it.** Copy
+`src/App.jsx` aside, revert just the fix in place, rebuild the bundle, run it, confirm red, then
+copy the good file back. (`git stash` works too but `git stash pop -- <path>` is not valid syntax
+and has cost a scramble here — a plain `cp` is safer.) When the old revision doesn't EXPORT the
+function under test, an import error is not a red result: measure the old behaviour with a probe
+instead, or reintroduce the bug in a scratch copy.
+
+**A TEST THAT RE-IMPLEMENTS THE APP'S MATHS TESTS NOTHING.** `sim_recovery_scale` replicated the
+recovery formula and pinned the replica to src/App.jsx with regexes; a new confidence cap shipped
+and every number in the sim was unaffected, because the replica had never heard of it.
+`sim_healthinputs` asserted that regexes still MATCHED source lines, which can only notice a
+deleted line. `sim_sleepstage` copied readRecovery's sleep filter and then pinned the copy — a
+guard for a guard. All three now import the shipped function; nothing in the battery asserts on
+source text. If the thing you want to test isn't reachable, EXPORT it (`readRecoveryFrom(H, now)`,
+`recoveryScoreFrom`, `strengthScoreHistory`, `softCap*` all exist for exactly this reason) rather
+than copying it into the test.
+
+**Check your fixture reached the screen before believing the result.** A verification script that
+looked for the Body Battery sheet on the tracker tab (it lives on your own PROFILE) clicked
+nothing, screenshotted the home page, and reported both removals as successful. Scripts here now
+fail loudly when the thing under test did not render. Same class: the accent tour's `tapNav` calls
+silently did nothing during a live workout — which has NO tab bar — and it re-shot the workout
+screen four times under the names feed/discover/profile. Two tests written this way turned
 out to be measuring the wrong thing — one asserted on a locator that matched the day-name input,
 another double-counted cards because a DOM heuristic matched every ancestor whose textContent
 merely *started* with the label. Both printed a confident PASS/FAIL that said nothing about the
@@ -404,6 +425,53 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   if every session lands in the red — but "fixing" it must not make it flattering either.**
   `sim_bbscale` pins BOTH ends (a good day must clear 80, a wrecked day must stay under 40 so the
   "Low battery" copy still fires); `build/bb_probe.mjs` prints the whole distribution for tuning.
+- **A HARD CEILING MAKES THE TOP OF A SCALE FLAT, AND A FLAT SCALE STOPS SAYING ANYTHING.** Three
+  separate numbers had this, and Mo found all three by looking at them and saying "that can't be
+  right". Activity drain was `min(18, raw)` and raw hits 18 at ~14k steps — measured, 14.6k / 22k /
+  36.6k / 58.5k / 87.8k steps ALL reported the same Body Battery. Workout drain was `min(32, …)`
+  while `sessionDrain` already caps one session at 24, so a two-a-day (48) and a three-a-day (72)
+  were the same number. And both heart terms in `recoveryScore` CLAMPED — HRV scored a perfect 1.0
+  at just 8% above your own baseline, so waking at 100/100 took a good night, not a great one.
+  `softCap(raw, knee, max)` is the shared fix: linear to the knee, then compressed but still
+  RISING, asymptotic to max. **Put the knee above where an ordinary day lands** — activity (12,30)
+  leaves anyone under ~9k steps untouched, workout (24,44) leaves a single session of ANY size
+  untouched — so the change is invisible to most people and only opens up the top. Both the
+  headline and the 24h curve must go through it; and ROUND the result, because `sessionDrain`
+  returns integers and nothing downstream rounded, so the first cut rendered a headline of
+  "37.023884238244044". Sims: `sim_stepscale`, `sim_bbtop`.
+- **A "nudge" must not be able to push a number past what the thing it nudges already earned.**
+  `charge0` is `55 + recoveryScore * 45`, which already reaches 100 at a perfect score — then the
+  sleep modifier added up to +7 on top and clamped, so every score from ~0.91 up printed exactly
+  100. Sleep is a quarter of the score that produced charge0, so pushing past it counts sleep twice
+  in the flattering direction. It is capped at the score's own ceiling now and can still reduce.
+- **A statistic computed over a WINDOW quietly blends periods.** Making resting HR a median over the
+  36h read window was the fix for a second app polluting the reading — but a watch writes about ONE
+  resting-HR row per morning and a 36h lookback at 09:00 reaches back to 21:00 the day before
+  yesterday, so the window normally holds two and the median of two is their average. Measured:
+  yesterday 66 + today 62 displayed 64, and yesterday 70 + today 58 ALSO displayed 64. Group by
+  DAY and take the newest group — that keeps the multi-source defence without averaging across
+  days. (Also worth saying out loud to users: Apple's "lowest heart rate" is the minimum sample of
+  the night and is a different metric from resting heart rate; it reads several bpm lower and that
+  is not a bug.)
+- **A gate that needs data B must not silently delete everything about data A.** The strength-score
+  chart dropped every snapshot with no body-weight entry at or before its cutoff — the score is
+  bodyweight-relative, so it "needs" a weight. Measured on live data: first workout 10 May, first
+  weigh-in 4 June, and a three-month-old account with 58 workouts drew THREE points. Bodyweight
+  moves slowly; the earliest weight on record is a far better stand-in than nothing. Related, same
+  chart: the weekly→monthly switch was at 12 weeks, where a monthly chart has only three month-ends
+  to draw — an account crossing that line went from a dozen points to almost none. It is 240 days
+  now. Sim: `sim_scorehist`.
+- **A LABEL THAT NAMES NO WINDOW WILL BE READ AS "NOW".** The resting-HR card said "trend" and
+  "−6 bpm vs earlier" over a 60-day, one-point-per-day sparkline; it was reasonably read as the
+  last 24 hours. Say the window.
+- **Duplicated formulas: grep the CONCEPT and consolidate, but NEVER with a blind regex.** The
+  local date-key template `${d.getFullYear()}-${String(d.getMonth()+1)…}` was written out THIRTEEN
+  times (Body Battery, activity reads, RHR trend, body-weight log, streak, strength snapshots) —
+  all byte-identical, so nothing had drifted, but the volume maths had eight copies and two of
+  those HAD. It is `dateKeyOf(t)` now, a function DECLARATION rather than a const because several
+  callers sit above it. **The consolidating regex also rewrote the body of `dateKeyOf` itself into
+  a call to `dateKeyOf`** — infinite recursion, app dead at boot, 27 sims red. Always re-read the
+  helper's own definition after a mechanical replacement.
 - **A HEALTH FIXTURE MUST BE AS SPARSE AS THE REAL DATA, or it proves nothing.** An Apple Watch
   writes a HANDFUL of HRV rows a night, hours apart — not one every 20 minutes. A fix for the
   recovery HRV window shipped looking correct because every fixture in its sim used 24 samples per
@@ -576,6 +644,42 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 ## Current state / roadmap (as of last session)
 
+**★★★ THE HEALTH-ENGINE HARDENING ERA (Aug 3–7, 2026) — the recovery/Body-Battery maths got four
+consecutive rounds of audit, and the pattern worth remembering is that MY OWN FIXES were the
+biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31h`. Battery is **39 sims + 20
+Playwright suites**, all green. What shipped, and what it cost:
+
+- **Round 1: four recovery-INPUT bugs** (read cap truncating a night, resting HR read as one raw
+  sample, the illness signal reading the OLDEST row, an all-nighter inheriting the previous night).
+- **Round 2: the HRV baseline contained the night it was scoring**, weighted nights by sample
+  count, had a 22:00 cliff, and let one 0.25-weight signal score 100%. Fixed — and three
+  cold-context audits then found FOUR new bugs in that fix: contiguous blocks assumed dense
+  samples (an Apple Watch writes a handful of rows a night, hours apart, so the cliff was never
+  actually fixed), the baseline cutoff was a timestamp not a key, "no overnight samples today"
+  fired on one stray sample in 60 days, and a flat `min(score, 0.75)` made 7h/8h/9h identical.
+- **Round 3: the daytime-HRV fallback I added in round 2 was DELETED**, not patched. An audit
+  showed it failed four ways and every one flattered: it discarded a genuinely wrecked night in
+  favour of yesterday's afternoon, its pool grew all day so one ordinary reading walked the score
+  "Ready" → "Take it easy" → "Ready" between 08:30 and 15:30, a 09:15 lie-in reading counted as
+  daytime and became the best score of the day, and all morning it served yesterday as today. The
+  bug it was built for (a missing HRV RAISING the score) was already fixed properly by the
+  typical-HRV ceiling in `recoveryScoreFrom`, so it bought nothing.
+- **Round 4: six Body Battery bugs**, the worst pre-existing and firing EVERY night — pre-dawn the
+  chart ended on a constant while the headline kept draining, and the endpoint pin drew the
+  26-point difference across ~6px. `sim_bbcliff` had explicitly EXEMPTED pre-dawn on a stated basis
+  that was factually wrong.
+- **Mo found three bugs by looking at numbers and saying "that doesn't feel right"**: a 60-day
+  sparkline read as 24h, resting HR blending two days, and 100/100 being too easy. That is a better
+  hit rate than any sweep in this era — take those reports seriously and measure them.
+- **The lime pass**: `C.accent` was the third most-used token in the file (283 refs vs 32 for
+  `C.green`). Filled controls, selected chips and small-caps labels went neutral; volt is reserved
+  for PRs, progress, the muscle map and the streak. Live workout 30 accented elements → 12,
+  exercise picker 27 → 3, whole app 252 → 164. Tool: `build/accent_audit.mjs` (walks 13 screens and
+  inventories every element actually painted in the accent). New `primary`/`onPrimary` tokens.
+- **Also**: the two flat caps and the recovery top end (see Conventions), the strength-chart
+  points, the post header + `PRTag` + set ledger, `dateKeyOf` consolidation, and `readRecovery`
+  split into a device-only wrapper plus the testable `readRecoveryFrom(H, now)`.
+
 **★★★ OTA ERA — DEVICE FEEDBACK SHIPS SAME-DAY, NO MAC (July 29, 2026).** OTA is live and proven:
 six bundles published in one session (`2026-07-29a` → `f`), each reaching Mo's phone after two
 relaunches. Nothing this session needed a Mac. Shipped, newest last:
@@ -601,7 +705,7 @@ relaunches. Nothing this session needed a Mac. Shipped, newest last:
   accessory deload false-positive, duplicate-source step double-count, warmups inflating volume on
   every screen but the finish summary, and duplicate Apple Health calorie writes. All four are in
   the Conventions list above as rules.
-**Sim battery is 20 and green — `node build/run_sims.mjs`.** New this session: `sim_sleepblock`,
+**Sim battery was 20 and green at the end of that era — `node build/run_sims.mjs`.** New that session: `sim_sleepblock`,
 `sim_swipenoop`, `sim_chartscrub`, `sim_overload`, `sim_stepsbox`, `sim_dupsource`,
 `sim_doublecount`, `sim_setswipe`, `sim_profilehdr`, `sim_usernameauth`, `sim_progsets`,
 `sim_authhash`, plus `bodymap_tip`/`bodymap_full` checkers.
@@ -873,6 +977,20 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 `bootDiagLine`/`diagEl` (marked TODO in code); it's TestFlight-phase debugging only.
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
+
+**OPEN, as of Aug 7 2026 (agreed with Mo, none urgent):**
+- **The lime pass has had no independent audit.** Colour-only, so the failure mode is cosmetic —
+  but it is the one recent change nobody has checked.
+- **The rest of the "make it feel less AI-generated" critique**: the post header, `PRTag` and set
+  ledger are done; a distinctive muscle visualisation, less containment (fewer rounded cards) and
+  a typography pass are deliberately DEFERRED until after launch. Editing inline styles across a
+  23k-line single file with no CSS layer is days of work with real regression risk, and it does
+  not move the app toward submission. The item to ignore in that critique is "add one or two
+  deliberate imperfections" — brand quirks are a consequence of solving a specific problem a
+  specific way, not a decoration you add on purpose.
+- **The feed post card was changed without a screenshot.** The `PRTag`/ledger work was verified via
+  the Playwright suites that render post cards, not by eye — the ad-hoc fixture failed to render a
+  post and said so. Worth a device look.
 
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
 - **Naps should count toward the Body Battery recharge** (Mo parked this Aug 1, from the Garmin
