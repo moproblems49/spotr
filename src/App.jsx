@@ -1,4 +1,4 @@
-// v178091716803
+// v178091716804
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3678,6 +3678,61 @@ function levelForRatio(standards, lift, ratio, ageFactor = 1) {
 // of the male/female thresholds (a neutral baseline) rather than forcing a binary choice.
 // Returns { overall, score (0-100), lifts:[{lift, best, ratio, level}], bodyweight, sex } or
 // { ready:false } if there isn't enough data (no bodyweight or no main-lift PRs).
+// The strength-score curve on your profile: replay the score as it stood at a series of past
+// cutoffs. Raw current-PR fallbacks are excluded so an old snapshot cannot see future bests,
+// and `asOf` makes the stale-lift decay relative to each snapshot rather than to today.
+// Module level and exported because it was inline in ProfileScreen, where the only way to
+// check it was to look at the chart and squint.
+function strengthScoreHistory(store, unit, sex, now) {
+
+    const hist = store.history || {};
+    const dates = Object.keys(hist).sort();
+    if (dates.length < 2) return null;
+    const firstMs = new Date(dates[0] + "T12:00:00").getTime();
+    // Adaptive granularity. The threshold used to be 12 weeks, which is far too early: at 84
+    // days a monthly chart has only THREE month-ends to draw, so an account that had just
+    // crossed the line went from a dozen weekly points to a nearly empty chart. Monthly only
+    // earns its place once there are enough months to make a curve — about eight.
+    const spanDays = (now.getTime() - firstMs) / 864e5;
+    const weekly = spanDays < 240;
+    const snapshots = [];
+    if (weekly) {
+      const nWeeks = Math.min(11, Math.floor(spanDays / 7));
+      for (let i = nWeeks; i >= 1; i--) snapshots.push(new Date(now.getTime() - i * 7 * 864e5));
+    } else {
+      for (let i = 11; i >= 1; i--) {
+        const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0); // last day of that month
+        if (mEnd.getTime() >= firstMs) snapshots.push(mEnd);
+      }
+    }
+    snapshots.push(now);
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const pts = snapshots.map((d, i) => {
+      const cutoff = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const histCut = {};
+      for (const k of dates) { if (k <= cutoff) histCut[k] = hist[k]; }
+      if (!Object.keys(histCut).length) return null;
+      // THE STRENGTH SCORE IS BODYWEIGHT-RELATIVE, so a snapshot needs a weight — but dropping
+      // every snapshot before your FIRST weigh-in threw away real training history. Measured on
+      // live data: first workout 10 May, first body-log entry 4 June, so the 31 May snapshot was
+      // discarded and a three-month-old account with 58 workouts drew THREE points. Bodyweight
+      // moves slowly; the earliest weight on record is a far better stand-in than nothing.
+      let bodyLog = (store.bodyLog || []).filter(bp => (bp.date || "") <= cutoff);
+      if (!bodyLog.length) {
+        const earliest = [...(store.bodyLog || [])].sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
+        if (!earliest) return null;
+        bodyLog = [{ ...earliest, date: cutoff }];
+      }
+      const snap = computeStrengthScore(
+        { ...store, history: histCut, bodyLog, prs: {}, prEvents: (store.prEvents || []).filter(e => (e.date || "") <= cutoff) },
+        unit, sex, d.getTime()
+      );
+      if (!snap.ready) return null;
+      return { value: snap.score, date: cutoff, label: i === snapshots.length - 1 ? "Now" : (weekly ? `${d.getMonth()+1}/${d.getDate()}` : MONTHS[d.getMonth()]) };
+    }).filter(Boolean);
+    return pts.length >= 2 ? pts : null;
+}
+
 function computeStrengthScore(store, unit, sex = "male", asOf = null) {
   const nowMs = asOf || Date.now();
   const bodyLog = [...(store.bodyLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -5186,7 +5241,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -17256,52 +17311,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     () => isMe ? computeStrengthScore(store, displayUnit || store.unit || "lbs", store.strengthSex || "male") : null,
     [isMe, store.history, store.prs, store.prEvents, store.bodyLog, store.strengthSex, displayUnit, store.unit]
   );
-  // Score history: reconstruct the strength score month-by-month from history alone
-  // (raw current-PR fallbacks are excluded so old snapshots can't see future bests, and
-  // asOf makes the stale-lift decay relative to each snapshot date, not today). ~12
-  // full-history passes, memoized — only recomputes when training data actually changes.
-  const strengthHistory = useMemo(() => {
-    if (!isMe) return null;
-    const hist = store.history || {};
-    const dates = Object.keys(hist).sort();
-    if (dates.length < 2) return null;
-    const firstMs = new Date(dates[0] + "T12:00:00").getTime();
-    const now = new Date();
-    const unit_ = displayUnit || store.unit || "lbs";
-    const sex_ = store.strengthSex || "male";
-    // Adaptive granularity: young accounts (<12 weeks of history) get WEEKLY snapshots —
-    // monthly gave a 2-week-old account two near-identical points (a flat line that hid
-    // real week-over-week improvement). Older accounts get monthly, capped at 12 points.
-    const spanDays = (now.getTime() - firstMs) / 864e5;
-    const weekly = spanDays < 84;
-    const snapshots = [];
-    if (weekly) {
-      const nWeeks = Math.min(11, Math.floor(spanDays / 7));
-      for (let i = nWeeks; i >= 1; i--) snapshots.push(new Date(now.getTime() - i * 7 * 864e5));
-    } else {
-      for (let i = 11; i >= 1; i--) {
-        const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0); // last day of that month
-        if (mEnd.getTime() >= firstMs) snapshots.push(mEnd);
-      }
-    }
-    snapshots.push(now);
-    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const pts = snapshots.map((d, i) => {
-      const cutoff = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-      const histCut = {};
-      for (const k of dates) { if (k <= cutoff) histCut[k] = hist[k]; }
-      if (!Object.keys(histCut).length) return null;
-      const bodyLog = (store.bodyLog || []).filter(bp => (bp.date || "") <= cutoff);
-      if (!bodyLog.length) return null;
-      const snap = computeStrengthScore(
-        { ...store, history: histCut, bodyLog, prs: {}, prEvents: (store.prEvents || []).filter(e => (e.date || "") <= cutoff) },
-        unit_, sex_, d.getTime()
-      );
-      if (!snap.ready) return null;
-      return { value: snap.score, date: cutoff, label: i === snapshots.length - 1 ? "Now" : (weekly ? `${d.getMonth()+1}/${d.getDate()}` : MONTHS[d.getMonth()]) };
-    }).filter(Boolean);
-    return pts.length >= 2 ? pts : null;
-  }, [isMe, store.history, store.bodyLog, store.prEvents, store.strengthSex, displayUnit, store.unit]);
+  // Score history — see strengthScoreHistory (module level, exported, so it can be tested).
+  const strengthHistory = useMemo(
+    () => (isMe ? strengthScoreHistory(store, displayUnit || store.unit || "lbs", store.strengthSex || "male", new Date()) : null),
+    [isMe, store.history, store.bodyLog, store.prEvents, store.strengthSex, displayUnit, store.unit]
+  );
 
   // Export workout history as CSV (one row per set) — the format lifters expect for
   // spreadsheet analysis, matching what Strong/others offer.
