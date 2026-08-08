@@ -1,4 +1,4 @@
-// v178091716814
+// v178091716815
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -23447,7 +23447,15 @@ function AppInner() {
             )}
           </button>
           <button
-            onClick={() => { markActivitySeen(); activityFromTab.current = tab; setTab("activity"); }}
+            onClick={() => {
+              markActivitySeen();
+              // Don't record "activity" as the place to go BACK to. The top bar (and this button)
+              // stay visible on the Activity screen itself, so a second tap would otherwise set
+              // the back target to the screen you are already on — measured: Back then did
+              // nothing at all and the only way out was the nav bar.
+              if (tab !== "activity") activityFromTab.current = tab;
+              setTab("activity");
+            }}
             aria-label="Activity"
             style={TOPBAR_ICON_BTN}
           >
@@ -23859,11 +23867,11 @@ function AppInner() {
             // Activity is reached from the top bar on any tab and is NOT in TABS_ORDER, so the
             // tab swipe cannot get you out of it — before this there was no gesture back at all,
             // only the nav bar. EdgeSwipeBack returns you to whichever tab you opened it from.
-            <EdgeSwipeBack onBack={() => setTab(activityFromTab.current || "feed")}
+            <EdgeSwipeBack onBack={() => setTab(activityFromTab.current && activityFromTab.current !== "activity" ? activityFromTab.current : "feed")}
               style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
               <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
                 {/* A gesture nobody can see is not a way out — the chevron is the discoverable one. */}
-                <button onClick={() => setTab(activityFromTab.current || "feed")} aria-label="Back"
+                <button onClick={() => setTab(activityFromTab.current && activityFromTab.current !== "activity" ? activityFromTab.current : "feed")} aria-label="Back"
                   style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"6px 8px 6px 0", lineHeight:1 }}>‹</button>
                 <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
                 {hiddenCount > 0 && (
