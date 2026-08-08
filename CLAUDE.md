@@ -454,6 +454,38 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   entire remaining gap once the activity models were unified) — and a fixture must fill buckets
   only for hours that have ELAPSED, because pre-filling the current hour hands the headline steps
   nobody has taken and invents an 8-point gap that is the fixture's fault.
+- **A VALIDITY RULE THAT CANNOT TELL TWO CAUSES APART MUST BE GENEROUS.** The sleep window's span
+  rule rejects when time-in-bed exceeds time-asleep by more than the slack — meant to catch a nap
+  MERGED into a night, but it cannot distinguish that from a BROKEN NIGHT. `sleepHours` is summed
+  asleep minutes (`pickSleepBlock` unions the covered intervals), so at +3 a day sleeper in bed
+  08:00-17:00 who actually slept 5.7h was rejected, lost a correct 17:00 wake to the guessed 07:00
+  one, and was charged 8 points she hadn't earned. The population hurt is whoever's real wake is
+  far from 07:00 — night shift, day sleepers. Slack is 4h with a separate 12h ceiling on a single
+  sleep episode (`MAX_ANCHOR_SPAN_H`, deliberately NOT `MAX_SLEEP_SPAN_H`=16, which
+  `pickSleepBlock` uses for a different job). When a heuristic has two possible causes and you can
+  only see the symptom, tune it to spare the legitimate one and let a different rule catch the bad
+  one. Sim: `sim_sleepwindow` §2.
+- **NEVER LET A TEST'S EXPECTED VALUE COINCIDE WITH ITS FALLBACK'S VALUE.** `sim_sleepwindow`'s
+  "good" fixture woke at 07:00 — which is exactly the estimated anchor used when no window is
+  trusted — so "window used" and "window ignored" both printed 56 and every assertion compared 56
+  to 56. An audit made BOTH call sites discard the window (`const trusted_ = null`) and the file
+  stayed fully green while every night-shift user, late riser and early bird silently got an
+  assumed 07:00 day. The reference now wakes at 10:00 and §0 asserts it differs from the no-window
+  answer. Related: when comparing a case against a "without X" reference, strip ONLY X — two checks
+  failed purely because the reference reported different `sleepHours`, which moves `charge0`.
+- **A BACKGROUND VALUE HAS TO CLEAR EVERY THRESHOLD AT ONCE.** `sim_sleepwindow`'s baseline hour
+  had to sit below `REST_STEPS_PER_H` (250) so rest recharge stays live, below `AWAKE_STEPS_PER_H`
+  (120) so it doesn't drag the estimated anchor to hour 0, and yet NOT be so quiet that every hour
+  is restful — rest recharge is capped at `charge0`, so a wholly restful day pins both models to
+  that ceiling and hid the exact difference the test existed to detect (a trusted 10:00 wake and no
+  window at all both read 91). Reading in the late morning instead of the evening was the fix.
+- **HOUR WALKS MUST BE ANCHORED IN LOCAL TIME.** The headline's rest walk started at
+  `Math.ceil(wakeMs / 36e5) * 36e5` — a UTC hour boundary, which is only a local one at whole-hour
+  offsets. In Nepal (+5:45) a 07:00 wake rounded to 07:45 local and every step read the hourly
+  buckets out of phase: headline 89 under a chart ending at 91. Walk from the wake time itself, as
+  the curve's phase D does. Sweep sub-hour zones — `Asia/Kathmandu`, `Asia/Kolkata`,
+  `Australia/Lord_Howe`, `America/St_Johns` — not just whole-hour ones; a whole-hour-only sweep is
+  what let this sit.
 - **TWO CALLERS THAT JUDGE THE SAME DATA MUST SHARE THE JUDGEMENT, NOT JUST THE DATA.** Both Body
   Battery models decide where your day starts from the persisted sleep window. The curve ran a
   full trust test (a start AND an end, ordered, span <=16h, span no more than 3h beyond the sleep
@@ -702,7 +734,7 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 **★★★ THE HEALTH-ENGINE HARDENING ERA (Aug 3–7, 2026) — the recovery/Body-Battery maths got four
 consecutive rounds of audit, and the pattern worth remembering is that MY OWN FIXES were the
-biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31l`. Battery is **41 sims + 21
+biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31m`. Battery is **41 sims + 21
 Playwright suites**, all green. What shipped, and what it cost:
 
 - **Round 1: four recovery-INPUT bugs** (read cap truncating a night, resting HR read as one raw
@@ -754,6 +786,13 @@ Playwright suites**, all green. What shipped, and what it cost:
   an audience of a few testers. **Process change agreed: for anything touching the health maths,
   run the cold-context audit BEFORE publishing the bundle.** Round 6's flat scale was live on Mo's
   phone for about an hour because the order was publish → audit → republish.
+- **Round 8: auditing round 7 found it had regressed broken sleepers** (`2026-07-31m`). The span
+  rule cannot tell a merged window from a fragmented night, so tightening the headline onto the
+  curve's checks threw away real windows for day sleepers. Slack 3h → 4h plus a 12h episode
+  ceiling. Four smaller ones with it (empty activity window read as unknown rather than zero,
+  string `sleepHours` concatenating, falsy `sleepHours` skipping the check, and the rest walk
+  snapped to UTC hour boundaries — a 2-point error in every sub-hour-offset timezone). **And the
+  round-7 sim was half-vacuous**: see the fallback-value convention above.
 - **Also**: the two flat caps and the recovery top end (see Conventions), the strength-chart
   points, the post header + `PRTag` + set ledger, `dateKeyOf` consolidation, and `readRecovery`
   split into a device-only wrapper plus the testable `readRecoveryFrom(H, now)`.
