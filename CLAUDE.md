@@ -350,6 +350,28 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   compared units backwards — it scaled the stored LBS pr UP by `LBS_PER_KG` for a kg session, so a
   kg lifter's top set had to beat ~2.2× its real PR and the badge could never appear. `store.prs` is
   LBS: convert the SESSION's weight *to* lbs, never the stored PR away from it.
+- **A PLATEAU HAS ONE VERDICT: `detectDeloadNeeded(store, name, unit, repsTarget)`.** The banner and
+  the per-set progression chips were two separate stall tests and they contradicted each other on
+  screen. Each chip asked whether ITS OWN set index had gained reps since three sessions ago, so on
+  Mo's real Lateral Raises the rows read `35×15 / 40×13 / 35×15 / 40×12` — deload and add-reps
+  alternating, one line apart, under a banner saying "Plateau detected". Whether you have plateaued
+  is a fact about the LIFT; ask it once and hand every row the same answer. The chips' 3-session
+  threshold lost to the banner's 4 (chosen deliberately to cut false positives). Sims:
+  `sim_stallcoherent` (maths) + `pw_stallcoherent` (the screen — the verdict now travels through a
+  memo in WorkoutTracker, and a pure-function sim cannot see that wiring at all).
+- **`topReps` IS THE TOP SET'S REPS, AND MOST PROGRESS DOESN'T HAPPEN THERE.** The stall test's
+  "reps are flat, so it's a plateau" guard read only `topReps`. Mo opens 40×12 every session, so
+  that series is dead flat while sets 2–4 climb underneath it: 40×12/11/10/8 → 40×12/12/10/9 →
+  40×12/12/10/10, volume 1640 → 1720 → 1760. Every session his best yet, and the app told him to
+  take 5 lbs off. `exerciseProgressed()` counts a gain in top weight, top-set reps, **total reps or
+  volume** as progress. Anything reasoning about "did this exercise improve" must look past the top
+  set — and must `cvt` volume/reps series into one unit, or a kg history read in lbs invents
+  progress out of the conversion.
+- **COMPARE THE BEST OF THE LAST TWO AGAINST THE BEST OF THE REST, not the newest against
+  everything.** One short session — three sets instead of four because the gym was closing — drops
+  volume through the floor without meaning anything, and a newest-vs-best test reads it as a stall
+  on its own. Erring toward a missed stall is right here: the cost of a missed one is silence, the
+  cost of a false one is being told to deload a session you just set a record on.
 - **A set COUNT and the volume printed beside it must come from the same list.** Four places paired
   `filter(s => s.done).length` (warmups included) with `sessionVolume()` (warmups excluded), so the
   same line read "5 sets · 3,850 lbs" for a volume drawn from 3 sets — including the LIVE workout
