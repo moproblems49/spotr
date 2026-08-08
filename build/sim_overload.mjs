@@ -50,13 +50,19 @@ const sHeavy = suggestNextSet(heavy, "Deadlift", "3×6-8", "lbs", 0);
 check("heavy lift advances by the scaled increment", sHeavy?.type === "weight" && sHeavy.weight === 325, `${sHeavy?.type} ${sHeavy?.weight}`);
 
 // ── 2. Stall detection ───────────────────────────────────────────────────────────────────────
+// FOUR sessions, not three. The per-set suggestion used to run its own 3-session stall test while
+// the plateau banner above it required 4 — two thresholds, two verdicts, and on session three you
+// got deload chips with no banner explaining them. They are one call now, and the banner's 4 is
+// the number that survived, because it was chosen deliberately to cut false positives and false
+// positives are the entire complaint this consolidation came from.
 const stalled = mkStore("Bench Press", [
   { daysAgo: 3,  sets: sets(185, 5) },
   { daysAgo: 10, sets: sets(185, 5) },
   { daysAgo: 17, sets: sets(185, 5) },
+  { daysAgo: 24, sets: sets(185, 5) },
 ]);
 const sStall = suggestNextSet(stalled, "Bench Press", "3×5-8", "lbs", 0);
-check("three flat sessions trigger a deload", sStall?.type === "deload", `got ${sStall?.type}`);
+check("four flat sessions trigger a deload", sStall?.type === "deload", `got ${sStall?.type}`);
 check("deload is ~10% and lands on a real plate", sStall?.weight === 165, `${sStall?.weight}`);
 check("deload explains itself", /stuck/i.test(sStall?.reason||""), `"${sStall?.reason}"`);
 
@@ -98,6 +104,7 @@ const kgStall = mkStore("Curl", [
   { daysAgo: 3,  sets: sets(25, 8) },
   { daysAgo: 10, sets: sets(25, 8) },
   { daysAgo: 17, sets: sets(25, 8) },
+  { daysAgo: 24, sets: sets(25, 8) },
 ], "kg");
 const rKg = suggestNextSet(kgStall, "Curl", "3×10-12", "kg", 0);
 check("kg deload note matches the actual drop", rKg?.type === "deload" && rKg.note === `−${25 - rKg.weight} kg`,

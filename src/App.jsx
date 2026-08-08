@@ -1,4 +1,4 @@
-// v178091716820
+// v178091716821
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4152,11 +4152,59 @@ function getExerciseSessions(store, exName, limit = 5) {
   return out;
 }
 
-// Deload / stall detection. Looks at the last several sessions of an exercise and flags when
-// the lifter has plateaued — i.e. top working weight hasn't increased across 3+ sessions and
-// estimated 1RM is flat/declining. Returns { stalled, ... } or { stalled:false }. A planned
-// deload (back off ~10%, rebuild) is the standard fix for a stall.
-function detectDeloadNeeded(store, exName, unit) {
+// HAS THIS EXERCISE MOVED FORWARD AT ALL? — the one question every stall test has to answer, and
+// the one the old ones kept getting wrong because they only ever looked at the TOP set.
+//
+// `topReps` is the reps of the heaviest set, so a lifter who opens 40x12 every time and adds his
+// progress further down the run — 40x12, 40x12, 40x10, 40x9 becoming 40x12, 40x12, 40x10, 40x10 —
+// has a topReps series that is dead flat while every other set climbs. Measured on Mo's real
+// Lateral Raises history (Jul 20 / Jul 30 / Aug 3): top set 12/12/12, total volume 1640/1720/1760.
+// The banner called that a plateau and told him to drop 5 lbs on a session that was his best yet.
+//
+// So ask four questions, not one, and count ANY of them as progress: more weight, more reps on the
+// top set, more total reps, more volume. Volume and total reps are what see the back half of a run.
+//
+// COMPARE THE BEST OF THE LAST TWO AGAINST THE BEST OF THE REST, not the newest against everything.
+// One short session — three sets instead of four because the gym was closing — drops volume through
+// the floor without meaning anything about strength, and a newest-vs-best test reads that as a
+// stall on its own. Using the better of the two most recent absorbs a single off day. It also means
+// a lifter who peaked one session ago and is now sliding gets a pass for one more session; that is
+// the deliberate direction to err, because the cost of a missed stall is silence and the cost of a
+// false one is being told to take weight off a bar you just set a record on.
+function exerciseProgressed(sessions, unit) {
+  if (sessions.length < 2) return true;   // not enough to call anything a plateau
+  const series = sessions.map(s => ({
+    // Volume and reps are compared across sessions, so both sides must be in ONE unit — a history
+    // logged in kg read by an lbs user would otherwise invent progress out of the conversion.
+    w: cvt(s.topWeight, s.unit, unit),
+    topReps: s.topReps || 0,
+    totalReps: s.sets.reduce((a, x) => a + (x.r || 0), 0),
+    vol: cvt(s.volume, s.unit, unit),
+  }));
+  const recent = series.slice(0, 2), older = series.slice(2);
+  if (!older.length) return true;
+  const best = (arr, k) => Math.max(...arr.map(x => x[k]));
+  return ["w", "topReps", "totalReps", "vol"].some(k => best(recent, k) > best(older, k) + 1e-6);
+}
+
+// Deload / stall detection — THE one verdict for an exercise. The plateau banner and every set's
+// progression chip both read it, so they cannot contradict each other.
+//
+// They used to be two separate tests and they disagreed constantly. The banner asked whether the
+// top set was flat; each chip asked whether ITS OWN set index had gained reps since three sessions
+// ago. On the same screen that produced this note, set 1 (12/12/12) said "deload to 35" while set 2
+// (12/12/11) said "40x13" directly beneath it — opposite advice about the same exercise, one row
+// apart, because the two sets had different rep histories. A stall is a property of the LIFT, not
+// of a row in a table.
+//
+// `repsTarget` is optional. Pass it wherever the verdict sits next to per-set advice: without a
+// target "stuck" has no meaning (holding 100x12 on an accessory for a month is a deliberate steady
+// load, not a failure), and if the lifter is already at or past the top of the range then the
+// honest advice is to ADD weight — which is exactly what the chips say, and the banner used to
+// contradict. The AI coach passes nothing, deliberately: it writes prose about the big compounds
+// with no chip beside it to disagree with, and a flat bench for four sessions is a stall whatever
+// a program has written in its reps column.
+function detectDeloadNeeded(store, exName, unit, repsTarget = null) {
   // Require 4 flat sessions (not 3) so the plateau banner only fires on a genuine, sustained
   // stall — fewer false positives, less nagging.
   const sessions = getExerciseSessions(store, exName, 6);
@@ -4176,13 +4224,15 @@ function detectDeloadNeeded(store, exName, unit) {
   const maxTop = Math.max(...topWeights);
   const minTop = Math.min(...topWeights);
   const weightFlat = (maxTop - minTop) < (unit === "lbs" ? 5 : 2.5);
-  // Also require reps to be flat (not just weight) — otherwise a lifter quietly adding reps
-  // each session at the same weight (real progress) still gets flagged as a plateau.
-  const topReps = recentRaw.map(s => s.topReps);
-  const repsFlat = (Math.max(...topReps) - Math.min(...topReps)) <= 1;
   const e1rms = recent.map(s => s.e1rm);
   const e1rmNotProgressing = e1rms[0] <= Math.max(...e1rms.slice(1)) + 0.01;
-  if (weightFlat && repsFlat && e1rmNotProgressing) {
+  // Progress anywhere in the exercise — not just on the top set — means this is not a plateau.
+  const progressed = exerciseProgressed(recentRaw, unit);
+  // At or past the top of the target range at a flat weight is the textbook cue to ADD load. That
+  // is what the chips advise, so the banner must not be telling him to take load off.
+  const range = repsTarget ? parseRepRange(repsTarget) : null;
+  const earnedTheJump = !!range && Math.max(...recentRaw.map(s => s.topReps || 0)) >= range.high;
+  if (weightFlat && !progressed && e1rmNotProgressing && !earnedTheJump) {
     const dl = unit === "lbs" ? Math.round((maxTop * 0.9) / 5) * 5 : Math.round((maxTop * 0.9) / 2.5) * 2.5;
     return {
       stalled: true,
@@ -4275,29 +4325,31 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
     };
   }
 
-  // STALL — three sessions at the same weight with no rep improvement. Three sessions at the same
-  // weight while reps climb (5 → 6 → 7) is double progression working exactly as intended, so the
-  // rep test is what separates a stall from normal progress. Backing off 10% and building again
-  // beats a fourth identical failed attempt, which is all the old engine could ever suggest.
-  // Requires a rep range: "stuck" means repeatedly failing to reach a target, and without a range
-  // there IS no target — holding 100x12 on an accessory three weeks running is a deliberate steady
-  // load, not a failure, and telling that user to drop 10% is the opposite of the right advice.
-  if (trend.length >= 3 && range) {
-    const [a, b, c] = trend; // newest first
-    const sameWeight = Math.abs(a.w - b.w) < 0.01 && Math.abs(b.w - c.w) < 0.01;
-    const noRepGain = a.r <= c.r;
-    const notYetAtTop = a.r < range.high;
-    if (sameWeight && noRepGain && notYetAtTop) {
-      const dl = Math.max(step, Math.round((lastWeight * 0.9) / step) * step);
-      return {
-        type: "deload",
-        weight: dl,
-        reps: range.high,
-        note: `−${+(lastWeight - dl).toFixed(1)} ${unit}`,
-        deltaWeight: dl - lastWeight,
-        reason: `Stuck at ${lastWeight} ${unit} for 3 sessions — drop 10% and build back`,
-      };
-    }
+  // STALL — ONE verdict for the whole exercise, shared with the plateau banner.
+  //
+  // This used to run its own test per SET INDEX: "has this row gained reps since three sessions
+  // ago". Two rows of the same exercise therefore reached opposite conclusions routinely — set 1
+  // steady at 12 reps said "deload to 35" while set 2, which had gone 11 → 12, said "40x13" in the
+  // row directly below. Whether you have plateaued is a fact about the lift; asking it once and
+  // handing every row the same answer is the only way the screen can be coherent.
+  //
+  // Still gated on `range` for the reason the per-set version was: without a target there is
+  // nothing to be stuck short of. `detectDeloadNeeded` re-checks the exercise-wide progress
+  // signals (total reps and volume, not just the top set), so a lifter adding reps anywhere in the
+  // run is never told to back off.
+  if (range && detectDeloadNeeded(store, exName, unit, repsTarget).stalled) {
+    // Scale from THIS set's own weight rather than the exercise's top weight — on a descending or
+    // drop-set arrangement a single flat number for every row would be a different workout, not a
+    // deload of the one being done.
+    const dl = Math.max(step, Math.round((lastWeight * 0.9) / step) * step);
+    return {
+      type: "deload",
+      weight: dl,
+      reps: range.high,
+      note: `−${+(lastWeight - dl).toFixed(1)} ${unit}`,
+      deltaWeight: dl - lastWeight,
+      reason: `Stuck at ${lastWeight} ${unit} for 4 sessions — drop 10% and build back`,
+    };
   }
 
   // Double progression — judged PER-SET against the matching set from last session.
@@ -5463,7 +5515,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -11959,11 +12011,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // Deload-stall checks sort+scan the whole history per exercise — memoize per exercise name so
   // they only recompute when history/unit/the exercise list change, not on every weight/reps
   // keystroke (session.exercises is replaced immutably on every set edit).
-  const exerciseNames = (session?.exercises || []).map(ex => ex.name).filter(Boolean);
-  const exerciseNameKey = JSON.stringify(exerciseNames);
+  // Keyed by name AND rep target: the target is half the verdict (at the top of the range you get
+  // told to add weight, not take it off), so a memo keyed on the name alone would serve a stale
+  // answer the moment the range changed.
+  const exerciseTargets = (session?.exercises || []).filter(ex => ex.name).map(ex => [ex.name, ex.reps || null]);
+  const exerciseNameKey = JSON.stringify(exerciseTargets);
   const deloadByExercise = useMemo(() => {
     const out = {};
-    for (const name of new Set(exerciseNames)) out[name] = detectDeloadNeeded(store, name, unit);
+    for (const [name, reps] of exerciseTargets) if (!(name in out)) out[name] = detectDeloadNeeded(store, name, unit, reps);
     return out;
   }, [store.history, unit, exerciseNameKey]);
 
