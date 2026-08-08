@@ -1,4 +1,4 @@
-// v178091716810
+// v178091716811
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6591,6 +6591,16 @@ function Spinner({ C, size = 22 }) {
   );
 }
 
+// The top bar's icon buttons. A 22px glyph with 11px of padding is a 44px box — exactly Apple's
+// minimum tap target, and worth keeping — but it also made the bar 45px tall when the logo inside
+// it is only 30. The negative vertical margin lets the button keep its full 44px HIT area while
+// contributing 38px to the flex line, so the touch target is untouched and the chrome shrinks.
+// Don't "simplify" this by cutting the padding: that shrinks the thing your thumb has to find.
+const TOPBAR_ICON_BTN = {
+  position: "relative", background: "none", border: "none", cursor: "pointer",
+  padding: 11, margin: "-3px 0",
+  display: "flex", alignItems: "center", justifyContent: "center",
+};
 function SeshdLogo({ C, big = false, size }) {
   const sz = size || (big ? 44 : 30);
   const word = size ? Math.round(sz * 0.5) : (big ? 28 : 19);
@@ -9304,17 +9314,40 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 // generic label. One component now, and it is VOLT: a personal record is precisely what the
 // accent was reserved for when lime stopped being the app's default colour. Monospace and tightly
 // letterspaced so it reads as a stamp rather than a button.
+// A PR is the one thing in this app you actually earned, and it was wearing a rounded grey-shaped
+// chip that looked like every framework's default badge. The silhouette does the work now: a
+// forward-leaning parallelogram, cut like a stamped decal on a plate, with the type set tight and
+// heavy. Nothing decorative was added — the shape IS the difference, so it still reads at 8px in a
+// dense set ledger where an icon or a gradient would turn to mush.
+//
+// WHAT MUST NOT CHANGE: the fill stays flat `accent2` on `onAccent`. White on the light theme's
+// #65a30d is 3.09:1, under AA for text this size; accent2 (#4d7c0f light, #a8d426 dark) clears
+// 4.5:1 in BOTH themes. The two themes invert (dark ink on light lime / white on dark lime), so a
+// gradient fill would help one and break the other — hence flat.
+//
+// The skew is applied to the BOX and unwound on the text, rather than italicising the glyphs: a
+// synthetic oblique on a mono face at 8px smears the stems, and `PR` is only two letters wide so
+// the leaning box alone carries it.
 function PRTag({ C, size = 9 }) {
+  const small = size < 9;
   return (
     <span style={{
-      fontFamily: MONO, fontSize: size, fontWeight: 800, letterSpacing: 1.5,
-      // accent2, not accent. White on the light theme's #65a30d is 3.09:1 — under AA for text
-      // this size — while the plain label it replaced was 15.78:1. accent2 (#4d7c0f light,
-      // #a8d426 dark) clears 4.5:1 in both themes and still reads unmistakably as the accent.
-      background: C.accent2, color: C.onAccent,
-      padding: `${size < 9 ? 1 : 2}px ${size < 9 ? 5 : 7}px`,
-      borderRadius: 3, flexShrink: 0, lineHeight: 1.5,
-    }}>PR</span>
+      display: "inline-block", flexShrink: 0,
+      background: C.accent2,
+      padding: `${small ? 1.5 : 2.5}px ${small ? 6 : 8}px`,
+      transform: "skewX(-12deg)",
+      borderRadius: 2,
+      // The lean would collide with whatever sits beside it in a tight row; the bottom-left corner
+      // pokes out furthest, so give it back a sliver of room.
+      marginRight: small ? 1 : 2,
+      lineHeight: 1,
+    }}>
+      <span style={{
+        display: "block", transform: "skewX(12deg)",
+        fontFamily: MONO, fontSize: size, fontWeight: 900, letterSpacing: 0.8,
+        color: C.onAccent, lineHeight: 1.45,
+      }}>PR</span>
+    </span>
   );
 }
 
@@ -12854,22 +12887,43 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Minimized rest bar — portaled for the same transformed-ancestor reason as above
             (this one visibly broke: it rendered as a clipped band inside the set list). */}
+        {/* IT HAS TO READ AS A THING FLOATING OVER THE LIST, NOT ANOTHER ROW IN IT. This was
+            `background: C.surface` with a `C.divider` hairline — the exact material and border the
+            set rows underneath it use — so a bar sitting 92px off the bottom of a scrolling list of
+            near-identical cards simply vanished into them. Three changes, each doing a different
+            job: an INVERTED slab (near-black in light mode, a lifted charcoal in dark) so the
+            material itself is unlike anything else on the screen; a real cast shadow instead of a
+            hairline, which is what actually says "above"; and the accent ring, the same language
+            Quick Start uses for "this is live and it's yours to act on". The <=10s red state still
+            overrides the ring, because that one is a warning, not a decoration. */}
         {rest && rest.minimized && !focusedSet && createPortal(
-          <div style={{ position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 92px)", zIndex:490, padding:"8px 10px 8px 14px", borderRadius:16, background:C.surface, border:`1px solid ${rest.secs<=10 ? "#EF4444" : C.divider}`, boxShadow:"0 8px 24px rgba(0,0,0,0.16)", display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ fontSize:17, fontWeight:800, color: rest.secs<=10 ? "#EF4444" : C.text, fontFamily:MONO, minWidth:52 }}>
+          <div style={{
+            position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 92px)",
+            zIndex:490, padding:"9px 10px 9px 14px", borderRadius:14,
+            background: C.isDark ? "rgba(38,38,46,0.94)" : "rgba(20,20,24,0.95)",
+            backdropFilter:"blur(18px) saturate(1.5)", WebkitBackdropFilter:"blur(18px) saturate(1.5)",
+            border:`1px solid ${rest.secs<=10 ? "#EF4444" : `${C.accent}59`}`,
+            boxShadow: rest.secs<=10
+              ? "0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px rgba(239,68,68,0.25)"
+              : `0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px ${C.accent}1f`,
+            display:"flex", alignItems:"center", gap:10,
+          }}>
+            {/* The slab is dark in BOTH themes, so these are fixed light values rather than C.text
+                — which is near-black on the light theme and would disappear here. */}
+            <div style={{ fontSize:17, fontWeight:800, color: rest.secs<=10 ? "#FF6B6B" : "#fff", fontFamily:MONO, minWidth:52 }}>
               {fmtTime(rest.secs)}
             </div>
-            <div style={{ flex:1, height:5, background:C.divider, borderRadius:999, overflow:"hidden" }}>
+            <div style={{ flex:1, height:5, background:"rgba(255,255,255,0.16)", borderRadius:999, overflow:"hidden" }}>
               <div style={{ width:"100%", height:"100%", background: rest.secs<=10 ? "#EF4444" : C.accent, transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, rest.secs/Math.max(1, rest.total)))})`, transition:"transform 0.3s linear", willChange:"transform" }}/>
             </div>
             <button onClick={() => setRest(p => {
               if (!p) return null;
               const newRunning = !p.running;
               return newRunning ? { ...p, running: newRunning, startedAt: Date.now() - ((p.total - p.secs) * 1000) } : { ...p, running: newRunning };
-            })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:10, background:C.primary, border:"none", color:C.onPrimary, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
+            })} aria-label={rest.running ? "Pause" : "Resume"} style={{ padding:"7px 12px", borderRadius:9, background:"#fff", border:"none", color:"#0d0d10", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>
               {rest.running ? "Pause" : "Resume"}
             </button>
-            <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:10, background:"transparent", border:`1px solid ${C.border}`, color:C.sub, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
+            <button onClick={() => setRest(p => p ? ({ ...p, minimized:false }) : p)} aria-label="Expand rest timer" style={{ padding:"7px 10px", borderRadius:9, background:"rgba(255,255,255,0.10)", border:"1px solid rgba(255,255,255,0.18)", color:"rgba(255,255,255,0.85)", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0 }}>⤢</button>
           </div>
         , document.body)}
 
@@ -16867,9 +16921,15 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
         <div style={{ padding:"4px 16px 0" }}>
           {/* Quick access cards */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+            {/* The accent ring + lift that Quick Start uses, at HALF strength. These are the two
+                doors out of Discover, so they should read as doors — but Quick Start is the one
+                primary action on the whole tracker tab, and if every card glows equally the glow
+                stops meaning anything. Same language, quieter: a thinner ring (33 vs 55 alpha) and
+                a shallower lift, so side by side the hierarchy still reads. */}
             <button onClick={() => setSubTab("activity")} style={{
               background:C.surface, color:C.text,
-              border:`1px solid ${C.border}`, borderRadius:16, padding:"18px 16px",
+              border:`1px solid ${C.accent}33`, borderRadius:16, padding:"18px 16px",
+              boxShadow:`0 0 0 1px ${C.accent}0d, 0 4px 14px -8px ${C.accent}4d`,
               cursor:"pointer", textAlign:"left", fontFamily:F,
               display:"flex", flexDirection:"column", alignItems:"flex-start", gap:14,
             }}>
@@ -16883,7 +16943,8 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
             </button>
             <button onClick={() => setSubTab("groups")} style={{
               background:C.surface, color:C.text,
-              border:`1px solid ${C.border}`, borderRadius:16, padding:"18px 16px",
+              border:`1px solid ${C.accent}33`, borderRadius:16, padding:"18px 16px",
+              boxShadow:`0 0 0 1px ${C.accent}0d, 0 4px 14px -8px ${C.accent}4d`,
               cursor:"pointer", textAlign:"left", fontFamily:F,
               display:"flex", flexDirection:"column", alignItems:"flex-start", gap:14,
             }}>
@@ -23184,8 +23245,16 @@ function AppInner() {
         boxShadow: C.isDark
           ? "inset 0 1px 0 rgba(255,255,255,0.08)"
           : "inset 0 1px 0 rgba(255,255,255,0.9)",
-        // Moved up: tighter top gap under the notch (+4 vs +10) and slimmer bottom pad.
-        padding: `${(isGuest || !online) ? "7px" : "calc(env(safe-area-inset-top) + 4px)"} calc(env(safe-area-inset-right) + 14px) 7px calc(env(safe-area-inset-left) + 14px)`,
+        // TIGHT UNDER THE NOTCH. The safe-area inset is not negotiable — below it the logo sits
+        // under the clock — but everything we add to it is. This was inset+4 over 7, and the row
+        // itself was 45px because the icon BUTTONS (22px glyph + 11px padding each side) set the
+        // flex line height, not the 30px logo. So trimming the paddings alone bought almost
+        // nothing; see TOPBAR_ICON_BTN for how the buttons keep a full tap target while
+        // contributing less height. Net: 56px -> 45px of chrome above the content.
+        // The +3 is not slack — it is exactly the negative margin TOPBAR_ICON_BTN uses. Without it
+        // the buttons overflow their content box into the safe-area padding, which on device is
+        // the status bar, putting a live tap target under the clock.
+        padding: `${(isGuest || !online) ? "5px" : "calc(env(safe-area-inset-top) + 3px)"} calc(env(safe-area-inset-right) + 14px) 5px calc(env(safe-area-inset-left) + 14px)`,
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
         <SeshdLogo C={C}/>
@@ -23199,7 +23268,7 @@ function AppInner() {
                 setNewPostKind("photo"); setShowNewPost(true);
               }}
               aria-label="New post"
-              style={{ background:"none", border:"none", cursor:"pointer", padding:11, display:"flex", alignItems:"center", justifyContent:"center" }}
+              style={TOPBAR_ICON_BTN}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="4"/>
@@ -23214,7 +23283,7 @@ function AppInner() {
               setShowMessages(true);
             }}
             aria-label="Messages"
-            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:11, display:"flex", alignItems:"center", justifyContent:"center" }}
+            style={TOPBAR_ICON_BTN}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
@@ -23226,7 +23295,7 @@ function AppInner() {
           <button
             onClick={() => { markActivitySeen(); setTab("activity"); }}
             aria-label="Activity"
-            style={{ position:"relative", background:"none", border:"none", cursor:"pointer", padding:11, display:"flex", alignItems:"center", justifyContent:"center" }}
+            style={TOPBAR_ICON_BTN}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill={notifCount > 0 ? C.red : "none"} stroke={notifCount > 0 ? C.red : C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
