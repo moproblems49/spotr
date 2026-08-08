@@ -107,6 +107,45 @@ await page.waitForTimeout(400);
 check("restoring returns the dismissed row", await page.getByLabel("Dismiss").count() === total,
   String(await page.getByLabel("Dismiss").count()));
 
+// ── 5. A DISMISS KEY MUST IDENTIFY EXACTLY ONE ROW ───────────────────────────────────────────
+// Two kudos rows for the same post and the same actor previously produced an identical key, so
+// one click removed both. Kudos are keyed on (post, actor) only — no timestamp, because they
+// carry none of their own and inherit post.createdAt, which resurrects a dismissal if the post is
+// ever re-serialised a millisecond apart.
+{
+  const p2 = await ctx.newPage();
+  p2.setDefaultTimeout(4000);
+  await p2.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
+    body: JSON.stringify({ access_token: "t", refresh_token: "r", user: { id: ME, email: "m@e.com" } }) }));
+  await p2.route("**/rest/v1/**", r => {
+    const u = r.request().url();
+    let body = "[]";
+    if (/\/rest\/v1\/(profiles|public_profiles)\?/.test(u)) {
+      body = JSON.stringify([
+        { id: ME, username: "momo", name: "Mo", unit: "lbs", is_public: true, seen_onboarding: true, theme: "dark" },
+        { id: FR, username: "kai", name: "Kai", is_public: true },
+      ]);
+    } else if (/\/rest\/v1\/posts\?/.test(u)) {
+      // Two comments from the same person with NO id, same timestamp — the shape that collided.
+      body = JSON.stringify([{ id: "pX", user_id: ME, caption: "x", type: "text", created_at: NEW,
+        kudos: [{ user_id: FR }],
+        comments: [{ user_id: FR, text: "first", likes: [], created_at: NEW },
+                   { user_id: FR, text: "second", likes: [], created_at: NEW }] }]);
+    }
+    r.fulfill({ status: 200, contentType: "application/json", body });
+  });
+  await p2.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await p2.waitForTimeout(1700);
+  await p2.getByLabel("Activity").click(); await p2.waitForTimeout(800);
+  const before = await p2.getByLabel("Dismiss").count();
+  check("three distinct rows from id-less comments", before === 3, String(before));
+  await p2.getByLabel("Dismiss").first().click();
+  await p2.waitForTimeout(400);
+  const now2 = await p2.getByLabel("Dismiss").count();
+  check("dismissing one hides exactly one", now2 === before - 1, `${before} -> ${now2}`);
+  await p2.close();
+}
+
 await browser.close();
 console.log(fails ? `${fails} FAIL(S)` : "ALL PASS");
 process.exit(fails ? 1 : 0);

@@ -1,4 +1,4 @@
-// v178091716815
+// v178091716816
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5870,6 +5870,11 @@ const NIGHT_SHIFT_MS = 12 * 36e5;
 // deliberately cleared. It is capped by COUNT instead — oldest dismissals drop first, and you
 // would have to dismiss this many rows before the earliest one could reappear.
 const MAX_DISMISSED_ACTIVITY = 1000;
+// How many rows the Activity list draws. It was 50 while the badge counted everything, so past 50
+// rows the badge described more than the screen could show. Raised so the two agree at any
+// realistic volume; it is still a cap, because rendering thousands of rows would jank the screen,
+// and the badge is displayed as "9+" long before you reach it.
+const ACTIVITY_RENDER_CAP = 300;
 function dateKeyOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 const nightKeyOf = (t) => dateKeyOf(t - NIGHT_SHIFT_MS);
 // A sample in the small hours proves you were ASLEEP in that bucket, as opposed to awake on the
@@ -13046,7 +13051,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         you most need to remove. Gating the trigger made those rows permanent —
                         the only way out was cancelling the whole workout. Items that genuinely
                         need a name gate themselves. */}
-                    <button className="seshd-hit" onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
+                    {/* -y, NOT the square halo. This sits in a tight row with the rest-time picker
+                        and the bar-weight pill; a 44px square reached 8px left and covered the
+                        right 2px of the picker — measured by real click, a tap inside the picker's
+                        own visible box opened THIS menu instead. */}
+                    <button className="seshd-hit-y" onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
                       aria-label="More exercise options"
                       style={{ background: (moreMenuEx === ei || ex.superset) ? C.accentSoft : "none", border:`1px solid ${ex.superset ? C.primary : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? C.accent : C.sub} strokeWidth="2.6" strokeLinecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
@@ -16632,25 +16641,36 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
     try { return JSON.parse(localStorage.getItem("seshd_group_seen") || "{}"); } catch { return {}; }
   });
   const [groupNewest, setGroupNewest] = useState({});
-  const groupIds = myGroups.map(g => g.id).join(",");
+  // ONLY REAL SERVER IDS. `createGroup` puts a local `uid()` into store.groups the moment you tap
+  // Create, before the insert returns — and `groups.id` is a uuid column, so splicing that into
+  // `group_id=in.(…)` makes PostgREST reject the WHOLE query with 22P02. Measured: one temp id and
+  // every group lost its dot until the next reload, because the catch below swallows the 400.
+  const isServerId = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const unreadIds = myGroups.map(g => g.id).filter(isServerId);
+  const groupIds = unreadIds.join(",");
   useEffect(() => {
-    if (!token || !groupIds) return;
+    if (!token || !unreadIds.length) return;
     let cancelled = false;
     (async () => {
-      try {
-        const rows = await sb.query(
-          `group_posts?group_id=in.(${groupIds})&select=group_id,user_id,created_at&order=created_at.desc&limit=200`,
-          {}, token);
-        if (cancelled || !Array.isArray(rows)) return;
-        const newest = {};
-        for (const r of rows) {
-          if (r.user_id === currentUserId) continue;          // your own post is not news
-          const ts = new Date(r.created_at).getTime();
-          if (!Number.isFinite(ts)) continue;
-          if (!newest[r.group_id] || ts > newest[r.group_id]) newest[r.group_id] = ts;
-        }
-        setGroupNewest(newest);
-      } catch (e) { /* a missing dot is not worth surfacing an error for */ }
+      // ONE QUERY PER GROUP, not one shared query with a row cap. A single
+      // `in.(…)&order=created_at.desc&limit=200` returns the newest 200 rows ACROSS your groups,
+      // so one chatty group swallows the whole budget and a quiet group's genuine unread post is
+      // never seen — measured with 200 posts in one group and 1 in another: 1 dot, expected 2.
+      // There is no per-group ordering in PostgREST, so the cap is a hard ceiling rather than a
+      // tuning knob. `limit=1` per group is exact, and people belong to a handful of groups.
+      const results = await Promise.all(unreadIds.map(async (gid) => {
+        try {
+          const rows = await sb.query(
+            `group_posts?group_id=eq.${gid}&user_id=neq.${currentUserId}&select=created_at&order=created_at.desc&limit=1`,
+            {}, token);
+          const ts = Array.isArray(rows) && rows[0] ? new Date(rows[0].created_at).getTime() : NaN;
+          return [gid, Number.isFinite(ts) ? ts : null];
+        } catch (e) { return [gid, null]; }   // a missing dot is not worth an error toast
+      }));
+      if (cancelled) return;
+      const newest = {};
+      for (const [gid, ts] of results) if (ts) newest[gid] = ts;
+      setGroupNewest(newest);
     })();
     return () => { cancelled = true; };
   }, [token, groupIds, currentUserId]);
@@ -22707,20 +22727,15 @@ function AppInner() {
            part of the BUTTON for hit-testing, so it also inherits its disabled/pointer-events
            state — no need to guard those separately. Don't put this on controls packed closer than
            44px apart in BOTH axes: the halos would overlap and the later one in DOM order wins. */
-        /* NATIVE FEEL: nothing on the chrome should behave like a web page under a long press.
-           In a native app you cannot drag-select a label and there is no callout menu over a
-           button or an icon — leaving those on is one of the clearest "this is a website" tells.
-           Inputs and textareas keep BOTH (typing needs a caret and a selection), and anything a
-           user might genuinely want to copy can opt back in with .seshd-selectable. Share codes
-           already have a copy button and a toast, so they do not need it.
-           Note -webkit-tap-highlight-color is already transparent on button, above; this adds the
-           same for links and role=button elements, which are not buttons. */
-        body { -webkit-user-select: none; user-select: none; }
-        input, textarea, [contenteditable="true"], .seshd-selectable {
-          -webkit-user-select: text; user-select: text;
-        }
-        button, a, [role="button"], img, svg, label { -webkit-touch-callout: none; }
-        a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+        /* Selection and the long-press callout are ALREADY off app-wide — see the star rule near
+           the top of this stylesheet, which sets both, with input/textarea/select re-enabling them
+           for typing. A block was added here duplicating all of that on body and on a list of
+           tags; an audit showed it changed nothing, so it is gone. The one genuinely missing
+           selector was the tap highlight on links: the existing rule covers button and
+           [role=button], not a.
+           NOTE: no backticks in this comment — the whole stylesheet is a template literal, and a
+           backtick here terminates it. That has now broken the build twice. */
+        a { -webkit-tap-highlight-color: transparent; }
 
         .seshd-hit { position: relative; }
         .seshd-hit::after {
@@ -22804,9 +22819,17 @@ function AppInner() {
       return next;
     });
   };
-  const clearDismissedActivity = () => {
-    setDismissedActivity({});
-    try { localStorage.removeItem("seshd_dismissed_activity"); } catch {}
+  // Restore ONLY the keys named — the header counts dismissals whose event is in the currently
+  // loaded posts, so wiping the whole map gave back every row the user had ever cleared. Measured:
+  // a header offering "Show 1 hidden" dropped 2 stored keys, and months of clearing would come
+  // back the next time those posts loaded.
+  const restoreDismissedActivity = (keys) => {
+    setDismissedActivity(prev => {
+      const next = { ...prev };
+      for (const k of keys) delete next[k];
+      try { localStorage.setItem("seshd_dismissed_activity", JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
   // Which tab the Activity screen was opened FROM, so swiping back returns there rather than
   // guessing. Activity is not in TABS_ORDER — it is a pushed screen wearing a tab's clothes.
@@ -22819,14 +22842,19 @@ function AppInner() {
     let count = (store.posts || [])
       .filter(p => p.userId === currentUserId)
       .reduce((a, pt) => {
-        const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId).length;
-        const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId).length;
+        // COUNT ONLY WHAT THE LIST CAN RENDER. The Activity list drops an event whose actor is
+        // missing from store.users (`if (u) events.push`); this used to count it anyway, so a
+        // kudos from a withheld or deleted profile produced a badge of 1 over a screen reading
+        // "No activity yet" — a badge you cannot clear by looking at it.
+        const known = (id) => !!store.users.find(u => u.id === id);
+        const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId && known(x)).length;
+        const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId && known(c.userId)).length;
         return a + kudosFromOthers + commentsFromOthers;
       }, 0);
     // @mentions of me in comments on others' posts
     (store.posts || []).forEach(p => {
       if (p.userId === currentUserId) return; // already counted above
-      (p.comments || []).filter(c => c.userId !== currentUserId).forEach(c => {
+      (p.comments || []).filter(c => c.userId !== currentUserId && store.users.find(u => u.id === c.userId)).forEach(c => {
         if (extractMentions(c.text, store.users).includes(currentUserId)) count++;
       });
     });
@@ -22843,6 +22871,25 @@ function AppInner() {
       if (tok && currentUserId) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_activity_count: currentActivityCount }) }, tok).catch(() => {});
     } catch (e) {}
   }
+  // ONE-TIME RE-BASELINE. `seenActivityCount` is a persisted COUNT, and it was written by a build
+  // whose count only looked back 30 days. Removing that window makes the same account's count jump
+  // — measured on a user who was fully caught up (stored seen = 1, all-time = 10), the very first
+  // launch after the update showed a badge of 9 for things they had already read. Every existing
+  // user with older activity would see one. So the first time this build runs, once the feed has
+  // actually loaded, treat whatever exists as already seen. Gated on !dataLoading because the
+  // count is derived from loaded posts: re-baselining before they arrive stores 0 and the badge
+  // reappears the moment they land.
+  const REBASELINE_KEY = "seshd_activity_rebaselined_v2";
+  useEffect(() => {
+    if (dataLoading) return;
+    try {
+      if (localStorage.getItem(REBASELINE_KEY)) return;
+      localStorage.setItem(REBASELINE_KEY, "1");
+    } catch { return; }
+    markActivitySeen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataLoading, currentActivityCount]);
+
   // Clear the unread badge whenever the activity tab becomes active
   useEffect(() => {
     if (tab === "activity") markActivitySeen();
@@ -23834,9 +23881,10 @@ function AppInner() {
               const u = store.users.find(x => x.id === uid);
               if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
             });
-            (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
+            (post.comments||[]).forEach((c, idx) => {
+              if (c.userId === currentUserId) return;
               const u = store.users.find(x => x.id === c.userId);
-              if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt });
+              if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt, idx });
             });
           });
           // @mentions of me — scan comments on ALL visible posts (not just mine) for my handle
@@ -23860,8 +23908,18 @@ function AppInner() {
           // A stable identity for a row that exists only as a computation. Kudos carry no
           // timestamp of their own (they are a bare user-id array), so their key leans on the
           // post and the actor, which is exactly what makes them unique anyway.
-          const keyOfEvent = (ev) => `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? ev.ts}`;
-          const hiddenCount = events.filter(ev => dismissedActivity[keyOfEvent(ev)]).length;
+          // A kudos is unique by (post, actor) — it is a bare entry in the post's user-id array,
+          // so there is nothing else to key on and nothing else needed. It must NOT include the
+          // timestamp: kudos carry none of their own and fall back to `post.createdAt`, which
+          // means a post re-serialised a millisecond apart resurrects a dismissed row (measured).
+          // A comment keys on its own id; the index is the fallback for a comment that somehow has
+          // none, because two id-less comments by the same person previously produced the SAME key
+          // and dismissing one hid both (measured: 2 rows -> 0 on one click).
+          const keyOfEvent = (ev) => ev.type === "kudos"
+            ? `kudos:${ev.post?.id}:${ev.user?.id}`
+            : `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? `i${ev.idx ?? 0}`}`;
+          const hiddenKeys = events.map(keyOfEvent).filter(k => dismissedActivity[k]);
+          const hiddenCount = hiddenKeys.length;
           const visible = events.filter(ev => !dismissedActivity[keyOfEvent(ev)]);
           return (
             // Activity is reached from the top bar on any tab and is NOT in TABS_ORDER, so the
@@ -23875,7 +23933,7 @@ function AppInner() {
                   style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"6px 8px 6px 0", lineHeight:1 }}>‹</button>
                 <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
                 {hiddenCount > 0 && (
-                  <button onClick={clearDismissedActivity} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, fontWeight:700, color:C.sub, fontFamily:F, padding:"4px 6px" }}>
+                  <button onClick={() => restoreDismissedActivity(hiddenKeys)} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, fontWeight:700, color:C.sub, fontFamily:F, padding:"4px 6px" }}>
                     Show {hiddenCount} hidden
                   </button>
                 )}
@@ -23904,7 +23962,7 @@ function AppInner() {
                   <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
                   <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
                 </div>
-              ) : visible.slice(0,50).map((ev, i) => (
+              ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => (
                 <div key={keyOfEvent(ev)} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
                   <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
                   <div style={{ flex:1, minWidth:0 }}>

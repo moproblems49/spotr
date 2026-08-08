@@ -120,13 +120,31 @@ const STEAL = () => {
       && r.left >= 0 && r.right <= innerWidth
       && cs.visibility !== "hidden" && cs.pointerEvents !== "none";
   });
+  // PROBE THE WHOLE BOX, NOT JUST THE CENTRE. Centre-only reported "zero stolen" while a halo was
+  // genuinely covering the right 2px of a neighbour: an audit found that clicking inside the
+  // rest-time picker's own visible box opened the exercise overflow menu instead. A halo eats a
+  // control from the EDGE inward, so the centre is the last thing it takes and the worst possible
+  // place to look. A 9x9 grid over each control's own rectangle catches it.
+  const N = 9;
   for (const el of els) {
     const r = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    if (hit && (hit === el || el.contains(hit) || hit.contains(el))) continue;
+    let lost = 0, total = 0, thief = null;
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const x = r.left + (r.width * (i + 0.5)) / N;
+        const y = r.top + (r.height * (j + 0.5)) / N;
+        if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
+        total++;
+        const hit = document.elementFromPoint(x, y);
+        if (hit && (hit === el || el.contains(hit) || hit.contains(el))) continue;
+        lost++;
+        if (!thief) thief = hit ? ((hit.getAttribute("aria-label") || hit.textContent || "").trim().replace(/\s+/g, " ").slice(0, 30) || hit.tagName) : "nothing";
+      }
+    }
+    if (!total || !lost) continue;
+    const pct = Math.round((lost / total) * 100);
     const label = (el.getAttribute("aria-label") || el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 30) || "(icon only)";
-    const thief = hit ? ((hit.getAttribute("aria-label") || hit.textContent || "").trim().replace(/\s+/g, " ").slice(0, 30) || hit.tagName) : "nothing";
-    out.push({ label, thief });
+    out.push({ label, thief, pct });
   }
   return out;
 };
@@ -179,8 +197,8 @@ for (const s of screens) {
 }
 console.log(`\n${total} control(s) under ${MIN}x${MIN}; smallest dimension seen: ${worstAll}px`);
 if (stolen.length) {
-  console.log(`\n${stolen.length} CONTROL(S) WHOSE OWN CENTRE IS COVERED — likely a hit halo stealing taps:`);
-  for (const t of stolen) console.log(`  [${t.screen}] "${t.label}" <- covered by "${t.thief}"`);
+  console.log(`\n${stolen.length} CONTROL(S) WITH PART OF THEIR BOX COVERED — a hit halo may be stealing taps:`);
+  for (const t of stolen) console.log(`  [${t.screen}] "${t.label}" — ${t.pct}% of its box covered by "${t.thief}"`);
 } else {
-  console.log("no control has its own centre covered by another element");
+  console.log("no control has any part of its box covered by another element");
 }
