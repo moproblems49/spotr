@@ -1,4 +1,4 @@
-// v178091716811
+// v178091716812
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7739,6 +7739,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         <div style={{ position:"relative", flexShrink:0 }}>
           <button
             type="button"
+            className="seshd-hit-y"
             onClick={(e) => {
               e.stopPropagation();
               if (showTypeMenu) { setShowTypeMenu(false); return; }
@@ -7850,7 +7851,10 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           </>
         )}
 
-        <button onClick={onToggleDone} style={{
+        {/* THE most-tapped control in the app, and it was a 32x32 target. seshd-hit gives it the
+            full 44x44 without growing the tick, which has to stay small to keep weight/reps/RPE
+            and itself on one 428px row. */}
+        <button onClick={onToggleDone} className="seshd-hit" style={{
           width:32, height:32, borderRadius:9, flexShrink:0,
           border:`2px solid ${isDone?C.green:C.border}`, background:isDone?C.green:"transparent",
           color:isDone?"#fff":C.muted, cursor:"pointer",
@@ -7868,6 +7872,8 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {(() => {
             const step = isCardio ? 1 : 2.5;
+            // 34x25 before — the second most-tapped pair on the screen. Vertical-only expansion:
+            // − and + sit side by side, so a square halo on each would overlap the other.
             const adjBtn = {
               background: C.isDark ? "rgba(255,255,255,0.05)" : C.bg,
               border:`1px solid ${C.border}`, color:C.text,
@@ -7877,9 +7883,9 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
             const apply = d => { const cur=parseFloat(set.weight)||parseFloat(prev?.w)||0; onUpdate({weight:String(Math.max(0,Math.round((cur+d)*10)/10))}); haptic("tap"); };
             return (
               <>
-                <button onClick={() => apply(-step)} style={adjBtn}>−</button>
+                <button onClick={() => apply(-step)} className="seshd-hit-y" style={adjBtn}>−</button>
                 <span style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:0.4, fontFamily:MONO }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</span>
-                <button onClick={() => apply(step)} style={adjBtn}>+</button>
+                <button onClick={() => apply(step)} className="seshd-hit-y" style={adjBtn}>+</button>
               </>
             );
           })()}
@@ -7924,7 +7930,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 ))}
               </div>
             ) : (
-              <button onClick={() => setShowRpe(true)} style={{
+              <button onClick={() => setShowRpe(true)} className="seshd-hit-y" style={{
                 background: set.rpe ? `${C.accent}18` : "transparent",
                 border:`1px solid ${set.rpe ? `${C.accent}40` : C.border}`,
                 color: set.rpe ? C.accent : C.muted,
@@ -12732,12 +12738,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             Finish sit under the clock. Same one-owner rule as the offline/guest banners; the
             condition matches exactly (a session is what hides the bar). */}
         <div style={{ background:C.bg, padding:"calc(env(safe-area-inset-top) + 10px) 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <button onClick={() => { clearInterval(elRef.current); try { localStorage.removeItem(SESSION_KEY); } catch {} setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+          <button className="seshd-hit-y" onClick={() => { clearInterval(elRef.current); try { localStorage.removeItem(SESSION_KEY); } catch {} setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ textAlign:"center" }}>
             <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
             <div style={{ fontSize:28, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
           </div>
-          <button onClick={() => setShowFinish(true)} style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
+          <button className="seshd-hit-y" onClick={() => setShowFinish(true)} style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
         </div>
 
         {/* Progress + tools */}
@@ -13030,7 +13036,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         you most need to remove. Gating the trigger made those rows permanent —
                         the only way out was cancelling the whole workout. Items that genuinely
                         need a name gate themselves. */}
-                    <button onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
+                    <button className="seshd-hit" onClick={() => setMoreMenuEx(moreMenuEx === ei ? null : ei)}
                       aria-label="More exercise options"
                       style={{ background: (moreMenuEx === ei || ex.superset) ? C.accentSoft : "none", border:`1px solid ${ex.superset ? C.primary : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ex.superset ? C.accent : C.sub} strokeWidth="2.6" strokeLinecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
@@ -13241,7 +13247,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     />
                     <div style={{ display:"flex", alignItems:"center", padding:"0 14px" }}>
                       <div style={{ flex:1, height:1, background:C.divider }}/>
-                      <button onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:C.sub, fontFamily:MONO }}>
+                      <button className="seshd-hit" onClick={() => setRestEditor({ ei, si })} style={{ background:"none", border:"none", cursor:"pointer", padding:"3px 10px", fontSize:11, fontWeight:700, color:C.sub, fontFamily:MONO }}>
                         {fmtTime(restSecondsFor(ex, set, store))}
                       </button>
                       <div style={{ flex:1, height:1, background:C.divider }}/>
@@ -13278,7 +13284,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })}
 
                 <div style={{ display:"flex", padding:"8px 14px 12px", borderBottom:`1px solid ${C.divider}`, gap:8, flexWrap:"wrap" }}>
-                  <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.text, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
+                  <button className="seshd-hit-y" onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:[...x.sets,{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}) }))} style={{ flex:1, minWidth:100, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.text, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"left" }}>+ Add Set</button>
                   {(() => {
                     // Warmup button — only on compound barbell lifts, when a working weight exists and no warmups present yet
                     const exName = ex.name || "";
@@ -13302,7 +13308,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x, sets:[...warmups, ...x.sets]}) }));
                         haptic("success");
                         toast(`Added ${warmups.length} warmup sets`, "success");
-                      }} style={{
+                      }} className="seshd-hit-y" style={{
                         flex:1, minWidth:100, padding:"10px 12px", background:`${C.orange}14`,
                         border:`1px solid ${C.orange}40`, borderRadius:12, color:C.orange,
                         fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, textAlign:"center",
@@ -13312,7 +13318,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </button>
                     );
                   })()}
-                  {ex.sets.length > 1 && <button onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
+                  {ex.sets.length > 1 && <button className="seshd-hit-y" onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
                 </div>
               </div>
             );
@@ -22619,6 +22625,44 @@ function AppInner() {
         /* Premium light-mode depth: soft shadow makes white cards float on the warm canvas.
            Applied via .seshd-float — harmless in dark mode (shadow barely visible on dark bg). */
         .seshd-float { box-shadow: 0 1px 2px rgba(28,27,26,0.04), 0 2px 8px rgba(28,27,26,0.04); }
+        /* 44pt HIT AREA WITHOUT CHANGING THE LOOK. Apple's minimum is 44x44pt; a tap audit found
+           81 controls under it, and the worst were the ones you touch most — the set-done tick is
+           32x32 and the weight steppers are 25px tall. Growing them visually would wreck a set row
+           that already fits weight, reps, RPE and a tick across 428px, so instead an invisible
+           pseudo-element centred on the control extends the region that receives the touch. The
+           control renders exactly as before; only the target grows.
+           max() means a control already at or above 44 is untouched. Note the pseudo-element is
+           part of the BUTTON for hit-testing, so it also inherits its disabled/pointer-events
+           state — no need to guard those separately. Don't put this on controls packed closer than
+           44px apart in BOTH axes: the halos would overlap and the later one in DOM order wins. */
+        /* NATIVE FEEL: nothing on the chrome should behave like a web page under a long press.
+           In a native app you cannot drag-select a label and there is no callout menu over a
+           button or an icon — leaving those on is one of the clearest "this is a website" tells.
+           Inputs and textareas keep BOTH (typing needs a caret and a selection), and anything a
+           user might genuinely want to copy can opt back in with .seshd-selectable. Share codes
+           already have a copy button and a toast, so they do not need it.
+           Note -webkit-tap-highlight-color is already transparent on button, above; this adds the
+           same for links and role=button elements, which are not buttons. */
+        body { -webkit-user-select: none; user-select: none; }
+        input, textarea, [contenteditable="true"], .seshd-selectable {
+          -webkit-user-select: text; user-select: text;
+        }
+        button, a, [role="button"], img, svg, label { -webkit-touch-callout: none; }
+        a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+
+        .seshd-hit { position: relative; }
+        .seshd-hit::after {
+          content: ""; position: absolute; left: 50%; top: 50%;
+          transform: translate(-50%, -50%);
+          width: max(100%, 44px); height: max(100%, 44px);
+        }
+        /* Vertical-only variant, for controls sitting in a tight horizontal row (the +/- steppers,
+           the set-type and rest chips) where a full square halo would overlap its neighbour. */
+        .seshd-hit-y { position: relative; }
+        .seshd-hit-y::after {
+          content: ""; position: absolute; left: 0; right: 0; top: 50%;
+          transform: translateY(-50%); height: max(100%, 44px);
+        }
       `;
       document.head.appendChild(style);
     }
