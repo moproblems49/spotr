@@ -80,12 +80,12 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (39 sims, ~95s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (41 sims, ~95s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
 
-**`node build/run_sims.mjs --pw` also runs the 20 Playwright suites** (+~2min): it builds dist with
+**`node build/run_sims.mjs --pw` also runs the 21 Playwright suites** (+~2min): it builds dist with
 STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
 in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
 anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
@@ -454,6 +454,16 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   entire remaining gap once the activity models were unified) — and a fixture must fill buckets
   only for hours that have ELAPSED, because pre-filling the current hour hands the headline steps
   nobody has taken and invents an 8-point gap that is the fixture's fault.
+- **TWO CALLERS THAT JUDGE THE SAME DATA MUST SHARE THE JUDGEMENT, NOT JUST THE DATA.** Both Body
+  Battery models decide where your day starts from the persisted sleep window. The curve ran a
+  full trust test (a start AND an end, ordered, span <=16h, span no more than 3h beyond the sleep
+  it claims to contain); the headline accepted any `sleepEnd` inside 20h. Measured on one store: a
+  window of 23:00->11:00 claiming 7.5h gave headline 77 / chart 56, and the headline was the
+  FLATTERING side every time — a late wake means fewer awake hours AND pushes the morning's
+  activity outside its window. `trustedSleepWindow(store, now)` is the one test now. When two
+  functions read the same field, check they also VALIDATE it the same way — sharing the input is
+  not sharing the model. And when pinning agreement in a sim, pin the absolute values too: a test
+  that only compares the two numbers can be satisfied by breaking the correct one.
 - **A WINDOW IS A CEILING IN DISGUISE, AND A GUESSED ANCHOR MAKES IT FLAT.** Bounding the day's
   activity to `[wake, now]` is right — steps recorded while you were genuinely asleep are the
   watch on the nightstand — but the wake anchor is a GUESS (07:00) whenever no watch recorded a
@@ -692,7 +702,7 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 **★★★ THE HEALTH-ENGINE HARDENING ERA (Aug 3–7, 2026) — the recovery/Body-Battery maths got four
 consecutive rounds of audit, and the pattern worth remembering is that MY OWN FIXES were the
-biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31k`. Battery is **40 sims + 20
+biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31l`. Battery is **41 sims + 21
 Playwright suites**, all green. What shipped, and what it cost:
 
 - **Round 1: four recovery-INPUT bugs** (read cap truncating a night, resting HR read as one raw
@@ -736,6 +746,14 @@ Playwright suites**, all green. What shipped, and what it cost:
   non-numeric bucket key bypassed the guard, and the curve lost its workout damp). Fixed by making
   the anchor honest rather than the window wider. The same audits found `sim_stepscale` §4b's
   baseline hour was switching off `restfulHourRecharge`, hiding half of round 5 from its own test.
+- **Round 7: the sleep-window trust test, and the health engine is CLOSED** (`2026-07-31l`). The
+  two models validated the same field differently, so a corrupt window (a merged nap persisted as
+  "7am → 8pm") sent them to different anchors — 21 points apart, headline flattering. One
+  `trustedSleepWindow()` now. Mo's call after this: stop here. Six of seven rounds found real
+  bugs, but rounds 5-6 were fixing regressions from rounds 4-5, and the area is being polished for
+  an audience of a few testers. **Process change agreed: for anything touching the health maths,
+  run the cold-context audit BEFORE publishing the bundle.** Round 6's flat scale was live on Mo's
+  phone for about an hour because the order was publish → audit → republish.
 - **Also**: the two flat caps and the recovery top end (see Conventions), the strength-chart
   points, the post header + `PRTag` + set ledger, `dateKeyOf` consolidation, and `readRecovery`
   split into a device-only wrapper plus the testable `readRecoveryFrom(H, now)`.
@@ -1033,14 +1051,23 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Ashley checklist below.**
 
 **⚠️ PRE-APP-STORE-SUBMISSION CHECKLIST (do these the day Mo says "submit"):**
-(1) **Remove the tiny `d1 ·` boot-diagnostic line from the sign-in screen** — AuthScreen's
-`bootDiagLine`/`diagEl` (marked TODO in code); it's TestFlight-phase debugging only.
+(1) ~~Remove the tiny `d1 ·` boot-diagnostic line from the sign-in screen~~ — **DONE** (Aug 8,
+bundle `2026-07-31l`). `setBootDiag`/`setSaveDiag` still WRITE `seshd_boot_diag` / `seshd_kc_save`
+deliberately — invisible, free, and the only way to diagnose a boot that lands on the auth screen.
+`pw_authdiag` asserts the readout stays gone (it seeds both keys so a survivor shows up loudly
+rather than rendering blank and passing).
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
 
 **OPEN, as of Aug 7 2026 (agreed with Mo, none urgent):**
-- **The lime pass has had no independent audit.** Colour-only, so the failure mode is cosmetic —
-  but it is the one recent change nobody has checked.
+- **The health engine is CLOSED (Mo, Aug 8).** Seven audit rounds; rounds 5-6 were fixing
+  regressions from rounds 4-5. Don't reopen it without a specific reported symptom. One known,
+  deliberate limit remains: when activity runs straight through the estimated night (03:00-07:00,
+  no watch) the bedtime gate consumes those steps first and the chart under-draws — the headline
+  is right and the endpoint pin absorbs it, same as it always did.
+- **The lime pass has had no independent audit, and the post card was changed without a
+  screenshot.** Both are cosmetic-only, and both are waiting on ONE thing: Mo looking at the app
+  on his phone. That is the highest-value next step and it isn't a coding task.
 - **The rest of the "make it feel less AI-generated" critique**: the post header, `PRTag` and set
   ledger are done; a distinctive muscle visualisation, less containment (fewer rounded cards) and
   a typography pass are deliberately DEFERRED until after launch. Editing inline styles across a
