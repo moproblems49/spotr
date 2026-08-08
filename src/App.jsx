@@ -1,4 +1,4 @@
-// v178091716809
+// v178091716810
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4755,14 +4755,36 @@ const softCapHour = (raw) => softCap(raw, HOUR_KNEE, HOUR_MAX);
 // window is always far longer than the sleep it claims to contain, so cross-check the two. A real
 // night is its sleep hours plus a little tossing and turning; 13h of window around 7.5h of sleep
 // is two blocks stitched together.
+// A SINGLE SLEEP EPISODE. `pickSleepBlock` already splits on any gap over an hour, so a window it
+// writes today is one episode by construction — this is defence in depth against a window ALREADY
+// PERSISTED from before that existed (the "bed 7am, up 8pm" merge). 12h, because almost nobody
+// sleeps in one unbroken stretch longer than that, and a window that long has a wake time we
+// cannot trust. Deliberately NOT MAX_SLEEP_SPAN_H (16), which pickSleepBlock uses for a different
+// job — sanity-filtering raw blocks, where being generous costs nothing.
+const MAX_ANCHOR_SPAN_H = 12;
+// How much longer than the sleep it contains a window may be. THIS RULE CANNOT TELL A MERGED
+// WINDOW FROM A BROKEN NIGHT, so it has to be generous. At +3 it rejected genuinely measured
+// windows: a day sleeper in bed 08:00-17:00 who actually slept 5.7h (four ~50-minute awakenings,
+// produced end-to-end through readRecoveryFrom) failed 9 > 8.7 and lost a correct 17:00 wake time
+// to the guessed 07:00 one — 8 points of phantom drain, and it opened a 5-9 point headline-vs-
+// chart gap where there had been none, because the two models' FALLBACK anchors disagree. Since
+// in-window gaps are capped at an hour each, +4 still catches the merges (a 12h window around
+// 7.5h of sleep) while sparing every fragmented-night shape measured.
+const ANCHOR_SLACK_H = 4;
 function trustedSleepWindow(store, now) {
   const ss = store?.recovery?.sleepStart ? new Date(store.recovery.sleepStart) : null;
   const se = store?.recovery?.sleepEnd ? new Date(store.recovery.sleepEnd) : null;
-  if (!ss || !se || !(se > ss)) return null;
+  if (!ss || !se || !(se.getTime() > ss.getTime())) return null;   // also rejects Invalid Date
   const spanH = (se - ss) / 36e5;
-  const sleepH = store?.recovery?.sleepHours;
-  if (!(spanH >= 1 && spanH <= MAX_SLEEP_SPAN_H)) return null;
-  if (sleepH && spanH > sleepH + 3) return null;
+  if (!(spanH >= 1 && spanH <= MAX_ANCHOR_SPAN_H)) return null;
+  // COERCE. `sleepH + 3` on a string CONCATENATES: `13 > "93"` is false, so a 13h merged window
+  // sailed through with sleepHours "9" while "6.5" was correctly rejected — arbitrary rather than
+  // degrading gracefully. Unreachable from readRecoveryFrom today, which always writes a number.
+  const sleepH = Number(store?.recovery?.sleepHours);
+  // A missing or zero sleepHours means there is nothing to cross-check against — NOT that the
+  // window is fine. The span ceiling above is what bounds it in that case; the old `if (sleepH &&`
+  // let a 14h window with sleepHours 0 anchor the entire day.
+  if (Number.isFinite(sleepH) && sleepH > 0 && spanH > sleepH + ANCHOR_SLACK_H) return null;
   if (!(se <= now) || !((now - se) < 20 * 36e5)) return null;   // measured, and actually last night
   return { start: ss, end: se };
 }
@@ -4802,18 +4824,27 @@ function activityRawSinceWake(store, wakeMs, now) {
   const fromH = new Date(Math.max(wakeMs, now.getTime() - 24 * 36e5)).getHours();
   const toH = now.getHours();
   const inWindow = (h) => (fromH <= toH ? h >= fromH && h <= toH : h >= fromH || h <= toH);
-  let total = 0, any = false;
+  let total = 0, anyInWindow = false, anyToday = false;
   for (const [k, v] of Object.entries(hourly)) {
     if (!v || !(v.steps || v.kcal)) continue;
+    anyToday = true;
     const h = Number(k);
     // A non-numeric key must be SKIPPED, not waved through. `Number.isFinite(NaN)` is false, so
     // an `&&` guard here would short-circuit and count the bucket unconditionally — outside the
     // very window it exists to enforce.
     if (!Number.isFinite(h) || !inWindow(h)) continue;
     total += softCapHour((v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0));
-    any = true;
+    anyInWindow = true;
   }
-  return any ? total : null;
+  // AN EMPTY WINDOW IS ZERO, NOT UNKNOWN — provided the read itself returned something today.
+  // Returning null here sent the headline to the whole-day fallback, which charges what you did
+  // BEFORE you slept. Measured on a night-shift nurse (on her feet 00:00-08:00, asleep 09:00-
+  // 16:00, window trusted by both models): read at 16:05, one minute after waking, the chart said
+  // 89 and the headline 72 — a 17-point gap that healed itself on the next hour boundary, when
+  // the first bucket finally landed inside [wake, now]. It scales with how active you were before
+  // bed. No buckets AT ALL is still null: that is a failed read, and "no data" must never read as
+  // "no activity".
+  return anyInWindow ? total : (anyToday ? 0 : null);
 }
 const ACTIVITY_KNEE = 12, ACTIVITY_MAX = 30;
 const softCapActivity = (raw) => softCap(raw, ACTIVITY_KNEE, ACTIVITY_MAX);
@@ -5008,7 +5039,13 @@ function computeBodyBattery(store) {
       return softCapHour((v.steps ? v.steps / 1800 : 0) + (v.kcal ? v.kcal / 90 : 0)) * actScale;
     };
     let lvl = charge0;
-    for (let t = Math.ceil(wakeMs / 36e5) * 36e5; t + 36e5 <= now.getTime(); t += 36e5) {
+    // WALK FROM THE WAKE TIME ITSELF, exactly as the curve's phase D does. `Math.ceil(wakeMs /
+    // 36e5) * 36e5` snaps to a UTC hour boundary, which is only a local one in whole-offset zones.
+    // In Nepal (+5:45) a 07:00 local wake rounded to 07:45 local, so every step of this walk read
+    // the hourly buckets half an hour out of phase: measured, the headline banked 19 of rest
+    // recharge against the chart's 21 and printed 89 under a chart ending at 91. India, Nepal,
+    // Newfoundland, the Chathams and Lord Howe are all sub-hour offsets.
+    for (let t = wakeMs; t + 36e5 <= now.getTime(); t += 36e5) {
       lvl -= 0.9 + actForHour(t);
       let inWorkout = false;
       for (const sp of sessionSpans) {
