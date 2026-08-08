@@ -65,7 +65,13 @@ await page.route("**/rest/v1/**", r => {
 
 const bodyText = () => page.evaluate(() => document.body.innerText);
 const onActivity = async () => /No activity yet|Show \d+ hidden|liked your post|commented:/.test(await bodyText());
-const openActivity = async () => { await page.getByLabel("Activity").click(); await page.waitForTimeout(800); };
+// Idempotent: the overlay COVERS the heart, so tapping it again is impossible by design (that is
+// what makes the old back-target trap unbuildable). Only click when it is actually closed.
+const openActivity = async () => {
+  if (await onActivity()) return;
+  await page.getByLabel("Activity").click();
+  await page.waitForTimeout(800);
+};
 
 await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(1700);
@@ -80,12 +86,24 @@ check("a 13-month-old comment is still listed", /old comment/.test(t0), JSON.str
 const total = await page.getByLabel("Dismiss").count();
 check("...and every event is present (2 kudos + 1 comment)", total === 3, String(total));
 
-// ── 2. THERE IS ALWAYS A WAY OUT, even after a second tap on the heart ───────────────────────
-await openActivity();                       // the trap: heart tapped again while already here
-check("still on activity after a second heart tap", await onActivity());
+// ── 2. THERE IS ALWAYS A WAY OUT ─────────────────────────────────────────────────────────────
+// Activity was briefly a pseudo-TAB, and the top bar (with the heart) stayed visible on it — so a
+// second tap recorded "activity" as the tab to return TO and Back became a no-op. As a real
+// overlay the heart is covered, so that trap cannot be built again; this asserts the overlay
+// genuinely covers the chrome rather than merely looking like it does.
+{
+  const heartCovered = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button[aria-label="Activity"]')][0];
+    if (!btn) return "no heart";
+    const r = btn.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return top && (top === btn || btn.contains(top)) ? "reachable" : "covered";
+  });
+  check("the overlay covers the top bar, so the heart cannot re-enter", heartCovered === "covered", heartCovered);
+}
 await page.getByLabel("Back").first().click();
 await page.waitForTimeout(800);
-check("Back leaves the screen even after the second tap", !(await onActivity()), await bodyText().then(t => JSON.stringify(t.slice(0, 90))));
+check("Back closes the overlay", !(await onActivity()), await bodyText().then(t => JSON.stringify(t.slice(0, 90))));
 
 // ── 3. DISMISSAL STICKS ACROSS A RELOAD ──────────────────────────────────────────────────────
 await openActivity();
@@ -144,6 +162,38 @@ check("restoring returns the dismissed row", await page.getByLabel("Dismiss").co
   const now2 = await p2.getByLabel("Dismiss").count();
   check("dismissing one hides exactly one", now2 === before - 1, `${before} -> ${now2}`);
   await p2.close();
+}
+
+// ── 6. THE PAGE BEHIND MUST BE VISIBLE DURING THE BACK SWIPE ─────────────────────────────────
+// Activity used to be a panel INSIDE the tab track, so nothing was mounted behind it: dragging it
+// off exposed bare app background and the whole gesture was a black screen, unlike every other
+// back-swipe in the app. It is an overlay over the current tab now, the same as Messages.
+//
+// Driven with real TouchEvents — `page.mouse` does not fire touch handlers, and a first attempt
+// at this check "passed" against a screenshot of a screen that had not moved at all. Hence the
+// explicit did-the-drag-engage assertion before the one that matters.
+{
+  await page.getByLabel("Home").click().catch(() => {});
+  await page.waitForTimeout(600);
+  await openActivity();
+  const held = await page.evaluate(async () => {
+    const fire = (type, x, y) => {
+      const t = new Touch({ identifier: 1, target: document.body, clientX: x, clientY: y });
+      document.elementFromPoint(Math.min(x, innerWidth - 1), y)?.dispatchEvent(
+        new TouchEvent(type, { touches: type === "touchend" ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true }));
+    };
+    fire("touchstart", 8, 420);
+    for (let x = 20; x <= 240; x += 20) { fire("touchmove", x, 420); await new Promise(r => setTimeout(r, 25)); }
+    await new Promise(r => setTimeout(r, 150));
+    const moved = [...document.querySelectorAll("div")]
+      .map(d => d.style.transform).filter(t => /translateX\(\d/.test(t || ""));
+    const stack = document.elementsFromPoint(40, 420).slice(0, 8).map(e => (e.innerText || "").slice(0, 40).replace(/\n/g, "/"));
+    return { moved, stack };
+  });
+  check("the edge swipe actually moved the Activity overlay",
+    held.moved.some(t => parseInt(t.match(/\d+/)[0]) > 100), JSON.stringify(held.moved));
+  check("...and the screen behind shows through, not a black gap",
+    held.stack.some(t => /SESHD|Your story|Start a Workout|Find People/.test(t)), JSON.stringify(held.stack));
 }
 
 await browser.close();

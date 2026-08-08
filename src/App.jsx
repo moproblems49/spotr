@@ -1,4 +1,4 @@
-// v178091716816
+// v178091716817
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20702,11 +20702,9 @@ function AppInner() {
                 break;
               case "kudos":
               case "comments":
-                // No single-post route exists; the Activity tab lists these. The
-                // tab-change effect marks them seen, clearing the badge. Opened from a push there
-                // is no previous tab to return to, so back goes to the feed.
-                activityFromTab.current = "feed";
-                setTab("activity");
+                // No single-post route exists; the Activity overlay lists these. Opening it
+                // marks them seen, clearing the badge.
+                setShowActivity(true);
                 break;
               case "streak":
                 setTab("tracker");
@@ -21508,13 +21506,31 @@ function AppInner() {
     try {
       // Paginated: first page replaces, later pages append. range header would also work, but
       // offset/limit is simplest with the existing query helper.
-      const posts = await sb.query(
-        `posts?select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)&order=created_at.desc&offset=${offset}&limit=${FEED_PAGE_SIZE}`,
-        {}, tok
-      );
-      if (!posts) return;
+      // ALWAYS CARRY YOUR OWN POSTS, whatever page of the feed you are on.
+      //
+      // The feed query is the newest N posts across EVERYONE. Activity is derived from your own
+      // posts' kudos and comments, so as soon as your posts fall off that page — which they do the
+      // moment a few other people post — the activity derived from them silently disappears.
+      // Mo saw exactly this: two old items showing, then gone on refresh. They came back only
+      // because visiting your own profile fetches `posts?user_id=eq.me` and merges them in, and a
+      // refresh then replaced the lot with the global page again.
+      //
+      // Fetching your own posts alongside the page makes Activity independent of feed pagination.
+      // Only on the FIRST page: later pages append, and re-fetching your own posts each time would
+      // just churn the same rows.
+      const SEL = "select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)";
+      const [pagePosts, ownPosts] = await Promise.all([
+        sb.query(`posts?${SEL}&order=created_at.desc&offset=${offset}&limit=${FEED_PAGE_SIZE}`, {}, tok),
+        offset === 0 && uid
+          ? sb.query(`posts?user_id=eq.${uid}&${SEL}&order=created_at.desc&limit=200`, {}, tok).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+      if (!pagePosts) return;
+      // De-dupe by id — your recent posts are in both lists.
+      const seenIds = new Set((pagePosts || []).map(p => p.id));
+      const posts = [...pagePosts, ...((ownPosts || []).filter(p => !seenIds.has(p.id)))];
       // If we got a full page back, there are probably more to load.
-      setFeedHasMore(posts.length >= FEED_PAGE_SIZE);
+      setFeedHasMore(pagePosts.length >= FEED_PAGE_SIZE);
 
       // Read persisted own-post interactions (these survive page refresh via localStorage)
       const persistedInteractions = store.historyInteractions || {};
@@ -22831,9 +22847,9 @@ function AppInner() {
       return next;
     });
   };
-  // Which tab the Activity screen was opened FROM, so swiping back returns there rather than
-  // guessing. Activity is not in TABS_ORDER — it is a pushed screen wearing a tab's clothes.
-  const activityFromTab = useRef("feed");
+  // Activity is an overlay over whatever tab you are on, so there is nothing to remember: closing
+  // it simply reveals the tab that was underneath the whole time.
+  const [showActivity, setShowActivity] = useState(false);
 
   // Current total of activity items on the user's own posts
   const currentActivityCount = (() => {
@@ -22890,11 +22906,11 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataLoading, currentActivityCount]);
 
-  // Clear the unread badge whenever the activity tab becomes active
+  // Clear the unread badge whenever the Activity overlay is open
   useEffect(() => {
-    if (tab === "activity") markActivitySeen();
+    if (showActivity) markActivitySeen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, currentActivityCount]);
+  }, [showActivity, currentActivityCount]);
 
   // ── Public share page (no login required) ─────────────────────────
   // A URL like  …/#/u/<userId>  renders a read-only public profile view that anyone can open
@@ -23496,12 +23512,7 @@ function AppInner() {
           <button
             onClick={() => {
               markActivitySeen();
-              // Don't record "activity" as the place to go BACK to. The top bar (and this button)
-              // stay visible on the Activity screen itself, so a second tap would otherwise set
-              // the back target to the screen you are already on — measured: Back then did
-              // nothing at all and the only way out was the nav bar.
-              if (tab !== "activity") activityFromTab.current = tab;
-              setTab("activity");
+              setShowActivity(true);
             }}
             aria-label="Activity"
             style={TOPBAR_ICON_BTN}
@@ -23871,124 +23882,6 @@ function AppInner() {
           />
         )}
 
-        {which === "activity" && (() => {
-          // NO TIME WINDOW — activity stays until dismissed, and this must match the badge count.
-          const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
-          const events = [];
-          const myUsername = (store.users.find(u => u.id === currentUserId)?.username || "").toLowerCase();
-          myPosts.forEach(post => {
-            (post.kudos||[]).filter(uid => uid !== currentUserId).forEach(uid => {
-              const u = store.users.find(x => x.id === uid);
-              if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
-            });
-            (post.comments||[]).forEach((c, idx) => {
-              if (c.userId === currentUserId) return;
-              const u = store.users.find(x => x.id === c.userId);
-              if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt, idx });
-            });
-          });
-          // @mentions of me — scan comments on ALL visible posts (not just mine) for my handle
-          if (myUsername) {
-            (store.posts||[]).forEach(post => {
-              (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
-                const mentioned = extractMentions(c.text, store.users).includes(currentUserId);
-                if (mentioned) {
-                  const u = store.users.find(x => x.id === c.userId);
-                  // avoid duplicating an event already captured as a comment-on-my-post
-                  const dup = post.userId === currentUserId;
-                  if (u && !dup) events.push({ type:"mention", user:u, post, comment:c, ts: c.createdAt });
-                }
-              });
-            });
-          }
-          // Note: removed friend_post / friend_pr events — Activity is now strictly things
-          // directed at you (kudos, comments, mentions). Friend posts already appear in your
-          // main feed; piling them into Activity made the badge noisy with many follows.
-          events.sort((a,b) => b.ts - a.ts);
-          // A stable identity for a row that exists only as a computation. Kudos carry no
-          // timestamp of their own (they are a bare user-id array), so their key leans on the
-          // post and the actor, which is exactly what makes them unique anyway.
-          // A kudos is unique by (post, actor) — it is a bare entry in the post's user-id array,
-          // so there is nothing else to key on and nothing else needed. It must NOT include the
-          // timestamp: kudos carry none of their own and fall back to `post.createdAt`, which
-          // means a post re-serialised a millisecond apart resurrects a dismissed row (measured).
-          // A comment keys on its own id; the index is the fallback for a comment that somehow has
-          // none, because two id-less comments by the same person previously produced the SAME key
-          // and dismissing one hid both (measured: 2 rows -> 0 on one click).
-          const keyOfEvent = (ev) => ev.type === "kudos"
-            ? `kudos:${ev.post?.id}:${ev.user?.id}`
-            : `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? `i${ev.idx ?? 0}`}`;
-          const hiddenKeys = events.map(keyOfEvent).filter(k => dismissedActivity[k]);
-          const hiddenCount = hiddenKeys.length;
-          const visible = events.filter(ev => !dismissedActivity[keyOfEvent(ev)]);
-          return (
-            // Activity is reached from the top bar on any tab and is NOT in TABS_ORDER, so the
-            // tab swipe cannot get you out of it — before this there was no gesture back at all,
-            // only the nav bar. EdgeSwipeBack returns you to whichever tab you opened it from.
-            <EdgeSwipeBack onBack={() => setTab(activityFromTab.current && activityFromTab.current !== "activity" ? activityFromTab.current : "feed")}
-              style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
-              <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
-                {/* A gesture nobody can see is not a way out — the chevron is the discoverable one. */}
-                <button onClick={() => setTab(activityFromTab.current && activityFromTab.current !== "activity" ? activityFromTab.current : "feed")} aria-label="Back"
-                  style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"6px 8px 6px 0", lineHeight:1 }}>‹</button>
-                <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
-                {hiddenCount > 0 && (
-                  <button onClick={() => restoreDismissedActivity(hiddenKeys)} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, fontWeight:700, color:C.sub, fontFamily:F, padding:"4px 6px" }}>
-                    Show {hiddenCount} hidden
-                  </button>
-                )}
-                <button onClick={() => { handleRefresh(); }} aria-label="Refresh" className="seshd-hit" style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px" }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                  </svg>
-                </button>
-              </div>
-              {dataLoading && visible.length === 0 ? (
-                // Skeleton — 4 rows shaped like activity entries
-                <div style={{ padding:"6px 0" }}>
-                  {[1,2,3,4].map(i => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                      <Skeleton width={40} height={40} radius={20} C={C}/>
-                      <div style={{ flex:1 }}>
-                        <Skeleton width="60%" height={11} C={C} style={{ marginBottom:6 }}/>
-                        <Skeleton width="35%" height={9} C={C}/>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : visible.length === 0 ? (
-                <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
-                  <svg width="46" height="64" viewBox="0 0 40 56" style={{ display:"block", margin:"0 auto 12px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
-                  <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
-                  <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
-                </div>
-              ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => (
-                <div key={keyOfEvent(ev)} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                  <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
-                      <span style={{ fontWeight:600 }}>{ev.user.username} </span>
-                      {ev.type === "kudos" ? "liked your post"
-                        : ev.type === "comment" ? `commented: "${ev.comment?.text}"`
-                        : ev.type === "mention" ? `mentioned you: "${ev.comment?.text}"`
-                        : ev.type === "friend_pr" ? "hit a new PR"
-                        : ev.type === "friend_post" ? (ev.verb || "shared a post")
-                        : ""}
-                    </div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
-                  </div>
-                  {ev.post.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
-                  {/* Dismiss. Nothing is deleted server-side — the row is a computation over your
-                      posts, and the kudos or comment itself still exists on the post. This only
-                      says "stop showing me this one", and the header offers it back. */}
-                  <button onClick={() => dismissActivity(keyOfEvent(ev))} aria-label="Dismiss" className="seshd-hit"
-                    style={{ background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:15, lineHeight:1, padding:"6px 2px 6px 6px", flexShrink:0 }}>×</button>
-                </div>
-              ))}
-            </EdgeSwipeBack>
-          );
-        })()}
-
         {which === "discover" && (
           <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}/>
         )}
@@ -24187,6 +24080,137 @@ function AppInner() {
           bottom nav (zIndex 50), so the nav stays visible and tappable over the list.
           data-no-tab-swipe keeps the shell's tab-swipe from fighting the edge-swipe-back.
           The wrapper is transparent so the drag reveals the live tab underneath, iOS-style. */}
+      {/* ACTIVITY — an OVERLAY over the current tab, not a panel inside the swipe track.
+          It used to be a pseudo-tab: `tab === "activity"` swapped the track's centre panel, so
+          nothing was mounted behind it and an edge-swipe-back dragged it off over bare app
+          background — a black screen for the whole gesture, where every other back-swipe in the
+          app reveals the page behind. Messages and chat were already overlays for exactly this
+          reason; Activity now matches them. It also deletes a whole class of bug: there is no
+          "which tab do I return to" to record, so the trap where tapping the heart twice made
+          Back a no-op cannot exist. */}
+      {showActivity && (
+        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:40 }}>
+          <EdgeSwipeBack onBack={() => setShowActivity(false)}
+            style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
+            {(() => {
+        // NO TIME WINDOW — activity stays until dismissed, and this must match the badge count.
+        const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
+        const events = [];
+        const myUsername = (store.users.find(u => u.id === currentUserId)?.username || "").toLowerCase();
+        myPosts.forEach(post => {
+          (post.kudos||[]).filter(uid => uid !== currentUserId).forEach(uid => {
+            const u = store.users.find(x => x.id === uid);
+            if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
+          });
+          (post.comments||[]).forEach((c, idx) => {
+            if (c.userId === currentUserId) return;
+            const u = store.users.find(x => x.id === c.userId);
+            if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt, idx });
+          });
+        });
+        // @mentions of me — scan comments on ALL visible posts (not just mine) for my handle
+        if (myUsername) {
+          (store.posts||[]).forEach(post => {
+            (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
+              const mentioned = extractMentions(c.text, store.users).includes(currentUserId);
+              if (mentioned) {
+                const u = store.users.find(x => x.id === c.userId);
+                // avoid duplicating an event already captured as a comment-on-my-post
+                const dup = post.userId === currentUserId;
+                if (u && !dup) events.push({ type:"mention", user:u, post, comment:c, ts: c.createdAt });
+              }
+            });
+          });
+        }
+        // Note: removed friend_post / friend_pr events — Activity is now strictly things
+        // directed at you (kudos, comments, mentions). Friend posts already appear in your
+        // main feed; piling them into Activity made the badge noisy with many follows.
+        events.sort((a,b) => b.ts - a.ts);
+        // A stable identity for a row that exists only as a computation. Kudos carry no
+        // timestamp of their own (they are a bare user-id array), so their key leans on the
+        // post and the actor, which is exactly what makes them unique anyway.
+        // A kudos is unique by (post, actor) — it is a bare entry in the post's user-id array,
+        // so there is nothing else to key on and nothing else needed. It must NOT include the
+        // timestamp: kudos carry none of their own and fall back to `post.createdAt`, which
+        // means a post re-serialised a millisecond apart resurrects a dismissed row (measured).
+        // A comment keys on its own id; the index is the fallback for a comment that somehow has
+        // none, because two id-less comments by the same person previously produced the SAME key
+        // and dismissing one hid both (measured: 2 rows -> 0 on one click).
+        const keyOfEvent = (ev) => ev.type === "kudos"
+          ? `kudos:${ev.post?.id}:${ev.user?.id}`
+          : `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? `i${ev.idx ?? 0}`}`;
+        const hiddenKeys = events.map(keyOfEvent).filter(k => dismissedActivity[k]);
+        const hiddenCount = hiddenKeys.length;
+        const visible = events.filter(ev => !dismissedActivity[keyOfEvent(ev)]);
+        return (
+          // Activity is reached from the top bar on any tab and is NOT in TABS_ORDER, so the
+          // The swipe lives on the OVERLAY wrapper above; this is just the scroller.
+          <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+            <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
+              {/* A gesture nobody can see is not a way out — the chevron is the discoverable one. */}
+              <button onClick={() => setShowActivity(false)} aria-label="Back"
+                style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"6px 8px 6px 0", lineHeight:1 }}>‹</button>
+              <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
+              {hiddenCount > 0 && (
+                <button onClick={() => restoreDismissedActivity(hiddenKeys)} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, fontWeight:700, color:C.sub, fontFamily:F, padding:"4px 6px" }}>
+                  Show {hiddenCount} hidden
+                </button>
+              )}
+              <button onClick={() => { handleRefresh(); }} aria-label="Refresh" className="seshd-hit" style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                </svg>
+              </button>
+            </div>
+            {dataLoading && visible.length === 0 ? (
+              // Skeleton — 4 rows shaped like activity entries
+              <div style={{ padding:"6px 0" }}>
+                {[1,2,3,4].map(i => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                    <Skeleton width={40} height={40} radius={20} C={C}/>
+                    <div style={{ flex:1 }}>
+                      <Skeleton width="60%" height={11} C={C} style={{ marginBottom:6 }}/>
+                      <Skeleton width="35%" height={9} C={C}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : visible.length === 0 ? (
+              <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
+                <svg width="46" height="64" viewBox="0 0 40 56" style={{ display:"block", margin:"0 auto 12px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
+                <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
+                <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
+              </div>
+            ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => (
+              <div key={keyOfEvent(ev)} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
+                    <span style={{ fontWeight:600 }}>{ev.user.username} </span>
+                    {ev.type === "kudos" ? "liked your post"
+                      : ev.type === "comment" ? `commented: "${ev.comment?.text}"`
+                      : ev.type === "mention" ? `mentioned you: "${ev.comment?.text}"`
+                      : ev.type === "friend_pr" ? "hit a new PR"
+                      : ev.type === "friend_post" ? (ev.verb || "shared a post")
+                      : ""}
+                  </div>
+                  <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
+                </div>
+                {ev.post.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
+                {/* Dismiss. Nothing is deleted server-side — the row is a computation over your
+                    posts, and the kudos or comment itself still exists on the post. This only
+                    says "stop showing me this one", and the header offers it back. */}
+                <button onClick={() => dismissActivity(keyOfEvent(ev))} aria-label="Dismiss" className="seshd-hit"
+                  style={{ background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:15, lineHeight:1, padding:"6px 2px 6px 6px", flexShrink:0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        );
+            })()}
+          </EdgeSwipeBack>
+        </div>
+      )}
+
       {showMessages && (
         <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:40 }}>
           <EdgeSwipeBack onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
