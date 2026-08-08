@@ -1,4 +1,4 @@
-// v178091716808
+// v178091716809
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4734,6 +4734,38 @@ const softCapHour = (raw) => softCap(raw, HOUR_KNEE, HOUR_MAX);
 // Same asymmetry the bedtime gate states: steps can prove you were AWAKE, never that you were
 // asleep. So this only ever moves the anchor EARLIER, only within today, and only when the anchor
 // is an estimate in the first place — a real HealthKit window is measured, and beats a guess.
+// THE ONE TEST FOR "IS THIS SLEEP WINDOW TRUSTWORTHY". Both Body Battery models decide where your
+// day starts, and they used to decide it DIFFERENTLY: the curve ran the full battery of checks
+// below, while the headline accepted any `sleepEnd` inside 20h — no start, no ordering, no span
+// sanity. So a corrupt window sent them to different anchors and they reported different days.
+// Measured on the same store (heavy activity 08:00-10:00, read 20:30):
+//
+//   window 23:00 -> 11:00 claiming 7.5h sleep   headline 77, chart 56   gap 21
+//   sleepEnd present with no sleepStart          headline 77, chart 56   gap 21
+//   sleepEnd BEFORE sleepStart                   headline 62, chart 56   gap  6
+//
+// The headline was the flattering side every time: it believed a late wake, so it charged fewer
+// awake hours AND excluded the morning's activity from its window. Trusting it is the failure —
+// the checks are right, only one of the two was running them.
+//
+// Defence in depth for a bad window already written to the store: before pickSleepBlock existed,
+// an evening nap merged with last night could persist as "7am -> 8pm", and it would keep driving
+// both models until the next HealthKit sync overwrote it. Length alone can't catch that (13h is
+// not obviously absurd, and night-shift sleep is legitimately a daytime block) — but a MERGED
+// window is always far longer than the sleep it claims to contain, so cross-check the two. A real
+// night is its sleep hours plus a little tossing and turning; 13h of window around 7.5h of sleep
+// is two blocks stitched together.
+function trustedSleepWindow(store, now) {
+  const ss = store?.recovery?.sleepStart ? new Date(store.recovery.sleepStart) : null;
+  const se = store?.recovery?.sleepEnd ? new Date(store.recovery.sleepEnd) : null;
+  if (!ss || !se || !(se > ss)) return null;
+  const spanH = (se - ss) / 36e5;
+  const sleepH = store?.recovery?.sleepHours;
+  if (!(spanH >= 1 && spanH <= MAX_SLEEP_SPAN_H)) return null;
+  if (sleepH && spanH > sleepH + 3) return null;
+  if (!(se <= now) || !((now - se) < 20 * 36e5)) return null;   // measured, and actually last night
+  return { start: ss, end: se };
+}
 function earliestActiveHourToday(store, now) {
   if (!store?.activityHourly || store.activityHourlyDate !== dateKeyOf(now)) return null;
   const toH = now.getHours();
@@ -4858,10 +4890,10 @@ function computeBodyBattery(store) {
   // Baseline awake drain: ~0.9/h since wake. Real wake time from HealthKit when fresh
   // (within 20h — actually last night); otherwise assume 7am, rolling to yesterday's 7am
   // pre-dawn so awakeHours rolls over instead of resetting (honest late-night reading).
-  const recSE_ = rec?.sleepEnd ? new Date(rec.sleepEnd) : null;
+  const trusted_ = trustedSleepWindow(store, now);
   let wakeAnchor;
-  if (recSE_ && (now - recSE_) < 20 * 36e5 && recSE_ <= now) {
-    wakeAnchor = recSE_;
+  if (trusted_) {
+    wakeAnchor = trusted_.end;
   } else {
     wakeAnchor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7);
     if (now < wakeAnchor) wakeAnchor.setDate(wakeAnchor.getDate() - 1); // yesterday's 7am
@@ -5027,25 +5059,13 @@ function computeBodyBatteryTimeline(store) {
   // 24h window: last night's REAL sleep window from HealthKit when it's fresh (wake
   // within the last 20h — i.e. actually last night), otherwise the 10pm→7am estimate.
   // Night-shift schedules work automatically once Apple Health is connected.
-  const recSS = store.recovery?.sleepStart ? new Date(store.recovery.sleepStart) : null;
-  const recSE = store.recovery?.sleepEnd ? new Date(store.recovery.sleepEnd) : null;
-  // Defence in depth for a bad window already written to the store: before pickSleepBlock existed,
-  // an evening nap merged with last night could persist as "7am → 8pm", and it would keep driving
-  // this chart until the next HealthKit sync overwrote it. Length alone can't catch that (13h is
-  // not obviously absurd, and night-shift sleep is legitimately a daytime block) — but a MERGED
-  // window is always far longer than the sleep it claims to contain, so cross-check the two.
-  // A real night is its sleep hours plus a little tossing and turning; 13h of window around
-  // 7.5h of sleep is two blocks stitched together.
-  const recSpanH = (recSS && recSE) ? (recSE - recSS) / 36e5 : 0;
-  const recSleepH = store.recovery?.sleepHours;
-  const spanPlausible = recSpanH >= 1 && recSpanH <= MAX_SLEEP_SPAN_H
-    && (!recSleepH || recSpanH <= recSleepH + 3);
-  const realWindow = recSS && recSE && recSE > recSS && spanPlausible
-    && (now - recSE) < 20 * 36e5 && recSE <= now;
+  // Same trust test the headline uses — see trustedSleepWindow. These two must never disagree
+  // about where the day starts, or the number and the chart beneath it describe different days.
+  const realWindow = trustedSleepWindow(store, now);
   let sleepStart, wakeTime;
   if (realWindow) {
-    sleepStart = recSS;
-    wakeTime = recSE;
+    sleepStart = realWindow.start;
+    wakeTime = realWindow.end;
   } else {
     // Estimate: yesterday ~10pm → today 7am. Pre-dawn (now < 7am) we're still
     // mid-recharge: the recharge loop caps at `now` and the drain phase is skipped,
@@ -5386,7 +5406,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -19146,22 +19166,10 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
     fontFamily:F, boxSizing:"border-box", marginBottom:10
   };
 
-  // TestFlight-phase diagnostic: why did boot land on the auth screen? Shows the Keychain
-  // hydration outcome + last save result. Its PRESENCE also proves which build is running.
-  // TODO: remove before App Store submission.
-  const bootDiagLine = (() => {
-    try {
-      const b = localStorage.getItem("seshd_boot_diag") || "boot:?";
-      const s = localStorage.getItem("seshd_kc_save") || "save:none";
-      return `d1 · ${b} · ${s}`;
-    } catch { return "d1"; }
-  })();
-  const diagEl = (
-    <div style={{
-      position:"fixed", bottom:2, left:0, right:0, textAlign:"center",
-      fontSize:9, color:C.muted, opacity:0.55, fontFamily:MONO, pointerEvents:"none", zIndex:5,
-    }}>{bootDiagLine}</div>
-  );
+  // The TestFlight-phase `d1 ·` boot-diagnostic line lived here and was removed before App Store
+  // submission. `setBootDiag`/`setSaveDiag` still write `seshd_boot_diag` / `seshd_kc_save`, which
+  // costs nothing and is invisible — it stays the only way to find out why a boot landed on the
+  // auth screen when someone reports it. Read them from storage, not off the screen.
 
   // ── Welcome / guest entry ────────────────────────────────────
   if (mode === "welcome") {
@@ -19171,7 +19179,6 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 34px) + 16px)",
         paddingLeft:24, paddingRight:24, position:"relative", overflowY:"auto", overflowX:"hidden",
       }}>
-        {diagEl}
         {/* Soft ambient gradient — no generic blobs */}
         <div style={{
           position:"absolute", top:"-20%", right:"-30%", width:"80%", aspectRatio:"1",
@@ -19288,7 +19295,6 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
       paddingTop:"max(env(safe-area-inset-top), 20px)",
       paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
     }}>
-      {diagEl}
       <div style={{ display:"flex", alignItems:"center", height:48 }}>
         <button onClick={() => {
           // From the reset form, Back returns to sign-in (not the welcome screen).
