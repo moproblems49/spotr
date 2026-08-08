@@ -1,4 +1,4 @@
-// v178091716817
+// v178091716818
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -24146,7 +24146,13 @@ function AppInner() {
           // Activity is reached from the top bar on any tab and is NOT in TABS_ORDER, so the
           // The swipe lives on the OVERLAY wrapper above; this is just the scroller.
           <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
-            <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
+            {/* THE OVERLAY OWNS THE STATUS BAR NOW. As a pseudo-tab this header sat below the
+                app's own top bar, which was reserving the inset for it. An overlay is anchored at
+                top:0 over that bar, so it has to reserve the inset itself or the title and the
+                back chevron sit under the clock and battery — exactly what happened on device the
+                moment Activity became an overlay. MessagesScreen's header does the same thing for
+                the same reason. */}
+            <div style={{ padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
               {/* A gesture nobody can see is not a way out — the chevron is the discoverable one. */}
               <button onClick={() => setShowActivity(false)} aria-label="Back"
                 style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"6px 8px 6px 0", lineHeight:1 }}>‹</button>

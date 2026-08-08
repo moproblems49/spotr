@@ -196,6 +196,32 @@ check("restoring returns the dismissed row", await page.getByLabel("Dismiss").co
     held.stack.some(t => /SESHD|Your story|Start a Workout|Find People/.test(t)), JSON.stringify(held.stack));
 }
 
+// ── 7. THE OVERLAY MUST RESERVE THE STATUS BAR ITSELF ────────────────────────────────────────
+// As a pseudo-tab, Activity sat below the app's top bar and that bar reserved the notch inset. An
+// overlay is anchored at top:0 OVER it, so it has to reserve the inset itself — otherwise the
+// title and the back chevron sit under the clock and battery, which is what shipped the moment it
+// became an overlay.
+//
+// env() resolves to 0 in Chromium, so measuring pixels proves nothing. Count the elements that
+// ASK for the inset instead — the same technique pw_topbanners uses.
+{
+  await openActivity();
+  const asks = await page.evaluate(() => {
+    const overlay = document.querySelector('[data-no-tab-swipe]');
+    if (!overlay) return { err: "no overlay" };
+    const wantingEls = [...overlay.querySelectorAll("*")]
+      .filter(el => (el.getAttribute("style") || "").includes("safe-area-inset-top"));
+    const wanting = wantingEls.map(el => (el.textContent || "").trim().slice(0, 24));
+    // Don't hunt for "the header" separately — the first div matching a title regex can be an
+    // outer wrapper. Ask whether the element that RESERVES the inset is the one carrying the
+    // Back chevron, which is the row that would otherwise sit under the clock.
+    const headerAsks = wantingEls.some(el => el.querySelector('button[aria-label="Back"]'));
+    return { wanting, headerAsks };
+  });
+  check("the Activity overlay reserves the status-bar inset", asks.wanting && asks.wanting.length >= 1, JSON.stringify(asks));
+  check("...and it is the header that reserves it", asks.headerAsks === true, JSON.stringify(asks));
+}
+
 await browser.close();
 console.log(fails ? `${fails} FAIL(S)` : "ALL PASS");
 process.exit(fails ? 1 : 0);
