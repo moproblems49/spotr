@@ -676,6 +676,26 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   so keying them on `post.createdAt` both collided for two kudos on one post and resurrected on a
   millisecond re-serialisation — key on post+actor); and **"Show N hidden" must restore the N it
   names**, not the whole map. Sim: `pw_activity`.
+- **ACTIVITY IS DERIVED FROM `store.posts`, WHICH IS THE FEED — a global, paginated list.** The
+  feed query is the newest 30 posts across EVERYONE and `loadFeed` replaces the array wholesale,
+  so your own older posts fall off it the moment a few other people post, and every activity row
+  derived from them vanishes. Mo saw two old items appear and then disappear on refresh: they were
+  there only because opening your own profile fetches `posts?user_id=eq.me` and merges them in.
+  `loadFeed` now fetches your own posts alongside the FIRST page (offset 0 only) and merges by id.
+  Anything derived from "my posts" must not depend on feed pagination.
+- **A PUSHED SCREEN MUST BE AN OVERLAY, NOT A PSEUDO-TAB.** Activity was rendered as
+  `tab === "activity"` inside the 3-panel swipe track, which only mounts the current tab — so an
+  edge-swipe-back dragged it off over bare app background and the whole gesture was a black
+  screen. `showMessages`/`chatPeerId` were already the right pattern: an `position:absolute;
+  inset:0; zIndex:40` overlay with `data-no-tab-swipe`, wrapping `EdgeSwipeBack`. The tab
+  underneath is never unmounted, so it shows through the gesture. It also deletes the
+  "which tab do I go back to" state entirely — and with it the trap where tapping the entry point
+  again made Back a no-op, because the overlay covers that button. Sim: `pw_activity` §2 and §6.
+- **`page.mouse` DOES NOT FIRE TOUCH HANDLERS.** A swipe check written with `page.mouse.down/move`
+  reported success against a screenshot of a screen that had not moved at all. Dispatch real
+  `TouchEvent`s (see `pw_swipeback` / `pw_activity` for the helper) AND assert the drag engaged —
+  `EdgeSwipeBack` writes its transform straight onto its node, so check for a `translateX(>100px)`
+  before asserting anything about what is revealed underneath.
 - **`group_id=in.(…)&order=…&limit=N` RETURNS N ROWS ACROSS ALL THE GROUPS, NOT N PER GROUP.** The
   unread-dot query did this and one chatty group ate the entire budget — 200 posts in one group
   and a genuine unread post in another produced one dot, not two. PostgREST has no per-group
