@@ -662,16 +662,47 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   becomes untappable with nothing looking wrong; `build/tap_audit.mjs` checks for it.
 - **`build/tap_audit.mjs` MUST HIT-TEST, NOT MEASURE BOXES.** Its first version read
   `getBoundingClientRect`, which cannot see a pseudo-element — it reported the same 81 failures
-  before AND after the fix landed. It probes outward from each control's centre with
-  `elementFromPoint` now. Two fixture lessons from the same tool: bound BOTH axes when deciding
+  before AND after the fix landed. It probes with `elementFromPoint` now.
+- **ACTIVITY NEVER EXPIRES — it stays until the person removes it** (Mo, Aug 8). It is DERIVED
+  from posts on every render; there is no notifications table. So "remove this one" stores a key
+  per hidden row (`seshd_dismissed_activity`), and because the events never age out that map must
+  be capped by COUNT, never pruned by age — ageing it resurrects rows the user deliberately
+  cleared. The badge count and the list must window identically (they didn't: the count looked
+  back 30 days while the list showed everything, so the badge could read 0 above a screenful).
+  Three more traps found by audit, all now fixed and worth knowing: **a persisted COUNT needs a
+  one-time re-baseline when what it counts changes** (`seenActivityCount` was written under the
+  windowed build, so removing the window gave every existing user a phantom badge on first
+  launch); a **dismiss key must identify exactly one row** (kudos carry no timestamp of their own,
+  so keying them on `post.createdAt` both collided for two kudos on one post and resurrected on a
+  millisecond re-serialisation — key on post+actor); and **"Show N hidden" must restore the N it
+  names**, not the whole map. Sim: `pw_activity`.
+- **`group_id=in.(…)&order=…&limit=N` RETURNS N ROWS ACROSS ALL THE GROUPS, NOT N PER GROUP.** The
+  unread-dot query did this and one chatty group ate the entire budget — 200 posts in one group
+  and a genuine unread post in another produced one dot, not two. PostgREST has no per-group
+  ordering, so it is a hard ceiling: query per group with `limit=1`. And **filter ids to real
+  UUIDs first** — `createGroup` puts a local `uid()` in the store before the insert returns, and
+  splicing that into an `in.()` on a uuid column makes PostgREST reject the WHOLE query (22P02),
+  which the catch swallowed and every group silently lost its dot.
+- **A STOLEN TAP IS STOLEN FROM THE EDGE, SO NEVER PROBE ONLY THE CENTRE.** The steal check
+  originally tested each control's centre point and reported a confident "zero found" while the
+  exercise overflow menu's square halo was covering the right 2px of the rest-time picker — an
+  audit proved it by CLICKING inside the picker's own box and getting the overflow menu. A halo
+  eats a neighbour from the outside in, so the centre is the last thing it takes. The check grids
+  9x9 over each control's box now and reports the percentage covered. Two fixture lessons from the same tool: bound BOTH axes when deciding
   what is on-screen (checking only top/bottom reported nine horizontally-scrolled filter chips as
   "stolen"), and a `.replace()`-based source edit must assert the string actually CHANGED — one
   className insertion silently no-opped because the matched text didn't contain the `<button` tag.
-- **Selection and the long-press callout are OFF on chrome** (`body { user-select: none }`, plus
-  `-webkit-touch-callout: none` on button/a/img/svg/label). Drag-selecting a label and getting an
-  iOS callout over an icon are two of the clearest "this is a website" tells. Inputs, textareas
-  and `.seshd-selectable` keep both — that class is the escape hatch for anything a user needs to
-  copy. Share codes don't need it; they have a copy button and a toast.
+- **Selection and the long-press callout have been off app-wide for ages** — the injected
+  stylesheet's `* { -webkit-touch-callout: none; user-select: none }` near its top, with
+  `input, textarea, select` re-enabling both. A later commit added a `body` rule plus a tag list
+  doing exactly the same thing ~80 lines below it; an audit showed the whole block was dead and it
+  was removed. **Before "fixing" a native-feel tell, grep the stylesheet for it** — that one
+  shipped with a stated premise that was already false. Links were the one genuine gap: the
+  tap-highlight rule covers `button` and `[role="button"]`, not `a`.
+- **NO BACKTICKS IN THE INJECTED STYLESHEET'S COMMENTS.** The whole thing is one template literal,
+  so a backtick in a CSS comment terminates it and the build dies with a syntax error pointing at
+  the next word. This has broken the build twice, both times while writing a comment ABOUT the
+  CSS.
 - **Tap targets are NOT an App Store rejection risk.** 44pt is a HIG guideline; review rejects for
   crashes, broken flows, missing account deletion (present here), missing privacy policy, and UGC
   without report/block (present). Treat tap-target work as usability, not compliance.
