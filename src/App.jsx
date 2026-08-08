@@ -1,4 +1,4 @@
-// v178091716819
+// v178091716820
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1859,7 +1859,17 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </div>
       ) : (
         <>
-          <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:12, padding:"6px 12px 4px" }}>
+          <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:10, padding:"6px 10px 4px" }}>
+            {/* The instruction reads UP the left edge, mirroring the scale on the right, so the
+                map sits between the two things that explain it instead of pushing a caption row
+                below it. writing-mode turns the text; the 180 rotation makes it read bottom-to-top,
+                which is the convention for a left-hand vertical label — vertical-rl alone would
+                read top-to-bottom and force the eye to start at the wrong end. */}
+            <div style={{
+              writingMode:"vertical-rl", transform:"rotate(180deg)",
+              fontSize:9.5, color:C.muted, letterSpacing:0.6, fontWeight:600,
+              whiteSpace:"nowrap", flexShrink:0, alignSelf:"center", userSelect:"none",
+            }}>Tap a muscle for details</div>
             <Fig view="front"/>
             <Fig view="back"/>
             {mode === "volume" ? (
@@ -1873,7 +1883,6 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/>
             )}
           </div>
-          <div style={{ textAlign:"center", fontSize:10, color:C.muted, paddingBottom:2 }}>Tap a muscle for details</div>
 
           {mode === "volume" ? (
             <>
