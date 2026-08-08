@@ -1,4 +1,4 @@
-// v178091716812
+// v178091716813
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1320,6 +1320,9 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
     case "activity": return <svg {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
     case "calendar": return <svg {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
     case "clock": return <svg {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+    // Three stacked rules — the reorder/drag-handle convention. Added when REORDER moved from its
+    // own row into the 1RM/Plates pill row and needed to match their icon+label shape.
+    case "reorder": return <svg {...props}><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>;
     case "barbell": return <svg {...props}><line x1="4" y1="12" x2="20" y2="12"/><rect x="1" y="9" width="3" height="6" rx="1"/><rect x="20" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2" height="10" rx="1"/><rect x="17" y="7" width="2" height="10" rx="1"/></svg>;
     case "package": return <svg {...props}><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
     case "settings": return <svg {...props}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
@@ -5855,6 +5858,11 @@ const NIGHT_SHIFT_MS = 12 * 36e5;
 // yet, but the volume maths had eight copies and two of those HAD diverged. A function
 // declaration rather than a const because several callers sit above this line.
 // Accepts a Date or an epoch ms.
+// HOW FAR BACK ACTIVITY GOES. One constant, because three places depend on agreeing: the badge
+// COUNT, the LIST itself, and the pruning of dismissed-row keys. The count already windowed at 30
+// days while the list showed everything ever — so the badge could read 0 above a screen full of
+// rows, and a row could sit there forever with nothing counting it.
+const ACTIVITY_WINDOW_MS = 30 * 86400000;
 function dateKeyOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 const nightKeyOf = (t) => dateKeyOf(t - NIGHT_SHIFT_MS);
 // A sample in the small hours proves you were ASLEEP in that bucket, as opposed to awake on the
@@ -12761,9 +12769,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 nothing to say "tap me", and they sat right beside the stats they could be mistaken
                 for. A filled chip with an icon is unmistakably a control, and the wider hit area
                 matters mid-set with chalky hands. */}
+            {/* REORDER joins the tool pills instead of owning a row of its own above the list.
+                It is the same KIND of thing — a utility you reach for occasionally — and as a
+                full-width row it cost vertical space on the screen you stare at all session for a
+                control most people touch once. Still gated on having something to reorder. */}
             <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-              {[["activity", "1RM", () => setShow1RM(true)], ["barbell", "Plates", () => setShowPlateCalc(true)]].map(([icon, label, fn]) => (
-                <button key={label} onClick={fn} aria-label={label === "1RM" ? "1RM Calculator" : "Plate Calculator"} style={{
+              {[
+                ["activity", "1RM", () => setShow1RM(true)],
+                ["barbell", "Plates", () => setShowPlateCalc(true)],
+                ...(session.exercises.length > 1 ? [["reorder", "Order", () => setReorderMode(true)]] : []),
+              ].map(([icon, label, fn]) => (
+                <button key={label} onClick={fn} className="seshd-hit-y"
+                  aria-label={label === "1RM" ? "1RM Calculator" : label === "Plates" ? "Plate Calculator" : "Reorder exercises"} style={{
                   display:"flex", alignItems:"center", gap:5,
                   background:C.surface, border:`1px solid ${C.border}`, borderRadius:999,
                   padding:"6px 12px", cursor:"pointer", fontFamily:F,
@@ -12936,20 +12953,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {/* Exercises */}
 
         <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
-          {session.exercises.length > 1 && (
-            <div style={{ padding:"10px 14px 0", display:"flex", justifyContent:"flex-end" }}>
-              <button onClick={() => setReorderMode(true)} style={{
-                background:"transparent", border:`1px solid ${C.border}`,
-                borderRadius:10, padding:"6px 12px",
-                fontSize:11, fontWeight:700, color:C.sub,
-                letterSpacing:0.5, cursor:"pointer", fontFamily:F,
-                display:"flex", alignItems:"center", gap:6,
-              }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-                REORDER
-              </button>
-            </div>
-          )}
           {session.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             return (
@@ -16614,6 +16617,53 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   const [activeGroup, setActiveGroup] = useState(null);
   const myGroups = (store.groups || []).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
 
+  // UNREAD DOTS FOR GROUPS. Group posts are fetched inside GroupDetail, so this list had no idea
+  // anything had happened in them — you had to open each one to find out. One query gets the
+  // newest post per group (RLS already restricts it to groups you belong to), and it is compared
+  // against a per-group "last opened" stamp. Your OWN posts never mark a group unread.
+  const [groupLastSeen, setGroupLastSeen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("seshd_group_seen") || "{}"); } catch { return {}; }
+  });
+  const [groupNewest, setGroupNewest] = useState({});
+  const groupIds = myGroups.map(g => g.id).join(",");
+  useEffect(() => {
+    if (!token || !groupIds) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await sb.query(
+          `group_posts?group_id=in.(${groupIds})&select=group_id,user_id,created_at&order=created_at.desc&limit=200`,
+          {}, token);
+        if (cancelled || !Array.isArray(rows)) return;
+        const newest = {};
+        for (const r of rows) {
+          if (r.user_id === currentUserId) continue;          // your own post is not news
+          const ts = new Date(r.created_at).getTime();
+          if (!Number.isFinite(ts)) continue;
+          if (!newest[r.group_id] || ts > newest[r.group_id]) newest[r.group_id] = ts;
+        }
+        setGroupNewest(newest);
+      } catch (e) { /* a missing dot is not worth surfacing an error for */ }
+    })();
+    return () => { cancelled = true; };
+  }, [token, groupIds, currentUserId]);
+  const markGroupSeen = (gid) => {
+    setGroupLastSeen(prev => {
+      const next = { ...prev, [gid]: Date.now() };
+      try { localStorage.setItem("seshd_group_seen", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  // A group you have NEVER opened should not scream about every post that predates you seeing it,
+  // but it should still show that there is something in there — so an unseen group counts as
+  // unread only if it has any post at all from someone else.
+  const groupHasUnread = (gid) => {
+    const newest = groupNewest[gid];
+    if (!newest) return false;
+    const seen = groupLastSeen[gid];
+    return !seen || newest > seen;
+  };
+
   async function createGroup() {
     if (!newName) return;
     const tempId = uid();
@@ -16695,15 +16745,22 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
         </div>
       )}
       {myGroups.map(g => (
-        <div key={g.id} onClick={() => setActiveGroup(g.id)} style={{
-          border:`1px solid ${C.border}`, borderRadius:10, padding:"14px",
+        <div key={g.id} onClick={() => { markGroupSeen(g.id); setActiveGroup(g.id); }} style={{
+          border:`1px solid ${groupHasUnread(g.id) ? `${C.accent}55` : C.border}`, borderRadius:10, padding:"14px",
           marginBottom:8, cursor:"pointer"
         }}>
           <div style={{ display:"flex", alignItems:"center", gap:11, marginBottom:g.description?6:0 }}>
-            <div style={{ width:38, height:38, borderRadius:10, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><Icon name="users" size={19} color={C.accent}/></div>
+            <div style={{ position:"relative", flexShrink:0 }}>
+              <div style={{ width:38, height:38, borderRadius:10, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center" }}><Icon name="users" size={19} color={C.accent}/></div>
+              {groupHasUnread(g.id) && (
+                <span aria-label="New posts" style={{ position:"absolute", top:-3, right:-3, width:11, height:11, borderRadius:"50%", background:C.accent, border:`2px solid ${C.bg}` }}/>
+              )}
+            </div>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{g.name}</div>
-              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{g.members.length} member{g.members.length===1?"":"s"}</div>
+              <div style={{ fontSize:14, fontWeight: groupHasUnread(g.id) ? 700 : 600, color:C.text }}>{g.name}</div>
+              <div style={{ fontSize:11, color: groupHasUnread(g.id) ? C.accent : C.sub, marginTop:1 }}>
+                {groupHasUnread(g.id) ? "New posts" : `${g.members.length} member${g.members.length===1?"":"s"}`}
+              </div>
             </div>
             <span style={{ fontSize:16, color:C.sub }}>›</span>
           </div>
@@ -19005,8 +19062,14 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
   }
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:440, maxHeight:"88dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.35)" }}>
+    // THE CARD WAS PAINTED IN THE APP BACKGROUND COLOUR. `C.bg` is the deepest layer — the same
+    // #0b0b0e the feed sits on — so a sheet using it, over a 0.6 scrim of that same near-black,
+    // had almost no edge in dark mode: it read as the screen dimming rather than a panel opening.
+    // `C.surface` is the raised-card token and is deliberately much lighter (#1c1c22), which is
+    // what every other sheet in the app uses. A hairline plus a deeper, blurred scrim finish the
+    // separation, and the blur is what makes it read as a layer rather than a flat overlay.
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, width:"100%", maxWidth:440, maxHeight:"88dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 24px 70px -12px rgba(0,0,0,0.65)" }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px" }}>
           <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
@@ -20613,7 +20676,9 @@ function AppInner() {
               case "kudos":
               case "comments":
                 // No single-post route exists; the Activity tab lists these. The
-                // tab-change effect marks them seen, clearing the badge.
+                // tab-change effect marks them seen, clearing the badge. Opened from a push there
+                // is no previous tab to return to, so back goes to the feed.
+                activityFromTab.current = "feed";
                 setTab("activity");
                 break;
               case "streak":
@@ -22703,9 +22768,38 @@ function AppInner() {
     catch { return 0; }
   });
 
+  // ACTIVITY IS DERIVED, NOT STORED — there is no notifications table; every row is recomputed
+  // from posts on each render. So "delete this one" cannot delete a record; it has to remember
+  // which derived rows you have dismissed. Keyed by {type, post, actor, comment} so the same row
+  // stays dismissed across reloads, and stamped with WHEN you dismissed it so the map can be
+  // pruned — without that it would grow forever for a heavy user.
+  const [dismissedActivity, setDismissedActivity] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("seshd_dismissed_activity") || "{}");
+      const cutoff = Date.now() - ACTIVITY_WINDOW_MS;
+      const kept = {};
+      for (const [k, ts] of Object.entries(raw)) if (typeof ts === "number" && ts > cutoff) kept[k] = ts;
+      return kept;
+    } catch { return {}; }
+  });
+  const dismissActivity = (key) => {
+    setDismissedActivity(prev => {
+      const next = { ...prev, [key]: Date.now() };
+      try { localStorage.setItem("seshd_dismissed_activity", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  const clearDismissedActivity = () => {
+    setDismissedActivity({});
+    try { localStorage.removeItem("seshd_dismissed_activity"); } catch {}
+  };
+  // Which tab the Activity screen was opened FROM, so swiping back returns there rather than
+  // guessing. Activity is not in TABS_ORDER — it is a pushed screen wearing a tab's clothes.
+  const activityFromTab = useRef("feed");
+
   // Current total of activity items on the user's own posts
   const currentActivityCount = (() => {
-    const ACTIVITY_WINDOW = Date.now() - 30 * 86400000; // 30 days
+    const ACTIVITY_WINDOW = Date.now() - ACTIVITY_WINDOW_MS;
     let count = (store.posts || [])
       .filter(p => p.userId === currentUserId && (p.createdAt || 0) > ACTIVITY_WINDOW)
       .reduce((a, pt) => {
@@ -23337,7 +23431,7 @@ function AppInner() {
             )}
           </button>
           <button
-            onClick={() => { markActivitySeen(); setTab("activity"); }}
+            onClick={() => { markActivitySeen(); activityFromTab.current = tab; setTab("activity"); }}
             aria-label="Activity"
             style={TOPBAR_ICON_BTN}
           >
@@ -23707,7 +23801,11 @@ function AppInner() {
         )}
 
         {which === "activity" && (() => {
-          const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
+          // SAME WINDOW AS THE BADGE. This list used to show every kudos and comment ever, while
+          // currentActivityCount only counted the last 30 days — so the badge could read 0 over a
+          // screenful of rows. One constant now drives both.
+          const since = Date.now() - ACTIVITY_WINDOW_MS;
+          const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId && (p.createdAt || 0) > since);
           const events = [];
           const myUsername = (store.users.find(u => u.id === currentUserId)?.username || "").toLowerCase();
           myPosts.forEach(post => {
@@ -23723,6 +23821,7 @@ function AppInner() {
           // @mentions of me — scan comments on ALL visible posts (not just mine) for my handle
           if (myUsername) {
             (store.posts||[]).forEach(post => {
+              if ((post.createdAt || 0) <= since) return;
               (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
                 const mentioned = extractMentions(c.text, store.users).includes(currentUserId);
                 if (mentioned) {
@@ -23738,17 +23837,35 @@ function AppInner() {
           // directed at you (kudos, comments, mentions). Friend posts already appear in your
           // main feed; piling them into Activity made the badge noisy with many follows.
           events.sort((a,b) => b.ts - a.ts);
+          // A stable identity for a row that exists only as a computation. Kudos carry no
+          // timestamp of their own (they are a bare user-id array), so their key leans on the
+          // post and the actor, which is exactly what makes them unique anyway.
+          const keyOfEvent = (ev) => `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? ev.ts}`;
+          const hiddenCount = events.filter(ev => dismissedActivity[keyOfEvent(ev)]).length;
+          const visible = events.filter(ev => !dismissedActivity[keyOfEvent(ev)]);
           return (
-            <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
-              <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
-                <button onClick={() => { handleRefresh(); }} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px" }}>
+            // Activity is reached from the top bar on any tab and is NOT in TABS_ORDER, so the
+            // tab swipe cannot get you out of it — before this there was no gesture back at all,
+            // only the nav bar. EdgeSwipeBack returns you to whichever tab you opened it from.
+            <EdgeSwipeBack onBack={() => setTab(activityFromTab.current || "feed")}
+              style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+              <div style={{ padding:"12px 14px 10px", borderBottom:`1px solid ${C.divider}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
+                {/* A gesture nobody can see is not a way out — the chevron is the discoverable one. */}
+                <button onClick={() => setTab(activityFromTab.current || "feed")} aria-label="Back"
+                  style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"6px 8px 6px 0", lineHeight:1 }}>‹</button>
+                <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Activity</div>
+                {hiddenCount > 0 && (
+                  <button onClick={clearDismissedActivity} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, fontWeight:700, color:C.sub, fontFamily:F, padding:"4px 6px" }}>
+                    Show {hiddenCount} hidden
+                  </button>
+                )}
+                <button onClick={() => { handleRefresh(); }} aria-label="Refresh" className="seshd-hit" style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px" }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
                   </svg>
                 </button>
               </div>
-              {dataLoading && events.length === 0 ? (
+              {dataLoading && visible.length === 0 ? (
                 // Skeleton — 4 rows shaped like activity entries
                 <div style={{ padding:"6px 0" }}>
                   {[1,2,3,4].map(i => (
@@ -23761,14 +23878,14 @@ function AppInner() {
                     </div>
                   ))}
                 </div>
-              ) : events.length === 0 ? (
+              ) : visible.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
                   <svg width="46" height="64" viewBox="0 0 40 56" style={{ display:"block", margin:"0 auto 12px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
                   <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
                   <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
                 </div>
-              ) : events.slice(0,50).map((ev, i) => (
-                <div key={i} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+              ) : visible.slice(0,50).map((ev, i) => (
+                <div key={keyOfEvent(ev)} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
                   <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
@@ -23783,9 +23900,14 @@ function AppInner() {
                     <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
                   </div>
                   {ev.post.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
+                  {/* Dismiss. Nothing is deleted server-side — the row is a computation over your
+                      posts, and the kudos or comment itself still exists on the post. This only
+                      says "stop showing me this one", and the header offers it back. */}
+                  <button onClick={() => dismissActivity(keyOfEvent(ev))} aria-label="Dismiss" className="seshd-hit"
+                    style={{ background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:15, lineHeight:1, padding:"6px 2px 6px 6px", flexShrink:0 }}>×</button>
                 </div>
               ))}
-            </div>
+            </EdgeSwipeBack>
           );
         })()}
 
