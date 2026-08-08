@@ -1,4 +1,4 @@
-// v178091716813
+// v178091716814
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5858,11 +5858,18 @@ const NIGHT_SHIFT_MS = 12 * 36e5;
 // yet, but the volume maths had eight copies and two of those HAD diverged. A function
 // declaration rather than a const because several callers sit above this line.
 // Accepts a Date or an epoch ms.
-// HOW FAR BACK ACTIVITY GOES. One constant, because three places depend on agreeing: the badge
-// COUNT, the LIST itself, and the pruning of dismissed-row keys. The count already windowed at 30
-// days while the list showed everything ever — so the badge could read 0 above a screen full of
-// rows, and a row could sit there forever with nothing counting it.
-const ACTIVITY_WINDOW_MS = 30 * 86400000;
+// ACTIVITY DOES NOT EXPIRE. It stays until the person removes it — Mo's call, and the right one:
+// a like from six weeks ago is still the only record that it happened, and silently binning it is
+// the app deciding what mattered to you. There is deliberately NO time window on either the badge
+// COUNT or the LIST; the two must simply agree, which is what went wrong before (the count
+// windowed at 30 days while the list showed everything, so the badge could read 0 above a screen
+// full of rows). Both are naturally bounded by how many posts are loaded.
+//
+// The consequence for dismissals: a dismissed row must stay dismissed FOREVER, because the event
+// behind it never ages out. Pruning that map by age would resurrect every item the user had
+// deliberately cleared. It is capped by COUNT instead — oldest dismissals drop first, and you
+// would have to dismiss this many rows before the earliest one could reappear.
+const MAX_DISMISSED_ACTIVITY = 1000;
 function dateKeyOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 const nightKeyOf = (t) => dateKeyOf(t - NIGHT_SHIFT_MS);
 // A sample in the small hours proves you were ASLEEP in that bucket, as opposed to awake on the
@@ -22776,15 +22783,23 @@ function AppInner() {
   const [dismissedActivity, setDismissedActivity] = useState(() => {
     try {
       const raw = JSON.parse(localStorage.getItem("seshd_dismissed_activity") || "{}");
-      const cutoff = Date.now() - ACTIVITY_WINDOW_MS;
-      const kept = {};
-      for (const [k, ts] of Object.entries(raw)) if (typeof ts === "number" && ts > cutoff) kept[k] = ts;
-      return kept;
+      const clean = {};
+      for (const [k, ts] of Object.entries(raw)) if (typeof ts === "number") clean[k] = ts;
+      return clean;
     } catch { return {}; }
   });
   const dismissActivity = (key) => {
     setDismissedActivity(prev => {
-      const next = { ...prev, [key]: Date.now() };
+      let next = { ...prev, [key]: Date.now() };
+      // Cap by COUNT, oldest first — never by age. Ageing entries out would bring back rows the
+      // user had already cleared, because the events themselves never expire.
+      const keys = Object.keys(next);
+      if (keys.length > MAX_DISMISSED_ACTIVITY) {
+        const keep = keys.sort((a, b) => next[b] - next[a]).slice(0, MAX_DISMISSED_ACTIVITY);
+        const trimmed = {};
+        for (const k of keep) trimmed[k] = next[k];
+        next = trimmed;
+      }
       try { localStorage.setItem("seshd_dismissed_activity", JSON.stringify(next)); } catch {}
       return next;
     });
@@ -22799,9 +22814,10 @@ function AppInner() {
 
   // Current total of activity items on the user's own posts
   const currentActivityCount = (() => {
-    const ACTIVITY_WINDOW = Date.now() - ACTIVITY_WINDOW_MS;
+    // No time window — see MAX_DISMISSED_ACTIVITY. This must match what the Activity LIST shows,
+    // or the badge and the screen disagree about what exists.
     let count = (store.posts || [])
-      .filter(p => p.userId === currentUserId && (p.createdAt || 0) > ACTIVITY_WINDOW)
+      .filter(p => p.userId === currentUserId)
       .reduce((a, pt) => {
         const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId).length;
         const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId).length;
@@ -22809,7 +22825,7 @@ function AppInner() {
       }, 0);
     // @mentions of me in comments on others' posts
     (store.posts || []).forEach(p => {
-      if (p.userId === currentUserId || (p.createdAt || 0) <= ACTIVITY_WINDOW) return; // already counted above
+      if (p.userId === currentUserId) return; // already counted above
       (p.comments || []).filter(c => c.userId !== currentUserId).forEach(c => {
         if (extractMentions(c.text, store.users).includes(currentUserId)) count++;
       });
@@ -23801,11 +23817,8 @@ function AppInner() {
         )}
 
         {which === "activity" && (() => {
-          // SAME WINDOW AS THE BADGE. This list used to show every kudos and comment ever, while
-          // currentActivityCount only counted the last 30 days — so the badge could read 0 over a
-          // screenful of rows. One constant now drives both.
-          const since = Date.now() - ACTIVITY_WINDOW_MS;
-          const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId && (p.createdAt || 0) > since);
+          // NO TIME WINDOW — activity stays until dismissed, and this must match the badge count.
+          const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
           const events = [];
           const myUsername = (store.users.find(u => u.id === currentUserId)?.username || "").toLowerCase();
           myPosts.forEach(post => {
@@ -23821,7 +23834,6 @@ function AppInner() {
           // @mentions of me — scan comments on ALL visible posts (not just mine) for my handle
           if (myUsername) {
             (store.posts||[]).forEach(post => {
-              if ((post.createdAt || 0) <= since) return;
               (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
                 const mentioned = extractMentions(c.text, store.users).includes(currentUserId);
                 if (mentioned) {
