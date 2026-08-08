@@ -652,6 +652,29 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   missed it because its fixture sits at 2am where the last curve point is in the recharge phase,
   not the drain phase. `sim_bbrest` covers the afternoon case: the last drain point must equal the
   headline exactly.
+- **44pt HIT AREAS COME FROM A PSEUDO-ELEMENT, NOT FROM RESIZING.** `.seshd-hit` / `.seshd-hit-y`
+  (in the injected stylesheet) centre an invisible `::after` of `max(100%, 44px)` on a control, so
+  the touch region grows and nothing renders differently. This exists because a set row already
+  fits weight, reps, set type, RPE and the done tick across 428px — the tick was 32x32 and the
+  steppers 25px tall, and neither could grow visually. Use `-y` for controls packed side by side
+  (the +/- steppers): a square halo would overlap the neighbour, and in an overlap the later
+  element in DOM order wins. **The hazard is a halo covering a NEIGHBOUR's centre** — that control
+  becomes untappable with nothing looking wrong; `build/tap_audit.mjs` checks for it.
+- **`build/tap_audit.mjs` MUST HIT-TEST, NOT MEASURE BOXES.** Its first version read
+  `getBoundingClientRect`, which cannot see a pseudo-element — it reported the same 81 failures
+  before AND after the fix landed. It probes outward from each control's centre with
+  `elementFromPoint` now. Two fixture lessons from the same tool: bound BOTH axes when deciding
+  what is on-screen (checking only top/bottom reported nine horizontally-scrolled filter chips as
+  "stolen"), and a `.replace()`-based source edit must assert the string actually CHANGED — one
+  className insertion silently no-opped because the matched text didn't contain the `<button` tag.
+- **Selection and the long-press callout are OFF on chrome** (`body { user-select: none }`, plus
+  `-webkit-touch-callout: none` on button/a/img/svg/label). Drag-selecting a label and getting an
+  iOS callout over an icon are two of the clearest "this is a website" tells. Inputs, textareas
+  and `.seshd-selectable` keep both — that class is the escape hatch for anything a user needs to
+  copy. Share codes don't need it; they have a copy button and a toast.
+- **Tap targets are NOT an App Store rejection risk.** 44pt is a HIG guideline; review rejects for
+  crashes, broken flows, missing account deletion (present here), missing privacy policy, and UGC
+  without report/block (present). Treat tap-target work as usability, not compliance.
 - **A tall BOTTOM sheet pushes its own header off the TOP.** `align-items:flex-end` with a child
   taller than the viewport clips the top — the Body Battery sheet's title and score ended up behind
   the clock once steps/energy/HRV/RHR were added to it. Cap the sheet
