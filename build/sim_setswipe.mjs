@@ -90,6 +90,13 @@ const touch = (type, x) => act(() => {
   target.dispatchEvent(ev);
 });
 
+// A DELETE NOW NEEDS A THIRD OF THE ROW, not 60px. 60px is about an eighth of the screen — inside
+// the range of a scroll wobble or a mistimed drag past a set — so Mo asked for a much longer
+// throw as a second line of defence. jsdom reports a 0-width row, so deleteSwipeThreshold falls
+// back to its 380px assumption: 127px here. The swipe-RIGHT that completes a set is deliberately
+// untouched at 60px; that one is not destructive and is the fast path mid-workout.
+const COMMIT = 150;                    // comfortably past a third
+const UNDER  = 95;                     // past the OLD 60px threshold, short of the new one
 const X0 = 300;
 touch("touchstart", X0);
 touch("touchmove", X0 - 12);           // crosses the 6px threshold → first-frame setState
@@ -97,16 +104,31 @@ await settle(60);
 const opAfterFirst = parseFloat(hint.style.opacity || "0");
 touch("touchmove", X0 - 40);           // direct DOM writes from here on
 const opMid = parseFloat(hint.style.opacity || "0");
-touch("touchmove", X0 - 85);           // past the 60px commit threshold
+touch("touchmove", X0 - COMMIT);
 const opCommitted = parseFloat(hint.style.opacity || "0");
 const rowShift = (swipeTargetOf(row) || {}).style?.transform || "";
 
 check("hint becomes visible on the first swiping frame", opAfterFirst > 0, `opacity=${opAfterFirst}`);
 check("hint opacity grows with the drag (12px < 40px)", opMid > opAfterFirst, `${opAfterFirst} -> ${opMid}`);
 check("hint is fully opaque past the commit threshold", opCommitted === 1, `opacity=${opCommitted}`);
-check("row tracks the finger (translateX follows the drag)", /translateX\(-85px\)/.test(rowShift), `transform="${rowShift}"`);
+check("row tracks the finger (translateX follows the drag)", new RegExp(`translateX\\(-${COMMIT}px\\)`).test(rowShift), `transform="${rowShift}"`);
 
-touch("touchend", X0 - 85);
+// THE NEW GUARD: a swipe that would have deleted under the old rule must now do nothing. Without
+// this the threshold could be quietly lowered again and every other check here would still pass.
+// Note onTouchEnd reads the dx recorded by the last touchMOVE, not the coordinate on touchend —
+// the first cut of this check released at 95px after moving to 150 and "deleted", which was the
+// test lying, not the app.
+touch("touchmove", X0 - UNDER);
+touch("touchend", X0 - UNDER);
+await settle(300);
+check(`a ${UNDER}px swipe — past the OLD 60px rule — no longer deletes`, setRows().length === 4,
+  `found ${setRows().length}`);
+
+touch("touchstart", X0);
+touch("touchmove", X0 - 12);
+await settle(60);
+touch("touchmove", X0 - COMMIT);
+touch("touchend", X0 - COMMIT);
 await settle(300);
 
 const rows1 = setRows();

@@ -1,4 +1,4 @@
-// v178091716818
+// v178091716819
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1703,6 +1703,25 @@ function _regionLabel(k) {
 
 // Weekly muscle heatmap — anatomical front+back view shaded by how much each muscle was trained
 // over the last 7 days. Switches between male/female figures via the body-type preference.
+// The colour scale, stood on its end and parked beside the figures instead of sitting under them.
+// Mo's call, and it earns its place twice: the map is tall and narrow so there is dead space to
+// its right, and a legend BESIDE the thing it explains is read together with it rather than as a
+// separate row you scroll past. It also gives every tab back a row of vertical space on the one
+// screen that has three stacked panels under it.
+//
+// Colours run high at the TOP, which is the direction the words imply — "Ready" above
+// "Recovering" — so the strip reads like a gauge rather than a palette.
+function ScaleStrip({ topLabel, bottomLabel, colors, C }) {
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0, alignSelf:"center" }}>
+      <span style={{ fontSize:9, color:C.muted, fontWeight:700, whiteSpace:"nowrap", letterSpacing:0.2 }}>{topLabel}</span>
+      <div style={{ width:9, height:112, borderRadius:5, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+        {colors.map((c, i) => (<span key={i} style={{ flex:1, background:c, display:"block" }}/>))}
+      </div>
+      <span style={{ fontSize:9, color:C.muted, fontWeight:700, whiteSpace:"nowrap", letterSpacing:0.2 }}>{bottomLabel}</span>
+    </div>
+  );
+}
 function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C }) {
   const [mode, setMode] = useState("readiness"); // "readiness" | "volume" | "strength"
   const [showBatteryDetail, setShowBatteryDetail] = useState(false);
@@ -1840,21 +1859,24 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </div>
       ) : (
         <>
-          <div style={{ display:"flex", justifyContent:"center", gap:16, padding:"6px 12px 4px" }}>
+          <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:12, padding:"6px 12px 4px" }}>
             <Fig view="front"/>
             <Fig view="back"/>
+            {mode === "volume" ? (
+              <ScaleStrip C={C} topLabel="20+/wk" bottomLabel="0"
+                colors={[1, 0.82, 0.62, 0.37, 0.12].map(t => _heatColor(t, C))}/>
+            ) : mode === "strength" ? (
+              (strength.ready ? <ScaleStrip C={C} topLabel="Stronger" bottomLabel="Weaker"
+                colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/> : null)
+            ) : (
+              <ScaleStrip C={C} topLabel="Ready" bottomLabel="Recovering"
+                colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/>
+            )}
           </div>
           <div style={{ textAlign:"center", fontSize:10, color:C.muted, paddingBottom:2 }}>Tap a muscle for details</div>
 
           {mode === "volume" ? (
             <>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
-                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>0</span>
-                <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
-                  {[0.12,0.37,0.62,0.82,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_heatColor(t, C), display:"inline-block" }}/>))}
-                </div>
-                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>20+ sets/wk</span>
-              </div>
               <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"5px 10px", padding:"8px 16px 2px" }}>
                 {majorSets.map(([mName, sets]) => {
                   // Tiers per the 2024-25 dose-response literature (Pelland et al. 2025 meta-
@@ -2114,26 +2136,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   })()}
                 </div>
               )}
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
-                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Recovering</span>
-                <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
-                  {[0,0.25,0.5,0.75,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_readyColor(t), display:"inline-block" }}/>))}
-                </div>
-                <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Ready</span>
-              </div>
               <div style={{ height:8 }}/>
             </>
           ) : (
             <>
               {strength.ready ? (
                 <>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"4px 16px 2px" }}>
-                    <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Weaker</span>
-                    <div style={{ display:"flex", borderRadius:4, overflow:"hidden" }}>
-                      {[0,0.25,0.5,0.75,1].map((t, i) => (<span key={i} style={{ width:18, height:8, background:_readyColor(t), display:"inline-block" }}/>))}
-                    </div>
-                    <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Stronger</span>
-                  </div>
                   <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:11, color:C.sub, lineHeight:1.5 }}>
                     {/* The imbalance line leads now. "Lagging: X, Y" used to sit above it and was
                         just the colour scale rewritten as a sentence; a RELATIONSHIP between groups
@@ -7571,6 +7579,71 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   ), document.body);
 }
 
+// HOW FAR A DESTRUCTIVE SWIPE HAS TO TRAVEL. A delete used to commit at 60px — about an eighth
+// of the screen, which is inside the range of an ordinary scroll wobble or a mistimed drag on a
+// set you were only trying to scroll past. Mo asked for a third of the width as a second line of
+// defence, and a third of a 428pt screen is ~143px: far enough that you cannot reach it without
+// meaning to.
+//
+// NOT applied to the swipe-RIGHT that marks a set done. That one is not destructive and it is the
+// fastest way to tick a set mid-workout; making it a long drag would cost logging speed to protect
+// against nothing. Only the destructive direction gets the longer travel.
+const DELETE_SWIPE_FRACTION = 1 / 3;
+const deleteSwipeThreshold = (width) => Math.max(70, Math.round((width || 380) * DELETE_SWIPE_FRACTION));
+// An activity row you can swipe left to dismiss, using the SAME third-of-the-width rule as a set.
+// The × button stays — a gesture with no visible affordance is not a way to remove something, it
+// is a way to remove something by accident. This is the shortcut for people who expect it.
+//
+// Deliberately simpler than SetRow's gesture: no long-press, no right-swipe, and it bails the
+// moment the finger looks vertical, because this list scrolls and stealing a scroll would be far
+// more annoying than the feature is worth.
+function SwipeToDismissRow({ onDismiss, C, children }) {
+  const nodeRef = useRef(null);
+  const hintRef = useRef(null);
+  const g = useRef({ x0: 0, y0: 0, dx: 0, active: false, decided: false, thresh: 999 }).current;
+  const [armed, setArmed] = useState(false);
+  const start = (e) => {
+    const t = e.touches[0];
+    g.x0 = t.clientX; g.y0 = t.clientY; g.dx = 0; g.active = false; g.decided = false;
+    g.thresh = deleteSwipeThreshold(nodeRef.current?.getBoundingClientRect().width || 0);
+  };
+  const move = (e) => {
+    const t = e.touches[0];
+    const dx = t.clientX - g.x0, dy = t.clientY - g.y0;
+    if (!g.decided) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      g.decided = true;
+      // Vertical intent wins outright — this list scrolls.
+      g.active = dx < 0 && Math.abs(dx) > Math.abs(dy) * 1.3;
+      if (g.active) setArmed(true);
+    }
+    if (!g.active) return;
+    g.dx = Math.max(-(g.thresh + 40), Math.min(0, dx));
+    if (nodeRef.current) nodeRef.current.style.transform = `translateX(${g.dx}px)`;
+    if (hintRef.current) hintRef.current.style.opacity = String(Math.min(1, Math.abs(g.dx) / (g.thresh * 0.75)));
+  };
+  const end = () => {
+    const committed = g.active && g.dx < -g.thresh;
+    if (nodeRef.current) { nodeRef.current.style.transition = "transform 0.18s"; nodeRef.current.style.transform = "translateX(0px)"; }
+    if (hintRef.current) { hintRef.current.style.transition = "opacity 0.18s"; hintRef.current.style.opacity = "0"; }
+    setTimeout(() => { if (nodeRef.current) nodeRef.current.style.transition = ""; }, 200);
+    setArmed(false);
+    g.active = false; g.decided = false; g.dx = 0;
+    if (committed) { haptic("delete"); onDismiss(); }
+  };
+  return (
+    <div style={{ position:"relative", overflow:"hidden" }}>
+      <div ref={hintRef} style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
+        justifyContent:"flex-end", paddingRight:18, background:"#EF4444E5", opacity: armed ? 0.01 : 0, pointerEvents:"none" }}>
+        <Icon name="trash" size={17} color="#fff" strokeWidth={2.4}/>
+      </div>
+      <div ref={nodeRef} onTouchStart={start} onTouchMove={move} onTouchEnd={end} onTouchCancel={end}
+        style={{ position:"relative", background:C.bg, touchAction:"pan-y" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
 const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, unit, repsTarget, barType, onUpdate, onToggleDone, onDelete, onCopyToNext, onFocusInput, onBlurInput, C }) {
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [showRpe, setShowRpe] = useState(false);
@@ -7596,7 +7669,12 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
 
   function onTouchStart(e) {
     const t = e.touches[0];
-    swipeState.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false, locked: null };
+    // Measure the row NOW rather than using a constant: the threshold is a fraction of what the
+    // user can actually see, and the row is narrower than the viewport (card padding), so a
+    // window-width fraction would ask for a drag that runs off the end of the row.
+    const w = swipeRef.current?.getBoundingClientRect().width || 0;
+    swipeState.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false, locked: null,
+      delThresh: deleteSwipeThreshold(w) };
     // Start long-press timer if copy-to-next is wired up. Cancel if user moves or releases early.
     if (onCopyToNext && (set.weight || set.reps)) {
       clearLongPress();
@@ -7623,10 +7701,13 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       e.preventDefault();
     }
     if (!swipeState.current.swiping) return;
-    const clamped = Math.max(-100, Math.min(100, dx));
-    // Lock-in haptic when crossing the 60px commit threshold
+    // The delete threshold is a THIRD OF THE ROW, so the drag has to be allowed to travel that
+    // far — the old clamp was 100px, which a 143px threshold could never reach. Right (complete)
+    // keeps its short 60px throw.
+    const delThresh = swipeState.current.delThresh;
+    const clamped = Math.max(-(delThresh + 40), Math.min(100, dx));
     const direction = clamped > 0 ? "right" : "left";
-    const wouldCommit = Math.abs(clamped) >= 60;
+    const wouldCommit = direction === "right" ? clamped >= 60 : Math.abs(clamped) >= delThresh;
     const lockKey = wouldCommit ? direction : null;
     if (lockKey !== swipeState.current.locked) {
       swipeState.current.locked = lockKey;
@@ -7640,12 +7721,15 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     } else {
       // Every subsequent frame writes straight to the DOM — no setState, no re-render.
       const rightOp = clamped > 0 ? Math.min(1, clamped / 45) : 0;
-      const leftOp = clamped < 0 ? Math.min(1, Math.abs(clamped) / 45) : 0;
+      // The red hint tracks the LONGER delete travel, so it reaches full strength exactly when the
+      // gesture would commit. Ramping it over a fixed 45px would show a solid red row and a full
+      // sized bin at a third of the distance needed, which reads as "let go now" and lies.
+      const leftOp = clamped < 0 ? Math.min(1, Math.abs(clamped) / (delThresh * 0.75)) : 0;
       if (swipeRef.current) swipeRef.current.style.transform = `translateX(${clamped}px)`;
       if (checkHintRef.current) checkHintRef.current.style.opacity = rightOp;
       if (checkIconRef.current) checkIconRef.current.style.transform = `scale(${Math.min(1, clamped / 60)})`;
       if (deleteHintRef.current) deleteHintRef.current.style.opacity = leftOp;
-      if (deleteIconRef.current) deleteIconRef.current.style.transform = `scale(${Math.min(1, Math.abs(clamped) / 60)})`;
+      if (deleteIconRef.current) deleteIconRef.current.style.transform = `scale(${Math.min(1, Math.abs(clamped) / delThresh)})`;
     }
   }
   function onTouchEnd() {
@@ -7657,14 +7741,15 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       // double-buzzes and the flat "complete" stomps the celebratory PR/last-set feel. Keeping
       // this path identical to tapping the checkmark.
       onToggleDone();
-    } else if (dx < -60 && onDelete) {
+    } else if (dx < -swipeState.current.delThresh && onDelete) {
       onDelete();
       haptic("delete");
     }
     // One state update at gesture end to flip the transition back on and animate to rest.
     setSwipeDx(0);
     setSwipeDir(null);
-    swipeState.current = { startX: 0, startY: 0, dx: 0, swiping: false, locked: null };
+    swipeState.current = { startX: 0, startY: 0, dx: 0, swiping: false, locked: null,
+      delThresh: swipeState.current.delThresh };
   }
 
   // prevIndex is the set's position among working (non-warmup) sets; warmups get -1.
@@ -24188,7 +24273,8 @@ function AppInner() {
                 <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
               </div>
             ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => (
-              <div key={keyOfEvent(ev)} className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+              <SwipeToDismissRow key={keyOfEvent(ev)} C={C} onDismiss={() => dismissActivity(keyOfEvent(ev))}>
+              <div className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
                 <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
@@ -24209,6 +24295,7 @@ function AppInner() {
                 <button onClick={() => dismissActivity(keyOfEvent(ev))} aria-label="Dismiss" className="seshd-hit"
                   style={{ background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:15, lineHeight:1, padding:"6px 2px 6px 6px", flexShrink:0 }}>×</button>
               </div>
+              </SwipeToDismissRow>
             ))}
           </div>
         );
