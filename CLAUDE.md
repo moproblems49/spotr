@@ -372,6 +372,19 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   volume through the floor without meaning anything, and a newest-vs-best test reads it as a stall
   on its own. Erring toward a missed stall is right here: the cost of a missed one is silence, the
   cost of a false one is being told to deload a session you just set a record on.
+- **A dnd-kit DRAG HANDLE MUST BE `touch-action: none`, AND CHROMIUM CANNOT TELL YOU OTHERWISE.**
+  The day editor's handle was "improved" to `pan-y` so a thumb resting on the 38px tile could still
+  scroll the form, on the reasoning that a stationary long-press starts no pan so the delay sensor
+  wins the gesture anyway. Wrong on iOS: `pan-y` hands WebKit the VERTICAL axis, it can claim the
+  gesture the moment the finger moves, waiting out the 200ms buys nothing, and a `preventDefault`
+  after the browser owns the scroll cannot take it back. A reorder drag is vertical, so
+  hold-then-drag scrolled the form and hold-to-reorder was dead on device for a week. It is a
+  documented TouchSensor requirement, and every other grip in the app already had it.
+  **`pw_reorder` could not see it twice over**: it drove the screen with `page.mouse`, which
+  activates the PointerSensor on 6px of MOVEMENT and never touches the press-and-hold — and even a
+  real-TouchEvent hold-drag reorders fine in Chromium, because no compositor scroll competes there.
+  The property is the bug; assert the property. The suite now checks every handle's computed
+  `touch-action` AND drives a genuine 320ms hold.
 - **A SWIPE HINT MUST SATURATE AT THE REAL THRESHOLD.** The delete hint ramped over `threshold *
   0.75` while the comment beside it claimed it "reaches full strength exactly when the gesture
   would commit". At a 60px commit the resulting dead band was 15px and nobody noticed; moving to a
