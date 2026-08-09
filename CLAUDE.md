@@ -1240,15 +1240,19 @@ rather than rendering blank and passing).
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
 
-**OPEN, as of Aug 7 2026 (agreed with Mo, none urgent):**
+**OPEN, as of Aug 9 2026 (agreed with Mo):**
 - **The health engine is CLOSED (Mo, Aug 8).** Seven audit rounds; rounds 5-6 were fixing
   regressions from rounds 4-5. Don't reopen it without a specific reported symptom. One known,
   deliberate limit remains: when activity runs straight through the estimated night (03:00-07:00,
   no watch) the bedtime gate consumes those steps first and the chart under-draws — the headline
   is right and the endpoint pin absorbs it, same as it always did.
-- **The lime pass has had no independent audit, and the post card was changed without a
-  screenshot.** Both are cosmetic-only, and both are waiting on ONE thing: Mo looking at the app
-  on his phone. That is the highest-value next step and it isn't a coding task.
+- **The visual work is CLOSED (Mo, Aug 9).** The lime pass and the post card finally got their
+  independent look — a cold-context audit screenshotted the PR badge, top bar, rest bar and
+  Discover cards in both themes. It found one real miss (History showed two PR badge forms on the
+  same card, and in light theme the older one read as a disabled button) plus the rest bar's
+  theme-dependent accent ring; both fixed. Mo reviewed the three remaining taste calls and rules
+  the light-theme PR green and the exercise-detail PR tile FINE as they are. Do not reopen either
+  without a new reported symptom.
 - **The rest of the "make it feel less AI-generated" critique**: the post header, `PRTag` and set
   ledger are done; a distinctive muscle visualisation, less containment (fewer rounded cards) and
   a typography pass are deliberately DEFERRED until after launch. Editing inline styles across a
@@ -1256,9 +1260,11 @@ rather than rendering blank and passing).
   not move the app toward submission. The item to ignore in that critique is "add one or two
   deliberate imperfections" — brand quirks are a consequence of solving a specific problem a
   specific way, not a decoration you add on purpose.
-- **The feed post card was changed without a screenshot.** The `PRTag`/ledger work was verified via
-  the Playwright suites that render post cards, not by eye — the ad-hoc fixture failed to render a
-  post and said so. Worth a device look.
+- **NOT YET CONFIRMED ON DEVICE: the hold-to-reorder fix** (`2026-08-01a`). The day editor's drag
+  handle was `pan-y`, which hands WebKit the vertical axis; the symptom is iOS-only and CANNOT be
+  reproduced in Chromium, where no compositor scroll competes. The fix follows dnd-kit's documented
+  requirement and this was the app's only handle configured that way, but it is reasoned, not
+  observed. First thing to check on the next device pass.
 
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
 - **Naps should count toward the Body Battery recharge** (Mo parked this Aug 1, from the Garmin
