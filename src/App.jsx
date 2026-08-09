@@ -1,4 +1,4 @@
-// v178091716827
+// v178091716828
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7614,14 +7614,24 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
       <div onClick={closePad} style={{ display:"flex", justifyContent:"center", padding:"4px 0 8px", cursor:"pointer" }}>
         <div style={{ width:40, height:5, borderRadius:3, background:C.border }}/>
       </div>
-      {/* Current field indicator + steppers */}
+      {/* Current field indicator, then BOTH steppers together on the right.
+          They used to sit at opposite ends with the value between them, which meant the two
+          controls you alternate between were a full screen-width apart — one of them always out
+          of thumb reach on a 428pt phone, mid-set, one-handed. Paired on the right they are both
+          under the thumb and the reading moves to where the eye already scans first.
+          Minus stays left of plus: that pairing is near-universal, and swapping it would make a
+          practised thumb hit the wrong one. The gap is deliberate — 10px between two 48px targets
+          keeps them distinct to a thumb, and neither carries a `.seshd-hit` halo that could eat
+          into its neighbour (see the tap-steal note in CLAUDE.md). */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"2px 8px 8px" }}>
-        <button onPointerDown={(e)=>{e.preventDefault(); onStep(-step); haptic("tap");}} onClick={(e)=>e.preventDefault()} style={{ width:48, height:44, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>−</button>
-        <div style={{ textAlign:"center", minWidth:90 }}>
+        <div style={{ textAlign:"left", minWidth:90 }}>
           <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{value !== "" && value != null ? value : "—"}</div>
           <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, marginTop:3 }}>{fieldLabel}</div>
         </div>
-        <button onPointerDown={(e)=>{e.preventDefault(); onStep(step); haptic("tap");}} onClick={(e)=>e.preventDefault()} style={{ width:48, height:44, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>+</button>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <button aria-label="Decrease" onPointerDown={(e)=>{e.preventDefault(); onStep(-step); haptic("tap");}} onClick={(e)=>e.preventDefault()} style={{ width:48, height:44, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>−</button>
+          <button aria-label="Increase" onPointerDown={(e)=>{e.preventDefault(); onStep(step); haptic("tap");}} onClick={(e)=>e.preventDefault()} style={{ width:48, height:44, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>+</button>
+        </div>
       </div>
       {/* Digit grid */}
       <div style={{ display:"flex" }}>

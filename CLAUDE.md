@@ -1310,6 +1310,24 @@ the code side; goes live after ONE more Mac build (see next-Mac-day checklist be
   plugin/capability/entitlement still requires a real Mac build + TestFlight upload — and the
   FIRST build containing the updater plugin itself is exactly that.
 
+**★ SUBMISSION MAC DAY — the checklist for the App Store build (agreed with Mo, Aug 9).**
+An App Store build needs Xcode regardless, so anything native rides along for free that day. Do
+these BEFORE archiving:
+1. `git pull && npm install && npm run build && npx cap sync ios` — the golden order. `cap sync`
+   copies the COMPILED `dist/`, so building first is not optional.
+2. **Add `@capacitor/keyboard`** (`npm i @capacitor/keyboard`, then `npx cap sync ios`) and call
+   `Keyboard.setAccessoryBarVisible({ isVisible: false })` at boot behind the usual platform
+   guard. This is the last big "this is a website" tell: iOS puts a grey `‹ › Done` accessory bar
+   above the system keyboard for web inputs. It does NOT affect the set fields — those are DIVs
+   driven by the in-app NumberPad on purpose, and no system keyboard appears for them — but it is
+   visible on every REAL input: exercise notes, custom rest seconds, search, chat, profile edit,
+   sign-in. The plugin also gives keyboard-will-show events, which is what a focused field needs
+   to scroll clear of the keyboard.
+3. Archive, upload, submit. Listing copy, screenshots, Support URL, review notes and the verified
+   demo accounts (`appstore-submission.md`) are all already in App Store Connect.
+Mo-side and NOT needing a Mac, worth doing first: paste the branded auth email templates from
+`supabase/email-templates/` into the Supabase dashboard, and set the SMTP Sender name to "Seshd".
+
 **~~NEXT MAC DAY checklist (one-time, activates OTA)~~ — ✅ DONE.** The installed build carries
 `@capgo/capacitor-updater` and OTA is device-verified: six bundles shipped to Mo's phone on
 July 29 alone. **No Mac is needed for app-code changes any more** — publish per the recipe in
@@ -1375,10 +1393,8 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
 
 **Step 4 — TestFlight:** archive, upload, add Mo as internal tester.
 
-**Deferred Mac-side (post-TestFlight):** **`@capacitor/keyboard`** (the last big "this is a website"
-tell: iOS shows the grey `‹ › Done` accessory bar above the keyboard for web inputs, and without the
-plugin there's no keyboard-will-show event to scroll the focused field clear — needs a native
-install + `setAccessoryBarVisible(false)`), Live Activity rest timer, home-screen widgets,
+**Deferred Mac-side (post-TestFlight):** (`@capacitor/keyboard` MOVED UP — it is step 2 of the
+submission Mac day above, since that build happens anyway.) Live Activity rest timer, home-screen widgets,
 **Apple Watch app** (log sets from the wrist — Mo confirmed "later", it's a full native target),
 **video posting** (needs a native picker/recorder plugin — do it the Hevy way: 1 short clip per
 workout, thumbnail + tap-to-play, ~30-60s cap, so bandwidth stays sane),
