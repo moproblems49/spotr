@@ -1,4 +1,4 @@
-// v178091716826
+// v178091716827
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13004,8 +13004,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             viewport — same reason the NumberPad and Edit Profile modal portal out. */}
         {rest && !rest.minimized && createPortal(
           <div onClick={() => setRest(p => p ? ({ ...p, minimized: true }) : p)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-            <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.12)" : "rgba(56,189,248,0.12)"} 0%, transparent 70%)`, pointerEvents:"none" }}/>
-            <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:380, borderRadius:28, padding:24, background:"rgba(15,23,42,0.95)", boxShadow:"0 32px 100px rgba(0,0,0,0.35)", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
+            <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.12)" : "rgba(200,241,53,0.10)"} 0%, transparent 70%)`, pointerEvents:"none" }}/>
+            <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:380, borderRadius:28, padding:24, background: C.isDark ? "rgba(38,38,46,0.97)" : "rgba(20,20,24,0.97)", boxShadow:"0 32px 100px rgba(0,0,0,0.45)", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
               <div style={{ position:"absolute", top:16, right:16 }}>
                 <button onClick={() => setRest(p => p ? ({ ...p, minimized:true }) : p)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:999, padding:"10px 14px", fontSize:12, cursor:"pointer", fontFamily:F }}>Minimize</button>
               </div>
@@ -13016,16 +13016,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", transform:"rotate(-90deg)" }}>
                   <defs>
                     <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor={rest.secs<=10 ? "#ef4444" : C.accent} stopOpacity="0.35"/>
-                      <stop offset="100%" stopColor={rest.secs<=10 ? "#dc2626" : C.accent} stopOpacity="0.1"/>
+                      <stop offset="0%" stopColor={rest.secs<=10 ? "#ef4444" : ACCENT_ON_SLAB} stopOpacity="0.35"/>
+                      <stop offset="100%" stopColor={rest.secs<=10 ? "#dc2626" : ACCENT_ON_SLAB} stopOpacity="0.1"/>
                     </linearGradient>
                   </defs>
-                  <circle cx="130" cy="130" r="125" fill="none" stroke={`${C.divider}40`} strokeWidth="10"/>
+                  <circle cx="130" cy="130" r="125" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="10"/>
                   <circle cx="130" cy="130" r="125" fill="none"
-                    stroke={rest.secs<=10 ? "#ef4444" : C.accent}
+                    stroke={rest.secs<=10 ? "#ef4444" : ACCENT_ON_SLAB}
                     strokeWidth="10"
                     strokeDasharray={`${(rest.secs/rest.total)*2*Math.PI*125} ${2*Math.PI*125}`}
-                    style={{ transition:"stroke-dasharray 1s linear, stroke 0.3s ease", strokeLinecap:"round", filter:"drop-shadow(0 0 18px rgba(56,189,248,0.35))" }}
+                    style={{ transition:"stroke-dasharray 1s linear, stroke 0.3s ease", strokeLinecap:"round", filter:`drop-shadow(0 0 18px ${rest.secs<=10 ? "rgba(239,68,68,0.35)" : "rgba(200,241,53,0.30)"})` }}
                   />
                 </svg>
                 <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", cursor:"pointer", userSelect:"none" }}
@@ -13041,13 +13041,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     });
                   }}
                 >
-                  <div style={{ fontSize:12, color:"#93c5fd", fontWeight:700, letterSpacing:1.2, marginBottom:10, textTransform:"uppercase" }}>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontWeight:700, letterSpacing:1.2, marginBottom:10, textTransform:"uppercase" }}>
                     {rest.running ? "Tap to pause" : "Tap to resume"}
                   </div>
-                  <div style={{ fontSize:72, fontWeight:900, color:rest.secs<=10 ? "#f87171" : "#38bdf8", fontFamily:MONO, lineHeight:1, letterSpacing:-1.5, textShadow:rest.running ? `0 0 18px rgba(56,189,248,0.4)` : "none" }}>
+                  <div style={{ fontSize:72, fontWeight:900, color:rest.secs<=10 ? "#F87171" : "#fff", fontFamily:MONO, lineHeight:1, letterSpacing:-1.5, textShadow:rest.running ? "0 0 24px rgba(255,255,255,0.18)" : "none" }}>
                     {fmtTime(rest.secs)}
                   </div>
-                  <div style={{ fontSize:12, color:"#cbd5e1", marginTop:10 }}>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:10 }}>
                     of {fmtTime(rest.total)}
                   </div>
                 </div>
@@ -13058,9 +13058,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     onClick={() => { setRest({ secs:s, total:s, running:true, startedAt:Date.now() }); try{navigator.vibrate(10);} catch{} }}
                     style={{
                       padding:"12px 0", borderRadius:14, fontSize:12, fontWeight:700, fontFamily:MONO,
-                      background: rest.total===s ? C.primary : C.surface,
-                      border: `2px solid ${rest.total===s ? C.accent : C.divider}`,
-                      color: rest.total===s ? C.onPrimary : C.text,
+                      background: rest.total===s ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.06)",
+                      border: `2px solid ${rest.total===s ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)"}`,
+                      color: rest.total===s ? "#fff" : "rgba(255,255,255,0.85)",
                       cursor:"pointer"
                     }}
                   >
@@ -13076,7 +13076,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     const newTotal = Math.max(newSecs, p.total - 10);
                     return p.running ? { ...p, secs:newSecs, total:newTotal, startedAt:Date.now() - ((newTotal - newSecs) * 1000) } : { ...p, secs:newSecs, total:newTotal };
                   })}
-                  style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:C.surface, border:`2px solid ${C.divider}`, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                  style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:"rgba(255,255,255,0.06)", border:"2px solid rgba(255,255,255,0.12)", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                   −10s
                 </button>
                 <button onClick={() => setRest(p => {
@@ -13085,7 +13085,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     const newTotal = p.total + 10;
                     return p.running ? { ...p, secs:newSecs, total:newTotal, startedAt: Date.now() - ((newTotal - newSecs) * 1000) } : { ...p, secs:newSecs, total:newTotal };
                   })}
-                  style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:C.surface, border:`2px solid ${C.divider}`, color:C.text, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                  style={{ flex:1, minWidth:120, padding:"12px", borderRadius:14, background:"rgba(255,255,255,0.06)", border:"2px solid rgba(255,255,255,0.12)", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                   +10s
                 </button>
               </div>
@@ -13093,14 +13093,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <input type="text" inputMode="numeric" autoComplete="off" autoCorrect="off" spellCheck={false} data-1p-ignore data-lpignore="true" placeholder="Custom seconds"
                   onBlur={e => { const v = parseInt(e.target.value); if (v > 0 && v <= 3600) { setRest({ secs:v, total:v, running:true, startedAt: Date.now() }); e.target.value = ""; } }}
                   onKeyDown={e => { if (e.key === "Enter") { const v = parseInt(e.target.value); if (v > 0 && v <= 3600) { setRest({ secs:v, total:v, running:true, startedAt: Date.now() }); e.target.value = ""; } e.target.blur(); } }}
-                  style={{ flex:1, minWidth:120, padding:"14px 16px", borderRadius:14, border:`2px solid ${C.divider}`, background:C.surface, color:C.text, fontSize:14, outline:"none", fontFamily:F, textAlign:"center" }}
+                  className="seshd-rest-input"
+                  style={{ flex:1, minWidth:120, padding:"14px 16px", borderRadius:14, border:"2px solid rgba(255,255,255,0.12)", background:"rgba(255,255,255,0.06)", color:"#fff", fontSize:14, outline:"none", fontFamily:F, textAlign:"center" }}
                 />
                 <button onClick={() => { clearInterval(rtRef.current); setRest(null); try{navigator.vibrate(20);} catch{} }}
-                  style={{ minWidth:120, padding:"14px 16px", borderRadius:14, background:"#8B5CF6", border:"2px solid #8B5CF6", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
+                  style={{ minWidth:120, padding:"14px 16px", borderRadius:14, background:"#fff", border:"2px solid #fff", color:"#0d0d10", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>
                   Skip
                 </button>
               </div>
               <style>{`
+                .seshd-rest-input::placeholder { color: rgba(255,255,255,0.4); }
                 @keyframes pulse {
                   0%, 100% { opacity: 1; transform: scale(1); }
                   50% { opacity: 0.7; transform: scale(1.1); }
