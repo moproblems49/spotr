@@ -1,4 +1,4 @@
-// v178091716822
+// v178091716823
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7686,13 +7686,20 @@ function SwipeToDismissRow({ onDismiss, C, children }) {
     if (!g.active) return;
     g.dx = Math.max(-(g.thresh + 40), Math.min(0, dx));
     if (nodeRef.current) nodeRef.current.style.transform = `translateX(${g.dx}px)`;
-    if (hintRef.current) hintRef.current.style.opacity = String(Math.min(1, Math.abs(g.dx) / (g.thresh * 0.75)));
+    // Full red at the REAL threshold, not at three quarters of it — see the matching note in
+    // SetRow. Saturating early leaves a band where the row looks committed and does nothing.
+    if (hintRef.current) hintRef.current.style.opacity = String(Math.min(1, Math.abs(g.dx) / g.thresh));
   };
   const end = () => {
     const committed = g.active && g.dx < -g.thresh;
     if (nodeRef.current) { nodeRef.current.style.transition = "transform 0.18s"; nodeRef.current.style.transform = "translateX(0px)"; }
     if (hintRef.current) { hintRef.current.style.transition = "opacity 0.18s"; hintRef.current.style.opacity = "0"; }
-    setTimeout(() => { if (nodeRef.current) nodeRef.current.style.transition = ""; }, 200);
+    // Clear BOTH transitions, not just the row's. Leaving the hint's 0.18s in place made every
+    // swipe after the first ramp the red 180ms behind the finger while the first was instant.
+    setTimeout(() => {
+      if (nodeRef.current) nodeRef.current.style.transition = "";
+      if (hintRef.current) hintRef.current.style.transition = "";
+    }, 200);
     setArmed(false);
     g.active = false; g.decided = false; g.dx = 0;
     if (committed) { haptic("delete"); onDismiss(); }
@@ -7771,7 +7778,13 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     // far — the old clamp was 100px, which a 143px threshold could never reach. Right (complete)
     // keeps its short 60px throw.
     const delThresh = swipeState.current.delThresh;
-    const clamped = Math.max(-(delThresh + 40), Math.min(100, dx));
+    // A row with no `onDelete` — a one-set exercise, where swipe-delete is deliberately off —
+    // must not be given the long delete throw. Widening the clamp to `delThresh + 40` for every
+    // row let those slide 173px off the card over bare background, with no red hint and no bin
+    // behind them, then spring back: it reads as "delete is broken", not "this row can't be
+    // deleted". Left travel stays short where there is nothing to reveal.
+    const leftLimit = onDelete ? delThresh + 40 : 24;
+    const clamped = Math.max(-leftLimit, Math.min(100, dx));
     const direction = clamped > 0 ? "right" : "left";
     const wouldCommit = direction === "right" ? clamped >= 60 : Math.abs(clamped) >= delThresh;
     const lockKey = wouldCommit ? direction : null;
@@ -7790,7 +7803,13 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       // The red hint tracks the LONGER delete travel, so it reaches full strength exactly when the
       // gesture would commit. Ramping it over a fixed 45px would show a solid red row and a full
       // sized bin at a third of the distance needed, which reads as "let go now" and lies.
-      const leftOp = clamped < 0 ? Math.min(1, Math.abs(clamped) / (delThresh * 0.75)) : 0;
+      //
+      // Saturating at `delThresh * 0.75` told the same lie more quietly, and the sentence above
+      // claimed otherwise while the code did it: the row went solid red 33px before the commit
+      // point, so a third of a screen-width of travel looked fully armed and deleted nothing.
+      // The old code had the same 0.75 ratio against a 60px commit, where the dead band was 15px
+      // and easy to miss; tripling the travel tripled the lie. Divide by the real threshold.
+      const leftOp = clamped < 0 ? Math.min(1, Math.abs(clamped) / delThresh) : 0;
       if (swipeRef.current) swipeRef.current.style.transform = `translateX(${clamped}px)`;
       if (checkHintRef.current) checkHintRef.current.style.opacity = rightOp;
       if (checkIconRef.current) checkIconRef.current.style.transform = `scale(${Math.min(1, clamped / 60)})`;
@@ -13393,7 +13412,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         // Matched by id (not index) on undo, since the Undo button can fire seconds
                         // later after other edits have shifted indices around.
                         const removed = ex.sets[si]; const exId = ex.id; const fallbackIndex = si;
-                        setSession(p => ({ ...p, exercises: p.exercises.map(x=>x.id!==exId?x:{...x,sets:x.sets.filter(s=>s.id!==removed.id)}) }));
+                        // MATCH BY ID ONLY WHEN THERE IS ONE. Every path that creates a set stamps
+                        // `id: uid()`, so this is belt-and-braces — but if a session ever reaches
+                        // here without ids (an old one resumed out of localStorage after an update),
+                        // `s.id !== removed.id` is `undefined !== undefined` for EVERY row and one
+                        // swipe silently deletes the whole exercise, with an Undo that puts back a
+                        // single set. Verified: it wipes 6 rows to 0. Fall back to the index.
+                        setSession(p => ({ ...p, exercises: p.exercises.map((x, xi) =>
+                          (exId != null ? x.id !== exId : xi !== ei) ? x : { ...x,
+                            sets: removed?.id != null ? x.sets.filter(s => s.id !== removed.id)
+                                                      : x.sets.filter((_, i) => i !== si) }) }));
                         toast("Set deleted", "info", { label:"Undo", onAction: () => setSession(p => ({ ...p, exercises: p.exercises.map(x => { if (x.id !== exId) return x; const idx = Math.min(fallbackIndex, x.sets.length); return { ...x, sets: [...x.sets.slice(0,idx), removed, ...x.sets.slice(idx)] }; }) })) });
                       } : undefined}
                       onCopyToNext={() => setSession(p => ({
