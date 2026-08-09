@@ -1,4 +1,4 @@
-// v178091716824
+// v178091716825
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1291,6 +1291,13 @@ const THEMES = {
     tabBg: "rgba(246,245,243,0.85)",
   }
 };
+
+// THE ACCENT FOR A SURFACE THAT IS DARK IN BOTH THEMES. A few elements — the minimised rest bar is
+// the one that exists today — are a near-black slab whatever the theme, so their contents already
+// use fixed light values instead of C.text. Their accent has to be pinned the same way: C.accent on
+// the light theme is #65a30d, chosen to be readable on WHITE, and over a dark slab it reads as an
+// olive border rather than an accent. Use this for anything painted on such a slab.
+const ACCENT_ON_SLAB = THEMES.dark.accent;
 
 const F = "'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
 // Display face for headline moments only (wordmark, screen titles, Wrapped). Body text
@@ -12464,8 +12471,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         if (maxVolLbs > 0 && maxVolLbs > prevVol) { newPRsVolume[ex.name] = maxVolLbs; types.push("volume"); }
 
         if (types.length) {
-          // firstEver: no prior weight PR existed, so `increase` is just the full weight —
-          // the celebration modal shows "first record" instead of a meaningless "+225" delta.
+          // firstEver: no prior weight PR existed, so `increase` would be the full weight, which
+          // as a delta ("+225 over your previous best") is meaningless on a first-ever record.
+          // The flag survives because it is the cheap guard against that copy coming back; the
+          // modal currently prints no delta line at all, so there is nothing for it to suppress.
+          // Don't go hunting for a "first record" string — the comment used to promise one and
+          // no such copy exists.
           hitPRs.push({ name: ex.name, weight: maxW, increase: Math.round((maxLbs - prevW) * 10) / 10, types, firstEver: prevW === 0 });
         }
       });
@@ -13109,11 +13120,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             position:"fixed", left:12, right:12, bottom:"calc(env(safe-area-inset-bottom) + 92px)",
             zIndex:490, padding:"9px 10px 9px 14px", borderRadius:14,
             background: C.isDark ? "rgba(38,38,46,0.94)" : "rgba(20,20,24,0.95)",
-            backdropFilter:"blur(18px) saturate(1.5)", WebkitBackdropFilter:"blur(18px) saturate(1.5)",
-            border:`1px solid ${rest.secs<=10 ? "#EF4444" : `${C.accent}59`}`,
+            // No `backdrop-filter`. The fill above is 94-95% opaque, so ~5% of the backdrop shows
+            // through and nothing behind the bar is discernible either way — it was a fixed blur
+            // layer over the one list you scroll continuously for an hour, bought nothing.
+            //
+            // ACCENT_ON_SLAB, not C.accent: the slab is dark in BOTH themes (that is why the text
+            // and buttons below are fixed light values), but the ring was left theme-dependent.
+            // On the light theme C.accent is #65a30d — the daylight lime picked to be readable on
+            // WHITE — and at 35% over a near-black slab it computes to about rgb(48,70,19), a dark
+            // olive that reads as a plain border rather than an accent ring.
+            border:`1px solid ${rest.secs<=10 ? "#EF4444" : `${ACCENT_ON_SLAB}59`}`,
             boxShadow: rest.secs<=10
               ? "0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px rgba(239,68,68,0.25)"
-              : `0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px ${C.accent}1f`,
+              : `0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px ${ACCENT_ON_SLAB}1f`,
             display:"flex", alignItems:"center", gap:10,
           }}>
             {/* The slab is dark in BOTH themes, so these are fixed light values rather than C.text
@@ -14714,9 +14733,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {sess.hrSummary.avg} avg · {sess.hrSummary.peak} peak</span> : null}</div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-                          {prExercises.length > 0 && (
-                            <div style={{ background:C.text, color:C.bg, borderRadius:6, padding:"3px 9px", fontSize:10, fontWeight:800, letterSpacing:1 }}>PR</div>
-                          )}
+                          {/* THE BADGE HAS ONE FORM: `PRTag`. This chip was missed when the badge
+                              became a skewed decal, so a single History card showed BOTH — a black
+                              rounded pill up here and lime decals on the exercise rows 50px below.
+                              In light theme it was worse than a mismatch: the same black rounded
+                              rect as the `Repeat` button sitting 8px to its right, so it read as a
+                              disabled button rather than a badge. */}
+                          {prExercises.length > 0 && <PRTag C={C}/>}
                           <button onClick={() => repeatFromSession(sess)} style={{
                             background:C.text, border:"none", borderRadius:8,
                             color:C.bg, fontSize:12, padding:"5px 11px", cursor:"pointer", fontFamily:F, fontWeight:700
