@@ -1,4 +1,4 @@
-// v178091716823
+// v178091716824
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20573,6 +20573,12 @@ function AppInner() {
   const [dbReady, setDbReady] = useState(false);
   // Feed pagination
   const [feedHasMore, setFeedHasMore] = useState(false);
+  // Posts returned by the paginated global query so far — the offset for the next page. Kept apart
+  // from store.posts.length, which also holds your own posts merged in for Activity.
+  const feedPagedCount = useRef(0);
+  // Has the feed query actually come back at least once? `dataLoading` only covers loadUserData,
+  // so it clears BEFORE the posts land — and the activity re-baseline below is derived from posts.
+  const [feedLoadedOnce, setFeedLoadedOnce] = useState(false);
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   // AI coach modal
   const [showCoach, setShowCoach] = useState(false);
@@ -20747,6 +20753,12 @@ function AppInner() {
     // Nav taps land while the messages overlay is up (the nav floats above it) — close it
     // so the tap actually shows the chosen tab instead of switching underneath the overlay.
     if (showMessages) { setShowMessages(false); refreshMsgUnread(); }
+    // Activity is the same shape and was missed when it became an overlay: the nav floats at
+    // zIndex 50 over its zIndex 40, so a nav tap switched the tab UNDERNEATH it — the icon lit up
+    // and the screen did not change, which reads as the app having frozen. As a pseudo-tab this
+    // could not happen, because setTab left the screen by definition. Any future full-screen
+    // overlay reachable with the nav visible needs a line here too.
+    if (showActivity) setShowActivity(false);
     if (t !== tab) { haptic("tab"); track("tab_viewed", { tab: t }); }
     // A swipe already animated the transition with the drag/glide — replaying the keyframe on top
     // of it was a visible double-animation, so only non-swipe switches arm the slide.
@@ -21711,6 +21723,14 @@ function AppInner() {
       // De-dupe by id — your recent posts are in both lists.
       const seenIds = new Set((pagePosts || []).map(p => p.id));
       const posts = [...pagePosts, ...((ownPosts || []).filter(p => !seenIds.has(p.id)))];
+      // HOW MANY POSTS THE PAGINATED QUERY HAS RETURNED, which is NOT `store.posts.length` any
+      // more. "Load older posts" used the store's length as its offset, and the store now also
+      // carries up to 200 of your own posts that were never part of the global list — so the
+      // offset overshot by exactly that many and skipped a whole window of other people's posts
+      // with no way back to them. Measured: with 40 own posts off the first page, page 2 asked for
+      // offset 70 instead of 30 and 40 posts from people you follow became unreachable.
+      feedPagedCount.current = offset + pagePosts.length;
+      setFeedLoadedOnce(true);
       // If we got a full page back, there are probably more to load.
       setFeedHasMore(pagePosts.length >= FEED_PAGE_SIZE);
 
@@ -22672,7 +22692,10 @@ function AppInner() {
     if (!tok) return;
     setFeedLoadingMore(true);
     try {
-      const offset = (store.posts || []).length;
+      // Count only what the PAGINATED query has returned — see the note in loadFeed. Falling back
+      // to store.posts.length would reintroduce the skipped-window bug for anyone whose own posts
+      // outnumber nothing at all, i.e. everyone with a post outside the newest page.
+      const offset = feedPagedCount.current;
       await loadFeed(tok, currentUserId, store.users || [], offset);
     } catch (e) { devError("loadMoreFeed error:", e); }
     finally { setFeedLoadingMore(false); }
@@ -23077,16 +23100,24 @@ function AppInner() {
   // actually loaded, treat whatever exists as already seen. Gated on !dataLoading because the
   // count is derived from loaded posts: re-baselining before they arrive stores 0 and the badge
   // reappears the moment they land.
-  const REBASELINE_KEY = "seshd_activity_rebaselined_v2";
+  // v3: bumped because 9fd19da changed WHAT seenActivityCount counts (activity on the posts that
+  // happened to be on the feed page -> activity on all of your posts). A persisted count needs a
+  // fresh re-baseline whenever its meaning changes, or every existing user gets a phantom badge on
+  // first launch for kudos they already read. The v2 guard had already been burned by bundle q.
+  const REBASELINE_KEY = "seshd_activity_rebaselined_v3";
   useEffect(() => {
-    if (dataLoading) return;
+    // WAIT FOR THE FEED, NOT JUST FOR dataLoading. `dataLoading` tracks loadUserData and clears
+    // before loadFeed returns, so re-baselining on it alone banks a count of 0 and the phantom
+    // badge simply reappears when the posts land a moment later — measured at 5. The comment
+    // above always said the count is derived from loaded posts; this is the gate that means it.
+    if (dataLoading || !feedLoadedOnce) return;
     try {
       if (localStorage.getItem(REBASELINE_KEY)) return;
       localStorage.setItem(REBASELINE_KEY, "1");
     } catch { return; }
     markActivitySeen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataLoading, currentActivityCount]);
+  }, [dataLoading, feedLoadedOnce, currentActivityCount]);
 
   // Clear the unread badge whenever the Activity overlay is open
   useEffect(() => {
