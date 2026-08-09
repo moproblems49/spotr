@@ -110,6 +110,31 @@ const MO = store([
   check("...and the banner stays quiet over the top of it", !hdl.stalled);
 }
 
+// ── 4b. FALLING BACK FROM THE TOP IS A STALL, NOT AN EARNED JUMP ─────────────────────────────
+// Found auditing §4's own guard. "At the top of the range" is a question about the LAST session;
+// the first cut asked `Math.max` over all four, so a single 185x8 four sessions ago suppressed the
+// banner for a lifter who had since dropped to 185x5 and stuck there. Reps sliding backwards at a
+// flat weight is the plainest stall there is, and it went unreported.
+{
+  const fellBack = store([
+    [3,  [[185, 5]]],
+    [10, [[185, 5]]],
+    [17, [[185, 5]]],
+    [24, [[185, 8]]],   // the one good session, still inside the 4-session window
+  ], "Barbell Bench Press");
+  const dl = detectDeloadNeeded(fellBack, "Barbell Bench Press", "lbs", "5-8");
+  console.log(`peaked at 8 then stuck at 5 -> ${dl.stalled ? "STALLED" : "not stalled"}`);
+  check("a lifter who fell back off the top of the range is still stalled", dl.stalled);
+  const kinds = [0, 1].map(i => suggestNextSet(fellBack, "Barbell Bench Press", "5-8", "lbs", i).type);
+  check("...and the rows say so too", kinds.every(t => t === "deload"), kinds.join(" "));
+
+  // A degenerate target must not silently switch the banner off. "0-0" made every rep count clear
+  // the top of the range, so `earnedTheJump` was true forever.
+  const flat0 = store([2, 9, 16, 23].map(n => [n, [[185, 5]]]), "Barbell Bench Press");
+  check("a 0-0 rep target does not disable the plateau check",
+    detectDeloadNeeded(flat0, "Barbell Bench Press", "lbs", "0-0").stalled);
+}
+
 // ── 5. One short session must not manufacture a plateau ──────────────────────────────────────
 // Three sets instead of four because the gym was closing. Volume collapses; nothing about the
 // lifter changed. A newest-vs-best test calls that a stall on its own.

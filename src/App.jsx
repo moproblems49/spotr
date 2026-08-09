@@ -1,4 +1,4 @@
-// v178091716821
+// v178091716822
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4178,7 +4178,7 @@ function exerciseProgressed(sessions, unit) {
     // logged in kg read by an lbs user would otherwise invent progress out of the conversion.
     w: cvt(s.topWeight, s.unit, unit),
     topReps: s.topReps || 0,
-    totalReps: s.sets.reduce((a, x) => a + (x.r || 0), 0),
+    totalReps: (s.sets || []).reduce((a, x) => a + (x.r || 0), 0),
     vol: cvt(s.volume, s.unit, unit),
   }));
   const recent = series.slice(0, 2), older = series.slice(2);
@@ -4231,7 +4231,12 @@ function detectDeloadNeeded(store, exName, unit, repsTarget = null) {
   // At or past the top of the target range at a flat weight is the textbook cue to ADD load. That
   // is what the chips advise, so the banner must not be telling him to take load off.
   const range = repsTarget ? parseRepRange(repsTarget) : null;
-  const earnedTheJump = !!range && Math.max(...recentRaw.map(s => s.topReps || 0)) >= range.high;
+  // "AT the top of the range" is a question about the LAST session, not about the window. The
+  // first cut took `Math.max` over all four, so one good session four weeks ago suppressed the
+  // banner for a lifter who had since fallen back and stuck: range 5-8, a session at 185x8 then
+  // three at 185x5, and the plateau went unreported because of the 8 he could no longer do.
+  // Reps sliding backwards at a flat weight is a stall in the plainest sense.
+  const earnedTheJump = !!range && range.high > 0 && (recentRaw[0]?.topReps || 0) >= range.high;
   if (weightFlat && !progressed && e1rmNotProgressing && !earnedTheJump) {
     const dl = unit === "lbs" ? Math.round((maxTop * 0.9) / 5) * 5 : Math.round((maxTop * 0.9) / 2.5) * 2.5;
     return {
