@@ -23,7 +23,7 @@ const STORE = {
 };
 
 const b = await chromium.launch({ executablePath: EXE, args: ["--no-sandbox"] });
-const page = await b.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2 });
+const page = await b.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 page.setDefaultTimeout(4000);
 await page.addInitScript(([store]) => {
   localStorage.setItem("seshd_v1", JSON.stringify(store));
@@ -184,6 +184,49 @@ const steppers = await page.evaluate(() =>
 console.log("STEPPERS:  ", JSON.stringify(steppers));
 check("the editor stepper reads the count out of the reps string",
   JSON.stringify(steppers) === JSON.stringify(["3", "4", "3", "3", "4"]), JSON.stringify(steppers));
+
+// ── EVERY DRAG HANDLE MUST BE touch-action: none ─────────────────────────────────────────────
+// dnd-kit's TouchSensor documents this as a REQUIREMENT on the handle, and it is the one property
+// this file could not otherwise defend. Everything above drives the screen with `page.mouse`,
+// which activates the PointerSensor on 6px of MOVEMENT and never touches the 200ms press-and-hold
+// that a phone uses — so when this handle was changed to `pan-y`, every assertion above stayed
+// green while hold-to-reorder was dead on device. `pan-y` hands WebKit the VERTICAL axis, a
+// reorder drag is vertical, and a preventDefault after the browser has claimed the scroll cannot
+// take it back. Chromium here has no real compositor scroll competing, so it cannot reproduce the
+// symptom — but it can read the property, and the property is the bug.
+const handleTA = await page.evaluate(() =>
+  [...document.querySelectorAll('[aria-label="Drag to reorder"]')].map(h => getComputedStyle(h).touchAction));
+console.log("HANDLE touch-action:", JSON.stringify(handleTA));
+check("every drag handle is touch-action:none, as dnd-kit's TouchSensor requires",
+  handleTA.length > 0 && handleTA.every(t => t === "none"), JSON.stringify(handleTA));
+
+// ── AND THE HOLD ITSELF, WITH A REAL FINGER ──────────────────────────────────────────────────
+// A 320ms stationary press, then a vertical drag, dispatched as real TouchEvents. This exercises
+// the TouchSensor path the mouse drags above skip entirely.
+{
+  const names = () => page.evaluate(() =>
+    [...document.querySelectorAll("input")].map(i => i.value).filter(v => /Squat|Extension|Press|Curl|Raise/.test(v)));
+  const before = await names();
+  const hs = page.getByRole("button", { name: "Drag to reorder" });
+  const b0 = await hs.nth(0).boundingBox(), b2 = await hs.nth(2).boundingBox();
+  await page.evaluate(async ([p0, p2]) => {
+    const el = document.elementFromPoint(p0.x + p0.width / 2, p0.y + p0.height / 2);
+    if (!el) return;
+    const x = p0.x + p0.width / 2, y = p0.y + p0.height / 2, ty = p2.y + p2.height / 2;
+    const T = (t, cy) => { const tt = new Touch({ identifier: 1, target: el, clientX: x, clientY: cy });
+      return new TouchEvent(t, { bubbles: true, cancelable: true,
+        touches: t === "touchend" ? [] : [tt], targetTouches: t === "touchend" ? [] : [tt], changedTouches: [tt] }); };
+    el.dispatchEvent(T("touchstart", y));
+    await new Promise(r => setTimeout(r, 320));                       // clear the 200ms delay
+    for (let i = 1; i <= 10; i++) { el.dispatchEvent(T("touchmove", y + (ty - y) * i / 10)); await new Promise(r => setTimeout(r, 22)); }
+    el.dispatchEvent(T("touchend", ty));
+    await new Promise(r => setTimeout(r, 500));
+  }, [b0, b2]);
+  const after = await names();
+  console.log("HOLD-DRAG:  ", JSON.stringify(before), "->", JSON.stringify(after));
+  check("press-and-hold then drag reorders the list", JSON.stringify(before) !== JSON.stringify(after),
+    "the order did not change");
+}
 
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

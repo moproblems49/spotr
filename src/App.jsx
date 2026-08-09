@@ -1,4 +1,4 @@
-// v178091716825
+// v178091716826
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10320,13 +10320,19 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                     call made on the program rows, where conflating tap and drag was a real bug. */}
                 <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderLeft:`4px solid ${mColor}` }}>
                   <div {...handleProps} aria-label="Drag to reorder" style={{ width:38, height:38, borderRadius:10, background:`${mColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"grab",
-                    // pan-y, NOT none. `none` would make this 38px tile a scroll dead-zone in a
-                    // long editor form — a thumb resting on an exercise icon couldn't scroll the
-                    // page at all. With pan-y the browser still scrolls a moving swipe, while a
-                    // stationary long-press starts no pan, so the delay sensor activates cleanly
-                    // and preventDefaults from there. (The dedicated ⠿ grips elsewhere use `none`
-                    // because they're obviously handles and nobody scrolls from them.)
-                    touchAction:"pan-y", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none" }}>
+                    // `none`, and it is not negotiable — dnd-kit's TouchSensor documents it as a
+                    // requirement on the handle. This tile briefly ran `pan-y` on the reasoning
+                    // that a stationary long-press "starts no pan, so the delay sensor activates
+                    // cleanly and preventDefaults from there". That is wrong on iOS: `pan-y` tells
+                    // WebKit the VERTICAL axis is its to scroll, and it can claim the gesture the
+                    // moment the finger moves — waiting buys nothing, and a preventDefault after
+                    // the fact cannot take the scroll back. A reorder drag IS vertical, so
+                    // hold-then-drag scrolled the form instead of lifting the row: hold-to-reorder
+                    // was dead on device while still passing in Chromium, where no real compositor
+                    // scroll competes for the gesture. Every other grip in the app uses `none`;
+                    // this was the only exception. The cost is real but small — a 38px tile you
+                    // cannot start a scroll from, which is the standard trade for having a handle.
+                    touchAction:"none", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none" }}>
                     <MuscleIcon muscle={exInfo?.muscle||""} size={22} name={ex.name} C={C}/>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
