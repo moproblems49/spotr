@@ -372,6 +372,39 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   volume through the floor without meaning anything, and a newest-vs-best test reads it as a stall
   on its own. Erring toward a missed stall is right here: the cost of a missed one is silence, the
   cost of a false one is being told to deload a session you just set a record on.
+- **A SWIPE HINT MUST SATURATE AT THE REAL THRESHOLD.** The delete hint ramped over `threshold *
+  0.75` while the comment beside it claimed it "reaches full strength exactly when the gesture
+  would commit". At a 60px commit the resulting dead band was 15px and nobody noticed; moving to a
+  third of the row made it 33px of travel that looks fully armed and deletes nothing. Also: a row
+  with no `onDelete` must not get the long throw — one-set exercises slid 173px over bare
+  background with no hint behind them and sprang back, which reads as "delete is broken". Sim:
+  `pw_setswipe` (and note `sim_setswipe` can only ever test the `|| 380` fallback, because jsdom
+  reports width 0 for every element — the measurement itself needs a real browser).
+- **AN OVERLAY DOES NOT REMOVE THE DOM UNDERNEATH IT, AND `innerText` REPORTS IT ANYWAY.** Judging
+  "which screen am I on" from `document.body.innerText` passed against a build where the overlay
+  was stuck open, twice, in two different directions: once testing for the ABSENCE of "Activity"
+  (the feed says "Your friends' activity", so it matched a screen where the overlay had never
+  opened) and once for the PRESENCE of profile text that was there the whole time, covered. Use
+  `elementFromPoint`, or count a node only the screen under test renders. Same family as the
+  fixture rules above: four drafts of `pw_activity2` passed against the broken build before one
+  measured the right thing.
+- **A FULL-SCREEN OVERLAY NEEDS A LINE IN `switchTab`.** The bottom nav floats at zIndex 50 over
+  overlays at 40, so a nav tap switches the tab UNDERNEATH: the icon lights up and the screen does
+  not change. `showMessages` had the line; Activity did not when it stopped being a pseudo-tab.
+  Any new overlay reachable while the nav is visible needs one too.
+- **AN OFFSET DERIVED FROM `store.posts.length` IS WRONG THE MOMENT ANYTHING ELSE MERGES INTO IT.**
+  `loadFeed` started merging your own posts in (so Activity survives feed pagination) and
+  "Load older posts" kept using the store's length — so the offset overshot by the number of merged
+  own posts and skipped a whole page of everyone else's. Track the paginated count separately
+  (`feedPagedCount`). Related: the activity re-baseline must wait for `feedLoadedOnce`, not just
+  `!dataLoading` — dataLoading covers loadUserData and clears BEFORE the posts land, so the
+  re-baseline banks 0 and the phantom badge returns a moment later.
+- **A SURFACE THAT IS DARK IN BOTH THEMES NEEDS `ACCENT_ON_SLAB`, NOT `C.accent`.** The minimised
+  rest bar pins its text and buttons to fixed light values for exactly this reason, then used
+  `C.accent` for its ring — which on the light theme is the daylight lime chosen to read on WHITE,
+  computing to a dark olive over a near-black slab. And check whether a `backdrop-filter` is doing
+  anything: behind a 94% opaque fill it is a blur layer over your most-scrolled list, buying
+  nothing.
 - **A set COUNT and the volume printed beside it must come from the same list.** Four places paired
   `filter(s => s.done).length` (warmups included) with `sessionVolume()` (warmups excluded), so the
   same line read "5 sets · 3,850 lbs" for a volume drawn from 3 sets — including the LIVE workout
