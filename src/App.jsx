@@ -1,4 +1,4 @@
-// v178091716828
+// v178091716829
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5957,6 +5957,18 @@ const MAX_DISMISSED_ACTIVITY = 1000;
 // and the badge is displayed as "9+" long before you reach it.
 const ACTIVITY_RENDER_CAP = 300;
 function dateKeyOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+// THE INVERSE, AND IT IS NOT `new Date(key)`. A bare "2026-08-10" is parsed by the spec as midnight
+// UTC, and every getter that reads it back — getDate(), toLocaleDateString() — is LOCAL. West of
+// Greenwich that lands on the previous EVENING, so the whole day reads one earlier: a Monday
+// session displayed as "Aug 9" in the exercise's Recent list and "8/9" on the chart axis, while
+// the chart's own hold-to-read tooltip (which already parsed at local noon) correctly said
+// "Mon, Aug 10". Noon is the safe anchor — no timezone on Earth is 12 hours from UTC in a way that
+// moves the date, and it survives DST. Accepts a full timestamp too, since some rows carry
+// `created_at` rather than a date key.
+function dateFromKey(v) {
+  const str = String(v ?? "");
+  return new Date(str.length <= 10 ? str + "T12:00:00" : str);
+}
 const nightKeyOf = (t) => dateKeyOf(t - NIGHT_SHIFT_MS);
 // A sample in the small hours proves you were ASLEEP in that bucket, as opposed to awake on the
 // sofa at 22:30 — which is the whole distinction the pin has to make.
@@ -15974,7 +15986,7 @@ function ExerciseVolumeChart({ data, unit, C }) {
   // and its monthly points just "Jul", which is exactly what holding is meant to disambiguate.
   const fmtPointDate = (d) => {
     if (!d?.date) return d?.label || "";
-    const dt = new Date(String(d.date).length <= 10 ? d.date + "T12:00:00" : d.date);
+    const dt = dateFromKey(d.date);
     return isNaN(dt) ? (d.label || "") : dt.toLocaleDateString("en", { weekday:"short", month:"short", day:"numeric" });
   };
   const fmtVal = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
@@ -16068,7 +16080,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
           const r = parseInt(s.reps) || 0;
           return calc1RM(w, r) || 0;
         }));
-        const d = new Date(dk);
+        const d = dateFromKey(dk);
         const label = `${d.getMonth()+1}/${d.getDate()}`;
         // Keep the actual sets, not just how many. "3 sets" tells a lifter nothing they want to
         // know; "205×5 · 205×5 · 195×8" is the session.
@@ -16209,7 +16221,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
             </div>
             <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", background:C.surface }}>
               {recentSessions.map((s, i) => {
-                const d = new Date(s.date);
+                const d = dateFromKey(s.date);
                 const dateLabel = d.toLocaleDateString(undefined, { month:"short", day:"numeric" });
                 return (
                   <div key={s.date} style={{
@@ -16795,7 +16807,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                         <div style={{ flex:1 }}>
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
-                            {new Date(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"}
+                            {dateFromKey(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"}
                           </div>
                           <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
                             {(sess.exercises||[]).filter(e=>e.name).slice(0,3).map(e=>e.name).join(" · ")}
@@ -20008,7 +20020,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
               <div key={w.id || i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px 16px", marginBottom:8 }}>
                 <div style={{ fontSize:15, fontWeight:700 }}>{w.day_name || "Workout"}</div>
                 <div style={{ fontSize:12, color:C.sub, marginTop:3, fontFamily:MONO }}>
-                  {dateStr ? new Date(dateStr).toLocaleDateString("en", { month:"short", day:"numeric" }) : ""}
+                  {dateStr ? dateFromKey(dateStr).toLocaleDateString("en", { month:"short", day:"numeric" }) : ""}
                   {(w.exercises?.length) ? ` · ${w.exercises.length} exercise${w.exercises.length === 1 ? "" : "s"}` : ""}
                   {setCount ? ` · ${setCount} set${setCount === 1 ? "" : "s"}` : ""}
                 </div>
