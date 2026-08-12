@@ -372,6 +372,17 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   volume through the floor without meaning anything, and a newest-vs-best test reads it as a stall
   on its own. Erring toward a missed stall is right here: the cost of a missed one is silence, the
   cost of a false one is being told to deload a session you just set a record on.
+- **A BARE DATE KEY PARSES AS MIDNIGHT UTC — use `dateFromKey()`, never `new Date(key)`.** Every
+  getter that reads it back (`getDate()`, `toLocaleDateString()`) is LOCAL, so west of Greenwich a
+  key lands on the previous EVENING and the whole day reads one earlier. Mo reported the exercise
+  screen's RECENT list and its chart axis disagreeing with the chart's hold-to-read tooltip by a
+  day — and the TOOLTIP was the correct one, because it alone already anchored at local noon. Four
+  sites had the bare parse (chart axis, RECENT list, the session list under it, the public profile's
+  workout list). `dateFromKey` is the inverse of `dateKeyOf`, lives beside it, anchors at noon and
+  still accepts a full timestamp for rows carrying `created_at`. Invisible in UTC and every zone
+  east of it, which is exactly how it shipped — `pw_datekey` pins `timezoneId: America/New_York`
+  and uses FIXED fixture dates, since a `Date.now()`-derived fixture drifts across the boundary the
+  test exists to police.
 - **A dnd-kit DRAG HANDLE MUST BE `touch-action: none`, AND CHROMIUM CANNOT TELL YOU OTHERWISE.**
   The day editor's handle was "improved" to `pan-y` so a thumb resting on the 38px tile could still
   scroll the form, on the reasoning that a stationary long-press starts no pan so the delay sensor
