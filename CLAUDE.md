@@ -1157,6 +1157,14 @@ onboarding's most-followed suggestions) and they follow appreview back. Private 
 "Seshd Crew" (creator coach_kai, appreview IS a member so App Review sees a live group feed;
 regular testers can't join — creator-only membership — they create their own). Role-sim
 verified: fresh outsider sees all profiles/posts/histories, group invisible to non-members.
+**Refreshed Aug 13 (submission day):** `appreview` had 0 workouts / 0 PRs / 0 posts — the feed was
+full but the reviewer's OWN app (History, charts, PRs, muscle map, profile) was blank, i.e. the half
+the listing is mostly about. It now has 27 sessions cloned from coach_kai and re-dated, 9 PRs derived
+from those sessions, and 2 workout posts built from its own newest sessions. The whole persona corpus
+was also shifted forward — posts were 16 days stale, workouts a month — so nothing reads as
+abandoned. **Two offsets were needed, not one:** posts and workouts had drifted apart, so a single
+shared shift left the workouts 16 days behind. Verified after: nothing future-dated, no comment or
+kudos earlier than its post. These dates go stale again — re-run the shift before any future review.
 To wipe later: delete auth.users rows with `%@getseshd.app` emails (except appreview if still
 needed) — profiles/posts/history cascade. Mo is added as an internal TestFlight tester. DMARC is the
 one remaining optional Mo-side item. Earlier: **App Store trust & safety pass** — three things a

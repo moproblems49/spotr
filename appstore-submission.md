@@ -26,8 +26,12 @@ Seshd is a gym workout tracker with optional social features.
 • No account is needed for the core app. On the welcome screen, tap "Start Tracking" to use
   workout logging, history, the plate calculator, 1RM estimator, and program building in guest mode.
 
-• The demo account above is signed in to the social side. It already follows another user
-  ("Coach Kai"), whose post appears in the Home feed.
+• The demo account is a fully populated account, so every screen has real data: ~27 logged
+  workouts over the last two months, personal records, progress charts, and a training history
+  you can browse from the History tab and from any exercise's detail screen.
+
+• It also follows several other users, whose posts appear in the Home feed, and it is a member
+  of a private group ("Seshd Crew") with its own group feed.
 
 • User-generated content safety (Guideline 1.2). Users can Report and Block from every surface
   that shows other people's content:
