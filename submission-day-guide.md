@@ -95,7 +95,12 @@ npx cap sync ios
 ```
 
 **✅ Success:** ends with `✔ Sync finished`. Look for `@capacitor/keyboard` in the plugin list it
-prints — that's today's new piece. If CocoaPods asks to install something, say yes.
+prints — that's today's new piece. Confirmed Aug 13: it reports `@capacitor/keyboard@8.0.5`
+among 12 plugins.
+
+**This project uses Swift Package Manager, not CocoaPods** — the sync log says "All plugins have a
+Package.swift file". So there is no `Podfile` anywhere and nothing to `pod install`. The plugin
+list that `cap sync` prints IS the proof the plugin landed; there is nothing else to check.
 
 ---
 
@@ -216,4 +221,4 @@ simple cause:
 | "This bundle is invalid… build number" on upload | Build number already used — Step 6 |
 | App builds but sign-in fails | `.env.local` missing — Step 3 |
 | `npm ERR!` during install | Paste it to me; do **not** try `npm ci` |
-| `cap sync` can't find pods | Say yes to the CocoaPods prompt, then run Step 4's last command again |
+| Looking for a `Podfile` | There isn't one — this project uses Swift Package Manager. Read the plugin list `cap sync` prints instead |
