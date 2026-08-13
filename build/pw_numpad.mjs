@@ -61,7 +61,30 @@ if (!dz.miss) {
   check("dismiss sits ABOVE Next, not under it", dz.dismissTop < dz.nextTop, `${dz.dismissTop} vs ${dz.nextTop}`);
   check("it is a 44pt target", dz.w >= 44 && dz.h >= 44, `${dz.w}x${dz.h}`);
   await p.screenshot({path:"shot_numpad.png"});
+
+  // THE EXIT MUST TRAVEL, NOT BLINK. Sample the pad mid-flight: it has to still be mounted a
+  // moment after the tap, already moving, and only then unmount. A pad that vanishes on the
+  // frame passes a naive "is it gone" check just as well, which is why the mid-flight sample
+  // is the assertion that matters.
+  const padY = () => p.evaluate(() => {
+    const pad = [...document.querySelectorAll("div")].find(d => { const c = getComputedStyle(d);
+      return c.position === "fixed" && c.zIndex === "450"; });
+    if (!pad) return null;
+    const m = /matrix\(1, 0, 0, 1, [-\d.]+, ([-\d.]+)\)/.exec(getComputedStyle(pad).transform);
+    return { y: m ? Math.round(parseFloat(m[1])) : 0, transition: getComputedStyle(pad).transition.slice(0, 40) };
+  });
+  const atRest = await padY();
+  console.log("  pad at rest:", JSON.stringify(atRest));
+  check("the pad sits at its resting position while open", atRest && Math.abs(atRest.y) < 4, JSON.stringify(atRest));
+  check("...and carries a transform transition", (atRest?.transition || "").includes("transform"), atRest?.transition);
+
   await p.evaluate(() => document.querySelector('button[aria-label="Hide keypad"]').dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  await p.waitForTimeout(70);
+  const midFlight = await padY();
+  console.log("  pad 70ms after the tap:", JSON.stringify(midFlight));
+  check("the pad is still mounted mid-exit (it animates, not blinks)", midFlight !== null, "already unmounted");
+  check("...and has started travelling downward", midFlight && midFlight.y > 8, JSON.stringify(midFlight));
+
   await p.waitForTimeout(700);
   const gone = await p.evaluate(() => !document.querySelector('button[aria-label="Hide keypad"]'));
   check("tapping it dismisses the pad", gone);

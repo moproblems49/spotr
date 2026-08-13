@@ -1,4 +1,4 @@
-// v178091716831
+// v178091716832
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7575,6 +7575,26 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
 // next set. Inputs are read-only so iOS never opens its own keyboard.
 // ═════════════════════════════════════════════════════════════════════════════
 function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onClose, C }) {
+  // SLIDE, DON'T BLINK. The pad used to appear and vanish on a frame, which reads as a glitch
+  // rather than a panel — every sheet on iOS travels. `shown` flips on the first frame AFTER
+  // mount so there is a from-state to transition out of; `closing` runs the same transition in
+  // reverse and the unmount waits for it. One transform, one curve (EASE_NAV, the app's only
+  // easing token — a sheet is screen-scale movement), and transform rather than height so the
+  // GPU composites it.
+  const PAD_MS = 170;
+  const [shown, setShown] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const exitTimer = useRef(null);
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setShown(true));
+    return () => {
+      cancelAnimationFrame(r);
+      // If the parent tears this pad down for its own reasons — tapping a different field — a
+      // pending exit timer would fire onClose afterwards and shut the pad that just replaced it.
+      if (exitTimer.current) clearTimeout(exitTimer.current);
+    };
+  }, []);
   const decimalAllowed = field === "weight"; // reps are whole numbers
   // Reps step by 1; weight by 2.5 (the common micro-plate jump); cardio fields by 1.
   const step = (field === "reps" || isCardio) ? 1 : 2.5;
@@ -7582,10 +7602,13 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   // browser's follow-up click lands on whatever is now under the finger (the bottom
   // tab bar → Profile). Swallow that one ghost click at the document capture level.
   const closePad = () => {
+    if (closingRef.current) return;   // a second tap during the exit must not queue another close
+    closingRef.current = true;
+    setClosing(true);
     const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); document.removeEventListener("click", swallow, true); };
     document.addEventListener("click", swallow, true);
     setTimeout(() => document.removeEventListener("click", swallow, true), 500);
-    onClose();
+    exitTimer.current = setTimeout(onClose, PAD_MS);
   };
   const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22, ariaLabel }) => (
     <button
@@ -7612,7 +7635,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   return createPortal((
     <>
       {/* Tap-anywhere-above backdrop to dismiss — so you're never trapped if Done is covered. */}
-      <div onClick={closePad} onTouchStart={(e) => { e.preventDefault(); closePad(); }} style={{ position:"fixed", inset:0, zIndex:449, background:"transparent" }}/>
+      <div onClick={closePad} onTouchStart={(e) => { e.preventDefault(); closePad(); }} style={{ position:"fixed", inset:0, zIndex:449, background:"transparent", pointerEvents: closing ? "none" : "auto" }}/>
     <div
       onMouseDown={(e) => e.preventDefault()}
       onTouchStart={(e) => e.stopPropagation()}
@@ -7621,6 +7644,11 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
         background:C.surface, borderTop:`1px solid ${C.border}`,
         padding:"4px 6px calc(8px + env(safe-area-inset-bottom))",
         zIndex:450, boxShadow:"0 -6px 20px rgba(0,0,0,0.12)",
+        // 102% so the shadow clears the edge too, not just the panel.
+        transform: (shown && !closing) ? "translateY(0)" : "translateY(102%)",
+        transition: `transform ${PAD_MS}ms ${EASE_NAV}`,
+        willChange:"transform",
+        pointerEvents: closing ? "none" : "auto",
       }}
     >
       {/* Grab handle — tap to dismiss (visual affordance for closing the pad). */}
