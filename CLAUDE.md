@@ -1165,6 +1165,17 @@ was also shifted forward — posts were 16 days stale, workouts a month — so n
 abandoned. **Two offsets were needed, not one:** posts and workouts had drifted apart, so a single
 shared shift left the workouts 16 days behind. Verified after: nothing future-dated, no comment or
 kudos earlier than its post. These dates go stale again — re-run the shift before any future review.
+**And a real bug the reseed exposed: five exercise names in the demo corpus did not exist in the
+library at all** ("Bench Press" vs "Barbell Bench Press", "Back Squat", "Leg Curl", "Incline
+Dumbbell Press", "Triceps Pushdown"). `getExEntry` only tolerates bracketed suffixes — `_exNorm`
+strips `(...)` but nothing else — so those sessions resolved to NO muscle and contributed nothing
+to the heatmap, weekly muscle volume, muscle readiness or "most trained". Renamed in place. When
+seeding demo data, resolve every name through the library first; a plausible-looking name that
+isn't an exact (or bracket-suffix) match is silently invisible to every muscle feature.
+Coverage now: all 13 trainable groups (Chest, Back, Shoulders, Rear Delts, Traps, Biceps, Triceps,
+Forearms, Core, Quads, Hamstrings, Glutes, Calves) inside the 7-day window the heatmap actually
+reads. `appreview` also follows `momo`, which is how the reviewer sees real PHOTO posts — 19 of
+Mo's 74 posts carry images, so there was no need to fabricate any.
 To wipe later: delete auth.users rows with `%@getseshd.app` emails (except appreview if still
 needed) — profiles/posts/history cascade. Mo is added as an internal TestFlight tester. DMARC is the
 one remaining optional Mo-side item. Earlier: **App Store trust & safety pass** — three things a
