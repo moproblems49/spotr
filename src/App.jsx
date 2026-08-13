@@ -1,4 +1,4 @@
-// v178091716832
+// v178091716833
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7581,7 +7581,8 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
   // reverse and the unmount waits for it. One transform, one curve (EASE_NAV, the app's only
   // easing token — a sheet is screen-scale movement), and transform rather than height so the
   // GPU composites it.
-  const PAD_MS = 170;
+  // 170ms measured too quick on device; 240 is around what iOS gives its own keyboard dismissal.
+  const PAD_MS = 240;
   const [shown, setShown] = useState(false);
   const [closing, setClosing] = useState(false);
   const closingRef = useRef(false);
@@ -7646,7 +7647,8 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
         zIndex:450, boxShadow:"0 -6px 20px rgba(0,0,0,0.12)",
         // 102% so the shadow clears the edge too, not just the panel.
         transform: (shown && !closing) ? "translateY(0)" : "translateY(102%)",
-        transition: `transform ${PAD_MS}ms ${EASE_NAV}`,
+        // Entering decelerates, leaving accelerates away — see the note on EASE_EXIT.
+        transition: `transform ${PAD_MS}ms ${closing ? EASE_EXIT : EASE_NAV}`,
         willChange:"transform",
         pointerEvents: closing ? "none" : "auto",
       }}
@@ -11719,6 +11721,21 @@ function pickFinishPhrase({ prs = 0, progressions = 0, volVsLast = 0, streakWeek
 // as "buttery" next to the flatter ease-out it replaced. Micro-interactions (button press, PR pop)
 // keep their own overshoot curve deliberately; they're punctuation, not navigation.
 const EASE_NAV = "cubic-bezier(0.32, 0.72, 0, 1)";
+// THE MIRROR OF EASE_NAV, FOR THINGS LEAVING THE SCREEN — and the one legitimate exception to the
+// one-curve rule above, because it is not a tenth ad-hoc curve, it is the same curve reversed:
+// (x1,y1,x2,y2) -> (1-x2, 1-y2, 1-x1, 1-y1). EASE_NAV decelerates, which is right for something
+// ARRIVING (travel fast, settle gently) and wrong for something departing: applied to an exit it
+// lurches off the mark and then crawls, which reads as a snap rather than a slide. Mo reported
+// exactly that on the number pad — measured, EASE_NAV had it 69% of the way down in the first 41%
+// of the time. Use EASE_NAV for anything entering or moving on screen; use this only for
+// something exiting.
+//
+// NOT the literal mirror, which would be cubic-bezier(1, 0, 0.68, 0.28). Measured, that is too
+// extreme in practice — EASE_NAV is itself a very strong decelerate, so its reverse covered only
+// 15% of the travel in the first 160ms of a 240ms exit: the pad appears to hang after the tap and
+// then drop, which is a different complaint, not a fix. This is the standard accelerate curve:
+// it starts moving promptly and gathers speed on the way out.
+const EASE_EXIT = "cubic-bezier(0.4, 0, 1, 1)";
 
 // One section heading treatment for the whole app. These labels had drifted into two sizes and
 // two letter-spacings across History/Profile, which is the kind of thing that reads as "slightly

@@ -85,6 +85,23 @@ if (!dz.miss) {
   check("the pad is still mounted mid-exit (it animates, not blinks)", midFlight !== null, "already unmounted");
   check("...and has started travelling downward", midFlight && midFlight.y > 8, JSON.stringify(midFlight));
 
+  // AND THE SHAPE OF THE MOTION, not just that it moves. The first attempt at this exit used
+  // EASE_NAV, the app's decelerate curve — correct for something ARRIVING, wrong for something
+  // leaving: it covered 69% of the travel in the first 41% of the time, which is what Mo saw as
+  // "snapping". The second attempt used the literal mirror of that curve and overshot the other
+  // way, sitting near-still for 160ms of a 240ms exit. A front-loaded exit is the failure mode,
+  // so assert the pad is still in the FIRST THIRD of its journey a third of the way through.
+  const early = midFlight && midFlight.y;
+  const padH = await p.evaluate(() => {
+    const pad = [...document.querySelectorAll("div")].find(d => { const c = getComputedStyle(d);
+      return c.position === "fixed" && c.zIndex === "450"; });
+    return pad ? Math.round(pad.getBoundingClientRect().height) : 0;
+  });
+  const pctAt70 = padH ? Math.round((early / padH) * 100) : -1;
+  console.log(`  travelled ${pctAt70}% of the way in the first 70ms of a 240ms exit`);
+  check("the exit is not front-loaded (it accelerates away, it does not lurch)",
+    pctAt70 > 0 && pctAt70 < 35, `${pctAt70}%`);
+
   await p.waitForTimeout(700);
   const gone = await p.evaluate(() => !document.querySelector('button[aria-label="Hide keypad"]'));
   check("tapping it dismisses the pad", gone);
