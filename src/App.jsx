@@ -1,4 +1,4 @@
-// v178091716830
+// v178091716831
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7587,8 +7587,9 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
     setTimeout(() => document.removeEventListener("click", swallow, true), 500);
     onClose();
   };
-  const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22 }) => (
+  const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22, ariaLabel }) => (
     <button
+      aria-label={ariaLabel}
       onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onPress(); haptic("tap"); }}
       onPointerUp={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -7663,10 +7664,26 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
             <Key label="⌫" onPress={() => onInput("del")} fontSize={20} />
           </div>
         </div>
-        {/* Right action column */}
+        {/* Right action column: DISMISS ON TOP, Next filling the rest.
+            The dismiss key used to read "Done" and sat directly BELOW Next, which is the
+            accident-prone arrangement — a slightly low tap on the key you press after every
+            single set closed the pad instead of advancing. Swapping them puts the destructive-ish
+            action at the top and leaves nothing under Next but the edge of the pad.
+            The icon is the iOS keyboard-dismiss glyph rather than a word, which is what every
+            numeric pad on the platform uses and what Mo pointed at. The grab handle above and the
+            tap-anywhere-above backdrop still dismiss too — this is the discoverable one. */}
         <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
+          <Key ariaLabel="Hide keypad" onPress={closePad} flex={1} label={
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="11" rx="2"/>
+              <line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/>
+              <line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/>
+              <line x1="8" y1="11.5" x2="16" y2="11.5"/>
+              <polyline points="9 18.5 12 21.5 15 18.5"/>
+            </svg>
+          } />
           <Key label="Next" onPress={onNext} bg={C.accent} color={C.onPrimary} fontSize={15} flex={3} />
-          <Key label="Done" onPress={closePad} fontSize={14} />
         </div>
       </div>
     </div>

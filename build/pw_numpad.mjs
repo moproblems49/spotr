@@ -46,7 +46,26 @@ if (!geo.miss) {
   check("...but not so close a thumb cannot separate them", geo.gap >= 8, `${geo.gap}px apart`);
   check("each is still a 44pt target", geo.minusW >= 44 && geo.h >= 44, `${geo.minusW}x${geo.h}`);
 }
-await p.screenshot({path:"shot_numpad.png"});
+// The dismiss key must actually close the pad, and must NOT sit under Next.
+const dz = await p.evaluate(() => {
+  const btn = document.querySelector('button[aria-label="Hide keypad"]');
+  const next = [...document.querySelectorAll("button")].find(b => (b.textContent||"").trim() === "Next");
+  if (!btn || !next) return { miss: true, hasBtn: !!btn, hasNext: !!next };
+  const a = btn.getBoundingClientRect(), b = next.getBoundingClientRect();
+  return { dismissTop: Math.round(a.top), nextTop: Math.round(b.top), w: Math.round(a.width), h: Math.round(a.height),
+           sameColumn: Math.abs(a.left - b.left) < 4 };
+});
+console.log("  dismiss key:", JSON.stringify(dz));
+check("the pad has a dismiss key", !dz.miss, JSON.stringify(dz));
+if (!dz.miss) {
+  check("dismiss sits ABOVE Next, not under it", dz.dismissTop < dz.nextTop, `${dz.dismissTop} vs ${dz.nextTop}`);
+  check("it is a 44pt target", dz.w >= 44 && dz.h >= 44, `${dz.w}x${dz.h}`);
+  await p.screenshot({path:"shot_numpad.png"});
+  await p.evaluate(() => document.querySelector('button[aria-label="Hide keypad"]').dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  await p.waitForTimeout(700);
+  const gone = await p.evaluate(() => !document.querySelector('button[aria-label="Hide keypad"]'));
+  check("tapping it dismisses the pad", gone);
+}
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);
