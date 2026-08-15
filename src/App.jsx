@@ -1,4 +1,4 @@
-// v178091716837
+// v178091716838
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1957,6 +1957,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   </div>
                 );
               })()}
+              <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000}
+                panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0",
+                  maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
+                  overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+                  padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
               {showBatteryDetail && (() => {
                 const bb = computeBodyBattery(store);
                 const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
@@ -1990,22 +1995,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   (actFresh && act.steps) ? { label: "Steps", value: act.steps.toLocaleString(), detail: "Today — from Apple Health" } : null,
                   (actFresh && act.activeKcal) ? { label: "Active energy", value: `${act.activeKcal}`, detail: "kcal today — from Apple Health" } : null,
                 ].filter(Boolean);
-                return createPortal((
-                  <div onClick={() => setShowBatteryDetail(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-                    {/* This sheet grew past the viewport once steps/energy/HRV/RHR were added to
-                        it, and a bottom-anchored child taller than its container has its TOP
-                        pushed off-screen — the title and the score ended up under the clock.
-                        Cap it below the status-bar inset and let it scroll inside itself instead.
-                        Same class as the alignItems:center clipping noted in the conventions.
-                        NOT migrated to <Sheet>: the whole block is gated on `showBatteryDetail`,
-                        so a Sheet here would unmount the instant it closed and never animate out.
-                        Moving that gate means running this sheet's computation on every render of
-                        the profile screen, which is not worth an exit animation. Entrance only. */}
-                    <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{
-                      width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0",
-                      maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
-                      overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
-                      padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+                // This sheet grew past the viewport once steps/energy/HRV/RHR were added to it,
+                // and a bottom-anchored child taller than its container has its TOP pushed
+                // off-screen — the title and the score ended up under the clock. Capped below the
+                // status-bar inset with its own scroll (panelStyle above), same class as the
+                // alignItems:center clipping noted in the conventions.
+                return (
+                  <>
                       <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                         <span style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Body Battery</span>
@@ -2036,10 +2032,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         </div>
                       )}
                       <button onClick={() => setShowBatteryDetail(false)} style={{ marginTop:12, width:"100%", padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
-                    </div>
-                  </div>
-                ), document.body);
+                  </>
+                );
               })()}
+              </Sheet>
               {/* TRAINING LOAD — this week against what you're conditioned for. Hidden until there's
                   enough history for the 28-day average to mean anything (trainingLoadRatio returns
                   null), because a ratio off four sessions is noise dressed as insight. */}
@@ -9943,6 +9939,15 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                     <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
                     <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
                   </div>
+                  {/* Same field, same "· ♥ N avg · N peak" as History — only present once Apple
+                      Health has synced it (a moment after finish), so an older post's snapshot,
+                      taken before that sync, simply has nothing to show here. */}
+                  {post.workout.hrSummary?.avg ? (
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:14, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
+                      <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>♥ AVG</div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -15179,18 +15184,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {/* AI Coach modal */}
-      {showAICoach && (
-        <AICoachModal
-          C={C}
-          store={store}
-          onClose={() => setShowAICoach(false)}
-          onImport={(prog) => {
-            if (onSaveProgram) onSaveProgram(prog);
-            else setStore(p => ({ ...p, programs: [...(p.programs||[]), prog], activeProgramId: prog.id }));
-            setShowAICoach(false);
-          }}
-        />
-      )}
+      <AICoachModal
+        open={showAICoach}
+        C={C}
+        store={store}
+        onClose={() => setShowAICoach(false)}
+        onImport={(prog) => {
+          if (onSaveProgram) onSaveProgram(prog);
+          else setStore(p => ({ ...p, programs: [...(p.programs||[]), prog], activeProgramId: prog.id }));
+          setShowAICoach(false);
+        }}
+      />
     </div>
   );
 }
@@ -15572,13 +15576,21 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   );
 }
 
-function AICoachModal({ C, onClose, onImport, store }) {
+function AICoachModal({ open, C, onClose, onImport, store }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [freeText, setFreeText] = useState("");
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
+  // Now always-mounted (Sheet owns the unmount timing for the exit animation), so the wizard's
+  // own state no longer resets for free the way it did when the parent mounted/unmounted this on
+  // every open/close. Reopening a stale in-progress or completed session would otherwise resume
+  // exactly where you left off — fine for some flows, wrong for "answer 5 questions", which reads
+  // as broken if step 4 shows up before step 1 ever did.
+  useEffect(() => {
+    if (open) { setStep(0); setAnswers({}); setResult(null); setFreeText(""); setGenError(null); }
+  }, [open]);
 
   const questions = [
     {
@@ -15910,8 +15922,8 @@ function AICoachModal({ C, onClose, onImport, store }) {
   const q = questions[step];
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:250, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+    <Sheet open={!!open} onClose={onClose} z={250}
+      panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
           <button onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
@@ -16010,8 +16022,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Sheet>
   );
 }
 // ═════════════════════════════════════════════════════════════════════════════
@@ -16827,6 +16838,12 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                                   <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>VOL</div>
                                 </div>
                               )}
+                              {post.workout.hrSummary?.avg ? (
+                                <div style={{ textAlign:"right" }}>
+                                  <div style={{ fontSize:12, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
+                                  <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>♥ AVG</div>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -17014,6 +17031,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
                             {dateFromKey(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"}
+                            {sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {sess.hrSummary.avg} avg</span> : null}
                           </div>
                           <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
                             {(sess.exercises||[]).filter(e=>e.name).slice(0,3).map(e=>e.name).join(" · ")}
@@ -18328,7 +18346,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         type: "workout",
         caption: "",
         unit: sess.unit || displayUnit || "lbs",
-        workout: { name: sess.dayName, duration: sess.duration||0, volume: card.volume, exercises: card.exercises },
+        workout: { name: sess.dayName, duration: sess.duration||0, volume: card.volume, exercises: card.exercises, hrSummary: sess.hrSummary || undefined },
         kudos: [], comments: [],
         // Local noon for the workout's date — avoids the UTC-midnight parse that pushed the
         // displayed date a day earlier in negative-offset timezones (e.g. EST).
@@ -19633,7 +19651,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{w.dayName}</div>
                           {isSelected && <div style={{ color:C.accent, fontSize:18 }}>✓</div>}
                         </div>
-                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}</div>
+                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}{w.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {w.hrSummary.avg} avg</span> : null}</div>
                       </div>
                     );
                   })}
@@ -20354,7 +20372,7 @@ async function generateWeeklyReview(store, unit) {
 }
 
 // Renders the STORED weekly review (no API call here — see generateWeeklyReview).
-function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
+function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus }) {
   const review = store.weeklyReview || null;
   const toggleAction = (id) => {
     haptic("tap");
@@ -20376,8 +20394,8 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
     } catch { return ""; }
   };
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+    <Sheet open={!!open} onClose={onClose} z={500}
+      panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>Weekly Review</div>
@@ -20448,8 +20466,7 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
         <div style={{ fontSize:10, color:C.muted, marginTop:20, lineHeight:1.4, textAlign:"center" }}>
           Generated once a week from your logged training. Not medical or professional training advice.
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 function fmtMsgTime(ts) {
@@ -23882,7 +23899,7 @@ function AppInner() {
           -webkit-touch-callout: none;
         }
       `}</style>
-      {showCoach && <AICoachSheet store={store} setStore={setStore} unit={unit} C={C} reviewStatus={reviewStatus} onClose={() => setShowCoach(false)}/>}
+      <AICoachSheet open={showCoach} store={store} setStore={setStore} unit={unit} C={C} reviewStatus={reviewStatus} onClose={() => setShowCoach(false)}/>
       {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
       <ConfirmHost C={C}/>
