@@ -1,4 +1,4 @@
-// v178091716836
+// v178091716837
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2209,6 +2209,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </>
       )}
       </div>
+      <Sheet open={!!selectedRegion} onClose={() => setSelectedRegion(null)} z={3000}
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
       {selectedRegion && (() => {
         const { key, region: regionName } = selectedRegion;
         const label = _regionLabel(key);
@@ -2261,9 +2263,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           : weekSets >= 4 ? `Growing — ${10 - weekSets} more set${10 - weekSets === 1 ? "" : "s"} this week would put it in the maximizing range.`
           : examples.length ? `Under the ~4-set minimum for growth. ${examples.join(" or ")} would cover it.`
           : "Under the ~4-set minimum effective dose for growth.";
-        return createPortal((
-          <div onClick={() => setSelectedRegion(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+        return (
+          <>
               <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14 }}>
                 <span style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{label}</span>
@@ -2309,10 +2310,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               )}
               <div style={{ fontSize:12, color:C.sub, lineHeight:1.55, padding:"10px 12px", background:C.surface, borderRadius:10 }}>{suggestion}</div>
               <button onClick={() => setSelectedRegion(null)} style={{ marginTop:14, width:"100%", padding:"13px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
-            </div>
-          </div>
-        ), document.body);
+          </>
+        );
       })()}
+      </Sheet>
     </div>
   );
 }
@@ -2492,7 +2493,6 @@ function ReportHost({ C, token, currentUserId }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [rp?.key]);
-  if (!rp) return null;
   const close = () => { if (!busy) setRp(null); };
   const submit = async (reason) => {
     if (busy) return;
@@ -2521,24 +2521,27 @@ function ReportHost({ C, token, currentUserId }) {
     } finally { setBusy(false); }
   };
   const accent = C.accent || "#65a30d";
-  return createPortal((
-    <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"flex-end", justifyContent:"center", animation:"seshd-cf-fade 0.15s ease" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", maxWidth:480, width:"100%", border:`1px solid ${C.border}`, borderBottom:"none", animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
-        <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:4, letterSpacing:-0.3 }}>Report{rp.label ? ` ${rp.label}` : ""}</div>
-        <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>Why are you reporting this? This is anonymous.</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {REPORT_REASONS.map(r => (
-            <button key={r.id} disabled={busy} onClick={() => submit(r.id)} style={{
-              textAlign:"left", background:C.bg, border:`1px solid ${C.border}`, color:C.text,
-              borderRadius:11, padding:"13px 15px", fontSize:14, fontWeight:600,
-              cursor:busy?"default":"pointer", fontFamily:F, opacity:busy?0.6:1,
-            }}>{r.label}</button>
-          ))}
-        </div>
-        <button onClick={close} disabled={busy} style={{ width:"100%", marginTop:12, background:"transparent", border:"none", color:C.sub, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:F }}>Cancel</button>
-      </div>
-    </div>
-  ), document.body);
+  return (
+    <Sheet open={!!rp} onClose={close} z={4000} backdrop="rgba(0,0,0,0.7)"
+      panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", border:`1px solid ${C.border}`, borderBottom:"none" }}>
+      {rp && (
+        <>
+          <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:4, letterSpacing:-0.3 }}>Report{rp.label ? ` ${rp.label}` : ""}</div>
+          <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>Why are you reporting this? This is anonymous.</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {REPORT_REASONS.map(r => (
+              <button key={r.id} disabled={busy} onClick={() => submit(r.id)} style={{
+                textAlign:"left", background:C.bg, border:`1px solid ${C.border}`, color:C.text,
+                borderRadius:11, padding:"13px 15px", fontSize:14, fontWeight:600,
+                cursor:busy?"default":"pointer", fontFamily:F, opacity:busy?0.6:1,
+              }}>{r.label}</button>
+            ))}
+          </div>
+          <button onClick={close} disabled={busy} style={{ width:"100%", marginTop:12, background:"transparent", border:"none", color:C.sub, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:F }}>Cancel</button>
+        </>
+      )}
+    </Sheet>
+  );
 }
 function ToastHost() {
   // Seed from the queue: a toast fired before this host mounts (e.g. a failure during the
@@ -13111,13 +13114,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             onClose={() => setViewingExercise(null)}
           />
         )}
+        <Sheet open={swapEx != null && !!session.exercises[swapEx]} onClose={() => setSwapEx(null)} z={480}
+          backdrop="rgba(0,0,0,0.55)"
+          panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
         {swapEx != null && session.exercises[swapEx] && (() => {
           const cur = session.exercises[swapEx];
           const subs = suggestExerciseSubstitutes(cur.name, 10);
           const curEquip = exEquipment(cur.name);
           return (
-            <div onClick={() => setSwapEx(null)} style={{ position:"fixed", inset:0, zIndex:480, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-              <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
+            <>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                   <div style={{ fontSize:17, fontWeight:800, color:C.text }}>Swap exercise</div>
                   <button onClick={() => setSwapEx(null)} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
@@ -13145,10 +13150,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     </button>
                   );
                 })}
-              </div>
-            </div>
+            </>
           );
         })()}
+        </Sheet>
         {editingHistory && (
           <EditHistoryModal
             editing={editingHistory}
@@ -13778,10 +13783,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           }}>+ Add Exercise</button>
         </div>
 
+        {showWorkoutSummary && workoutSummary && <Confetti duration={2.5}/>}
+        <Sheet open={showWorkoutSummary && !!workoutSummary} onClose={() => {}} z={300} backdrop="rgba(0,0,0,0.85)"
+          panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column" }}>
         {showWorkoutSummary && workoutSummary && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-            <Confetti duration={2.5}/>
-            <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"90dvh", display:"flex", flexDirection:"column" }}>
+          <>
               <div style={{ overflowY:"auto", flex:1, padding:"24px 18px 0" }}>
                 {workoutSummary.hype && (
                   <div className="seshd-content-fade" style={{ textAlign:"center", margin:"0 4px 18px" }}>
@@ -14194,9 +14200,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </button>
                 )}
               </div>
-            </div>
-          </div>
+          </>
         )}
+        </Sheet>
         {/* Reorder modal — collapsed cards you can drag freely */}
         {reorderMode && session && (
           <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
@@ -14302,24 +14308,26 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         })()}
 
         {/* Finish modal */}
-        {showFinish && (
-          <div onClick={() => setShowFinish(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+        <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200}
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px" }}>
+          {showFinish && (
+            <>
               <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
               <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish workout"}</button>
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </Sheet>
 
         {/* Group share picker (Save & send to groups path - skips feed) */}
+        <Sheet open={showGroupShare} onClose={() => setShowGroupShare(false)} z={200}
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto" }}>
         {showGroupShare && (() => {
           const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
           return (
-            <div onClick={() => setShowGroupShare(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-              <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"80dvh", overflowY:"auto" }}>
+            <>
                 <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
                 <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Send to groups</div>
                 <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>Workout will only be visible in selected groups, not the feed.</div>
@@ -14357,10 +14365,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   {finishing ? "Saving…" : `Send to ${selectedGroupIds.length || "0"} group${selectedGroupIds.length===1?"":"s"}`}
                 </button>
                 <button onClick={() => { setShowGroupShare(false); setShowFinish(true); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Back</button>
-              </div>
-            </div>
+            </>
           );
         })()}
+        </Sheet>
       </div>
     );
   }
