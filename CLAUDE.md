@@ -80,12 +80,12 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (41 sims, ~95s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (43 sims, ~90s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
 
-**`node build/run_sims.mjs --pw` also runs the 21 Playwright suites** (+~2min): it builds dist with
+**`node build/run_sims.mjs --pw` also runs the 30 Playwright suites** (+~2min): it builds dist with
 STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
 in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
 anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
@@ -190,6 +190,18 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   viewport, so it bought nothing. There's a plain 15px FLOOR now for inputs that set no size of
   their own; inline styles win. Caveat recorded in the code: mobile Safari ignores
   `user-scalable=no`, so focus-zoom returns if the WEB build ever gets real users.
+- **A FREE IDENTIFIER IS A `ReferenceError`, AND NOTHING IN THIS TOOLCHAIN REPORTS ONE.** esbuild
+  resolves IMPORTS, not free variables, and there is no linter — so a name that binds to nothing
+  compiles clean, ships, and only fails when that line runs, into a swallowing catch or the error
+  boundary. Two were live on main simultaneously (found Aug 15): `PROGRAM_TEMPLATES`, deleted by
+  90927ed as collateral damage while its three references stayed — it is read at the TOP OF THE
+  `Onboarding` COMPONENT BODY, so **every new signup got "Something went sideways" instead of the
+  first screen for twelve days**, and "Browse templates" crashed too; and `todayMs`, read twice in
+  `buildCoachContext` but declared only inside a DIFFERENT function, so the Weekly Review always
+  threw and the caller's catch turned it into a silent "error" state — that feature had never once
+  worked. `sim_undef` (+ `undef_scan.mjs`) is the standing check: it transforms the JSX away and
+  walks the scopes with acorn. **Run it after deleting anything** — the failure mode of a deletion
+  is a survivor reference, and grep for the symbol is the cheap version of the same check.
 - **A prop you forgot to pass is a `ReferenceError`, and a surrounding `catch` will eat it.**
   `WorkoutTracker` referenced `isGuest` twice without receiving it as a prop and with no
   module-level binding, so both lines threw into a swallowing catch: `pr_events` was NEVER synced
