@@ -1,4 +1,4 @@
-// v178091716833
+// v178091716834
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1718,6 +1718,10 @@ function _regionLabel(k) {
 //
 // Colours run high at the TOP, which is the direction the words imply — "Ready" above
 // "Recovering" — so the strip reads like a gauge rather than a palette.
+// Width reserved on BOTH sides of the muscle figures so they sit dead centre — see the note at
+// the figures row. Sized to the widest gauge label ("Recovering", measured 51px).
+const MAP_SIDE_W = 52;
+
 function ScaleStrip({ topLabel, bottomLabel, colors, C }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0, alignSelf:"center" }}>
@@ -1872,23 +1876,34 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 below it. writing-mode turns the text; the 180 rotation makes it read bottom-to-top,
                 which is the convention for a left-hand vertical label — vertical-rl alone would
                 read top-to-bottom and force the eye to start at the wrong end. */}
-            <div style={{
-              writingMode:"vertical-rl", transform:"rotate(180deg)",
-              fontSize:9.5, color:C.muted, letterSpacing:0.6, fontWeight:600,
-              whiteSpace:"nowrap", flexShrink:0, alignSelf:"center", userSelect:"none",
-            }}>Tap a muscle for details</div>
+            {/* EQUAL SIDE COLUMNS, or the figures are not centred — and measured, they never
+                were: the caption column is 11px and the gauge 51px, so the map sat 20px left of
+                centre in EVERY mode. Strength-before-there-is-data was only the visible case,
+                because there the gauge vanishes entirely and the gap jumps to 31px. Fixing the
+                strength case alone would have left the other three quietly crooked. Both sides
+                now reserve the same width; the caption hugs the figures from the right, the
+                gauge from the left. */}
+            <div style={{ width:MAP_SIDE_W, flexShrink:0, display:"flex", justifyContent:"flex-end" }}>
+              <div style={{
+                writingMode:"vertical-rl", transform:"rotate(180deg)",
+                fontSize:9.5, color:C.muted, letterSpacing:0.6, fontWeight:600,
+                whiteSpace:"nowrap", alignSelf:"center", userSelect:"none",
+              }}>Tap a muscle for details</div>
+            </div>
             <Fig view="front"/>
             <Fig view="back"/>
-            {mode === "volume" ? (
-              <ScaleStrip C={C} topLabel="20+/wk" bottomLabel="0"
-                colors={[1, 0.82, 0.62, 0.37, 0.12].map(t => _heatColor(t, C))}/>
-            ) : mode === "strength" ? (
-              (strength.ready ? <ScaleStrip C={C} topLabel="Stronger" bottomLabel="Weaker"
-                colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/> : null)
-            ) : (
-              <ScaleStrip C={C} topLabel="Ready" bottomLabel="Recovering"
-                colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/>
-            )}
+            <div style={{ width:MAP_SIDE_W, flexShrink:0, display:"flex", justifyContent:"flex-start" }}>
+              {mode === "volume" ? (
+                <ScaleStrip C={C} topLabel="20+/wk" bottomLabel="0"
+                  colors={[1, 0.82, 0.62, 0.37, 0.12].map(t => _heatColor(t, C))}/>
+              ) : mode === "strength" ? (
+                (strength.ready ? <ScaleStrip C={C} topLabel="Stronger" bottomLabel="Weaker"
+                  colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/> : null)
+              ) : (
+                <ScaleStrip C={C} topLabel="Ready" bottomLabel="Recovering"
+                  colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/>
+              )}
+            </div>
           </div>
 
           {mode === "volume" ? (
@@ -1982,7 +1997,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         pushed off-screen — the title and the score ended up under the clock.
                         Cap it below the status-bar inset and let it scroll inside itself instead.
                         Same class as the alignItems:center clipping noted in the conventions. */}
-                    <div onClick={e => e.stopPropagation()} style={{
+                    <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{
                       width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0",
                       maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
                       overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
@@ -2244,7 +2259,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           : "Under the ~4-set minimum effective dose for growth.";
         return createPortal((
           <div onClick={() => setSelectedRegion(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-            <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
               <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14 }}>
                 <span style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{label}</span>
@@ -8346,7 +8361,7 @@ function OneRMModal({ onClose, unit, C }) {
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
       {/* C.surface + a border, not C.bg: on the dark theme this card was the same colour as the
           screen behind it and had no edge at all — the same blending the followers sheet had. */}
-      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
+      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.border}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>1RM Calculator</div>
           <button onClick={onClose} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
@@ -8444,7 +8459,7 @@ function PlateCalcModal({ onClose, unit, C }) {
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Plate Calculator</div>
           <button onClick={onClose} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
@@ -11737,6 +11752,60 @@ const EASE_NAV = "cubic-bezier(0.32, 0.72, 0, 1)";
 // it starts moving promptly and gathers speed on the way out.
 const EASE_EXIT = "cubic-bezier(0.4, 0, 1, 1)";
 
+// ── BOTTOM SHEET ─────────────────────────────────────────────────────────────────────────────
+// The app had NINETEEN bottom sheets and exactly two of them animated in; none animated out. So
+// every sheet but those two popped into existence, and all of them vanished on a single frame —
+// the same "it just disappears" Mo reported on the number pad, everywhere else. The two that did
+// animate used a curve of their own, unrelated to anything else in the app.
+//
+// The parent keeps its own boolean exactly as before. What this owns is the part a parent cannot
+// do: it delays its OWN unmount so the panel has time to travel, and it holds the last children
+// it was handed so a data-driven sheet (a post menu keyed on `postMenu`, a muscle keyed on
+// `selectedRegion`) still has something to render on the way out, after the parent's state has
+// already gone null.
+//
+// Enter decelerates, exit accelerates — the same pair as everything else that moves.
+const SHEET_MS = 240;
+function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,0,0.6)",
+                 portal = true, panelStyle, backdropProps = {}, panelProps = {} }) {
+  const [render, setRender] = useState(open);
+  const [shown, setShown] = useState(false);
+  const last = useRef(children);
+  if (open) last.current = children;
+  useEffect(() => {
+    if (open) {
+      setRender(true);
+      // A frame of "closed" has to be committed before the open state, or there is nothing to
+      // transition FROM and the sheet simply appears.
+      const r = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(r);
+    }
+    setShown(false);
+    const t = setTimeout(() => setRender(false), SHEET_MS);
+    return () => clearTimeout(t);
+  }, [open]);
+  if (!render) return null;
+  const ease = shown ? EASE_NAV : EASE_EXIT;
+  const node = (
+    <div {...backdropProps} onClick={onClose}
+      style={{ position:"fixed", inset:0, background:backdrop, zIndex:z, display:"flex",
+               alignItems:"flex-end", justifyContent:"center",
+               opacity: shown ? 1 : 0, transition:`opacity ${SHEET_MS}ms ${ease}`,
+               // Taps during the exit would land on a panel already on its way out.
+               pointerEvents: shown ? "auto" : "none",
+               ...(backdropProps.style || {}) }}>
+      <div {...panelProps} onClick={e => e.stopPropagation()}
+        style={{ width:"100%", maxWidth:480, margin:"0 auto",
+                 transform: shown ? "translateY(0)" : "translateY(101%)",
+                 transition:`transform ${SHEET_MS}ms ${ease}`, willChange:"transform",
+                 ...panelStyle }}>
+        {open ? children : last.current}
+      </div>
+    </div>
+  );
+  return portal ? createPortal(node, document.body) : node;
+}
+
 // One section heading treatment for the whole app. These labels had drifted into two sizes and
 // two letter-spacings across History/Profile, which is the kind of thing that reads as "slightly
 // cheap" without anyone being able to say why.
@@ -12982,7 +13051,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const curEquip = exEquipment(cur.name);
           return (
             <div onClick={() => setSwapEx(null)} style={{ position:"fixed", inset:0, zIndex:480, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-              <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
+              <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                   <div style={{ fontSize:17, fontWeight:800, color:C.text }}>Swap exercise</div>
                   <button onClick={() => setSwapEx(null)} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
@@ -14926,7 +14995,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {showTemplates && (
         <div onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Starter Templates</div>
@@ -16888,9 +16957,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
       })()}
 
       {/* Post options sheet: edit caption / confirm-then-delete */}
-      {postMenu && (
-        <div onClick={() => setPostMenu(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:600, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"10px 14px calc(env(safe-area-inset-bottom) + 14px)", fontFamily:F }}>
+      <Sheet open={!!postMenu} onClose={() => setPostMenu(null)} z={600} backdrop="rgba(0,0,0,0.55)"
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"10px 14px calc(env(safe-area-inset-bottom) + 14px)", fontFamily:F }}>
+        {postMenu && (
+          <>
             <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 12px" }}/>
             <button onClick={() => { setEditingPost(postMenu.id); setEditText(postMenu.caption || ""); setPostMenu(null); }}
               style={{ width:"100%", padding:"14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F, marginBottom:8 }}>
@@ -16916,9 +16986,9 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
               style={{ width:"100%", padding:"14px", background:"transparent", border:"none", fontSize:14, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F }}>
               Cancel
             </button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
     </div>
   );
 }
@@ -17094,7 +17164,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
 
       {showCreate && (
         <div onClick={() => setShowCreate(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
             <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:14 }}>New Group</div>
             <input
               value={newName} onChange={e => setNewName(e.target.value)}
@@ -17494,7 +17564,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
               transform-as-containing-block, which broke its full-screen sizing/centering. */}
           {showCloseFriendPicker && createPortal((
             <div onClick={() => setShowCloseFriendPicker(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-              <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+              <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
                   <div>
                     <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Close Friends</div>
@@ -18784,7 +18854,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           "bleeds" into the screen behind it / becomes scrollable past). */}
       {showEdit && createPortal((
         <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.border}` }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Edit Profile</div>
@@ -18874,7 +18944,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {/* Feedback modal — portaled for the same reason as above. */}
       {showFeedback && createPortal((
         <div onClick={() => setShowFeedback(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
             <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>Send feedback</div>
             <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>Bug, idea, or anything else — it goes straight to the developer.</div>
             <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} rows={4} placeholder="What's on your mind?"
@@ -18890,7 +18960,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
       {showDelete && createPortal((
         <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}` }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}` }}>
             <div style={{ width:46, height:46, borderRadius:13, background:"#ef444418", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
               <Icon name="trash" size={22} color="#ef4444"/>
             </div>
@@ -18914,7 +18984,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
 
       {showSettings && createPortal((
         <div onClick={() => setShowSettings(false)} onTouchMove={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", touchAction:"none" }}>
-          <div onClick={e => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" onTouchMove={(e) => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <div style={{ width:50 }}/>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
@@ -19188,7 +19258,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           // the touch, but a drag that starts on a non-scrollable element still scrolls the
           // nearest scrollable ancestor, so the screen behind kept moving.
           <div onClick={() => setListModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", touchAction:"none" }}>
-            <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.45)", border:`1px solid ${C.border}`, overflow:"hidden", margin:"0 16px" }}>
+            <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"75dvh", display:"flex", flexDirection:"column", boxShadow:"0 20px 60px rgba(0,0,0,0.45)", border:`1px solid ${C.border}`, overflow:"hidden", margin:"0 16px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px", borderBottom:`1px solid ${C.divider}` }}>
                 <div style={{ width:44 }}/>
                 <div style={{ fontSize:14, fontWeight:700, color:C.text, textTransform:"capitalize" }}>{listModal} · {listUsers.length}</div>
@@ -20224,7 +20294,7 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
   };
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+      <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>Weekly Review</div>
@@ -23042,7 +23112,11 @@ function AppInner() {
         .seshd-enter { animation: seshd-fade-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .seshd-scale-enter { animation: seshd-scale-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .seshd-count { animation: seshd-count-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; font-variant-numeric: tabular-nums; }
-        .seshd-slide-up { animation: seshd-slide-up 0.36s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        /* Retuned onto the app's own curve and duration. This was a NINTH easing curve, used by
+           exactly two sheets while the other seventeen popped in with no animation at all — the
+           class is now applied to every bottom sheet, and matches the number pad and the Sheet
+           component so a sheet arrives the same way wherever it comes from. */
+        .seshd-slide-up { animation: seshd-slide-up 0.24s cubic-bezier(0.32, 0.72, 0, 1) both; }
         .seshd-pulse { animation: seshd-pulse-soft 2s ease-in-out infinite; }
         /* Tab content transition — applied on tab change */
         @keyframes seshd-tab-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
