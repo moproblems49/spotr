@@ -1,4 +1,4 @@
-// v178091716835
+// v178091716836
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4050,6 +4050,14 @@ function muscleStrength(store, unit, sex) {
 // over. Deliberately summarized (not raw dumps) to keep the prompt small and focused: recent
 // sessions, top lifts + strength levels, stalls, consistency. All from data already stored.
 function buildCoachContext(store, unit) {
+  // `todayMs` is read twice below (the bodyweight-trend cutoff and the 7-day PR window) and was
+  // never declared here — the nearest binding of that name lives inside getExerciseSessions, a
+  // different function entirely. A free identifier is a ReferenceError, not undefined, and the
+  // second read is unconditional, so this function ALWAYS threw. The weekly-review effect wraps
+  // the call in a catch that turns it into setReviewStatus("error"), so the feature simply never
+  // produced a review and nothing was logged. Same shape as the local-noon anchor used by every
+  // other date helper here — never `new Date(key)`, which parses as midnight UTC.
+  const todayMs = new Date(dKey() + "T12:00:00").getTime();
   const sex = store.strengthSex || "male";
   const ss = computeStrengthScore(store, unit, sex);
   const streak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
