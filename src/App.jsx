@@ -1,4 +1,4 @@
-// v178091716834
+// v178091716835
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1996,7 +1996,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         it, and a bottom-anchored child taller than its container has its TOP
                         pushed off-screen — the title and the score ended up under the clock.
                         Cap it below the status-bar inset and let it scroll inside itself instead.
-                        Same class as the alignItems:center clipping noted in the conventions. */}
+                        Same class as the alignItems:center clipping noted in the conventions.
+                        NOT migrated to <Sheet>: the whole block is gated on `showBatteryDetail`,
+                        so a Sheet here would unmount the instant it closed and never animate out.
+                        Moving that gate means running this sheet's computation on every render of
+                        the profile screen, which is not worth an exit animation. Entrance only. */}
                     <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{
                       width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0",
                       maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
@@ -8961,6 +8965,60 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // PR MODAL
 // ═════════════════════════════════════════════════════════════════════════════
+// RESTORED. Commit 90927ed ("Remove the PR celebration popup after a workout") deleted this
+// array as collateral damage, leaving THREE live references to an undefined binding — and a bare
+// `PROGRAM_TEMPLATES` is a ReferenceError, not undefined, so each one threw. Two of them are on
+// the new-user path: it is read at the top of the Onboarding component body and again in the
+// onboarding completion handler, so EVERY fresh signup hit the error boundary instead of the
+// first screen. The third is the "Browse templates" sheet. Nothing caught it because no sim
+// drives onboarding as a brand-new user and the templates sheet was never opened by a test.
+// `pw_templates` covers both paths now.
+const PROGRAM_TEMPLATES = [
+  { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", days:[
+    { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
+    { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (Wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
+    { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lateral Raises (DB)","Cable Crunch"] },
+  ]},
+  { id:"ul4", name:"Upper / Lower", icon:"⚡", desc:"4-day · strength + size", days:[
+    { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (Wide)","Barbell Curl","Tricep Rope Pushdown"] },
+    { name:"Lower A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","Seated DB Shoulder Press","Seated Cable Row (Narrow)","Hammer Curl","Skull Crushers (EZ Bar)"] },
+    { name:"Lower B", exercises:["Deadlift","Hack Squat (Machine)","Leg Extension","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"ppl6", name:"Push / Pull / Legs", icon:"🔥", desc:"6-day · classic hypertrophy", days:[
+    { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (Wide)","Barbell Row","Seated Cable Row (Narrow)","Face Pulls","Barbell Curl","Incline DB Curl"] },
+    { name:"Legs A · Quad Focus", exercises:["Barbell Back Squat","Leg Press","Leg Extension","Romanian Deadlift","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
+    { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly (DB)","Preacher Curl Machine","Hammer Curl"] },
+    { name:"Legs B · Posterior Chain", exercises:["Romanian Deadlift","Hack Squat (Machine)","Seated Leg Curl","Hip Thrust (Barbell)","Leg Extension","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"pplul", name:"PPL · Upper / Lower", icon:"🗓️", desc:"5-day · PPLUL hybrid", days:[
+    { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Pull", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Face Pulls","Barbell Curl","Hammer Curl"] },
+    { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lat Pulldown (Wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers (EZ Bar)"] },
+    { name:"Lower", exercises:["Hack Squat (Machine)","Romanian Deadlift","Leg Extension","Seated Leg Curl","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"bro", name:"Bro Split", icon:"💯", desc:"5-day · one muscle per day", days:[
+    { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Weighted Dips"] },
+    { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row (Narrow)","Lat Pulldown (Wide)"] },
+    { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Face Pulls"] },
+    { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers (EZ Bar)","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
+    { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Leg Extension","Standing Calf Raise (Machine)"] },
+  ]},
+  { id:"sl5x5", name:"StrongLifts 5×5", icon:"🏋️", desc:"3-day · beginner strength", days:[
+    { name:"Workout A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row"] },
+    { name:"Workout B", exercises:["Barbell Back Squat","Overhead Press (Barbell)","Deadlift"] },
+  ]},
+  { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"4-day · Wendler strength", days:[
+    { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press","Seated Leg Curl"] },
+    { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row","Tricep Rope Pushdown"] },
+    { name:"Deadlift Day", exercises:["Deadlift","Romanian Deadlift","Standing Calf Raise (Machine)"] },
+    { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises (DB)"] },
+  ]},
+];
+
 function recommendTemplateId({ goal, experience, daysPerWeek } = {}) {
   const days = parseInt(daysPerWeek) || 3;
   if (days <= 2) return "full3";
@@ -14993,9 +15051,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </PullToRefresh>
       )}
 
-      {showTemplates && (
-        <div onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+      <Sheet open={showTemplates} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} z={200}
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+        {showTemplates && (
+          <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Starter Templates</div>
@@ -15060,9 +15119,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               });
               })()}
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
 
       {/* Exercise Detail */}
       {viewingExercise && (
@@ -17162,9 +17221,10 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
         </div>
       ))}
 
-      {showCreate && (
-        <div onClick={() => setShowCreate(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+      <Sheet open={showCreate} onClose={() => setShowCreate(false)} z={300}
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", borderTop:`1px solid ${C.border}` }}>
+        {showCreate && (
+          <>
             <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:14 }}>New Group</div>
             <input
               value={newName} onChange={e => setNewName(e.target.value)}
@@ -17181,9 +17241,9 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
               <button onClick={() => setShowCreate(false)} style={{ flex:1, padding:"11px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
               <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borRadius:8, borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
       </div>
     </div>
   );
@@ -18942,9 +19002,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       ), document.body)}
 
       {/* Feedback modal — portaled for the same reason as above. */}
-      {showFeedback && createPortal((
-        <div onClick={() => setShowFeedback(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+      <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000}
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+        {showFeedback && (
+          <>
             <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>Send feedback</div>
             <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>Bug, idea, or anything else — it goes straight to the developer.</div>
             <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} rows={4} placeholder="What's on your mind?"
@@ -18953,9 +19014,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               <button onClick={() => setShowFeedback(false)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
               <button onClick={submitFeedback} disabled={!feedbackText.trim() || feedbackSending} style={{ flex:1, padding:"12px", background:feedbackText.trim() ? C.primary : C.border, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:feedbackText.trim() ? C.onPrimary : "#fff", cursor:"pointer", fontFamily:F }}>{feedbackSending ? "Sending…" : "Send"}</button>
             </div>
-          </div>
-        </div>
-      ), document.body)}
+          </>
+        )}
+      </Sheet>
 
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
       {showDelete && createPortal((
@@ -18982,9 +19043,15 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         </div>
       ), document.body)}
 
-      {showSettings && createPortal((
-        <div onClick={() => setShowSettings(false)} onTouchMove={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", touchAction:"none" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" onTouchMove={(e) => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
+      {/* The two touch handlers are load-bearing and pass straight through: the backdrop swallows
+          a drag that starts on itself so the page behind cannot scroll, and the panel stops its
+          own drags reaching it so the settings list still scrolls. */}
+      <Sheet open={showSettings} onClose={() => setShowSettings(false)} z={3000}
+        backdropProps={{ onTouchMove: (e) => { if (e.target === e.currentTarget) e.preventDefault(); }, style:{ touchAction:"none" } }}
+        panelProps={{ onTouchMove: (e) => e.stopPropagation() }}
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
+        {showSettings && (
+          <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <div style={{ width:50 }}/>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
@@ -19233,9 +19300,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      ), document.body)}
+          </>
+        )}
+      </Sheet>
 
       {/* Followers / Following list modal */}
       {listModal && (() => {
