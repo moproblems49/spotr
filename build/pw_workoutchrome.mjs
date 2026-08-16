@@ -1,9 +1,15 @@
-// HIDING THE NAV DURING A WORKOUT MUST NOT STRAND YOU.
+// A WORKOUT MUST NOT STRAND YOU ON THE TRACKER TAB.
 //
-// The declutter pass hides the top bar AND the bottom nav while a workout is in progress on the
-// tracker tab (`workoutActive && tab === "tracker"`). That removes the app's primary navigation, so
-// the escape routes have to be proven, not assumed: the tab swipe still works, the nav comes back
-// on any other tab, it hides again on return, and Cancel/Finish restore it.
+// The declutter pass hid the top bar AND the bottom nav while a workout was in progress
+// (`workoutActive && tab === "tracker"`), leaving the tab SWIPE as the only way off the screen.
+// This suite was written to prove that escape route held — and it did, from y=500, which is where
+// it happened to swipe. It does not hold everywhere: `handleSwipeStart` bails on anything inside
+// `[data-no-tab-swipe]`, which is every SetRow, so on a real 6-exercise session 61% of the screen
+// height silently refused to start a gesture. Mo reported that as the swipe feeling "laggy".
+//
+// The nav is visible during a workout now (the exercise scroller already padded by NAV_CLEARANCE
+// the whole time, so it was never actually covering set rows). The TOP bar stays hidden — the
+// workout has its own header — so that half of the declutter is still asserted here.
 //
 // The flag lives in AppInner but is driven by an effect inside WorkoutTracker — and the swipe track
 // UNMOUNTS the non-current tab, so the flag has to survive an unmount/remount cycle correctly.
@@ -46,6 +52,8 @@ const navVisible = () => page.evaluate(() => {
   return r.width > 0 && r.height > 0 && r.bottom <= innerHeight + 1;
 });
 const inWorkout = () => page.evaluate(() => /Finish/.test(document.body.innerText));
+// The top bar is the piece still hidden during a workout. Read it by its wordmark.
+const topBarVisible = () => page.evaluate(() => /SESHD/.test(document.body.innerText));
 // Horizontal swipe on the tab track.
 const swipe = async (fromX, toX) => {
   await page.evaluate(async ([x0, x1]) => {
@@ -69,19 +77,22 @@ await page.waitForFunction(() => !/Setting up your account/.test(document.body.i
 await page.waitForTimeout(1800);
 
 check("the nav is visible before a workout starts", await navVisible());
+check("the top bar is visible before a workout starts", await topBarVisible());
 
 await page.getByText("Quick Start", { exact: false }).first().click();
 await page.waitForTimeout(1200);
 check("a workout is running", await inWorkout());
-check("the nav hides during a workout", !(await navVisible()));
+check("the nav STAYS VISIBLE during a workout — it is the reliable way off the tab", await navVisible());
+check("the top bar hides during a workout (the workout has its own header)", !(await topBarVisible()));
 await page.screenshot({ path: "build/shot_chrome_inworkout.png" });
 
 // ESCAPE ROUTE 1: the tab swipe must still work with no nav on screen.
 await swipe(360, 60);
 const leftBySwipe = !(await inWorkout());
-check("you can SWIPE off the workout screen even with the nav hidden", leftBySwipe,
-  leftBySwipe ? "" : "still on the workout screen — this would strand the user");
-check("the nav comes back on another tab", await navVisible());
+check("the tab swipe still works from a swipeable part of the screen", leftBySwipe,
+  leftBySwipe ? "" : "still on the workout screen");
+check("the nav is on another tab too", await navVisible());
+check("the top bar comes back on another tab", await topBarVisible());
 await page.screenshot({ path: "build/shot_chrome_othertab.png" });
 
 // ESCAPE ROUTE 2: navigate back to the tracker — the workout must still be there and the nav hide
@@ -89,19 +100,28 @@ await page.screenshot({ path: "build/shot_chrome_othertab.png" });
 await page.mouse.click(164, 869);
 await page.waitForTimeout(1400);
 check("the workout survived leaving and returning", await inWorkout());
-check("the nav hides again on return", !(await navVisible()));
+check("the nav is still there on return", await navVisible());
+check("the top bar hides again on return", !(await topBarVisible()));
 
-// ESCAPE ROUTE 3: Cancel restores the chrome.
-page.once("dialog", d => d.accept());
-await page.getByText("Cancel", { exact: true }).first().click();
+// ESCAPE ROUTE 3: Discard restores the chrome. It confirms first now (destroying a logged session
+// used to happen on the first tap), so the sheet has to be answered.
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll("button")].find(x => /^(discard|cancel)$/i.test((x.textContent||"").trim()));
+  b && b.click();
+});
+await page.waitForTimeout(700);
+check("Discard asks before destroying the session", /discard this workout\?/i.test(await page.evaluate(() => document.body.innerText)));
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll("button")].find(x => /^discard workout$/i.test((x.textContent||"").trim()));
+  b && b.click();
+});
 await page.waitForTimeout(1200);
-check("Cancel ends the workout", !(await inWorkout()));
-check("the nav is restored after cancelling", await navVisible());
+check("confirming ends the workout", !(await inWorkout()));
+check("the nav is still there after discarding", await navVisible());
 await page.screenshot({ path: "build/shot_chrome_after.png" });
 
 // And the top bar must be back too (it is hidden by the same condition).
-check("the top bar is restored as well",
-  await page.evaluate(() => /SESHD/.test(document.body.innerText)));
+check("the top bar is restored as well", await topBarVisible());
 
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

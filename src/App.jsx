@@ -1,4 +1,4 @@
-// v178091716843
+// v178091716844
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10902,11 +10902,6 @@ function mergeExerciseNames(mapping, store, setStore, currentUserId, token) {
   }
   return affected.length;
 }
-// Single-pair convenience wrapper (the custom-exercise manager's "merge into" flow uses this).
-function mergeExerciseName(oldName, newName, store, setStore, currentUserId, token) {
-  return mergeExerciseNames({ [oldName]: newName }, store, setStore, currentUserId, token);
-}
-
 // One-time cleanup of commonly misnamed custom exercises → their canonical built-in entries, so
 // logged work consolidates under names that carry hand-written guides, body-map credit, and
 // leaderboard identity. Applied once per device at boot (flag: seshd_custom_merge_v1); merging
@@ -13125,7 +13120,28 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             Finish sit under the clock. Same one-owner rule as the offline/guest banners; the
             condition matches exactly (a session is what hides the bar). */}
         <div style={{ background:C.bg, padding:"calc(env(safe-area-inset-top) + 10px) 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <button className="seshd-hit-y" onClick={() => { clearInterval(elRef.current); try { localStorage.removeItem(SESSION_KEY); } catch {} setSession(null); setWStart(null); setElapsed(0); setRest(null); }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
+          {/* "Cancel" sat one mis-tap from destroying a whole session, with no confirmation and no
+              undo — and the word is ambiguous next to a running timer ("cancel what, the timer?").
+              It reads "Discard" now, and asks first. The wording mirrors the Finish sheet's
+              "Keep going" so the safe option is the familiar one in both places. */}
+          <button className="seshd-hit-y" onClick={() => {
+            const logged = (session?.exercises || []).reduce((a, ex) => a + workingDone(ex.sets).length, 0);
+            const discard = () => {
+              clearInterval(elRef.current);
+              try { localStorage.removeItem(SESSION_KEY); } catch {}
+              setSession(null); setWStart(null); setElapsed(0); setRest(null);
+            };
+            confirmAction({
+              title: "Discard this workout?",
+              message: logged > 0
+                ? `You'll lose the ${logged} set${logged === 1 ? "" : "s"} you've logged. This can't be undone.`
+                : "Nothing has been logged yet, so there's nothing to save.",
+              confirmLabel: "Discard workout",
+              cancelLabel: "Keep going",
+              destructive: true,
+              onConfirm: discard,
+            });
+          }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Discard</button>
           <div style={{ textAlign:"center" }}>
             <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
             <div style={{ fontSize:28, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
@@ -24547,9 +24563,16 @@ function AppInner() {
           flex sibling) so tab content actually scrolls underneath it — that's what gives
           backdrop-filter real content to blur, instead of just a flat background color.
           Shrinks/fades slightly on scroll-down, restores on scroll-up (see navShrunk above).
-          Hidden while logging a workout: you're not switching tabs between sets, and those four
-          icons were sitting on top of the set rows. */}
-      {!(workoutActive && tab === "tracker") && (
+
+          IT USED TO BE HIDDEN DURING A WORKOUT ("you're not switching tabs between sets"), which
+          left the tab SWIPE as the only way off the tracker — and the swipe bails on anything
+          inside [data-no-tab-swipe], which is every SetRow. Measured on a 6-exercise session: 61%
+          of the screen height silently refused to start a swipe, so the gesture worked from the
+          header and failed from the sets, one thumb-width apart. Mo reported that as the swipe
+          feeling "laggy"; it was not slow, it was not firing. Nothing was actually gained by
+          hiding it either — the exercise scroller still padded by NAV_CLEARANCE the whole time, so
+          the icons were never over the set rows, just over 86px of dead space, and the minimised
+          rest bar is already positioned above the nav's height. */}
       <div style={{
         position:"absolute", left:0, right:0, bottom:0, zIndex:50, pointerEvents:"none",
         paddingTop:8, paddingBottom:"calc(8px + env(safe-area-inset-bottom))",
@@ -24631,7 +24654,6 @@ function AppInner() {
         })}
       </div>
       </div>
-      )}
 
       {/* Messages overlay — sits above the tab track (zIndex 40) but UNDER the floating
           bottom nav (zIndex 50), so the nav stays visible and tappable over the list.
