@@ -1,4 +1,4 @@
-// v178091716834
+// v178091716841
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1957,6 +1957,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   </div>
                 );
               })()}
+              <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000}
+                panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0",
+                  maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
+                  overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+                  padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
               {showBatteryDetail && (() => {
                 const bb = computeBodyBattery(store);
                 const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
@@ -1990,18 +1995,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   (actFresh && act.steps) ? { label: "Steps", value: act.steps.toLocaleString(), detail: "Today — from Apple Health" } : null,
                   (actFresh && act.activeKcal) ? { label: "Active energy", value: `${act.activeKcal}`, detail: "kcal today — from Apple Health" } : null,
                 ].filter(Boolean);
-                return createPortal((
-                  <div onClick={() => setShowBatteryDetail(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-                    {/* This sheet grew past the viewport once steps/energy/HRV/RHR were added to
-                        it, and a bottom-anchored child taller than its container has its TOP
-                        pushed off-screen — the title and the score ended up under the clock.
-                        Cap it below the status-bar inset and let it scroll inside itself instead.
-                        Same class as the alignItems:center clipping noted in the conventions. */}
-                    <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{
-                      width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0",
-                      maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
-                      overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
-                      padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+                // This sheet grew past the viewport once steps/energy/HRV/RHR were added to it,
+                // and a bottom-anchored child taller than its container has its TOP pushed
+                // off-screen — the title and the score ended up under the clock. Capped below the
+                // status-bar inset with its own scroll (panelStyle above), same class as the
+                // alignItems:center clipping noted in the conventions.
+                return (
+                  <>
                       <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                         <span style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Body Battery</span>
@@ -2032,10 +2032,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         </div>
                       )}
                       <button onClick={() => setShowBatteryDetail(false)} style={{ marginTop:12, width:"100%", padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
-                    </div>
-                  </div>
-                ), document.body);
+                  </>
+                );
               })()}
+              </Sheet>
               {/* TRAINING LOAD — this week against what you're conditioned for. Hidden until there's
                   enough history for the 28-day average to mean anything (trainingLoadRatio returns
                   null), because a ratio off four sessions is noise dressed as insight. */}
@@ -2205,6 +2205,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </>
       )}
       </div>
+      <Sheet open={!!selectedRegion} onClose={() => setSelectedRegion(null)} z={3000}
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
       {selectedRegion && (() => {
         const { key, region: regionName } = selectedRegion;
         const label = _regionLabel(key);
@@ -2257,9 +2259,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           : weekSets >= 4 ? `Growing — ${10 - weekSets} more set${10 - weekSets === 1 ? "" : "s"} this week would put it in the maximizing range.`
           : examples.length ? `Under the ~4-set minimum for growth. ${examples.join(" or ")} would cover it.`
           : "Under the ~4-set minimum effective dose for growth.";
-        return createPortal((
-          <div onClick={() => setSelectedRegion(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+        return (
+          <>
               <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14 }}>
                 <span style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{label}</span>
@@ -2305,10 +2306,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               )}
               <div style={{ fontSize:12, color:C.sub, lineHeight:1.55, padding:"10px 12px", background:C.surface, borderRadius:10 }}>{suggestion}</div>
               <button onClick={() => setSelectedRegion(null)} style={{ marginTop:14, width:"100%", padding:"13px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Close</button>
-            </div>
-          </div>
-        ), document.body);
+          </>
+        );
       })()}
+      </Sheet>
     </div>
   );
 }
@@ -2488,7 +2489,6 @@ function ReportHost({ C, token, currentUserId }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [rp?.key]);
-  if (!rp) return null;
   const close = () => { if (!busy) setRp(null); };
   const submit = async (reason) => {
     if (busy) return;
@@ -2517,24 +2517,27 @@ function ReportHost({ C, token, currentUserId }) {
     } finally { setBusy(false); }
   };
   const accent = C.accent || "#65a30d";
-  return createPortal((
-    <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"flex-end", justifyContent:"center", animation:"seshd-cf-fade 0.15s ease" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", maxWidth:480, width:"100%", border:`1px solid ${C.border}`, borderBottom:"none", animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
-        <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:4, letterSpacing:-0.3 }}>Report{rp.label ? ` ${rp.label}` : ""}</div>
-        <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>Why are you reporting this? This is anonymous.</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {REPORT_REASONS.map(r => (
-            <button key={r.id} disabled={busy} onClick={() => submit(r.id)} style={{
-              textAlign:"left", background:C.bg, border:`1px solid ${C.border}`, color:C.text,
-              borderRadius:11, padding:"13px 15px", fontSize:14, fontWeight:600,
-              cursor:busy?"default":"pointer", fontFamily:F, opacity:busy?0.6:1,
-            }}>{r.label}</button>
-          ))}
-        </div>
-        <button onClick={close} disabled={busy} style={{ width:"100%", marginTop:12, background:"transparent", border:"none", color:C.sub, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:F }}>Cancel</button>
-      </div>
-    </div>
-  ), document.body);
+  return (
+    <Sheet open={!!rp} onClose={close} z={4000} backdrop="rgba(0,0,0,0.7)"
+      panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", border:`1px solid ${C.border}`, borderBottom:"none" }}>
+      {rp && (
+        <>
+          <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:4, letterSpacing:-0.3 }}>Report{rp.label ? ` ${rp.label}` : ""}</div>
+          <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>Why are you reporting this? This is anonymous.</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {REPORT_REASONS.map(r => (
+              <button key={r.id} disabled={busy} onClick={() => submit(r.id)} style={{
+                textAlign:"left", background:C.bg, border:`1px solid ${C.border}`, color:C.text,
+                borderRadius:11, padding:"13px 15px", fontSize:14, fontWeight:600,
+                cursor:busy?"default":"pointer", fontFamily:F, opacity:busy?0.6:1,
+              }}>{r.label}</button>
+            ))}
+          </div>
+          <button onClick={close} disabled={busy} style={{ width:"100%", marginTop:12, background:"transparent", border:"none", color:C.sub, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:F }}>Cancel</button>
+        </>
+      )}
+    </Sheet>
+  );
 }
 function ToastHost() {
   // Seed from the queue: a toast fired before this host mounts (e.g. a failure during the
@@ -4046,6 +4049,14 @@ function muscleStrength(store, unit, sex) {
 // over. Deliberately summarized (not raw dumps) to keep the prompt small and focused: recent
 // sessions, top lifts + strength levels, stalls, consistency. All from data already stored.
 function buildCoachContext(store, unit) {
+  // `todayMs` is read twice below (the bodyweight-trend cutoff and the 7-day PR window) and was
+  // never declared here — the nearest binding of that name lives inside getExerciseSessions, a
+  // different function entirely. A free identifier is a ReferenceError, not undefined, and the
+  // second read is unconditional, so this function ALWAYS threw. The weekly-review effect wraps
+  // the call in a catch that turns it into setReviewStatus("error"), so the feature simply never
+  // produced a review and nothing was logged. Same shape as the local-noon anchor used by every
+  // other date helper here — never `new Date(key)`, which parses as midnight UTC.
+  const todayMs = new Date(dKey() + "T12:00:00").getTime();
   const sex = store.strengthSex || "male";
   const ss = computeStrengthScore(store, unit, sex);
   const streak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
@@ -8961,6 +8972,60 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // PR MODAL
 // ═════════════════════════════════════════════════════════════════════════════
+// RESTORED. Commit 90927ed ("Remove the PR celebration popup after a workout") deleted this
+// array as collateral damage, leaving THREE live references to an undefined binding — and a bare
+// `PROGRAM_TEMPLATES` is a ReferenceError, not undefined, so each one threw. Two of them are on
+// the new-user path: it is read at the top of the Onboarding component body and again in the
+// onboarding completion handler, so EVERY fresh signup hit the error boundary instead of the
+// first screen. The third is the "Browse templates" sheet. Nothing caught it because no sim
+// drives onboarding as a brand-new user and the templates sheet was never opened by a test.
+// `pw_templates` covers both paths now.
+const PROGRAM_TEMPLATES = [
+  { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", days:[
+    { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
+    { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (Wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
+    { name:"Full Body C", exercises:["Romanian Deadlift","Weighted Dips","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lateral Raises (DB)","Cable Crunch"] },
+  ]},
+  { id:"ul4", name:"Upper / Lower", icon:"⚡", desc:"4-day · strength + size", days:[
+    { name:"Upper A", exercises:["Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Lat Pulldown (Wide)","Barbell Curl","Tricep Rope Pushdown"] },
+    { name:"Lower A", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Upper B", exercises:["Incline Barbell Press","Weighted Pull-Ups","Seated DB Shoulder Press","Seated Cable Row (Narrow)","Hammer Curl","Skull Crushers (EZ Bar)"] },
+    { name:"Lower B", exercises:["Deadlift","Hack Squat (Machine)","Leg Extension","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"ppl6", name:"Push / Pull / Legs", icon:"🔥", desc:"6-day · classic hypertrophy", days:[
+    { name:"Push A · Chest Focus", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Pull A · Back Width", exercises:["Weighted Pull-Ups","Lat Pulldown (Wide)","Barbell Row","Seated Cable Row (Narrow)","Face Pulls","Barbell Curl","Incline DB Curl"] },
+    { name:"Legs A · Quad Focus", exercises:["Barbell Back Squat","Leg Press","Leg Extension","Romanian Deadlift","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Push B · Shoulder Focus", exercises:["Overhead Press (Barbell)","Incline Barbell Press","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Weighted Dips","Tricep Rope Pushdown"] },
+    { name:"Pull B · Back Thickness", exercises:["Deadlift","Pendlay Row","Lat Pulldown (Neutral)","Chest-Supported Row","Rear Delt Fly (DB)","Preacher Curl Machine","Hammer Curl"] },
+    { name:"Legs B · Posterior Chain", exercises:["Romanian Deadlift","Hack Squat (Machine)","Seated Leg Curl","Hip Thrust (Barbell)","Leg Extension","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"pplul", name:"PPL · Upper / Lower", icon:"🗓️", desc:"5-day · PPLUL hybrid", days:[
+    { name:"Push", exercises:["Barbell Bench Press","Overhead Press (Barbell)","Incline DB Press","Lateral Raises (DB)","Tricep Rope Pushdown","Overhead Tricep Extension (Cable)"] },
+    { name:"Pull", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Face Pulls","Barbell Curl","Hammer Curl"] },
+    { name:"Legs", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Seated Leg Curl","Standing Calf Raise (Machine)"] },
+    { name:"Upper", exercises:["Incline Barbell Press","Seated Cable Row (Narrow)","Seated DB Shoulder Press","Lat Pulldown (Wide)","Reverse Pec Deck","Preacher Curl Machine","Skull Crushers (EZ Bar)"] },
+    { name:"Lower", exercises:["Hack Squat (Machine)","Romanian Deadlift","Leg Extension","Seated Leg Curl","Hip Thrust (Barbell)","Seated Calf Raise (Machine)"] },
+  ]},
+  { id:"bro", name:"Bro Split", icon:"💯", desc:"5-day · one muscle per day", days:[
+    { name:"Chest Day", exercises:["Barbell Bench Press","Incline DB Press","Machine Chest Press","Cable Fly (Low-to-High)","Weighted Dips"] },
+    { name:"Back Day", exercises:["Deadlift","Weighted Pull-Ups","Barbell Row","Seated Cable Row (Narrow)","Lat Pulldown (Wide)"] },
+    { name:"Shoulder Day", exercises:["Overhead Press (Barbell)","Seated DB Shoulder Press","Lateral Raises (DB)","Reverse Pec Deck","Face Pulls"] },
+    { name:"Arms Day", exercises:["Barbell Curl","Skull Crushers (EZ Bar)","Hammer Curl","Tricep Rope Pushdown","Preacher Curl Machine"] },
+    { name:"Legs Day", exercises:["Barbell Back Squat","Romanian Deadlift","Leg Press","Leg Extension","Standing Calf Raise (Machine)"] },
+  ]},
+  { id:"sl5x5", name:"StrongLifts 5×5", icon:"🏋️", desc:"3-day · beginner strength", days:[
+    { name:"Workout A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row"] },
+    { name:"Workout B", exercises:["Barbell Back Squat","Overhead Press (Barbell)","Deadlift"] },
+  ]},
+  { id:"531", name:"5/3/1 BBB", icon:"💪", desc:"4-day · Wendler strength", days:[
+    { name:"Squat Day", exercises:["Barbell Back Squat","Leg Press","Seated Leg Curl"] },
+    { name:"Bench Day", exercises:["Barbell Bench Press","Barbell Row","Tricep Rope Pushdown"] },
+    { name:"Deadlift Day", exercises:["Deadlift","Romanian Deadlift","Standing Calf Raise (Machine)"] },
+    { name:"OHP Day", exercises:["Overhead Press (Barbell)","Weighted Pull-Ups","Lateral Raises (DB)"] },
+  ]},
+];
+
 function recommendTemplateId({ goal, experience, daysPerWeek } = {}) {
   const days = parseInt(daysPerWeek) || 3;
   if (days <= 2) return "full3";
@@ -9874,6 +9939,15 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                     <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
                     <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
                   </div>
+                  {/* Same field, same "· ♥ N avg · N peak" as History — only present once Apple
+                      Health has synced it (a moment after finish), so an older post's snapshot,
+                      taken before that sync, simply has nothing to show here. */}
+                  {post.workout.hrSummary?.avg ? (
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:14, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
+                      <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>♥ AVG</div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -10586,20 +10660,40 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
     }));
     // Save to user's account — the active program is a single FK on the profile row,
     // so activating the import is one atomic write (no deactivate-then-activate race).
-    if (token) {
-      sb.query("programs", {
-        method: "POST",
-        body: JSON.stringify({
-          id: newId,
-          name: imported.name,
-          days: imported.days,
-        })
-      }, token)
-        .then(() => sb.query(`profiles?id=eq.${currentUserId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ active_program_id: newId })
-        }, token))
-        .catch(e => devError("save imported program:", e));
+    //
+    // THIS POST USED TO FAIL EVERY TIME, TWICE OVER, AND SAY "Program imported" ANYWAY.
+    // It sent `id: newId` where newId comes from uid() — 8-char base36 — into a `uuid` column
+    // (22P02), and omitted `user_id`, which is NOT NULL. The only handler was
+    // `.catch(devError)`, which is dev-only logging, so both failures were invisible: the toast
+    // fired regardless, the program showed up locally, and the next loadUserData overwrote
+    // `programs`/`activeProgramId` from the server and it was simply gone. Same class as the
+    // onboarding starter program — a local-only write standing in front of a hard overwrite.
+    // Let the server mint the uuid, send user_id, and adopt the returned id locally.
+    if (token && currentUserId) {
+      (async () => {
+        try {
+          const res = await sb.query("programs", {
+            method: "POST",
+            headers_extra: { Prefer: "return=representation" },
+            body: JSON.stringify({ user_id: currentUserId, name: imported.name, days: imported.days }),
+          }, token);
+          const row = Array.isArray(res) ? res[0] : res;
+          const serverId = row?.id;
+          if (!serverId) throw new Error("no id returned for imported program");
+          // Swap the placeholder id for the server's, so later edits PATCH a row that exists.
+          setStore(p => ({
+            ...p,
+            programs: (p.programs || []).map(x => x.id === newId ? { ...x, id: serverId } : x),
+            activeProgramId: p.activeProgramId === newId ? serverId : p.activeProgramId,
+          }));
+          await sb.query(`profiles?id=eq.${currentUserId}`, {
+            method: "PATCH", body: JSON.stringify({ active_program_id: serverId })
+          }, token);
+        } catch (e) {
+          devError("save imported program:", e);
+          toast("Imported on this device — couldn't sync to your account", "error");
+        }
+      })();
     }
     toast(isWorkout ? "Workout imported" : "Program imported", "success");
     setCode("");
@@ -13045,13 +13139,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             onClose={() => setViewingExercise(null)}
           />
         )}
+        <Sheet open={swapEx != null && !!session.exercises[swapEx]} onClose={() => setSwapEx(null)} z={480}
+          backdrop="rgba(0,0,0,0.55)"
+          panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
         {swapEx != null && session.exercises[swapEx] && (() => {
           const cur = session.exercises[swapEx];
           const subs = suggestExerciseSubstitutes(cur.name, 10);
           const curEquip = exEquipment(cur.name);
           return (
-            <div onClick={() => setSwapEx(null)} style={{ position:"fixed", inset:0, zIndex:480, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-              <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
+            <>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                   <div style={{ fontSize:17, fontWeight:800, color:C.text }}>Swap exercise</div>
                   <button onClick={() => setSwapEx(null)} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
@@ -13079,10 +13175,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     </button>
                   );
                 })}
-              </div>
-            </div>
+            </>
           );
         })()}
+        </Sheet>
         {editingHistory && (
           <EditHistoryModal
             editing={editingHistory}
@@ -13712,10 +13808,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           }}>+ Add Exercise</button>
         </div>
 
+        {showWorkoutSummary && workoutSummary && <Confetti duration={2.5}/>}
+        <Sheet open={showWorkoutSummary && !!workoutSummary} onClose={() => {}} z={300} backdrop="rgba(0,0,0,0.85)"
+          panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         {showWorkoutSummary && workoutSummary && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-            <Confetti duration={2.5}/>
-            <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"90dvh", display:"flex", flexDirection:"column" }}>
+          <>
               <div style={{ overflowY:"auto", flex:1, padding:"24px 18px 0" }}>
                 {workoutSummary.hype && (
                   <div className="seshd-content-fade" style={{ textAlign:"center", margin:"0 4px 18px" }}>
@@ -14128,9 +14225,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </button>
                 )}
               </div>
-            </div>
-          </div>
+          </>
         )}
+        </Sheet>
         {/* Reorder modal — collapsed cards you can drag freely */}
         {reorderMode && session && (
           <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
@@ -14236,24 +14333,41 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         })()}
 
         {/* Finish modal */}
-        {showFinish && (
-          <div onClick={() => setShowFinish(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-            <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+        <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200}
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", borderTop:`1px solid ${C.border}` }}>
+          {showFinish && (
+            <>
               <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
               <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish workout"}</button>
+              {/* THE ENTRY POINT THE GROUP PICKER NEVER HAD. Everything behind this button —
+                  `showGroupShare`, the picker sheet, and finishWorkout's groupOnly fast path —
+                  landed together in 02ab7f3 (2026-07-05) and `setShowGroupShare(true)` was never
+                  written in any commit, so the whole path sat dead for its entire life. The
+                  post-finish summary's "Groups Only" reaches the same outcome; this is the ONE-TAP
+                  version that skips the summary entirely. Gated on actually being in a group,
+                  because with none the picker is an empty sheet with a disabled button. */}
+              {(store.groups||[]).some(g => (g.members||g.member_ids||[]).includes(currentUserId)) && (
+                <button onClick={() => { setShowFinish(false); setSelectedGroupIds([]); setShowGroupShare(true); }}
+                  disabled={finishing}
+                  style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  Save &amp; send to groups
+                </button>
+              )}
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </Sheet>
 
         {/* Group share picker (Save & send to groups path - skips feed) */}
+        <Sheet open={showGroupShare} onClose={() => setShowGroupShare(false)} z={200}
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto", borderTop:`1px solid ${C.border}` }}>
         {showGroupShare && (() => {
           const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
           return (
-            <div onClick={() => setShowGroupShare(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-              <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}`, maxHeight:"80dvh", overflowY:"auto" }}>
+            <>
                 <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
                 <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Send to groups</div>
                 <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>Workout will only be visible in selected groups, not the feed.</div>
@@ -14291,10 +14405,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   {finishing ? "Saving…" : `Send to ${selectedGroupIds.length || "0"} group${selectedGroupIds.length===1?"":"s"}`}
                 </button>
                 <button onClick={() => { setShowGroupShare(false); setShowFinish(true); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Back</button>
-              </div>
-            </div>
+            </>
           );
         })()}
+        </Sheet>
       </div>
     );
   }
@@ -14993,9 +15107,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </PullToRefresh>
       )}
 
-      {showTemplates && (
-        <div onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+      <Sheet open={showTemplates} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} z={200}
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+        {showTemplates && (
+          <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => { setShowTemplates(false); setPrefilledCode(null); }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Starter Templates</div>
@@ -15060,9 +15175,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               });
               })()}
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
 
       {/* Exercise Detail */}
       {viewingExercise && (
@@ -15104,18 +15219,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       {/* AI Coach modal */}
-      {showAICoach && (
-        <AICoachModal
-          C={C}
-          store={store}
-          onClose={() => setShowAICoach(false)}
-          onImport={(prog) => {
-            if (onSaveProgram) onSaveProgram(prog);
-            else setStore(p => ({ ...p, programs: [...(p.programs||[]), prog], activeProgramId: prog.id }));
-            setShowAICoach(false);
-          }}
-        />
-      )}
+      <AICoachModal
+        open={showAICoach}
+        C={C}
+        store={store}
+        onClose={() => setShowAICoach(false)}
+        onImport={(prog) => {
+          if (onSaveProgram) onSaveProgram(prog);
+          else setStore(p => ({ ...p, programs: [...(p.programs||[]), prog], activeProgramId: prog.id }));
+          setShowAICoach(false);
+        }}
+      />
     </div>
   );
 }
@@ -15497,13 +15611,29 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   );
 }
 
-function AICoachModal({ C, onClose, onImport, store }) {
+function AICoachModal({ open, C, onClose, onImport, store }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [freeText, setFreeText] = useState("");
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
+  // Now always-mounted (Sheet owns the unmount timing for the exit animation), so the wizard's
+  // own state no longer resets for free the way it did when the parent mounted/unmounted this on
+  // every open/close. Reopening a stale in-progress or completed session would otherwise resume
+  // exactly where you left off — fine for some flows, wrong for "answer 5 questions", which reads
+  // as broken if step 4 shows up before step 1 ever did.
+  // `generating` MUST be in this list. It only ever clears in generateProgram's finally, so a
+  // wizard closed mid-request reopened straight onto "Building your program…" with no way back —
+  // the reset cleared step/answers/result around it, leaving a spinner for a request whose answers
+  // no longer existed. Bumping the epoch here is what makes that abandoned request harmless.
+  const openEpochRef = useRef(0);
+  useEffect(() => {
+    if (open) {
+      openEpochRef.current++;
+      setStep(0); setAnswers({}); setResult(null); setFreeText(""); setGenError(null); setGenerating(false);
+    }
+  }, [open]);
 
   const questions = [
     {
@@ -15817,26 +15947,42 @@ function AICoachModal({ C, onClose, onImport, store }) {
   }
 
   // Generate: try AI first, fall back to the table version so the user always gets a program.
+  //
+  // The epoch guard exists because this component NO LONGER UNMOUNTS between opens. Closing
+  // mid-generation used to destroy the component and take the pending request's setState calls
+  // with it; now the request keeps running and would land on a wizard that has since been reset,
+  // producing a "Your program is ready" screen built from answers the user already abandoned —
+  // and Import & Set Active would write that program for real. Every open bumps the epoch, so a
+  // response from a previous session is dropped instead of applied.
   async function generateProgram() {
+    const epoch = openEpochRef.current;
     setGenerating(true);
     setGenError(null);
     try {
       const ai = await buildProgramAI();
+      if (openEpochRef.current !== epoch) return;
       setResult(ai);
     } catch (e) {
       devWarn("AI program gen failed, using fallback:", e);
+      if (openEpochRef.current !== epoch) return;
       setGenError("ai_unavailable");
       setResult(buildProgramFallback());
     } finally {
-      setGenerating(false);
+      if (openEpochRef.current === epoch) setGenerating(false);
     }
   }
 
   const q = questions[step];
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:250, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+    // BACKDROP IS DELIBERATELY INERT. The pre-<Sheet> markup was a bare `<div>` with no onClick,
+    // so tapping the dim strip above the panel did nothing — and that matters more here than on
+    // any other sheet, because this is a five-question wizard whose answers are wiped by the
+    // reset-on-open effect below. Wiring Sheet's onClose to the backdrop turned one stray thumb
+    // at 4-of-5 questions into "start over", which is exactly the kind of silent data loss the
+    // old markup avoided. Cancel / ‹ Back still close it via the component's own onClose prop.
+    <Sheet open={!!open} onClose={() => {}} z={250}
+      panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
           <button onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
@@ -15935,8 +16081,7 @@ function AICoachModal({ C, onClose, onImport, store }) {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Sheet>
   );
 }
 // ═════════════════════════════════════════════════════════════════════════════
@@ -16752,6 +16897,12 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                                   <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>VOL</div>
                                 </div>
                               )}
+                              {post.workout.hrSummary?.avg ? (
+                                <div style={{ textAlign:"right" }}>
+                                  <div style={{ fontSize:12, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
+                                  <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>♥ AVG</div>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -16918,7 +17069,12 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                         const r = await fetch(`${SUPABASE_URL}/rest/v1/group_posts${gcid ? "?on_conflict=group_id,client_id" : ""}`, {
                           method:"POST",
                           headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer": gcid ? "resolution=merge-duplicates,return=representation" : "return=representation" },
-                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, ...(gcid ? { client_id: gcid } : {}), workout:{ ...workoutData, name: sess.dayName, duration: sess.duration } })
+                          // hrSummary rides along when the session has it. This path shares a PAST
+                          // workout, so Apple Health has long since resolved — unlike the
+                          // finish-time share, whose payload is frozen before readWorkoutHeartRate
+                          // returns. Without it the picker row said "♥ 142 avg" and the card it
+                          // produced showed none, the same row/card disagreement noted above.
+                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, ...(gcid ? { client_id: gcid } : {}), workout:{ ...workoutData, name: sess.dayName, duration: sess.duration, ...(sess.hrSummary ? { hrSummary: sess.hrSummary } : {}) } })
                         });
                         if (r.ok) {
                           const d = await r.json();
@@ -16939,6 +17095,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
                             {dateFromKey(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"}
+                            {sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {sess.hrSummary.avg} avg</span> : null}
                           </div>
                           <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
                             {(sess.exercises||[]).filter(e=>e.name).slice(0,3).map(e=>e.name).join(" · ")}
@@ -17162,9 +17319,10 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
         </div>
       ))}
 
-      {showCreate && (
-        <div onClick={() => setShowCreate(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", width:"100%", maxWidth:480, margin:"0 auto", borderTop:`1px solid ${C.border}` }}>
+      <Sheet open={showCreate} onClose={() => setShowCreate(false)} z={300}
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", borderTop:`1px solid ${C.border}` }}>
+        {showCreate && (
+          <>
             <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:14 }}>New Group</div>
             <input
               value={newName} onChange={e => setNewName(e.target.value)}
@@ -17181,9 +17339,9 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
               <button onClick={() => setShowCreate(false)} style={{ flex:1, padding:"11px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
               <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borRadius:8, borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
       </div>
     </div>
   );
@@ -18252,7 +18410,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         type: "workout",
         caption: "",
         unit: sess.unit || displayUnit || "lbs",
-        workout: { name: sess.dayName, duration: sess.duration||0, volume: card.volume, exercises: card.exercises },
+        workout: { name: sess.dayName, duration: sess.duration||0, volume: card.volume, exercises: card.exercises, hrSummary: sess.hrSummary || undefined },
         kudos: [], comments: [],
         // Local noon for the workout's date — avoids the UTC-midnight parse that pushed the
         // displayed date a day earlier in negative-offset timezones (e.g. EST).
@@ -18298,7 +18456,25 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     })();
     return () => { alive = false; };
   }, [userId, token]);
-  const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
+  // HEART RATE LIVES ON THE SESSION, NOT ON THE POST — so re-attach it here rather than adding a
+  // third writer. `readWorkoutHeartRate` resolves seconds AFTER the workout is saved (it's
+  // fire-and-forget at finish), so every share payload is frozen before the data exists and no
+  // post's `workout` jsonb will ever carry it. Without this, sharing a workout visibly DELETED a
+  // stat from your own profile: the unposted card showed "♥ 142 avg" via profileHistoryItems, and
+  // the moment you posted it that card was replaced by the real post, which has no hrSummary.
+  // Matched on clientId (the session id) — the same key profileHistoryItems dedupes on above.
+  const sessionHr = useMemo(() => {
+    if (!isMe) return {};
+    const out = {};
+    for (const day of Object.values(store.history || {})) {
+      for (const [sid, sess] of Object.entries(day || {})) if (sess?.hrSummary) out[String(sid)] = sess.hrSummary;
+    }
+    return out;
+  }, [isMe, store.history]);
+  const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story").map(p => {
+    const hr = p.type === "workout" && p.workout && !p.workout.hrSummary && p.clientId ? sessionHr[String(p.clientId)] : null;
+    return hr ? { ...p, workout: { ...p.workout, hrSummary: hr } } : p;
+  }), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
   const coverRef = useRef(null);
   const [coverDraft, setCoverDraft] = useState(null);   // dataURL pending position+upload
@@ -18942,9 +19118,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       ), document.body)}
 
       {/* Feedback modal — portaled for the same reason as above. */}
-      {showFeedback && createPortal((
-        <div onClick={() => setShowFeedback(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+      <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000}
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+        {showFeedback && (
+          <>
             <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>Send feedback</div>
             <div style={{ fontSize:12, color:C.sub, marginBottom:12 }}>Bug, idea, or anything else — it goes straight to the developer.</div>
             <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} rows={4} placeholder="What's on your mind?"
@@ -18953,9 +19130,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               <button onClick={() => setShowFeedback(false)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
               <button onClick={submitFeedback} disabled={!feedbackText.trim() || feedbackSending} style={{ flex:1, padding:"12px", background:feedbackText.trim() ? C.primary : C.border, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:feedbackText.trim() ? C.onPrimary : "#fff", cursor:"pointer", fontFamily:F }}>{feedbackSending ? "Sending…" : "Send"}</button>
             </div>
-          </div>
-        </div>
-      ), document.body)}
+          </>
+        )}
+      </Sheet>
 
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
       {showDelete && createPortal((
@@ -18982,9 +19159,15 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         </div>
       ), document.body)}
 
-      {showSettings && createPortal((
-        <div onClick={() => setShowSettings(false)} onTouchMove={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"flex-end", touchAction:"none" }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-slide-up" onTouchMove={(e) => e.stopPropagation()} style={{ background:C.bg, borderRadius:"16px 16px 0 0", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
+      {/* The two touch handlers are load-bearing and pass straight through: the backdrop swallows
+          a drag that starts on itself so the page behind cannot scroll, and the panel stops its
+          own drags reaching it so the settings list still scrolls. */}
+      <Sheet open={showSettings} onClose={() => setShowSettings(false)} z={3000}
+        backdropProps={{ onTouchMove: (e) => { if (e.target === e.currentTarget) e.preventDefault(); }, style:{ touchAction:"none" } }}
+        panelProps={{ onTouchMove: (e) => e.stopPropagation() }}
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
+        {showSettings && (
+          <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <div style={{ width:50 }}/>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Settings</div>
@@ -19233,9 +19416,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      ), document.body)}
+          </>
+        )}
+      </Sheet>
 
       {/* Followers / Following list modal */}
       {listModal && (() => {
@@ -19430,7 +19613,11 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
           name: selectedWorkout.dayName,
           duration: selectedWorkout.duration,
           volume: built.volume,
-          exercises: built.exercises
+          exercises: built.exercises,
+          // Same reason as the group picker: this composer shares a PAST session, so its
+          // hrSummary already exists. Carrying it keeps the card agreeing with the picker row
+          // that advertised it.
+          ...(selectedWorkout.hrSummary ? { hrSummary: selectedWorkout.hrSummary } : {})
         }
       });
     } else if (postKind === "run") {
@@ -19550,7 +19737,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{w.dayName}</div>
                           {isSelected && <div style={{ color:C.accent, fontSize:18 }}>✓</div>}
                         </div>
-                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}</div>
+                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}{w.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {w.hrSummary.avg} avg</span> : null}</div>
                       </div>
                     );
                   })}
@@ -20271,7 +20458,7 @@ async function generateWeeklyReview(store, unit) {
 }
 
 // Renders the STORED weekly review (no API call here — see generateWeeklyReview).
-function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
+function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus }) {
   const review = store.weeklyReview || null;
   const toggleAction = (id) => {
     haptic("tap");
@@ -20293,8 +20480,8 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
     } catch { return ""; }
   };
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div onClick={e => e.stopPropagation()} className="seshd-slide-up" style={{ width:"100%", maxWidth:480, background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+    <Sheet open={!!open} onClose={onClose} z={500}
+      panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>Weekly Review</div>
@@ -20365,8 +20552,7 @@ function AICoachSheet({ store, setStore, unit, C, onClose, reviewStatus }) {
         <div style={{ fontSize:10, color:C.muted, marginTop:20, lineHeight:1.4, textAlign:"center" }}>
           Generated once a week from your logged training. Not medical or professional training advice.
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 function fmtMsgTime(ts) {
@@ -23607,11 +23793,21 @@ function AppInner() {
       const starterProg = recTemplate ? buildProgramFromTemplate(recTemplate) : null;
       setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {},
         ...(oSex ? { strengthSex: oSex, bodyType: oSex } : {}),
-        ...(oAge ? { age: oAge } : {}),
-        // Only seed if they have no programs yet (don't clobber an existing one).
-        ...((starterProg && !(prev.programs && prev.programs.length))
-          ? { programs: [starterProg], activeProgramId: starterProg.id }
-          : {}) }));
+        ...(oAge ? { age: oAge } : {}) }));
+      // THE STARTER PROGRAM MUST GO THROUGH handleSaveProgram, NOT A BARE setStore.
+      // It used to be seeded straight into local state and never written anywhere. loadUserData
+      // then overwrites `programs` and `activeProgramId` wholesale from the server on the next
+      // background refresh (focus/visibilitychange) or relaunch — so every new signup landed on a
+      // ready-made plan that silently became "No active program" minutes later. Worse, the local
+      // id came from uid() (8-char base36) rather than a server uuid, so if they edited the
+      // program first, the PATCH went to `programs?id=eq.<base36>` against a uuid column, 22P02'd,
+      // and was swallowed. handleSaveProgram POSTs without an id (server mints the uuid), PATCHes
+      // profiles.active_program_id, and updates the store itself — the same path the "Browse
+      // templates" import has always used correctly.
+      if (starterProg && !(store.programs && store.programs.length)) {
+        try { await handleSaveProgram(starterProg); }
+        catch (e) { devError("starter program save failed:", e); }
+      }
       // Persist seen-onboarding to the profile so it doesn't reappear after a reload or
       // on another device. Best-effort: if the column doesn't exist yet the local store
       // flag still prevents it showing again this session/device.
@@ -23799,7 +23995,7 @@ function AppInner() {
           -webkit-touch-callout: none;
         }
       `}</style>
-      {showCoach && <AICoachSheet store={store} setStore={setStore} unit={unit} C={C} reviewStatus={reviewStatus} onClose={() => setShowCoach(false)}/>}
+      <AICoachSheet open={showCoach} store={store} setStore={setStore} unit={unit} C={C} reviewStatus={reviewStatus} onClose={() => setShowCoach(false)}/>
       {showWrapped && <WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/>}
       <ToastHost/>
       <ConfirmHost C={C}/>
