@@ -387,6 +387,19 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   reassigned inside a shared `refreshTokenOnce()` that both the public and the per-group uploads
   use (the groups-only path had no retry at all, so an expired token silently posted the caption
   with no photo and said nothing).
+- **DELETING A POST NOW DELETES ITS PHOTO — until Aug 16 nothing in the app ever issued a storage
+  DELETE at all**, so every removed post (photo posts, workout posts, group posts, the "undo
+  finish & edit" cascade) left its image sitting in the bucket forever, public or private,
+  unreachable through the UI. Two helpers now do this: `deletePublicImage(url, token)` for the
+  public `images` bucket (parses the path out of the stored URL) and `deleteGroupImage(path,
+  token)` for the private `group-images` bucket (the stored value there is already a bare path).
+  Both are fire-and-forget — the Postgres row is the source of truth for "does this post exist",
+  so a failed cleanup just leaves an orphaned object rather than blocking or reverting a deletion
+  the user already asked for. Wired into all three delete sites: `handleDelete` (feed post),
+  `GroupDetail`'s own delete-post flow (grabs `image_url` from the in-memory row BEFORE the row is
+  filtered out — it exists nowhere else), and the "undo finish & edit" cascade, which deletes group
+  copies by `client_id` FILTER rather than by id, so it does one extra GET for the image paths
+  before the delete removes the rows they live on. Sim: `pw_postimgdelete`.
 - **A SIGNED URL EXPIRES; A CACHE KEYED ONLY ON PRESENCE DOES NOT.** `GroupDetail` signed each
   private group image once and cached it forever for the component's lifetime, and the sign effect
   skipped anything already in the map — so a group left open for over an hour showed broken images

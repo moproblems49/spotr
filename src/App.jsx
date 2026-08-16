@@ -1,4 +1,4 @@
-// v178091716846
+// v178091716847
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -622,6 +622,33 @@ async function signGroupImage(path, token) {
   } catch {
     return null;
   }
+}
+
+// DELETING A POST DELETES ITS PHOTO. Nothing in this file issued a storage DELETE until now — a
+// removed post's image sat in the bucket forever, public or private. Both are best-effort: the
+// Postgres row is the source of truth for "does this post exist", so a failed cleanup here leaves
+// an orphaned object rather than blocking or reverting the deletion the user actually asked for.
+async function deletePublicImage(imageUrl, token) {
+  if (!imageUrl || !token) return;
+  const marker = "/storage/v1/object/public/images/";
+  const i = imageUrl.indexOf(marker);
+  if (i === -1) return; // not one of ours (external/legacy URL) — nothing to clean up
+  const path = imageUrl.slice(i + marker.length);
+  try {
+    await fetch(`${SUPABASE_URL}/storage/v1/object/images/${path}`, {
+      method: "DELETE",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+    });
+  } catch (e) { devWarn("deletePublicImage failed:", e); }
+}
+async function deleteGroupImage(path, token) {
+  if (!path || !token) return;
+  try {
+    await fetch(`${SUPABASE_URL}/storage/v1/object/group-images/${path}`, {
+      method: "DELETE",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+    });
+  } catch (e) { devWarn("deleteGroupImage failed:", e); }
 }
 
 
@@ -17188,12 +17215,20 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
             <button onClick={async () => {
               if (!menuConfirm) { setMenuConfirm(true); haptic("medium"); return; }
               const id_ = postMenu.id;
+              // Grab the image path (if any) BEFORE the row is gone — image_url only exists on
+              // the row we're about to delete, and posts state is about to filter it out too.
+              const deletedGroupImage = posts.find(x => x.id === id_)?.image_url;
               setPostMenu(null);
               if (!token) return;
               try {
                 await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${id_}`, {
                   method:"DELETE", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}` }
                 });
+                // Bare paths only — a legacy absolute URL predates the private bucket and has
+                // nothing of ours to clean up.
+                if (deletedGroupImage && !/^https?:/i.test(deletedGroupImage)) {
+                  deleteGroupImage(deletedGroupImage, token);
+                }
                 setPosts(p => p.filter(x => x.id !== id_));
                 toast("Post deleted", "success");
               } catch (e) { toast("Couldn't delete post — check connection", "error"); }
@@ -23014,9 +23049,13 @@ function AppInner() {
     }
     if (!tok) return;
     const prevPosts = store.posts;
+    const deletedPost = prevPosts.find(p => p.id === postId);
     setStore(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== postId) }));
     try {
       await sb.query(`posts?id=eq.${postId}`, { method:"DELETE" }, tok);
+      // Fire-and-forget: the post row is already gone, and a failed image cleanup should not
+      // resurrect it or block the user on a spinner for an object they can no longer see anyway.
+      if (deletedPost?.imageData) deletePublicImage(deletedPost.imageData, tok);
     } catch (e) {
       devError("delete error:", e);
       toast("Couldn't delete post", "error");
@@ -24616,9 +24655,20 @@ function AppInner() {
                   await sb.query(`workout_history?id=eq.${sid}`, { method:"DELETE" }, tok);
                   if (sharedPost) {
                     await sb.query(`posts?id=eq.${sharedPost.id}`, { method:"DELETE" }, tok).catch(e => devError("post delete:", e));
+                    if (sharedPost.imageData) deletePublicImage(sharedPost.imageData, tok);
                   }
-                  // Group copies key off the same session id.
+                  // Group copies key off the same session id. Fetch their image paths BEFORE the
+                  // filter-delete removes the rows — this deletes by client_id, not by id, so the
+                  // paths are nowhere else in memory (unlike the single-row deletes above).
                   if (currentUserId) {
+                    try {
+                      const gp = await sb.query(
+                        `group_posts?user_id=eq.${currentUserId}&client_id=eq.${sid}&select=image_url`,
+                        {}, tok);
+                      const paths = (Array.isArray(gp) ? gp : [])
+                        .map(r => r.image_url).filter(u => u && !/^https?:/i.test(u));
+                      paths.forEach(pth => deleteGroupImage(pth, tok));
+                    } catch (e) { devWarn("group image lookup before delete failed:", e); }
                     await sb.query(`group_posts?user_id=eq.${currentUserId}&client_id=eq.${sid}`, { method:"DELETE" }, tok).catch(() => {});
                   }
                   if (currentUserId) {
