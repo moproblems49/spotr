@@ -1,4 +1,4 @@
-// v178091716840
+// v178091716841
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10660,20 +10660,40 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
     }));
     // Save to user's account — the active program is a single FK on the profile row,
     // so activating the import is one atomic write (no deactivate-then-activate race).
-    if (token) {
-      sb.query("programs", {
-        method: "POST",
-        body: JSON.stringify({
-          id: newId,
-          name: imported.name,
-          days: imported.days,
-        })
-      }, token)
-        .then(() => sb.query(`profiles?id=eq.${currentUserId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ active_program_id: newId })
-        }, token))
-        .catch(e => devError("save imported program:", e));
+    //
+    // THIS POST USED TO FAIL EVERY TIME, TWICE OVER, AND SAY "Program imported" ANYWAY.
+    // It sent `id: newId` where newId comes from uid() — 8-char base36 — into a `uuid` column
+    // (22P02), and omitted `user_id`, which is NOT NULL. The only handler was
+    // `.catch(devError)`, which is dev-only logging, so both failures were invisible: the toast
+    // fired regardless, the program showed up locally, and the next loadUserData overwrote
+    // `programs`/`activeProgramId` from the server and it was simply gone. Same class as the
+    // onboarding starter program — a local-only write standing in front of a hard overwrite.
+    // Let the server mint the uuid, send user_id, and adopt the returned id locally.
+    if (token && currentUserId) {
+      (async () => {
+        try {
+          const res = await sb.query("programs", {
+            method: "POST",
+            headers_extra: { Prefer: "return=representation" },
+            body: JSON.stringify({ user_id: currentUserId, name: imported.name, days: imported.days }),
+          }, token);
+          const row = Array.isArray(res) ? res[0] : res;
+          const serverId = row?.id;
+          if (!serverId) throw new Error("no id returned for imported program");
+          // Swap the placeholder id for the server's, so later edits PATCH a row that exists.
+          setStore(p => ({
+            ...p,
+            programs: (p.programs || []).map(x => x.id === newId ? { ...x, id: serverId } : x),
+            activeProgramId: p.activeProgramId === newId ? serverId : p.activeProgramId,
+          }));
+          await sb.query(`profiles?id=eq.${currentUserId}`, {
+            method: "PATCH", body: JSON.stringify({ active_program_id: serverId })
+          }, token);
+        } catch (e) {
+          devError("save imported program:", e);
+          toast("Imported on this device — couldn't sync to your account", "error");
+        }
+      })();
     }
     toast(isWorkout ? "Workout imported" : "Program imported", "success");
     setCode("");
