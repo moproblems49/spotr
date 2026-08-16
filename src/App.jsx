@@ -1,4 +1,4 @@
-// v178091716838
+// v178091716839
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13790,7 +13790,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {showWorkoutSummary && workoutSummary && <Confetti duration={2.5}/>}
         <Sheet open={showWorkoutSummary && !!workoutSummary} onClose={() => {}} z={300} backdrop="rgba(0,0,0,0.85)"
-          panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column" }}>
+          panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         {showWorkoutSummary && workoutSummary && (
           <>
               <div style={{ overflowY:"auto", flex:1, padding:"24px 18px 0" }}>
@@ -14314,7 +14314,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Finish modal */}
         <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200}
-          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px" }}>
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", borderTop:`1px solid ${C.border}` }}>
           {showFinish && (
             <>
               <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
@@ -14328,7 +14328,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Group share picker (Save & send to groups path - skips feed) */}
         <Sheet open={showGroupShare} onClose={() => setShowGroupShare(false)} z={200}
-          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto" }}>
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto", borderTop:`1px solid ${C.border}` }}>
         {showGroupShare && (() => {
           const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
           return (
@@ -15588,8 +15588,16 @@ function AICoachModal({ open, C, onClose, onImport, store }) {
   // every open/close. Reopening a stale in-progress or completed session would otherwise resume
   // exactly where you left off — fine for some flows, wrong for "answer 5 questions", which reads
   // as broken if step 4 shows up before step 1 ever did.
+  // `generating` MUST be in this list. It only ever clears in generateProgram's finally, so a
+  // wizard closed mid-request reopened straight onto "Building your program…" with no way back —
+  // the reset cleared step/answers/result around it, leaving a spinner for a request whose answers
+  // no longer existed. Bumping the epoch here is what makes that abandoned request harmless.
+  const openEpochRef = useRef(0);
   useEffect(() => {
-    if (open) { setStep(0); setAnswers({}); setResult(null); setFreeText(""); setGenError(null); }
+    if (open) {
+      openEpochRef.current++;
+      setStep(0); setAnswers({}); setResult(null); setFreeText(""); setGenError(null); setGenerating(false);
+    }
   }, [open]);
 
   const questions = [
@@ -15904,25 +15912,41 @@ function AICoachModal({ open, C, onClose, onImport, store }) {
   }
 
   // Generate: try AI first, fall back to the table version so the user always gets a program.
+  //
+  // The epoch guard exists because this component NO LONGER UNMOUNTS between opens. Closing
+  // mid-generation used to destroy the component and take the pending request's setState calls
+  // with it; now the request keeps running and would land on a wizard that has since been reset,
+  // producing a "Your program is ready" screen built from answers the user already abandoned —
+  // and Import & Set Active would write that program for real. Every open bumps the epoch, so a
+  // response from a previous session is dropped instead of applied.
   async function generateProgram() {
+    const epoch = openEpochRef.current;
     setGenerating(true);
     setGenError(null);
     try {
       const ai = await buildProgramAI();
+      if (openEpochRef.current !== epoch) return;
       setResult(ai);
     } catch (e) {
       devWarn("AI program gen failed, using fallback:", e);
+      if (openEpochRef.current !== epoch) return;
       setGenError("ai_unavailable");
       setResult(buildProgramFallback());
     } finally {
-      setGenerating(false);
+      if (openEpochRef.current === epoch) setGenerating(false);
     }
   }
 
   const q = questions[step];
 
   return (
-    <Sheet open={!!open} onClose={onClose} z={250}
+    // BACKDROP IS DELIBERATELY INERT. The pre-<Sheet> markup was a bare `<div>` with no onClick,
+    // so tapping the dim strip above the panel did nothing — and that matters more here than on
+    // any other sheet, because this is a five-question wizard whose answers are wiped by the
+    // reset-on-open effect below. Wiring Sheet's onClose to the backdrop turned one stray thumb
+    // at 4-of-5 questions into "start over", which is exactly the kind of silent data loss the
+    // old markup avoided. Cancel / ‹ Back still close it via the component's own onClose prop.
+    <Sheet open={!!open} onClose={() => {}} z={250}
       panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
@@ -17010,7 +17034,12 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                         const r = await fetch(`${SUPABASE_URL}/rest/v1/group_posts${gcid ? "?on_conflict=group_id,client_id" : ""}`, {
                           method:"POST",
                           headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json", "Prefer": gcid ? "resolution=merge-duplicates,return=representation" : "return=representation" },
-                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, ...(gcid ? { client_id: gcid } : {}), workout:{ ...workoutData, name: sess.dayName, duration: sess.duration } })
+                          // hrSummary rides along when the session has it. This path shares a PAST
+                          // workout, so Apple Health has long since resolved — unlike the
+                          // finish-time share, whose payload is frozen before readWorkoutHeartRate
+                          // returns. Without it the picker row said "♥ 142 avg" and the card it
+                          // produced showed none, the same row/card disagreement noted above.
+                          body: JSON.stringify({ group_id:g.id, user_id:currentUserId, type:"workout", caption:cap, ...(gcid ? { client_id: gcid } : {}), workout:{ ...workoutData, name: sess.dayName, duration: sess.duration, ...(sess.hrSummary ? { hrSummary: sess.hrSummary } : {}) } })
                         });
                         if (r.ok) {
                           const d = await r.json();
@@ -18392,7 +18421,25 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     })();
     return () => { alive = false; };
   }, [userId, token]);
-  const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story"), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
+  // HEART RATE LIVES ON THE SESSION, NOT ON THE POST — so re-attach it here rather than adding a
+  // third writer. `readWorkoutHeartRate` resolves seconds AFTER the workout is saved (it's
+  // fire-and-forget at finish), so every share payload is frozen before the data exists and no
+  // post's `workout` jsonb will ever carry it. Without this, sharing a workout visibly DELETED a
+  // stat from your own profile: the unposted card showed "♥ 142 avg" via profileHistoryItems, and
+  // the moment you posted it that card was replaced by the real post, which has no hrSummary.
+  // Matched on clientId (the session id) — the same key profileHistoryItems dedupes on above.
+  const sessionHr = useMemo(() => {
+    if (!isMe) return {};
+    const out = {};
+    for (const day of Object.values(store.history || {})) {
+      for (const [sid, sess] of Object.entries(day || {})) if (sess?.hrSummary) out[String(sid)] = sess.hrSummary;
+    }
+    return out;
+  }, [isMe, store.history]);
+  const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story").map(p => {
+    const hr = p.type === "workout" && p.workout && !p.workout.hrSummary && p.clientId ? sessionHr[String(p.clientId)] : null;
+    return hr ? { ...p, workout: { ...p.workout, hrSummary: hr } } : p;
+  }), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
   const coverRef = useRef(null);
   const [coverDraft, setCoverDraft] = useState(null);   // dataURL pending position+upload
@@ -19531,7 +19578,11 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
           name: selectedWorkout.dayName,
           duration: selectedWorkout.duration,
           volume: built.volume,
-          exercises: built.exercises
+          exercises: built.exercises,
+          // Same reason as the group picker: this composer shares a PAST session, so its
+          // hrSummary already exists. Carrying it keeps the card agreeing with the picker row
+          // that advertised it.
+          ...(selectedWorkout.hrSummary ? { hrSummary: selectedWorkout.hrSummary } : {})
         }
       });
     } else if (postKind === "run") {
@@ -23707,11 +23758,21 @@ function AppInner() {
       const starterProg = recTemplate ? buildProgramFromTemplate(recTemplate) : null;
       setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {},
         ...(oSex ? { strengthSex: oSex, bodyType: oSex } : {}),
-        ...(oAge ? { age: oAge } : {}),
-        // Only seed if they have no programs yet (don't clobber an existing one).
-        ...((starterProg && !(prev.programs && prev.programs.length))
-          ? { programs: [starterProg], activeProgramId: starterProg.id }
-          : {}) }));
+        ...(oAge ? { age: oAge } : {}) }));
+      // THE STARTER PROGRAM MUST GO THROUGH handleSaveProgram, NOT A BARE setStore.
+      // It used to be seeded straight into local state and never written anywhere. loadUserData
+      // then overwrites `programs` and `activeProgramId` wholesale from the server on the next
+      // background refresh (focus/visibilitychange) or relaunch — so every new signup landed on a
+      // ready-made plan that silently became "No active program" minutes later. Worse, the local
+      // id came from uid() (8-char base36) rather than a server uuid, so if they edited the
+      // program first, the PATCH went to `programs?id=eq.<base36>` against a uuid column, 22P02'd,
+      // and was swallowed. handleSaveProgram POSTs without an id (server mints the uuid), PATCHes
+      // profiles.active_program_id, and updates the store itself — the same path the "Browse
+      // templates" import has always used correctly.
+      if (starterProg && !(store.programs && store.programs.length)) {
+        try { await handleSaveProgram(starterProg); }
+        catch (e) { devError("starter program save failed:", e); }
+      }
       // Persist seen-onboarding to the profile so it doesn't reappear after a reload or
       // on another device. Best-effort: if the column doesn't exist yet the local store
       // flag still prevents it showing again this session/device.

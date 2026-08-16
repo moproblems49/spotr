@@ -108,6 +108,20 @@ const panel = (page) => page.evaluate(() => {
     await page.waitForTimeout(400);
     const step2 = await page.evaluate(() => document.body.innerText);
     check("AICoachModal: advances to step 2 after answering", /step 2 of|how many days/i.test(step2), step2.slice(0,80).replace(/\n/g," | "));
+    // THE BACKDROP MUST NOT DISMISS THIS ONE. Pre-<Sheet> its outer div had no onClick, so the
+    // dim strip above the panel was inert. Sheet wires onClose to the backdrop by default, and
+    // combined with the reset-on-open effect that turned one stray thumb at question 4 into
+    // "start over". The panel is 85dvh, so ~15% of the screen is exposed backdrop.
+    const beforeTap = step2;
+    await page.mouse.click(214, 40);   // top of the viewport = backdrop, well above an 85dvh panel
+    await page.waitForTimeout(700);
+    const afterTap = await page.evaluate(() => document.body.innerText);
+    check("AICoachModal: a backdrop tap does NOT dismiss the wizard",
+      /step 2 of|how many days/i.test(afterTap), afterTap.slice(0,90).replace(/\n/g," | "));
+    check("AICoachModal: the answer survives a backdrop tap",
+      /how many days/i.test(beforeTap) === /how many days/i.test(afterTap),
+      `before=${beforeTap.slice(0,50).replace(/\n/g," ")} after=${afterTap.slice(0,50).replace(/\n/g," ")}`);
+
     // The top-left control reads "‹ Back" while step > 0 (steps backward within the wizard) and
     // only reads "Cancel" (closes the sheet) once back at step 0 — clicking whatever matches
     // /back|cancel/ at step 2 just returns to step 1, which is exactly what the first draft of
