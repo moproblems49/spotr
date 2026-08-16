@@ -1,4 +1,4 @@
-// v178091716841
+// v178091716842
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9726,7 +9726,6 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   const [mentionQuery, setMentionQuery] = useState(null); // active @query string, or null
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState("");
-  const [commentMenu, setCommentMenu] = useState(null); // commentId of open menu
   const [showMenu, setShowMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [pop, setPop] = useState(false);
@@ -16660,7 +16659,6 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const [caption, setCaption] = useState("");
   const [img, setImg] = useState(null);
   const [posting, setPosting] = useState(false);
-  const [showPostKinds, setShowPostKinds] = useState(false);
   const [signedImgs, setSignedImgs] = useState({}); // private group-image path -> short-lived signed URL
   const fileRef = useRef(null);
   const me = store.users.find(u => u.id === currentUserId);
@@ -19339,6 +19337,16 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </div>
               </div>
 
+              {/* BUILT, COMPLETE, AND NEVER RENDERED. `ExerciseMergeTool` was declared with a
+                  comment calling itself a "Settings tool" and no call site anywhere — the second
+                  dead feature this session's scan turned up, after the groups-only picker. It
+                  solves a problem the conventions file documents at length: a free-typed
+                  "Bench Press" resolves to no library entry, so it contributes nothing to the
+                  muscle map, weekly volume or readiness, and splits its PRs and progress chart
+                  away from "Barbell Bench Press". It renders null when it finds no unrecognised
+                  names, so it costs nothing for users with a clean history. */}
+              <ExerciseMergeTool store={store} setStore={setStore} currentUserId={currentUserId} token={token} C={C}/>
+
               {(store.customExercises || []).length > 0 && (
                 <>
                   <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>CUSTOM EXERCISES</div>
@@ -21178,7 +21186,6 @@ function AppInner() {
   const [profileUserId, setProfileUserId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   // Widget shared data: write streak + next-workout to native UserDefaults for WidgetKit.
   // Note: reads streak from store directly (streak const is declared later in this component).
   useEffect(() => {

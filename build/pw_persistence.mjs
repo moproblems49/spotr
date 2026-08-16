@@ -38,8 +38,13 @@ const sawProfileKey = (k, from = 0) => profilePatches(from).some(b => b && Objec
 
 await page.addInitScript(me => {
   localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
-    programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [],
+    programs: [], workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [],
     weeklyTarget: 3, isPublic: false, customExercises: [],
+    // "Bench Press" is NOT an EXERCISE_DB entry (the library name is "Barbell Bench Press"), so it
+    // resolves to no muscle and splits its own PRs — the exact condition the merge tool looks for.
+    history: { "2026-08-10": { h1: { id:"h1", dayName:"Push", unit:"lbs", durationSecs:3000,
+      exercises: [{ id:"e1", name:"Bench Press",
+        sets: [{ id:"s1", weight:"185", reps:"8", done:true, type:"normal" }] }] } } },
     profile: { username:"momo", name:"Mo" }, users: [{ id: me, username:"momo", name:"Mo", followers:[], following:[] }] }));
   localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
   localStorage.setItem("seshd_onboarded", "1");
@@ -59,6 +64,14 @@ await page.route("**/rest/v1/**", r => {
   if (/\/rest\/v1\/(public_)?profiles\?/.test(u))
     return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true,
       weekly_target: 3, is_public: false }]);
+  // loadUserData REPLACES store.history with the server's rows, so a fixture seeded only into
+  // localStorage is erased before anything can read it. Serve the free-typed session here or the
+  // merge tool correctly finds nothing and the check below fails for the wrong reason.
+  if (/\/rest\/v1\/workout_history/.test(u))
+    return J([{ id: "h1", user_id: ME, workout_date: "2026-08-10", day_name: "Push",
+      duration_secs: 3000, unit: "lbs", created_at: "2026-08-10T12:00:00Z",
+      exercises: [{ id:"e1", name:"Bench Press",
+        sets: [{ id:"s1", weight:"185", reps:"8", done:true, type:"normal" }] }] }]);
   return J([]);
 });
 await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
@@ -108,6 +121,17 @@ await page.waitForTimeout(900);
 check("the private-account toggle is present", toggled);
 check("toggling private account writes profiles.is_public", sawProfileKey("is_public", mPriv),
   JSON.stringify(profilePatches(mPriv)).slice(0, 160));
+
+// ── The exercise-merge tool must be REACHABLE ────────────────────────────────────────────────
+// It was built complete, called itself a "Settings tool" in its own comment, and was rendered
+// nowhere — the second orphaned feature found by the dead-UI scan. It self-hides when every logged
+// name is in the library, so the fixture below deliberately logs a free-typed "Bench Press", which
+// resolves to no library entry and is exactly the case it exists to clean up.
+{
+  const mergeVisible = await page.evaluate(() => /TIDY UP EXERCISE NAMES/i.test(document.body.innerText));
+  check("the exercise-merge tool renders in Settings for an unrecognised name", mergeVisible,
+    "not found — ExerciseMergeTool is orphaned again, or the fixture's name resolved to the library");
+}
 
 // Close the sheet so the run ends on a clean screen.
 await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^done$/i.test((x.textContent||"").trim())); b && b.click(); });
