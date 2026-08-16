@@ -25,6 +25,7 @@ const ast = acorn.parse(readFileSync(FILE, "utf8"), { ecmaVersion: "latest", sou
 const states = new Map();      // setterName -> { state, line }
 const setterCalls = new Map(); // setterName -> [{ kind, line }]
 const escaped = new Set();     // setter referenced as a value, not called
+const ambiguous = new Set();   // setter name declared by more than one useState — cannot conclude
 const declaredFns = new Map(); // PascalCase fn name -> line
 const idRefs = new Map();      // identifier -> count of non-declaration references
 
@@ -88,12 +89,28 @@ function walk(node, parent) {
       // that starts CLOSED and can never be opened is a finding.
       const initTruthy = argKind(node.init.arguments[0]) !== "falsy"
         && argKind(node.init.arguments[0]) !== "none";
+      // Keyed by NAME, globally — and 20 setter names in this file are declared more than once
+      // (setLoading x4, setError x3 …). A second, live declaration used to overwrite the first,
+      // masking a genuinely dead one and reporting the wrong line. Track the duplicates and refuse
+      // to draw a conclusion about any name that is declared more than once.
+      if (states.has(setter.name)) ambiguous.add(setter.name);
       states.set(setter.name, { state: s.name, line: node.loc.start.line, initTruthy });
     }
   }
 
   if (node.type === "FunctionDeclaration" && node.id && /^[A-Z]/.test(node.id.name))
     declaredFns.set(node.id.name, node.loc.start.line);
+  // ALSO cover `const X = memo(function X(){})`, `const X = () => …` and `const X = function(){}`.
+  // Only FunctionDeclarations were considered at first, which left 95 of this file's PascalCase
+  // components invisible — PostCard, SetRow, ExerciseInput and MuscleIcon are all memo(...), so
+  // orphaning any of them kept the scan green.
+  if (node.type === "VariableDeclarator" && node.id?.type === "Identifier"
+      && /^[A-Z]/.test(node.id.name) && node.init) {
+    const i = node.init;
+    const isComp = i.type === "ArrowFunctionExpression" || i.type === "FunctionExpression"
+      || (i.type === "CallExpression" && i.callee.type === "Identifier" && /^(memo|forwardRef)$/.test(i.callee.name));
+    if (isComp) declaredFns.set(node.id.name, node.loc.start.line);
+  }
 
   if (node.type === "CallExpression" && node.callee.type === "Identifier") {
     const n = node.callee.name;
@@ -130,6 +147,7 @@ walk(ast, null);
 const unreachable = [];
 for (const [setter, info] of states) {
   if (escaped.has(setter)) continue;                       // passed around — can't conclude
+  if (ambiguous.has(setter)) continue;                     // name reused — see the note above
   const calls = setterCalls.get(setter) || [];
   if (!calls.length) {
     // Never called AND never read is just an unused declaration, not an unreachable feature.
@@ -165,4 +183,12 @@ if (unusedFns.length) {
   console.log();
 }
 if (!bad) console.log("No unreachable UI state and no unused components.");
+// Say what was NOT examined, so a clean run is not read as "no dead UI anywhere". This covers one
+// shape: boolean useState gates whose setter is called directly, plus unreferenced components.
+// It cannot see UI gated on a ref or a reducer, a setter passed to a child that never calls it,
+// a component referenced only from inside already-dead UI (there is no reachability closure), or
+// a lazy `useState(() => false)` initialiser.
+console.log(`  (scanned ${states.size} useState pairs, ${ambiguous.size} skipped as duplicate names, ` +
+  `${escaped.size ? [...escaped].filter(n => states.has(n)).length : 0} skipped as escaped; ` +
+  `${declaredFns.size} component declarations)`);
 process.exit(bad ? 1 : 0);

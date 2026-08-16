@@ -190,10 +190,26 @@ check("the workout was still saved to history", wrote.workout_history.length > 0
   check("[one-tap] it targets the selected group", gp2.some(p => p && p.group_id === GID), JSON.stringify(gp2[0]||{}).slice(0,200));
   check("[one-tap] NO feed post was created", w2.posts.flat().filter(Boolean).length === 0, JSON.stringify(w2.posts).slice(0,200));
   check("[one-tap] the workout was still saved to history", w2.workout_history.length > 0, JSON.stringify(w2.workout_history).slice(0,150));
-  // The whole point of this path over the summary's Groups Only: it skips the summary.
+  // THE SUMMARY MUST BE SKIPPED *AND* THE WORKOUT MUST BE OVER.
+  // The absence test alone passed against a severe bug: the fast path ended in a bare `return`
+  // that never cleared the session, so the app sat on the LIVE WORKOUT SCREEN — timer reset to
+  // 00:00, sets still ticked, no tab bar — which contains neither "Share to Feed" nor
+  // "Don't share" and therefore satisfied "the summary is skipped" perfectly. Absence tests
+  // cannot tell "moved on correctly" from "stuck somewhere else"; assert the destination.
   const afterTxt = await p2.evaluate(() => document.body.innerText);
   check("[one-tap] the summary screen is skipped", !/Share to Feed|Don't share/i.test(afterTxt),
     afterTxt.slice(0,120).replace(/\n/g," | "));
+  const ended = await p2.evaluate(() => ({
+    live: !!document.querySelector('[data-no-tab-swipe]')
+       || [...document.querySelectorAll("button")].some(b => /^finish$/i.test((b.textContent||"").trim())),
+    nav: !!document.querySelector('[aria-label="Home"]'),
+    session: !!localStorage.getItem("seshd_active_session"),
+    txt: document.body.innerText.slice(0,110).replace(/\n/g," | "),
+  }));
+  console.log(`  [one-tap] after send: live-workout=${ended.live} nav=${ended.nav} storedSession=${ended.session}`);
+  check("[one-tap] the live workout screen is gone", !ended.live, ended.txt);
+  check("[one-tap] the bottom nav is back", ended.nav, ended.txt);
+  check("[one-tap] the stored session was cleared", !ended.session, ended.txt);
   await p2.close();
 }
 

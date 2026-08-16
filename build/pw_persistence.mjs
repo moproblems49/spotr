@@ -40,8 +40,9 @@ await page.addInitScript(me => {
   localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
     programs: [], workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [],
     weeklyTarget: 3, isPublic: false, customExercises: [],
-    // "Bench Press" is NOT an EXERCISE_DB entry (the library name is "Barbell Bench Press"), so it
-    // resolves to no muscle and splits its own PRs — the exact condition the merge tool looks for.
+    // A free-typed name that is NOT an EXERCISE_DB entry (the library name is "Barbell Bench
+    // Press"). Kept as a realistic history fixture; it also means these settings checks run
+    // against a store with real content rather than an empty one.
     history: { "2026-08-10": { h1: { id:"h1", dayName:"Push", unit:"lbs", durationSecs:3000,
       exercises: [{ id:"e1", name:"Bench Press",
         sets: [{ id:"s1", weight:"185", reps:"8", done:true, type:"normal" }] }] } } },
@@ -65,8 +66,8 @@ await page.route("**/rest/v1/**", r => {
     return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true,
       weekly_target: 3, is_public: false }]);
   // loadUserData REPLACES store.history with the server's rows, so a fixture seeded only into
-  // localStorage is erased before anything can read it. Serve the free-typed session here or the
-  // merge tool correctly finds nothing and the check below fails for the wrong reason.
+  // localStorage is erased before anything can read it. Serve the session here so the store under
+  // test actually has history in it.
   if (/\/rest\/v1\/workout_history/.test(u))
     return J([{ id: "h1", user_id: ME, workout_date: "2026-08-10", day_name: "Push",
       duration_secs: 3000, unit: "lbs", created_at: "2026-08-10T12:00:00Z",
@@ -105,7 +106,7 @@ const bumped = await page.evaluate(() => {
 await page.waitForTimeout(900);
 if (bumped) check("changing the weekly goal writes profiles.weekly_target", sawProfileKey("weekly_target", mGoal),
   JSON.stringify(profilePatches(mGoal)).slice(0, 160));
-else console.log("  (weekly goal control not found on this screen — skipped)");
+else check("the weekly-goal control is present", false, "no day-count button found — a shape change would otherwise silently delete this check");
 
 // ── Private account ──────────────────────────────────────────────────────────────────────────
 const mPriv = writes.length;
@@ -122,17 +123,6 @@ check("the private-account toggle is present", toggled);
 check("toggling private account writes profiles.is_public", sawProfileKey("is_public", mPriv),
   JSON.stringify(profilePatches(mPriv)).slice(0, 160));
 
-// ── The exercise-merge tool must be REACHABLE ────────────────────────────────────────────────
-// It was built complete, called itself a "Settings tool" in its own comment, and was rendered
-// nowhere — the second orphaned feature found by the dead-UI scan. It self-hides when every logged
-// name is in the library, so the fixture below deliberately logs a free-typed "Bench Press", which
-// resolves to no library entry and is exactly the case it exists to clean up.
-{
-  const mergeVisible = await page.evaluate(() => /TIDY UP EXERCISE NAMES/i.test(document.body.innerText));
-  check("the exercise-merge tool renders in Settings for an unrecognised name", mergeVisible,
-    "not found — ExerciseMergeTool is orphaned again, or the fixture's name resolved to the library");
-}
-
 // Close the sheet so the run ends on a clean screen.
 await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^done$/i.test((x.textContent||"").trim())); b && b.click(); });
 await page.waitForTimeout(600);
@@ -148,10 +138,13 @@ const before = await page.evaluate(() => {
   return { unit: s.unit, weeklyTarget: s.weeklyTarget, isPublic: s.isPublic };
 });
 console.log(`  local after edits: ${JSON.stringify(before)}`);
-const unitWritten = profilePatches().some(b => b && "unit" in b);
-check("the unit change reached the server before any reload could clobber it",
-  unitWritten || before.unit === "lbs",
-  `local unit=${before.unit}, unit ever PATCHed=${unitWritten}`);
+// The former "invariant" here was redundant — it re-tested the same PATCH the units check above
+// already covers, from index 0, and additionally passed when the unit never changed at all. What
+// is actually worth asserting is that the local edits LANDED, so the write checks above were
+// measuring a real change rather than a no-op UI.
+check("the settings edits actually changed local state",
+  before.unit === "kg" && before.isPublic === true && before.weeklyTarget !== 3,
+  JSON.stringify(before));
 
 await browser.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

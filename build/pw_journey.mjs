@@ -156,6 +156,9 @@ await page.waitForTimeout(1600);
 console.log(`  started via: ${JSON.stringify(started)}`);
 const inWorkout = /\d+\/\d+ sets|Finish/i.test(await body());
 check("6. a workout session starts", inWorkout, (await body()).slice(0, 120).replace(/\n/g, " | "));
+// Checks 7 and 8 are nested under `if (inWorkout)`. Fail loudly rather than skipping them, so a
+// broken start cannot quietly reduce the suite to four assertions.
+if (!inWorkout) check("7/8. the workout legs could not run (no session started)", false);
 
 // ── 4. Log a set, finish, share ──────────────────────────────────────────────────────────────
 if (inWorkout) {
@@ -184,9 +187,10 @@ if (inWorkout) {
     await page.waitForTimeout(2500);
     check("8. sharing created a post on the SERVER", db.posts.length > 0, `posts: ${db.posts.length}`);
   } else {
-    await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /don't share/i.test((x.textContent||"").trim())); b && b.click(); });
-    await page.waitForTimeout(1200);
-    console.log("  (summary had no Share to Feed control — skipped the share leg)");
+    // NOT a silent skip. A regression that removes or renames the Share control would otherwise
+    // convert a checked leg into a console note and the suite would still report ALL PASS.
+    check("8. the summary offers a Share to Feed control", false,
+      summary.slice(0, 140).replace(/\n/g, " | "));
   }
 }
 

@@ -1,4 +1,4 @@
-// v178091716842
+// v178091716843
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10690,7 +10690,10 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
           }, token);
         } catch (e) {
           devError("save imported program:", e);
-          toast("Imported on this device — couldn't sync to your account", "error");
+          // NOT "imported on this device". loadUserData overwrites `programs` wholesale from the
+          // server on the next launch or foreground, so a program that never reached the server is
+          // gone — saying it was kept locally describes the opposite of what happens.
+          toast("Couldn't import — check your connection and try the code again", "error");
         }
       })();
     }
@@ -10974,99 +10977,6 @@ function CreateExercisePicker({ name, C, store, setStore, currentUserId, token, 
         }}>Cancel</button>
       </div>
     </div>
-  );
-}
-
-// Settings tool: finds exercise names in your history that aren't in the library (free-typed or
-// near-duplicates of standard lifts) and lets you merge each into a canonical exercise, so progress
-// charts and PRs consolidate instead of splitting across "Bench Press" vs "Barbell Bench Press".
-function ExerciseMergeTool({ store, setStore, currentUserId, token, C }) {
-  const [targets, setTargets] = useState({}); // oldName -> chosen canonical name
-  const [confirming, setConfirming] = useState(null);
-
-  // Count working sets per exercise name across all history; flag names not in the library.
-  const candidates = useMemo(() => {
-    const counts = {};
-    const hist = store.history || {};
-    for (const date of Object.keys(hist)) {
-      for (const sess of Object.values(hist[date] || {})) {
-        for (const ex of (sess.exercises || [])) {
-          if (!ex.name) continue;
-          const sets = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
-          if (!counts[ex.name]) counts[ex.name] = { sets: 0, sessions: 0 };
-          counts[ex.name].sets += sets;
-          counts[ex.name].sessions += 1;
-        }
-      }
-    }
-    // A name is a merge candidate if it's not an exact library exercise.
-    const inDB = (nm) => EXERCISE_DB.some(e => e.name === nm);
-    const norm = (s) => (s || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-    return Object.entries(counts)
-      .filter(([nm]) => !inDB(nm))
-      .map(([nm, c]) => {
-        // Suggest a canonical target by normalized match, else by resolved-muscle + token overlap.
-        let suggestion = EXERCISE_DB.find(e => norm(e.name) === norm(nm))?.name || "";
-        if (!suggestion) {
-          const subs = (typeof suggestExerciseSubstitutes === "function") ? suggestExerciseSubstitutes(nm, 1) : [];
-          if (subs && subs[0]) suggestion = subs[0].name;
-        }
-        return { name: nm, sets: c.sets, sessions: c.sessions, suggestion };
-      })
-      .sort((a, b) => b.sets - a.sets);
-  }, [store.history]);
-
-  if (!candidates.length) return null;
-
-  return (
-    <>
-      <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:6 }}>TIDY UP EXERCISE NAMES</div>
-      <div style={{ fontSize:11, color:C.sub, lineHeight:1.45, marginBottom:10 }}>
-        These names in your history aren't in the library. Merge one into a standard exercise to combine its progress and PRs.
-      </div>
-      <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-        {candidates.map((c, i) => {
-          const target = targets[c.name] !== undefined ? targets[c.name] : c.suggestion;
-          const isConfirm = confirming === c.name;
-          return (
-            <div key={c.name} style={{ padding:"12px 14px", borderBottom: i < candidates.length-1 ? `1px solid ${C.divider}` : "none" }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ fontSize:14, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.name}</div>
-                  <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{c.sets} set{c.sets===1?"":"s"} · {c.sessions} session{c.sessions===1?"":"s"}</div>
-                </div>
-                <div style={{ fontSize:18, color:C.muted, flexShrink:0 }}>→</div>
-              </div>
-              <div style={{ marginTop:8, display:"flex", gap:8, alignItems:"center" }}>
-                <div style={{ flex:1, border:`1.5px solid ${C.divider}`, borderRadius:10, padding:"2px 10px", background:C.bg }}>
-                  <ExerciseInput
-                    key={`merge-${c.name}`}
-                    value={target}
-                    onChange={(v) => setTargets(t => ({ ...t, [c.name]: v }))}
-                    C={C}
-                    recentExercises={[]}
-                  />
-                </div>
-                <button
-                  disabled={!target || !target.trim() || target.trim() === c.name}
-                  onClick={() => { if (isConfirm) { const n = mergeExerciseName(c.name, target.trim(), store, setStore, currentUserId, token); setConfirming(null); haptic("success"); if (typeof toast === "function") toast(`Merged into "${target.trim()}"`, "success"); } else { setConfirming(c.name); } }}
-                  style={{
-                    flexShrink:0, padding:"9px 13px", borderRadius:10, border:"none", fontFamily:F, fontSize:13, fontWeight:700,
-                    background: (!target || !target.trim() || target.trim() === c.name) ? C.divider : (isConfirm ? "#ef4444" : C.accent),
-                    color: (!target || !target.trim() || target.trim() === c.name) ? C.muted : "#fff",
-                    cursor: (!target || !target.trim() || target.trim() === c.name) ? "default" : "pointer",
-                  }}>{isConfirm ? "Confirm" : "Merge"}</button>
-              </div>
-              {isConfirm && (
-                <div style={{ fontSize:11, color:C.sub, marginTop:7, lineHeight:1.4 }}>
-                  Move all {c.sets} set{c.sets===1?"":"s"} of "{c.name}" into "{target.trim()}"? This updates your history, programs, and PRs. <span onClick={() => setConfirming(null)} style={{ color:C.accent, fontWeight:700, cursor:"pointer" }}>Cancel</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </>
   );
 }
 
@@ -12959,6 +12869,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         return { type:"workout", caption:`${session.dayName} — done.`, unit, clientId: sid, workout:{ name:session.dayName, duration:recordedDuration, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
       })();
 
+      // Apple Health + heart-rate attach, hoisted so BOTH finish paths run it exactly once.
+      // It used to sit below, after `setShowWorkoutSummary(true)` — which the groups-only fast
+      // path returns before reaching. The same workout finished two different ways therefore
+      // produced different data: no Move-ring credit and no avg/peak HR when sent to groups.
+      const writeHealthAndHr = () => {
+        try {
+          const volLbs = volLbsForHealth;
+          const wStartMs = wStart || (Date.now() - recordedDuration * 1000);
+          writeWorkoutToHealth(wStartMs, recordedDuration, volLbs, sid);
+          // If the user wore an Apple Watch, pull this session's heart-rate summary and attach it
+          // to the saved workout (avg/peak/min). Fire-and-forget — no watch data just leaves it off.
+          readWorkoutHeartRate(wStartMs, Date.now()).then(hr => {
+            if (!hr) return;
+            setStore(p => {
+              const day = p.history?.[dk]; if (!day || !day[sid]) return p;
+              return { ...p, history: { ...p.history, [dk]: { ...day, [sid]: { ...day[sid], hrSummary: hr } } } };
+            });
+            const tok = tokenRef.current || loadSession()?.access_token;
+            if (tok && currentUserId && !isGuest) {
+              sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ hr_summary: hr }) }, tok).catch(() => {});
+            }
+          }).catch(() => {});
+        } catch (e) {}
+      };
+
       // If user picked "Save & send to groups", post to groups. Normally we skip the summary
       // for this fast path — BUT if the session changed the program's structure, we still need
       // to show the summary so the "Update program?" prompt appears (it lives on the summary).
@@ -12975,6 +12910,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         } else {
           toast(`Sent to ${groupShare.groupIds.length} group${groupShare.groupIds.length===1?"":"s"}`, "success");
         }
+        // THIS PATH MUST END THE WORKOUT ITSELF. The session is deliberately left mounted above so
+        // the summary can render over it, and every `setSession(null)` in this component lives on
+        // the summary's own buttons — which this path skips by design. Without these two lines the
+        // app returns to the live workout screen: timer reset to 00:00, every set still ticked, no
+        // tab bar (the `if (session)` branch renders none), and the only visible exit reading
+        // "Cancel" on a workout that is already saved. It had never run in production before the
+        // Finish-modal entry point was added, so nothing had ever exercised it.
+        writeHealthAndHr();
+        haptic("success");
+        track("workout_logged", { sets: totalSets, exercises: session.exercises.filter(e => e.name).length, prs: newPRsList.length, duration: recordedDuration });
+        setSession(null);   // the [session] effect removes SESSION_KEY when this lands
         return;
       }
 
@@ -13026,24 +12972,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       setShowWorkoutSummary(true);
       haptic("success");
       track("workout_logged", { sets: totalSets, exercises: session.exercises.filter(e => e.name).length, prs: newPRsList.length, duration: recordedDuration });
-      try {
-        const volLbs = volLbsForHealth;
-        const wStartMs = wStart || (Date.now() - recordedDuration * 1000);
-        writeWorkoutToHealth(wStartMs, recordedDuration, volLbs, sid);
-        // If the user wore an Apple Watch, pull this session's heart-rate summary and attach it to
-        // the saved workout (avg/peak/min). Fire-and-forget — no watch data just leaves it off.
-        readWorkoutHeartRate(wStartMs, Date.now()).then(hr => {
-          if (!hr) return;
-          setStore(p => {
-            const day = p.history?.[dk]; if (!day || !day[sid]) return p;
-            return { ...p, history: { ...p.history, [dk]: { ...day, [sid]: { ...day[sid], hrSummary: hr } } } };
-          });
-          const tok = tokenRef.current || loadSession()?.access_token;
-          if (tok && currentUserId && !isGuest) {
-            sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ hr_summary: hr }) }, tok).catch(() => {});
-          }
-        }).catch(() => {});
-      } catch (e) {}
+      writeHealthAndHr();
       // App Store review prompt — native only, once, after the 10th finished workout,
       // delayed so it never competes with the summary confetti.
       try {
@@ -15984,8 +15913,21 @@ function AICoachModal({ open, C, onClose, onImport, store }) {
       panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
-          <button onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
-            {step > 0 ? "‹ Back" : "Cancel"}
+          {/* THE HEADER CONTROL MUST MATCH THE SCREEN THAT IS ACTUALLY SHOWING. The render below
+              is `result ? … : generating ? … : step >= questions.length ? … : question`, so on the
+              result and generating screens NOTHING reads `step`. The old handler decremented it
+              anyway, which changed nothing visible: five dead taps to walk step 5 down to 0, a
+              sixth to close. That was survivable while the backdrop still dismissed the sheet, and
+              became a trap the moment the backdrop was made inert to protect the answers.
+              From the result, step back to the questions so a single answer can be changed —
+              previously the only way was to cancel and redo all five. */}
+          <button onClick={() => {
+            if (result) { setResult(null); setGenError(null); return; }
+            if (generating) { onClose(); return; }   // abandon; the epoch guard drops the response
+            if (step > 0) { setStep(s => s - 1); return; }
+            onClose();
+          }} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>
+            {(result || step > 0) && !generating ? "‹ Back" : "Cancel"}
           </button>
           <div style={{ fontSize:12, color:C.sub }}>{result ? "Review" : generating ? "" : `Step ${step + 1} of ${questions.length + 1}`}</div>
           <div style={{ width:60 }}/>
@@ -18469,10 +18411,16 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     }
     return out;
   }, [isMe, store.history]);
-  const posts = [...store.posts.filter(p => p.userId === userId && p.type !== "story").map(p => {
-    const hr = p.type === "workout" && p.workout && !p.workout.hrSummary && p.clientId ? sessionHr[String(p.clientId)] : null;
-    return hr ? { ...p, workout: { ...p.workout, hrSummary: hr } } : p;
-  }), ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
+  // Memoised because PostCard is memo(): re-attaching HR with a fresh spread on every render gave
+  // each affected card a new `post` identity, so every keystroke in the feedback box and every
+  // "Show more" re-rendered every workout card on the profile. Only the objects that actually
+  // gain HR are replaced; the rest keep their store identity.
+  const ownPosts = useMemo(() =>
+    store.posts.filter(p => p.userId === userId && p.type !== "story").map(p => {
+      const hr = p.type === "workout" && p.workout && !p.workout.hrSummary && p.clientId ? sessionHr[String(p.clientId)] : null;
+      return hr ? { ...p, workout: { ...p.workout, hrSummary: hr } } : p;
+    }), [store.posts, userId, sessionHr]);
+  const posts = [...ownPosts, ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
   const avatarRef = useRef(null);
   const coverRef = useRef(null);
   const [coverDraft, setCoverDraft] = useState(null);   // dataURL pending position+upload
@@ -18865,17 +18813,6 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             const sex = store.strengthSex || "male";
             const ss = strengthScore;
             const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Proficient:"#7ed957", Advanced:"#c8f135", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" };
-            const setAge = (v) => {
-              const a = parseInt(v);
-              setStore(p => ({ ...p, age: (a > 0 && a < 100) ? a : null }));
-              const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
-              if (tok && currentUserId) sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ age: (a > 0 && a < 100) ? a : null }) }, tok).catch(() => {});
-            };
-            const AgeInput = () => (
-              <input key={`age-${store.age || "none"}`} type="text" inputMode="numeric" placeholder="Age" defaultValue={store.age || ""}
-                onBlur={e => setAge(e.target.value)} min="14" max="99"
-                style={{ width:54, padding:"4px 8px", borderRadius:10, border:`1px solid ${C.border}`, background:C.bg, color:C.text, fontSize:12, fontWeight:700, textAlign:"center", fontFamily:F, outline:"none" }}/>
-            );
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
@@ -19337,15 +19274,6 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </div>
               </div>
 
-              {/* BUILT, COMPLETE, AND NEVER RENDERED. `ExerciseMergeTool` was declared with a
-                  comment calling itself a "Settings tool" and no call site anywhere — the second
-                  dead feature this session's scan turned up, after the groups-only picker. It
-                  solves a problem the conventions file documents at length: a free-typed
-                  "Bench Press" resolves to no library entry, so it contributes nothing to the
-                  muscle map, weekly volume or readiness, and splits its PRs and progress chart
-                  away from "Barbell Bench Press". It renders null when it finds no unrecognised
-                  names, so it costs nothing for users with a clean history. */}
-              <ExerciseMergeTool store={store} setStore={setStore} currentUserId={currentUserId} token={token} C={C}/>
 
               {(store.customExercises || []).length > 0 && (
                 <>
@@ -22900,7 +22828,10 @@ function AppInner() {
     }
   }
 
-  async function handleSaveProgram(program) {
+  // `quiet` suppresses the "Program activated" toast. Onboarding seeds the starter program through
+  // here, where activeProgramId is still null, so the toast fired for every new signup a moment
+  // after the wizard closed with no action having caused it.
+  async function handleSaveProgram(program, { quiet = false } = {}) {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) {
       // No auth — just save locally
@@ -22955,10 +22886,14 @@ function AppInner() {
           : [...prev.programs, program],
         activeProgramId: program.id
       }));
-      if (store.activeProgramId !== program.id) toast("Program activated", "success");
+      if (!quiet && store.activeProgramId !== program.id) toast("Program activated", "success");
+      return true;
     } catch (e) {
       devError("program save error:", e);
-      toast("Couldn't save program", "error");
+      if (!quiet) toast("Couldn't save program", "error");
+      // Reported rather than swallowed so a caller that must know (onboarding's starter program)
+      // can retry instead of reading a store ref that its own effect has not refreshed yet.
+      return false;
     }
   }
 
@@ -23812,8 +23747,25 @@ function AppInner() {
       // profiles.active_program_id, and updates the store itself — the same path the "Browse
       // templates" import has always used correctly.
       if (starterProg && !(store.programs && store.programs.length)) {
-        try { await handleSaveProgram(starterProg); }
-        catch (e) { devError("starter program save failed:", e); }
+        // RETRY, THEN FALL BACK TO LOCAL. handleSaveProgram goes through sb.query, which throws on
+        // a transport failure and has no retry queue — unlike the `seen_onboarding` write directly
+        // below, which uses the durable sb.queueWrite. So a connection blip during the last tap of
+        // the wizard left the flag queued (onboarding never runs again) and the program nowhere at
+        // all, permanently stranding a brand-new user on "No active program" — the exact state the
+        // seeding exists to prevent, reached by a different route. One retry covers a blip; if it
+        // still fails, seed locally so the session is at least usable. That copy is lost at the
+        // next loadUserData, but the empty state it falls back to is recoverable in one tap via
+        // "Browse templates", which is not true of a wizard that never re-runs.
+        let ok = await handleSaveProgram(starterProg, { quiet: true });
+        if (!ok) {
+          await new Promise(r => setTimeout(r, 1200));
+          ok = await handleSaveProgram(starterProg, { quiet: true });
+        }
+        if (!ok) {
+          devError("starter program: server save failed twice, seeding locally only");
+          setStore(prev => (prev.programs && prev.programs.length) ? prev
+            : { ...prev, programs: [starterProg], activeProgramId: starterProg.id });
+        }
       }
       // Persist seen-onboarding to the profile so it doesn't reappear after a reload or
       // on another device. Best-effort: if the column doesn't exist yet the local store

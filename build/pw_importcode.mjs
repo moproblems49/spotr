@@ -136,6 +136,11 @@ const after = await page.evaluate(() => {
   return { n: (s.programs || []).length, active: s.activeProgramId };
 });
 console.log(`  after reload: ${after.n} program(s), active=${after.active}`);
+// Same reason as pw_starterprog: a boot crash leaves localStorage untouched, so the survival
+// checks below would pass against a dead app.
+const bootTxt = await page.evaluate(() => document.body.innerText);
+check("the app booted after the reload (no error boundary)",
+  !/went sideways|unexpected error/i.test(bootTxt), bootTxt.slice(0, 110).replace(/\n/g, " | "));
 check("the imported program SURVIVES a reload", after.n > 0, JSON.stringify(after));
 check("it is still active after a reload", after.active === SERVER_PROG_ID, JSON.stringify(after));
 

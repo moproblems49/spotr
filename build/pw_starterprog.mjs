@@ -143,6 +143,14 @@ const afterReload = await page.evaluate(() => {
   return { n: (s.programs || []).length, active: s.activeProgramId };
 });
 console.log(`  local store after reload: ${afterReload.n} program(s), active=${afterReload.active}`);
+// CHECK THE APP IS ALIVE BEFORE BELIEVING localStorage. If the app throws at boot after the
+// reload, the error boundary renders and loadUserData — the very mechanism that deletes a
+// local-only program — never runs, so localStorage keeps its pre-reload contents and every
+// assertion below passes while the app is broken. Absence of the two "empty state" phrases
+// cannot distinguish that from success either; assert the app actually booted.
+const bootTxt = await body();
+check("the app booted after the reload (no error boundary)",
+  !/went sideways|unexpected error/i.test(bootTxt), bootTxt.slice(0, 110).replace(/\n/g, " | "));
 check("the starter program SURVIVES a reload", afterReload.n > 0, JSON.stringify(afterReload));
 check("it is still the active program after a reload", !!afterReload.active, JSON.stringify(afterReload));
 
