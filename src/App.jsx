@@ -1,4 +1,4 @@
-// v178091716839
+// v178091716840
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14321,6 +14321,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
               <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish workout"}</button>
+              {/* THE ENTRY POINT THE GROUP PICKER NEVER HAD. Everything behind this button —
+                  `showGroupShare`, the picker sheet, and finishWorkout's groupOnly fast path —
+                  landed together in 02ab7f3 (2026-07-05) and `setShowGroupShare(true)` was never
+                  written in any commit, so the whole path sat dead for its entire life. The
+                  post-finish summary's "Groups Only" reaches the same outcome; this is the ONE-TAP
+                  version that skips the summary entirely. Gated on actually being in a group,
+                  because with none the picker is an empty sheet with a disabled button. */}
+              {(store.groups||[]).some(g => (g.members||g.member_ids||[]).includes(currentUserId)) && (
+                <button onClick={() => { setShowFinish(false); setSelectedGroupIds([]); setShowGroupShare(true); }}
+                  disabled={finishing}
+                  style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  Save &amp; send to groups
+                </button>
+              )}
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
             </>
           )}

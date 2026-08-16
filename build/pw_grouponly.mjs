@@ -68,15 +68,12 @@ await page.route("**/rest/v1/**", r => {
 await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(2600);
 
-// ── The dead path: nothing anywhere opens the pre-finish group picker ────────────────────────
-const src = await page.evaluate(async () => {
-  const s = [...document.querySelectorAll("script")].map(x => x.src).filter(Boolean);
-  const txts = await Promise.all(s.map(u => fetch(u).then(r => r.text()).catch(() => "")));
-  return txts.join("\n");
-});
-check("the pre-finish group picker has no trigger anywhere in the shipped bundle",
-  !/setShowGroupShare\(!0\)|setShowGroupShare\(true\)/.test(src),
-  "a trigger exists after all — the dead-path premise is wrong");
+// NO SOURCE-TEXT ASSERTION HERE. An earlier draft grepped the shipped bundle for
+// `setShowGroupShare(true)` to prove the trigger existed. The bundle is MINIFIED, so that
+// identifier is renamed away and the regex can never match — it "passed" while asserting the
+// absence of the trigger, and would have gone on passing no matter what the app did. The
+// [one-tap] section below drives the button instead, which is the only thing that can tell the
+// two states apart.
 
 // ── The live path: finish -> summary -> pick group -> Groups Only ────────────────────────────
 await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish$/i.test((x.textContent||"").trim())); b && b.click(); });
@@ -123,6 +120,82 @@ check("NO feed post was created", wrote.posts.flat().filter(Boolean).length === 
   JSON.stringify(wrote.posts).slice(0, 200));
 check("the workout was still saved to history", wrote.workout_history.length > 0,
   JSON.stringify(wrote.workout_history).slice(0, 150));
+
+// ── The ONE-TAP path: Finish -> "Save & send to groups" -> pick -> Send, skipping the summary ──
+// This is the path that was dead for its whole life. It must reach the same outcome as the
+// summary's "Groups Only" (group post, no feed post, workout still saved) WITHOUT showing the
+// summary at all — that skip is the entire reason it exists.
+{
+  const p2 = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  p2.setDefaultTimeout(5000);
+  p2.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
+  const w2 = { posts: [], group_posts: [], workout_history: [] };
+  await p2.addInitScript(([me, gid, sess]) => {
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
+      programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [],
+      groups: [{ id: gid, name: "Seshd Crew", members: [me] }],
+      profile: { username:"momo", name:"Mo" }, users: [{ id: me, username:"momo", name:"Mo", followers:[], following:[] }] }));
+    localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
+    localStorage.setItem("seshd_onboarded", "1");
+    localStorage.setItem("seshd_custom_merge_v1", "1");
+    localStorage.setItem("seshd_active_session", JSON.stringify(sess));
+    localStorage.setItem("seshd_wstart", String(Date.now() - 18e5));
+  }, [ME, GID, SESSION]);
+  await p2.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
+    body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
+  await p2.route("**/rest/v1/**", r => {
+    const req = r.request(), u = req.url(), m = req.method();
+    const J = b => r.fulfill({ status:200, contentType:"application/json", body: JSON.stringify(b) });
+    if (m === "POST" || m === "PATCH") {
+      let body = null; try { body = JSON.parse(req.postData() || "null"); } catch {}
+      if (/\/rest\/v1\/group_posts/.test(u)) w2.group_posts.push(body);
+      else if (/\/rest\/v1\/posts/.test(u)) w2.posts.push(body);
+      else if (/\/rest\/v1\/workout_history/.test(u)) w2.workout_history.push(body);
+      return J([Array.isArray(body) ? body[0] : (body || {})]);
+    }
+    if (/\/rest\/v1\/(public_)?profiles\?/.test(u))
+      return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true }]);
+    if (/\/rest\/v1\/groups\?/.test(u)) return J([{ id: GID, name:"Seshd Crew", member_ids:[ME], created_by: ME }]);
+    return J([]);
+  });
+  await p2.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await p2.waitForTimeout(2600);
+
+  await p2.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish$/i.test((x.textContent||"").trim())); b && b.click(); });
+  await p2.waitForTimeout(700);
+  const hasBtn = await p2.evaluate(() => [...document.querySelectorAll("button")].some(x => /save & send to groups/i.test((x.textContent||"").trim())));
+  check("[one-tap] the Finish modal offers 'Save & send to groups'", hasBtn,
+    (await p2.evaluate(() => document.body.innerText)).slice(0,120).replace(/\n/g," | "));
+
+  await p2.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /save & send to groups/i.test((x.textContent||"").trim())); b && b.click(); });
+  await p2.waitForTimeout(800);
+  const pickerTxt = await p2.evaluate(() => document.body.innerText);
+  check("[one-tap] it opens the group picker", /Send to groups/i.test(pickerTxt), pickerTxt.slice(0,120).replace(/\n/g," | "));
+
+  const pick2 = await p2.evaluate(() => {
+    const el = [...document.querySelectorAll("*")].find(e => !e.children.length && /Seshd Crew/.test(e.textContent || ""));
+    if (!el) return "no row";
+    let n = el; while (n && n !== document.body) { if (getComputedStyle(n).cursor === "pointer") { n.click(); return "clicked"; } n = n.parentElement; }
+    return "no clickable ancestor";
+  });
+  await p2.waitForTimeout(400);
+  check("[one-tap] a group can be selected", pick2 === "clicked", pick2);
+
+  await p2.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^send to \d+ group/i.test((x.textContent||"").trim())); b && b.click(); });
+  await p2.waitForTimeout(2600);
+
+  console.log(`  [one-tap] group_posts: ${w2.group_posts.length}, posts(feed): ${w2.posts.length}, workout_history: ${w2.workout_history.length}`);
+  const gp2 = w2.group_posts.flat().filter(Boolean);
+  check("[one-tap] a group post was written", gp2.length > 0, JSON.stringify(w2.group_posts).slice(0,200));
+  check("[one-tap] it targets the selected group", gp2.some(p => p && p.group_id === GID), JSON.stringify(gp2[0]||{}).slice(0,200));
+  check("[one-tap] NO feed post was created", w2.posts.flat().filter(Boolean).length === 0, JSON.stringify(w2.posts).slice(0,200));
+  check("[one-tap] the workout was still saved to history", w2.workout_history.length > 0, JSON.stringify(w2.workout_history).slice(0,150));
+  // The whole point of this path over the summary's Groups Only: it skips the summary.
+  const afterTxt = await p2.evaluate(() => document.body.innerText);
+  check("[one-tap] the summary screen is skipped", !/Share to Feed|Don't share/i.test(afterTxt),
+    afterTxt.slice(0,120).replace(/\n/g," | "));
+  await p2.close();
+}
 
 await browser.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
