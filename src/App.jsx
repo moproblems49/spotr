@@ -1,4 +1,4 @@
-// v178091716844
+// v178091716845
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9876,11 +9876,28 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         );
       })()}
 
-      {(post.type === "photo" || post.type === "form_check") && (
-        post.imageData
-          ? <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
-          : <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}>{/* image placeholder — shows when a photo post's blob isn't cached (offline/cold-start); an image glyph reads as "photo", not a magnifying-glass "search" */}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
-      )}
+      {/* THE IMAGE IS GATED ON THE IMAGE, NOT ON THE POST TYPE. It used to be
+          `type === "photo" || type === "form_check"`, so a workout post could carry an image_url
+          and never render it — which is exactly what a pump pic attached at finish is. This block
+          sits ABOVE the workout card in DOM order deliberately: the photo is the hook in the feed
+          and the card is the receipt directly under it, both visible in one scroll. No carousel,
+          no swipe — hiding half a post behind a gesture means the numbers, which are the whole
+          point of the card, only reach the people who think to look for them. (Stories are
+          filtered out of the feed upstream, so widening this gate can't surface one here.)
+          The placeholder stays type-gated: a workout post with no photo must render NOTHING, not
+          an empty grey square. */}
+      {post.imageData ? (
+        // Inset and rounded on a workout post so the photo and the card below read as one stacked
+        // unit rather than a full-bleed image with a floating card under it; capped shorter too,
+        // so the card's header still lands on screen with the photo.
+        post.type === "workout"
+          ? <div style={{ margin:"0 14px 8px" }}>
+              <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:380, objectFit:"cover", display:"block", borderRadius:16, border:`1px solid ${C.border}` }}/>
+            </div>
+          : <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
+      ) : (post.type === "photo" || post.type === "form_check") ? (
+        <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}>{/* image placeholder — shows when a photo post's blob isn't cached (offline/cold-start); an image glyph reads as "photo", not a magnifying-glass "search" */}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
+      ) : null}
 
       {post.type === "run" && post.run && (
         <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#0ea5e9,#0284c7)", borderRadius:12, padding:"18px 18px" }}>
@@ -12547,6 +12564,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   };
   const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
   const [workoutSummary, setWorkoutSummary] = useState(null);
+  // The finish sheet's optional pump-pic picker. The photo itself lives on workoutSummary
+  // (photoDraft) so it is cleared with the rest of the sheet's drafts and can never leak onto the
+  // next workout's share.
+  const summaryPhotoRef = useRef(null);
 
   async function finishWorkout(share, groupShare = null) {
     if (!session || finishing) return;
@@ -14032,6 +14053,42 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   />
                 </div>
 
+                {/* Optional photo — the pump pic. It rides on the SAME post as the workout card
+                    (PostCard renders it directly above), so this is one post with a picture and
+                    the numbers under it, not two. The picked file becomes a data URL here and
+                    handleNewPost uploads it exactly like a composer photo post; a workout shared
+                    with no photo behaves precisely as before. */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:8 }}>PHOTO</div>
+                  <input ref={summaryPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
+                    onChange={e => {
+                      const f = e.target.files && e.target.files[0];
+                      // Clear the input's value so picking the SAME file twice still fires change
+                      // (a re-pick after removing the photo is otherwise a silent no-op).
+                      e.target.value = "";
+                      if (!f) return;
+                      const r = new FileReader();
+                      r.onload = ev => setWorkoutSummary(prev => prev ? ({ ...prev, photoDraft: ev.target.result }) : prev);
+                      r.readAsDataURL(f);
+                    }}/>
+                  {workoutSummary.photoDraft ? (
+                    <div style={{ position:"relative", borderRadius:12, overflow:"hidden", border:`1px solid ${C.border}` }}>
+                      <img src={workoutSummary.photoDraft} alt="" style={{ width:"100%", maxHeight:220, objectFit:"cover", display:"block" }}/>
+                      <button onClick={() => setWorkoutSummary(prev => prev ? ({ ...prev, photoDraft: null }) : prev)}
+                        aria-label="Remove photo"
+                        style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:15, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:F }}>×</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => summaryPhotoRef.current?.click()} style={{
+                      width:"100%", background:C.surface, border:`1.5px dashed ${C.border}`, borderRadius:12,
+                      padding:"16px 12px", cursor:"pointer", fontFamily:F, color:C.sub, fontSize:13,
+                      display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                    }}>
+                      <Icon name="plus" size={16} color={C.sub}/> Add a photo (optional)
+                    </button>
+                  )}
+                </div>
+
                 {/* Share to Groups */}
                 {(() => {
                   const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
@@ -14086,7 +14143,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           : userCaption;
                         // Share to feed AND any selected groups in one shot. The feed post carries the
                         // program plug; the group copy uses the plain caption (no "Try my program").
-                        onShareWorkout({ ...workoutSummary.shareData, caption: finalCaption, groupCaption: userCaption, groupIds: selectedGroups, groupOnly: false });
+                        // imageData rides along to handleNewPost, which uploads it and stores the
+                        // resulting URL on the SAME row as the workout jsonb — one post, photo on
+                        // top of the card. Undefined when no photo was picked, which is the exact
+                        // shape this call had before.
+                        onShareWorkout({ ...workoutSummary.shareData, caption: finalCaption, groupCaption: userCaption, groupIds: selectedGroups, groupOnly: false, imageData: workoutSummary.photoDraft || null });
                       }
                       // (External/native share removed — it could only send plain text, not the
                       // summary card, and any link has nowhere public to point yet. In-app feed +
@@ -14112,7 +14173,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   return (
                     <button onClick={() => {
                       if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
-                      if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, caption: (workoutSummary.captionDraft || "").trim(), groupIds: selectedGroups, feedOnly: false, groupOnly: true });
+                      if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, caption: (workoutSummary.captionDraft || "").trim(), groupIds: selectedGroups, feedOnly: false, groupOnly: true, imageData: workoutSummary.photoDraft || null });
                       setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
                     }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -19504,6 +19565,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
   const [runSecs, setRunSecs] = useState("");
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const fileRef = useRef(null);
+  const workoutPhotoRef = useRef(null);
   const MAX_CAPTION = 280;
 
   function handleFile(f) {
@@ -19561,6 +19623,8 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
         // than add one — destroying its caption, PR flag, image, kudos and comments, and keeping
         // its old created_at so the "new" post silently stays buried in the feed.
         fromComposer: true,
+        // The optional pump pic. handleNewPost uploads it and PostCard renders it above the card.
+        imageData: img || null,
         workout: {
           name: selectedWorkout.dayName,
           duration: selectedWorkout.duration,
@@ -19694,6 +19758,27 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                     );
                   })}
                 </div>
+              )}
+              {/* Same optional photo as the finish sheet, on the same `img` state the photo kind
+                  uses — so a workout shared from here can carry a pump pic too. A photo control
+                  that existed only at finish would read as the feature being broken everywhere
+                  else. */}
+              <input ref={workoutPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
+                onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; handleFile(f); }}/>
+              {img ? (
+                <div style={{ position:"relative", borderRadius:12, overflow:"hidden", border:`1px solid ${C.border}`, marginBottom:10 }}>
+                  <img src={img} alt="" style={{ width:"100%", maxHeight:220, objectFit:"cover", display:"block" }}/>
+                  <button onClick={() => setImg(null)} aria-label="Remove photo"
+                    style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:15, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:F }}>×</button>
+                </div>
+              ) : (
+                <button onClick={() => workoutPhotoRef.current?.click()} style={{
+                  width:"100%", background:"transparent", border:`1.5px dashed ${C.border}`, borderRadius:12,
+                  padding:"14px 12px", cursor:"pointer", fontFamily:F, color:C.sub, fontSize:13, marginBottom:10,
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                }}>
+                  <Icon name="plus" size={16} color={C.sub}/> Add a photo (optional)
+                </button>
               )}
               <div style={{ position:"relative" }}>
                 <textarea value={caption} onChange={e => setCaption(e.target.value.slice(0,MAX_CAPTION))} placeholder="Add a caption... (optional)" rows={2}
@@ -22308,7 +22393,13 @@ function AppInner() {
     try {
       // Upload image to Storage if present - don't fall back to base64 (too large for DB)
       let imageUrl = null;
-      if (postData.imageData && postData.imageData.startsWith("data:")) {
+      // A GROUPS-ONLY share must never touch the PUBLIC `images` bucket. Group photos live in the
+      // private, membership-gated `group-images` bucket (see uploadGroupImage), and this upload
+      // used to run unconditionally — harmless while nothing could send a photo and groupIds
+      // together, and a real leak the moment the finish sheet could: the user picks "groups only",
+      // and their pump pic lands at a public, guessable-by-nobody-but-permanent URL anyway.
+      const wantsPublicImage = postData.groupOnly !== true;
+      if (wantsPublicImage && postData.imageData && postData.imageData.startsWith("data:")) {
         let uploaded = await uploadImage(postData.imageData, tok, currentUserId);
         // If upload failed, the access token may be stale (e.g. another tab already rotated
         // the refresh token) — refresh once and retry before giving up.
@@ -22336,7 +22427,7 @@ function AppInner() {
           }
           toast("Image upload failed — posting without photo", "error");
         }
-      } else {
+      } else if (wantsPublicImage) {
         imageUrl = postData.imageData || null;
       }
 
@@ -22348,6 +22439,14 @@ function AppInner() {
       if (groupIds.length > 0) {
         for (const gid of groupIds) {
           try {
+            // Per-group upload into the private bucket — the storage path is scoped to the group
+            // folder, so one photo shared to three groups is three objects, each readable only by
+            // that group's members. Never reuse the public `imageUrl` here: it would hand a
+            // members-only feed a world-readable URL. A failed upload posts without the photo
+            // rather than dropping the whole workout card.
+            const groupImage = (postData.imageData && postData.imageData.startsWith("data:"))
+              ? await uploadGroupImage(postData.imageData, tok, gid)
+              : (imageUrl || null);
             const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts${postData.clientId ? "?on_conflict=group_id,client_id" : ""}`, {
               method: "POST",
               headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}`, "Content-Type": "application/json", ...(postData.clientId ? { "Prefer": "resolution=merge-duplicates" } : {}) },
@@ -22361,7 +22460,7 @@ function AppInner() {
                 // true by construction: this is the single place a group post is written, and a
                 // future caller that forgets can't reintroduce it.
                 caption: stripProgramPlug((postData.groupCaption != null ? postData.groupCaption : postData.caption) || ""),
-                image_url: imageUrl,
+                image_url: groupImage,
                 workout: postData.workout || null,
                 // Dedup a re-shared workout per group (unique group_id,client_id) — no duplicate.
                 ...(postData.clientId ? { client_id: postData.clientId } : {}),
