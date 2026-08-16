@@ -1,4 +1,4 @@
-// v178091716845
+// v178091716846
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11957,7 +11957,7 @@ let _discoverSubTab = "discover";
 // ReferenceError that the surrounding catch swallowed — PR history silently stopped syncing
 // (Wrapped then showed "0 PRs" for weeks that had real ones) and heart-rate summaries never
 // reached the server. Nothing surfaced because both failures were caught and ignored.
-function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onDeleteHistory, onRefresh, onSessionChange, currentUserId, token, C, dataLoading, isGuest = false }) {
+function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onDeleteHistory, onRefresh, currentUserId, token, C, dataLoading, isGuest = false }) {
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
   const [session, setSession] = useState(() => {
@@ -11975,7 +11975,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // Tell the shell whether a workout is in progress. Mid-set you don't need the logo, the DM and
   // activity icons, or four nav tabs — that chrome was eating ~15% of the screen on the one screen
   // where every row matters. Only a boolean crosses the boundary; the session itself stays here.
-  useEffect(() => { if (onSessionChange) onSessionChange(!!session); }, [!!session, onSessionChange]);
   const [elapsed, setElapsed] = useState(() => {
     try {
       const ws = localStorage.getItem(WSTART_KEY);
@@ -12885,6 +12884,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         return { type:"workout", caption:`${session.dayName} — done.`, unit, clientId: sid, workout:{ name:session.dayName, duration:recordedDuration, volume:Math.round(vol), exercises:postEx }, isPR: hasPR };
       })();
 
+      // HOISTED WITH THE FUNCTION THAT READS IT. `writeHealthAndHr` was moved up here so the
+      // groups-only fast path could run it, but this `const` stayed below the fast path's call
+      // site — so on that exact path the read was in the TEMPORAL DEAD ZONE and threw
+      // ReferenceError into the swallowing `catch` two lines down. The path the hoist existed for
+      // was the one path that ran it ZERO times: no Move-ring credit, no avg/peak HR, and
+      // `seshd_health_written` never stamped so nothing could retry it. Nothing logged, nothing
+      // looked broken. (Its own earlier bug is worth keeping in mind too: this used to read
+      // `workoutSummary?.volumeRaw`, the STATE set on the next line, which React had not
+      // committed — always the previous summary's value, so volLbs was 0 and the `kcal > 0` guard
+      // meant NOT ONE workout ever reached the Move ring.)
+      const volLbsForHealth = unit === "lbs" ? Math.round(totalVol) : cvt(Math.round(totalVol), "kg", "lbs");
       // Apple Health + heart-rate attach, hoisted so BOTH finish paths run it exactly once.
       // It used to sit below, after `setShowWorkoutSummary(true)` — which the groups-only fast
       // path returns before reaching. The same workout finished two different ways therefore
@@ -12945,11 +12955,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Streak INCLUDING today — see the note on streakWeeks below.
       const finishStreak = calcWeeklyStreak({ ...(store.workoutDates || {}), [dk]: true }, store.weeklyTarget || 3).count;
       // The volume in LBS, used for the Apple Health calorie write further down. It read
-      // `workoutSummary?.volumeRaw` — the STATE set on the very next line, which React hasn't
-      // committed — so it was always the previous summary's value, i.e. undefined on every real
-      // finish. volLbs came out 0, kcal came out 0, and the `kcal > 0` guard meant NOTHING was
-      // ever written to the Move ring. Not one workout, since the feature shipped.
-      const volLbsForHealth = unit === "lbs" ? Math.round(totalVol) : cvt(Math.round(totalVol), "kg", "lbs");
+      // (volLbsForHealth is declared above writeHealthAndHr — see the TDZ note there.)
       setWorkoutSummary({
         dayName: session.dayName,
         duration: fmtTime(recordedDuration),
@@ -13136,17 +13142,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           />
         )}
 
-        {/* Header. With the app's own top bar hidden during a workout, this row is the topmost
-            thing on screen, so it owns the status-bar inset — otherwise Cancel, the timer and
-            Finish sit under the clock. Same one-owner rule as the offline/guest banners; the
-            condition matches exactly (a session is what hides the bar). */}
-        <div style={{ background:C.bg, padding:"calc(env(safe-area-inset-top) + 10px) 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        {/* Header. FLAT padding, not `env(safe-area-inset-top)`. This used to own the status-bar
+            inset because the app's own top bar was hidden during a workout; the top bar is always
+            present now, so it is the owner and claiming the inset here would stack TWO full status
+            bars of dead space above the timer — the exact rule the offline/guest banners follow. */}
+        <div style={{ background:C.bg, padding:"10px 14px 8px", borderBottom:`1px solid ${C.divider}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           {/* "Cancel" sat one mis-tap from destroying a whole session, with no confirmation and no
               undo — and the word is ambiguous next to a running timer ("cancel what, the timer?").
               It reads "Discard" now, and asks first. The wording mirrors the Finish sheet's
               "Keep going" so the safe option is the familiar one in both places. */}
           <button className="seshd-hit-y" onClick={() => {
-            const logged = (session?.exercises || []).reduce((a, ex) => a + workingDone(ex.sets).length, 0);
+            // COUNT WHAT ACTUALLY GETS SAVED. `cleanEx` drops any exercise with no name, so a
+            // Quick Start row left blank contributes nothing to history — counting it here made
+            // the sheet claim more sets than the live header renders for the same session.
+            const namedEx = (session?.exercises || []).filter(e => e.name);
+            const logged = namedEx.reduce((a, ex) => a + workingDone(ex.sets).length, 0);
+            // "Nothing has been logged yet" must mean the session is EMPTY, not merely UN-TICKED.
+            // `workingDone` requires `done`, so a lifter who typed every weight and rep without
+            // hitting the checkmarks was told there was nothing to lose, immediately before
+            // losing all of it.
+            const anyTyped = namedEx.some(ex => (ex.sets || []).some(st =>
+              String(st.weight ?? "").trim() || String(st.reps ?? "").trim()));
             const discard = () => {
               clearInterval(elRef.current);
               try { localStorage.removeItem(SESSION_KEY); } catch {}
@@ -13156,7 +13172,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               title: "Discard this workout?",
               message: logged > 0
                 ? `You'll lose the ${logged} set${logged === 1 ? "" : "s"} you've logged. This can't be undone.`
-                : "Nothing has been logged yet, so there's nothing to save.",
+                : anyTyped
+                  ? "You'll lose everything you've entered in this session. This can't be undone."
+                  : "Nothing has been logged yet, so there's nothing to save.",
               confirmLabel: "Discard workout",
               cancelLabel: "Keep going",
               destructive: true,
@@ -16678,7 +16696,15 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
   const [caption, setCaption] = useState("");
   const [img, setImg] = useState(null);
   const [posting, setPosting] = useState(false);
-  const [signedImgs, setSignedImgs] = useState({}); // private group-image path -> short-lived signed URL
+  // path -> { url, exp } — the EXPIRY is stored because signGroupImage mints a 1h URL and this
+  // cache used to be permanent for the component's lifetime. A group left open for over an hour
+  // (a rest day spent scrolling, a phone that never sleeps) showed broken images and never
+  // re-signed, because the dead entry was still a cache HIT. Treat anything inside the skew as
+  // absent so the sign effect picks it up again.
+  const [signedImgs, setSignedImgs] = useState({});
+  // Re-runs the sign effect while the screen stays mounted, so an expiry that passes with nobody
+  // touching the feed still gets refreshed. Cheap: the effect no-ops unless something needs it.
+  const [signTick, setSignTick] = useState(0);
   const fileRef = useRef(null);
   const me = store.users.find(u => u.id === currentUserId);
 
@@ -16690,16 +16716,22 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
     if (post._localImage) return post._localImage;
     const iu = post.image_url;
     if (!iu) return null;
-    return isStoredPath(iu) ? (signedImgs[iu] || null) : iu;
+    if (!isStoredPath(iu)) return iu;
+    const e = signedImgs[iu];
+    return e && e.exp > Date.now() ? e.url : null;
   };
 
-  // Sign any private group-image paths that appear in the feed (once each, cached).
+  // Sign any private group-image paths that appear in the feed, and re-sign the ones about to
+  // expire. signGroupImage asks for 3600s; renew at 5 minutes left so an image never blanks
+  // mid-scroll.
+  const SIGN_TTL_MS = 3600e3, SIGN_SKEW_MS = 300e3;
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+    const now = Date.now();
     const need = posts
       .map(p => p.image_url)
-      .filter(iu => isStoredPath(iu) && !(iu in signedImgs));
+      .filter(iu => isStoredPath(iu) && !(signedImgs[iu] && signedImgs[iu].exp - SIGN_SKEW_MS > now));
     if (need.length === 0) return;
     (async () => {
       const entries = await Promise.all(need.map(async path => [path, await signGroupImage(path, token)]));
@@ -16707,10 +16739,21 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
       // Only cache SUCCESSFUL signs. A transient failure (returns null) is left uncached so the
       // next feed change re-signs it, instead of permanently blanking the image for the session.
       const ok = entries.filter(([, v]) => v);
-      if (ok.length) setSignedImgs(prev => { const next = { ...prev }; for (const [k, v] of ok) next[k] = v; return next; });
+      if (ok.length) setSignedImgs(prev => {
+        const next = { ...prev };
+        for (const [k, v] of ok) next[k] = { url: v, exp: Date.now() + SIGN_TTL_MS };
+        return next;
+      });
     })();
     return () => { cancelled = true; };
-  }, [posts, token]);
+  }, [posts, token, signTick]);
+
+  // Nudge the effect every 5 minutes. Without this, a screen nobody touches never re-evaluates
+  // the expiry — the cache only got a chance to notice when `posts` changed.
+  useEffect(() => {
+    const id = setInterval(() => setSignTick(t => t + 1), 3e5);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     // Guard against a stale group's fetch landing after the user switched groups.
@@ -16805,8 +16848,10 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
         <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
           {/* Post composer */}
           <div style={{ padding:"10px 14px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+            {/* Clear the value first — see the note on the composer's picker. Re-picking the same
+                file after removing it fired no `change` event at all. */}
             <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e => {
-              const f = e.target.files[0]; if (!f) return;
+              const f = e.target.files[0]; e.target.value = ""; if (!f) return;
               const r = new FileReader(); r.onload = ev => setImg(ev.target.result); r.readAsDataURL(f);
             }}/>
             {img && (
@@ -19698,7 +19743,11 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
           {/* Photo / Story */}
           {(postKind === "photo" || postKind === "story") && (
             <>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e => handleFile(e.target.files[0])}/>
+              {/* `e.target.value = ""` before handling: a file input fires `change` only when its
+                  VALUE changes, so removing a photo with the × and re-picking THE SAME FILE was a
+                  silent no-op — the picker opened, you chose the image, and nothing happened. */}
+              <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }}
+                onChange={e => { const f = e.target.files[0]; e.target.value = ""; handleFile(f); }}/>
               <div onClick={() => fileRef.current?.click()} style={{
                 border:`1.5px dashed ${C.border}`, borderRadius:14, minHeight:160,
                 display:"flex", alignItems:"center", justifyContent:"center",
@@ -21506,7 +21555,6 @@ function AppInner() {
   // True while a workout is being logged. Drives hiding the shell chrome on the tracker tab —
   // see the note in WorkoutTracker. Swiping to another tab mid-workout brings the nav straight
   // back, because there you DO need it.
-  const [workoutActive, setWorkoutActive] = useState(false);
   useEffect(() => {
     async function init() {
       // OAuth callback / password-recovery link. The fragment was captured and stripped at module
@@ -22388,8 +22436,33 @@ function AppInner() {
   // ── Supabase-backed action handlers ──────────────────────────
   async function handleNewPost(postData) {
     if (requireAuth("Sign up to share your workout with the feed")) return;
-    const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
+    // `let`, not `const`. THIS DRIVES EVERY WRITE BELOW — the public upload, the per-group private
+    // uploads, the group_posts inserts and the feed insert. The refresh-once path used to update
+    // tokenRef/saveSession/setSession and leave `tok` pointing at the dead token, so a recovered
+    // upload was followed by 401s on everything after it: the catch reported "Couldn't save post"
+    // and left an ORPHANED world-readable image object in storage with no post row anywhere, which
+    // the user can neither see nor delete (nothing in the app ever issues a storage DELETE).
+    let tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok) { toast("Not signed in", "error"); return; }
+    // ONE refresh, shared by every upload in this call. Another tab can rotate the refresh token,
+    // so a second attempt would fail anyway; and the groups-only path had no retry at all, which
+    // meant an expired token silently dropped the photo and posted the caption alone.
+    let refreshAttempted = false;
+    async function refreshTokenOnce() {
+      if (refreshAttempted) return null;
+      refreshAttempted = true;
+      try {
+        const saved = loadSession();
+        if (!saved?.refresh_token) return null;
+        const fresh = await sb.refreshToken(saved.refresh_token);
+        const merged = { ...saved, ...fresh };
+        saveSession(merged);
+        tokenRef.current = merged.access_token || tokenRef.current;
+        setSession(merged);
+        if (merged.access_token) tok = merged.access_token;
+        return merged.access_token || null;
+      } catch (e) { devWarn("Retry token refresh failed:", e.message); return null; }
+    }
     try {
       // Upload image to Storage if present - don't fall back to base64 (too large for DB)
       let imageUrl = null;
@@ -22404,17 +22477,8 @@ function AppInner() {
         // If upload failed, the access token may be stale (e.g. another tab already rotated
         // the refresh token) — refresh once and retry before giving up.
         if (!uploaded || uploaded.startsWith("data:")) {
-          try {
-            const saved = loadSession();
-            if (saved?.refresh_token) {
-              const fresh = await sb.refreshToken(saved.refresh_token);
-              const merged = { ...saved, ...fresh };
-              saveSession(merged);
-              tokenRef.current = merged.access_token || tokenRef.current;
-              setSession(merged);
-              uploaded = await uploadImage(postData.imageData, merged.access_token, currentUserId);
-            }
-          } catch (e) { devWarn("Retry token refresh failed:", e.message); }
+          const nextTok = await refreshTokenOnce();
+          if (nextTok) uploaded = await uploadImage(postData.imageData, nextTok, currentUserId);
         }
         // Only use if it's a real URL (upload succeeded), not base64
         imageUrl = uploaded && !uploaded.startsWith("data:") ? uploaded : null;
@@ -22436,6 +22500,9 @@ function AppInner() {
 
       // Post to each selected group
       let groupFailures = 0;
+      // Counted separately from groupFailures: the POST succeeded, the PHOTO didn't. Silently
+      // dropping the picture the user chose is the kind of thing they only notice days later.
+      let groupImageFailures = 0;
       if (groupIds.length > 0) {
         for (const gid of groupIds) {
           try {
@@ -22444,9 +22511,17 @@ function AppInner() {
             // that group's members. Never reuse the public `imageUrl` here: it would hand a
             // members-only feed a world-readable URL. A failed upload posts without the photo
             // rather than dropping the whole workout card.
-            const groupImage = (postData.imageData && postData.imageData.startsWith("data:"))
-              ? await uploadGroupImage(postData.imageData, tok, gid)
-              : (imageUrl || null);
+            let groupImage = (imageUrl || null);
+            if (postData.imageData && postData.imageData.startsWith("data:")) {
+              groupImage = await uploadGroupImage(postData.imageData, tok, gid);
+              // Same stale-token recovery the public upload gets. Without it a groups-only share
+              // on an expired token posted the caption with no photo and said nothing.
+              if (!groupImage) {
+                const nextTok = await refreshTokenOnce();
+                if (nextTok) groupImage = await uploadGroupImage(postData.imageData, nextTok, gid);
+              }
+              if (!groupImage) groupImageFailures++;
+            }
             const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts${postData.clientId ? "?on_conflict=group_id,client_id" : ""}`, {
               method: "POST",
               headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}`, "Content-Type": "application/json", ...(postData.clientId ? { "Prefer": "resolution=merge-duplicates" } : {}) },
@@ -22476,6 +22551,10 @@ function AppInner() {
         const succeeded = groupIds.length - groupFailures;
         if (groupFailures > 0) {
           toast(`Shared to ${succeeded} of ${groupIds.length} group${groupIds.length>1?"s":""} — some failed`, "error");
+        } else if (groupImageFailures > 0) {
+          // The post landed, the photo didn't. Say so — the alternative is the user finding out
+          // days later that their pump pic was never there.
+          toast(`Shared to ${groupIds.length} group${groupIds.length>1?"s":""}, but the photo didn't upload`, "error");
         } else {
           toast(`Shared to ${groupIds.length} group${groupIds.length>1?"s":""}`, "success");
         }
@@ -22538,6 +22617,8 @@ function AppInner() {
       if (groupFailures > 0) {
         const succeeded = groupIds.length - groupFailures;
         toast(`Posted, but only shared to ${succeeded} of ${groupIds.length} group${groupIds.length>1?"s":""}`, "error");
+      } else if (groupImageFailures > 0) {
+        toast("Posted, but the photo didn't reach your group" + (groupImageFailures > 1 ? "s" : ""), "error");
       }
     } catch (e) { devError("post error:", e); toast("Couldn't save post", "error"); }
   }
@@ -24113,10 +24194,17 @@ function AppInner() {
         </div>
       )}
 
-      {/* Hidden while a workout is in progress on the tracker tab — see the note in
-          WorkoutTracker. Everything below (offline bar, guest banner) still shows, and the
-          status-bar owner falls through to whichever of those is visible. */}
-      {!(workoutActive && tab === "tracker") && (
+      {/* THE SHELL CHROME NO LONGER CHANGES SHAPE PER TAB. This was gated on
+          `!(workoutActive && tab === "tracker")`, and the top bar is an IN-FLOW flex child above
+          the swipe track — so mounting it shrank the track. `tab` only flips when a swipe COMMITS,
+          240ms after the glide starts, so the incoming panel was laid out one top-bar taller for
+          the whole gesture and then snapped. Measured in Chromium (where env() insets are 0): the
+          track went 926px -> 879px at commit, a 47px pop; on a notched iPhone the inset makes it
+          ~95px. The same reasoning that brought the bottom nav back applies here — a shell element
+          that appears and disappears based on which tab you are on cannot be right for both panels
+          of a gesture that shows two tabs at once. Fixing it properly (a floating overlay top bar
+          with per-screen scroller clearance) is the deferred TODO below; removing the gate costs
+          one row of chrome during a workout and removes the whole bug class. */}
       <>
       {/* TOP BAR — thin, minimal, SVG icons, dressed in the same liquid-glass material as the
           bottom nav pill so the two shell edges read as one system. It's still an in-flow
@@ -24199,7 +24287,6 @@ function AppInner() {
         </div>
       </div>
       </>
-      )}
 
       {/* Global offline banner — persistent trust signal so users always know their state and
           that nothing is lost. Cached data stays readable; changes queue and sync on reconnect. */}
@@ -24479,7 +24566,6 @@ function AppInner() {
 
         {which === "tracker" && (
           <WorkoutTracker store={store} setStore={setStore} onShareWorkout={handleNewPost} onSaveWorkout={handleSaveWorkout} onSaveProgram={handleSaveProgram} onProgramEdited={handleProgramEdited} onRefresh={handleRefresh} C={C} currentUserId={currentUserId} token={tokenRef.current} dataLoading={dataLoading} isGuest={isGuest}
-          onSessionChange={setWorkoutActive}
             onDeleteHistory={async (date, sid) => {
               // The card this session was shared as, if any. Deleting the workout used to leave the
               // post live: History said the workout never happened while the feed still advertised

@@ -83,7 +83,11 @@ await page.getByText("Quick Start", { exact: false }).first().click();
 await page.waitForTimeout(1200);
 check("a workout is running", await inWorkout());
 check("the nav STAYS VISIBLE during a workout — it is the reliable way off the tab", await navVisible());
-check("the top bar hides during a workout (the workout has its own header)", !(await topBarVisible()));
+// The top bar STAYS now. It is an in-flow flex child above the swipe track, so hiding it per-tab
+// made the incoming panel of every swipe 47px too tall for the whole gesture (95px on a notched
+// phone) and snapped on commit. The workout header stopped claiming the status-bar inset in the
+// same change, so there is still exactly one owner.
+check("the top bar STAYS VISIBLE during a workout — the shell must not change shape per tab", await topBarVisible());
 await page.screenshot({ path: "build/shot_chrome_inworkout.png" });
 
 // ESCAPE ROUTE 1: the tab swipe must still work with no nav on screen.
@@ -93,6 +97,11 @@ check("the tab swipe still works from a swipeable part of the screen", leftBySwi
   leftBySwipe ? "" : "still on the workout screen");
 check("the nav is on another tab too", await navVisible());
 check("the top bar comes back on another tab", await topBarVisible());
+const trackH = () => page.evaluate(() => {
+  const t = [...document.querySelectorAll("div")].find(d => d.style.width === "300%");
+  return t ? Math.round(t.getBoundingClientRect().height) : null;
+});
+const hAway = await trackH();
 await page.screenshot({ path: "build/shot_chrome_othertab.png" });
 
 // ESCAPE ROUTE 2: navigate back to the tracker — the workout must still be there and the nav hide
@@ -101,7 +110,10 @@ await page.mouse.click(164, 869);
 await page.waitForTimeout(1400);
 check("the workout survived leaving and returning", await inWorkout());
 check("the nav is still there on return", await navVisible());
-check("the top bar hides again on return", !(await topBarVisible()));
+check("the top bar is still there on return", await topBarVisible());
+const hBack = await trackH();
+check("the swipe track is the same height on the tracker as on the other tab",
+  hAway != null && hAway === hBack, `other ${hAway} vs tracker ${hBack}`);
 
 // ESCAPE ROUTE 3: Discard restores the chrome. It confirms first now (destroying a logged session
 // used to happen on the first tap), so the sheet has to be answered.

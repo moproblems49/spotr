@@ -109,6 +109,25 @@ const label = await page.evaluate(() => {
 });
 check("4. the top-left control reads 'Discard', not the ambiguous 'Cancel'", label === "Discard", `found ${JSON.stringify(label)}`);
 
+// The shell chrome must not change SHAPE between tabs, or the incoming panel of a swipe is laid
+// out at the wrong height for the whole gesture and snaps on commit. Measured before the fix:
+// the 3-panel track was 926px mid-drag and 879px after commit (47px in Chromium, ~95px on a
+// notched iPhone, because the top bar claims env(safe-area-inset-top)).
+const shellH = async () => page.evaluate(() => {
+  const t = [...document.querySelectorAll("div")].find(d => d.style.width === "300%");
+  return t ? Math.round(t.getBoundingClientRect().height) : null;
+});
+const hTracker = await shellH();
+await page.getByLabel("Discover").first().click().catch(() => {});
+await page.waitForTimeout(1000);
+const hOther = await shellH();
+await page.getByLabel("Workout").first().click().catch(() => {});
+await page.waitForTimeout(1000);
+check("4b. the swipe track is the same height on the tracker as on any other tab",
+  hTracker != null && hTracker === hOther, `tracker ${hTracker} vs other ${hOther}`);
+check("4c. the top bar is present during a workout (it owns the status-bar inset)",
+  /SESHD/.test(await body()));
+
 await page.evaluate(() => {
   const b = [...document.querySelectorAll("button")].find(x => /^(discard|cancel)$/i.test((x.textContent||"").trim()));
   b && b.click();
@@ -120,6 +139,11 @@ check("5. tapping it opens a confirmation instead of discarding", /discard this 
 check(`6. the confirmation names what is at stake (${DONE_SETS} logged sets)`,
   new RegExp(`${DONE_SETS} sets`).test(sheet), sheet.slice(0, 220).replace(/\n/g, " | "));
 check("7. the safe option is worded like the Finish sheet's ('Keep going')", /keep going/i.test(sheet));
+// The count must match what would actually be SAVED. cleanEx drops unnamed exercises, so a blank
+// Quick Start row must not inflate it. The fixture's 6 exercises are all named, so the number is
+// DONE_SETS; the un-named case is covered by the separate probe at the end of this file.
+check("7b. the count is the saved-set count, not a walk of every row",
+  new RegExp(`lose the ${DONE_SETS} sets`).test(sheet), sheet.slice(0, 220).replace(/\n/g, " | "));
 
 // Backing out must leave the session untouched.
 await page.evaluate(() => {
@@ -147,6 +171,57 @@ check("10. confirming discards the workout", !(await inWorkout()),
   (await body()).slice(0, 110).replace(/\n/g, " | "));
 const gone = await page.evaluate(() => !localStorage.getItem("seshd_active_session"));
 check("11. and clears the stored session", gone);
+
+// ── 3. A session with data typed but nothing ticked must not be called empty ─────────────────
+// `workingDone` requires `done`, so an un-ticked session counts 0 working sets. Telling the lifter
+// "there's nothing to save" and then destroying everything they typed is the worst version of this
+// sheet. Seeded fresh because the run above discarded the first session.
+{
+  const p2 = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  p2.setDefaultTimeout(6000);
+  const untouched = {
+    dayName: "Pull A", startedAt: Date.now() - 6e5, unit: "lbs",
+    exercises: [
+      // Typed, never ticked — the case under test.
+      { id: "u0", name: "Barbell Row", sets: [{ id:"x0", weight:"185", reps:"8", done:false, type:"normal" }] },
+      // A blank Quick Start row with a ticked set. cleanEx drops it, so it must NOT be counted.
+      { id: "u1", name: "", sets: [{ id:"x1", weight:"100", reps:"10", done:true, type:"normal" }] },
+    ],
+  };
+  await p2.addInitScript(([me, s]) => {
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
+      programs: [], history: {}, workoutDates: {}, weeklyTarget: 3, prEvents: [], bodyLog: [], prs: {},
+      posts: [], profile: { username:"momo", name:"Mo" },
+      users: [{ id: me, username:"momo", name:"Mo", followers: [], following: [] }] }));
+    localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
+    localStorage.setItem("seshd_onboarded", "1");
+    localStorage.setItem("seshd_custom_merge_v1", "1");
+    localStorage.setItem("seshd_active_session", JSON.stringify(s));
+    localStorage.setItem("seshd_wstart", String(Date.now() - 6e5));
+  }, [ME, untouched]);
+  await p2.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
+    body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
+  await p2.route("**/rest/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
+    body: /\/(public_)?profiles\?/.test(r.request().url())
+      ? JSON.stringify([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true }]) : "[]" }));
+  await p2.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await p2.waitForTimeout(3200);
+  await p2.getByLabel("Workout").first().click().catch(() => {});
+  await p2.waitForTimeout(1400);
+  await p2.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find(x => /^(discard|cancel)$/i.test((x.textContent||"").trim()));
+    b && b.click();
+  });
+  await p2.waitForTimeout(700);
+  const t2 = await p2.evaluate(() => document.body.innerText);
+  check("12. an un-ticked session is NOT described as having nothing to lose",
+    !/nothing has been logged yet/i.test(t2), t2.slice(0, 200).replace(/\n/g, " | "));
+  check("13. it says what is actually at stake",
+    /lose everything you've entered/i.test(t2), t2.slice(0, 200).replace(/\n/g, " | "));
+  check("14. the blank-named row's ticked set is not counted as a saved set",
+    !/lose the 1 set/i.test(t2), t2.slice(0, 200).replace(/\n/g, " | "));
+  await p2.close();
+}
 
 await browser.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

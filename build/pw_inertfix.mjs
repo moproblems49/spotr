@@ -78,17 +78,15 @@ const b=await chromium.launch({executablePath:"/opt/pw-browsers/chromium-1194/ch
     r.fulfill({status:200,contentType:"application/json",body});});
   await page.goto(`http://127.0.0.1:${PORT}/`,{waitUntil:"load",timeout:20000});
   await page.waitForTimeout(2600);
-  // Swipe tracker -> discover -> profile (the tab bar is hidden during a workout).
-  const swipe=()=>page.evaluate(async()=>{
-    const fire=(t,x,y)=>{const tt=new Touch({identifier:1,target:document.body,clientX:x,clientY:y});
-      document.elementFromPoint(Math.max(1,Math.min(x,innerWidth-1)),y)?.dispatchEvent(new TouchEvent(t,{touches:t==="touchend"?[]:[tt],changedTouches:[tt],bubbles:true,cancelable:true}));};
-    fire("touchstart",400,500);
-    for(let x=380;x>=30;x-=35){fire("touchmove",x,500);await new Promise(r=>setTimeout(r,18));}
-    fire("touchend",20,500); await new Promise(r=>setTimeout(r,450));
-  });
-  await swipe(); await page.waitForTimeout(600); await swipe(); await page.waitForTimeout(1200);
+  // TAP the nav. This used to swipe twice at y=500, with a comment saying "the tab bar is hidden
+  // during a workout" — no longer true, and the swipe was the wrong tool anyway: handleSwipeStart
+  // bails inside [data-no-tab-swipe], so a fixed y-coordinate lands on a set row as soon as the
+  // layout shifts by a row's height. It broke exactly that way when the top bar came back. What
+  // this section actually tests is the unit conversion, so reach Settings the way a user does.
+  await page.getByLabel("Profile").first().click().catch(()=>{});
+  await page.waitForTimeout(1200);
   const gear=page.locator('[aria-label="Settings"]').first();
-  check("Settings is reachable mid-workout by swiping to Profile", await gear.count()>0);
+  check("Settings is reachable mid-workout via the nav", await gear.count()>0);
   if(await gear.count()){await gear.click();await page.waitForTimeout(1200);}
   const kg=page.getByText("KG",{exact:true}).first();
   await kg.scrollIntoViewIfNeeded().catch(()=>{});

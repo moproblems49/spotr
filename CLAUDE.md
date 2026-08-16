@@ -23,9 +23,15 @@ Mo is **non-technical**. He doesn't write code. So:
 1. Make ONE focused change to `src/App.jsx` (or the relevant file).
 2. **Verify it compiles** before moving on:
    ```
-   npx esbuild src/App.jsx --bundle --packages=external --loader:.jsx=jsx --outfile=/dev/null
+   npx esbuild src/App.jsx --bundle --packages=external --loader:.jsx=jsx --outfile=/dev/null 2>&1 \
+     | grep -E 'not valid inside a JSX|ERROR' && echo "BROKEN" || echo ok
    ```
-   (ignore the `import.meta` notice; look for real errors)
+   (ignore the `import.meta` notice.) **esbuild REPORTS A STRAY `)}` IN JSX AS A *WARNING* AND
+   EXITS 0 — the real Vite/rolldown build fails on it.** Deleting a conditional wrapper and leaving
+   its closing `)}` behind therefore passed the compile check, passed `sim_undef`, and only blew up
+   at `npm run build` — which, if the next step had been a bundle publish rather than a test run,
+   would have shipped nothing at all. Grep for that warning explicitly, or just run `npm run build`,
+   which is the only check that agrees with production.
 3. For logic changes, verify behavior with a quick Node/jsdom check rather than trusting a string match. Render or parse — don't grep minified data (the muscle-icon base64 and exercise maps produce false grep hits).
 4. **Bump the version comment** on line 1 of `src/App.jsx` (e.g. `// v178091716487` → increment the number). This is the Vercel cache-buster — bump it on every change or the deploy may serve a stale build.
 5. Commit with a clear message. Push when Mo says he's ready (he often batches the push).
@@ -371,6 +377,22 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   the public upload entirely, and each group copy calls `uploadGroupImage(dataUrl, tok, gid)` and
   stores the bare private PATH (one object per group, because the storage RLS policy scopes on the
   `{groupId}/` folder). Never reuse a public URL for a members-only surface. Sim: `pw_pumppic`.
+- **A REFRESHED TOKEN MUST REACH THE WRITES THAT FOLLOW IT.** `handleNewPost` took `tok` as a
+  `const`, and its refresh-once retry updated `tokenRef`, `saveSession` and `setSession` — but not
+  `tok`, which drives every subsequent write. So an expired token produced: upload 401 → refresh →
+  upload SUCCEEDS (the photo is now permanently in the public bucket) → every group upload, group
+  insert and the feed insert 401 on the dead token → the outer catch says "Couldn't save post".
+  Net result: an **orphaned world-readable image object with no post row anywhere**, which the user
+  can neither see nor delete — nothing in the app ever issues a storage DELETE. It is `let` now,
+  reassigned inside a shared `refreshTokenOnce()` that both the public and the per-group uploads
+  use (the groups-only path had no retry at all, so an expired token silently posted the caption
+  with no photo and said nothing).
+- **A SIGNED URL EXPIRES; A CACHE KEYED ONLY ON PRESENCE DOES NOT.** `GroupDetail` signed each
+  private group image once and cached it forever for the component's lifetime, and the sign effect
+  skipped anything already in the map — so a group left open for over an hour showed broken images
+  and could never re-sign, because the dead entry was still a cache HIT. Entries are `{url, exp}`
+  now, renewed at 5 minutes' margin, with a 5-minute tick so an expiry that passes while nobody
+  touches the feed still gets noticed.
 - **A POST'S MEDIA IS GATED ON THE MEDIA, NOT ON `post.type`.** PostCard rendered images only when
   `type === "photo" || type === "form_check"`, so a workout post could carry a real `image_url` and
   show nothing. It is gated on `post.imageData` now; the grey "image didn't load" placeholder stays
@@ -519,6 +541,29 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   a running timer ("cancel what, the rest timer?"). It says **Discard** now and goes through
   `confirmAction`, naming how many logged sets are at stake; the safe option is worded "Keep going"
   to match the Finish sheet, so the same word means the same thing in both places.
+- **A SHELL ELEMENT THAT APPEARS AND DISAPPEARS PER TAB CANNOT BE RIGHT DURING A SWIPE.** The top
+  bar is an IN-FLOW flex child above the swipe track, and it was gated on
+  `!(workoutActive && tab === "tracker")`. `tab` only flips when the swipe COMMITS — 240ms after the
+  glide starts — so the incoming panel was laid out one top-bar taller for the entire gesture and
+  then snapped. Measured in Chromium, where `env()` insets are 0: the track was **926px mid-drag and
+  879px after commit**, a 47px pop; on a notched iPhone the inset makes it ~95px. A gesture shows
+  TWO tabs at once and there is only one shell, so any per-tab answer is wrong for one of them. The
+  gate is gone; the workout header stopped claiming `env(safe-area-inset-top)` in the same change,
+  because the top bar owns it again (one-owner rule). `workoutActive` had no readers left after
+  that and was deleted with its `onSessionChange` plumbing. `pw_workoutexit` §4b asserts the track
+  is the same height on every tab — a cheap, general form of the check.
+  **A FIXTURE THAT DRIVES A GESTURE AT A FIXED `y` ENCODES THE CURRENT LAYOUT.** `pw_inertfix`
+  swiped at `y=500` under a comment reading "the tab bar is hidden during a workout"; the moment
+  the layout shifted by one row that coordinate landed inside a SetRow and the swipe silently did
+  nothing, failing a check about unit conversion that had nothing to do with swiping. Reach a
+  screen the way a user does (tap the nav) unless the gesture itself is what you are testing.
+- **"NOTHING TO LOSE" MUST MEAN EMPTY, NOT UN-TICKED.** The Discard sheet counted with
+  `workingDone`, which requires `done` — so a lifter who had typed every weight and rep without
+  hitting the checkmarks was told "Nothing has been logged yet, so there's nothing to save"
+  immediately before losing all of it. It also walked EVERY exercise while `cleanEx` saves only
+  named ones, so a blank Quick Start row inflated the number the sheet quoted. Both classes are
+  already in this file (COUNT WHAT GETS SAVED; two set shapes) — a confirmation dialog is a
+  reporting surface and inherits every one of those rules.
 - **AN OFFSET DERIVED FROM `store.posts.length` IS WRONG THE MOMENT ANYTHING ELSE MERGES INTO IT.**
   `loadFeed` started merging your own posts in (so Activity survives feed pagination) and
   "Load older posts" kept using the store's length — so the offset overshot by the number of merged
