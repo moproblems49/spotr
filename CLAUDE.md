@@ -80,12 +80,12 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (43 sims, ~90s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (44 sims, ~90s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
 
-**`node build/run_sims.mjs --pw` also runs the 30 Playwright suites** (+~2min): it builds dist with
+**`node build/run_sims.mjs --pw` also runs the 39 Playwright suites** (+~3min): it builds dist with
 STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
 in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
 anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
@@ -99,6 +99,21 @@ copy the good file back. (`git stash` works too but `git stash pop -- <path>` is
 and has cost a scramble here — a plain `cp` is safer.) When the old revision doesn't EXPORT the
 function under test, an import error is not a red result: measure the old behaviour with a probe
 instead, or reintroduce the bug in a scratch copy.
+
+**`git checkout <commit> -- <path>` WRITES *AND STAGES*, and that has silently reverted main.**
+Restoring one file from an older commit to prove a test goes red left `src/App.jsx` staged at the
+OLD revision; the next `git commit` shipped it, undoing every fix in the session — including an
+onboarding crash — and nothing in the output said so. To go back to the working tree's own version
+use `git checkout HEAD -- <path>`; better still, `cp` the good file aside first and `cp` it back,
+which touches the index not at all. **Read `git status` before every commit in a session that has
+reverted a file for any reason.**
+
+**A SCRIPT THAT CANNOT FAIL DOES NOT BELONG IN THE BATTERY.** Two measurement scripts (timing the
+swipe's first frame, mapping which screen regions accept a gesture) were dropped into `build/` and
+the runner picked them up as `pw_*` suites. They print numbers and exit 0 unconditionally, so they
+reported PASS forever and padded the count with two suites that assert nothing. Measurement is
+useful — it is how the "laggy swipe" turned out to be a swipe that never started — but keep it in
+the scratchpad, or give it a real assertion. The finding belongs in a suite; the probe does not.
 
 **A TEST THAT RE-IMPLEMENTS THE APP'S MATHS TESTS NOTHING.** `sim_recovery_scale` replicated the
 recovery formula and pinned the replica to src/App.jsx with regexes; a new confidence cap shipped
@@ -178,6 +193,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   fills — goes through it. Don't add a tenth curve; and if you add a token, WIRE it, because the
   first attempt declared three and applied raw literals, leaving all three as dead code (two have
   since been removed — `EASE_NAV` is the one that's real).
+- **EVERY BOTTOM SHEET GOES THROUGH `<Sheet>`.** Two of the app's nineteen sheets animated in and
+  NONE animated out, so seventeen popped into existence and all nineteen vanished on a frame — the
+  same "did I break it?" feeling as an unanimated navigation. `Sheet` (near `SHEET_MS`) owns the
+  mount delay, the backdrop fade, the translate, the unmount timer and the portal; a sheet built by
+  hand will drift out of sync within a release. **`EASE_EXIT`** (`cubic-bezier(0.4, 0, 1, 1)`) is
+  the second and last curve in the app and exists only for LEAVING: entering decelerates into
+  place, leaving accelerates away. Using `EASE_NAV` to exit makes a sheet lurch off the mark. The
+  migration itself shipped four regressions caught by audit, all the same shape — a sheet whose
+  close path went through the old local state instead of the new `open` prop — so when migrating
+  one, drive it on screen and close it, don't just read the diff.
+- **A `<Sheet>` that must survive a re-render keeps its draft on the OWNING state object, not in a
+  sibling `useState`.** The finish sheet's caption and photo live on `workoutSummary`
+  (`captionDraft`, `photoDraft`) precisely so clearing `workoutSummary` clears them, and a draft
+  can never leak onto the next workout's share.
 - **Animate `transform: scaleX()`, never `width`.** Four progress bars animated width, which forces
   layout + paint every frame; the rest-timer bar does that 4×/sec for the whole rest period. They
   use `transformOrigin:"left center"` + `scaleX()` + `willChange:"transform"` now, which the GPU
@@ -208,6 +237,37 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   to the server (Wrapped read "0 PRs" for weeks that had real ones) and `hr_summary` never reached
   it either. Nothing logged, nothing looked broken. When a sync "just doesn't happen", check the
   component actually receives every identifier it names before looking at the network.
+- **★ A BARE `setStore` WITH NO SERVER WRITE IS ERASED BY THE NEXT REFRESH — THIS IS THE DOMINANT
+  BUG CLASS IN THIS APP.** `loadUserData` REPLACES 28 store keys WHOLESALE from the server, and it
+  runs on boot and on every foreground. So anything written only to the phone looks perfectly saved
+  — it renders, it survives a tab switch — and is silently gone on the next launch. Two shipped
+  this way: **the onboarding starter program** (bare `setStore`, never POSTed, so every new user
+  landed on "No active program" a minute later) and **"Import a program by code"** (POSTed a base36
+  `uid()` into a `uuid NOT NULL` column with no `user_id`, failed 22P02 into a `.catch(devError)`,
+  and showed a "Program imported" toast anyway). Rules: every user-visible change writes to the
+  server in the same handler; a write that can fail must surface the failure, never toast success
+  from the optimistic path; and mint a real UUID for any id that lands in a uuid column
+  (`asUuidOrNull`). All 28 keys have since been audited against `loadUserData`; the only
+  deliberately local one is `historyInteractions`, which has no table at all. Sims:
+  `pw_persistence` (drives real settings and asserts a matching write left the client) and
+  **`pw_journey`**, which walks signup → onboard → start → log → finish → share → RELAUNCH against
+  a STATEFUL stub server that returns only what the client actually sent it. A local-only write
+  cannot survive that reload, which is exactly the mechanism all three bugs used.
+- **A STUB THAT ACCEPTS ANYTHING CANNOT CATCH A SCHEMA BUG.** `pw_journey`'s server models the real
+  column types — it 400s a non-uuid `id` (22P02) and a missing `user_id` (23502) — because the
+  import-by-code bug was precisely a write the DB rejected and the client reported as success. If
+  you add a table to a test stub, model its NOT NULLs and its id type.
+- **UI NOTHING CAN OPEN IS INVISIBLE TO EVERY OTHER CHECK.** `showGroupShare` had a complete picker
+  sheet, a complete `finishWorkout` fast path and a "Back" button returning to a modal it was never
+  opened from — and `setShowGroupShare(true)` did not exist in ANY commit. The whole feature shipped
+  dead and sat that way for six weeks. `build/deadui_scan.mjs` (+ `sim_deadui`) walks the
+  JSX-transformed AST for two shapes: a `useState` setter that can never be called with anything
+  truthy, and a PascalCase component declared and never referenced. Its own first version MISSED the
+  bug it was written for — a destructured setter binds inside an `ArrayPattern`, which the naive
+  "is my parent a declarator?" test read as a reference and skipped — so it now pre-collects binding
+  sites, treats `useState(true)` as already-open, and refuses to conclude anything about the 20
+  setter names this file declares more than once. It prints what it did NOT examine; read that line
+  before treating a clean run as "no dead UI anywhere".
 - **`alignItems:"center"` on a scrollable backdrop clips the TOP of an over-tall child**, not the
   bottom — so a tall modal loses its header and close button under the status bar. Centre with
   `margin:auto` on the card and let the backdrop scroll.
@@ -303,6 +363,19 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   neither, so a signed-in user could upload arbitrary files of unbounded size served from the project
   domain (free file hosting, uncapped bill, SVG/HTML carrying script). All three buckets are now
   capped with an image-only allowlist; SVG is excluded on purpose.
+- **WHICH BUCKET AN IMAGE GOES TO IS DECIDED BY THE AUDIENCE, NOT BY THE UPLOADER.** `handleNewPost`
+  ran the public-`images` upload unconditionally and wrote that public URL into `group_posts` too.
+  It was inert only because nothing could send `imageData` and `groupIds` together — the moment the
+  finish sheet could attach a photo, a share the user marked GROUPS ONLY would have landed at a
+  permanent world-readable URL. Rules now: `wantsPublicImage = postData.groupOnly !== true` gates
+  the public upload entirely, and each group copy calls `uploadGroupImage(dataUrl, tok, gid)` and
+  stores the bare private PATH (one object per group, because the storage RLS policy scopes on the
+  `{groupId}/` folder). Never reuse a public URL for a members-only surface. Sim: `pw_pumppic`.
+- **A POST'S MEDIA IS GATED ON THE MEDIA, NOT ON `post.type`.** PostCard rendered images only when
+  `type === "photo" || type === "form_check"`, so a workout post could carry a real `image_url` and
+  show nothing. It is gated on `post.imageData` now; the grey "image didn't load" placeholder stays
+  type-gated, or a photoless workout post would render an empty square. When a new post shape gains
+  media, check the RENDER gate as well as the write.
 - **TWO set shapes exist and they are not interchangeable.** A LIVE session set is
   `{weight, reps, done, type}` (strings, needs the warmup/done filter); `getLastExerciseSession()`
   hands back already-filtered `{w, r}` NUMBER pairs. Running the live-shape filter over `{w,r}`
@@ -428,6 +501,24 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   overlays at 40, so a nav tap switches the tab UNDERNEATH: the icon lights up and the screen does
   not change. `showMessages` had the line; Activity did not when it stopped being a pseudo-tab.
   Any new overlay reachable while the nav is visible needs one too.
+- **NEVER MAKE THE TAB SWIPE THE ONLY WAY OFF A SCREEN.** `handleSwipeStart` bails on any touch
+  inside `[data-no-tab-swipe]`, which is every SetRow — so during a workout the swipe is dead over
+  most of the screen. Measured on an ordinary 6-exercise session: **61% of the screen height
+  silently refused to start a gesture**, so it worked from the header and did nothing from the sets,
+  a thumb-width apart. The bottom nav was hidden during a workout at the time, which made that
+  unreliable swipe the only exit; Mo reported the combination as the swipe feeling "laggy", and the
+  first instinct — profiling frame times — found nothing, because nothing was slow. The nav is
+  visible during a workout now, and hiding it had bought nothing anyway: the exercise scroller
+  already padded by `NAV_CLEARANCE` throughout, so the icons sat over dead space rather than over
+  set rows. The TOP bar is still hidden (the workout has its own header). Sims: `pw_workoutexit`
+  (hit-tests all four nav buttons and then actually changes tab), `pw_workoutchrome`.
+  **When a gesture is reported as "laggy", first check whether it fires at all** — a gesture that
+  works two times in five is indistinguishable from a slow one.
+- **A DESTRUCTIVE CONTROL NEEDS A VERB AND A CONFIRMATION.** The live workout's top-left button said
+  "Cancel" and wiped the session on the first tap — no confirmation, no undo, and ambiguous next to
+  a running timer ("cancel what, the rest timer?"). It says **Discard** now and goes through
+  `confirmAction`, naming how many logged sets are at stake; the safe option is worded "Keep going"
+  to match the Finish sheet, so the same word means the same thing in both places.
 - **AN OFFSET DERIVED FROM `store.posts.length` IS WRONG THE MOMENT ANYTHING ELSE MERGES INTO IT.**
   `loadFeed` started merging your own posts in (so Activity survives feed pagination) and
   "Load older posts" kept using the store's length — so the offset overshot by the number of merged
@@ -897,6 +988,41 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 
 ## Current state / roadmap (as of last session)
 
+**★★★ THE PRE-SUBMISSION ERA (Aug 12–16, 2026) — polish, then three rounds of "what else shipped
+dead?".** Bundles `2026-08-01d` → `2026-08-01t`. Battery is **44 sims + 39 Playwright suites**, all
+green. The pattern of this fortnight: the visible work was cosmetic, and every audit that followed
+it found something that had NEVER WORKED rather than something newly broken.
+
+- **Three features were dead on arrival, found by three different checks.** `PROGRAM_TEMPLATES` was
+  deleted as collateral damage and its three references left behind — read at the top of the
+  `Onboarding` component body, so **every new signup got the error boundary for twelve days**.
+  `todayMs` was read in `buildCoachContext` but declared in a different function, so the **Weekly
+  Review had never once run**. `showGroupShare`'s picker sheet, fast path and Back button all
+  existed and **nothing in any commit could open it**. The standing checks are now `sim_undef`
+  (+`undef_scan`) and `sim_deadui` (+`deadui_scan`); run both after deleting anything.
+- **The persistence sweep.** The onboarding starter program and import-by-code both wrote locally
+  and never reached the server — see the ★ convention above. All 28 `loadUserData` keys audited;
+  `pw_persistence` and `pw_journey` are the standing checks. `pw_journey` is the first test in the
+  repo that walks the app as a BRAND-NEW USER, which is why three bugs on that path had survived a
+  suite of thirty.
+- **The `<Sheet>` migration.** Two of nineteen bottom sheets animated in, none animated out. All
+  nineteen go through `<Sheet>` now with `SHEET_MS` and the new `EASE_EXIT`. The migration itself
+  shipped four regressions, all "close path still going through the old local state".
+- **Device-reported fixes**: hold-to-reorder (`touch-action:none` on the drag handle — the one
+  iOS-only bug in the batch, confirmed fixed on device); the number pad slides instead of blinking,
+  gained a keyboard-dismiss key and moved both steppers under the thumb; the date-key bug that read
+  every session a day early west of Greenwich; heart rate surfaced beyond the History tab; one-tap
+  groups-only sharing from the Finish modal.
+- **Aug 16, the last two commits** (audited separately): the bottom nav is visible during a workout
+  again — the tab swipe was the only way out and it silently refuses to start over 61% of that
+  screen; the top-left control is **Discard** and confirms first; and a workout post can carry ONE
+  optional photo, rendered above the card, with groups-only shares routed to the private bucket.
+- **`@capacitor/keyboard` is WIRED IN CODE** (package.json + a boot call) rather than being an edit
+  for Mo to make on the day. It still needs `npm install` + `npx cap sync ios` on the Mac. See
+  `submission-day-guide.md`; note the iOS project is **SPM, not CocoaPods**.
+- **Not submitted yet.** Mo reached step 4 of the Mac checklist. The archived TestFlight build
+  predates everything in this era, so it must be rebuilt before submission.
+
 **★★★ THE HEALTH-ENGINE HARDENING ERA (Aug 3–7, 2026) — the recovery/Body-Battery maths got four
 consecutive rounds of audit, and the pattern worth remembering is that MY OWN FIXES were the
 biggest source of new bugs.** Bundles `2026-07-30l` → `2026-07-31m`. Battery is **41 sims + 21
@@ -1281,8 +1407,19 @@ deliberately — invisible, free, and the only way to diagnose a boot that lands
 rather than rendering blank and passing).
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
+(3) **RE-DATE THE DEMO CORPUS.** The five personas' posts and workouts go stale on a clock, and a
+reviewer opening a feed whose newest post is three weeks old sees an abandoned app. Last shifted
+Aug 13; note it took TWO offsets, not one, because posts and workouts had drifted apart. Verify
+after: nothing future-dated, and no comment or kudos earlier than its post.
 
-**OPEN, as of Aug 9 2026 (agreed with Mo):**
+**OPEN, as of Aug 16 2026 (agreed with Mo):**
+- **THE ONE BLOCKER IS A MAC REBUILD.** Everything since the archived TestFlight build ships in the
+  web bundle, so a `git pull && npm install && npm run build && npx cap sync ios` + archive picks it
+  all up. Follow `submission-day-guide.md`.
+- **Multi-photo posts are DEFERRED, deliberately.** A workout post carries exactly ONE photo, and
+  `posts.image_url` / `group_posts.image_url` are single `text` columns. A second slot means a
+  schema change, a carousel in PostCard and every group/feed reader, and multi-select in the picker
+  — days of work touching every existing post. Ship one, see whether anyone asks for two.
 - **The health engine is CLOSED (Mo, Aug 8).** Seven audit rounds; rounds 5-6 were fixing
   regressions from rounds 4-5. Don't reopen it without a specific reported symptom. One known,
   deliberate limit remains: when activity runs straight through the estimated night (03:00-07:00,
@@ -1302,11 +1439,11 @@ rather than rendering blank and passing).
   not move the app toward submission. The item to ignore in that critique is "add one or two
   deliberate imperfections" — brand quirks are a consequence of solving a specific problem a
   specific way, not a decoration you add on purpose.
-- **NOT YET CONFIRMED ON DEVICE: the hold-to-reorder fix** (`2026-08-01a`). The day editor's drag
-  handle was `pan-y`, which hands WebKit the vertical axis; the symptom is iOS-only and CANNOT be
-  reproduced in Chromium, where no compositor scroll competes. The fix follows dnd-kit's documented
-  requirement and this was the app's only handle configured that way, but it is reasoned, not
-  observed. First thing to check on the next device pass.
+- ~~NOT YET CONFIRMED ON DEVICE: the hold-to-reorder fix~~ — **CONFIRMED FIXED ON DEVICE** (Mo,
+  Aug 16). The day editor's drag handle was `pan-y`, which hands WebKit the vertical axis; the
+  symptom was iOS-only and could not be reproduced in Chromium at all. Worth remembering as the
+  worked example of a reasoned-not-observed fix that turned out right — and of why `pw_reorder`
+  now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
 - **Naps should count toward the Body Battery recharge** (Mo parked this Aug 1, from the Garmin
@@ -1357,16 +1494,21 @@ An App Store build needs Xcode regardless, so anything native rides along for fr
 these BEFORE archiving:
 1. `git pull && npm install && npm run build && npx cap sync ios` — the golden order. `cap sync`
    copies the COMPILED `dist/`, so building first is not optional.
-2. **Add `@capacitor/keyboard`** (`npm i @capacitor/keyboard`, then `npx cap sync ios`) and call
-   `Keyboard.setAccessoryBarVisible({ isVisible: false })` at boot behind the usual platform
-   guard. This is the last big "this is a website" tell: iOS puts a grey `‹ › Done` accessory bar
-   above the system keyboard for web inputs. It does NOT affect the set fields — those are DIVs
-   driven by the in-app NumberPad on purpose, and no system keyboard appears for them — but it is
-   visible on every REAL input: exercise notes, custom rest seconds, search, chat, profile edit,
-   sign-in. The plugin also gives keyboard-will-show events, which is what a focused field needs
-   to scroll clear of the keyboard.
+2. ~~Add `@capacitor/keyboard`~~ — **ALREADY WIRED IN CODE** (Aug 13): it is in `package.json` and
+   `Keyboard.setAccessoryBarVisible({ isVisible: false })` is called at boot behind the platform
+   guard, so step 1's `npm install` + `cap sync ios` is all it needs. (Why it matters: iOS puts a
+   grey `‹ › Done` accessory bar above the system keyboard for web inputs — the last big "this is a
+   website" tell. It does NOT affect the set fields, which are DIVs driven by the in-app NumberPad
+   on purpose, but it is visible on exercise notes, custom rest seconds, search, chat, profile edit
+   and sign-in. The plugin also gives keyboard-will-show events, which is what a focused field needs
+   to scroll clear of the keyboard.)
 3. Archive, upload, submit. Listing copy, screenshots, Support URL, review notes and the verified
    demo accounts (`appstore-submission.md`) are all already in App Store Connect.
+**Step-by-step for Mo is in `submission-day-guide.md`.** The iOS project is **SPM, not CocoaPods** —
+there is no `.xcworkspace` and no `pod install`; open `ios/App/App.xcodeproj`. **The archive's build
+number is expected to read one HIGHER than what you typed** — the project auto-increments on
+archive, so "I wrote 8 and it says 9" is correct, not a mistake. As of Aug 16 Mo had reached step 4
+and had NOT submitted; the archived build predates the whole Aug 12–16 era and must be rebuilt.
 Mo-side and NOT needing a Mac, worth doing first: paste the branded auth email templates from
 `supabase/email-templates/` into the Supabase dashboard, and set the SMTP Sender name to "Seshd".
 
