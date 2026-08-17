@@ -1,4 +1,4 @@
-// v178091716847
+// v178091716848
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1288,7 +1288,11 @@ const THEMES = {
     text: "#f4f4f6",        // near-white, not pure white (softer)
     textDim: "#cdcdd3",
     sub: "#9a9aa5",
-    muted: "#6b6b76",
+    // #6b6b76 was 3.73:1 against bg / 3.22:1 against surface — both fail WCAG AA's 4.5:1 for real
+    // text (this token labels actual content — body-map FRONT/BACK, section kickers — not
+    // decoration, so the exemption for decorative text doesn't apply). Lightened just far enough
+    // to clear 4.5:1 against BOTH backing surfaces; still visibly dimmer than `sub`.
+    muted: "#838390",
     tabBg: "rgba(11,11,14,0.85)",
   },
   light: {
@@ -1307,14 +1311,26 @@ const THEMES = {
     onAccent: "#ffffff",
     primary: "#1c1b1a",         // see the dark theme's note — inverted for the light canvas
     onPrimary: "#ffffff",
-    orange: "#ea580c",
-    green: "#059669",           // success shifted bluer (emerald) so it never reads as the accent
-    gold: "#ca8a04",
-    red: "#e11d48",
+    // orange/green/red were 3.27:1 / 3.46:1 / 4.31:1 as text — all real content at 9-13px (error
+    // messages, "Delete"/"Leave Group" labels, small badges), none large enough for the relaxed
+    // 3:1 floor. All four semantic colors darkened just enough to clear 4.5:1; dark theme's
+    // versions were already AAA and are untouched.
+    orange: "#c2490a",
+    green: "#047f59",           // success shifted bluer (emerald) so it never reads as the accent
+    gold: "#976703",
+    red: "#da1c46",
     text: "#1c1b1a",        // deep warm near-black for crisp reading
     textDim: "#3a3936",
-    sub: "#76726c",         // warm grey, not cold #8e8e8e
-    muted: "#a9a59e",
+    // #76726c was 4.39:1 against bg — a hair under the 4.5:1 AA floor, and this token is used in
+    // 300+ places. Darkened just enough to clear it. Side effect: this now sits very close to
+    // `muted` below (both had to converge near the same floor), so the two de-emphasis TIERS read
+    // almost identically in light theme where they were previously distinct. If that distinction
+    // matters again, differentiate with weight/letter-spacing rather than lightness — there's no
+    // more contrast budget left to spend on it.
+    sub: "#74706a",         // warm grey, not cold #8e8e8e
+    // #a9a59e was 2.25:1 against bg — the worst failure of the sweep. Darkened to clear 4.5:1;
+    // see the note on `sub` above about the two tiers converging as a result.
+    muted: "#73706b",
     tabBg: "rgba(246,245,243,0.85)",
   }
 };
@@ -8826,7 +8842,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
           backgroundSize:"24px 24px",
         }}/>
 
-        <button onClick={onClose} style={{
+        <button onClick={onClose} aria-label="Close" style={{
           position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.08)",
           border:"none", color:"#fff", width:30, height:30, borderRadius:10,
           cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1
@@ -10336,7 +10352,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           program name sit under the clock/battery. */}
       <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"calc(env(safe-area-inset-top) + 6px) 16px 10px", flexShrink:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <button onClick={onBack} style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <button onClick={onBack} aria-label="Back" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
           </button>
           <div style={{ flex:1, minWidth:0 }}>
@@ -10396,7 +10412,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
               backgroundSize:"24px 24px",
             }}/>
-            <button onClick={() => setShareModal(null)} style={{
+            <button onClick={() => setShareModal(null)} aria-label="Close" style={{
               position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.08)",
               border:"none", color:"#fff", width:30, height:30, borderRadius:10,
               cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1
@@ -10767,7 +10783,7 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
     <div style={{ marginTop:8, padding:"14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
         <div style={{ fontSize:12, fontWeight:700, color:C.text, letterSpacing:0.5 }}>ENTER SHARE CODE</div>
-        <button onClick={() => { setOpen(false); setCode(""); setPreview(null); setError(""); }} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", padding:4 }}>
+        <button onClick={() => { setOpen(false); setCode(""); setPreview(null); setError(""); }} aria-label="Close" style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", padding:4 }}>
           <Icon name="x" size={14} color={C.muted}/>
         </button>
       </div>
@@ -13430,7 +13446,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div key={ex.id || ei}>
                 {/* Exercise header */}
                 <div style={{ padding:"14px 14px 6px", display:"flex", alignItems:"flex-start", gap:10 }}>
-                  <button onClick={() => ex.name && setViewingExercise(ex.name)} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0, marginTop:2 }}>
+                  <button onClick={() => ex.name && setViewingExercise(ex.name)} aria-label={ex.name ? `${ex.name} details` : undefined} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0, marginTop:2 }}>
                     <MuscleIcon muscle={exInfo?.muscle||""} size={36} name={ex.name} C={C}/>
                   </button>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -15346,7 +15362,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
 
       {/* Top bar */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"calc(env(safe-area-inset-top) + 14px) 18px 14px", background:CARD, borderBottom:`1px solid ${BORD}`, flexShrink:0 }}>
-        <button onClick={onClose} style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <button onClick={onClose} aria-label="Back" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
         </button>
         <div style={{ flex:1 }}>
@@ -15390,7 +15406,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
               backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
               backgroundSize:"24px 24px",
             }}/>
-            <button onClick={() => setShareModal(null)} style={{
+            <button onClick={() => setShareModal(null)} aria-label="Close" style={{
               position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.08)",
               border:"none", color:"#fff", width:30, height:30, borderRadius:10,
               cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1

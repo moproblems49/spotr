@@ -86,7 +86,7 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (44 sims, ~90s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (45 sims, ~90s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
@@ -792,6 +792,33 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 - **A LABEL THAT NAMES NO WINDOW WILL BE READ AS "NOW".** The resting-HR card said "trend" and
   "−6 bpm vs earlier" over a 60-day, one-point-per-day sparkline; it was reasonably read as the
   last 24 hours. Say the window.
+- **A THEME'S TEXT TOKENS MUST CLEAR WCAG AA AGAINST *BOTH* SURFACES THEY SIT ON, AND A DESIGN
+  SWEEP SHOULD MEASURE IT RATHER THAN EYEBALL IT.** An accessibility pass computed real contrast
+  ratios (not a guess) against `THEMES.dark`/`THEMES.light`'s actual hex values and found real
+  AA failures on real content, not decoration: dark `muted` 3.73:1/3.22:1 (bg/surface), light
+  `muted` 2.25:1/2.45:1, light `sub` 4.39:1 (used in 300+ places), light `gold`/`red`/`green`/
+  `orange` as text 2.70–4.31:1 — all on small (9–13px) real text: body-map labels, section
+  kickers, error messages, "Delete"/"Leave Group", PR/ADMIN badges. All eight fixed by nudging the
+  token's lightness (dark: lighter; light: darker) just far enough to clear 4.5:1 against both
+  `bg` and `surface`, preserving hue. One real side effect: light `sub` and `muted` had to converge
+  to nearly the same value to both clear the floor, so that theme's two de-emphasis tiers are now
+  hard to tell apart — if that distinction matters again, use weight/letter-spacing to separate
+  them, not lightness; there's no more contrast budget to spend there. Standing check:
+  `sim_a11y` (contrast) recomputes from the THEMES source text itself, not a hardcoded copy of the
+  hex values, so it can't go stale the way a pinned-expectation test would.
+- **AN ICON WITH NO LABEL IS SILENCE TO A SCREEN READER.** The same audit parsed the JSX-transformed
+  bundle for `<button>` elements whose every child is an icon/svg and which carry no
+  `aria-label`/`title`, and found 7: three "×" close buttons, two back chevrons, a share-code-entry
+  close, and the exercise-row icon that opens exercise detail. All seven have a near-identical twin
+  ELSEWHERE in the same file that already has the label correctly — these were stragglers missed
+  when the pattern was copy-pasted, not a systemic gap. Fixed by adding the matching label; the
+  exercise-row button's label is conditional (`aria-label={ex.name ? \`${ex.name} details\` :
+  undefined}`, matching the same condition that gates the button's own click handler). Standing
+  check: `sim_a11y` (+ `build/a11y_scan.mjs`) walks the transformed AST rather than grepping —
+  intentionally CONSERVATIVE, it only flags what it can prove is icon-only (a literal/template
+  child or an icon-shaped component, nothing dynamic), so a clean run means "no PROVABLE misses,"
+  not "certainly zero." It accepts a conditional `aria-label` whose consequent has real text as
+  covered, since a label gated on the same condition as the click handler is correct, not a gap.
 - **Duplicated formulas: grep the CONCEPT and consolidate, but NEVER with a blind regex.** The
   local date-key template `${d.getFullYear()}-${String(d.getMonth()+1)…}` was written out THIRTEEN
   times (Body Battery, activity reads, RHR trend, body-weight log, streak, strength snapshots) —
