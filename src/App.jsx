@@ -1,4 +1,4 @@
-// v178091716851
+// v178091716852
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2844,7 +2844,37 @@ const BARBELL_BAR_LBS = 45;
 const BARBELL_BAR_KG = 20;
 const PLATES_LBS_LIST = [45, 35, 25, 10, 5, 2.5];
 const PLATES_KG_LIST = [25, 20, 15, 10, 5, 2.5, 1.25];
-const PLATE_COLOR_MAP = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
+// Plate disc colours, following the IWF/IPF competition colour code — which is what any gym with
+// colour-coded bumpers actually has on the rack: in KILOS 25 is red, 20 blue, 15 yellow, 10 green;
+// the POUND plates that mirror them are 45 blue, 35 yellow, 25 green.
+// ★ THIS IS KEYED ON THE UNIT AS WELL AS THE NUMBER, AND IT HAS TO BE. `25` is a different colour
+// in the two systems (25 lb is green, 25 kg is red) and so is `10` (10 lb white, 10 kg green), so
+// the single numeric map this replaced could only ever be right for one unit — it painted a 25kg
+// plate green and a 45lb plate red, neither of which matches any federation.
+// The small change plates are deliberately NOT accurate: in real life 10 lb and 5 kg are white,
+// 2.5 lb is black and 1.25 kg is chrome, and a white disc vanishes against the light theme's
+// near-white card while a black one vanishes against the dark theme. They get distinct theme-safe
+// values instead, running grey → purple → pink as they get lighter. Colour is never the only cue —
+// every swatch in the legend sits beside its own "3×45" label, and disc HEIGHT already scales with
+// weight — so a substitution here costs nothing an accurate colour would have bought.
+const PLATE_COLORS_LBS = { 45:"#3b82f6", 35:"#eab308", 25:"#22c55e", 10:"#a1a1aa", 5:"#8b5cf6", 2.5:"#ec4899" };
+const PLATE_COLORS_KG  = { 25:"#ef4444", 20:"#3b82f6", 15:"#eab308", 10:"#22c55e", 5:"#a1a1aa", 2.5:"#8b5cf6", 1.25:"#ec4899" };
+// Returns null (not a colour) for an unknown plate so each caller keeps its own fallback token.
+function plateColor(p, unit) {
+  return (unit === "kg" ? PLATE_COLORS_KG : PLATE_COLORS_LBS)[p] || null;
+}
+// EVERY PLATE DISC NEEDS A RIM, AND THE REASON IS THE LIGHT THEME. A saturated yellow — which is
+// what a 35 lb / 15 kg plate IS — measures 1.76:1 against the light theme's near-white card, well
+// under the 3:1 WCAG floor for a graphical object, so a 9px yellow disc on that surface reads as
+// nothing at all. The first cut of this change shipped the accurate colour and `sim_platecolors`
+// caught it. Darkening the yellow until it cleared 3:1 on white lands in olive-brown and stops
+// being the plate's colour, which defeats the point of matching the gym. A rim fixes it without
+// touching the fill — and it is what a real bumper plate looks like anyway: coloured face, steel
+// rim. Deliberately a fixed translucent black rather than a theme token: on the light theme it is
+// the thing making the disc visible, and on the dark theme the fill already carries the contrast,
+// so the rim just crisps the edge. Inset so it can't bleed into the neighbouring disc — they are
+// stacked 1.5px apart.
+const PLATE_RING = "inset 0 0 0 1px rgba(0,0,0,0.3)";
 // Detect exercises where weight is loaded on ONE end of the bar only (T-bar row, landmine
 // variants). For these, the "bar" doesn't add resistance — the user enters total plate
 // weight directly, and we show plates as a single stack, not "per side."
@@ -5653,7 +5683,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -8366,10 +8396,10 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                     // Height scales 16px (lightest) → 44px (heaviest), by weight ratio
                     const ratio = Math.min(1, pl.p / maxPlate);
                     const h = Math.round(16 + ratio * 28);
-                    const color = PLATE_COLOR_MAP[pl.p] || C.muted;
+                    const color = plateColor(pl.p, unit) || C.muted;
                     discs.push(
                       <div key={`${pl.p}-${k}`} title={`${pl.p} ${unit}`} style={{
-                        width:9, height:h, background:color, borderRadius:2,
+                        width:9, height:h, background:color, borderRadius:2, boxShadow:PLATE_RING,
                         marginRight:1.5, flexShrink:0,
                         display:"flex", alignItems:"center", justifyContent:"center",
                       }}/>
@@ -8386,7 +8416,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5, flexWrap:"wrap", paddingLeft:46 }}>
             {[...platesBreakdown].sort((a,b)=>b.p-a.p).map((p,i) => (
               <div key={i} style={{ display:"flex", alignItems:"center", gap:4 }}>
-                <div style={{ width:8, height:8, borderRadius:2, background: PLATE_COLOR_MAP[p.p] || C.muted }}/>
+                <div style={{ width:8, height:8, borderRadius:2, boxShadow:PLATE_RING, background: plateColor(p.p, unit) || C.muted }}/>
                 <span style={{ fontSize:10, color:C.sub, fontWeight:600, fontFamily:MONO }}>{p.count}×{p.p}</span>
               </div>
             ))}
@@ -8562,7 +8592,9 @@ function PlateCalcModal({ onClose, unit, C }) {
   const PLATES_LBS = [45, 35, 25, 10, 5, 2.5];
   const PLATES_KG  = [25, 20, 15, 10, 5, 2.5, 1.25];
   const plates = unit === "kg" ? PLATES_KG : PLATES_LBS;
-  const PLATE_COLORS = { 45:"#ef4444", 35:"#3b82f6", 25:"#22c55e", 10:"#f59e0b", 5:"#8b5cf6", 2.5:"#ec4899", 20:"#3b82f6", 15:"#22c55e", 1.25:"#ec4899" };
+  // (This modal used to carry its own byte-identical copy of the colour map. Two copies of one
+  // legend is how the calculator and the live workout's barbell end up disagreeing about what
+  // colour a 35 is; both go through plateColor() now.)
 
   function calcPlates(total) {
     const t = parseFloat(total);
@@ -8635,7 +8667,7 @@ function PlateCalcModal({ onClose, unit, C }) {
                   Array(count).fill(0).map((_, i) => {
                     const h = Math.max(28, Math.min(68, p * 1.4));
                     return (
-                      <div key={`L${p}-${i}`} style={{ width:13, height:h, borderRadius:3, background:PLATE_COLORS[p]||C.accent, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <div key={`L${p}-${i}`} style={{ width:13, height:h, borderRadius:3, boxShadow:PLATE_RING, background:plateColor(p, unit)||C.accent, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
                         <span style={{ fontSize:6, color:"#fff", fontWeight:800, writingMode:"vertical-rl", transform:"rotate(180deg)" }}>{p}</span>
                       </div>
                     );
@@ -8646,7 +8678,7 @@ function PlateCalcModal({ onClose, unit, C }) {
                   Array(count).fill(0).map((_, i) => {
                     const h = Math.max(28, Math.min(68, p * 1.4));
                     return (
-                      <div key={`R${p}-${i}`} style={{ width:13, height:h, borderRadius:3, background:PLATE_COLORS[p]||C.accent, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <div key={`R${p}-${i}`} style={{ width:13, height:h, borderRadius:3, boxShadow:PLATE_RING, background:plateColor(p, unit)||C.accent, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
                         <span style={{ fontSize:6, color:"#fff", fontWeight:800, writingMode:"vertical-rl" }}>{p}</span>
                       </div>
                     );
@@ -8659,7 +8691,7 @@ function PlateCalcModal({ onClose, unit, C }) {
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
                 {result.map(({ p, count }, i) => (
                   <div key={p} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderBottom: i < result.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                    <div style={{ width:8, height:26, borderRadius:2, background:PLATE_COLORS[p]||C.accent, flexShrink:0 }}/>
+                    <div style={{ width:8, height:26, borderRadius:2, boxShadow:PLATE_RING, background:plateColor(p, unit)||C.accent, flexShrink:0 }}/>
                     <div style={{ flex:1, fontSize:14, fontWeight:600, color:C.text }}>{p} {unit}</div>
                     <div style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:MONO }}>× {count}</div>
                   </div>

@@ -86,7 +86,7 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (46 sims, ~90s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (47 sims, ~90s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
@@ -316,6 +316,28 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   one-time backfill that moves `updated_at` FORWARD only and only to a date backed by a real
   `pr_events` row. A trigger rather than a client change on purpose: it is true for every
   already-installed app version. momo's count went 57 → 2. Sim: `pw_weeklyprs`.
+- **A LOOKUP KEYED ON A NUMBER THAT MEANS TWO THINGS IN TWO UNITS IS WRONG FOR ONE OF THEM.** The
+  plate-disc colours were one map keyed on the plate NUMBER, shared by lbs and kg — but `25` is
+  green in pounds and RED in kilos, and `10` is white in pounds and GREEN in kilos, so it could
+  only ever satisfy one system. It shipped painting a 25kg plate green. Worse, because two kg
+  plates (25 and 15) collapsed onto the same entry, a kg user's barbell diagram drew **two
+  different plates in identical colours** and the legend beside it was simply false. `plateColor(p,
+  unit)` takes both now, and `sim_platecolors` asserts no two plates within one unit share a
+  colour. The colours themselves follow the IWF/IPF competition code, which is what a gym with
+  coloured bumpers actually racks: kg 25 red / 20 blue / 15 yellow / 10 green, lbs 45 blue / 35
+  yellow / 25 green. **The small change plates are deliberately INACCURATE** — a real 10lb/5kg is
+  white and a 2.5lb is black, and each vanishes into one of the two theme surfaces. Anywhere a
+  number indexes a physical thing, check whether the unit changes what that number IS.
+- **A SATURATED FILL CANNOT CARRY CONTRAST ON BOTH THEMES — GIVE IT A RIM INSTEAD OF DARKENING
+  IT.** The first cut of the plate colours shipped the accurate yellow and `sim_platecolors` caught
+  it at **1.76:1 against the light theme's near-white card**, well under the 3:1 WCAG floor for a
+  graphical object; a 9px yellow disc on that surface is invisible. The trap is the obvious fix:
+  darkening the yellow until it clears 3:1 on white lands in olive-brown and stops being the
+  plate's colour, which defeats the whole point. `PLATE_RING` (`inset 0 0 0 1px rgba(0,0,0,0.3)`)
+  separates disc from surface without touching the fill — and it is what a real bumper plate looks
+  like anyway. Fixed translucent black rather than a theme token on purpose: on light it does the
+  work, on dark the fill already has the contrast and the rim just crisps the edge. Generalises:
+  when a brand or real-world colour fails contrast, add a boundary, don't repaint the thing.
 - **Wrapped story frame:** `wrapStorySVG()` strips the card's own lowercase "seshd" watermark and
   adds a single bottom "SESHD" — don't re-add a watermark to card SVGs without checking it.
 - Helpers: `posNum()` (input sanitize), `LBS_PER_KG` (=2.2046), `cvt()` (unit conversion), `EXERCISE_ALIASES` (dedup), `IS_DEV` (dev-only logging).
@@ -1124,7 +1146,7 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 ## Current state / roadmap (as of last session)
 
 **★★★ THE DESIGN-CRITIQUE ERA (Aug 17, 2026) — an outside eye on the look, and one number Mo could
-see was wrong.** Bundles `2026-08-01u` → `2026-08-01z`. Battery is **46 sims + 42 Playwright
+see was wrong.** Bundles `2026-08-01u` → `2026-08-02a`. Battery is **47 sims + 42 Playwright
 suites**, all green. What shipped:
 
 - **A design critique and an accessibility review were run as cold-context agents against real
@@ -1140,6 +1162,11 @@ suites**, all green. What shipped:
   and a backfill, not just a client fix.
 - **The `TYPE` and `RADIUS` scales** — 48 half-pixel font sizes snapped to integers, three arbitrary
   card radii retired. Deliberately narrow; see the convention above for what was left alone and why.
+- **The plate colours**, which turned out to be a correctness bug wearing a cosmetic hat. Mo asked
+  for 45 lb blue / 35 yellow / 25 green — the actual IWF/IPF competition code — and the map turned
+  out to be keyed on the plate NUMBER alone while serving both unit systems, so two kg plates
+  rendered in identical colours and the legend beside them was false. See the two ★ conventions
+  above; the yellow then failed light-theme contrast and needed a rim rather than a darker yellow.
 - **The lesson of the era: measure the design before critiquing it.** My own first pass reported
   "everything is the same large radius" from memory. Measurement found the exact opposite —
   26 distinct radii, i.e. arbitrariness — and low containment counts on the screens I had called
