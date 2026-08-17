@@ -150,6 +150,82 @@ const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromi
   await page.close();
 }
 
+// ── 3. A FAILED ROW DELETE MUST NOT DESTROY THE IMAGE ────────────────────────────────────────
+// The row is the source of truth for "does this post exist". If the DELETE fails, the post is
+// still live for everyone else — destroying its image anyway leaves a permanently broken post
+// that nothing in the app can repair or remove. Both group surfaces are checked: GroupDetail
+// (bare `fetch`, which RESOLVES on 4xx and so needs an explicit res.ok check) and the
+// "undo finish & edit" cascade (sb.query, which throws).
+{
+  const page = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  page.setDefaultTimeout(6000);
+  const storageWrites = [];
+  page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
+  const GROUP_PATH = `${GID}/1700000000000-failcase.jpg`;
+
+  await page.addInitScript(([me, gid]) => {
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
+      programs: [], history: {}, workoutDates: {}, weeklyTarget: 3, prEvents: [], bodyLog: [], prs: {},
+      posts: [], profile: { username:"momo", name:"Mo" },
+      groups: [{ id: gid, name: "Seshd Crew", members: [me] }],
+      users: [{ id: me, username:"momo", name:"Mo", followers: [], following: [] }] }));
+    localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
+    localStorage.setItem("seshd_onboarded", "1");
+    localStorage.setItem("seshd_custom_merge_v1", "1");
+  }, [ME, GID]);
+  await page.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
+    body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
+  await page.route("**/storage/v1/object/**", r => {
+    storageWrites.push({ method: r.request().method(), url: r.request().url() });
+    if (r.request().method() === "GET") return r.fulfill({ status:200, contentType:"image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=","base64") });
+    r.fulfill({ status:200, contentType:"application/json", body: "{}" });
+  });
+  await page.route("**/rest/v1/**", r => {
+    const u = r.request().url(), m = r.request().method();
+    const J = b => r.fulfill({ status:200, contentType:"application/json", body: JSON.stringify(b) });
+    // THE POINT OF THIS SECTION: the row delete is rejected by the server (RLS-style 403).
+    if (m === "DELETE" && /\/rest\/v1\/group_posts/.test(u))
+      return r.fulfill({ status:403, contentType:"application/json", body: JSON.stringify({ message: "denied" }) });
+    if (/\/rest\/v1\/groups\?/.test(u))
+      return J([{ id: GID, name: "Seshd Crew", description:"", icon:"🏋️", created_by: ME, member_ids:[ME] }]);
+    if (/\/rest\/v1\/(public_)?profiles\?/.test(u))
+      return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true }]);
+    if (/\/rest\/v1\/group_posts\?/.test(u) && m === "GET")
+      return J([{ id:"gp9", group_id: GID, user_id: ME, type:"photo", caption:"fail case",
+        image_url: GROUP_PATH, created_at: new Date(Date.now() - 36e5).toISOString(), reactions:{} }]);
+    return J([]);
+  });
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3000);
+  await page.getByLabel("Discover").first().click().catch(() => {});
+  await page.waitForTimeout(1000);
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button, div")].find(x => /groups/i.test((x.textContent||"").trim()) && (x.textContent||"").trim().length < 12); b && b.click(); });
+  await page.waitForTimeout(800);
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button, div")].find(x => (x.textContent||"").trim() === "Seshd Crew"); b && b.click(); });
+  await page.waitForTimeout(1200);
+  check("6. the fail-case group post is on screen",
+    await page.evaluate(() => /fail case/i.test(document.body.innerText)));
+
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => (x.textContent||"").trim() === "⋯" || (x.textContent||"").trim() === "···"); b && b.click(); });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /delete post/i.test((x.textContent||"").trim())); b && b.click(); });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /tap again to confirm/i.test((x.textContent||"").trim())); b && b.click(); });
+  await page.waitForTimeout(1500);
+
+  const badDelete = storageWrites.find(w => w.method === "DELETE" && w.url.includes("failcase"));
+  check("7. a REJECTED row delete does NOT destroy the storage object",
+    !badDelete, badDelete ? `image was deleted anyway: ${badDelete.url}` : "");
+  const txt = await page.evaluate(() => document.body.innerText);
+  check("8. and the user is told it failed, not told it succeeded",
+    /couldn't delete/i.test(txt) && !/post deleted/i.test(txt), txt.slice(0, 200).replace(/\n/g, " | "));
+  check("9. and the post stays on screen (not optimistically removed)",
+    /fail case/i.test(txt));
+
+  await page.close();
+}
+
 await browser.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

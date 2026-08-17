@@ -400,6 +400,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   filtered out — it exists nowhere else), and the "undo finish & edit" cascade, which deletes group
   copies by `client_id` FILTER rather than by id, so it does one extra GET for the image paths
   before the delete removes the rows they live on. Sim: `pw_postimgdelete`.
+- **DESTROY THE ROW FIRST, THE OBJECT SECOND — AND ONLY IF THE ROW ACTUALLY DIED.** The first cut
+  of the storage cleanup got this backwards in the "undo finish & edit" cascade: it fired
+  `deleteGroupImage` for every path and THEN issued the row delete with `.catch(() => {})`. A 403,
+  a 5xx or `sb.query`'s 20s timeout therefore left the group post alive on the server pointing at
+  an object that no longer existed — every member saw a permanently broken image, and the poster
+  could not repair or remove it because the session was already gone from their own History. The
+  feed leg had the same shape (`.catch(e => devError(...))` then delete the image regardless).
+  **A bare `fetch` RESOLVES on 4xx/5xx**, so `GroupDetail`'s delete needed an explicit `res.ok`
+  check for the same reason — without it a 403 ran the whole success path: image destroyed, row
+  dropped from local state, and a "Post deleted" toast for a post still sitting on the server
+  (the "never toast success from the optimistic path" rule, violated by an un-checked `fetch`).
+  `handleDelete` was the one site that had it right from the start, because `sb.query` throws.
+  Sections 6-9 of `pw_postimgdelete` drive a REJECTED delete and assert the image survives, the
+  post stays on screen, and the user is told it failed.
 - **A SIGNED URL EXPIRES; A CACHE KEYED ONLY ON PRESENCE DOES NOT.** `GroupDetail` signed each
   private group image once and cached it forever for the component's lifetime, and the sign effect
   skipped anything already in the map — so a group left open for over an hour showed broken images
