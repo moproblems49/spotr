@@ -86,12 +86,12 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (45 sims, ~90s). It rebuilds the
+**Run the whole battery with one command: `node build/run_sims.mjs`** (46 sims, ~90s). It rebuilds the
 bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
 
-**`node build/run_sims.mjs --pw` also runs the 41 Playwright suites** (+~3min): it builds dist with
+**`node build/run_sims.mjs --pw` also runs the 42 Playwright suites** (+~3min): it builds dist with
 STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
 in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
 anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
@@ -193,6 +193,23 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   transform momentarily exposes (the strip behind the chat screen during an iOS edge-swipe-back) is
   the app background rather than WebView white. Read the comments in it before changing anything —
   they say which rule is the real fix and which is only covering the frames before React mounts.
+- **`TYPE` and `RADIUS` are the design scales — and the consolidation behind them is DELIBERATELY
+  NARROW.** A design critique called the app "generic AI" and one of its named tells was arbitrary
+  geometry. Measured: **37 distinct font sizes** (including 48 uses of HALF-PIXEL sizes — 8.5, 12.5,
+  13.5) and **26 distinct corner radii**, nine of them used three times or fewer. What was actually
+  fixed: every half-pixel size snapped to an integer, always **DOWN, never up** (down can only make
+  text imperceptibly smaller; up can overflow a box that fits today), and the three genuinely
+  arbitrary card radii (13/15/28, five call sites) moved onto the scale. What was deliberately NOT
+  touched, and why: the 10/11/12/13/14 font cluster is ~800 sites and collapsing it would visibly
+  resize text on every screen with no test able to verify the result; and most of the "26 radii" are
+  not card corners at all but **circle and capsule geometry** — 17/19 are half of a 34/38px round
+  button, 44 is half an 88px avatar, 20/22/26 are pills on short elements, and 2/3/4/5 are
+  half-height rounding on thin progress bars. Snapping those onto a card scale changes their SHAPE
+  for no design gain. **My own first read of this was wrong and worth remembering**: I reported
+  "everything is the same large radius" from memory; measuring found the opposite problem
+  (arbitrariness, not sameness) and low containment counts. Measure the geometry before critiquing
+  it. Sim: `sim_designscale` (source-level — a stray 12.5px renders fine, breaks no test and is
+  invisible in a screenshot, so nothing else in the battery can see it).
 - **One easing token: `EASE_NAV`** (`cubic-bezier(0.32, 0.72, 0, 1)`, the iOS decelerate curve).
   The app had grown NINE different curves and no two transitions felt related. Every
   screen-scale movement — tab slide, pushed screens, swipe release, edge-swipe-back, progress
@@ -280,6 +297,25 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 - **Pluralize user-facing counts** (`{n} member{n===1?"":"s"}`) and **suppress zero/meaningless
   deltas** ("▲ 0% volume", "+225 over your previous best" on a first-ever PR — `hitPRs` carries a
   `firstEver` flag for this). Both classes of bug shipped once; check for them in new stat UI.
+- **★ A NUMBER UNDER A "THIS WEEK" HEADING MUST BE WINDOWED, AND `store.prs` IS A LIFETIME MAP.**
+  Mo: "Friends Activity says I have 57 PRs this week." He had exactly 57 rows in `personal_records`
+  — one per exercise he has EVER set a PR on. **Two independent counters made the same mistake on
+  the same screen**: his own row read `Object.keys(store.prs).length`, and the friends' query was
+  `personal_records?user_id=in.(…)` with **no date filter at all**. Neither had anything to do with
+  the week the heading named. `store.prs` / `personal_records` are CURRENT BESTS (one row per
+  exercise, overwritten in place); the dated PR-hit log is **`store.prEvents`** / the `pr_events`
+  jsonb, which is what Wrapped already counts — use it for anything time-boxed, and **dedupe by
+  exercise name** so a lift that sets a weight PR and an e1RM PR in one session counts once.
+  **The server-side half needed a DB fix, not a client fix.** `personal_records.updated_at` had
+  `DEFAULT now()` and no trigger, and the client upserts `{user_id, exercise_name, weight_lbs}`
+  with `Prefer: resolution=merge-duplicates` — **PostgREST's on-conflict UPDATE only touches the
+  columns present in the payload**, so `updated_at` froze at the row's first insert and was
+  unusable as a window. Proven on live data: a PR event dated 2026-08-10 whose row still read
+  2026-05-22. Fixed with a `personal_records_touch_updated_at` BEFORE UPDATE trigger (bumping only
+  when `weight_lbs is distinct from old.weight_lbs`, so a no-op re-sync can't fake a PR) plus a
+  one-time backfill that moves `updated_at` FORWARD only and only to a date backed by a real
+  `pr_events` row. A trigger rather than a client change on purpose: it is true for every
+  already-installed app version. momo's count went 57 → 2. Sim: `pw_weeklyprs`.
 - **Wrapped story frame:** `wrapStorySVG()` strips the card's own lowercase "seshd" watermark and
   adds a single bottom "SESHD" — don't re-add a watermark to card SVGs without checking it.
 - Helpers: `posNum()` (input sanitize), `LBS_PER_KG` (=2.2046), `cvt()` (unit conversion), `EXERCISE_ALIASES` (dedup), `IS_DEV` (dev-only logging).
@@ -1086,6 +1122,28 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
 - Memory/safety: never reduce the app's own safety behavior; this is a consumer fitness app.
 
 ## Current state / roadmap (as of last session)
+
+**★★★ THE DESIGN-CRITIQUE ERA (Aug 17, 2026) — an outside eye on the look, and one number Mo could
+see was wrong.** Bundles `2026-08-01u` → `2026-08-01z`. Battery is **46 sims + 42 Playwright
+suites**, all green. What shipped:
+
+- **A design critique and an accessibility review were run as cold-context agents against real
+  screenshots of the running app** (not against the source). The accessibility pass found **8 real
+  WCAG AA contrast failures on real 9–13px text** and **7 unlabeled icon-only buttons** — all fixed,
+  and both are now standing checks inside `sim_a11y`. The design pass named three "generic AI"
+  tells; Mo picked two to fix (the three-screens-one-empty-state-template problem, and the
+  geometry) and **explicitly parked the third — containment / fewer rounded cards — as "we need to
+  talk more about it after"**. Don't start that one unprompted.
+- **The "57 PRs this week" bug**, which Mo caught by reading the screen. Two independent lifetime
+  counters under a "THIS WEEK" heading, plus a `personal_records.updated_at` column that PostgREST's
+  merge-duplicates upsert had never once touched. See the ★ convention above; it needed a DB trigger
+  and a backfill, not just a client fix.
+- **The `TYPE` and `RADIUS` scales** — 48 half-pixel font sizes snapped to integers, three arbitrary
+  card radii retired. Deliberately narrow; see the convention above for what was left alone and why.
+- **The lesson of the era: measure the design before critiquing it.** My own first pass reported
+  "everything is the same large radius" from memory. Measurement found the exact opposite —
+  26 distinct radii, i.e. arbitrariness — and low containment counts on the screens I had called
+  over-contained. Two of the three findings I would have acted on were wrong.
 
 **★★★ THE PRE-SUBMISSION ERA (Aug 12–16, 2026) — polish, then three rounds of "what else shipped
 dead?".** Bundles `2026-08-01d` → `2026-08-01t`. Battery is **44 sims + 39 Playwright suites**, all

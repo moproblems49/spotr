@@ -31,7 +31,13 @@ for (const theme of ["dark","light"]) {
   if(!seen){ await p.close(); continue; }
   const paint = await p.evaluate(() => {
     const txt = [...document.querySelectorAll("div")].find(d => /^\d\d:\d\d$/.test((d.textContent||"").trim()) && parseFloat(getComputedStyle(d).fontSize) > 40);
-    const card = txt && txt.closest('div[style*="border-radius: 28px"]');
+    // Locate the card by its WIDTH, not its corner radius. This used to say
+    // `div[style*="border-radius: 28px"]` — and when the RADIUS scale retired the one-off 28px in
+    // favour of RADIUS.xl (24), the locator matched nothing, `card` came back null, and the suite
+    // went red reporting a colour failure on a card whose colour had not changed. Never pin a
+    // locator to a value some other pass is entitled to restyle; this test is about the card's
+    // PAINT, so anchor it on geometry the test doesn't care about.
+    const card = txt && txt.closest('div[style*="max-width: 380px"]');
     const skip = [...document.querySelectorAll("button")].find(b => (b.textContent||"").trim() === "Skip");
     const ring = document.querySelector("svg circle[stroke-dasharray]");
     return {

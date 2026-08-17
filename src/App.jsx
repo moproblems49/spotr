@@ -1,4 +1,4 @@
-// v178091716850
+// v178091716851
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1348,6 +1348,63 @@ const F = "'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif"
 const DISPLAY = "'Barlow Condensed','Inter',-apple-system,sans-serif";
 const MONO = "'JetBrains Mono','SF Mono',Menlo,monospace";
 
+// ─── RADIUS SCALE ─────────────────────────────────────────────────────────────
+// The file had grown TWENTY-SIX distinct corner radii. The problem was never sameness — it was
+// ARBITRARINESS: nine values were used three times or fewer (15, 17, 19, 22, 26, 28 each exactly
+// ONCE), and a 1px difference is imperceptible, so those distinctions communicated nothing.
+//
+// It turns out the app already HAD a de-facto scale — 8/10/12/14/16/20/24 cover ~380 of ~500 uses.
+// So this does NOT remap everything (churning 579 call sites for a change no test can verify is
+// a bad trade). It names the existing scale and snaps the one-off outliers onto it.
+//
+//   xs  8   chips, tags, small inline controls
+//   sm  10  buttons, inputs, small tiles
+//   md  12  standard cards and list containers
+//   lg  16  raised cards, sheets, panels
+//   xl  24  screen-level modals and large hero tiles
+//   pill 999
+//
+// EXPLICITLY NOT part of this scale, and deliberately untouched — these are not "card corners",
+// they are geometry that happens to use the same property:
+//   * 2/3/4/5  — HALF-HEIGHT capsule rounding on thin bars, dots and drag handles (a 6px-tall
+//                progress bar with radius 3 is a capsule, not a rounded box). Snapping these to a
+//                card tier would visibly change their shape for no design gain.
+//   * 20       — used as a PILL on short elements (a 22px-tall chip with radius 20 is fully round).
+//   * 44       — half of an 88px avatar, i.e. a circle.
+//   * "50%", the four computed radii (`big ? 13 : 11`, `sz * 0.22`, `Math.round(size*0.28)`,
+//                `radius`), and PRTag's 2px (its sharp skewed shape is a documented identity
+//                element, not a rounded box).
+// Use a token for anything new at card/control scale; don't reintroduce a raw one-off.
+const RADIUS = { xs: 8, sm: 10, md: 12, lg: 16, xl: 24, pill: 999 };
+
+// ─── TYPE SCALE ───────────────────────────────────────────────────────────────
+// THIRTY-SEVEN distinct font sizes had accumulated, including forty-eight uses of HALF-PIXEL
+// sizes — 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5. A half pixel is invisible next to its
+// neighbour, renders inconsistently, and is unambiguously arbitrary: nobody designs a 12.5px step
+// between a 12 and a 13. All forty-eight were snapped DOWN to their integer (down, never up, so
+// text can only get imperceptibly smaller and can never overflow a box that used to fit).
+//
+// What remains is the app's real, de-facto scale — these eight sizes cover ~880 of ~1000 uses:
+//
+//   micro  9   all-caps kickers, axis labels, tiny badges
+//   tiny   10  secondary metadata, captions
+//   small  11  dense list text, chips, stat labels
+//   base   12  standard body copy
+//   body   13  comfortable body copy, list rows
+//   lg     14  emphasised body, card titles
+//   xl     16  section headings
+//   hero   18  screen titles
+//
+// Sizes above 18 are one-offs by design — big numerals on the Wrapped/Body-Battery/finish screens,
+// where the number IS the graphic. Those are deliberately not in the scale.
+//
+// NOTE ON THE REMAINING GAP, so the next person doesn't think this is finished: 10/11/12/13/14 are
+// all still in heavy use (85/179/147/170/183 sites), and a 1px step is close to meaningless. That
+// is a genuine 800-site consolidation, it would visibly resize text across every screen, and NO
+// TEST IN THIS REPO CAN VERIFY IT — screenshots are the only check. It is deliberately NOT done
+// here. Use these tokens for anything new rather than adding a thirty-eighth size.
+const TYPE = { micro: 9, tiny: 10, small: 11, base: 12, body: 13, lg: 14, xl: 16, hero: 18 };
+
 // ─── Premium icon system — line icons, single accent ──────────────────────────
 function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
   const props = { width:size, height:size, viewBox:"0 0 24 24", fill:"none", stroke:color, strokeWidth, strokeLinecap:"round", strokeLinejoin:"round" };
@@ -1897,7 +1954,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </div>
       </div>
 
-      <div style={{ display:"flex", margin:"0 16px 4px", background:C.divider, borderRadius:13, padding:2 }}>
+      <div style={{ display:"flex", margin:"0 16px 4px", background:C.divider, borderRadius:RADIUS.md, padding:2 }}>
         <Tab id="readiness" label="Readiness"/>
         <Tab id="volume" label="Volume"/>
         <Tab id="strength" label="Strength"/>
@@ -1929,7 +1986,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             <div style={{ width:MAP_SIDE_W, flexShrink:0, display:"flex", justifyContent:"flex-end" }}>
               <div style={{
                 writingMode:"vertical-rl", transform:"rotate(180deg)",
-                fontSize:9.5, color:C.muted, letterSpacing:0.6, fontWeight:600,
+                fontSize:9, color:C.muted, letterSpacing:0.6, fontWeight:600,
                 whiteSpace:"nowrap", alignSelf:"center", userSelect:"none",
               }}>Tap a muscle for details</div>
             </div>
@@ -1966,7 +2023,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   );
                 })}
               </div>
-              <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:10.5, color:C.muted }}>
+              <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:10, color:C.muted }}>
                 {totalSets} working set{totalSets === 1 ? "" : "s"} this week · 4+ sets grows a muscle · 10–20 maximizes it
               </div>
             </>
@@ -2063,12 +2120,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                             gridColumn: (i === rows.length - 1 && rows.length % 2 === 1) ? "span 2" : "auto" }}>
                             <div style={{ fontSize:9, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
                             <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, marginTop:2, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent }}>{r.value}</div>
-                            <div style={{ fontSize:9.5, color:C.sub, marginTop:2, lineHeight:1.3 }}>{r.detail}</div>
+                            <div style={{ fontSize:9, color:C.sub, marginTop:2, lineHeight:1.3 }}>{r.detail}</div>
                           </div>
                         ))}
                       </div>
                       {!bb.hasRecovery && (
-                        <div style={{ fontSize:10.5, color:C.muted, lineHeight:1.5, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
+                        <div style={{ fontSize:10, color:C.muted, lineHeight:1.5, padding:"10px 12px", background:C.surface, borderRadius:10 }}>
                           {isHealthConnected()
                             ? "Apple Health is connected — readings switch to your real HRV, resting heart rate, and sleep as soon as your iPhone or Apple Watch records them."
                             : "Connect Apple Health on iPhone for readings based on your real HRV, resting heart rate, and sleep."}
@@ -2102,8 +2159,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       <div style={{ position:"absolute", left:"40%", width:"25%", top:0, bottom:0, background:`${C.accent}44`, borderRadius:3 }}/>
                       <div style={{ position:"absolute", left:`calc(${pos * 100}% - 4px)`, top:-2, width:8, height:10, borderRadius:2, background:col }}/>
                     </div>
-                    <div style={{ fontSize:11.5, fontWeight:700, color:col, marginBottom:2 }}>{tl.label}</div>
-                    <div style={{ fontSize:10.5, color:C.muted, lineHeight:1.4 }}>{tl.note}</div>
+                    <div style={{ fontSize:11, fontWeight:700, color:col, marginBottom:2 }}>{tl.label}</div>
+                    <div style={{ fontSize:10, color:C.muted, lineHeight:1.4 }}>{tl.note}</div>
                   </div>
                 );
               })()}
@@ -2138,9 +2195,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         <div style={{ display:"grid", gridTemplateColumns:`repeat(${tiles.length}, 1fr)`, gap:6 }}>
                           {tiles.map((t, i) => (
                             <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 6px", textAlign:"center" }}>
-                              <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{t.label}</div>
+                              <div style={{ fontSize:8, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{t.label}</div>
                               <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, color:C.text, marginTop:3 }}>{t.value}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>{t.unit}</span></div>
-                              <div style={{ fontSize:8.5, fontWeight:600, marginTop:3, lineHeight:1.3, color: t.good ? GOOD : OFF }}>{t.arrow ? `${t.arrow} ` : ""}{t.note}</div>
+                              <div style={{ fontSize:8, fontWeight:600, marginTop:3, lineHeight:1.3, color: t.good ? GOOD : OFF }}>{t.arrow ? `${t.arrow} ` : ""}{t.note}</div>
                             </div>
                           ))}
                         </div>
@@ -2161,7 +2218,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     return (
                       <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"8px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
+                          <div style={{ fontSize:8, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.vo2Max}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>ml/kg·min</span></div>
                           {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲ +" : "▼ "}{d} vs earlier</div>}
                         </div>
@@ -2178,7 +2235,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     return (
                       <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · 60 days</div>
+                          <div style={{ fontSize:8, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · 60 days</div>
                           <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
                           {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm over 60 days{down ? " — stronger heart" : ""}</div>}
                         </div>
@@ -2201,7 +2258,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const hasAny = (rec.resp != null || rec.wristTemp != null);
                     if (!hasAny) return null;
                     return (
-                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", fontSize:9.5, color: flags.length ? "#f59e0b" : C.muted, textAlign:"center", fontWeight:600, lineHeight:1.4 }}>
+                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", fontSize:9, color: flags.length ? "#f59e0b" : C.muted, textAlign:"center", fontWeight:600, lineHeight:1.4 }}>
                         {flags.length
                           ? `Heads up: ${flags.join(" · ")} — your body may be fighting something or under-recovered. Consider an easier day.`
                           : "Overnight signals (breathing rate, wrist temp) look normal for you."}
@@ -2492,7 +2549,7 @@ function ConfirmHost({ C }) {
     <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"seshd-cf-fade 0.15s ease" }}>
       <style>{`@keyframes seshd-cf-fade{from{opacity:0}to{opacity:1}}@keyframes seshd-cf-pop{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}`}</style>
       <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}`, animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
-        <div style={{ width:46, height:46, borderRadius:13, background:`${accent}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
+        <div style={{ width:46, height:46, borderRadius:RADIUS.md, background:`${accent}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
           <Icon name={cf.icon} size={22} color={accent}/>
         </div>
         <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.3 }}>{cf.title}</div>
@@ -5690,7 +5747,7 @@ function BodyBatteryChart({ store, fill, C }) {
           {[100, 75, 50, 25, 0].map(lvl => (
             <span key={lvl} style={{
               position:"absolute", right:0, top:`${(yAt(lvl) / H) * 150}px`,
-              transform:"translateY(-50%)", fontSize:8.5, color:C.muted, fontWeight:600, fontFamily:MONO,
+              transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600, fontFamily:MONO,
             }}>{lvl}</span>
           ))}
         </div>
@@ -5758,7 +5815,7 @@ function BodyBatteryChart({ store, fill, C }) {
                   boxShadow:"0 4px 12px rgba(0,0,0,0.25)",
                 }}>
                   <div style={{ fontFamily:MONO, fontSize:15, fontWeight:800, color:scrubColor, letterSpacing:-0.3 }}>{scrub.level}</div>
-                  <div style={{ fontSize:8.5, fontWeight:600, color:C.muted, marginTop:1 }}>{scrub.timeLabel}</div>
+                  <div style={{ fontSize:8, fontWeight:600, color:C.muted, marginTop:1 }}>{scrub.timeLabel}</div>
                 </div>
               </>
             )}
@@ -5777,7 +5834,7 @@ function BodyBatteryChart({ store, fill, C }) {
             {hourDots.filter(d => d.label).map((d, i) => (
               <span key={i} style={{
                 position:"absolute", top:0, left:`${d.xPct}%`, transform:"translateX(-50%)",
-                fontSize:8.5, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
+                fontSize:8, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
               }}>{d.label}</span>
             ))}
           </div>
@@ -7134,7 +7191,7 @@ function MuscleBalance({ store, C, days = 30 }) {
         {skeletonGroups.map(g => (
           <div key={g} style={{ marginBottom:9 }}>
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-              <span style={{ fontSize:12.5, color:C.muted, fontWeight:600 }}>{g}</span>
+              <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>{g}</span>
             </div>
             <div style={{ height:7, borderRadius:4, background:C.divider }}/>
           </div>
@@ -7164,7 +7221,7 @@ function MuscleBalance({ store, C, days = 30 }) {
         <div key={g.name} style={{ marginBottom:9 }}>
           <div onClick={() => setExpandedGroup(isExp ? null : g.name)} style={{ cursor:"pointer" }}>
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3, alignItems:"center" }}>
-              <span style={{ fontSize:12.5, color:C.text, fontWeight:600, display:"flex", alignItems:"center", gap:5 }}>
+              <span style={{ fontSize:12, color:C.text, fontWeight:600, display:"flex", alignItems:"center", gap:5 }}>
                 <span style={{ display:"inline-block", transform: isExp?"rotate(90deg)":"none", transition:"transform 0.15s", color:C.sub, fontSize:10 }}>▶</span>
                 {g.name}
               </span>
@@ -7177,13 +7234,13 @@ function MuscleBalance({ store, C, days = 30 }) {
           {isExp && (
             <div style={{ marginTop:7, marginLeft:15, display:"flex", flexDirection:"column", gap:5 }}>
               {g.exercises.map(ex => (
-                <div key={ex.name} style={{ display:"flex", justifyContent:"space-between", fontSize:11.5, color:C.sub }}>
+                <div key={ex.name} style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.sub }}>
                   <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", paddingRight:8 }}>{ex.name}</span>
                   <span style={{ fontFamily:MONO, flexShrink:0 }}>{ex.sets} set{ex.sets!==1?"s":""}</span>
                 </div>
               ))}
               {g.name === "Other" && (
-                <div style={{ fontSize:10.5, color:C.muted, marginTop:3, lineHeight:1.4, fontStyle:"italic" }}>
+                <div style={{ fontSize:10, color:C.muted, marginTop:3, lineHeight:1.4, fontStyle:"italic" }}>
                   "Other" includes yoga, full-body, and any exercises not matched to a specific muscle group.
                 </div>
               )}
@@ -7224,7 +7281,7 @@ function MostTrainedMuscles({ store, C, days = 30 }) {
       <SectionLabel C={C} style={{ marginBottom:8 }}>{`Most trained · last ${days}d`}</SectionLabel>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
         {muscles.slice(0, 8).map(mu => (
-          <div key={mu.name} style={{ padding:"5px 10px", background:C.divider, borderRadius:20, fontSize:11.5, color:C.text }}>
+          <div key={mu.name} style={{ padding:"5px 10px", background:C.divider, borderRadius:20, fontSize:11, color:C.text }}>
             {mu.name} <span style={{ color:C.sub, fontFamily:MONO }}>{mu.sets}</span>
           </div>
         ))}
@@ -7336,7 +7393,7 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
                 ? <AnimatedNumber value={val} duration={750} animateOnMount/>
                 : val}
             </div>
-            <div style={{ fontSize:9.5, color:C.sub, fontWeight:600, letterSpacing:0.5, marginTop:3 }}>{cap}</div>
+            <div style={{ fontSize:9, color:C.sub, fontWeight:600, letterSpacing:0.5, marginTop:3 }}>{cap}</div>
           </div>
         ))}
       </div>
@@ -8461,7 +8518,7 @@ function OneRMModal({ onClose, unit, C }) {
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1.1fr 0.9fr", background:C.bg, borderBottom:`1px solid ${C.border}` }}>
                   {["% OF 1RM", "WEIGHT", "REPS"].map((h, i) => (
-                    <div key={h} style={{ fontSize:9.5, fontWeight:800, letterSpacing:1, color:C.sub, padding:"9px 12px", textAlign: i ? "right" : "left" }}>{h}</div>
+                    <div key={h} style={{ fontSize:9, fontWeight:800, letterSpacing:1, color:C.sub, padding:"9px 12px", textAlign: i ? "right" : "left" }}>{h}</div>
                   ))}
                 </div>
                 {rows.map(({ p, w, r }, i) => (
@@ -8476,12 +8533,12 @@ function OneRMModal({ onClose, unit, C }) {
                       <div style={{ width:3, height:16, borderRadius:2, background:C.accent, opacity: 0.25 + (p/100) * 0.75 }}/>
                       <span style={{ fontSize:13, color:C.text, fontWeight:600 }}>{p}%</span>
                     </div>
-                    <div style={{ fontSize:13.5, fontWeight:700, color:C.text, fontFamily:MONO, padding:"10px 12px", textAlign:"right" }}>{w} {unit}</div>
-                    <div style={{ fontSize:13.5, fontWeight:600, color:C.sub, fontFamily:MONO, padding:"10px 12px", textAlign:"right" }}>{r}</div>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:MONO, padding:"10px 12px", textAlign:"right" }}>{w} {unit}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:C.sub, fontFamily:MONO, padding:"10px 12px", textAlign:"right" }}>{r}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize:10.5, color:C.muted, marginTop:10, lineHeight:1.45 }}>
+              <div style={{ fontSize:10, color:C.muted, marginTop:10, lineHeight:1.45 }}>
                 Rep counts are typical for each percentage — treat them as a starting point, not a test.
               </div>
             </>
@@ -9811,7 +9868,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         <Avatar user={user} size={38} C={C} onClick={() => onUserClick(user?.id)}/>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
-            <span onClick={() => onUserClick(user?.id)} style={{ fontSize:14.5, fontWeight:700, color:C.text, cursor:"pointer", letterSpacing:-0.2 }}>
+            <span onClick={() => onUserClick(user?.id)} style={{ fontSize:14, fontWeight:700, color:C.text, cursor:"pointer", letterSpacing:-0.2 }}>
               {user?.username}
             </span>
             {post.isPR && (
@@ -10045,12 +10102,12 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                           <>
                             <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{cvt(s.w, postUnit, displayUnit)}</span>
                             <span style={{ fontSize:11, fontWeight:600, color:C.sub }}>×</span>
-                            <span style={{ fontSize:11.5, fontWeight:600, color:C.sub }}>{s.r}</span>
+                            <span style={{ fontSize:11, fontWeight:600, color:C.sub }}>{s.r}</span>
                           </>
                         ) : (
                           <>
                             <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{s.r}</span>
-                            <span style={{ fontSize:10.5, fontWeight:600, color:C.sub, marginLeft:3 }}>reps</span>
+                            <span style={{ fontSize:10, fontWeight:600, color:C.sub, marginLeft:3 }}>reps</span>
                           </>
                         )}
                       </span>
@@ -10080,8 +10137,8 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             <div style={{ width:24, height:24, borderRadius:7, background:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
               <Icon name={postCode.startsWith("WO-") ? "dumbbell" : "calendar"} size={12}/>
             </div>
-            <span style={{ fontSize:9.5, letterSpacing:1, fontWeight:700, color:C.sub, flexShrink:0 }}>{postCode.startsWith("WO-") ? "WORKOUT" : "PROGRAM"}</span>
-            <span style={{ fontFamily:MONO, fontSize:12.5, fontWeight:700, color:C.text, letterSpacing:0.5, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{postCode}</span>
+            <span style={{ fontSize:9, letterSpacing:1, fontWeight:700, color:C.sub, flexShrink:0 }}>{postCode.startsWith("WO-") ? "WORKOUT" : "PROGRAM"}</span>
+            <span style={{ fontFamily:MONO, fontSize:12, fontWeight:700, color:C.text, letterSpacing:0.5, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{postCode}</span>
             <span style={{ fontSize:11, fontWeight:700, color:C.accent, flexShrink:0 }}>Import</span>
           </button>
         </div>
@@ -13295,7 +13352,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {rest && !rest.minimized && createPortal(
           <div onClick={() => setRest(p => p ? ({ ...p, minimized: true }) : p)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
             <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.12)" : "rgba(200,241,53,0.10)"} 0%, transparent 70%)`, pointerEvents:"none" }}/>
-            <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:380, borderRadius:28, padding:24, background: C.isDark ? "rgba(38,38,46,0.97)" : "rgba(20,20,24,0.97)", boxShadow:"0 32px 100px rgba(0,0,0,0.45)", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
+            <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:380, borderRadius:RADIUS.xl, padding:24, background: C.isDark ? "rgba(38,38,46,0.97)" : "rgba(20,20,24,0.97)", boxShadow:"0 32px 100px rgba(0,0,0,0.45)", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
               <div style={{ position:"absolute", top:16, right:16 }}>
                 <button onClick={() => setRest(p => p ? ({ ...p, minimized:true }) : p)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:999, padding:"10px 14px", fontSize:12, cursor:"pointer", fontFamily:F }}>Minimize</button>
               </div>
@@ -13681,8 +13738,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ margin:"0 14px 8px", padding:"10px 12px", borderRadius:10, background:C.isDark?"rgba(180,83,9,0.15)":"#FEF3C7", border:`1px solid ${C.isDark?"rgba(180,83,9,0.4)":"#FDE68A"}`, display:"flex", alignItems:"flex-start", gap:9 }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.isDark?"#FBBF24":"#B45309"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:1 }}><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:12.5, fontWeight:700, color:C.isDark?"#FBBF24":"#B45309" }}>Plateau detected</div>
-                        <div style={{ fontSize:11.5, color:C.isDark?"#FCD34D":"#92400E", marginTop:2, lineHeight:1.4 }}>{dl.suggestion}.</div>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.isDark?"#FBBF24":"#B45309" }}>Plateau detected</div>
+                        <div style={{ fontSize:11, color:C.isDark?"#FCD34D":"#92400E", marginTop:2, lineHeight:1.4 }}>{dl.suggestion}.</div>
                         <div style={{ display:"flex", gap:8, marginTop:7 }}>
                           <button onClick={() => {
                             // Apply the deload weight to this exercise's working sets
@@ -13879,8 +13936,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           borderTop:`1px solid ${C.divider}`,
                         }}>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13.5, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{w.name}</div>
-                            <div style={{ fontSize:11.5, color:C.sub, fontFamily:MONO, marginTop:1 }}>{w.w ? `${w.w}${unit} × ${w.r}` : `${w.r} reps`}</div>
+                            <div style={{ fontSize:13, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{w.name}</div>
+                            <div style={{ fontSize:11, color:C.sub, fontFamily:MONO, marginTop:1 }}>{w.w ? `${w.w}${unit} × ${w.r}` : `${w.r} reps`}</div>
                           </div>
                           <div style={{
                             flexShrink:0, fontSize:12, fontWeight:800, fontFamily:MONO,
@@ -14587,14 +14644,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })()}
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:9.5, fontWeight:700, opacity:0.6, letterSpacing:1.2, marginBottom:1 }}>
+                  <div style={{ fontSize:9, fontWeight:700, opacity:0.6, letterSpacing:1.2, marginBottom:1 }}>
                     {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
                   </div>
                   <div style={{ display:"flex", alignItems:"baseline", gap:6, minWidth:0 }}>
                     <div style={{ fontFamily:MONO, fontSize:21, fontWeight:700, letterSpacing:-0.8, lineHeight:1, flexShrink:0 }}>
                       {ws.count > 0 ? ws.count : `${ws.thisWeek}/${ws.target}`}
                     </div>
-                    <div style={{ fontSize:10.5, fontWeight:600, opacity:0.6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    <div style={{ fontSize:10, fontWeight:600, opacity:0.6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                       {ws.count > 0
                         ? `wk${ws.count === 1 ? "" : "s"} · ${ws.thisWeek}/${ws.target}`
                         : "this week"}
@@ -14735,14 +14792,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <Icon name="calendar" size={17} color={C.accent}/>
                 <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Start your first program</div>
               </div>
-              <div style={{ fontSize:12.5, color:C.sub, marginBottom:16, lineHeight:1.45 }}>Pick a proven split and make it yours — you can change every exercise, set and rep.</div>
+              <div style={{ fontSize:12, color:C.sub, marginBottom:16, lineHeight:1.45 }}>Pick a proven split and make it yours — you can change every exercise, set and rep.</div>
               <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
                 <button onClick={() => setShowTemplates(true)} style={{
                   background:C.primary, color:C.onPrimary, border:"none", borderRadius:12,
-                  padding:"12px 22px", fontSize:13.5, fontWeight:700, cursor:"pointer", fontFamily:F
+                  padding:"12px 22px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F
                 }}>Browse templates</button>
                 <button onClick={() => setShowBuilder(true)} style={{
-                  background:"none", border:"none", color:C.sub, fontSize:12.5, fontWeight:600,
+                  background:"none", border:"none", color:C.sub, fontSize:12, fontWeight:600,
                   cursor:"pointer", fontFamily:F, textDecoration:"underline", textUnderlineOffset:3,
                 }}>or build your own</button>
               </div>
@@ -16239,7 +16296,7 @@ function FirstTimeCues({ name, muscle, C, onOpenGuide }) {
       {cues.map((c, i) => (
         <div key={i} style={{ display:"flex", gap:7, alignItems:"flex-start", marginTop: i ? 3 : 0 }}>
           <span style={{ color:C.muted, fontSize:11, lineHeight:1.5, flexShrink:0 }}>•</span>
-          <span style={{ fontSize:11.5, color:C.text, lineHeight:1.45 }}>{c}</span>
+          <span style={{ fontSize:11, color:C.text, lineHeight:1.45 }}>{c}</span>
         </div>
       ))}
     </div>
@@ -16424,7 +16481,7 @@ function ExerciseVolumeChart({ data, unit, C }) {
         <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1.1 }}>
           {fmtVal(data[scrub.i].value)}{unit ? ` ${unit}` : ""}
         </div>
-        <div style={{ fontSize:9.5, color:C.sub, marginTop:1 }}>{fmtPointDate(data[scrub.i])}</div>
+        <div style={{ fontSize:9, color:C.sub, marginTop:1 }}>{fmtPointDate(data[scrub.i])}</div>
       </div>
     )}
     </div>
@@ -17731,7 +17788,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                 {[{ id:"all", label:"All Friends" }, { id:"close", label:"Close Friends" }].map(t => (
                   <button key={t.id} onClick={() => setBoardMode(t.id)} style={{
                     flex:1, padding:"8px 0", borderRadius:9, border:"none", cursor:"pointer", fontFamily:F,
-                    fontSize:12.5, fontWeight:700, letterSpacing:-0.1,
+                    fontSize:12, fontWeight:700, letterSpacing:-0.1,
                     background: boardMode===t.id ? C.bg : "transparent",
                     color: boardMode===t.id ? C.text : C.sub,
                     boxShadow: boardMode===t.id ? "0 1px 3px rgba(0,0,0,0.12)" : "none",
@@ -17868,7 +17925,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
                   <div>
                     <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Close Friends</div>
-                    <div style={{ fontSize:11.5, color:C.sub, marginTop:2 }}>{closeFriends.length}/{CLOSE_FRIENDS_MAX} selected</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{closeFriends.length}/{CLOSE_FRIENDS_MAX} selected</div>
                   </div>
                   <button onClick={() => setShowCloseFriendPicker(false)} style={{ fontSize:14, fontWeight:700, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Done</button>
                 </div>
@@ -17994,7 +18051,17 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       volume += daySessions.reduce((a, s) => a + cvt(sessionVolume(s), s.unit || "lbs", unit || "lbs"), 0);
     }
     const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
-    return { sessions, volume: Math.round(volume), streak: ws.count, prs: Object.keys(store.prs||{}).length, loaded:true };
+    // PRs THIS WEEK — not `Object.keys(store.prs).length`, which is every exercise you have EVER
+    // set a PR on. Under a heading that reads "THIS WEEK" that rendered as "57 PRs" for a lifter
+    // with 57 lifts on record, whatever they had actually done that week. `prEvents` is the dated
+    // PR-hit log written at finish and is what Wrapped already counts; dedupe by exercise so an
+    // exercise that set a weight AND an e1RM PR in one session counts once.
+    const prNamesThisWeek = new Set(
+      (store.prEvents || [])
+        .filter(e => e?.date && dateFromKey(e.date).getTime() >= weekAgo)
+        .map(e => e.name)
+    );
+    return { sessions, volume: Math.round(volume), streak: ws.count, prs: prNamesThisWeek.size, loaded:true };
   }
 
   // Compute stats for one friend from their fetched workout_history rows.
@@ -18051,8 +18118,14 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
             `workout_history?user_id=in.(${idList})&workout_date=gte.${weekAgoISO}&select=user_id,workout_date,exercises,created_at`,
             {}, token
           ).catch(() => []),
+          // WINDOWED. Without the date filter this counted every row a friend has ever had —
+          // one per exercise they have ever PR'd — and printed it under "THIS WEEK".
+          // `updated_at` is only truthful because of the personal_records_touch_updated_at
+          // trigger: the client upserts {user_id, exercise_name, weight_lbs} with
+          // merge-duplicates, and PostgREST's on-conflict UPDATE touches only the columns in the
+          // payload, so before that trigger this column froze at the row's first insert.
           sb.query(
-            `personal_records?user_id=in.(${idList})&select=user_id`,
+            `personal_records?user_id=in.(${idList})&updated_at=gte.${new Date(Date.now() - 7 * 86400000).toISOString()}&select=user_id`,
             {}, token
           ).catch(() => []),
           sb.query(
@@ -18363,7 +18436,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:13, fontWeight:700, color:C.text, display:"flex", alignItems:"center", gap:6 }}>
                     {new Date(e.date + "T12:00:00").toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})}
-                    {e.source === "health" && <span style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.3, color:C.muted, border:`1px solid ${C.border}`, borderRadius:5, padding:"1px 5px" }}>Apple Health</span>}
+                    {e.source === "health" && <span style={{ fontSize:8, fontWeight:700, letterSpacing:0.3, color:C.muted, border:`1px solid ${C.border}`, borderRadius:5, padding:"1px 5px" }}>Apple Health</span>}
                   </div>
                   <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
                     {[e.weight != null ? `${e.weight} ${unit}` : null, ...Object.entries(e.measurements||{}).map(([k,v]) => `${MEASURE_FIELDS.find(m=>m.key===k)?.label||k} ${v}`)].filter(Boolean).join(" · ") || "Photo only"}
@@ -19294,7 +19367,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {showDelete && createPortal((
         <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
           <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}` }}>
-            <div style={{ width:46, height:46, borderRadius:13, background:"#ef444418", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
+            <div style={{ width:46, height:46, borderRadius:RADIUS.md, background:"#ef444418", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
               <Icon name="trash" size={22} color="#ef4444"/>
             </div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.3 }}>Delete your account?</div>
@@ -20135,7 +20208,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
 
           {/* Accent eyebrow — small uppercase kicker above the headline for a more editorial,
               premium feel. */}
-          <div style={{ marginTop:30, fontSize:11.5, fontWeight:800, letterSpacing:2.5, color:C.sub, fontFamily:F, textTransform:"uppercase" }}>
+          <div style={{ marginTop:30, fontSize:11, fontWeight:800, letterSpacing:2.5, color:C.sub, fontFamily:F, textTransform:"uppercase" }}>
             Built for lifters
           </div>
           {/* Display-face headline — the condensed display font reads bolder/taller than Inter and
@@ -20147,7 +20220,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
             Lift heavy.<br/>Track everything.
           </h1>
           <p style={{
-            fontSize:15.5, color:C.sub, lineHeight:1.5, marginBottom:0, fontFamily:F,
+            fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:0, fontFamily:F,
             maxWidth:330
           }}>
             A gym log that actually keeps up with you. Train first — make it social later.
@@ -20174,7 +20247,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
                 }}>
                   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{f.icon}</svg>
                 </div>
-                <div style={{ fontSize:14.5, color:C.text, fontWeight:500, fontFamily:F }}>{f.label}</div>
+                <div style={{ fontSize:14, color:C.text, fontWeight:500, fontFamily:F }}>{f.label}</div>
               </div>
             ))}
           </div>
@@ -20187,7 +20260,7 @@ function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason 
         <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", gap:10 }}>
           <button onClick={() => onGuest && onGuest()} style={{
             width:"100%", background:C.text, color:C.bg, border:"none",
-            borderRadius:15, padding:"18px", fontSize:16, fontWeight:800,
+            borderRadius:RADIUS.lg, padding:"18px", fontSize:16, fontWeight:800,
             cursor:"pointer", fontFamily:F, letterSpacing:-0.3,
             transition:"transform 0.1s", boxShadow:"0 10px 24px rgba(0,0,0,0.18)",
             display:"flex", alignItems:"center", justifyContent:"center", gap:9,
@@ -20710,7 +20783,7 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
             {review.summary.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map((para, i) => (
               <div key={i} style={{ display:"flex", gap:11, marginBottom:15 }}>
                 <div style={{ flexShrink:0, width:6, height:6, borderRadius:3, background:C.accent, marginTop:8 }}/>
-                <div style={{ fontSize:14.5, lineHeight:1.6, color:C.text }}>{para}</div>
+                <div style={{ fontSize:14, lineHeight:1.6, color:C.text }}>{para}</div>
               </div>
             ))}
           </div>
@@ -20729,7 +20802,7 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
                   border:`2px solid ${a.done ? C.accent : C.border}`, background:a.done ? C.primary : "transparent",
                   display:"flex", alignItems:"center", justifyContent:"center", color:C.onPrimary, fontSize:12, fontWeight:800
                 }}>{a.done ? "✓" : ""}</span>
-                <span style={{ fontSize:13.5, lineHeight:1.5, color:a.done ? C.muted : C.text, textDecoration:a.done ? "line-through" : "none" }}>{a.text}</span>
+                <span style={{ fontSize:13, lineHeight:1.5, color:a.done ? C.muted : C.text, textDecoration:a.done ? "line-through" : "none" }}>{a.text}</span>
               </button>
             ))}
           </div>
