@@ -1,4 +1,4 @@
-// v178091716848
+// v178091716849
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7122,10 +7122,25 @@ function MuscleBalance({ store, C, days = 30 }) {
   const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#c8f135", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
 
   if (!data.total) {
+    // A floating centered paragraph with no heading, sitting directly above the readiness card,
+    // was the generic-empty-state recipe again — and unlike the workout/discover ones, this is
+    // the ONE spot where the real feature underneath (five labeled, colored bars) is cheap to
+    // preview: show the same section header and the same five rows, flat and dim, so the empty
+    // state reads as "this feature, waiting for data" rather than a disconnected placeholder.
+    const skeletonGroups = ["Push", "Pull", "Legs", "Core", "Cardio"];
     return (
       <div style={{ padding:"16px 0 8px" }}>
-        <div style={{ padding:"24px 16px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.5 }}>
-          Log some workouts to see how your training volume is distributed across muscle groups.
+        <SectionLabel C={C}>Muscle balance</SectionLabel>
+        {skeletonGroups.map(g => (
+          <div key={g} style={{ marginBottom:9 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+              <span style={{ fontSize:12.5, color:C.muted, fontWeight:600 }}>{g}</span>
+            </div>
+            <div style={{ height:7, borderRadius:4, background:C.divider }}/>
+          </div>
+        ))}
+        <div style={{ fontSize:12, color:C.sub, marginTop:6, lineHeight:1.5 }}>
+          Log a few workouts and this fills in — showing how your training splits across muscle groups.
         </div>
       </div>
     );
@@ -14710,20 +14725,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                Templates" card, then a "Use Template" button that went to the identical place, then
                "Build Your Own" as the BIGGEST, brightest control even though building a 6-day split
                from scratch is the hardest thing a new lifter could pick. The template is the easy
-               on-ramp, so it's the button; building your own is the quiet alternative. */
-            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"26px 20px", textAlign:"center", marginTop:4 }}>
-              <div style={{ marginBottom:14, display:"flex", justifyContent:"center" }}><Icon name="calendar" size={30} color={C.accent}/></div>
-              <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:5, letterSpacing:-0.2 }}>Start your first program</div>
-              <div style={{ fontSize:12.5, color:C.sub, marginBottom:18, lineHeight:1.45 }}>Pick a proven split and make it yours — you can change every exercise, set and rep.</div>
-              <button onClick={() => setShowTemplates(true)} style={{
-                background:C.primary, color:C.onPrimary, border:"none", borderRadius:12,
-                padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F
-              }}>Browse templates</button>
-              <button onClick={() => setShowBuilder(true)} style={{
-                display:"block", margin:"14px auto 0", background:"none", border:"none",
-                color:C.sub, fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:F,
-                textDecoration:"underline", textUnderlineOffset:3,
-              }}>or build your own from scratch</button>
+               on-ramp, so it's the button; building your own is the quiet alternative.
+               Left-aligned header row + inline actions, not the centered icon-circle/headline/
+               button "hero" recipe used everywhere else in the app for an empty state — this sits
+               directly under Quick Start and should read as the next line of the same screen, not
+               a second unrelated card competing for the same "start something" attention. */
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"18px", marginTop:4 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:8 }}>
+                <Icon name="calendar" size={17} color={C.accent}/>
+                <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Start your first program</div>
+              </div>
+              <div style={{ fontSize:12.5, color:C.sub, marginBottom:16, lineHeight:1.45 }}>Pick a proven split and make it yours — you can change every exercise, set and rep.</div>
+              <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+                <button onClick={() => setShowTemplates(true)} style={{
+                  background:C.primary, color:C.onPrimary, border:"none", borderRadius:12,
+                  padding:"12px 22px", fontSize:13.5, fontWeight:700, cursor:"pointer", fontFamily:F
+                }}>Browse templates</button>
+                <button onClick={() => setShowBuilder(true)} style={{
+                  background:"none", border:"none", color:C.sub, fontSize:12.5, fontWeight:600,
+                  cursor:"pointer", fontFamily:F, textDecoration:"underline", textUnderlineOffset:3,
+                }}>or build your own</button>
+              </div>
             </div>
           )}
         </div>
@@ -17666,7 +17688,9 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
               </div>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Friends Activity</div>
-                <div style={{ fontSize:11, opacity:0.65, marginTop:3 }}>Weekly stats</div>
+                {/* A static "Weekly stats" caption under every account, forever, is the generic
+                    UI-kit-card tell — show the real number once there's one to show. */}
+                <div style={{ fontSize:11, opacity:0.65, marginTop:3 }}>{following.length > 0 ? `${following.length} following` : "Weekly stats"}</div>
               </div>
             </button>
             <button onClick={() => setSubTab("groups")} style={{
@@ -17681,7 +17705,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
               </div>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
-                <div style={{ fontSize:11, color:C.sub, marginTop:3 }}>Private crews</div>
+                <div style={{ fontSize:11, color:C.sub, marginTop:3 }}>{(store.groups?.length || 0) > 0 ? `${store.groups.length} joined` : "Private crews"}</div>
               </div>
             </button>
           </div>
@@ -17877,15 +17901,34 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
 
           {(() => {
             const suggested = store.users.filter(u => u.id !== currentUserId);
-            // No one to suggest yet (new user, few accounts, or offline) — show a friendly
-            // prompt instead of an orphaned "SUGGESTED PEOPLE" header over an empty card.
+            // No one to suggest yet (new user, few accounts, or offline). This used to be the
+            // same icon-in-a-rounded-square + headline + subtext recipe as every other empty
+            // state — and the icon was a literal duplicate of the "Groups" tile's icon two rows
+            // above it. Dropped the icon entirely and gave the prompt a real action instead of
+            // just text: reuses the same share-profile flow as the profile screen's own share
+            // button, so tapping it actually does something rather than just restating "share
+            // your profile" as a sentence with no button behind it.
             if (!suggested.length) return (
-              <div style={{ textAlign:"center", padding:"40px 28px" }}>
-                <div style={{ width:52, height:52, borderRadius:15, background:C.accentSoft, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px" }}>
-                  <Icon name="users" size={24} color={C.accent}/>
+              <div style={{ padding:"18px 2px 8px" }}>
+                <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:12 }}>
+                  No one to suggest yet — search for friends above, or share your profile so they can find you.
                 </div>
-                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Find your crew</div>
-                <div style={{ fontSize:12.5, color:C.sub, marginTop:5, lineHeight:1.5 }}>Search for friends above, or share your profile so they can find you.</div>
+                <button onClick={() => {
+                  if (store.isPublic !== true) {
+                    toast("Turn on 'Public profile' in Settings to share your link", "info");
+                    haptic("warn");
+                    return;
+                  }
+                  const link = `${window.location.origin}/u/${currentUserId}`;
+                  shareLink({ title: "My Seshd profile", url: link }, () => toast("Profile link copied", "success"));
+                  haptic("tap");
+                }} style={{
+                  background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
+                  padding:"10px 18px", fontSize:13, fontWeight:700, color:C.text, cursor:"pointer",
+                  fontFamily:F, display:"inline-flex", alignItems:"center", gap:8,
+                }}>
+                  <Icon name="share" size={15} color={C.text}/> Share your profile
+                </button>
               </div>
             );
             return (<>

@@ -91,7 +91,7 @@ bundle first (stale bundle = false failures) and reads each sim's real exit code
 skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
 code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
 
-**`node build/run_sims.mjs --pw` also runs the 39 Playwright suites** (+~3min): it builds dist with
+**`node build/run_sims.mjs --pw` also runs the 41 Playwright suites** (+~3min): it builds dist with
 STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
 in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
 anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
@@ -1517,13 +1517,29 @@ after: nothing future-dated, and no comment or kudos earlier than its post.
   theme-dependent accent ring; both fixed. Mo reviewed the three remaining taste calls and rules
   the light-theme PR green and the exercise-detail PR tile FINE as they are. Do not reopen either
   without a new reported symptom.
-- **The rest of the "make it feel less AI-generated" critique**: the post header, `PRTag` and set
-  ledger are done; a distinctive muscle visualisation, less containment (fewer rounded cards) and
-  a typography pass are deliberately DEFERRED until after launch. Editing inline styles across a
-  23k-line single file with no CSS layer is days of work with real regression risk, and it does
-  not move the app toward submission. The item to ignore in that critique is "add one or two
+- **The rest of the "make it feel less AI-generated" critique**: the post header, `PRTag`, set
+  ledger and (Aug 17) the three repeated empty states are done; **less containment (fewer rounded
+  cards) and a typography pass are still deliberately DEFERRED** — Mo's own call, to be discussed
+  further before touching it, since it's the highest-risk piece (broad inline-style changes across
+  a 25k-line single file with no CSS layer). The item to ignore in that critique is "add one or two
   deliberate imperfections" — brand quirks are a consequence of solving a specific problem a
   specific way, not a decoration you add on purpose.
+- **THREE UNRELATED SCREENS SHARING ONE EMPTY-STATE TEMPLATE IS THE TELL, NOT ANY ONE INSTANCE OF
+  IT.** A design critique screenshotted the real app and found the Workout tab's "Start your first
+  program", Discover's "Find your crew" and the profile's muscle-balance block all used the
+  identical recipe — centered icon-in-a-rounded-square, bold headline, muted subtext, one button —
+  which is the single most recognizable "assembled from a component kit" signal in the whole app.
+  Fixed by making all three DIFFERENT, deliberately: the Workout tab's card is now a left-aligned
+  header row with inline actions sitting directly under Quick Start (it was competing with Quick
+  Start as a second "start something" card, not just visually generic); Discover's dropped the icon
+  entirely — it was a literal duplicate of the Groups tile's icon two rows above it — and replaced
+  a passive sentence with a real "Share your profile" button wired to the same share flow the
+  profile screen's own button uses; the profile's previews the actual feature (five colored,
+  labeled bars, dimmed) instead of an unrelated floating paragraph. **When a generic-empty-state
+  finding covers multiple screens, don't reskin the same template three times — give each one a
+  construction that fits what's actually underneath it.** Also fixed in the same pass: the
+  Discover "Friends Activity"/"Groups" tiles showed a static caption ("Weekly stats" / "Private
+  crews") forever; they now show the real count once there's one to show. Sim: `pw_emptystates`.
 - ~~NOT YET CONFIRMED ON DEVICE: the hold-to-reorder fix~~ — **CONFIRMED FIXED ON DEVICE** (Mo,
   Aug 16). The day editor's drag handle was `pan-y`, which hands WebKit the vertical axis; the
   symptom was iOS-only and could not be reproduced in Chromium at all. Worth remembering as the

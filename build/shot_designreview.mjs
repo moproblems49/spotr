@@ -78,6 +78,7 @@ async function shot(theme, tab, name, opts = {}) {
 for (const theme of ["dark", "light"]) {
   await shot(theme, "Home", `shot_review_feed_${theme}`);
   await shot(theme, "Workout", `shot_review_tracker_${theme}`, { live: true });
+  await shot(theme, "Workout", `shot_review_workoutempty_${theme}`);
   await shot(theme, "Discover", `shot_review_discover_${theme}`);
   await shot(theme, "Profile", `shot_review_profile_${theme}`);
 }
