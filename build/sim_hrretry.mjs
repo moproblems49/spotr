@@ -101,5 +101,52 @@ check("6. if the watch never syncs, attachWorkoutHr resolves null after exactly 
   hr2 === null && readCalls === 2, `hr2=${hr2} readCalls=${readCalls}`);
 check("6b. and never touches the store", storeUpdates2 === 0, `storeUpdates2=${storeUpdates2}`);
 
+// ── backfillMissingHr: closes the gap attachWorkoutHr's own retry can't — the app backgrounded
+// or was killed before the 90s retry fired, so the session never got a second attempt at all.
+// This runs on every loadUserData (boot + foreground), scanning appHistory for recent sessions
+// missing hrSummary and reconstructing their start time from finishedAt - duration (workout_history
+// has no separate start-time column). Mo: "I don't know if it was supposed to show in the last 2
+// workouts now or just future workouts" — the honest answer without this is "future only"; this is
+// what makes it also catch up sessions that already finished before the fix, next time he opens
+// the app, as long as they're within the last 24h.
+const { backfillMissingHr } = await import(join(BUILD, "app.mjs"));
+readCalls = 0;
+window.Capacitor.Plugins.Health.readSamples = async (opts) => {
+  readCalls++;
+  if (opts.dataType !== "heartRate") return { samples: [] };
+  return { samples: [150, 160, 155, 165].map(v => ({ value: String(v) })) }; // watch has synced by now
+};
+const now = Date.now();
+const appHistory = {
+  "2026-08-18": {
+    // Missing hrSummary, finished 2h ago (well inside the 24h window) — should backfill.
+    "sess-recent": { dayName: "Push A", duration: 3600, finishedAt: now - 2 * 3600000 },
+    // Already has hrSummary — must be left alone (no redundant read).
+    "sess-has-hr": { dayName: "Pull A", duration:3000, finishedAt: now - 3 * 3600000, hrSummary: { avg: 99, peak: 110 } },
+    // Missing hrSummary but 30h old — outside the window, must NOT be retried forever.
+    "sess-old": { dayName: "Legs A", duration: 2800, finishedAt: now - 30 * 3600000 },
+  },
+};
+let backfillSets = [];
+const backfillStore = fn => {
+  const fakePrev = { history: JSON.parse(JSON.stringify(appHistory)) };
+  const next = fn(fakePrev);
+  // Only count a session as "backfilled" if it GAINED hrSummary — a naive scan for "does the
+  // resulting snapshot have hrSummary" would also match sess-has-hr, which had it BEFORE this ran.
+  for (const [dk, day] of Object.entries(next.history)) for (const [sid, sess] of Object.entries(day)) {
+    const before = appHistory[dk]?.[sid];
+    if (sess.hrSummary && !(before && before.hrSummary)) backfillSets.push(sid);
+  }
+};
+backfillMissingHr(appHistory, { setStore: backfillStore,
+  getToken: () => "faketoken", currentUserId: "me", isGuest: false, sb });
+await new Promise(r => setTimeout(r, 150)); // the read is async; let it settle (no 90s retry needed here — it succeeds on the first try)
+check("7. a recent session missing hrSummary gets backfilled", backfillSets.includes("sess-recent"),
+  `backfillSets=${JSON.stringify(backfillSets)}`);
+check("8. a session that already has hrSummary is left alone (no redundant write)",
+  !backfillSets.includes("sess-has-hr"));
+check("9. a session older than the 24h window is not retried", !backfillSets.includes("sess-old"));
+check("10. exactly one HealthKit read happened (only the one eligible session)", readCalls === 1, `readCalls=${readCalls}`);
+
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

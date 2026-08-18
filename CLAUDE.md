@@ -406,26 +406,48 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   re-checks. Apple Watch -> iPhone HealthKit sync is not instant, so a watch that finished recording
   seconds before Finish commonly hasn't synced to the phone's store yet; the read comes back empty
   for exactly the sessions you'd expect — the most RECENT ones, whose sync hadn't caught up by read
-  time. `attachWorkoutHr()` (dependency-injected, exported for the sim harness) now retries once,
-  ~90s later, re-querying up to THAT moment. Known remaining gap: if the app is backgrounded or
-  killed before the retry fires, iOS suspends the timer and this still misses it — closing that
-  needs tracking which recent sessions are still missing HR across a relaunch, a larger change.
-  Sim: `sim_hrretry`, stubbing HealthKit to return empty on the first read and real samples on the
-  second — the exact scenario a one-shot read can never recover from.
-- **HIDE-ON-SCROLL-DOWN, REVEAL-ON-SCROLL-UP USES `max-height` ON A WRAPPER, NOT `transform` ON THE
-  HEADER.** The live workout's Discard/timer/Finish row plus its sets/volume/rest-tools row now
-  collapse when the exercise list scrolls down and reopen on scroll up, floored so scrolling back
-  near the top ALWAYS shows it regardless of the last motion's direction. `transform:translateY()`
-  alone (the usual "cheap, GPU-composited" answer) was the wrong tool here on purpose: the header is
-  a flex sibling ABOVE the scroller, not layered over it, so translating it doesn't reclaim the
-  space — the scroller stays the same size and the header just relocates behind whatever's below it.
-  `max-height` on a wrapper, transitioning to a REAL MEASURED height (not a guessed constant — the
-  rest-tools row can be one or two lines depending on whether a superset badge is showing) is what
-  actually grows the scroller. This is still just ONE state flip per direction change, not per
-  scroll pixel — same rule as the gesture-perf pattern elsewhere in this file, just applied to a
-  scroll listener instead of a drag. Sim: `pw_hideheader`, which reads `getComputedStyle().maxHeight`
-  after the 280ms transition settles (a raw scroll callback races the CSS transition; reading
-  mid-transition proved to be a test bug the first time this was written, not an app bug).
+  time. `attachWorkoutHr()` (dependency-injected, exported for the sim harness) retries once,
+  ~90s later, re-querying up to THAT moment — but that only helps a workout finished AFTER the fix
+  shipped. Mo asked the natural follow-up: "was that supposed to show in my last 2 workouts now or
+  just future ones?" Honest answer without more work: future only. **`backfillMissingHr(appHistory,
+  …)` closes that gap** — it runs on every `loadUserData` (boot + foreground, same hook the
+  persistence sweep uses), scans recent history for a session with no `hrSummary`, reconstructs its
+  start time as `finishedAt - duration*1000` (workout_history has no separate start-timestamp
+  column), and retries it through the same `attachWorkoutHr`. Windowed to the last 24h — a session
+  than old either genuinely never synced (nothing to backfill) or its watch data has likely aged out
+  of HealthKit's readable window anyway, and retrying forever would mean a HealthKit read on every
+  foreground for the lifetime of the account. Known remaining gap, same shape as before: if the app
+  is killed before `attachWorkoutHr`'s own 90s retry fires AND the next foreground happens more than
+  24h later, that one session is never recovered — closing that fully needs a persisted "still
+  missing HR" queue that survives past the 24h window, a larger change. Sim: `sim_hrretry`
+  (checks 7-10 cover the backfill: a recent miss gets caught, an already-filled session is left
+  alone with no redundant HealthKit read, and a >24h-old miss is not retried).
+- **A HEADER THAT "SNAPS" ON A THRESHOLD IS NOT THE SAME THING AS ONE THAT TRACKS THE GESTURE.**
+  The first cut of hide-on-scroll-down/reveal-on-scroll-up was a boolean + `transition:max-height`
+  — collapsed or open, animated between the two on a fixed clock once a scroll-distance threshold
+  was crossed. Mo: "it just snaps up and down, I wanted it to move up or down slowly with the
+  swipe." That is a different mechanism, not a tuning knob on the first one: the header now tracks
+  scroll CONTINUOUSLY, the same ref-driven pattern as every other gesture in this file (see the
+  gesture-perf note below) applied to a scroll listener instead of a drag — a `collapseRef` (0..1)
+  is nudged by the scroll delta on every `onScroll` and written straight to the wrapper's
+  `max-height`, no CSS transition at all, floored so scrolling back near the top always reopens it
+  regardless of the last motion's direction. **The header is a flex sibling ABOVE the scroller, not
+  layered over it**, so `max-height` on the wrapper (not `transform` on the header) is what actually
+  grows the scroller to reclaim the space.
+  **"It bugs when I get to the end of the workout page" was iOS rubber-band overscroll.** Past the
+  true scrollable range, `scrollTop` keeps firing scroll events but its value bounces past the max
+  and back with no further gesture available to correct it (you're already at the end) — the old
+  boolean version could latch fully hidden on a spurious bounce delta and have no recovery path.
+  Fixed by clamping `scrollTop` to `[0, maxScroll]` before computing any delta. Sim: `pw_hideheader`
+  drives a real scroll sequence and specifically simulates a rubber-band bounce at the list's end,
+  then confirms a real scroll-up still reopens it. **Test-writing trap in the same file, worth
+  remembering**: the first draft computed `maxScroll` ONCE near the top of the test and reused it —
+  but the scroller is `flex:1` against the header wrapper, so its `clientHeight` GROWS as the
+  header's `max-height` shrinks toward 0, meaning the real max scroll SHRINKS as the header
+  collapses. The stale, larger value sent later `scrollTop` targets past the browser's actual
+  current ceiling, which silently clamped them — failing the recovery check for a reason that had
+  nothing to do with the app. Re-measure the live max immediately before using it, don't reuse a
+  value from before any state change happened.
 - **8PX AND 9PX FONT SIZES ARE RETIRED — 62 SITES SNAPPED UP TO 10.** Both sat below the 11px
   "undersized UI text" floor a design-tool detector flags: 17 at 8px, 45 at 9px, the app's smallest
   captions (stat-tile labels, section kickers like FRONT/BACK/TODAY, axis labels, badge text). All

@@ -1,4 +1,4 @@
-// v178091716863
+// v178091716864
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5715,7 +5715,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -6758,6 +6758,25 @@ function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId,
     return new Promise(res => setTimeout(() => res(attempt(Date.now(), true)), delayMs));
   });
   return attempt(Date.now(), false);
+}
+// Catches up any RECENT session that finished without heart-rate data — closes the gap
+// attachWorkoutHr's own retry can't reach: if the app was backgrounded or killed before its ~90s
+// retry fired, nothing ever ran again for that session. Runs after every loadUserData (boot AND
+// foreground re-fetch), using finishedAt (the real created_at from the server) and duration to
+// reconstruct the session's start time — workout_history has no separate start-time column.
+// Bounded to the last 24h so it can't retry forever for a session that genuinely has no watch
+// data (older than that, a HealthKit read is never newly going to succeed) — the WINDOW is the
+// cap; no extra persisted attempt-counter is needed.
+function backfillMissingHr(appHistory, { setStore, getToken, currentUserId, isGuest, sb }) {
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  for (const [dk, day] of Object.entries(appHistory || {})) {
+    for (const [sid, sess] of Object.entries(day || {})) {
+      if (sess.hrSummary || !sess.finishedAt || !sess.duration) continue;
+      if (sess.finishedAt < cutoff) continue;
+      const wStartMs = sess.finishedAt - sess.duration * 1000;
+      attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId, isGuest, sb, delayMs: 60000 });
+    }
+  }
 }
 const REST_NOTIF_ID = 7711; // fixed id so we can reliably cancel/replace the rest notification
 let __notifPermAsked = false;
@@ -12258,25 +12277,37 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const [restEditor, setRestEditor] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
   // Hide-on-scroll-down, reveal-on-scroll-up for the workout header (Discard/timer/Finish + the
-  // sets/volume/rest-tools row). ONE state flip per direction change, not per scroll pixel — same
-  // rule as the gesture-perf pattern (PullToRefresh, SetRow swipe): setState on threshold-cross
-  // only, never in the scroll handler's hot path. topBarRef measures the real rendered height once
-  // (not a guessed constant) so the open/close animation neither clips content nor overshoots into
-  // a long dead tail waiting for max-height to "catch up" to the already-fully-visible content.
-  const [topBarHidden, setTopBarHidden] = useState(false);
+  // sets/volume/rest-tools row) — TRACKS THE SCROLL CONTINUOUSLY, not a binary snap. The first cut
+  // used a boolean + CSS transition (setState on threshold-cross, animate over a fixed duration);
+  // it looked like the header was "snapping" rather than moving with the finger, because a CSS
+  // transition runs on the clock, not on the gesture. This is the same ref-write pattern as
+  // PullToRefresh/SetRow (no setState per frame, direct DOM writes, one committed value) applied to
+  // a scroll listener instead of a drag: collapseRef holds a 0(open)..1(closed) progress driven 1:1
+  // by scroll distance, written straight to the wrapper's style with no transition at all — the
+  // "animation" IS the finger moving.
+  //
+  // iOS rubber-band overscroll at the BOTTOM of the list was the second bug ("bugs when I get to
+  // the end") — past the true scrollable range, scrollTop still fires scroll events but its value
+  // bounces, and the old boolean version could latch fully hidden on a spurious bounce delta with
+  // no further scroll-up gesture available to un-stick it (you're already at the end). Clamping `y`
+  // to [0, maxScroll] before computing the delta means overscroll contributes nothing.
   const topBarRef = useRef(null);
   const topBarHRef = useRef(240); // generous default before the first real measurement lands
-  const scrollDirRef = useRef({ lastY: 0 });
+  const collapseRef = useRef(0);  // 0 = fully open, 1 = fully collapsed
+  const lastYRef = useRef(0);
+  const COLLAPSE_PX = 70; // scroll distance to go fully open<->closed — short enough to feel attached to the finger, long enough not to twitch on a a few px of jitter
   const onExerciseScroll = useCallback(e => {
-    const y = e.currentTarget.scrollTop;
-    const d = y - scrollDirRef.current.lastY;
-    scrollDirRef.current.lastY = y;
-    // Always show it once scrolled back near the top — never leave the header hidden over the
+    const el = e.currentTarget;
+    const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+    const y = Math.min(Math.max(el.scrollTop, 0), maxScroll);
+    const d = y - lastYRef.current;
+    lastYRef.current = y;
+    // Always fully open once scrolled back near the top — never leave the header hidden over the
     // start of the list, which is where Discard/Finish are most likely to be reached for.
-    if (y < 24) { setTopBarHidden(h => h ? false : h); return; }
-    if (Math.abs(d) < 4) return; // ignore sub-pixel/rubber-band jitter
-    if (d > 0) setTopBarHidden(h => h ? h : true);
-    else setTopBarHidden(h => h ? false : h);
+    collapseRef.current = y < 8 ? 0 : Math.min(1, Math.max(0, collapseRef.current + d / COLLAPSE_PX));
+    if (topBarRef.current) {
+      topBarRef.current.style.maxHeight = `${(1 - collapseRef.current) * topBarHRef.current}px`;
+    }
   }, []);
   // Measure the real header height once it (and its content — the rest-tools row can change
   // between one and two lines depending on whether a superset badge is showing) has painted.
@@ -13404,12 +13435,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           />
         )}
 
-        {/* Hide-on-scroll-down, reveal-on-scroll-up (see topBarHidden above). max-height, not
+        {/* Hide-on-scroll-down, reveal-on-scroll-up (see collapseRef above). max-height, not
             transform — this one needs to reclaim the vertical space for the scroller beneath it,
-            not just visually cover it, so the exercise list actually gets taller when it closes. */}
-        <div ref={topBarRef} style={{ flexShrink:0, overflow:"hidden",
-          maxHeight: topBarHidden ? 0 : topBarHRef.current,
-          transition: `max-height 0.28s ${EASE_NAV}` }}>
+            not just visually cover it, so the exercise list actually gets taller when it closes.
+            No CSS transition: onExerciseScroll writes maxHeight directly on every scroll event, so
+            the collapse tracks the finger 1:1 instead of animating on a fixed clock. */}
+        <div ref={topBarRef} style={{ flexShrink:0, overflow:"hidden", maxHeight: topBarHRef.current }}>
         {/* Header. FLAT padding, not `env(safe-area-inset-top)`. This used to own the status-bar
             inset because the app's own top bar was hidden during a workout; the top bar is always
             present now, so it is the owner and claiming the inset here would stack TWO full status
@@ -22433,6 +22464,15 @@ function AppInner() {
       // on a SUCCESSFUL load so a failed fetch (which leaves the store at on-device/default values)
       // can never overwrite the server copy of notes/bar-types/close-friends with empties.
       prefsLoadedRef.current = true;
+      // Catch up any recent session's missing heart rate on every load — this is what actually
+      // closes the "backgrounded before the retry fired" gap: attachWorkoutHr's own 90s retry only
+      // runs once, inline in the finish flow, and dies with the tab/app. This fires again every
+      // time the app boots or comes back to the foreground, using appHistory (already computed
+      // above from the fresh server rows) so it sees hrSummary exactly as the app just loaded it.
+      backfillMissingHr(appHistory, {
+        setStore, getToken: () => tokenRef.current || loadSession()?.access_token,
+        currentUserId, isGuest, sb,
+      });
 
       // Persist any PR the history reconcile raised above the stored value, so the fix survives
       // future loads and reaches the leaderboard (which reads personal_records directly) and other
