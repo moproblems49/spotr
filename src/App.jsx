@@ -1,4 +1,4 @@
-// v178091716864
+// v178091716865
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7827,6 +7827,151 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// EXERCISE PICKER SHEET — a large pop-up sheet for adding an exercise, not the tiny
+// ~320px dropdown ExerciseInput opens below itself. Mo, from a Strong-app screenshot:
+// "should we just sorta copy Strong app but make it our own... what we have now doesn't
+// look that great." ExerciseInput's own dropdown stays as the small inline field for
+// CORRECTING an already-added exercise's name — this is only for the "+ Add Exercise"
+// entry points, which is where a cramped 10-result list actually hurt.
+// ═════════════════════════════════════════════════════════════════════════════
+const EXPICK_CATEGORIES = ["All", "Chest", "Back", "Shoulders", "Biceps", "Triceps", "Quads", "Hamstrings", "Glutes", "Calves", "Core"];
+function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercises, store, setStore, currentUserId, token }) {
+  const [q, setQ] = useState("");
+  const [category, setCategory] = useState("All");
+  const [creating, setCreating] = useState(false);
+  const canCreate = !!(store && setStore);
+
+  // Fresh state on every open, not on unmount — Sheet keeps rendering the last children while
+  // it animates closed, so resetting only on `open` (not e.g. a cleanup fn) avoids clearing the
+  // query out from under that closing-frame content.
+  useEffect(() => { if (open) { setQ(""); setCategory("All"); setCreating(false); } }, [open]);
+
+  const trimmedQ = q.trim();
+  const recent = (() => {
+    const seen = new Set();
+    (recentExercises || []).forEach(sess => {
+      (sess.exercises || []).forEach(ex => { if (ex.name) seen.add(ex.name); });
+    });
+    return Array.from(seen).slice(0, 8);
+  })();
+
+  const results = EXERCISE_DB.filter(e =>
+    (!trimmedQ || e.name.toLowerCase().includes(trimmedQ.toLowerCase())) &&
+    (category === "All" || e.muscle === category)
+  );
+  // Grouped-by-muscle browse (Strong's own layout) only when there's nothing narrowing the list
+  // yet — the moment a query or a specific category is picked, a flat list is what answers it.
+  const browsingAll = !trimmedQ && category === "All";
+  const grouped = browsingAll ? (() => {
+    const byMuscle = {};
+    results.forEach(e => { (byMuscle[e.muscle] ||= []).push(e); });
+    return Object.keys(byMuscle).sort().map(m => [m, byMuscle[m]]);
+  })() : null;
+
+  const exactMatch = !trimmedQ || !!(typeof getExEntry === "function" && getExEntry(trimmedQ));
+  const showCreateOption = canCreate && trimmedQ.length >= 2 && !exactMatch;
+
+  function select(ex) {
+    const name = typeof ex === "string" ? ex : ex.name;
+    if (!name) return;
+    onSelect(name);
+    onClose();
+  }
+
+  const Row = ({ ex }) => (
+    <div onClick={() => select(ex)} className="seshd-hit" style={{
+      display:"flex", alignItems:"center", gap:12, padding:"11px 16px", cursor:"pointer",
+    }}>
+      <MuscleIcon muscle={ex.muscle||""} size={32} name={ex.name} C={C}/>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{ex.name}</div>
+        <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{ex.muscle}</div>
+      </div>
+      {store?.prs?.[ex.name] != null && <Icon name="trophy" size={13} color={C.gold}/>}
+    </div>
+  );
+
+  return (
+    <Sheet open={open} onClose={onClose} z={3200}
+      panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0",
+        height:"calc(100dvh - env(safe-area-inset-top) - 40px)",
+        display:"flex", flexDirection:"column", fontFamily:F }}>
+      <div style={{ flexShrink:0, padding:"14px 16px 10px", borderBottom:`1px solid ${C.divider}` }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+          <div style={{ fontSize:17, fontWeight:800, color:C.text }}>Add Exercise</div>
+          <button onClick={onClose} aria-label="Close" className="seshd-hit" style={{
+            width:30, height:30, borderRadius:"50%", background:C.surface, border:"none",
+            color:C.sub, fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+          }}>×</button>
+        </div>
+        <input
+          autoFocus value={q} onChange={e => setQ(e.target.value)}
+          // Enter commits the typed name directly, same as ExerciseInput's own field — without it
+          // an exercise not already in the library (and not worth the full "create custom" flow's
+          // muscle-group picker) has no way in at all.
+          onKeyDown={e => { if (e.key === "Enter" && trimmedQ) { e.preventDefault(); select(trimmedQ); } }}
+          placeholder="Search exercises..."
+          style={{ width:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
+            padding:"11px 14px", fontSize:15, fontWeight:600, color:C.text, outline:"none",
+            boxSizing:"border-box", fontFamily:F }}
+        />
+        <div data-no-tab-swipe onTouchMove={e => e.stopPropagation()} style={{
+          display:"flex", gap:6, overflowX:"auto", marginTop:10, paddingBottom:2,
+          touchAction:"pan-x", WebkitOverflowScrolling:"touch", scrollbarWidth:"none",
+        }}>
+          {EXPICK_CATEGORIES.map(cat => (
+            <button key={cat} onClick={() => setCategory(cat)} style={{
+              padding:"7px 13px", background: category===cat ? C.primary : C.surface,
+              color: category===cat ? C.onPrimary : C.sub,
+              border:`1px solid ${category===cat ? C.primary : C.border}`,
+              borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
+            }}>{cat}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+        paddingBottom:"calc(env(safe-area-inset-bottom) + 12px)" }}>
+        {browsingAll && recent.length > 0 && (
+          <>
+            <SectionLabel C={C} style={{ margin:"14px 16px 2px" }}>Recent</SectionLabel>
+            {recent.map(name => <Row key={"r-"+name} ex={getExEntry(name) || { name, muscle: getMuscle(name) || "" }}/>)}
+          </>
+        )}
+        {grouped
+          ? grouped.map(([m, list]) => (
+              <div key={m}>
+                <SectionLabel C={C} style={{ margin:"14px 16px 2px" }}>{m}</SectionLabel>
+                {list.map(ex => <Row key={ex.name} ex={ex}/>)}
+              </div>
+            ))
+          : results.map(ex => <Row key={ex.name} ex={ex}/>)
+        }
+        {results.length === 0 && !showCreateOption && (
+          <div style={{ padding:"32px 16px", fontSize:14, color:C.sub, textAlign:"center" }}>No exercises found</div>
+        )}
+        {showCreateOption && !creating && (
+          <button onClick={() => { setCreating(true); haptic("tap"); }} style={{
+            width:"calc(100% - 32px)", margin:"10px 16px", textAlign:"left", padding:"14px 16px",
+            background:C.accentSoft, borderRadius:14, border:"none", color:C.text,
+            fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
+          }}>+ Create "{trimmedQ}" as a custom exercise</button>
+        )}
+        {showCreateOption && creating && (
+          <div style={{ padding:"4px 16px 16px" }}>
+            <CreateExercisePicker
+              name={trimmedQ} C={C} store={store} setStore={setStore}
+              currentUserId={currentUserId} token={token}
+              onCreate={(entry) => { setCreating(false); select(entry); }}
+              onCancel={() => setCreating(false)}
+            />
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // SET ROW (enhanced with cleaner design)
 // ═════════════════════════════════════════════════════════════════════════════
 // ═════════════════════════════════════════════════════════════════════════════
@@ -9513,6 +9658,7 @@ function ProgramBuilder({ C, onCancel, onSave }) {
   const [name, setName] = useState("");
   const [activeDayIdx, setActiveDayIdx] = useState(0);
   const [days, setDays] = useState([{ id: uid(), name: "Day 1", exercises: [] }]);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
 
   const REST_OPTIONS = [{s:90,label:"1.5m"},{s:120,label:"2m"},{s:180,label:"3m"},{s:300,label:"5m"}];
 
@@ -9667,13 +9813,14 @@ function ProgramBuilder({ C, onCancel, onSave }) {
           );
         })}
 
-        {/* Add exercise search */}
-        <div style={{ background:inputBg, border:`1.5px dashed ${isDark?C.accent+"55":"#BFDBFE"}`, borderRadius:16, padding:"12px 14px" }}>
-          <div style={{ fontSize:11, fontWeight:600, color:C.accent, marginBottom:8, letterSpacing:0.3 }}>+ ADD EXERCISE</div>
-          <ExerciseInput
-            value="" onSelect={v => addExercise(v)} clearOnSelect C={C}
-          />
-        </div>
+        {/* Add exercise */}
+        <button onClick={() => setShowExercisePicker(true)} style={{
+          width:"100%", background:inputBg, border:`1.5px dashed ${isDark?C.accent+"55":"#BFDBFE"}`,
+          borderRadius:16, padding:"14px", cursor:"pointer", fontFamily:F,
+          fontSize:14, fontWeight:700, color:C.accent, textAlign:"center",
+        }}>+ Add Exercise</button>
+        <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
+          onSelect={v => addExercise(v)} C={C}/>
       </div>
     </div>
   );
@@ -10527,6 +10674,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   const [activeDay, setActiveDay] = useState(initialDayIdx);
   const [shareModal, setShareModal] = useState(null); // { code, generating } when open
   const [confirmDelDay, setConfirmDelDay] = useState(false); // two-tap day-delete confirm
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
   const isActive = store.activeProgramId === prog.id;
 
   useEffect(() => { setLocalProg(JSON.parse(JSON.stringify(prog))); }, [prog.id]);
@@ -10535,7 +10683,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   const day = localProg.days?.[activeDay] || { name:"", exercises:[] };
   function patch(u) { setLocalProg(u); if (onProgramEdited) onProgramEdited(u); }
   function updateEx(ei, ch) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.map((ex,xi)=>xi!==ei?ex:{...ex,...ch})})}); }
-  function addEx() { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:[...(d.exercises||[]),{name:"",sets:3,reps:"8-12",rest:"90",note:""}]})}); }
+  function addEx(name) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:[...(d.exercises||[]),{name:name||"",sets:3,reps:"8-12",rest:"90",note:""}]})}); }
   function removeEx(ei) { patch({...localProg, days:localProg.days.map((d,di)=>di!==activeDay?d:{...d, exercises:d.exercises.filter((_,xi)=>xi!==ei)})}); }
 
   const isDark = C.isDark ?? (C.bg === "#0a0a0c");
@@ -10819,7 +10967,10 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           </DndContext>
         )}
 
-        <button onClick={addEx} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${C.accent}55`, borderRadius:16, color:INK, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
+        <button onClick={() => setShowExercisePicker(true)} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${C.accent}55`, borderRadius:16, color:INK, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
+        <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
+          onSelect={name => addEx(name)} C={C} store={store} token={token}
+          recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
         <button onClick={() => {
           const nd = { id:uid(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
           patch({...localProg, days:[...(localProg.days||[]), nd]});
@@ -12233,6 +12384,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       return s;
     } catch { return null; }
   });
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
 
   // Tell the shell whether a workout is in progress. Mid-set you don't need the logo, the DM and
   // activity icons, or four nav tabs — that chrome was eating ~15% of the screen on the one screen
@@ -14084,11 +14236,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })}
 
-          <button onClick={() => setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name:"",reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }))} style={{
+          <button onClick={() => setShowExercisePicker(true)} style={{
             width:"calc(100% - 28px)", margin:"14px 14px 0", padding:"13px",
             background:C.bg, border:`1px solid ${C.border}`,
             borderRadius:16, fontSize:13, color:C.text, fontWeight:700, cursor:"pointer", fontFamily:F
           }}>+ Add Exercise</button>
+          <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
+            onSelect={name => setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name,reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }))}
+            C={C} store={store} setStore={setStore} currentUserId={currentUserId} token={token}
+            recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
         </div>
 
         {showWorkoutSummary && workoutSummary && <Confetti duration={2.5}/>}
@@ -15572,6 +15728,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const [editDay, setEditDay] = useState(() => JSON.parse(JSON.stringify(previewDay.day)));
   const [viewingExercise, setViewingExercise] = useState(null);
   const [shareModal, setShareModal] = useState(null);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
 
   const isDark = C.isDark ?? (C.bg === "#0a0a0c");
   const BG    = C.bg;
@@ -15932,12 +16089,13 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                 </div>
               );
             })}
-            <div style={{ background:CARD, border:`1.5px dashed ${isDark?"#2563eb55":"#BFDBFE"}`, borderRadius:14, padding:"12px 14px" }}>
-              <div style={{ fontSize:11, fontWeight:700, color:INK, marginBottom:8 }}>+ ADD EXERCISE</div>
-              <ExerciseInput
-                value="" onSelect={v => addEx(v)} clearOnSelect C={C}
-              />
-            </div>
+            <button onClick={() => setShowExercisePicker(true)} style={{
+              width:"100%", background:CARD, border:`1.5px dashed ${isDark?"#2563eb55":"#BFDBFE"}`,
+              borderRadius:14, padding:"14px", cursor:"pointer", fontFamily:F,
+              fontSize:13, fontWeight:700, color:INK, textAlign:"center",
+            }}>+ Add Exercise</button>
+            <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
+              onSelect={v => addEx(v)} C={C} store={store} token={token}/>
           </>
         )}
       </div>

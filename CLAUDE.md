@@ -874,6 +874,31 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   dropdown could never filter. Adding by typing was impossible. If a new call site means "give me
   the finished name", use `onSelect` (+ `clearOnSelect` for an add box), never `onChange`. A
   `key` that remounts on list length is the tell that someone was papering over this.
+- **`ExercisePickerSheet` is the big "Add Exercise" screen; `ExerciseInput`'s own dropdown is now
+  ONLY for correcting an already-added exercise's name.** Mo, from a Strong-app screenshot: "should
+  we just sorta copy Strong app... what we have now doesn't look that great" — `ExerciseInput`'s
+  inline dropdown capped results at 10 inside a ~320px floating box below the field, which is what
+  he was pointing at. `ExercisePickerSheet` is a real `<Sheet>` sized near-fullscreen (Strong's own
+  "large pop screen," explicitly NOT a full-screen route), with a real search field, the same
+  category chips, a Recent section, and — when browsing with no query — the full library grouped by
+  muscle instead of a flat capped list. Wired into all four "+ Add Exercise" entry points (live
+  workout, the program day editor, the day-preview edit sheet, and ProgramBuilder's "Build Your
+  Own"); the per-row rename fields (`ExerciseInput value={ex.name} onChange={...}`, live workout
+  and the day editor) are UNCHANGED on purpose — correcting a typo on a row that's already there is
+  a different, smaller interaction than browsing to add one, and rewriting those risked the
+  index-keyed staleness trap two entries below this one. Picking a result (or pressing Enter on a
+  typed name — same direct-commit escape hatch `ExerciseInput` has, easy to forget when rebuilding
+  the UI around it) closes the sheet immediately rather than clearing and staying open; adding a
+  second exercise means reopening it. `canCreate` (the custom-exercise flow) only lights up where
+  the caller already threads `store`+`setStore` through — ProgramBuilder and the day-preview sheet
+  never got that plumbing even before this component existed, so parity was kept rather than wired
+  net-new. Sim: `pw_addex` drives the sheet end-to-end (typing doesn't add anything until committed,
+  the list filters, a pick adds exactly one exercise with the full name and closes the sheet, Enter
+  commits a typed custom name and also closes it). One test-only note: the row's 44pt `.seshd-hit`
+  hit-area halo paints on top of its own text per normal CSS stacking order (see the tap-target
+  entry below), so a real finger tap lands on the invisible halo and bubbles to the row's onClick —
+  Playwright's strict actionability check can't tell the "intercepting" element IS the handler's
+  owner, so the test clicks with `force:true` there, same as any other `.seshd-hit` row.
 - **A component that copies a prop into `useState` goes stale, and index keys are what expose it.**
   `useState(value)` runs once; if the parent later changes `value` without remounting, the mirror
   never updates. The program editor keys its exercise rows by INDEX, so reordering a day reused
