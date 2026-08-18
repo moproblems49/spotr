@@ -1,4 +1,4 @@
-// v178091716853
+// v178091716855
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10499,7 +10499,13 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           }} aria-label="Share program" style={{ width:36, height:36, borderRadius:10, background:"transparent", border:`1px solid ${BORD}`, cursor:"pointer", fontFamily:F, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <Icon name="share" size={16} color={TXT}/>
           </button>
-          <button onClick={() => { if (!onSaveProgram) return; haptic("success"); toast("Program saved", "success"); onSaveProgram(localProg); onBack && onBack(); }} style={{ background:BLUE, border:"none", borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
+          <button onClick={() => { if (!onSaveProgram) return; haptic("success"); toast("Program saved", "success"); onSaveProgram(localProg); onBack && onBack(); }} style={{ background:C.primary, border:"none", borderRadius:10, padding:"10px 14px", fontSize:13, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F, flexShrink:0 }}>Save</button>
+          {/* Neutral filled button, NOT volt with white text. This shipped as background:BLUE
+              (= C.accent) with a hardcoded color:"#fff", which measures 1.31:1 on the dark theme —
+              white on volt is very close to invisible, and this is the primary action of the
+              screen. C.primary/C.onPrimary is the filled-control pairing the lime pass established
+              (volt is reserved for PRs, progress, the muscle map and the streak) and gives
+              17.67:1 dark / 17.20:1 light. Found by an impeccable audit of this screen. */}
         </div>
       </div>
 
@@ -10669,9 +10675,19 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                   <div style={{ padding:"12px 14px", borderRight:`1px solid ${BORD}` }}>
                     <div style={{ fontSize:10, fontWeight:700, color:SUB, letterSpacing:0.8, marginBottom:8 }}>SETS</div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                      <button onClick={() => updateEx(ei,{sets:Math.max(1,sets-1)})} style={{ width:28, height:28, borderRadius:8, background:isDark?"#222":"#F1F5F9", border:"none", color:BLUE, fontSize:18, fontWeight:900, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+                      <button onClick={() => updateEx(ei,{sets:Math.max(1,sets-1)})} /* Tokens, not a hardcoded slate. This was background:isDark?"#222":"#F1F5F9" with the accent as
+   the glyph colour, and on the light theme that is #65a30d on #F1F5F9 = 2.82:1 — under both the
+   4.5:1 text floor and the 3:1 graphical floor, on the primary controls of this screen. sim_a11y
+   could not see it: that check tests every theme token against C.bg and C.surface, and #F1F5F9 is
+   neither, so a hardcoded surface is invisible to it. */
+                      style={{ width:28, height:28, borderRadius:8, background:C.divider, border:"none", color:C.text, fontSize:18, fontWeight:900, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
                       <span style={{ fontSize:20, fontWeight:800, color:TXT, fontFamily:MONO }}>{sets}</span>
-                      <button onClick={() => updateEx(ei,{sets:sets+1})} style={{ width:28, height:28, borderRadius:8, background:isDark?"#222":"#F1F5F9", border:"none", color:BLUE, fontSize:18, fontWeight:900, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
+                      <button onClick={() => updateEx(ei,{sets:sets+1})} /* Tokens, not a hardcoded slate. This was background:isDark?"#222":"#F1F5F9" with the accent as
+   the glyph colour, and on the light theme that is #65a30d on #F1F5F9 = 2.82:1 — under both the
+   4.5:1 text floor and the 3:1 graphical floor, on the primary controls of this screen. sim_a11y
+   could not see it: that check tests every theme token against C.bg and C.surface, and #F1F5F9 is
+   neither, so a hardcoded surface is invisible to it. */
+                      style={{ width:28, height:28, borderRadius:8, background:C.divider, border:"none", color:C.text, fontSize:18, fontWeight:900, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
                     </div>
                   </div>
                   {/* Reps */}
@@ -15499,8 +15515,12 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           setEditMode(m => !m);
         }} style={{
           padding:"8px 16px", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, border:"none",
-          background: editMode ? BLUE : BLUEBG,
-          color: editMode ? "#fff" : BLUE,
+          // Active state is the neutral filled button (C.primary/C.onPrimary), not white-on-volt.
+          // White on the volt accent measures 1.31:1 on dark and 3.09:1 on light — the same failure
+          // the Save button in ProgramDetailView had. Volt is reserved for PRs, progress, the
+          // muscle map and the streak; a filled control goes neutral. 17.67:1 / 17.20:1 now.
+          background: editMode ? C.primary : BLUEBG,
+          color: editMode ? C.onPrimary : BLUE,
         }}>{editMode ? "Done" : "Edit"}</button>
       </div>
 
@@ -15686,10 +15706,22 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           <div style={{ display:"flex", gap:20 }}>
             {[
               ["dumbbell", editDay.exercises.length, "exercises"],
-              ["package", editDay.exercises.reduce((a,ex)=>a+(parseInt(ex.reps)||3),0), "total sets"],
+              // progSetCount, NOT parseInt(ex.reps). This tile is labelled "total sets" and was
+              // summing the REPS field: parseInt("10-15") is 10, so the number under it was the sum
+              // of the low end of every rep range. Mo's 8-exercise Push B read "71 total sets" for
+              // a day of about 24. It hid for as long as it did because the built-in templates
+              // write reps as "4x5-8", where parseInt happens to grab the leading SET count and the
+              // number comes out right by accident — so every template day, and every test fixture
+              // copied from one, looked correct. It only misreports for a day whose reps are a bare
+              // range, which is exactly what the day editor writes.
+              ["package", editDay.exercises.reduce((a,ex)=>a+progSetCount(ex),0), "total sets"],
               ...(lastPerformed ? [["check","Done",lastPerformed]] : [["spark","New","first time"]]),
             ].map(([icon,val,label]) => (
-              <div key={label} style={{ flex:1, background:"rgba(255,255,255,0.15)", borderRadius:12, padding:"10px 8px", textAlign:"center" }}>
+              /* A DARK veil, not a white one. This was rgba(255,255,255,0.15), which lightens the purple
+                 banner underneath to #9058f0 and drops the white tile text to 4.3:1 on dark and
+                 3.2:1 on light — under AA, on the three tiles that carry the numbers. Darkening the
+                 veil instead keeps the banner's colour and takes the same text to 7.59:1. */
+              <div key={label} style={{ flex:1, background:"rgba(0,0,0,0.18)", borderRadius:12, padding:"10px 8px", textAlign:"center" }}>
                 <div style={{ marginBottom:4, display:"flex", justifyContent:"center", color:"rgba(255,255,255,0.95)" }}><Icon name={icon} size={18}/></div>
                 <div style={{ fontSize:15, fontWeight:800, color:"#fff", lineHeight:1 }}>{val}</div>
                 <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", marginTop:3, fontWeight:500 }}>{label}</div>

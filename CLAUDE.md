@@ -349,6 +349,38 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   like anyway. Fixed translucent black rather than a theme token on purpose: on light it does the
   work, on dark the fill already has the contrast and the rim just crisps the edge. Generalises:
   when a brand or real-world colour fails contrast, add a boundary, don't repaint the thing.
+- **★ A TILE'S LABEL IS A CLAIM ABOUT WHAT THE NUMBER COUNTS, AND THE DAY PREVIEW'S DIDN'T.**
+  Mo's Push B read **"8 exercises · 71 total sets"**. The tile was
+  `exercises.reduce((a,ex) => a + (parseInt(ex.reps)||3), 0)` — it summed the **REPS** field, so
+  `parseInt("10–15")` contributed 10 and the number was the sum of the low end of every rep range.
+  His real answer was ~24. **The reason it survived: the built-in templates write reps as `"4×5–8"`,
+  and on that shape `parseInt` happens to grab the leading SET count, so the tile is accidentally
+  correct** — every template day looks right, and so does any fixture copied from one (the first
+  fixture written for this audit read a plausible "20" for exactly that reason). It only misreports
+  for a day whose reps are a bare range, which is what the day editor writes. `progSetCount(ex)` is
+  the one definition and already existed; this was a seventh inline copy that didn't even compute
+  the right quantity. Sim: `pw_daysets`, which seeds BOTH rep shapes because a one-shape test
+  cannot see this bug. Same family as the 57 PRs: read the label, then check the number answers it.
+- **A HARDCODED SURFACE IS INVISIBLE TO `sim_a11y`.** That check tests every theme token against
+  `C.bg` and `C.surface` — so a control painted on a literal like `#F1F5F9` is outside its reach no
+  matter how bad the pairing is. The program day editor's set steppers were
+  `background:isDark?"#222":"#F1F5F9"` with the accent as the glyph colour: **2.82:1 on light**,
+  under both the 4.5:1 text floor and the 3:1 graphical floor, on the primary controls of that
+  screen. Found by rendering the screen and measuring it, not by the token sweep. When auditing
+  contrast, measure the SCREEN; the token check only covers colours that went through the tokens.
+- **NEVER PUT WHITE TEXT ON THE VOLT ACCENT — IT IS 1.31:1.** Volt is a light colour; the pairing
+  token is `C.onAccent` (dark ink), and for a filled CONTROL the answer is `C.primary`/`C.onPrimary`
+  (neutral), because the lime pass reserved volt for PRs, progress, the muscle map and the streak.
+  Two shipped as `background:C.accent` + a hardcoded `color:"#fff"`: the program editor's **Save**
+  button and the day preview's active **Edit/Done** toggle — both primary actions, both essentially
+  illegible on dark. 17.67:1 / 17.20:1 after. Grep for `color:"#fff"` next to an accent background
+  before adding another.
+- **A TRANSLUCENT WHITE VEIL ON A COLOURED BANNER DESTROYS THE CONTRAST IT LOOKS LIKE IT HELPS.**
+  The day preview's three stat tiles were `rgba(255,255,255,0.15)` over the purple banner, which
+  lightens it to `#9058f0` and drops the white tile text to 4.3:1 dark / 3.2:1 light — under AA, on
+  the tiles carrying the numbers. White text on the bare banner was already 5.70:1; the veil was the
+  whole problem. `rgba(0,0,0,0.18)` keeps the banner's colour and takes the same text to 7.59:1.
+  Darken the veil, don't repaint the text.
 - **Wrapped story frame:** `wrapStorySVG()` strips the card's own lowercase "seshd" watermark and
   adds a single bottom "SESHD" — don't re-add a watermark to card SVGs without checking it.
 - Helpers: `posNum()` (input sanitize), `LBS_PER_KG` (=2.2046), `cvt()` (unit conversion), `EXERCISE_ALIASES` (dedup), `IS_DEV` (dev-only logging).
