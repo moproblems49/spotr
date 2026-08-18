@@ -1,4 +1,4 @@
-// v178091716860
+// v178091716863
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1395,8 +1395,8 @@ const RADIUS = { xs: 8, sm: 10, md: 12, lg: 16, xl: 24, pill: 999 };
 //
 // What remains is the app's real, de-facto scale — these eight sizes cover ~880 of ~1000 uses:
 //
-//   micro  9   all-caps kickers, axis labels, tiny badges
-//   tiny   10  secondary metadata, captions
+//   micro  9   RETIRED (see below) — no literal 9 or 8 remains in the file
+//   tiny   10  secondary metadata, captions, all-caps kickers, axis labels, tiny badges
 //   small  11  dense list text, chips, stat labels
 //   base   12  standard body copy
 //   body   13  comfortable body copy, list rows
@@ -1412,6 +1412,13 @@ const RADIUS = { xs: 8, sm: 10, md: 12, lg: 16, xl: 24, pill: 999 };
 // is a genuine 800-site consolidation, it would visibly resize text across every screen, and NO
 // TEST IN THIS REPO CAN VERIFY IT — screenshots are the only check. It is deliberately NOT done
 // here. Use these tokens for anything new rather than adding a thirty-eighth size.
+//
+// ★ 8 AND 9PX WERE RETIRED (Aug 2026, on request). Both sat below the 11px floor a design-tool
+// detector flags as "undersized UI text" — 62 sites (17 at 8px, 45 at 9px), the app's smallest
+// captions: stat-tile labels, section kickers, axis labels, badge text. All snapped UP to 10
+// (`tiny`), the next rung — a 1-2px gain a reader will only notice as "a little easier to read."
+// `micro` is kept as a token (renaming or removing it would just relocate the "what was this"
+// question) but nothing in the file uses literal 8 or 9 any more; sim_designscale asserts that.
 const TYPE = { micro: 9, tiny: 10, small: 11, base: 12, body: 13, lg: 14, xl: 16, hero: 18 };
 
 // ─── Premium icon system — line icons, single accent ──────────────────────────
@@ -1592,7 +1599,7 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
             return <path key={mk} d={f[mk]} fill={fill} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>;
           })}
         </svg>
-        <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
+        <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
       </div>
     );
   };
@@ -1834,11 +1841,11 @@ const MAP_SIDE_W = 52;
 function ScaleStrip({ topLabel, bottomLabel, colors, C }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0, alignSelf:"center" }}>
-      <span style={{ fontSize:9, color:C.muted, fontWeight:700, whiteSpace:"nowrap", letterSpacing:0.2 }}>{topLabel}</span>
+      <span style={{ fontSize:10, color:C.muted, fontWeight:700, whiteSpace:"nowrap", letterSpacing:0.2 }}>{topLabel}</span>
       <div style={{ width:9, height:112, borderRadius:5, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {colors.map((c, i) => (<span key={i} style={{ flex:1, background:c, display:"block" }}/>))}
       </div>
-      <span style={{ fontSize:9, color:C.muted, fontWeight:700, whiteSpace:"nowrap", letterSpacing:0.2 }}>{bottomLabel}</span>
+      <span style={{ fontSize:10, color:C.muted, fontWeight:700, whiteSpace:"nowrap", letterSpacing:0.2 }}>{bottomLabel}</span>
     </div>
   );
 }
@@ -1911,7 +1918,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               onClick={() => { setSelectedRegion({ key: view + ":" + mk, region: mk }); haptic("tap"); }} style={{ cursor:"pointer" }}/>
           ))}
         </svg>
-        <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
+        <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:C.muted }}>{view === "front" ? "FRONT" : "BACK"}</div>
       </div>
     );
   };
@@ -1995,7 +2002,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             <div style={{ width:MAP_SIDE_W, flexShrink:0, display:"flex", justifyContent:"flex-end" }}>
               <div style={{
                 writingMode:"vertical-rl", transform:"rotate(180deg)",
-                fontSize:9, color:C.muted, letterSpacing:0.6, fontWeight:600,
+                fontSize:10, color:C.muted, letterSpacing:0.6, fontWeight:600,
                 whiteSpace:"nowrap", alignSelf:"center", userSelect:"none",
               }}>Tap a muscle for details</div>
             </div>
@@ -2127,9 +2134,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           // columns instead of sitting next to dead space.
                           <div key={i} style={{ background:C.surface, borderRadius:10, padding:"8px 10px",
                             gridColumn: (i === rows.length - 1 && rows.length % 2 === 1) ? "span 2" : "auto" }}>
-                            <div style={{ fontSize:9, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
+                            <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
                             <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, marginTop:2, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent }}>{r.value}</div>
-                            <div style={{ fontSize:9, color:C.sub, marginTop:2, lineHeight:1.3 }}>{r.detail}</div>
+                            <div style={{ fontSize:10, color:C.sub, marginTop:2, lineHeight:1.3 }}>{r.detail}</div>
                           </div>
                         ))}
                       </div>
@@ -2204,13 +2211,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         <div style={{ display:"grid", gridTemplateColumns:`repeat(${tiles.length}, 1fr)`, gap:6 }}>
                           {tiles.map((t, i) => (
                             <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 6px", textAlign:"center" }}>
-                              <div style={{ fontSize:8, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{t.label}</div>
-                              <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, color:C.text, marginTop:3 }}>{t.value}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>{t.unit}</span></div>
-                              <div style={{ fontSize:8, fontWeight:600, marginTop:3, lineHeight:1.3, color: t.good ? GOOD : OFF }}>{t.arrow ? `${t.arrow} ` : ""}{t.note}</div>
+                              <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{t.label}</div>
+                              <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, color:C.text, marginTop:3 }}>{t.value}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>{t.unit}</span></div>
+                              <div style={{ fontSize:10, fontWeight:600, marginTop:3, lineHeight:1.3, color: t.good ? GOOD : OFF }}>{t.arrow ? `${t.arrow} ` : ""}{t.note}</div>
                             </div>
                           ))}
                         </div>
-                        <div style={{ fontSize:9, color:C.muted, textAlign:"center", marginTop:5, lineHeight:1.4 }}>
+                        <div style={{ fontSize:10, color:C.muted, textAlign:"center", marginTop:5, lineHeight:1.4 }}>
                           Measured against your own recent baseline — higher HRV and a lower resting pulse mean you're recovered.
                         </div>
                       </div>
@@ -2227,9 +2234,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     return (
                       <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"8px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:8, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
-                          <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.vo2Max}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>ml/kg·min</span></div>
-                          {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲ +" : "▼ "}{d} vs earlier</div>}
+                          <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Cardio fitness · VO₂ Max</div>
+                          <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.vo2Max}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>ml/kg·min</span></div>
+                          {(up || down) && <div style={{ fontSize:10, fontWeight:600, color:col, marginTop:2 }}>{up ? "▲ +" : "▼ "}{d} vs earlier</div>}
                         </div>
                         {spark}
                       </div>
@@ -2244,9 +2251,9 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     return (
                       <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:8, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · 60 days</div>
-                          <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
-                          {(up || down) && <div style={{ fontSize:9, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm over 60 days{down ? " — stronger heart" : ""}</div>}
+                          <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · 60 days</div>
+                          <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
+                          {(up || down) && <div style={{ fontSize:10, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm over 60 days{down ? " — stronger heart" : ""}</div>}
                         </div>
                         <TrendSparkline series={s} color={col} C={C}/>
                       </div>
@@ -2267,7 +2274,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const hasAny = (rec.resp != null || rec.wristTemp != null);
                     if (!hasAny) return null;
                     return (
-                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", fontSize:9, color: flags.length ? "#f59e0b" : C.muted, textAlign:"center", fontWeight:600, lineHeight:1.4 }}>
+                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", fontSize:10, color: flags.length ? "#f59e0b" : C.muted, textAlign:"center", fontWeight:600, lineHeight:1.4 }}>
                         {flags.length
                           ? `Heads up: ${flags.join(" · ")} — your body may be fighting something or under-recovered. Consider an easier day.`
                           : "Overnight signals (breathing rate, wrist temp) look normal for you."}
@@ -2565,8 +2572,13 @@ function ConfirmHost({ C }) {
         {cf.message && <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:18 }}>{cf.message}</div>}
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={close} style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, color:C.text, borderRadius:11, padding:"12px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>{cf.cancelLabel}</button>
+          {/* Non-destructive used background:accent (volt) with hardcoded white text — 1.31:1
+              dark, 3.09:1 light, on the confirm button of every non-destructive confirmAction sheet
+              in the app. Destructive keeps red+white (3.76:1, and it's the one class of button
+              where a slightly-under-AA red reads clearly regardless). Non-destructive goes neutral,
+              same as every other filled action button in the app. */}
           <button onClick={() => { setCf(null); try { cf.onConfirm && cf.onConfirm(); } catch (e) {} }}
-            style={{ flex:1, background:accent, color:"#fff", border:"none", borderRadius:11, padding:"12px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>{cf.confirmLabel}</button>
+            style={{ flex:1, background: cf.destructive ? accent : C.primary, color: cf.destructive ? "#fff" : C.onPrimary, border:"none", borderRadius:11, padding:"12px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>{cf.confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -5703,7 +5715,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
@@ -5797,7 +5809,7 @@ function BodyBatteryChart({ store, fill, C }) {
           {[100, 75, 50, 25, 0].map(lvl => (
             <span key={lvl} style={{
               position:"absolute", right:0, top:`${(yAt(lvl) / H) * 150}px`,
-              transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600, fontFamily:MONO,
+              transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600, fontFamily:MONO,
             }}>{lvl}</span>
           ))}
         </div>
@@ -5865,7 +5877,7 @@ function BodyBatteryChart({ store, fill, C }) {
                   boxShadow:"0 4px 12px rgba(0,0,0,0.25)",
                 }}>
                   <div style={{ fontFamily:MONO, fontSize:15, fontWeight:800, color:scrubColor, letterSpacing:-0.3 }}>{scrub.level}</div>
-                  <div style={{ fontSize:8, fontWeight:600, color:C.muted, marginTop:1 }}>{scrub.timeLabel}</div>
+                  <div style={{ fontSize:10, fontWeight:600, color:C.muted, marginTop:1 }}>{scrub.timeLabel}</div>
                 </div>
               </>
             )}
@@ -5884,7 +5896,7 @@ function BodyBatteryChart({ store, fill, C }) {
             {hourDots.filter(d => d.label).map((d, i) => (
               <span key={i} style={{
                 position:"absolute", top:0, left:`${d.xPct}%`, transform:"translateX(-50%)",
-                fontSize:8, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
+                fontSize:10, color:C.muted, fontWeight:600, whiteSpace:"nowrap",
               }}>{d.label}</span>
             ))}
           </div>
@@ -6714,6 +6726,39 @@ async function readWorkoutHeartRate(startMs, endMs) {
     return { avg, peak: Math.round(Math.max(...vals)), min: Math.round(Math.min(...vals)), samples: vals.length };
   } catch (e) { return null; }
 }
+
+// Attach a session's heart-rate summary, with ONE RETRY. Apple Watch -> iPhone HealthKit sync is
+// not instant — a watch that finished recording samples seconds before "Finish" was tapped commonly
+// hasn't synced them to the phone's store yet, so a read at finish-time comes back with too few
+// samples (readWorkoutHeartRate requires >=3) and returns null. Taking that null as final, with
+// nothing re-checking later, is how a session's HR goes missing forever with nothing logged and
+// nothing visibly wrong — "worked before, not on my last two workouts" is exactly that shape.
+// Dependency-injected (setStore/getToken/sb/delayMs all passed in) so it's callable from a plain
+// script against the real readWorkoutHeartRate, not just from inside the finish handler's closure.
+// Known remaining gap: if the app is backgrounded or killed before the retry fires, iOS suspends
+// the timer and this still misses it — a foreground-triggered retry would close that, and is a
+// larger change (tracking which recent sessions are still missing HR across a relaunch).
+function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId, isGuest, sb, delayMs = 90000 }) {
+  const attempt = (endMs, isRetry) => readWorkoutHeartRate(wStartMs, endMs).then(hr => {
+    if (!hr) {
+      if (isRetry) return null;
+      return new Promise(res => setTimeout(() => res(attempt(Date.now(), true)), delayMs));
+    }
+    setStore(p => {
+      const day = p.history?.[dk]; if (!day || !day[sid]) return p;
+      return { ...p, history: { ...p.history, [dk]: { ...day, [sid]: { ...day[sid], hrSummary: hr } } } };
+    });
+    const tok = getToken();
+    if (tok && currentUserId && !isGuest) {
+      sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ hr_summary: hr }) }, tok).catch(() => {});
+    }
+    return hr;
+  }).catch(() => {
+    if (isRetry) return null;
+    return new Promise(res => setTimeout(() => res(attempt(Date.now(), true)), delayMs));
+  });
+  return attempt(Date.now(), false);
+}
 const REST_NOTIF_ID = 7711; // fixed id so we can reliably cancel/replace the rest notification
 let __notifPermAsked = false;
 async function ensureNotifPermission() {
@@ -7450,7 +7495,7 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
                 ? <AnimatedNumber value={val} duration={750} animateOnMount/>
                 : val}
             </div>
-            <div style={{ fontSize:9, color:C.sub, fontWeight:600, letterSpacing:0.5, marginTop:3 }}>{cap}</div>
+            <div style={{ fontSize:10, color:C.sub, fontWeight:600, letterSpacing:0.5, marginTop:3 }}>{cap}</div>
           </div>
         ))}
       </div>
@@ -7494,7 +7539,7 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
               {cols.map((col, ci) => {
                 const ml = monthLabels.find(m => m.ci === ci);
                 return (
-                  <div key={ci} style={{ width:12, fontSize:8, color:C.muted, textAlign:"center", flexShrink:0 }}>
+                  <div key={ci} style={{ width:12, fontSize:10, color:C.muted, textAlign:"center", flexShrink:0 }}>
                     {ml ? ml.label : ""}
                   </div>
                 );
@@ -7520,11 +7565,11 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
             </div>
           </div>
           <div style={{ display:"flex", justifyContent:"flex-end", alignItems:"center", gap:4, marginTop:6 }}>
-            <span style={{ fontSize:9, color:C.muted }}>Less</span>
+            <span style={{ fontSize:10, color:C.muted }}>Less</span>
             {[0.2, 0.45, 0.7, 1].map(op => (
               <div key={op} style={{ width:10, height:10, borderRadius:2, background:C.accent, opacity:op }}/>
             ))}
-            <span style={{ fontSize:9, color:C.muted }}>More</span>
+            <span style={{ fontSize:10, color:C.muted }}>More</span>
           </div>
         </>
       )}
@@ -7867,7 +7912,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"2px 8px 8px" }}>
         <div style={{ textAlign:"left", minWidth:90 }}>
           <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{value !== "" && value != null ? value : "—"}</div>
-          <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1, marginTop:3 }}>{fieldLabel}</div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:1, marginTop:3 }}>{fieldLabel}</div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <button aria-label="Decrease" onPointerDown={(e)=>{e.preventDefault(); onStep(-step); haptic("tap");}} onClick={(e)=>e.preventDefault()} style={{ width:48, height:44, borderRadius:9, background:C.isDark?"rgba(255,255,255,0.06)":C.bg, border:`1px solid ${C.border}`, color:C.text, fontSize:18, fontWeight:700, cursor:"pointer", fontFamily:F }}>−</button>
@@ -8285,14 +8330,14 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
                   {set.weight || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>min</span>
+              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>min</span>
             </div>
             <div style={{ position:"relative", width:62 }}>
               <div data-set-field="reps" onClick={() => onFocusInput && onFocusInput("reps")}
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
                   {set.reps || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
+              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
             </div>
           </>
         ) : (
@@ -8302,7 +8347,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
                   {set.weight || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>{unit}</span>
+              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>{unit}</span>
             </div>
 
             <div style={{ position:"relative", width:58 }}>
@@ -8310,7 +8355,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
                   {set.reps || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:8, color:C.muted, fontWeight:600 }}>reps</span>
+              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>reps</span>
             </div>
           </>
         )}
@@ -8348,7 +8393,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
             return (
               <>
                 <button onClick={() => apply(-step)} className="seshd-hit-y" style={adjBtn}>−</button>
-                <span style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:0.4, fontFamily:MONO }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</span>
+                <span style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.4, fontFamily:MONO }}>{isCardio?"MIN":(unit||"LBS").toUpperCase()}</span>
                 <button onClick={() => apply(step)} className="seshd-hit-y" style={adjBtn}>+</button>
               </>
             );
@@ -8407,7 +8452,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
       {platesBreakdown && platesBreakdown.length > 0 && (
         <div style={{ marginTop:6, paddingTop:8, borderTop:`1px dashed ${C.divider}` }}>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:9, color:C.sub, fontWeight:700, letterSpacing:0.6, flexShrink:0 }}>{oneSided ? "LOADED" : "PER SIDE"}{!oneSided ? ` (${barWeight} ${unit} bar)` : ""}</span>
+            <span style={{ fontSize:10, color:C.sub, fontWeight:700, letterSpacing:0.6, flexShrink:0 }}>{oneSided ? "LOADED" : "PER SIDE"}{!oneSided ? ` (${barWeight} ${unit} bar)` : ""}</span>
             {/* Visual barbell: sleeve + plates loaded heaviest-inner to lightest-outer.
                 Disc height scales with plate weight so a 45 towers over a 2.5. */}
             <div style={{ display:"flex", alignItems:"center", flex:1, minWidth:0, height:46, overflowX:"auto" }}>
@@ -8565,17 +8610,21 @@ function OneRMModal({ onClose, unit, C }) {
               {/* C.onPrimary, not "#fff". The accent is VOLT — a light lime — so white text on it
                   was very nearly invisible on the dark theme. onAccent is the dark ink that pairs
                   with it, and is what every other accent surface in the app already uses. */}
+              {/* C.isDark?onAccent:C.text, not C.onPrimary. C.onPrimary's LIGHT value is white,
+                  which measures 3.09:1 on this fill — under AA. onPrimary and onAccent share the
+                  same dark-theme value (0d0d10), so this only changes the light theme, to the same
+                  dark ink Avatar() uses on an accent fill (5.57:1). */}
               <div style={{ background:C.accent, borderRadius:14, padding:"16px", textAlign:"center", marginBottom:16 }}>
-                <div style={{ fontSize:10, color:C.onPrimary, opacity:0.7, fontWeight:800, letterSpacing:2, marginBottom:4 }}>YOUR ONE REP MAX</div>
+                <div style={{ fontSize:10, color: C.isDark ? C.onAccent : C.text, opacity:0.7, fontWeight:800, letterSpacing:2, marginBottom:4 }}>YOUR ONE REP MAX</div>
                 <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:6 }}>
-                  <div style={{ fontSize:46, fontWeight:800, color:C.onPrimary, fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
-                  <div style={{ fontSize:15, fontWeight:700, color:C.onPrimary, opacity:0.75 }}>{unit}</div>
+                  <div style={{ fontSize:46, fontWeight:800, color: C.isDark ? C.onAccent : C.text, fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
+                  <div style={{ fontSize:15, fontWeight:700, color: C.isDark ? C.onAccent : C.text, opacity:0.75 }}>{unit}</div>
                 </div>
               </div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1.1fr 0.9fr", background:C.bg, borderBottom:`1px solid ${C.border}` }}>
                   {["% OF 1RM", "WEIGHT", "REPS"].map((h, i) => (
-                    <div key={h} style={{ fontSize:9, fontWeight:800, letterSpacing:1, color:C.sub, padding:"9px 12px", textAlign: i ? "right" : "left" }}>{h}</div>
+                    <div key={h} style={{ fontSize:10, fontWeight:800, letterSpacing:1, color:C.sub, padding:"9px 12px", textAlign: i ? "right" : "left" }}>{h}</div>
                   ))}
                 </div>
                 {rows.map(({ p, w, r }, i) => (
@@ -9036,7 +9085,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
                   <Icon name={ic} size={14} color="rgba(255,255,255,0.5)"/>
                 </div>
                 <div style={{ fontFamily:MONO, fontSize:32, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>{v}</div>
-                <div style={{ fontSize:9, color:"rgba(255,255,255,0.5)", marginTop:6, letterSpacing:1.5, fontWeight:700 }}>{l}</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", marginTop:6, letterSpacing:1.5, fontWeight:700 }}>{l}</div>
               </div>
             ))}
           </div>
@@ -9792,10 +9841,15 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
           {post?.imageData ? (
             <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
           ) : (
-            <div style={{ width:"100%", height:"100%", background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center" }}>
+            // The story-viewer's no-photo fallback is a full-bleed accent panel. The giant initial
+            // set no colour at all (inherited whatever the parent happened to be — invisible by
+            // accident more than design) and the name/bio were hardcoded white, which on the light
+            // theme's accent fill measures 3.09:1 / 2.78:1. All three get the same accent-fill ink
+            // idiom as the ONE REP MAX slab and Avatar().
+            <div style={{ width:"100%", height:"100%", background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center", color: C.isDark ? C.onAccent : C.text }}>
               <div style={{ fontSize:60, marginBottom:16, fontWeight:900 }}>{user.avatar || ((user.name || user.username || "?").trim()[0] || "?").toUpperCase()}</div>
-              <div style={{ fontSize:24, fontWeight:700, color:"#fff", marginBottom:8 }}>{user.name}</div>
-              <div style={{ fontSize:14, color:"rgba(255,255,255,0.9)", lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
+              <div style={{ fontSize:24, fontWeight:700, color: C.isDark ? C.onAccent : C.text, marginBottom:8 }}>{user.name}</div>
+              <div style={{ fontSize:14, color: C.isDark ? `${C.onAccent}e6` : `${C.text}e6`, lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
             </div>
           )}
           {post?.caption && (
@@ -10041,7 +10095,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 {stats.map(([v, l], i) => (
                   <div key={i}>
                     <div style={{ fontFamily:MONO, fontSize:26, fontWeight:700, letterSpacing:-1, lineHeight:1 }}>{v}</div>
-                    <div style={{ fontSize:9, color:"rgba(255,255,255,0.5)", marginTop:5, letterSpacing:1.5, fontWeight:700 }}>{l}</div>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", marginTop:5, letterSpacing:1.5, fontWeight:700 }}>{l}</div>
                   </div>
                 ))}
               </div>
@@ -10123,11 +10177,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 <div style={{ display:"flex", gap:10 }}>
                   <div style={{ textAlign:"center" }}>
                     <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{Math.floor(post.workout.duration/60)}m</div>
-                    <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>TIME</div>
+                    <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>TIME</div>
                   </div>
                   <div style={{ textAlign:"center" }}>
                     <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
-                    <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
+                    <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
                   </div>
                   {/* Same field, same "· ♥ N avg · N peak" as History — only present once Apple
                       Health has synced it (a moment after finish), so an older post's snapshot,
@@ -10135,7 +10189,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                   {post.workout.hrSummary?.avg ? (
                     <div style={{ textAlign:"center" }}>
                       <div style={{ fontSize:14, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
-                      <div style={{ fontSize:9, color:C.sub, letterSpacing:0.8, marginTop:1 }}>♥ AVG</div>
+                      <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>♥ AVG</div>
                     </div>
                   ) : null}
                 </div>
@@ -10196,7 +10250,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             <div style={{ width:24, height:24, borderRadius:7, background:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
               <Icon name={postCode.startsWith("WO-") ? "dumbbell" : "calendar"} size={12}/>
             </div>
-            <span style={{ fontSize:9, letterSpacing:1, fontWeight:700, color:C.sub, flexShrink:0 }}>{postCode.startsWith("WO-") ? "WORKOUT" : "PROGRAM"}</span>
+            <span style={{ fontSize:10, letterSpacing:1, fontWeight:700, color:C.sub, flexShrink:0 }}>{postCode.startsWith("WO-") ? "WORKOUT" : "PROGRAM"}</span>
             <span style={{ fontFamily:MONO, fontSize:12, fontWeight:700, color:C.text, letterSpacing:0.5, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{postCode}</span>
             <span style={{ fontSize:11, fontWeight:700, color:C.accent, flexShrink:0 }}>Import</span>
           </button>
@@ -10490,7 +10544,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
               style={{ width:"100%", background:"transparent", border:"none", outline:"none", fontSize:18, fontWeight:800, color:TXT, fontFamily:F }} />
             <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:2 }}>
               <span style={{ fontSize:11, color:SUB }}>{localProg.days?.length||0} days · {localProg.days?.reduce((a,d)=>a+(d.exercises?.length||0),0)||0} exercises</span>
-              {isActive && <span style={{ fontSize:9, background:C.primary, color:C.onPrimary, borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
+              {isActive && <span style={{ fontSize:10, background:C.primary, color:C.onPrimary, borderRadius:20, padding:"2px 8px", fontWeight:700 }}>ACTIVE</span>}
             </div>
           </div>
           <button onClick={async () => {
@@ -10958,7 +11012,7 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
       {preview && (
         <div style={{ marginTop:12, padding:"12px", background:C.divider, borderRadius:10 }}>
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-            <span style={{ fontSize:9, fontWeight:800, letterSpacing:1.2, color:C.bg, background:C.text, padding:"2px 6px", borderRadius:5 }}>
+            <span style={{ fontSize:10, fontWeight:800, letterSpacing:1.2, color:C.bg, background:C.text, padding:"2px 6px", borderRadius:5 }}>
               {preview.kind === "workout" ? "WORKOUT" : "PROGRAM"}
             </span>
           </div>
@@ -11878,7 +11932,7 @@ function SortableProgramRow({ p, C, isActive, onOpen }) {
       <button onClick={onOpen} style={{ flex:1, minWidth:0, background:"none", border:"none", textAlign:"left", cursor:"pointer", fontFamily:F, padding:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
           <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{p.name}</div>
-          {isActive && <span style={{ fontSize:9, background:C.primary, color:C.onPrimary, padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>}
+          {isActive && <span style={{ fontSize:10, background:C.primary, color:C.onPrimary, padding:"2px 7px", borderRadius:20, fontWeight:700, letterSpacing:0.5 }}>ACTIVE</span>}
         </div>
         <div style={{ fontSize:11, color:C.sub }}>
           {p.days?.length || 0} days · {p.days?.reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
@@ -12203,6 +12257,32 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   }, [rest]);
   const [restEditor, setRestEditor] = useState(null);
   const [showFinish, setShowFinish] = useState(false);
+  // Hide-on-scroll-down, reveal-on-scroll-up for the workout header (Discard/timer/Finish + the
+  // sets/volume/rest-tools row). ONE state flip per direction change, not per scroll pixel — same
+  // rule as the gesture-perf pattern (PullToRefresh, SetRow swipe): setState on threshold-cross
+  // only, never in the scroll handler's hot path. topBarRef measures the real rendered height once
+  // (not a guessed constant) so the open/close animation neither clips content nor overshoots into
+  // a long dead tail waiting for max-height to "catch up" to the already-fully-visible content.
+  const [topBarHidden, setTopBarHidden] = useState(false);
+  const topBarRef = useRef(null);
+  const topBarHRef = useRef(240); // generous default before the first real measurement lands
+  const scrollDirRef = useRef({ lastY: 0 });
+  const onExerciseScroll = useCallback(e => {
+    const y = e.currentTarget.scrollTop;
+    const d = y - scrollDirRef.current.lastY;
+    scrollDirRef.current.lastY = y;
+    // Always show it once scrolled back near the top — never leave the header hidden over the
+    // start of the list, which is where Discard/Finish are most likely to be reached for.
+    if (y < 24) { setTopBarHidden(h => h ? false : h); return; }
+    if (Math.abs(d) < 4) return; // ignore sub-pixel/rubber-band jitter
+    if (d > 0) setTopBarHidden(h => h ? h : true);
+    else setTopBarHidden(h => h ? false : h);
+  }, []);
+  // Measure the real header height once it (and its content — the rest-tools row can change
+  // between one and two lines depending on whether a superset badge is showing) has painted.
+  useEffect(() => {
+    if (topBarRef.current) topBarHRef.current = topBarRef.current.scrollHeight;
+  });
   const [showGroupShare, setShowGroupShare] = useState(false); // group picker after finish-and-share-to-groups
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [show1RM, setShow1RM] = useState(false);
@@ -13093,19 +13173,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const volLbs = volLbsForHealth;
           const wStartMs = wStart || (Date.now() - recordedDuration * 1000);
           writeWorkoutToHealth(wStartMs, recordedDuration, volLbs, sid);
-          // If the user wore an Apple Watch, pull this session's heart-rate summary and attach it
-          // to the saved workout (avg/peak/min). Fire-and-forget — no watch data just leaves it off.
-          readWorkoutHeartRate(wStartMs, Date.now()).then(hr => {
-            if (!hr) return;
-            setStore(p => {
-              const day = p.history?.[dk]; if (!day || !day[sid]) return p;
-              return { ...p, history: { ...p.history, [dk]: { ...day, [sid]: { ...day[sid], hrSummary: hr } } } };
-            });
-            const tok = tokenRef.current || loadSession()?.access_token;
-            if (tok && currentUserId && !isGuest) {
-              sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ hr_summary: hr }) }, tok).catch(() => {});
-            }
-          }).catch(() => {});
+          // Attach this session's heart-rate summary (avg/peak/min) if the user wore a watch.
+          // attachWorkoutHr retries once ~90s later — see its own comment for why a single
+          // immediate read isn't enough (Watch -> iPhone HealthKit sync lag).
+          attachWorkoutHr({ wStartMs, sid, dk, setStore,
+            getToken: () => tokenRef.current || loadSession()?.access_token,
+            currentUserId, isGuest, sb });
         } catch (e) {}
       };
 
@@ -13331,6 +13404,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           />
         )}
 
+        {/* Hide-on-scroll-down, reveal-on-scroll-up (see topBarHidden above). max-height, not
+            transform — this one needs to reclaim the vertical space for the scroller beneath it,
+            not just visually cover it, so the exercise list actually gets taller when it closes. */}
+        <div ref={topBarRef} style={{ flexShrink:0, overflow:"hidden",
+          maxHeight: topBarHidden ? 0 : topBarHRef.current,
+          transition: `max-height 0.28s ${EASE_NAV}` }}>
         {/* Header. FLAT padding, not `env(safe-area-inset-top)`. This used to own the status-bar
             inset because the app's own top bar was hidden during a workout; the top bar is always
             present now, so it is the owner and claiming the inset here would stack TWO full status
@@ -13417,6 +13496,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <div style={{ height:4, background:C.divider, borderRadius:4, overflow:"hidden" }}>
             <div style={{ height:"100%", width:"100%", background:C.accent, transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, done/Math.max(total,1)))})`, transition:`transform 0.4s ${EASE_NAV}`, willChange:"transform" }}/>
           </div>
+        </div>
         </div>
 
         {/* Rest timer - Full screen modal. PORTALED to document.body: position:fixed is captured
@@ -13585,7 +13665,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Exercises */}
 
-        <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+        <div onScroll={onExerciseScroll} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             return (
@@ -13833,7 +13913,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 {/* Column headers */}
                 <div style={{ display:"grid", gridTemplateColumns:"32px 36px 1fr 76px 76px 36px", gap:4, padding:"0 14px 4px" }}>
                   {["Set","Type","Previous",unit.toUpperCase(),"Reps",""].map((h,i) => (
-                    <div key={i} style={{ fontSize:9, color:C.muted, fontWeight:700, letterSpacing:0.5, textAlign:"center" }}>{h}</div>
+                    <div key={i} style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:0.5, textAlign:"center" }}>{h}</div>
                   ))}
                 </div>
 
@@ -14050,7 +14130,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         color: "rgba(255,255,255,0.5)", marginBottom: 3,
                       }}>SESHD</div>
                       <div style={{
-                        fontSize: 9, letterSpacing: 2, fontWeight: 500,
+                        fontSize: 10, letterSpacing: 2, fontWeight: 500,
                         color: "rgba(255,255,255,0.3)",
                       }}>{new Date().toLocaleDateString("en", { month:"short", day:"numeric", year:"numeric" }).toUpperCase()}</div>
                     </div>
@@ -14058,7 +14138,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       {workoutSummary.prs?.length > 0 && (
                         <div style={{
                           background:"#fff", color:"#0A0A0A",
-                          fontSize:9, fontWeight:800, letterSpacing:1.5,
+                          fontSize:10, fontWeight:800, letterSpacing:1.5,
                           padding:"5px 10px", borderRadius:20,
                         }}>NEW PR</div>
                       )}
@@ -14194,7 +14274,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       borderRadius:12,
                       border:"1px solid rgba(255,255,255,0.08)",
                     }}>
-                      <div style={{ fontSize:9, letterSpacing:1.8, fontWeight:700, color:"rgba(255,255,255,0.55)", marginBottom:7 }}>
+                      <div style={{ fontSize:10, letterSpacing:1.8, fontWeight:700, color:"rgba(255,255,255,0.55)", marginBottom:7 }}>
                         PERSONAL RECORD{workoutSummary.prs.length > 1 ? "S" : ""}
                       </div>
                       {workoutSummary.prs.map((pr, i) => (
@@ -14204,7 +14284,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         }}>
                           <div>
                             <span style={{ fontSize:13, color:"#fff", fontWeight:500 }}>{pr.name}</span>
-                            {pr.types?.length > 0 && <div style={{ fontSize:9, fontWeight:700, letterSpacing:0.8, color:"rgba(255,255,255,0.4)", marginTop:1 }}>{pr.types.map(t => PR_TYPE_LABEL[t]).join(" + ").toUpperCase()}</div>}
+                            {pr.types?.length > 0 && <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.8, color:"rgba(255,255,255,0.4)", marginTop:1 }}>{pr.types.map(t => PR_TYPE_LABEL[t]).join(" + ").toUpperCase()}</div>}
                           </div>
                           <span style={{ fontFamily:MONO, fontSize:14, color:"#fff", fontWeight:700, letterSpacing:-0.3 }}>{pr.weight}<span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginLeft:3 }}>{unit}</span></span>
                         </div>
@@ -14718,7 +14798,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })()}
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:9, fontWeight:700, opacity:0.6, letterSpacing:1.2, marginBottom:1 }}>
+                  <div style={{ fontSize:10, fontWeight:700, opacity:0.6, letterSpacing:1.2, marginBottom:1 }}>
                     {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
                   </div>
                   <div style={{ display:"flex", alignItems:"baseline", gap:6, minWidth:0 }}>
@@ -15125,7 +15205,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:80 }}>
                   {weekData.map((w, i) => (
                     <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
-                      <div style={{ fontSize:8, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
+                      <div style={{ fontSize:10, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
                       <div style={{
                         width:"100%", borderRadius:"3px 3px 0 0",
                         background: i === weeks-1 ? C.primary : `${C.accent}66`,
@@ -15218,7 +15298,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           <div style={{ fontSize:14, fontWeight:700, color:C.text, display:"flex", alignItems:"center", gap:7 }}>
                             {sess.dayName}
                             {sess.pendingSync && (
-                              <span style={{ display:"inline-flex", alignItems:"center", gap:4, background:`${C.orange}1A`, color:C.orange, borderRadius:6, padding:"2px 7px", fontSize:9, fontWeight:700, letterSpacing:0.4 }}>
+                              <span style={{ display:"inline-flex", alignItems:"center", gap:4, background:`${C.orange}1A`, color:C.orange, borderRadius:6, padding:"2px 7px", fontSize:10, fontWeight:700, letterSpacing:0.4 }}>
                                 <span style={{ width:5, height:5, borderRadius:"50%", background:C.orange }} className="seshd-pulse"/>
                                 SYNCING
                               </span>
@@ -15373,7 +15453,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   borderRadius:12, padding:"14px", marginBottom:10
                 }}>
                   {featured && (
-                    <div style={{ fontSize:9, fontWeight:700, color:C.sub, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
+                    <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:1.5, marginBottom:6 }}>RECOMMENDED</div>
                   )}
                   <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:2 }}>{t.name}</div>
                   {/* desc already encodes the weekly frequency (e.g. "3-day · …"); don't append
@@ -15386,8 +15466,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     else setStore(p => ({ ...p, programs: [...(p.programs || []), prog], activeProgramId: prog.id }));
                     setShowTemplates(false);
                   }} style={{
-                    width:"100%", background:C.accent, border:"none", borderRadius:8,
-                    fontSize:12, fontWeight:600, color:"#fff", cursor:"pointer", padding:"9px", fontFamily:F
+                    width:"100%", background:C.primary, border:"none", borderRadius:8,
+                    fontSize:12, fontWeight:600, color:C.onPrimary, cursor:"pointer", padding:"9px", fontFamily:F
                   }}>Import & Set Active</button>
                 </div>
                 );
@@ -16266,8 +16346,8 @@ function AICoachModal({ open, C, onClose, onImport, store }) {
               </div>
             ))}
             <button onClick={() => onImport(result)} style={{
-              width:"100%", background:C.accent,
-              color:"#fff", border:"none", borderRadius:12, padding:"14px",
+              width:"100%", background:C.primary,
+              color:C.onPrimary, border:"none", borderRadius:12, padding:"14px",
               fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, marginTop:12
             }}>Import & Set Active</button>
           </div>
@@ -16298,8 +16378,8 @@ function AICoachModal({ open, C, onClose, onImport, store }) {
               }}
             />
             <button onClick={generateProgram} style={{
-              width:"100%", background:C.accent,
-              color:"#fff", border:"none", borderRadius:12, padding:"14px",
+              width:"100%", background:C.primary,
+              color:C.onPrimary, border:"none", borderRadius:12, padding:"14px",
               fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F,
               display:"flex", alignItems:"center", justifyContent:"center", gap:8,
             }}>Generate my program</button>
@@ -16387,7 +16467,7 @@ function FirstTimeCues({ name, muscle, C, onOpenGuide }) {
       borderRadius:12, padding:"9px 11px",
     }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:5 }}>
-        <span style={{ fontSize:9, fontWeight:800, letterSpacing:1.3, color:C.sub }}>FIRST TIME</span>
+        <span style={{ fontSize:10, fontWeight:800, letterSpacing:1.3, color:C.sub }}>FIRST TIME</span>
         <button onClick={onOpenGuide} style={{
           background:"none", border:"none", padding:0, cursor:"pointer", fontFamily:F,
           fontSize:11, fontWeight:700, color:C.textDim,
@@ -16581,7 +16661,7 @@ function ExerciseVolumeChart({ data, unit, C }) {
         <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1.1 }}>
           {fmtVal(data[scrub.i].value)}{unit ? ` ${unit}` : ""}
         </div>
-        <div style={{ fontSize:9, color:C.sub, marginTop:1 }}>{fmtPointDate(data[scrub.i])}</div>
+        <div style={{ fontSize:10, color:C.sub, marginTop:1 }}>{fmtPointDate(data[scrub.i])}</div>
       </div>
     )}
     </div>
@@ -16695,7 +16775,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
         </div>
         {pr && (
           <div style={{ background:C.accentSoft, borderRadius:8, padding:"4px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:C.accent, fontWeight:700, letterSpacing:1 }}>PR</div>
+            <div style={{ fontSize:10, color:C.accent, fontWeight:700, letterSpacing:1 }}>PR</div>
             <div style={{ fontSize:13, fontWeight:700, color:C.accent, fontFamily:MONO }}>{cvt(pr,"lbs",unit)} {unit}</div>
           </div>
         )}
@@ -16820,7 +16900,7 @@ function ExerciseDetail({ name, store, unit, C, onClose }) {
                 }}>
                   <div style={{
                     width:20, height:20, borderRadius:"50%", background:C.accent,
-                    color:"#fff", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1
+                    color: C.isDark ? C.onAccent : C.text, fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1
                   }}>{i+1}</div>
                   <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{step}</div>
                 </div>
@@ -17155,7 +17235,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                                   body: JSON.stringify({ caption: t })
                                 });
                               } catch (e) { toast("Couldn't save edit — check connection", "error"); }
-                            }} style={{ padding:"7px 14px", background:C.accent, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F }}>Save</button>
+                            }} style={{ padding:"7px 14px", background:C.primary, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F }}>Save</button>
                           </div>
                         </div>
                       ) : (
@@ -17172,19 +17252,19 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                               {post.workout.duration && (
                                 <div style={{ textAlign:"right" }}>
                                   <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO }}>{Math.floor((post.workout.duration||0)/60)}m</div>
-                                  <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>TIME</div>
+                                  <div style={{ fontSize:10, color:C.sub, letterSpacing:1 }}>TIME</div>
                                 </div>
                               )}
                               {post.workout.volume > 0 && (
                                 <div style={{ textAlign:"right" }}>
                                   <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO }}>{post.workout.volume >= 1000 ? (post.workout.volume/1000).toFixed(1)+"k" : post.workout.volume}</div>
-                                  <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>VOL</div>
+                                  <div style={{ fontSize:10, color:C.sub, letterSpacing:1 }}>VOL</div>
                                 </div>
                               )}
                               {post.workout.hrSummary?.avg ? (
                                 <div style={{ textAlign:"right" }}>
                                   <div style={{ fontSize:12, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
-                                  <div style={{ fontSize:8, color:C.sub, letterSpacing:1 }}>♥ AVG</div>
+                                  <div style={{ fontSize:10, color:C.sub, letterSpacing:1 }}>♥ AVG</div>
                                 </div>
                               ) : null}
                             </div>
@@ -17277,7 +17357,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                 <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{u.name}{u.id===currentUserId?" (You)":""}</div>
                 <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
               </div>
-              {u.id === g.createdBy && <span style={{ fontSize:9, color:C.gold, fontWeight:600 }}>ADMIN</span>}
+              {u.id === g.createdBy && <span style={{ fontSize:10, color:C.gold, fontWeight:600 }}>ADMIN</span>}
             </div>
           ))}
           {currentUserId === g.createdBy && notMembers.length > 0 && (
@@ -17634,7 +17714,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
             />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={() => setShowCreate(false)} style={{ flex:1, padding:"11px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.accent, border:"none", borRadius:8, borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
+              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.primary, border:"none", borRadius:8, borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
             </div>
           </>
         )}
@@ -17900,7 +17980,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                   <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>No close friends yet</div>
                   <div style={{ fontSize:12, color:C.sub, marginBottom:16, lineHeight:1.4 }}>Pick up to {CLOSE_FRIENDS_MAX} people for a smaller, private leaderboard.</div>
                   <button onClick={() => setShowCloseFriendPicker(true)} style={{
-                    background:C.accent, color:"#fff", border:"none", borderRadius:12, padding:"11px 22px",
+                    background:C.primary, color:C.onPrimary, border:"none", borderRadius:12, padding:"11px 22px",
                     fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F,
                   }}>Choose close friends</button>
                 </div>
@@ -17972,7 +18052,7 @@ function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C
                   <div key={exName} style={{ padding:"14px 16px", borderBottom: i < lifts.length-1 ? `1px solid ${C.divider}` : "none" }}>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
                       <div style={{ fontSize:13, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>{label}</div>
-                      <div style={{ fontSize:9, fontWeight:700, color:C.muted, letterSpacing:1.5 }}>{(unit||"lbs").toUpperCase()}</div>
+                      <div style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:1.5 }}>{(unit||"lbs").toUpperCase()}</div>
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                       {[...visible, ...(pinned ? [pinned] : [])].map(({ u, val, rank, _pinned }) => {
@@ -18536,7 +18616,7 @@ function BodyTrackingScreen({ store, setStore, currentUserId, unit, C, onClose }
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:13, fontWeight:700, color:C.text, display:"flex", alignItems:"center", gap:6 }}>
                     {new Date(e.date + "T12:00:00").toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})}
-                    {e.source === "health" && <span style={{ fontSize:8, fontWeight:700, letterSpacing:0.3, color:C.muted, border:`1px solid ${C.border}`, borderRadius:5, padding:"1px 5px" }}>Apple Health</span>}
+                    {e.source === "health" && <span style={{ fontSize:10, fontWeight:700, letterSpacing:0.3, color:C.muted, border:`1px solid ${C.border}`, borderRadius:5, padding:"1px 5px" }}>Apple Health</span>}
                   </div>
                   <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
                     {[e.weight != null ? `${e.weight} ${unit}` : null, ...Object.entries(e.measurements||{}).map(([k,v]) => `${MEASURE_FIELDS.find(m=>m.key===k)?.label||k} ${v}`)].filter(Boolean).join(" · ") || "Photo only"}
@@ -19075,7 +19155,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {isMe && (
               <>
                 <input ref={avatarRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatar}/>
-                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color:C.onPrimary, cursor:"pointer" }}><Icon name="plus" size={12} color={C.onPrimary}/></div>
+                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color: C.isDark ? C.onAccent : C.text, cursor:"pointer" }}><Icon name="plus" size={12} color={C.onPrimary}/></div>
               </>
             )}
           </div>
@@ -19432,7 +19512,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             </div>
             <div style={{ display:"flex", gap:8, padding:"14px 16px calc(env(safe-area-inset-bottom) + 14px)" }}>
               <button onClick={() => setCoverDraft(null)} style={{ flex:1, padding:"12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={saveCover} style={{ flex:1, padding:"12px", background:C.accent, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F }}>Use photo</button>
+              <button onClick={saveCover} style={{ flex:1, padding:"12px", background:C.primary, border:"none", borderRadius:10, fontSize:14, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F }}>Use photo</button>
             </div>
           </div>
         </div>
@@ -19988,8 +20068,15 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px" }}>
           <button onClick={onClose} style={{ fontSize:14, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>New Post</div>
+          {/* The active state was background:C.primary with a hardcoded color:"#fff" — on the dark
+              theme C.primary is near-white, so it was white-on-near-white (1.10:1). The INACTIVE
+              state had the same hardcoded white on C.divider, which on the LIGHT theme is a pale
+              grey: 1.18:1, worse than the active bug. C.onPrimary is the pairing C.primary was
+              built for; C.sub is deliberately muted for the disabled state (a disabled control is
+              exempt from the AA floor, but 4.17:1 clears it anyway). */}
           <button onClick={handleShare} style={{
-            fontSize:14, fontWeight:700, color:"#fff",
+            fontSize:14, fontWeight:700,
+            color: canShare() ? C.onPrimary : C.sub,
             background: canShare() ? C.primary : C.divider,
             border:"none", borderRadius:20, padding:"6px 16px", cursor:canShare()?"pointer":"default", fontFamily:F
           }}>Share</button>
@@ -20162,7 +20249,7 @@ function EditPostModal({ C, post, onSave, onClose }) {
           style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", marginBottom:14, fontFamily:F }}/>
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={onClose} style={{ flex:1, padding:"10px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-          <button onClick={() => onSave(post.id, cap)} style={{ flex:1, padding:"10px", background:C.accent, border:"none", borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Save</button>
+          <button onClick={() => onSave(post.id, cap)} style={{ flex:1, padding:"10px", background:C.primary, border:"none", borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Save</button>
         </div>
       </div>
     </div>
@@ -20678,7 +20765,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", marginBottom:28 }}>
           {p.avatar_url
             ? <img src={p.avatar_url} alt="" style={{ width:88, height:88, borderRadius:44, objectFit:"cover", marginBottom:14 }}/>
-            : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color:C.onPrimary, marginBottom:14 }}>{initial}</div>}
+            : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color: C.isDark ? C.onAccent : C.text, marginBottom:14 }}>{initial}</div>}
           <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{p.name || p.username}</div>
           {p.username && <div style={{ fontSize:14, color:C.sub, marginTop:2 }}>@{p.username}</div>}
           {p.bio && <div style={{ fontSize:14, color:C.text, marginTop:12, maxWidth:300, lineHeight:1.5 }}>{p.bio}</div>}
@@ -20871,8 +20958,8 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
             <div style={{ display:"grid", gridTemplateColumns:`repeat(${tiles.length}, 1fr)`, gap:8, marginBottom:14 }}>
               {tiles.map(t => (
                 <div key={t.label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"11px 8px", textAlign:"center" }}>
-                  <div style={{ fontSize:18, fontWeight:800, color:C.text, fontFamily:MONO, letterSpacing:-0.5, lineHeight:1 }}>{t.value}{t.unit ? <span style={{ fontSize:9, color:C.sub, fontWeight:600, marginLeft:1 }}>{t.unit}</span> : null}</div>
-                  <div style={{ fontSize:9, fontWeight:700, color:C.sub, letterSpacing:0.6, marginTop:5 }}>{t.label}</div>
+                  <div style={{ fontSize:18, fontWeight:800, color:C.text, fontFamily:MONO, letterSpacing:-0.5, lineHeight:1 }}>{t.value}{t.unit ? <span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:1 }}>{t.unit}</span> : null}</div>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.sub, letterSpacing:0.6, marginTop:5 }}>{t.label}</div>
                 </div>
               ))}
             </div>
@@ -24765,8 +24852,8 @@ function AppInner() {
                       </div>
                       <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
                         <button onClick={() => switchTab("tracker")} style={{
-                          background:C.accent,
-                          color:"#fff", border:"none", borderRadius:10,
+                          background:C.primary,
+                          color:C.onPrimary, border:"none", borderRadius:10,
                           padding:"11px 22px", fontSize:13, fontWeight:700,
                           cursor:"pointer", fontFamily:F
                         }}>Start a Workout</button>

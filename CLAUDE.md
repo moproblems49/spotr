@@ -397,6 +397,62 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   "N×" stripped for the range (or it prints twice). Because both the chip and the tile go through
   `progSetCount`, `pw_daysets` can assert the chips' set counts SUM to the tile, which is a much
   stronger check than either number alone.
+- **A WATCH THAT HASN'T SYNCED YET NEEDS A SECOND CHANCE.** Mo: "avg and peak heart rate hasn't
+  showing in my last 2 workouts." The History card already renders both correctly
+  (`♥ {avg} avg · {peak} peak` — not a rendering bug, easy to miss because "peak" only appears in
+  that one line and grepping for it with a truncated view can make it look like it never renders
+  anywhere). The write side was the bug: `readWorkoutHeartRate` fires ONCE, at the exact moment
+  Finish is tapped, and needs >=3 HealthKit samples or it returns null — permanently, nothing
+  re-checks. Apple Watch -> iPhone HealthKit sync is not instant, so a watch that finished recording
+  seconds before Finish commonly hasn't synced to the phone's store yet; the read comes back empty
+  for exactly the sessions you'd expect — the most RECENT ones, whose sync hadn't caught up by read
+  time. `attachWorkoutHr()` (dependency-injected, exported for the sim harness) now retries once,
+  ~90s later, re-querying up to THAT moment. Known remaining gap: if the app is backgrounded or
+  killed before the retry fires, iOS suspends the timer and this still misses it — closing that
+  needs tracking which recent sessions are still missing HR across a relaunch, a larger change.
+  Sim: `sim_hrretry`, stubbing HealthKit to return empty on the first read and real samples on the
+  second — the exact scenario a one-shot read can never recover from.
+- **HIDE-ON-SCROLL-DOWN, REVEAL-ON-SCROLL-UP USES `max-height` ON A WRAPPER, NOT `transform` ON THE
+  HEADER.** The live workout's Discard/timer/Finish row plus its sets/volume/rest-tools row now
+  collapse when the exercise list scrolls down and reopen on scroll up, floored so scrolling back
+  near the top ALWAYS shows it regardless of the last motion's direction. `transform:translateY()`
+  alone (the usual "cheap, GPU-composited" answer) was the wrong tool here on purpose: the header is
+  a flex sibling ABOVE the scroller, not layered over it, so translating it doesn't reclaim the
+  space — the scroller stays the same size and the header just relocates behind whatever's below it.
+  `max-height` on a wrapper, transitioning to a REAL MEASURED height (not a guessed constant — the
+  rest-tools row can be one or two lines depending on whether a superset badge is showing) is what
+  actually grows the scroller. This is still just ONE state flip per direction change, not per
+  scroll pixel — same rule as the gesture-perf pattern elsewhere in this file, just applied to a
+  scroll listener instead of a drag. Sim: `pw_hideheader`, which reads `getComputedStyle().maxHeight`
+  after the 280ms transition settles (a raw scroll callback races the CSS transition; reading
+  mid-transition proved to be a test bug the first time this was written, not an app bug).
+- **8PX AND 9PX FONT SIZES ARE RETIRED — 62 SITES SNAPPED UP TO 10.** Both sat below the 11px
+  "undersized UI text" floor a design-tool detector flags: 17 at 8px, 45 at 9px, the app's smallest
+  captions (stat-tile labels, section kickers like FRONT/BACK/TODAY, axis labels, badge text). All
+  moved UP to 10 (`tiny`), never down, so nothing shrank or risked overflow — the same direction
+  rule as the earlier half-pixel snap. `TYPE.micro` (9) stays defined as a token (renaming it would
+  just relocate the "what was this" question) but no literal 8 or 9 remains; `sim_designscale`
+  asserts it. Verified visually on the profile screen, the single densest cluster of the retired
+  sizes — nothing wrapped or overflowed.
+- **A "BUTTONS THAT ARE LIME" REPORT WAS A REAL, WIDESPREAD BUG CLASS, NOT ONE BUTTON.** Mo reported
+  the New Post Share button reading as invisible light-gray-on-white after picking a photo — it was
+  white text (`color:"#fff"`) hardcoded onto `background:C.primary`, which is near-WHITE on the dark
+  theme: 1.10:1. Auditing every `background:C.accent` site found the same failure in two shapes
+  across 16 more buttons/badges app-wide: (1) hardcoded `color:"#fff"` on the accent fill — 1.31:1
+  dark, since accent (volt) is a LIGHT lime, not dark; and (2) `color:C.onPrimary` paired with
+  `background:C.accent` — a MISMATCHED token pair, because `onPrimary`'s light value (white) was
+  calibrated for the near-black `C.primary` fill, not for the lime `C.accent` fill, and measures
+  3.09:1 there. Every BUTTON went neutral (`C.primary`/`C.onPrimary`, matching Save/Edit-toggle/
+  Start-Workout); every non-button informational element that stays on the accent fill (the ONE REP
+  MAX hero slab, avatar-initial fallbacks, small numbered badges, the story-viewer's no-photo
+  fallback) uses `C.isDark ? C.onAccent : C.text` — onAccent's dark value already equals onPrimary's
+  dark value, so this only changes the light theme. Standing check: `sim_accentbutton` — source-level,
+  asserts no `background:C.accent` style object still hardcodes white or pairs the wrong token.
+- **THE SHARE BUTTON'S DISABLED STATE HAD ITS OWN, WORSE VERSION OF THE SAME BUG.** Before a photo
+  was picked, Share read hardcoded white on `C.divider` — 1.18:1 on the LIGHT theme, worse than the
+  1.10:1 active-state bug beside it. Disabled controls are exempt from the AA floor, but there's no
+  reason to leave one this bad when `C.sub` (4.17:1) was sitting right there and already meant
+  "de-emphasised."
 - **AN INHERITED COLOUR IS INVISIBLE TO THE DETECTOR TOO.** The impeccable detector reported ZERO
   contrast findings on the whole feed — and the avatar initial was **1.31:1** on the dark theme, the
   same near-white-on-volt pairing as the Save button. It set no `color` of its own, so it inherited

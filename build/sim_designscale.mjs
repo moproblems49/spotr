@@ -25,6 +25,16 @@ check("no half-pixel font sizes (8.5/12.5/… are invisible next to their neighb
   halfPx.length === 0,
   halfPx.length ? `${halfPx.length} found: ${[...new Set(halfPx)].sort().join(", ")}` : "");
 
+// ── 1b. No 8px or 9px font sizes ─────────────────────────────────────────────────────────────
+// Retired on request (Aug 2026): both sit below an 11px "undersized UI text" floor. 62 sites (17
+// at 8, 45 at 9 — stat-tile labels, section kickers, axis labels, badge text) were snapped UP to
+// 10 (`tiny`), never down, so nothing shrank. `micro: 9` stays defined as a token (see the comment
+// above it) but must never be reintroduced as a literal.
+const tiny89 = [...src.matchAll(/fontSize:\s*([89])(?![0-9])/g)].map(m => m[1]);
+check("no 8px or 9px literal font sizes (retired below the 11px floor, snapped up to 10)",
+  tiny89.length === 0,
+  tiny89.length ? `${tiny89.length} found: ${[...new Set(tiny89)].sort().join(", ")}` : "");
+
 // ── 2. The tokens still exist and keep their documented shape ────────────────────────────────
 const typeMatch = src.match(/const TYPE = \{([^}]*)\}/);
 const radiusMatch = src.match(/const RADIUS = \{([^}]*)\}/);
