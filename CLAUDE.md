@@ -397,6 +397,13 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   "N×" stripped for the range (or it prints twice). Because both the chip and the tile go through
   `progSetCount`, `pw_daysets` can assert the chips' set counts SUM to the tile, which is a much
   stronger check than either number alone.
+- **AN INHERITED COLOUR IS INVISIBLE TO THE DETECTOR TOO.** The impeccable detector reported ZERO
+  contrast findings on the whole feed — and the avatar initial was **1.31:1** on the dark theme, the
+  same near-white-on-volt pairing as the Save button. It set no `color` of its own, so it inherited
+  `C.text`, and a static pass cannot resolve inheritance through an inline-styled tree. Light was
+  fine (5.57:1) purely because what it inherits there is already dark ink. `Avatar` sets an explicit
+  ink now. **A clean detector run on a screen is not evidence the screen is clean** — measure the
+  computed pair for anything painted on an accent fill.
 - **A HARDCODED SURFACE IS INVISIBLE TO `sim_a11y`.** That check tests every theme token against
   `C.bg` and `C.surface` — so a control painted on a literal like `#F1F5F9` is outside its reach no
   matter how bad the pairing is. The program day editor's set steppers were

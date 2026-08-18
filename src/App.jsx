@@ -1,4 +1,4 @@
-// v178091716859
+// v178091716860
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6918,6 +6918,13 @@ function Avatar({ user, size = 36, onClick, C, ring = false }) {
     height: size,
     borderRadius: "50%",
     background: C.accent,
+    // EXPLICIT INK. The initial set no colour of its own and inherited C.text, which on the dark
+    // theme is near-white on the volt disc: 1.31:1, the same pairing that made the Save button
+    // unreadable. Measured, not detected — the impeccable detector reported ZERO contrast findings
+    // on this screen because it cannot resolve an INHERITED colour through an inline-styled tree.
+    // The disc is a light lime in BOTH themes, so dark ink is right for both: 14.87:1 dark,
+    // 5.57:1 light (which is what it already happened to get by inheriting there).
+    color: C.isDark ? C.onAccent : C.text,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -10169,7 +10176,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
               ))}
               {post.workout.exercises.length > 3 && (
                 <button onClick={() => setExpanded(!expanded)} style={{ width:"100%", padding:"10px 16px", fontSize:12, color:C.text, background:"none", border:"none", cursor:"pointer", fontWeight:700, fontFamily:F, textAlign:"left" }}>
-                  {expanded ? "↑ Show less" : `+ ${post.workout.exercises.length-3} more exercises`}
+                  {expanded ? "↑ Show less" : `+ ${post.workout.exercises.length-3} more exercise${post.workout.exercises.length-3 === 1 ? "" : "s"}`}
                 </button>
               )}
             </div>
