@@ -216,6 +216,17 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   fills — goes through it. Don't add a tenth curve; and if you add a token, WIRE it, because the
   first attempt declared three and applied raw literals, leaving all three as dead code (two have
   since been removed — `EASE_NAV` is the one that's real).
+  **Correction, measured Aug 18: "one easing token" was never true of the whole app, and this entry
+  overclaimed.** `npx impeccable detect` found **nine live `cubic-bezier(0.34, 1.56, 0.64, 1)`
+  overshoot curves** — a third family the consolidation never touched, because it only swept
+  SCREEN-SCALE movement. They sit on `PullToRefresh`, `AnimatedNumber`, `SwipeToDismissRow`'s
+  release, the done-tick pop, and — via the injected stylesheet's bare `button { }` rule — EVERY
+  BUTTON PRESS IN THE APP. So the accurate statement is three families: `EASE_NAV` for navigation,
+  `EASE_EXIT` for leaving, and an unnamed spring for press/release feedback. Whether the spring
+  should stay is a taste call and is NOT settled — a 0.14s overshoot on a button press is close to
+  invisible, but it is the app's most-fired transition and it is not tokenised. Don't silently
+  "consolidate" it away; the nine sites are deliberate-looking and changing them alters how every
+  tap in the app feels.
 - **EVERY BOTTOM SHEET GOES THROUGH `<Sheet>`.** Two of the app's nineteen sheets animated in and
   NONE animated out, so seventeen popped into existence and all nineteen vanished on a frame — the
   same "did I break it?" feeling as an unanimated navigation. `Sheet` (near `SHEET_MS`) owns the

@@ -1,4 +1,4 @@
-// v178091716852
+// v178091716853
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16245,7 +16245,11 @@ function AICoachModal({ open, C, onClose, onImport, store }) {
           <div style={{ overflowY:"auto", flex:1, padding:20 }}>
             {/* Progress bar */}
             <div style={{ background:C.divider, borderRadius:4, height:4, marginBottom:20, overflow:"hidden" }}>
-              <div style={{ width:`${((step) / (questions.length + 1)) * 100}%`, height:"100%", background:C.accent, transition:"width 0.3s" }}/>
+              {/* scaleX, not width — the fifth progress bar in the app, and the one the earlier
+                  animate-transform pass missed. Animating width forces layout + paint every frame;
+                  the parent already clips with overflow:hidden + a radius, so the rounded end still
+                  reads correctly. Found by `npx impeccable detect`. */}
+              <div style={{ width:"100%", height:"100%", background:C.accent, transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, (step) / (questions.length + 1)))})`, transition:`transform 0.3s ${EASE_NAV}`, willChange:"transform" }}/>
             </div>
             <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:16 }}>{q.label}</div>
             <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
