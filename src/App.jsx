@@ -1,4 +1,4 @@
-// v178091716855
+// v178091716858
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1273,6 +1273,7 @@ const THEMES = {
     divider: "#26262d",     // hairline separators within surfaces
     accent: "#c8f135",          // volt — matches the app icon's green
     accentSoft: "rgba(200,241,53,0.12)",
+    accentInk: "#c8f135",       // accent used as TEXT on an accentSoft tint — see the light theme
     accent2: "#a8d426",
     onAccent: "#0d0d10",        // text/icons ON volt surfaces (volt is light — dark ink)
     // PRIMARY ACTION SURFACE — deliberately NOT the accent. Volt was doing ten unrelated jobs
@@ -1307,6 +1308,14 @@ const THEMES = {
     divider: "#eeece8",     // softer separator within cards
     accent: "#65a30d",          // volt's daylight form — lime-600, readable on white
     accentSoft: "rgba(101,163,13,0.11)",
+    // ACCENT-AS-TEXT NEEDS A DARKER VALUE THAN ACCENT-AS-FILL ON THIS THEME. `accent` (#65a30d)
+    // is chosen to read as a FILL on white; as TEXT on the accentSoft tint (#eef5e4 composited) it
+    // measures 2.77:1, and 3.09:1 on a plain white card — both under the 4.5:1 floor, on real
+    // functional text (the rep-range chips on the day preview). Lime-800 clears it at 6.34:1 on the
+    // tint and 7.08:1 on white while still reading as the brand green rather than grey. The dark
+    // theme needs no equivalent: volt on its own tint is already 9.56:1, so accentInk === accent
+    // there.
+    accentInk: "#3f6212",
     accent2: "#4d7c0f",
     onAccent: "#ffffff",
     primary: "#1c1b1a",         // see the dark theme's note — inverted for the light canvas
@@ -10444,9 +10453,8 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
   const BORD = C.border;
   const SUB  = C.sub;
   const TXT  = C.text;
-  const BLUE = C.accent;
+  const INK = C.accentInk;   // accent as TEXT — darker on the light theme, see the token
 
-  const DAY_COLORS = ["#7C3AED","#2563EB","#059669","#D97706","#DC2626","#0891B2","#7C3AED"];
 
   return (
     <div style={{ position:"absolute", inset:0, background:BG, zIndex:15, display:"flex", flexDirection:"column", overflow:"hidden" }}>
@@ -10618,7 +10626,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 8l2-2 2 2"/><path d="M3 16l2 2 2-2"/></svg>
           </button>
         )}
-        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:DAY_COLORS[activeDay%7], border:"none", borderRadius:10, padding:"9px 15px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0, whiteSpace:"nowrap", boxShadow:`0 4px 12px ${DAY_COLORS[activeDay%7]}55` }}>Start ›</button>
+        <button onClick={() => startWorkout && startWorkout(day, localProg.id)} style={{ background:C.primary, border:"none", borderRadius:10, padding:"9px 15px", color:C.onPrimary, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, flexShrink:0, whiteSpace:"nowrap" }}>Start ›</button>
       </div>
 
       {/* Exercise list */}
@@ -10720,7 +10728,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           </DndContext>
         )}
 
-        <button onClick={addEx} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${isDark?"#2563eb44":"#BFDBFE"}`, borderRadius:16, color:BLUE, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
+        <button onClick={addEx} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${C.accent}55`, borderRadius:16, color:INK, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
         <button onClick={() => {
           const nd = { id:uid(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
           patch({...localProg, days:[...(localProg.days||[]), nd]});
@@ -10730,7 +10738,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
         {editorReorder && (
           <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:C.bg, zIndex:400, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
-              <button onClick={() => setEditorReorder(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:BLUE, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
+              <button onClick={() => setEditorReorder(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:INK, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
               <div style={{ fontSize:18, fontWeight:700, color:TXT, letterSpacing:0.5, fontFamily:DISPLAY, textTransform:"uppercase" }}>Reorder exercises</div>
               <div style={{ width:48 }}/>
             </div>
@@ -13284,7 +13292,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       background:C.surface, border:`1px solid ${C.border}`,
                     }}>
                       <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>{name}</span>
-                      {diffEquip && <span style={{ fontSize:10, color:C.accent, fontWeight:700, background:C.accentSoft, borderRadius:6, padding:"3px 7px", flexShrink:0 }}>{exEquipment(name)}</span>}
+                      {diffEquip && <span style={{ fontSize:10, color:C.accentInk, fontWeight:700, background:C.accentSoft, borderRadius:6, padding:"3px 7px", flexShrink:0 }}>{exEquipment(name)}</span>}
                     </button>
                   );
                 })}
@@ -13989,7 +13997,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           </div>
                           <div style={{
                             flexShrink:0, fontSize:12, fontWeight:800, fontFamily:MONO,
-                            color:C.accent, background:C.accentSoft, borderRadius:8, padding:"5px 10px",
+                            color:C.accentInk, background:C.accentSoft, borderRadius:8, padding:"5px 10px",
                           }}>
                             {w.kind === "weight" ? `+${w.by}${unit}` : `+${w.by} rep${w.by === 1 ? "" : "s"}`}
                           </div>
@@ -15442,8 +15450,8 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const BORD  = C.border;
   const SUB   = C.sub;
   const TXT   = C.text;
-  const BLUE  = C.accent;
   const BLUEBG= C.accentSoft;
+  const INK   = C.accentInk;   // accent as TEXT on that tint — a darker value on the light theme
 
   function saveAndStart() {
     if (editMode && onSaveProgram) {
@@ -15480,9 +15488,14 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
     return <ExerciseDetail name={viewingExercise} store={store} unit={unit} C={C} onClose={() => setViewingExercise(null)}/>;
   }
 
-  const DAY_COLORS = ["#7C3AED","#2563EB","#059669","#D97706","#DC2626","#0891B2","#7C3AED"];
-  const colorIdx = (store.programs?.find(p=>p.days?.some(d=>d.name===editDay.name))?.days?.findIndex(d=>d.name===editDay.name)||0)%7;
-  const accentColor = DAY_COLORS[colorIdx];
+  // THE 7-COLOUR DAY RAINBOW IS GONE. `DAY_COLORS` indexed violet/blue/green/amber/red/cyan by the
+  // day's POSITION in the program, and it was the only palette in Seshd that encoded nothing: the
+  // day is named on the same line ("Push A · Chest Focus"), you only ever see one day at a time, so
+  // the colour could not be compared against anything — and its 7th entry repeated its 1st, so days
+  // 1 and 7 collided anyway. Meanwhile it fought the colour language that IS real on this screen:
+  // the per-exercise muscle stripes. A saturated violet gradient banner was also the single most
+  // generic element in the app. The banner is a raised surface now and the CTA is the neutral
+  // filled button; the only colour left on the screen means something.
 
   return (
     <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:BG, zIndex:200, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto" }}>
@@ -15498,7 +15511,8 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                 style={{ width:"100%", background:"transparent", border:"none", fontSize:17, fontWeight:700, color:TXT, outline:"none", fontFamily:F }}/>
             : <div style={{ fontSize:17, fontWeight:700, color:TXT }}>{editDay.name}</div>
           }
-          {lastPerformed && <div style={{ fontSize:11, color:SUB, marginTop:1 }}>Last done {lastPerformed}</div>}
+          {/* "Last done ..." lived here AND in the banner's third stat tile immediately below it —
+              the same fact twice, a hundred pixels apart. The tile keeps it. */}
         </div>
         <button onClick={() => {
           // Open picker: share this day OR the whole program
@@ -15520,7 +15534,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           // the Save button in ProgramDetailView had. Volt is reserved for PRs, progress, the
           // muscle map and the streak; a filled control goes neutral. 17.67:1 / 17.20:1 now.
           background: editMode ? C.primary : BLUEBG,
-          color: editMode ? C.onPrimary : BLUE,
+          color: editMode ? C.onPrimary : INK,
         }}>{editMode ? "Done" : "Edit"}</button>
       </div>
 
@@ -15702,7 +15716,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
 
       {/* Hero band */}
       {!editMode && (
-        <div style={{ background:`linear-gradient(135deg,${accentColor},${accentColor}cc)`, padding:"20px 20px 18px", flexShrink:0 }}>
+        <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:"20px 20px 18px", flexShrink:0 }}>
           <div style={{ display:"flex", gap:20 }}>
             {[
               ["dumbbell", editDay.exercises.length, "exercises"],
@@ -15717,14 +15731,15 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
               ["package", editDay.exercises.reduce((a,ex)=>a+progSetCount(ex),0), "total sets"],
               ...(lastPerformed ? [["check","Done",lastPerformed]] : [["spark","New","first time"]]),
             ].map(([icon,val,label]) => (
-              /* A DARK veil, not a white one. This was rgba(255,255,255,0.15), which lightens the purple
-                 banner underneath to #9058f0 and drops the white tile text to 4.3:1 on dark and
-                 3.2:1 on light — under AA, on the three tiles that carry the numbers. Darkening the
-                 veil instead keeps the banner's colour and takes the same text to 7.59:1. */
-              <div key={label} style={{ flex:1, background:"rgba(0,0,0,0.18)", borderRadius:12, padding:"10px 8px", textAlign:"center" }}>
-                <div style={{ marginBottom:4, display:"flex", justifyContent:"center", color:"rgba(255,255,255,0.95)" }}><Icon name={icon} size={18}/></div>
-                <div style={{ fontSize:15, fontWeight:800, color:"#fff", lineHeight:1 }}>{val}</div>
-                <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", marginTop:3, fontWeight:500 }}>{label}</div>
+              /* Theme tokens, not white-on-purple. These three carried hardcoded #fff and
+                 rgba(255,255,255,·) because the band behind them used to be a saturated violet
+                 gradient; with the band on C.surface those values are near-invisible on the light
+                 theme. An earlier fix here darkened the tile's veil to rescue the white text — that
+                 was the right fix for the old band and is moot now the band is neutral. */
+              <div key={label} style={{ flex:1, background:C.bg, borderRadius:12, padding:"10px 8px", textAlign:"center" }}>
+                <div style={{ marginBottom:4, display:"flex", justifyContent:"center", color:C.sub }}><Icon name={icon} size={18}/></div>
+                <div style={{ fontSize:15, fontWeight:800, color:C.text, lineHeight:1 }}>{val}</div>
+                <div style={{ fontSize:10, color:C.sub, marginTop:3, fontWeight:500 }}>{label}</div>
               </div>
             ))}
           </div>
@@ -15750,13 +15765,13 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:14, fontWeight:700, color:TXT, marginBottom:4 }}>{ex.name}</div>
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <span style={{ fontSize:11, fontWeight:600, color:BLUE, background:BLUEBG, padding:"3px 9px", borderRadius:20 }}>{ex.reps||"3×8–12"}</span>
+                    <span style={{ fontSize:11, fontWeight:600, color:INK, background:BLUEBG, padding:"3px 9px", borderRadius:20 }}>{ex.reps||"3×8–12"}</span>
                     {exInfo?.muscle && <span style={{ fontSize:11, color:SUB, padding:"3px 0" }}>{exInfo.muscle}</span>}
                     {pr && <span style={{ fontSize:10, fontWeight:800, color:"#fff", background:"#0A0A0A", padding:"3px 8px", borderRadius:6, letterSpacing:0.8 }}>PR {cvt(pr,"lbs",unit)}{unit}</span>}
                   </div>
                   {ex.note && <div style={{ fontSize:11, color:SUB, marginTop:4, fontStyle:"italic" }}>{ex.note}</div>}
                 </div>
-                <button onClick={() => setViewingExercise(ex.name)} style={{ width:32, height:32, borderRadius:8, background:BLUEBG, border:"none", cursor:"pointer", color:BLUE, fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>?</button>
+                <button onClick={() => setViewingExercise(ex.name)} style={{ width:32, height:32, borderRadius:8, background:BLUEBG, border:"none", cursor:"pointer", color:INK, fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>?</button>
               </div>
             );
           })
@@ -15789,7 +15804,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
               );
             })}
             <div style={{ background:CARD, border:`1.5px dashed ${isDark?"#2563eb55":"#BFDBFE"}`, borderRadius:14, padding:"12px 14px" }}>
-              <div style={{ fontSize:11, fontWeight:700, color:BLUE, marginBottom:8 }}>+ ADD EXERCISE</div>
+              <div style={{ fontSize:11, fontWeight:700, color:INK, marginBottom:8 }}>+ ADD EXERCISE</div>
               <ExerciseInput
                 value="" onSelect={v => addEx(v)} clearOnSelect C={C}
               />
@@ -15808,10 +15823,9 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
         backdropFilter:"blur(20px) saturate(1.5)", WebkitBackdropFilter:"blur(20px) saturate(1.5)",
         borderTop:`1px solid ${isDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.9)"}` }}>
         <button onClick={saveAndStart} style={{
-          width:"100%", background:accentColor, color:"#fff", border:"none",
+          width:"100%", background:C.primary, color:C.onPrimary, border:"none",
           borderRadius:14, padding:"17px", fontSize:16, fontWeight:800,
-          cursor:"pointer", fontFamily:F, letterSpacing:-0.3,
-          boxShadow:`0 6px 20px ${accentColor}55`
+          cursor:"pointer", fontFamily:F, letterSpacing:-0.3
         }}>
           {editMode ? "Save & Start Workout →" : "Start Workout →"}
         </button>

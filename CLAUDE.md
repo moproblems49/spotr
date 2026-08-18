@@ -349,6 +349,36 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   like anyway. Fixed translucent black rather than a theme token on purpose: on light it does the
   work, on dark the fill already has the contrast and the rim just crisps the edge. Generalises:
   when a brand or real-world colour fails contrast, add a boundary, don't repaint the thing.
+- **RUN `sim_undef`, NOT `undef_scan` DIRECTLY — AND NEVER EDIT BY STRING INDEX.** Both bit in one
+  change. Deleting `DAY_COLORS` left one survivor reference (a `boxShadow` glow past column 165, so
+  a `cut -c1-165` grep never showed it), which is a live ReferenceError; `node build/undef_scan.mjs`
+  run on its own reported **"No unresolved identifiers"** while `node build/sim_undef.mjs` found it
+  immediately — the sim rebuilds the transformed file first, so the bare scanner can read a stale
+  one. The battery is the authority. Separately, the edit that was supposed to fix that button used
+  `s.index(prefix)` to locate it, and the prefix also matched an EARLIER button changed moments
+  before — so the replacement landed inside a COMMENT, silently, and the real button kept its broken
+  `color:"#fff"`. `git diff` caught it. Replace on a unique full string with a `count == 1` assert;
+  an index-based edit into a 25k-line file will eventually find the wrong occurrence.
+- **THE 7-COLOUR DAY RAINBOW IS GONE, AND THE REASON GENERALISES: A PALETTE THAT ENCODES NOTHING
+  COMPETES WITH THE ONES THAT DO.** `DAY_COLORS` (violet/blue/green/amber/red/cyan, indexed by the
+  day's POSITION in the program, declared twice) painted the day preview's hero band and both Start
+  buttons. It was the only palette in Seshd carrying no meaning — the day is NAMED on the same line,
+  you see one day at a time so the colour can't be compared to anything, and its 7th entry repeated
+  its 1st so days 1 and 7 collided anyway. Worse, it fought the colour language that IS real on that
+  screen: the per-exercise muscle stripes. The band is `C.surface` now and both CTAs are the neutral
+  `C.primary`/`C.onPrimary` filled button, so the only colour left on the screen means something.
+  **Everything else in this app's colour is earned** — muscle groups, plate weights, PR/progress
+  volt — so before adding a palette, say what a reader learns from it.
+- **`accentInk` IS ACCENT-AS-TEXT; `accent` IS ACCENT-AS-FILL. THEY CANNOT BE THE SAME VALUE ON THE
+  LIGHT THEME.** Light `accent` (#65a30d) was picked to read as a FILL on white. Used as TEXT it is
+  **3.09:1 on a white card and 2.77:1 on its own `accentSoft` tint** — under the 4.5:1 floor, on
+  real functional text (the day preview's rep-range chips, "+ ADD EXERCISE", the Edit label, the
+  "?" buttons). `accentInk` is lime-800 (#3f6212) on light: 7.08:1 on white, 6.34:1 on the tint,
+  still reads as the brand green rather than grey. On dark it is just `accent`, because volt on its
+  own tint is already 9.56:1. **Anywhere `C.accent` is a `color:`, it should be `C.accentInk`.**
+  The two local `const BLUE = C.accent` aliases that hid this are deleted — a variable named BLUE
+  holding lime is how the next one gets written. (A stray `#2563eb44`/`#BFDBFE` dashed border
+  survived on "+ Add Exercise" from before the lime pass, blue box around lime text; fixed too.)
 - **★ A TILE'S LABEL IS A CLAIM ABOUT WHAT THE NUMBER COUNTS, AND THE DAY PREVIEW'S DIDN'T.**
   Mo's Push B read **"8 exercises · 71 total sets"**. The tile was
   `exercises.reduce((a,ex) => a + (parseInt(ex.reps)||3), 0)` — it summed the **REPS** field, so
