@@ -1814,6 +1814,23 @@ decision was to stay single dark icon).
    Still Mo-side later: "Confirm email" toggle at public launch; DMARC record for
    deliverability; Apple Services ID if Google/Apple sign-in ships at launch.
 
+## The impeccable design skill (installed Aug 18)
+`.claude/skills/impeccable/` — a third-party design skill pack (Apache-2.0, pbakaus/impeccable),
+invoked explicitly as `/impeccable`. **Its detector is the part that has actually earned its keep**:
+`npx impeccable detect src/` is read-only, needs no install, and found a genuine survivor of a
+COMPLETED pass — a fifth progress bar still animating `width` after the scaleX conversion. Run it
+before a submission build. Two things to know before acting on its output:
+- **It was vendored from GitHub, not installed.** `npx impeccable install` downloads its bundle
+  from `impeccable.style`, which the sandbox egress proxy blocks (HTTP 403). See
+  `.claude/skills/impeccable/VENDORED.md` for the update recipe. **Its hooks are deliberately NOT
+  installed** — a `PostToolUse` hook on every Edit/Write plus a `Stop` deep pass would run design
+  work on every change to a 25k-line file, unrequested and invisible in a diff.
+- **Its rules are generic, and this file outranks them.** Of 18 findings on Seshd, one was a real
+  bug; the four `borderLeft: 4px solid` "AI tell" hits carry SET TYPE and MUSCLE GROUP meaning, not
+  decoration, and the nine overshoot easings are a deliberate press-feedback family. It also flags
+  Inter and the containment question — both already parked by Mo. Check a finding against the
+  Conventions above before changing anything.
+
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.
 - Don't assume libraries are installed — check `package.json`. `@dnd-kit` is used (drag-drop reorder).
