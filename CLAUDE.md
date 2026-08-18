@@ -391,6 +391,12 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   the one definition and already existed; this was a seventh inline copy that didn't even compute
   the right quantity. Sim: `pw_daysets`, which seeds BOTH rep shapes because a one-shape test
   cannot see this bug. Same family as the 57 PRs: read the label, then check the number answers it.
+  **The rep chip beside each exercise had the mirror problem**: it rendered `ex.reps` RAW, so a day
+  written with bare ranges showed "5–7" and the set count appeared nowhere on the screen at all.
+  `progSetsReps(ex)` is the one definition — `progSetCount` for the N, `ex.reps` with any leading
+  "N×" stripped for the range (or it prints twice). Because both the chip and the tile go through
+  `progSetCount`, `pw_daysets` can assert the chips' set counts SUM to the tile, which is a much
+  stronger check than either number alone.
 - **A HARDCODED SURFACE IS INVISIBLE TO `sim_a11y`.** That check tests every theme token against
   `C.bg` and `C.surface` — so a control painted on a literal like `#F1F5F9` is outside its reach no
   matter how bad the pairing is. The program day editor's set steppers were

@@ -1,4 +1,4 @@
-// v178091716858
+// v178091716859
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3367,6 +3367,17 @@ function progSetCount(ex) {
   if (n > 0) return n;
   const lead = String(ex?.reps || "").match(/^\s*(\d+)\s*[×x*]/i);
   return lead ? parseInt(lead[1]) : 3;
+}
+
+// "4×8–12" for a PROGRAM exercise, whatever shape it stored its sets in.
+// The set count comes from progSetCount, so a chip built with this and the day preview's
+// "total sets" tile can never disagree — they are the same function. The rep half is `ex.reps`
+// with any leading "N×" stripped, because that N IS the set count and would otherwise print
+// twice ("4×4×8–12"). A day whose reps are a bare range ("8–12") stores no set count anywhere,
+// so it reads progSetCount's default of 3 — the same number the tile totals.
+function progSetsReps(ex) {
+  const reps = String(ex?.reps || "").replace(/^\s*\d+\s*[×x*]\s*/i, "").trim() || "8–12";
+  return `${progSetCount(ex)}×${reps}`;
 }
 
 // A group post never carries the feed's "Try my program: CODE" plug — groups are people who
@@ -15765,7 +15776,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:14, fontWeight:700, color:TXT, marginBottom:4 }}>{ex.name}</div>
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <span style={{ fontSize:11, fontWeight:600, color:INK, background:BLUEBG, padding:"3px 9px", borderRadius:20 }}>{ex.reps||"3×8–12"}</span>
+                    <span style={{ fontSize:11, fontWeight:600, color:INK, background:BLUEBG, padding:"3px 9px", borderRadius:20 }}>{progSetsReps(ex)}</span>
                     {exInfo?.muscle && <span style={{ fontSize:11, color:SUB, padding:"3px 0" }}>{exInfo.muscle}</span>}
                     {pr && <span style={{ fontSize:10, fontWeight:800, color:"#fff", background:"#0A0A0A", padding:"3px 8px", borderRadius:6, letterSpacing:0.8 }}>PR {cvt(pr,"lbs",unit)}{unit}</span>}
                   </div>

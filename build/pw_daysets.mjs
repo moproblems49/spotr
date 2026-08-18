@@ -93,10 +93,22 @@ for (const [dayName, expect, note] of [
   check(`${dayName}: the preview opened`, opened && /total sets/i.test(body),
     body.slice(0,110).replace(/\n/g," | "));
   if (!opened || !/total sets/i.test(body)) continue;
+  // The rep chip must read "N×range" — the SAME N the tile totals. Mo's day showed a bare "5–7"
+  // because the chip rendered ex.reps raw, so a program written with bare ranges never showed a set
+  // count anywhere on this screen.
+  const chips = await page.evaluate(() => [...document.querySelectorAll("span")]
+    .map(e => (e.textContent||"").trim())
+    .filter(t => /^\d+×\d/.test(t)).slice(0, 8));
   const got = await readTile("total sets");
   const ex  = await readTile("exercises");
   console.log(`   ${dayName}: ${ex} exercises · ${got} total sets   (${note})`);
   check(`${dayName}: "total sets" reads ${expect}`, String(got) === String(expect), `got ${got}`);
+  console.log(`   ${dayName}: rep chips -> ${chips.join(", ") || "(none matched N×…)"}`);
+  check(`${dayName}: every rep chip shows sets × reps, not a bare range`,
+    chips.length === Number(ex), `${chips.length} of ${ex} chips matched N×… : ${chips.join(", ")}`);
+  const chipSum = chips.reduce((a, t) => a + parseInt(t), 0);
+  check(`${dayName}: the chips' set counts add up to the "total sets" tile (${expect})`,
+    chipSum === Number(expect), `chips total ${chipSum}, tile says ${got}`);
 }
 
 // The tile must never exceed a sane ceiling for its own exercise count — the shape of the original
