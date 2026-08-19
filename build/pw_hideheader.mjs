@@ -132,15 +132,17 @@ const partial = h => parseFloat(h) > 2 && parseFloat(h) < parseFloat(openH0) - 5
 check("3. a partial scroll leaves the header PARTIALLY collapsed, not snapped fully open or closed",
   partial(midH), `got ${midH}, open was ${openH0}`);
 
-// ── The bug in Mo's screen recording: it came to REST half-collapsed, with the clip edge parked
-//    across the timer digits — the header sat there for over a second showing "01:0" with the
-//    bottom half sliced off, which reads as a rendering fault rather than a state. Continuous
-//    while the finger moves; committed to one end or the other once it stops. ──
+// ── IT MUST NOT SPRING. A settle-to-rest animation lived here for one build and Mo's verdict was
+//    "if touch scroll up or down it just springs up and down" — snapping to an endpoint when the
+//    finger stops is a spring however short the curve. The header stays exactly where the gesture
+//    left it; what stops a half-collapsed rest state from looking sliced is the fade + the upward
+//    translate (checks 3c/3d), not a snap. This check is the inverse of the one it replaced.
 await settle();
 const restedH = await readWrapMaxH();
-console.log(`   after settling from a 40px scroll: maxHeight=${restedH}`);
-check("3b. once scrolling STOPS it settles to a real rest state, never parked mid-glyph",
-  atRest(restedH), `rested at ${restedH} (open is ${openH0}) — that IS the half-sliced header`);
+console.log(`   140ms+ after the scroll stopped: maxHeight=${restedH} (was ${midH} mid-gesture)`);
+check("3b. a partial collapse STAYS partial when scrolling stops — it does not spring to an end",
+  Math.abs(parseFloat(restedH) - parseFloat(midH)) < 2 && !atRest(restedH),
+  `moved ${midH} -> ${restedH} after the finger stopped; open is ${openH0}`);
 
 // ── The content fades ahead of the clip edge, so the edge never travels across legible text ──
 await scrollSteps([70, 110, 150]); // ~110px of further travel: well past the fade-out point
@@ -148,6 +150,18 @@ const fadeOpacity = await readInnerOpacity();
 console.log(`   header content opacity at ~65% collapsed: ${fadeOpacity}`);
 check("3c. the header content fades out as it closes (it does not get sliced at full opacity)",
   fadeOpacity !== null && fadeOpacity < 0.5, `opacity ${fadeOpacity}`);
+// The content also slides UP by what the wrapper loses, so the clip edge stays at the TOP and the
+// header travels away under the app's top bar rather than being cut through the middle.
+const shift = await page.evaluate(() => {
+  const discard = [...document.querySelectorAll("button")].find(b => (b.textContent||"").trim() === "Discard");
+  let wrap = discard, hops = 0;
+  while (wrap && getComputedStyle(wrap).maxHeight === "none" && hops < 8) { wrap = wrap.parentElement; hops++; }
+  const t = wrap?.firstElementChild && getComputedStyle(wrap.firstElementChild).transform;
+  return t && t !== "none" ? parseFloat(t.split(",")[5]) : 0;   // matrix(...) ty
+});
+console.log(`   header content translateY at that depth: ${shift}px`);
+check("3d. ...and slides upward as it goes, so the cut is at the top edge not mid-content",
+  shift < -10, `translateY=${shift}px (expected a negative shift)`);
 
 await scrollSteps([200, 260]); // enough additional travel to reach full collapse at COLLAPSE_PX=170
 await settle();

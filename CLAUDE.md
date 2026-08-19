@@ -566,35 +566,49 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   current ceiling, which silently clamped them — failing the recovery check for a reason that had
   nothing to do with the app. Re-measure the live max immediately before using it, don't reuse a
   value from before any state change happened.
-- **★ A GESTURE-TRACKED THING NEEDS A REST STATE, AND THE CLIP EDGE MUST NEVER COME TO REST ON A
-  GLYPH.** Round two of the same header, from Mo's screen recording: it tracked the scroll
+- **★ THE FIX FOR "IT RESTS ON A SLICED GLYPH" IS TO CHANGE WHAT THE CLIP LOOKS LIKE, NOT TO SNAP
+  IT TO AN END.** Three rounds on the same header, and rounds two and three contradicted each other
+  — worth reading as a pair. Round two, from Mo's screen recording: the header tracked the scroll
   correctly and still looked broken, because a `max-height` clip stopping wherever the finger
-  stopped parks the cut line ANYWHERE — his video sits for over a second on a header showing the
-  timer with the bottom half of the digits sliced off. That is not a tuning problem, it is a
-  missing state: continuous while the finger moves, COMMITTED to one end once it stops. Three
-  changes, and each is load-bearing: (1) a 140ms idle timer settles `collapseRef` to 0 or 1 with a
-  220ms `EASE_NAV` transition; (2) the header's inner content fades out AHEAD of the clip edge
-  (`opacity = 1 - c*1.7`, gone by ~59% closed) so the edge is never travelling across legible
-  text — this is what actually kills the sliced-timer look, the settle only stops it RESTING
-  there; (3) `COLLAPSE_PX` 70 → 170, because "too fast" survived the switch to continuous
-  tracking — at 70 an ordinary flick crosses the whole range in a few frames, so a mechanism that
-  IS continuous still reads as a snap. **Distance is the knob that makes a scroll-driven thing
-  feel gradual, not easing** (there is no easing during the gesture at all, by design).
-  **The settle needs a re-entrancy guard or it oscillates**: collapsing the header makes the
-  scroller TALLER, so near the bottom of the list the browser clamps `scrollTop` down to the new
-  smaller max, which arrives as a scroll event with a negative delta, which re-opens the header,
-  which re-shrinks the scroller. `settlingUntil` ignores deltas for the duration of the settle
-  animation. Same family as the rubber-band clamp above — anything that changes the scroller's own
-  size from inside its scroll handler can feed itself.
+  stopped parks the cut line ANYWHERE, and his video sits for over a second on the timer with the
+  bottom half of the digits sliced off. The fix shipped was a settle — a 140ms idle timer animating
+  `collapseRef` to 0 or 1. **Mo, immediately: "if touch scroll up or down it just springs up and
+  down."** Of course it did: snapping to an endpoint when the finger lifts IS a spring, however
+  short the curve, and it fires on every small scroll in either direction. The settle is gone and
+  is not coming back — this header is now written on scroll events and NOTHING animates it.
+  What actually makes a half-collapsed rest state look deliberate instead of broken is two things
+  about the clip itself: (1) the inner content **fades** ahead of the edge (`opacity = 1 - c*1.7`,
+  gone by ~59% closed); and (2) it **translates upward** by exactly what the wrapper loses
+  (`translateY(-c * H)`), which moves the cut to the TOP edge so the header travels away under the
+  app's top bar rather than being sliced through the middle. Clipping from the bottom was the
+  actual cause of the sliced timer, and translate is the one-line answer to it. Also load-bearing:
+  `COLLAPSE_PX` 70 → 170, because "too fast" survived the switch to continuous tracking — at 70 an
+  ordinary flick crosses the whole range in a few frames, so a mechanism that IS continuous still
+  reads as a snap. **Distance is the knob that makes a scroll-driven thing feel gradual, not
+  easing.**
+  **A scroll handler that resizes its own scroller must subtract its own footprint.** Collapsing
+  the header makes the scroller TALLER, so its max scroll SHRINKS, and near the bottom of the list
+  the browser then clamps `scrollTop` down to the new max — arriving as a negative delta the finger
+  never produced, which re-opens the header, which re-shrinks the scroller. This is the mechanism
+  behind "it bugs when I get to the end of the workout page". Whatever part of a negative delta is
+  explained by `maxScroll` having shrunk since the last event is ours, not the user's, and is
+  removed before it moves anything (`lastMaxRef`). The settle briefly papered over this with a
+  time-based `settlingUntil` guard; subtracting the actual footprint is the real fix and needs no
+  timer.
   **And `maxHeight` must NOT be a React inline style** — `topBarHRef` is a ref, so a re-render
   after a re-measure would rewrite the attribute and snap the header open mid-gesture. The
   measuring effect owns the initial paint instead.
+  **Once faded, gate `pointerEvents`.** The band still on screen is transparent but would otherwise
+  stay hit-testable — a tap mid-scroll landing on an invisible Discard or Finish. Gate it on the
+  same opacity value that drives the fade so the two can never disagree.
   **Test-writing trap, caught by red-proofing**: `pw_hideheader`'s settle check first used the
   existing loose `open()` predicate (`>80px`) and PASSED against a build with the settle deleted —
   the half-collapsed rest state it was written to catch measures **91.7px**, comfortably over 80.
-  It compares against the header's OWN measured open height (±2px) now. Exactly the
+  Predicates compare against the header's OWN measured open height (±2px) now. Exactly the
   `sim_sleepwindow` 07:00 trap: never let the value you expect coincide with the value the bug
-  produces, and always confirm a new check goes red before believing it.
+  produces, and always confirm a new check goes red before believing it. That check has since been
+  INVERTED — it now asserts a partial collapse STAYS partial — which is the clearest possible
+  record that the settle was the wrong answer.
 - **8PX AND 9PX FONT SIZES ARE RETIRED — 62 SITES SNAPPED UP TO 10.** Both sat below the 11px
   "undersized UI text" floor a design-tool detector flags: 17 at 8px, 45 at 9px, the app's smallest
   captions (stat-tile labels, section kickers like FRONT/BACK/TODAY, axis labels, badge text). All

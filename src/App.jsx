@@ -1,4 +1,4 @@
-// v178091716867
+// v178091716868
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12581,30 +12581,34 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const topBarHRef = useRef(240); // generous default before the first real measurement lands
   const collapseRef = useRef(0);  // 0 = fully open, 1 = fully collapsed
   const lastYRef = useRef(0);
-  const settleTimer = useRef(null);
-  const settlingUntil = useRef(0);
+  const lastMaxRef = useRef(0); // previous max scroll, to spot a clamp we caused ourselves
   // 170px of scroll to travel open<->closed. The first cut used 70, which Mo read as "too fast" even
   // after it started tracking the gesture: at 70 an ordinary flick crosses the whole range inside a
   // few frames, so a mechanism that IS continuous still reads as a snap. The distance is the knob
   // that makes it feel gradual — not the easing, which only applies to the settle below.
   const COLLAPSE_PX = 170;
-  const SETTLE_MS = 220;
   // Paint the 0..1 collapse straight to the DOM. ms>0 animates (the settle); 0 tracks the finger.
-  const paintCollapse = useCallback((c, ms) => {
+  // NO TRANSITION, EVER. This is written on every scroll event and nothing else animates it —
+  // that is the whole point. A settle-to-rest animation lived here briefly and Mo's verdict was
+  // immediate: "if touch scroll up or down it just springs up and down." Snapping to an endpoint
+  // when the finger stops is a spring, however short the curve; the header has to just stay where
+  // the gesture left it.
+  const paintCollapse = useCallback((c) => {
     const wrap = topBarRef.current, inner = topBarInnerRef.current;
     if (!wrap) return;
-    wrap.style.transition = ms ? `max-height ${ms}ms ${EASE_NAV}` : "none";
-    wrap.style.maxHeight = `${(1 - c) * topBarHRef.current}px`;
+    const H = topBarHRef.current;
+    wrap.style.maxHeight = `${(1 - c) * H}px`;
     if (inner) {
-      inner.style.transition = ms ? `opacity ${ms}ms ${EASE_NAV}` : "none";
-      // Fades out FASTER than the height closes (gone by ~59% collapsed), so the clip edge is
-      // never travelling across legible text — the half-sliced timer in Mo's recording.
+      // Slide the content UP by the same amount the wrapper loses, so the clip edge stays at the
+      // TOP of the header and the content travels away under the app's top bar. Clipping from the
+      // bottom instead is what produced the half-sliced timer in Mo's screen recording: the cut
+      // marched down THROUGH the digits and parked there.
+      inner.style.transform = `translateY(${-c * H}px)`;
       const op = Math.max(0, Math.min(1, 1 - c * 1.7));
       inner.style.opacity = String(op);
-      // ...but max-height clips from the BOTTOM, so the strip still on screen once the content has
-      // faded is the TOP row — Discard, the timer, Finish. Without this, a tap mid-scroll lands on
-      // a fully transparent Discard or Finish button. Gate on the opacity, not on a second
-      // threshold, so the two can never disagree about when the header stops being visible.
+      // Once faded, the band still on screen is fully transparent but would otherwise still be
+      // hit-testable — a tap mid-scroll landing on an invisible Discard or Finish. Gate on the
+      // opacity itself so the two can never disagree about when the header stops being visible.
       inner.style.pointerEvents = op < 0.35 ? "none" : "auto";
     }
   }, []);
@@ -12612,31 +12616,23 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     const el = e.currentTarget;
     const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
     const y = Math.min(Math.max(el.scrollTop, 0), maxScroll);
-    const d = y - lastYRef.current;
+    let d = y - lastYRef.current;
     lastYRef.current = y;
-    // Collapsing the header makes the scroller TALLER, so near the bottom of the list the browser
-    // has to clamp scrollTop down to the new smaller max — which arrives here as a scroll event
-    // carrying a negative delta, re-opens the header, re-shrinks the scroller, and oscillates.
-    // Deltas that the settle animation itself caused are ignored; a real drag resumes right after.
-    if (Date.now() < settlingUntil.current) return;
-    if (settleTimer.current) clearTimeout(settleTimer.current);
+    // SUBTRACT OUR OWN FOOTPRINT. Collapsing the header makes the scroller TALLER, so its max
+    // scroll SHRINKS — and near the bottom of the list the browser then clamps scrollTop down to
+    // that new max. That clamp arrives here as a scroll event carrying a negative delta the user's
+    // finger never produced: it re-opens the header, which re-shrinks the scroller, which lets
+    // scrollTop grow again... This is the mechanism behind "it bugs when I get to the end of the
+    // workout page". Whatever portion of a negative delta is explained by the max having shrunk
+    // since the last event is ours, not theirs, so it is removed before it can move anything.
+    const shrink = Math.max(0, lastMaxRef.current - maxScroll);
+    lastMaxRef.current = maxScroll;
+    if (d < 0 && shrink > 0) d = Math.min(0, d + shrink);
     // Always fully open once scrolled back near the top — never leave the header hidden over the
     // start of the list, which is where Discard/Finish are most likely to be reached for.
     collapseRef.current = y < 8 ? 0 : Math.min(1, Math.max(0, collapseRef.current + d / COLLAPSE_PX));
-    paintCollapse(collapseRef.current, 0);
-    // Settle to fully open or fully closed once the scrolling stops. Tracking the gesture 1:1 is
-    // what Mo asked for DURING the swipe, but coming to REST half-collapsed leaves the clip edge
-    // parked mid-glyph — his recording sits for over a second on a header showing "01:0" with the
-    // bottom half of the digits sliced off, which reads as a rendering bug rather than a state.
-    settleTimer.current = setTimeout(() => {
-      const target = collapseRef.current > 0.5 ? 1 : 0;
-      if (target === collapseRef.current) return;
-      collapseRef.current = target;
-      settlingUntil.current = Date.now() + SETTLE_MS;
-      paintCollapse(target, SETTLE_MS);
-    }, 140);
+    paintCollapse(collapseRef.current);
   }, [paintCollapse]);
-  useEffect(() => () => { if (settleTimer.current) clearTimeout(settleTimer.current); }, []);
   // Measure the real header height from the INNER (unclipped) node — the outer wrapper's own
   // scrollHeight is what we are busy constraining. The rest-tools row can be one or two lines
   // depending on whether a superset badge is showing, so this re-measures on every render and
@@ -12645,7 +12641,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     const h = topBarInnerRef.current?.scrollHeight;
     if (h && Math.abs(h - topBarHRef.current) > 1) {
       topBarHRef.current = h;
-      paintCollapse(collapseRef.current, 0);
+      paintCollapse(collapseRef.current);
     }
   });
   const [showGroupShare, setShowGroupShare] = useState(false); // group picker after finish-and-share-to-groups
