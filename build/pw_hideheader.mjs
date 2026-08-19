@@ -96,7 +96,7 @@ async function readInnerOpacity() {
 // Past the last scroll event the header settles to a rest state on a 140ms idle timer + a 220ms
 // animation. Anything asserting a RESTING value has to wait that out; anything asserting the
 // mid-gesture value must NOT.
-const settle = () => page.waitForTimeout(520);
+const settle = () => page.waitForTimeout(650); // MIN_TRAVEL_MS(460) + margin for frame jitter
 const closed = h => parseFloat(h) < 2;   // 0px, allowing for sub-pixel rounding
 const open   = h => parseFloat(h) > 80;  // real header content is >100px; 80 leaves margin
 

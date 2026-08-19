@@ -1,4 +1,4 @@
-// v178091716869
+// v178091716870
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12597,7 +12597,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // so a flick crossed all 170px of COLLAPSE_PX almost instantly while a slow drag felt right.
   // A speed limit fixes only the fast case — a slow drag never reaches it, so 1:1 tracking (the
   // part he liked) is untouched.
-  const MIN_TRAVEL_MS = 340;
+  const MIN_TRAVEL_MS = 460; // Mo, after the cap landed: "can we make just a little slower" — 340 → 460
   // NO CSS TRANSITION, EVER. The header is driven frame by frame from the scroll position; a
   // settle-to-rest animation lived here briefly and Mo's verdict was immediate: "if touch scroll
   // up or down it just springs up and down." Snapping to an ENDPOINT when the finger stops is a
