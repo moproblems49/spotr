@@ -62,6 +62,11 @@ const setStore = fn => {
   const next = fn(fakePrev);
   lastHrSeen = next.history[dk][sid].hrSummary;
 };
+// Deliberately has NO `query` method, unlike the real sb. That makes checks 1-5 a live regression
+// test for patchSharedCardHr's try/catch: the first version of that function let a synchronous
+// throw escape into attachWorkoutHr's own catch, which reads ANY failure as "the HealthKit read
+// failed" — so it queued a pointless retry and resolved NULL for a session whose heart rate it had
+// already found and written to both the store and workout_history. Check 2 went red on it.
 const sb = { queueWrite: (path, opts) => { patchCalls.push({ path, body: JSON.parse(opts.body) }); return Promise.resolve(); } };
 
 const donePromise = attachWorkoutHr({
@@ -147,6 +152,67 @@ check("8. a session that already has hrSummary is left alone (no redundant write
   !backfillSets.includes("sess-has-hr"));
 check("9. a session older than the 24h window is not retried", !backfillSets.includes("sess-old"));
 check("10. exactly one HealthKit read happened (only the one eligible session)", readCalls === 1, `readCalls=${readCalls}`);
+
+// ── A late HR must also reach the card already SHARED for that session ────────────────────────
+// A post's `workout` jsonb is a SNAPSHOT frozen at share time, so heart rate arriving afterwards
+// (the 90s retry, or the backfill on the next foreground) never reached it: History showed the HR
+// and the feed showed none for the same workout. ProfileScreen hid half of this by re-attaching
+// from local history at render time for `isMe` — which is precisely why it looked right on your
+// own profile and wrong to everybody else. A local-only patch with no server write is the
+// dominant bug class in this app, so the fix writes to both post tables, keyed on client_id.
+readCalls = 0;
+window.Capacitor.Plugins.Health.readSamples = async (opts) => {
+  readCalls++;
+  if (opts.dataType !== "heartRate") return { samples: [] };
+  return { samples: [130, 140, 135, 150].map(v => ({ value: String(v) })) };
+};
+const shareSid = "sess-shared";
+const reads = [], writes = [];
+const sbShare = {
+  query: (path, opts, tok) => {
+    reads.push(path);
+    // Model the real shape: one shared feed post for this session, already on the server, whose
+    // frozen workout jsonb has NO hrSummary. group_posts has nothing for it.
+    if (/^posts\?/.test(path)) return Promise.resolve([{ id: "post-1", workout: { name: "Push A", volume: 3850, exercises: [] } }]);
+    return Promise.resolve([]);
+  },
+  queueWrite: (path, opts) => { writes.push({ path, body: JSON.parse(opts.body) }); return Promise.resolve(); },
+};
+await attachWorkoutHr({
+  wStartMs: Date.now() - 3600000, sid: shareSid, dk: "2026-08-18",
+  setStore: () => {}, getToken: () => "faketoken", currentUserId: "me", isGuest: false,
+  sb: sbShare, delayMs: 20,
+});
+await new Promise(r => setTimeout(r, 120)); // the card lookup is a separate async hop
+
+const cardWrite = writes.find(w => /^posts\?id=eq\./.test(w.path));
+check("11. the already-shared feed card is patched with the late heart rate",
+  !!cardWrite && cardWrite.body.workout?.hrSummary?.avg === 139,
+  `writes=${JSON.stringify(writes.map(w => w.path))}`);
+check("12. ...merged into the existing card, not replacing it (volume/name survive)",
+  cardWrite && cardWrite.body.workout?.volume === 3850 && cardWrite.body.workout?.name === "Push A",
+  JSON.stringify(cardWrite?.body?.workout));
+check("13. both post tables are checked, keyed on client_id and scoped to workout posts",
+  reads.some(p => /^posts\?client_id=eq\.sess-shared&type=eq\.workout/.test(p)) &&
+  reads.some(p => /^group_posts\?client_id=eq\.sess-shared&type=eq\.workout/.test(p)),
+  JSON.stringify(reads));
+check("14. a table with no shared card for this session gets no write",
+  !writes.some(w => /^group_posts\?id=/.test(w.path)), JSON.stringify(writes.map(w => w.path)));
+// A card that ALREADY carries hrSummary must not be rewritten — a redundant PATCH on every
+// foreground would churn the feed row (and its updated_at) for no change.
+writes.length = 0;
+const sbAlready = {
+  query: () => Promise.resolve([{ id: "post-9", workout: { name: "Push A", hrSummary: { avg: 111, peak: 120 } } }]),
+  queueWrite: (path, opts) => { writes.push({ path, body: JSON.parse(opts.body) }); return Promise.resolve(); },
+};
+await attachWorkoutHr({
+  wStartMs: Date.now() - 3600000, sid: "sess-already", dk: "2026-08-18",
+  setStore: () => {}, getToken: () => "faketoken", currentUserId: "me", isGuest: false,
+  sb: sbAlready, delayMs: 20,
+});
+await new Promise(r => setTimeout(r, 120));
+check("15. a card that already carries HR is left alone (no redundant PATCH)",
+  !writes.some(w => /\?id=eq\.post-9/.test(w.path)), JSON.stringify(writes.map(w => w.path)));
 
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

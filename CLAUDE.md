@@ -422,6 +422,42 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   missing HR" queue that survives past the 24h window, a larger change. Sim: `sim_hrretry`
   (checks 7-10 cover the backfill: a recent miss gets caught, an already-filled session is left
   alone with no redundant HealthKit read, and a >24h-old miss is not retried).
+- **FOUR SURFACES REPORTED HEART RATE AND ONLY ONE PRINTED BOTH HALVES OF IT.** Mo: "in
+  profile/home it only shows the avg (should show both on top of each other maybe in smaller text
+  in the same area)." History's session card was the single place printing `♥ 142 avg · 171 peak`;
+  the workout post card (which is the FEED **and** your own profile — same `PostCard`, and
+  `profileHistoryItems` carries `hrSummary` through `postWorkoutPayload`), the group-share picker
+  row and the new-post picker row all rendered the avg and silently dropped `peak`. Same shape as
+  the volume/set-count/PR-badge duplications: N copies of one fact, and the copies drift. There are
+  two definitions now and no inline third — **`HrStat`** (the stacked tile: avg on top, peak under
+  it smaller and dimmer, each carrying its own word so neither can be read as the other, ♥ inline
+  instead of a caption row so the tile stays the same two lines tall as the TIME and VOL tiles
+  beside it) and **`hrInline`** (the run-on ` · ♥ N avg · N peak` for rows that already read
+  "12m · 5 sets · 3,850 lbs"). Sim: `pw_hrdisplay` — and note check 6, which asserts the two
+  numbers share an ancestor under 24 characters wide: a plain "does the page contain 171" passes
+  even if peak renders in an unrelated corner, and the first cut of that check used a 40-char
+  bound that the whole TIME/VOL/HR row satisfied.
+- **A SHARED CARD IS A FROZEN SNAPSHOT, SO ANYTHING THAT ARRIVES LATE HAS TO BE PUSHED INTO IT.**
+  Mo asked whether heart rate was "supposed to" be on the feed. It was, and the render was fine —
+  but a post's `workout` jsonb is written once at share time, and HR routinely arrives AFTER that
+  (the 90s retry, or `backfillMissingHr` on the next foreground), so the shared card kept the empty
+  snapshot forever. **What made it hard to see: ProfileScreen already papered over half of it** —
+  `ownPosts` re-attaches `hrSummary` from local history at render time for `isMe`, so your own
+  profile looked correct while every other viewer's feed showed nothing for the same workout. A
+  render-time patch with no server write is the same family as the bare-`setStore` rule above, and
+  it hid the bug rather than fixing it. `patchSharedCardHr(sid, hr, tok, sb)` now reads the card
+  back (PostgREST has no partial jsonb PATCH), merges, and writes both `posts` and `group_posts`,
+  keyed on `client_id` — the session id, the same key the finish path upserts on, so it can't touch
+  another user's row or a non-workout post. It skips a card that already carries HR, or every
+  foreground would churn the row for no change.
+  **★ COSMETIC BOOKKEEPING MUST NEVER BE ABLE TO FAIL THE THING IT IS BOOKKEEPING FOR.** The first
+  cut called this from inside `attachWorkoutHr`'s success handler with only a `.catch()` on the
+  promise — so a SYNCHRONOUS throw (an `sb` without `query`, a bad row shape) escaped into
+  `attachWorkoutHr`'s own catch, which treats any failure as "the HealthKit read failed": it queued
+  a pointless retry and finally resolved **null for a session whose heart rate it had already found
+  and written to both the store and `workout_history`**. `sim_hrretry` check 2 caught it because
+  that sim's `sb` stub deliberately has no `query`. Wrapped in a real `try/catch` now, and the
+  stub is left query-less on purpose so checks 1-5 keep testing the guard.
 - **A HEADER THAT "SNAPS" ON A THRESHOLD IS NOT THE SAME THING AS ONE THAT TRACKS THE GESTURE.**
   The first cut of hide-on-scroll-down/reveal-on-scroll-up was a boolean + `transition:max-height`
   — collapsed or open, animated between the two on a fixed clock once a scroll-distance threshold
@@ -448,6 +484,35 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   current ceiling, which silently clamped them — failing the recovery check for a reason that had
   nothing to do with the app. Re-measure the live max immediately before using it, don't reuse a
   value from before any state change happened.
+- **★ A GESTURE-TRACKED THING NEEDS A REST STATE, AND THE CLIP EDGE MUST NEVER COME TO REST ON A
+  GLYPH.** Round two of the same header, from Mo's screen recording: it tracked the scroll
+  correctly and still looked broken, because a `max-height` clip stopping wherever the finger
+  stopped parks the cut line ANYWHERE — his video sits for over a second on a header showing the
+  timer with the bottom half of the digits sliced off. That is not a tuning problem, it is a
+  missing state: continuous while the finger moves, COMMITTED to one end once it stops. Three
+  changes, and each is load-bearing: (1) a 140ms idle timer settles `collapseRef` to 0 or 1 with a
+  220ms `EASE_NAV` transition; (2) the header's inner content fades out AHEAD of the clip edge
+  (`opacity = 1 - c*1.7`, gone by ~59% closed) so the edge is never travelling across legible
+  text — this is what actually kills the sliced-timer look, the settle only stops it RESTING
+  there; (3) `COLLAPSE_PX` 70 → 170, because "too fast" survived the switch to continuous
+  tracking — at 70 an ordinary flick crosses the whole range in a few frames, so a mechanism that
+  IS continuous still reads as a snap. **Distance is the knob that makes a scroll-driven thing
+  feel gradual, not easing** (there is no easing during the gesture at all, by design).
+  **The settle needs a re-entrancy guard or it oscillates**: collapsing the header makes the
+  scroller TALLER, so near the bottom of the list the browser clamps `scrollTop` down to the new
+  smaller max, which arrives as a scroll event with a negative delta, which re-opens the header,
+  which re-shrinks the scroller. `settlingUntil` ignores deltas for the duration of the settle
+  animation. Same family as the rubber-band clamp above — anything that changes the scroller's own
+  size from inside its scroll handler can feed itself.
+  **And `maxHeight` must NOT be a React inline style** — `topBarHRef` is a ref, so a re-render
+  after a re-measure would rewrite the attribute and snap the header open mid-gesture. The
+  measuring effect owns the initial paint instead.
+  **Test-writing trap, caught by red-proofing**: `pw_hideheader`'s settle check first used the
+  existing loose `open()` predicate (`>80px`) and PASSED against a build with the settle deleted —
+  the half-collapsed rest state it was written to catch measures **91.7px**, comfortably over 80.
+  It compares against the header's OWN measured open height (±2px) now. Exactly the
+  `sim_sleepwindow` 07:00 trap: never let the value you expect coincide with the value the bug
+  produces, and always confirm a new check goes red before believing it.
 - **8PX AND 9PX FONT SIZES ARE RETIRED — 62 SITES SNAPPED UP TO 10.** Both sat below the 11px
   "undersized UI text" floor a design-tool detector flags: 17 at 8px, 45 at 9px, the app's smallest
   captions (stat-tile labels, section kickers like FRONT/BACK/TODAY, axis labels, badge text). All

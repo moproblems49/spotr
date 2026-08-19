@@ -1,4 +1,4 @@
-// v178091716865
+// v178091716866
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6738,6 +6738,34 @@ async function readWorkoutHeartRate(startMs, endMs) {
 // Known remaining gap: if the app is backgrounded or killed before the retry fires, iOS suspends
 // the timer and this still misses it — a foreground-triggered retry would close that, and is a
 // larger change (tracking which recent sessions are still missing HR across a relaunch).
+// Merge a late-arriving hrSummary into the workout card of any post already shared for this
+// session, in BOTH post tables. Keyed on `client_id`, which is the session id and the same key
+// the finish path upserts on, so this can never touch someone else's row or a non-workout post.
+// Fire-and-forget and best-effort by design: the History row is the source of truth for the
+// number, and a card that misses the merge is exactly as wrong as it is today — never worse.
+// Wrapped in try/catch, not just .catch(): a SYNCHRONOUS throw in here (sb.query missing, a bad
+// row shape) would otherwise propagate out of attachWorkoutHr's success handler into its own
+// catch, which reads any failure as "the HealthKit read failed" — so it would schedule a pointless
+// retry and finally resolve NULL for a session whose heart rate it had already found and written.
+// Cosmetic bookkeeping must never be able to fail the thing it is bookkeeping for. (sim_hrretry
+// check 2 caught exactly that, on the first version of this function.)
+function patchSharedCardHr(sid, hr, tok, sb) {
+  try {
+    for (const table of ["posts", "group_posts"]) {
+      Promise.resolve(sb.query(`${table}?client_id=eq.${sid}&type=eq.workout&select=id,workout`, {}, tok))
+        .then(rows => {
+          for (const row of rows || []) {
+            if (!row?.workout || row.workout.hrSummary) continue; // already carries it — don't churn
+            sb.queueWrite(`${table}?id=eq.${row.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ workout: { ...row.workout, hrSummary: hr } }),
+            }, tok).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  } catch { /* never let the card refresh break the HR attach itself */ }
+}
 function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId, isGuest, sb, delayMs = 90000 }) {
   const attempt = (endMs, isRetry) => readWorkoutHeartRate(wStartMs, endMs).then(hr => {
     if (!hr) {
@@ -6751,6 +6779,14 @@ function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId,
     const tok = getToken();
     if (tok && currentUserId && !isGuest) {
       sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ hr_summary: hr }) }, tok).catch(() => {});
+      // ...and into any card already SHARED for this session. A post's `workout` jsonb is a
+      // SNAPSHOT frozen at share time, so HR arriving afterwards (this retry, or the backfill on
+      // the next foreground) never reached it — the feed showed no heart rate for a workout whose
+      // History row had it. ProfileScreen papers over this for `isMe` by re-attaching from local
+      // history at render time, which is exactly why it looked fine on your own profile and wrong
+      // to everyone else: a local-only patch with no server write, the dominant bug class here.
+      // jsonb has no partial PATCH through PostgREST, so read the card, merge, write it back.
+      patchSharedCardHr(sid, hr, tok, sb);
     }
     return hr;
   }).catch(() => {
@@ -10074,6 +10110,36 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 // The skew is applied to the BOX and unwound on the text, rather than italicising the glyphs: a
 // synthetic oblique on a mono face at 8px smears the stems, and `PR` is only two letters wide so
 // the leaning box alone carries it.
+// ONE definition of the heart-rate stat, because there were four and three of them dropped `peak`
+// on the floor. Mo: "in profile/home it only shows the avg (should show both on top of each other
+// maybe in smaller text in the same area)." History's session card had been the only surface
+// printing both, so the same workout read "♥ 142 avg · 171 peak" there and a bare "142 ♥ AVG" on
+// the post card for it. Stacked rather than side-by-side per his description, each number carrying
+// its own word so neither can be mistaken for the other, and no separate caption row — the ♥ says
+// what it is, which keeps this tile the same two lines tall as the TIME and VOL tiles beside it.
+function HrStat({ hr, C, size = 14, align = "center" }) {
+  if (!hr?.avg) return null;
+  const word = { fontSize: 10, fontWeight: 700, color: C.sub, fontFamily: F, marginLeft: 3, letterSpacing: 0.2 };
+  return (
+    <div style={{ textAlign: align }}>
+      <div style={{ fontSize: size, fontWeight: 800, color: "#ef4444", fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+        ♥{hr.avg}<span style={word}>avg</span>
+      </div>
+      {hr.peak ? (
+        <div style={{ fontSize: Math.max(10, size - 3), fontWeight: 700, color: "#ef4444", opacity: 0.72, fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+          {hr.peak}<span style={word}>peak</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// The same fact as an inline run-on, for the rows that read "12m · 5 sets · 3,850 lbs · …".
+function hrInline(hr) {
+  if (!hr?.avg) return "";
+  return ` · ♥ ${hr.avg} avg${hr.peak ? ` · ${hr.peak} peak` : ""}`;
+}
+
 function PRTag({ C, size = 9 }) {
   const small = size < 9;
   return (
@@ -10349,15 +10415,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                     <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
                     <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
                   </div>
-                  {/* Same field, same "· ♥ N avg · N peak" as History — only present once Apple
-                      Health has synced it (a moment after finish), so an older post's snapshot,
-                      taken before that sync, simply has nothing to show here. */}
-                  {post.workout.hrSummary?.avg ? (
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ fontSize:14, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
-                      <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>♥ AVG</div>
-                    </div>
-                  ) : null}
+                  {/* Same field, same avg AND peak as History — only present once Apple Health has
+                      synced it (a moment after finish, or on the next backfill pass), so an older
+                      post's snapshot, taken before that sync, simply has nothing to show here. */}
+                  <HrStat hr={post.workout.hrSummary} C={C} size={14}/>
                 </div>
               </div>
             </div>
@@ -12444,27 +12505,70 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // no further scroll-up gesture available to un-stick it (you're already at the end). Clamping `y`
   // to [0, maxScroll] before computing the delta means overscroll contributes nothing.
   const topBarRef = useRef(null);
+  const topBarInnerRef = useRef(null);
   const topBarHRef = useRef(240); // generous default before the first real measurement lands
   const collapseRef = useRef(0);  // 0 = fully open, 1 = fully collapsed
   const lastYRef = useRef(0);
-  const COLLAPSE_PX = 70; // scroll distance to go fully open<->closed — short enough to feel attached to the finger, long enough not to twitch on a a few px of jitter
+  const settleTimer = useRef(null);
+  const settlingUntil = useRef(0);
+  // 170px of scroll to travel open<->closed. The first cut used 70, which Mo read as "too fast" even
+  // after it started tracking the gesture: at 70 an ordinary flick crosses the whole range inside a
+  // few frames, so a mechanism that IS continuous still reads as a snap. The distance is the knob
+  // that makes it feel gradual — not the easing, which only applies to the settle below.
+  const COLLAPSE_PX = 170;
+  const SETTLE_MS = 220;
+  // Paint the 0..1 collapse straight to the DOM. ms>0 animates (the settle); 0 tracks the finger.
+  const paintCollapse = useCallback((c, ms) => {
+    const wrap = topBarRef.current, inner = topBarInnerRef.current;
+    if (!wrap) return;
+    wrap.style.transition = ms ? `max-height ${ms}ms ${EASE_NAV}` : "none";
+    wrap.style.maxHeight = `${(1 - c) * topBarHRef.current}px`;
+    if (inner) {
+      inner.style.transition = ms ? `opacity ${ms}ms ${EASE_NAV}` : "none";
+      // Fades out FASTER than the height closes (gone by ~59% collapsed), so the clip edge is
+      // never travelling across legible text — the half-sliced timer in Mo's recording.
+      inner.style.opacity = String(Math.max(0, Math.min(1, 1 - c * 1.7)));
+    }
+  }, []);
   const onExerciseScroll = useCallback(e => {
     const el = e.currentTarget;
     const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
     const y = Math.min(Math.max(el.scrollTop, 0), maxScroll);
     const d = y - lastYRef.current;
     lastYRef.current = y;
+    // Collapsing the header makes the scroller TALLER, so near the bottom of the list the browser
+    // has to clamp scrollTop down to the new smaller max — which arrives here as a scroll event
+    // carrying a negative delta, re-opens the header, re-shrinks the scroller, and oscillates.
+    // Deltas that the settle animation itself caused are ignored; a real drag resumes right after.
+    if (Date.now() < settlingUntil.current) return;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
     // Always fully open once scrolled back near the top — never leave the header hidden over the
     // start of the list, which is where Discard/Finish are most likely to be reached for.
     collapseRef.current = y < 8 ? 0 : Math.min(1, Math.max(0, collapseRef.current + d / COLLAPSE_PX));
-    if (topBarRef.current) {
-      topBarRef.current.style.maxHeight = `${(1 - collapseRef.current) * topBarHRef.current}px`;
-    }
-  }, []);
-  // Measure the real header height once it (and its content — the rest-tools row can change
-  // between one and two lines depending on whether a superset badge is showing) has painted.
+    paintCollapse(collapseRef.current, 0);
+    // Settle to fully open or fully closed once the scrolling stops. Tracking the gesture 1:1 is
+    // what Mo asked for DURING the swipe, but coming to REST half-collapsed leaves the clip edge
+    // parked mid-glyph — his recording sits for over a second on a header showing "01:0" with the
+    // bottom half of the digits sliced off, which reads as a rendering bug rather than a state.
+    settleTimer.current = setTimeout(() => {
+      const target = collapseRef.current > 0.5 ? 1 : 0;
+      if (target === collapseRef.current) return;
+      collapseRef.current = target;
+      settlingUntil.current = Date.now() + SETTLE_MS;
+      paintCollapse(target, SETTLE_MS);
+    }, 140);
+  }, [paintCollapse]);
+  useEffect(() => () => { if (settleTimer.current) clearTimeout(settleTimer.current); }, []);
+  // Measure the real header height from the INNER (unclipped) node — the outer wrapper's own
+  // scrollHeight is what we are busy constraining. The rest-tools row can be one or two lines
+  // depending on whether a superset badge is showing, so this re-measures on every render and
+  // repaints at the current collapse when the number actually moves.
   useEffect(() => {
-    if (topBarRef.current) topBarHRef.current = topBarRef.current.scrollHeight;
+    const h = topBarInnerRef.current?.scrollHeight;
+    if (h && Math.abs(h - topBarHRef.current) > 1) {
+      topBarHRef.current = h;
+      paintCollapse(collapseRef.current, 0);
+    }
   });
   const [showGroupShare, setShowGroupShare] = useState(false); // group picker after finish-and-share-to-groups
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
@@ -13592,7 +13696,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             not just visually cover it, so the exercise list actually gets taller when it closes.
             No CSS transition: onExerciseScroll writes maxHeight directly on every scroll event, so
             the collapse tracks the finger 1:1 instead of animating on a fixed clock. */}
-        <div ref={topBarRef} style={{ flexShrink:0, overflow:"hidden", maxHeight: topBarHRef.current }}>
+        <div ref={topBarRef} style={{ flexShrink:0, overflow:"hidden" }}>
+        {/* maxHeight is NOT set here as a React inline style on purpose. onExerciseScroll writes it
+            straight to .style on every scroll event, and a React re-render whose inline value had
+            changed (topBarHRef is a ref — it changes when the header is re-measured) would clobber
+            that write and snap the header back open mid-gesture. The measuring effect owns the
+            initial paint instead. The inner wrapper exists so the CONTENT can fade as the clip
+            closes: without it the clip edge slices straight through the timer digits, and Mo's
+            screen recording caught the header resting there with a half-cut "01:03" on screen. */}
+        <div ref={topBarInnerRef}>
         {/* Header. FLAT padding, not `env(safe-area-inset-top)`. This used to own the status-bar
             inset because the app's own top bar was hidden during a workout; the top bar is always
             present now, so it is the owner and claiming the inset here would stack TWO full status
@@ -13679,6 +13791,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <div style={{ height:4, background:C.divider, borderRadius:4, overflow:"hidden" }}>
             <div style={{ height:"100%", width:"100%", background:C.accent, transformOrigin:"left center", transform:`scaleX(${Math.max(0, Math.min(1, done/Math.max(total,1)))})`, transition:`transform 0.4s ${EASE_NAV}`, willChange:"transform" }}/>
           </div>
+        </div>
         </div>
         </div>
 
@@ -15491,7 +15604,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {sess.hrSummary.avg} avg · {sess.hrSummary.peak} peak</span> : null}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}</div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                           {/* THE BADGE HAS ONE FORM: `PRTag`. This chip was missed when the badge
@@ -17450,12 +17563,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                                   <div style={{ fontSize:10, color:C.sub, letterSpacing:1 }}>VOL</div>
                                 </div>
                               )}
-                              {post.workout.hrSummary?.avg ? (
-                                <div style={{ textAlign:"right" }}>
-                                  <div style={{ fontSize:12, fontWeight:800, color:"#ef4444", fontFamily:MONO }}>{post.workout.hrSummary.avg}</div>
-                                  <div style={{ fontSize:10, color:C.sub, letterSpacing:1 }}>♥ AVG</div>
-                                </div>
-                              ) : null}
+                              <HrStat hr={post.workout.hrSummary} C={C} size={12} align="right"/>
                             </div>
                           </div>
                           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -17648,7 +17756,7 @@ function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
                             {dateFromKey(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"}
-                            {sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {sess.hrSummary.avg} avg</span> : null}
+                            {sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}
                           </div>
                           <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
                             {(sess.exercises||[]).filter(e=>e.name).slice(0,3).map(e=>e.name).join(" · ")}
@@ -20350,7 +20458,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{w.dayName}</div>
                           {isSelected && <div style={{ color:C.accent, fontSize:18 }}>✓</div>}
                         </div>
-                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}{w.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}> · ♥ {w.hrSummary.avg} avg</span> : null}</div>
+                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}{w.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}>{hrInline(w.hrSummary)}</span> : null}</div>
                       </div>
                     );
                   })}

@@ -82,6 +82,21 @@ async function readWrapMaxH() {
     return wrap ? getComputedStyle(wrap).maxHeight : null;
   });
 }
+// The header content's own opacity — it fades out ahead of the clip edge so the edge is never
+// parked across legible text (see the settle note below).
+async function readInnerOpacity() {
+  return page.evaluate(() => {
+    const discard = [...document.querySelectorAll("button")].find(b => (b.textContent||"").trim() === "Discard");
+    let wrap = discard, hops = 0;
+    while (wrap && getComputedStyle(wrap).maxHeight === "none" && hops < 8) { wrap = wrap.parentElement; hops++; }
+    const inner = wrap?.firstElementChild;
+    return inner ? parseFloat(getComputedStyle(inner).opacity) : null;
+  });
+}
+// Past the last scroll event the header settles to a rest state on a 140ms idle timer + a 220ms
+// animation. Anything asserting a RESTING value has to wait that out; anything asserting the
+// mid-gesture value must NOT.
+const settle = () => page.waitForTimeout(520);
 const closed = h => parseFloat(h) < 2;   // 0px, allowing for sub-pixel rounding
 const open   = h => parseFloat(h) > 80;  // real header content is >100px; 80 leaves margin
 
@@ -97,24 +112,57 @@ check("1. the exercises scroller is actually scrollable (fixture has enough rows
 
 const openH0 = await readWrapMaxH();
 check("2. header starts open", open(openH0), `got ${openH0}`);
+// STRICT rest predicates, measured against the header's OWN open height rather than a threshold.
+// The loose `open()` (>80px) is fine for "is it up" but is useless for "did it come to rest":
+// this test's first version used it for the settle check and PASSED against a build with the
+// settle deleted, because the half-collapsed rest state it was written to catch measured 91.7px —
+// comfortably over 80. Same trap as sim_sleepwindow's 07:00 fixture: never let the value you
+// expect coincide with the value the bug produces.
+const OPEN_H = parseFloat(openH0);
+const isOpen   = h => Math.abs(parseFloat(h) - OPEN_H) < 2;
+const isClosed = h => parseFloat(h) < 2;
+const atRest   = h => isOpen(h) || isClosed(h);
 
-// ── Continuous tracking: intermediate scroll positions must show INTERMEDIATE header heights ──
-await scrollSteps([10, 25, 40]); // well under COLLAPSE_PX(70) worth of travel from near-zero
+// ── Continuous tracking: intermediate scroll positions must show INTERMEDIATE header heights.
+//    Read IMMEDIATELY, before the settle timer fires — this is the mid-gesture frame. ──
+await scrollSteps([10, 25, 40]); // well under COLLAPSE_PX(170) worth of travel from near-zero
 const midH = await readWrapMaxH();
 console.log(`   after 40px of scroll: maxHeight=${midH} (open was ${openH0})`);
 const partial = h => parseFloat(h) > 2 && parseFloat(h) < parseFloat(openH0) - 5;
 check("3. a partial scroll leaves the header PARTIALLY collapsed, not snapped fully open or closed",
   partial(midH), `got ${midH}, open was ${openH0}`);
 
-await scrollSteps([90, 130]); // enough additional travel to reach full collapse
-check("4. continuing to scroll down reaches fully collapsed", closed(await readWrapMaxH()));
+// ── The bug in Mo's screen recording: it came to REST half-collapsed, with the clip edge parked
+//    across the timer digits — the header sat there for over a second showing "01:0" with the
+//    bottom half sliced off, which reads as a rendering fault rather than a state. Continuous
+//    while the finger moves; committed to one end or the other once it stops. ──
+await settle();
+const restedH = await readWrapMaxH();
+console.log(`   after settling from a 40px scroll: maxHeight=${restedH}`);
+check("3b. once scrolling STOPS it settles to a real rest state, never parked mid-glyph",
+  atRest(restedH), `rested at ${restedH} (open is ${openH0}) — that IS the half-sliced header`);
 
-await scrollSteps([100, 60, 20]);
-check("5. scrolling back up reopens it continuously (fully open again)", open(await readWrapMaxH()));
+// ── The content fades ahead of the clip edge, so the edge never travels across legible text ──
+await scrollSteps([70, 110, 150]); // ~110px of further travel: well past the fade-out point
+const fadeOpacity = await readInnerOpacity();
+console.log(`   header content opacity at ~65% collapsed: ${fadeOpacity}`);
+check("3c. the header content fades out as it closes (it does not get sliced at full opacity)",
+  fadeOpacity !== null && fadeOpacity < 0.5, `opacity ${fadeOpacity}`);
+
+await scrollSteps([200, 260]); // enough additional travel to reach full collapse at COLLAPSE_PX=170
+await settle();
+check("4. continuing to scroll down reaches fully collapsed", isClosed(await readWrapMaxH()),
+  `got ${await readWrapMaxH()}`);
+
+await scrollSteps([200, 120, 60, 20]);
+await settle();
+check("5. scrolling back up reopens it (fully open again)", isOpen(await readWrapMaxH()),
+  `got ${await readWrapMaxH()}`);
 
 // ── The end-of-list bug: rubber-band overscroll past the true max must not latch it hidden ──
-await scrollSteps([80, 140]); // collapse it first, same as reaching the bottom of a real list
-check("6a. collapsed on the way to the end", closed(await readWrapMaxH()));
+await scrollSteps([80, 150, 220, 290]); // collapse it, same as reaching the bottom of a real list
+await settle();
+check("6a. collapsed on the way to the end", isClosed(await readWrapMaxH()), `got ${await readWrapMaxH()}`);
 // RE-MEASURE the live max scroll here, not reuse the value from step 1. The scroller is flex:1
 // against the header wrapper — as the header's max-height shrinks toward 0, the scroller's own
 // clientHeight GROWS to fill the freed space, so its real (scrollHeight - clientHeight) shrinks
@@ -133,15 +181,17 @@ const live = await page.evaluate(() => {
 // with the user's finger no longer moving (any real up-scroll gesture is over — this is exactly
 // the "already at the end, nothing left to scroll up on" trap).
 await scrollSteps([live + 40, live + 15, live + 30, live]);
+await settle();
 const afterBounce = await readWrapMaxH();
 console.log(`   after simulated rubber-band bounce at the list's end: maxHeight=${afterBounce}`);
 check("6b. rubber-band overscroll at the end does not change the collapse state unpredictably",
-  closed(afterBounce), `got ${afterBounce} — the old boolean version could latch on a bounce delta`);
+  isClosed(afterBounce), `got ${afterBounce} — the old boolean version could latch on a bounce delta`);
 // And the user can still recover it with a real scroll-up from here.
-await scrollSteps([live - 60, live - 120]);
+await scrollSteps([live - 80, live - 180, live - 280]);
+await settle();
 const afterRecover = await readWrapMaxH();
 console.log(`   live max=${live}, after scrolling up to live-120: maxHeight=${afterRecover}`);
-check("6c. a real scroll-up from the end still reopens the header", open(afterRecover), `got ${afterRecover}`);
+check("6c. a real scroll-up from the end still reopens the header", isOpen(afterRecover), `got ${afterRecover}`);
 
 await browser.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
