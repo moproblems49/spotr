@@ -56,6 +56,36 @@ for (const m of accentSites) {
 check("2. no background:C.accent style object pairs color:C.onPrimary (mismatched token)",
   mismatchedOnPrimary === 0, `${mismatchedOnPrimary} site(s) still pair the wrong ink token`);
 
-console.log(`   (${accentSites.length} background:C.accent sites scanned)`);
+// 3. The same two mistakes in PROP form. Checks 1-2 only look inside `{{ ... }}` style objects,
+// which is a real blind spot: NumberPad's Next key — the button pressed after every single set —
+// passed the accent fill and the wrong ink as PROPS (`bg={C.accent} color={C.onPrimary}`), which
+// is 3.09:1 on the light theme, and both checks above reported the file clean for months. An audit
+// found it by reading the component, not by running this.
+const propSites = [...src.matchAll(/bg=\{\s*C\.accent(?!Soft|Ink|2)\b\s*\}/g)];
+let badProps = 0;
+for (const m of propSites) {
+  // Props sit on one element; a ~200-char window covers the tag without spilling into the next.
+  const scoped = src.slice(Math.max(0, m.index - 120), m.index + 120);
+  if (/color=\{\s*C\.onPrimary\s*\}/.test(scoped) || /color=\{?\s*"#fff"/.test(scoped)) badProps++;
+}
+check("3. no bg={C.accent} element pairs color={C.onPrimary} or a hardcoded white",
+  badProps === 0, `${badProps} site(s) pass the accent fill with the wrong ink as props`);
+
+// 4. `Icon` defaults to currentColor, so an explicit color prop OVERRIDES the parent's ink. The
+// avatar-edit badge's fix shipped inert for exactly this reason: the wrapper was corrected to
+// `C.isDark ? C.onAccent : C.text` while the Icon inside kept `color={C.onPrimary}`, so nothing
+// changed and check 2 above reported the site as fixed. An accent-filled wrapper must not hand its
+// icon a contradicting colour.
+let overriddenIcon = 0;
+for (const m of accentSites) {
+  const scoped = src.slice(m.index, m.index + 420);
+  const tagEnd = scoped.indexOf("</div>");
+  const el = tagEnd === -1 ? scoped : scoped.slice(0, tagEnd);
+  if (/C\.isDark\s*\?\s*C\.onAccent/.test(el) && /<Icon[^>]*color=\{\s*C\.onPrimary\s*\}/.test(el)) overriddenIcon++;
+}
+check("4. no accent-filled wrapper is undone by an Icon color prop that overrides its ink",
+  overriddenIcon === 0, `${overriddenIcon} site(s) set the right ink then override it on the Icon`);
+
+console.log(`   (${accentSites.length} background:C.accent sites + ${propSites.length} bg={C.accent} prop sites scanned)`);
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

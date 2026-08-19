@@ -327,6 +327,47 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   one-time backfill that moves `updated_at` FORWARD only and only to a date backed by a real
   `pr_events` row. A trigger rather than a client change on purpose: it is true for every
   already-installed app version. momo's count went 57 → 2. Sim: `pw_weeklyprs`.
+- **★ CORRECTING LOGGED DATA MEANS FIVE SURFACES, NOT ONE — AND THE PHONE IS THE ONE THAT BITES.**
+  Mo, Aug 19: "All my t-bar rows have an extra 45 lbs, can you go through my whole history and fix
+  it?" — then, unprompted, "for tbar it's my fault, I added 45 to all my reps." **Not an app bug**:
+  the code already knows a T-bar is one-sided (`isOneSidedBarbell`, "the bar doesn't add resistance
+  — the user enters total plate weight directly") and never adds bar weight to a logged value. He
+  had been typing the total including the lever. Corrected 44 sets across 14 sessions (2026-05-10 →
+  08-05), which turned a 90→135 "progression" into a real 45→90 one. What that touched, and why
+  each one mattered:
+  1. `workout_history.exercises[].sets[].weight` — **STRINGS** here.
+  2. `personal_records` — set to the true corrected best (90), not `stored − 45`: the stored 120 was
+     already stale (history held 135), so blind subtraction would have preserved a wrong number.
+     **The `personal_records_touch_updated_at` trigger has an ELSE branch that forces
+     `new.updated_at = old.updated_at`**, so a normal UPDATE cannot restore the date — it has to be
+     disabled around the restore. Skipping that would have stamped `updated_at = now()` and made a
+     three-month-old lift count as a PR set THIS WEEK, straight back into the "57 PRs" bug.
+  3. `profiles.pr_events[].weightLbs` — a **NUMBER**, unlike (1).
+  4. `posts` / `group_posts` workout cards — `sets[].w` is a NUMBER, and the card's own `volume`
+     has to drop by `45 × reps` or the card contradicts its own set ledger. `group_posts` has a
+     `trg_enforce_group_post_author_edit` trigger; satisfy it by setting `request.jwt.claims` to
+     act AS the author rather than by disabling a security control.
+  5. **`store.prs` / `prsE1rm` / `prsVolume` ON THE PHONE — the one a server-side fix cannot reach.**
+     `loadUserData` rebuilds all three from history and then MAX-MERGES the in-memory copy over the
+     top (deliberate: it stops a failed PR upsert from losing a real best), and that copy is
+     rehydrated from localStorage every boot — so the inflated 135 wins that max **forever** and the
+     whole correction looks like it never happened. `migrateTbarPRs` (one-time, flag
+     `seshd_tbar_pr_reset_v1`) strips the t-bar keys **inside `loadStore`, before hydration**, so the
+     normal rebuild produces the corrected value with no special-casing. Sim: `pw_tbarpr`.
+     **The first version ran as a `useEffect` after mount and `pw_tbarpr` caught it failing two
+     ways**: it stripped the key AFTER `loadUserData` had already rebuilt it (so the PR was simply
+     MISSING for the rest of that session) and a later persist of a stale snapshot put the inflated
+     value straight back on the next launch. A migration that must beat the hydration cannot run
+     after it.
+  Method notes worth reusing: **back every affected row up to a table first**
+  (`tbar_fix_backup_20260819`) — it made a mid-migration rollback a one-liner when the first pass hit
+  a bad card; **guard the arithmetic on the value's plausible range** (one legacy card stored
+  `{r:90, w:10}` — reps and weight swapped at write time years ago — and an unguarded `−45` turned
+  its 10 into **−35**); and **only write a field the row already had** (a card with no `volume` key
+  gained one reading `−1395`, which `PostCard` gates its VOL tile on). Verify by joining old to new
+  on a REAL key — the first verification used `row_number() over ()` with no ORDER BY, which is
+  non-deterministic across two queries and reported 10 of 44 sets correct on a migration that was
+  actually perfect.
 - **A LOOKUP KEYED ON A NUMBER THAT MEANS TWO THINGS IN TWO UNITS IS WRONG FOR ONE OF THEM.** The
   plate-disc colours were one map keyed on the plate NUMBER, shared by lbs and kg — but `25` is
   green in pounds and RED in kilos, and `10` is white in pounds and GREEN in kilos, so it could
@@ -458,6 +499,47 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   and written to both the store and `workout_history`**. `sim_hrretry` check 2 caught it because
   that sim's `sb` stub deliberately has no `query`. Wrapped in a real `try/catch` now, and the
   stub is left query-less on purpose so checks 1-5 keep testing the guard.
+- **★ A READ WINDOW THAT DEFAULTS TO `Date.now()` IS A TIME BOMB IN ANY DEFERRED CALLER.**
+  `attachWorkoutHr` was written for the finish path, where "read HR from workout start to now" is
+  correct because the workout just ended. `backfillMissingHr` then reused it for sessions up to 24h
+  old — and the end stayed `Date.now()`. Measured against the real bundle: a 1-hour session read at
+  20:00 queried an **11-hour** window and attached `{avg:81, peak:140}`, i.e. roughly the whole
+  DAY's heart rate written onto that workout. It looks plausible, so nobody would report it, and it
+  is **permanent** — the backfill skips anything that already has an `hrSummary`. It fired on every
+  boot and every foreground, for exactly the users the feature was built for. `endMs` is an explicit
+  parameter now and the backfill passes `sess.finishedAt`. **The sim could not see it because its
+  HealthKit stub ignored `opts.startDate`/`endDate` entirely** — checks 16-18 record the window the
+  app actually asks for and pin its span to the session's duration. When a helper grows a second
+  caller, re-read every default it has: the default was right for caller one and silently wrong for
+  caller two.
+- **TWO MECHANISMS THAT EACH COVER "THE OTHER CASE" CAN BOTH MISS THE COMMON ONE.**
+  `patchSharedCardHr` was added so HR arriving AFTER a share reaches the card. But on the normal
+  finish path the HealthKit read usually SUCCEEDS immediately — so it ran while the post did not yet
+  exist (you share from the summary sheet seconds or minutes later) and matched zero rows, while the
+  share payload itself was frozen at finish with no `hrSummary` in it. Net effect: for every workout
+  where the watch HAD synced, History showed the heart rate and the feed card never would — the
+  exact symptom the work was meant to fix, still live after it shipped. `withHr(shareData)` merges
+  the stored HR at SHARE time (component-scope, reading `storeRef`, because the sheet's buttons fire
+  on a much later render); `patchSharedCardHr` still covers HR that lands afterwards. The two are
+  complements and neither alone is enough. `sim_hrretry` checks 11-15 passed throughout because the
+  fixture pre-created the shared post — it modelled the retry ordering, not the real finish ordering.
+  Related, found in the same pass: `loadFeed`'s `sameFeed` bail compared id/caption/image/kudos/
+  comments but NOT the workout payload, so a client already holding the post would discard the
+  refreshed copy and keep rendering the HR-less card.
+- **A COLOUR PASSED AS A PROP IS INVISIBLE TO A CHECK THAT SCANS STYLE OBJECTS.** `sim_accentbutton`
+  greps `background:C.accent` and then reads the enclosing `{{ … }}`. NumberPad's **Next** key — the
+  button pressed after every set — passed `bg={C.accent} color={C.onPrimary}`, the documented
+  mismatched pair, **3.09:1 on the light theme**, and the check reported the file clean for months.
+  Related, same audit: the avatar-edit badge's fix shipped **inert**, because `Icon` takes
+  `color = "currentColor"` and the call site kept an explicit `color={C.onPrimary}` that overrode the
+  corrected ink on the wrapper — and the check counted that site as fixed. Checks 3 and 4 cover the
+  prop form and the overriding-Icon form now. **When a standing check says an area is clean, confirm
+  it can actually SEE the shape you just wrote.**
+- **`max-height` CLIPS FROM THE BOTTOM, SO A FADED HEADER'S SURVIVING STRIP IS ITS TOP ROW.** The
+  workout header's content fades out by ~59% collapsed while `max-height` still shows ~41% of it —
+  and that surviving band is Discard, the timer and Finish, fully transparent and still
+  hit-testable mid-scroll. `pointerEvents` is gated on the same opacity value that drives the fade,
+  so the two can never disagree about when the header stops being visible.
 - **A HEADER THAT "SNAPS" ON A THRESHOLD IS NOT THE SAME THING AS ONE THAT TRACKS THE GESTURE.**
   The first cut of hide-on-scroll-down/reveal-on-scroll-up was a boolean + `transition:max-height`
   — collapsed or open, animated between the two on a fixed clock once a scroll-distance threshold

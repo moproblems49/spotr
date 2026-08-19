@@ -214,5 +214,41 @@ await new Promise(r => setTimeout(r, 120));
 check("15. a card that already carries HR is left alone (no redundant PATCH)",
   !writes.some(w => /\?id=eq\.post-9/.test(w.path)), JSON.stringify(writes.map(w => w.path)));
 
+// ── The backfill must read the SESSION's window, not "start -> now" ──────────────────────────
+// The stub above ignores opts.startDate/endDate entirely, which is exactly why checks 7-10 could
+// not see this: backfillMissingHr passed the session's start but left the end at Date.now(), so a
+// 1h workout read hours later averaged every heart-rate sample from the workout's start to the
+// present moment and wrote a whole-DAY summary onto that session — plausible-looking, wrong, and
+// permanent, since the backfill skips anything that already has an hrSummary. This section records
+// the window the app actually asks HealthKit for and pins it to the session.
+let windows = [];
+window.Capacitor.Plugins.Health.readSamples = async (opts) => {
+  windows.push({ start: new Date(opts.startDate).getTime(), end: new Date(opts.endDate).getTime() });
+  if (opts.dataType !== "heartRate") return { samples: [] };
+  return { samples: [130, 140, 135, 150].map(v => ({ value: String(v) })) };
+};
+const nowW = Date.now();
+const finishedAt = nowW - 8 * 3600000;   // finished 8 hours ago
+const durationS = 3600;                  // ran for exactly one hour
+backfillMissingHr(
+  { "2026-08-18": { "sess-window": { dayName: "Push A", duration: durationS, finishedAt } } },
+  { setStore: () => {}, getToken: () => "faketoken", currentUserId: "me", isGuest: false, sb: sbShare });
+await new Promise(r => setTimeout(r, 120));
+
+// readWorkoutHeartRate pads the window by exactly 60s on EACH side (so a watch that starts
+// recording a moment late still counts), which is why these tolerances are 61s and the expected
+// span is the duration + 2 minutes rather than the bare duration.
+const PAD = 60000;
+const hrWin = windows.find(w => Math.abs(w.start - (finishedAt - durationS * 1000 - PAD)) <= 61000);
+const spanH = hrWin ? (hrWin.end - hrWin.start) / 3600000 : null;
+check("16. the backfill reads from the session's own start", !!hrWin,
+  `windows=${JSON.stringify(windows)}`);
+check("17. ...and ends at the session's END, not at 'now' 8 hours later",
+  hrWin && Math.abs(hrWin.end - (finishedAt + PAD)) <= 61000,
+  hrWin ? `window ended ${((hrWin.end - finishedAt)/3600000).toFixed(2)}h after the session did` : "no window");
+check("18. so the queried span matches the workout's duration (1h + padding), not the whole day",
+  spanH != null && Math.abs(spanH - (durationS * 1000 + 2 * PAD) / 3600000) < 0.05,
+  spanH == null ? "no window" : `queried ${spanH.toFixed(2)}h for a ${(durationS/3600).toFixed(2)}h session`);
+
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

@@ -1,4 +1,4 @@
-// v178091716866
+// v178091716867
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6766,11 +6766,20 @@ function patchSharedCardHr(sid, hr, tok, sb) {
     }
   } catch { /* never let the card refresh break the HR attach itself */ }
 }
-function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId, isGuest, sb, delayMs = 90000 }) {
+// `endMs` bounds the HealthKit read. It defaults to "now", which is right at FINISH time (the
+// workout just ended) — but catastrophically wrong for the backfill, where the session ended up to
+// 24h ago: the read would average every HR sample from the workout's start to the present moment
+// and write a whole-DAY summary onto that session. Measured on the pre-fix code: a 1h session read
+// at 20:00 queried an 11-hour window and attached {avg:81, peak:140} — a plausible-looking number
+// that is not the workout's, and permanent, because backfillMissingHr skips anything that already
+// has an hrSummary. Callers with a known end pass it; the retry re-queries the SAME window, which
+// is the point (the window's data doesn't grow, only the phone's copy of it does).
+function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId, isGuest, sb, delayMs = 90000, endMs: endMsOverride = null }) {
+  const readEnd = () => endMsOverride != null ? endMsOverride : Date.now();
   const attempt = (endMs, isRetry) => readWorkoutHeartRate(wStartMs, endMs).then(hr => {
     if (!hr) {
       if (isRetry) return null;
-      return new Promise(res => setTimeout(() => res(attempt(Date.now(), true)), delayMs));
+      return new Promise(res => setTimeout(() => res(attempt(readEnd(), true)), delayMs));
     }
     setStore(p => {
       const day = p.history?.[dk]; if (!day || !day[sid]) return p;
@@ -6791,9 +6800,9 @@ function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId,
     return hr;
   }).catch(() => {
     if (isRetry) return null;
-    return new Promise(res => setTimeout(() => res(attempt(Date.now(), true)), delayMs));
+    return new Promise(res => setTimeout(() => res(attempt(readEnd(), true)), delayMs));
   });
-  return attempt(Date.now(), false);
+  return attempt(readEnd(), false);
 }
 // Catches up any RECENT session that finished without heart-rate data — closes the gap
 // attachWorkoutHr's own retry can't reach: if the app was backgrounded or killed before its ~90s
@@ -6803,6 +6812,23 @@ function attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId,
 // Bounded to the last 24h so it can't retry forever for a session that genuinely has no watch
 // data (older than that, a HealthKit read is never newly going to succeed) — the WINDOW is the
 // cap; no extra persisted attempt-counter is needed.
+// Find a session's heart-rate summary by its id, wherever it sits in history.
+// `patchSharedCardHr` alone is NOT enough to get HR onto a shared card, and an audit caught why:
+// on the normal finish path the HealthKit read usually SUCCEEDS immediately, so it fires while the
+// post does not exist yet (the user shares from the summary sheet seconds or minutes later) and
+// matches nothing. Meanwhile the share payload was frozen at finish with no hrSummary in it, and
+// the backfill skips any session that already has one — so for every workout where the watch HAD
+// synced, History showed the heart rate and the feed card never would. The two mechanisms are
+// complements: merge at share time for HR that already exists, patch the card for HR that lands
+// after. Same lookup the History->group share and NewPostModal paths already do.
+function hrForSession(history, sid) {
+  if (!history || !sid) return null;
+  for (const day of Object.values(history)) {
+    const s = day && day[sid];
+    if (s?.hrSummary?.avg) return s.hrSummary;
+  }
+  return null;
+}
 function backfillMissingHr(appHistory, { setStore, getToken, currentUserId, isGuest, sb }) {
   const cutoff = Date.now() - 24 * 3600 * 1000;
   for (const [dk, day] of Object.entries(appHistory || {})) {
@@ -6810,7 +6836,9 @@ function backfillMissingHr(appHistory, { setStore, getToken, currentUserId, isGu
       if (sess.hrSummary || !sess.finishedAt || !sess.duration) continue;
       if (sess.finishedAt < cutoff) continue;
       const wStartMs = sess.finishedAt - sess.duration * 1000;
-      attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId, isGuest, sb, delayMs: 60000 });
+      // endMs is the session's OWN end, never "now" — see the note on attachWorkoutHr.
+      attachWorkoutHr({ wStartMs, sid, dk, setStore, getToken, currentUserId, isGuest, sb,
+        delayMs: 60000, endMs: sess.finishedAt });
     }
   }
 }
@@ -6905,6 +6933,35 @@ function cleanupStaleLocalStorage() {
     localStorage.removeItem("seshd_last_activity"); // replaced by seshd_seen_activity_count
   } catch {}
 }
+// One-time: drop the LOCAL T-Bar Row PR baselines so they rebuild from the corrected history.
+// Mo logged every T-Bar Row with the bar's 45 lbs added on top, and the whole history was fixed at
+// the source. That alone does NOT reach the phone: loadUserData rebuilds prs/prsE1rm/prsVolume from
+// history and then MAX-MERGES the in-memory copy over the top (deliberately — it's what stops a
+// failed PR upsert from losing a real best), and that copy is rehydrated from localStorage every
+// boot, so the inflated 135 would win the max forever.
+//
+// This runs INSIDE loadStore, i.e. before anything reads the store — not in an effect after mount.
+// The effect version was written first and pw_tbarpr caught it failing two ways: it stripped the
+// key AFTER loadUserData had already rebuilt it, so the PR was simply MISSING for the rest of that
+// session, and a later persist of a stale snapshot put the inflated value straight back on the next
+// launch. Cleaning the persisted copy before hydration means `prev` never carries the bad number
+// and the normal rebuild produces the corrected one with no special-casing anywhere else.
+function migrateTbarPRs(store) {
+  try { if (localStorage.getItem("seshd_tbar_pr_reset_v1")) return store; } catch { return store; }
+  const isTbar = (n) => /\bt-?bar\b/i.test(n || "");
+  let changed = false;
+  for (const key of ["prs", "prsE1rm", "prsVolume"]) {
+    const m = store[key];
+    if (!m || typeof m !== "object") continue;
+    for (const name of Object.keys(m)) {
+      if (isTbar(name)) { delete m[name]; changed = true; }
+    }
+  }
+  // Flag the device even when nothing matched, so this never rescans on later boots.
+  try { localStorage.setItem("seshd_tbar_pr_reset_v1", "1"); } catch {}
+  if (changed) { try { localStorage.setItem(SK, JSON.stringify(store)); } catch {} }
+  return store;
+}
 function loadStore() {
   cleanupStaleLocalStorage();
   const defaults = {
@@ -6943,7 +7000,7 @@ function loadStore() {
       // then a fresh fetch replaces them when online. Avoids a blank feed with no connection.
       let cachedFeed = [];
       try { cachedFeed = JSON.parse(localStorage.getItem("seshd_feed_cache") || "[]") || []; } catch {}
-      return { ...defaults, ...d, posts: cachedFeed };
+      return migrateTbarPRs({ ...defaults, ...d, posts: cachedFeed });
     }
   } catch {}
   return defaults;
@@ -8156,7 +8213,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
               <polyline points="9 18.5 12 21.5 15 18.5"/>
             </svg>
           } />
-          <Key label="Next" onPress={onNext} bg={C.accent} color={C.onPrimary} fontSize={15} flex={3} />
+          <Key label="Next" onPress={onNext} bg={C.primary} color={C.onPrimary} fontSize={15} flex={3} />
         </div>
       </div>
     </div>
@@ -12434,6 +12491,21 @@ let _discoverSubTab = "discover";
 function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSaveProgram, onProgramEdited, onDeleteHistory, onRefresh, currentUserId, token, C, dataLoading, isGuest = false }) {
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
+  // The finish handler builds the share payload, but the SHARE happens later, from the summary
+  // sheet — by which time the heart-rate read has usually landed in the store. Reading `store`
+  // through a ref is the house rule for exactly this (stale closures in deferred handlers).
+  const storeRef = useRef(store);
+  useEffect(() => { storeRef.current = store; }, [store]);
+  // Stamp the heart rate onto a share payload at SHARE time, not at finish. The payload is built
+  // the instant Finish is tapped — before the HealthKit read comes back — so baking hrSummary in
+  // there would always miss it, and a post's workout jsonb is a frozen snapshot, so "always miss"
+  // means forever. Component-scope (not inside finishWorkout) because the summary sheet's own
+  // share buttons fire on a much later render and need it too.
+  const withHr = useCallback((sd) => {
+    const hr = hrForSession(storeRef.current?.history, sd?.clientId);
+    return hr && sd?.workout && !sd.workout.hrSummary
+      ? { ...sd, workout: { ...sd.workout, hrSummary: hr } } : sd;
+  }, []);
   const [session, setSession] = useState(() => {
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -12527,7 +12599,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       inner.style.transition = ms ? `opacity ${ms}ms ${EASE_NAV}` : "none";
       // Fades out FASTER than the height closes (gone by ~59% collapsed), so the clip edge is
       // never travelling across legible text — the half-sliced timer in Mo's recording.
-      inner.style.opacity = String(Math.max(0, Math.min(1, 1 - c * 1.7)));
+      const op = Math.max(0, Math.min(1, 1 - c * 1.7));
+      inner.style.opacity = String(op);
+      // ...but max-height clips from the BOTTOM, so the strip still on screen once the content has
+      // faded is the TOP row — Discard, the timer, Finish. Without this, a tap mid-scroll lands on
+      // a fully transparent Discard or Finish button. Gate on the opacity, not on a second
+      // threshold, so the two can never disagree about when the header stops being visible.
+      inner.style.pointerEvents = op < 0.35 ? "none" : "auto";
     }
   }, []);
   const onExerciseScroll = useCallback(e => {
@@ -13473,7 +13551,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // for this fast path — BUT if the session changed the program's structure, we still need
       // to show the summary so the "Update program?" prompt appears (it lives on the summary).
       if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && !programChange) {
-        onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
+        onShareWorkout({ ...withHr(shareData), groupIds: groupShare.groupIds, groupOnly: true });
         const gSave = await onSaveWorkout({ clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
         if (gSave && gSave.ok === false) {
           try {
@@ -13598,12 +13676,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         // Finish & share → actually create the feed post (this was missing — sharing
         // only built shareData but never posted it).
         if (share && onShareWorkout) {
-          onShareWorkout({ ...shareData, groupOnly: false });
+          onShareWorkout({ ...withHr(shareData), groupOnly: false });
         }
         // If this was a group-share that fell through to the summary (because a program change
         // needed confirming), still post to the selected groups so they aren't skipped.
         if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && onShareWorkout) {
-          onShareWorkout({ ...shareData, groupIds: groupShare.groupIds, groupOnly: true });
+          onShareWorkout({ ...withHr(shareData), groupIds: groupShare.groupIds, groupOnly: true });
         }
       }
 
@@ -14734,7 +14812,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         // resulting URL on the SAME row as the workout jsonb — one post, photo on
                         // top of the card. Undefined when no photo was picked, which is the exact
                         // shape this call had before.
-                        onShareWorkout({ ...workoutSummary.shareData, caption: finalCaption, groupCaption: userCaption, groupIds: selectedGroups, groupOnly: false, imageData: workoutSummary.photoDraft || null });
+                        onShareWorkout({ ...withHr(workoutSummary.shareData), caption: finalCaption, groupCaption: userCaption, groupIds: selectedGroups, groupOnly: false, imageData: workoutSummary.photoDraft || null });
                       }
                       // (External/native share removed — it could only send plain text, not the
                       // summary card, and any link has nowhere public to point yet. In-app feed +
@@ -14760,7 +14838,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   return (
                     <button onClick={() => {
                       if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
-                      if (workoutSummary.shareData) onShareWorkout({ ...workoutSummary.shareData, caption: (workoutSummary.captionDraft || "").trim(), groupIds: selectedGroups, feedOnly: false, groupOnly: true, imageData: workoutSummary.photoDraft || null });
+                      if (workoutSummary.shareData) onShareWorkout({ ...withHr(workoutSummary.shareData), caption: (workoutSummary.captionDraft || "").trim(), groupIds: selectedGroups, feedOnly: false, groupOnly: true, imageData: workoutSummary.photoDraft || null });
                       setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
                     }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -19452,7 +19530,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {isMe && (
               <>
                 <input ref={avatarRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatar}/>
-                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color: C.isDark ? C.onAccent : C.text, cursor:"pointer" }}><Icon name="plus" size={12} color={C.onPrimary}/></div>
+                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color: C.isDark ? C.onAccent : C.text, cursor:"pointer" }}><Icon name="plus" size={12}/></div>
               </>
             )}
           </div>
@@ -22928,7 +23006,12 @@ function AppInner() {
             if (x.id !== y.id || (x.caption || "") !== (y.caption || "") || (x.imageData || "") !== (y.imageData || "")
               || (x._localImage || "") !== (y._localImage || "")
               || (x.kudos?.length || 0) !== (y.kudos?.length || 0)
-              || (x.comments?.length || 0) !== (y.comments?.length || 0)) return false;
+              || (x.comments?.length || 0) !== (y.comments?.length || 0)
+              // The workout card can change on the server without any of the above moving: a heart
+              // rate that landed after the post was created gets patched into its jsonb. Without
+              // this, a client already holding the post discards the refreshed copy and renders the
+              // HR-less card until something unrelated (a new post, a kudos) breaks the tie.
+              || (x.workout?.hrSummary?.avg || 0) !== (y.workout?.hrSummary?.avg || 0)) return false;
           }
           return true;
         };
