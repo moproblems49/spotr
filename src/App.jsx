@@ -1,4 +1,4 @@
-// v178091716870
+// v178091716871
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2911,6 +2911,38 @@ function isBarbellExercise(name) {
   if (!name) return false;
   return /\bbarbell\b|\bbench press\b|\bback squat\b|\bfront squat\b|\bhigh bar\b|\blow bar\b|\bdeadlift\b|\bromanian\b|\bgood morning\b|\bbarbell hip thrust\b|\bhip thrust \(barbell\)\b|\blandmine\b|\bt-?bar row\b|\bbent[- ]?over row\b|\bpendlay\b|\bsumo deadlift\b|\boverhead press \(barbell\)\b|\bbarbell row\b|\bpower clean\b|\bhang clean\b|\bclean and jerk\b|\bsnatch\b|\btrap bar\b|\brack pull\b|\bbarbell shrug\b|\bpush press\b|\bz press\b|\bbradford\b|\bseated ohp\b|\bclose-grip bench\b|\bjm press\b|\bskull crusher\b|\bbarbell glute bridge\b|\bfront raises \(plate\)\b/i.test(name)
     && !/dumbbell|\bdb\b|kettlebell|\bkb\b|smith machine|machine|cable|band|leg curl|leg press|leg extension|pec deck|pulldown|pushdown|\bfly\b|lateral raise|pec|seated calf|assisted/i.test(name);
+}
+
+// ONE muscle→colour map for the left-accent stripe (the day editor and the day preview each had
+// their own hand-copied version, and they'd drifted apart: this screen's copy was MISSING "rear
+// delts" — so a Rear Delt exercise silently fell back to the grey "unknown" colour here while the
+// editor showed it correctly in violet — and both copies mapped Quads and Hamstrings to the exact
+// same green, so a leg day's stripes couldn't tell them apart. Same shape as the plate-colour bug:
+// one map trying to answer a question for two different callers. Hamstrings now gets its own
+// colour (a deep brown, chosen to sit far in hue from every neighbour rather than a shade of an
+// existing hue — two ADJACENT shades of one hue is the same illegible-twins problem as sharing one
+// exactly).
+// `MUSCLE_STRIPE_INK` is the light-theme variant, same trick as `accentInk`: a couple of these hexes
+// read fine as a small fill but fail 3:1 as a thin stripe against a WHITE card (measured — the old
+// shoulders colour was 1.31:1). Deepen the same hue rather than pick a different colour, so the
+// identity survives.
+// Shoulders was `#c8f135` — byte-identical to `C.accent`, the brand colour used for buttons, links,
+// PRs and progress everywhere else. On a shoulders exercise the stripe, the icon tile, the rep chip
+// and the "?" button all rendered the exact same lime, so the one colour meant four different
+// things on one row. Fuchsia (hue ~292°) sits in the widest open gap between the other 12 hues.
+const MUSCLE_STRIPE_COLORS = {
+  chest:"#EF4444", back:"#3B82F6", shoulders:"#D946EF", "rear delts":"#8B5CF6",
+  biceps:"#F59E0B", triceps:"#F97316", quads:"#10B981", hamstrings:"#92400E",
+  glutes:"#EC4899", calves:"#06B6D4", core:"#84CC16", traps:"#6366F1", "full body":"#2563EB",
+};
+const MUSCLE_STRIPE_INK = {
+  biceps:"#c57f08", triceps:"#f46806",
+  quads:"#0ea674", calves:"#059cb6", core:"#669e11",
+};
+function muscleStripeColor(muscle, isDark) {
+  const key = (muscle || "").toLowerCase();
+  if (!isDark && MUSCLE_STRIPE_INK[key]) return MUSCLE_STRIPE_INK[key];
+  return MUSCLE_STRIPE_COLORS[key] || "#64748B";
 }
 
 // Bar types — the plate diagram assumed a standard 45lb/20kg Olympic bar, which is wrong for
@@ -11000,8 +11032,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           {day.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             const sets = Math.max(1, progSetCount(ex));
-            const muscleColors = { chest:"#EF4444",back:"#3B82F6",shoulders:"#c8f135",biceps:"#F59E0B",triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB","rear delts":"#8B5CF6" };
-            const mColor = muscleColors[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
+            const mColor = muscleStripeColor(exInfo?.muscle, isDark);
             return (
               <SortableEditorCard key={ei} id={`eed-${ei}`} CARD={CARD} BORD={BORD} isDark={isDark}>
                 {(handleProps) => (<>
@@ -16041,7 +16072,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === previewDay.day.name ? editDay : d) });
           }
           setEditMode(m => !m);
-        }} style={{
+        }} className="seshd-hit" style={{
           padding:"8px 16px", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F, border:"none",
           // Active state is the neutral filled button (C.primary/C.onPrimary), not white-on-volt.
           // White on the volt accent measures 1.31:1 on dark and 3.09:1 on light — the same failure
@@ -16105,7 +16136,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                   } catch (e) {
                     devError("workout code error:", e);
                     setShareModal(null);
-                    toast("Couldn't generate code — run SQL migration", "error");
+                    toast("Couldn't generate share code", "error");
                   }
                 }} style={{
                   width:"100%", background:"rgba(255,255,255,0.06)",
@@ -16261,16 +16292,17 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
       )}
 
       {/* Exercise list */}
-      <div style={{ flex:1, overflowY:"auto", padding:"12px 16px", paddingBottom: editMode ? 120 : 100 }}>
+      {/* The floating CTA below is `position:absolute`, so it reserves no layout space of its own —
+          this padding is the ONLY thing keeping the last card clear of it. Measured (headless,
+          zero safe-area-inset-bottom): the CTA's real footprint is ~80px and the old 100px padding
+          still left the last card's "?" button 19px UNDER it (a real device's home-indicator inset
+          only makes the CTA taller, never shorter), so its usable tap area shrank to 27x18. */}
+      <div style={{ flex:1, overflowY:"auto", padding:"12px 16px", paddingBottom: editMode ? 160 : 140 }}>
         {!editMode ? (
           editDay.exercises.map((ex, i) => {
             const exInfo = getExEntry(ex.name);
             const pr = store.prs?.[ex.name];
-            const muscleColor = {
-              chest:"#EF4444",back:"#3B82F6",shoulders:"#c8f135",biceps:"#F59E0B",
-              triceps:"#F97316",quads:"#10B981",hamstrings:"#10B981",glutes:"#EC4899",
-              calves:"#06B6D4",core:"#84CC16",traps:"#6366F1","full body":"#2563EB",
-            }[(exInfo?.muscle||"").toLowerCase()] || "#64748B";
+            const muscleColor = muscleStripeColor(exInfo?.muscle, isDark);
             return (
               <div key={i} style={{ background:CARD, borderRadius:14, padding:"14px 16px", marginBottom:10, display:"flex", alignItems:"center", gap:14, boxShadow: isDark?"none":"0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)", borderLeft:`4px solid ${muscleColor}` }}>
                 <div style={{ width:42, height:42, borderRadius:10, background:`${muscleColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -16278,14 +16310,28 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:14, fontWeight:700, color:TXT, marginBottom:4 }}>{ex.name}</div>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <span style={{ fontSize:11, fontWeight:600, color:INK, background:BLUEBG, padding:"3px 9px", borderRadius:20 }}>{progSetsReps(ex)}</span>
-                    {exInfo?.muscle && <span style={{ fontSize:11, color:SUB, padding:"3px 0" }}>{exInfo.muscle}</span>}
-                    {pr && <span style={{ fontSize:10, fontWeight:800, color:"#fff", background:"#0A0A0A", padding:"3px 8px", borderRadius:6, letterSpacing:0.8 }}>PR {cvt(pr,"lbs",unit)}{unit}</span>}
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+                    {/* Plain text, not a coloured pill — a rep RANGE never changes week to week,
+                        so it shouldn't out-compete an actual achievement for attention. */}
+                    <span style={{ fontSize:11, fontWeight:600, color:SUB }}>{progSetsReps(ex)}</span>
+                    {exInfo?.muscle && <span style={{ fontSize:11, color:SUB, padding:"3px 0" }}>· {exInfo.muscle}</span>}
+                    {/* Was a near-black fill (1.17:1 against this dark card — it read as plain text,
+                        not a badge). C.gold is this app's existing PR/trophy colour (used on the
+                        exercise-picker's PR icon); it now actually pops off the card in both themes. */}
+                    {pr && <span style={{ fontSize:10, fontWeight:800, color: isDark ? "#0a0a0a" : "#ffffff", background:C.gold, padding:"3px 8px", borderRadius:6, letterSpacing:0.8 }}>PR {cvt(pr,"lbs",unit)}{unit}</span>}
                   </div>
+                  {/* The one fact this app actually has that a template couldn't fake: what you
+                      lifted last time you did THIS exercise, not a lifetime best from months back. */}
+                  {(() => {
+                    const last = getLastExerciseSession(store, ex.name);
+                    if (!last) return null;
+                    const top3 = [...last.sets].sort((a,b) => b.w - a.w || b.r - a.r).slice(0, 3);
+                    const txt = top3.map(s => `${Math.round(cvt(s.w, last.unit, unit))}×${s.r}`).join(" · ");
+                    return <div style={{ fontSize:11, color:SUB, marginTop:4 }}>Last: <span style={{ color:TXT, fontWeight:600, fontFamily:MONO }}>{txt}</span></div>;
+                  })()}
                   {ex.note && <div style={{ fontSize:11, color:SUB, marginTop:4, fontStyle:"italic" }}>{ex.note}</div>}
                 </div>
-                <button onClick={() => setViewingExercise(ex.name)} style={{ width:32, height:32, borderRadius:8, background:BLUEBG, border:"none", cursor:"pointer", color:INK, fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>?</button>
+                <button onClick={() => setViewingExercise(ex.name)} aria-label={`${ex.name} details`} className="seshd-hit" style={{ width:32, height:32, borderRadius:8, background:BLUEBG, border:"none", cursor:"pointer", color:INK, fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>?</button>
               </div>
             );
           })
@@ -16300,7 +16346,16 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                       <MuscleIcon muscle={exInfo?.muscle||""} size={20} name={ex.name} C={C}/>
                     </div>
                     <div style={{ flex:1, fontSize:13, fontWeight:700, color:TXT }}>{ex.name}</div>
-                    <button onClick={() => removeEx(i)} aria-label="Remove exercise" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 2px", lineHeight:1 }}>×</button>
+                    {/* This removes an exercise from a SAVED program and "Done" makes it permanent —
+                        no undo. Every other destructive control in the app confirms first; this one
+                        didn't, and at 20px square with no .seshd-hit halo it was also the easiest
+                        button on the screen to hit by accident. */}
+                    <button onClick={() => confirmAction({
+                      title: `Remove ${ex.name}?`,
+                      message: "This removes it from the program. Tap Done afterward to save.",
+                      confirmLabel: "Remove", destructive: true,
+                      onConfirm: () => removeEx(i),
+                    })} aria-label={`Remove ${ex.name}`} className="seshd-hit" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 2px", lineHeight:1 }}>×</button>
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                     <div>

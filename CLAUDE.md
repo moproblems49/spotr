@@ -368,6 +368,32 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   on a REAL key — the first verification used `row_number() over ()` with no ORDER BY, which is
   non-deterministic across two queries and reported 10 of 44 sets correct on a migration that was
   actually perfect.
+- **★ A DUAL-ASSESSMENT DESIGN CRITIQUE ON ONE SCREEN FOUND A REAL DUPLICATED-MAP BUG NEITHER
+  DETECTOR WAS LOOKING FOR.** `/impeccable critique` on the Day Preview screen (`DayPreviewModal`)
+  ran an LLM design review and a detector/browser-evidence pass independently; the detector's own
+  rules (contrast, tap targets, generic anti-patterns) found nothing here that wasn't already a
+  documented deliberate choice — but rendering the screen with a FULLER fixture than either
+  scanner used on its own (an exercise on every muscle group, not just the ones visible in one
+  screenshot) surfaced that the muscle→colour map for the left-accent stripe was **hand-copied
+  into two places** (this screen and the day editor one tap away) and had drifted: this screen's
+  copy was missing `"rear delts"` entirely (silently fell back to grey) and both copies mapped
+  Quads and Hamstrings to the identical green (a leg day's stripes couldn't tell them apart).
+  Same shape as the plate-colour bug — one map answering a question for two different callers.
+  Fixed with one shared `muscleStripeColor(muscle, isDark)` + `MUSCLE_STRIPE_COLORS`/
+  `MUSCLE_STRIPE_INK` (the light-theme deepened variants, same `accentInk` trick, since several of
+  these hexes read fine as a small fill but fail 3:1 as a thin stripe on white — shoulders measured
+  1.31:1). Shoulders itself was also byte-identical to `C.accent`, so the stripe, the icon tile, the
+  rep chip and the "?" button all rendered the exact same lime on a shoulders exercise — moved to a
+  fuchsia sitting in the widest open hue-gap between the other 12 categories.
+- **A BADGE'S TEXT CAN BE HIGH-CONTRAST AND THE BADGE STILL BE INVISIBLE.** The Day Preview's PR
+  tag was white text on a near-black fill (`#0A0A0A`) — 19.8:1 text contrast, genuinely excellent —
+  but that fill measured **1.17:1 against the dark card it sits on**, so the badge SHAPE didn't
+  read as a badge at all, while the rep-range chip beside it (a number that never changes) got the
+  loud accent-tinted pill and visually won the row. Text contrast against its own fill is not the
+  same question as a graphical object's contrast against what it sits ON. Fixed by swapping which
+  element gets the loud treatment: the rep range is now plain text, and the PR badge uses `C.gold`
+  (this app's existing PR/trophy colour) as a solid fill, which pops on both themes (10.16:1 / 4.93:1
+  against the two card colours) instead of receding into one of them.
 - **A LOOKUP KEYED ON A NUMBER THAT MEANS TWO THINGS IN TWO UNITS IS WRONG FOR ONE OF THEM.** The
   plate-disc colours were one map keyed on the plate NUMBER, shared by lbs and kg — but `25` is
   green in pounds and RED in kilos, and `10` is white in pounds and GREEN in kilos, so it could
@@ -964,6 +990,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   a running timer ("cancel what, the rest timer?"). It says **Discard** now and goes through
   `confirmAction`, naming how many logged sets are at stake; the safe option is worded "Keep going"
   to match the Finish sheet, so the same word means the same thing in both places.
+- **THE DAY PREVIEW'S REMOVE-EXERCISE "×" HAD NEITHER OF THOSE.** Found by the same critique as the
+  muscle-colour bug above: a 20×20px "×" in the day editor's exercise list called `removeEx(i)`
+  directly on click, and "Done" then saved that change permanently — no `confirmAction`, no undo,
+  and no `.seshd-hit` halo on the smallest, most destructive control on the screen. Routed through
+  `confirmAction` naming the exercise, matching every other destructive control in the app.
+- **A NUMBER UNDER "LAST" MUST BE THE LAST TIME THIS EXACT DAY WAS DONE, AND THE APP ALREADY HAS
+  IT.** The same critique's biggest product finding: the Day Preview showed a lifetime PR next to
+  each exercise — often months old — instead of what was actually lifted last time, which is the
+  number a lifter needs to know what to load today. `getLastExerciseSession()` already existed
+  (built for the progressive-overload engine) and needed no new tracking; wired in as a `Last: W×R
+  · W×R · W×R` line under each exercise, `cvt()`'d into the day's display unit per the existing
+  raw-numbers-in-the-source-session's-unit rule. The PR badge stays — it's real motivational value —
+  but stopped being the ONLY number, and see the badge-contrast entry above for why it also needed
+  a new fill.
 - **A SHELL ELEMENT THAT APPEARS AND DISAPPEARS PER TAB CANNOT BE RIGHT DURING A SWIPE.** The top
   bar is an IN-FLOW flex child above the swipe track, and it was gated on
   `!(workoutActive && tab === "tracker")`. `tab` only flips when the swipe COMMITS — 240ms after the
