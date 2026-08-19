@@ -139,10 +139,15 @@ check("3. a partial scroll leaves the header PARTIALLY collapsed, not snapped fu
 //    translate (checks 3c/3d), not a snap. This check is the inverse of the one it replaced.
 await settle();
 const restedH = await readWrapMaxH();
-console.log(`   140ms+ after the scroll stopped: maxHeight=${restedH} (was ${midH} mid-gesture)`);
-check("3b. a partial collapse STAYS partial when scrolling stops — it does not spring to an end",
-  Math.abs(parseFloat(restedH) - parseFloat(midH)) < 2 && !atRest(restedH),
-  `moved ${midH} -> ${restedH} after the finger stopped; open is ${openH0}`);
+// EXACTLY where 40px of scroll asks for: 40/COLLAPSE_PX(170) of the way closed. The header may
+// still be travelling when the finger lifts — the speed limit means it finishes the move the
+// scroll already asked for — but it must come to rest THERE and not at an endpoint. Landing on
+// an endpoint is the spring; landing on the scroll-implied position is the fix.
+const expected = OPEN_H * (1 - 40 / 170);
+console.log(`   140ms+ after the scroll stopped: maxHeight=${restedH} (asked for ~${expected.toFixed(1)}px)`);
+check("3b. it comes to rest where the SCROLL asked, not snapped to an endpoint",
+  Math.abs(parseFloat(restedH) - expected) < 3 && !atRest(restedH),
+  `rested at ${restedH}, expected ~${expected.toFixed(1)}; open is ${openH0}`);
 
 // ── The content fades ahead of the clip edge, so the edge never travels across legible text ──
 await scrollSteps([70, 110, 150]); // ~110px of further travel: well past the fade-out point
@@ -172,6 +177,30 @@ await scrollSteps([200, 120, 60, 20]);
 await settle();
 check("5. scrolling back up reopens it (fully open again)", isOpen(await readWrapMaxH()),
   `got ${await readWrapMaxH()}`);
+
+// ── A VIOLENT FLICK MUST NOT CROSS THE WHOLE RANGE INSTANTLY ────────────────────────────────
+// Mo, after the settle was removed: "I feel like it sometimes still springs too fast." Nothing
+// animates the header any more, so the speed was coming from the scroller itself — iOS momentum
+// delivers hundreds of pixels in a handful of frames, so a flick crossed all of COLLAPSE_PX at
+// once while a slow drag felt right. A speed limit (MIN_TRAVEL_MS) caps how fast the header may
+// move without changing where it ends up. Here: reopen, then jump the scroller by a huge amount
+// in ONE event and check the header has NOT arrived by the next frame.
+await scrollSteps([120, 60, 20, 0]);
+await settle();
+check("7a. reopened before the flick test", isOpen(await readWrapMaxH()), `got ${await readWrapMaxH()}`);
+await scrollSteps([900]);              // one enormous jump, as a momentum burst delivers
+await page.waitForTimeout(32);         // ~2 frames
+const justAfterFlick = await readWrapMaxH();
+console.log(`   ~32ms after a 900px jump: maxHeight=${justAfterFlick} (open ${openH0})`);
+check("7b. a huge single scroll jump does NOT slam the header shut within a frame or two",
+  !isClosed(justAfterFlick),
+  `collapsed to ${justAfterFlick} almost immediately — the speed limit is not being applied`);
+// ...but it must still get there. The limit changes the SPEED, never the destination.
+await page.waitForTimeout(600);
+const afterFlickSettled = await readWrapMaxH();
+console.log(`   ~600ms after the same jump: maxHeight=${afterFlickSettled}`);
+check("7c. ...and it still arrives fully collapsed shortly after",
+  isClosed(afterFlickSettled), `got ${afterFlickSettled}`);
 
 // ── The end-of-list bug: rubber-band overscroll past the true max must not latch it hidden ──
 await scrollSteps([80, 150, 220, 290]); // collapse it, same as reaching the bottom of a real list

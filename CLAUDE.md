@@ -575,7 +575,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   `collapseRef` to 0 or 1. **Mo, immediately: "if touch scroll up or down it just springs up and
   down."** Of course it did: snapping to an endpoint when the finger lifts IS a spring, however
   short the curve, and it fires on every small scroll in either direction. The settle is gone and
-  is not coming back — this header is now written on scroll events and NOTHING animates it.
+  is not coming back — this header is driven from the scroll position, never toward an endpoint.
+  **Round four, and the distinction that matters: A SPEED LIMIT IS NOT A SPRING.** With the settle
+  gone Mo still reported "I feel like it sometimes still springs too fast", and *sometimes* was the
+  tell — nothing was animating it, so the speed was coming straight from the scroller. iOS momentum
+  delivers hundreds of pixels in a handful of frames, so a flick crossed the whole `COLLAPSE_PX`
+  range almost instantly while a slow drag felt right. The scroll handler now only moves a TARGET;
+  a `requestAnimationFrame` follower walks the header toward it at no more than 1/`MIN_TRAVEL_MS`
+  (340ms) of the range per millisecond. This never changes WHERE the header ends up, only how fast
+  it may get there — a slow drag never reaches the cap, so the 1:1 tracking he liked is untouched,
+  and a flick is smoothed. The follower stops itself once it arrives (no permanent rAF loop) and is
+  cancelled on unmount. **The distinction to hold on to: a settle invents a destination the gesture
+  did not ask for; a rate limit only refuses to teleport to the one it did.** `pw_hideheader` 3b
+  pins the resting position to the exact value the scroll asked for (`OPEN_H × (1 − 40/170)`), and
+  7b/7c assert a 900px jump has NOT closed the header two frames later but HAS shortly after.
   What actually makes a half-collapsed rest state look deliberate instead of broken is two things
   about the clip itself: (1) the inner content **fades** ahead of the edge (`opacity = 1 - c*1.7`,
   gone by ~59% closed); and (2) it **translates upward** by exactly what the wrapper loses

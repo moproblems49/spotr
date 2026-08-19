@@ -1,4 +1,4 @@
-// v178091716868
+// v178091716869
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12582,17 +12582,27 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   const collapseRef = useRef(0);  // 0 = fully open, 1 = fully collapsed
   const lastYRef = useRef(0);
   const lastMaxRef = useRef(0); // previous max scroll, to spot a clamp we caused ourselves
+  const targetRef = useRef(0);     // where the scroll says the header should be
+  const rafRef = useRef(0);        // live requestAnimationFrame id, 0 when the follower is idle
+  const lastFrameRef = useRef(0);
   // 170px of scroll to travel open<->closed. The first cut used 70, which Mo read as "too fast" even
   // after it started tracking the gesture: at 70 an ordinary flick crosses the whole range inside a
   // few frames, so a mechanism that IS continuous still reads as a snap. The distance is the knob
   // that makes it feel gradual — not the easing, which only applies to the settle below.
   const COLLAPSE_PX = 170;
-  // Paint the 0..1 collapse straight to the DOM. ms>0 animates (the settle); 0 tracks the finger.
-  // NO TRANSITION, EVER. This is written on every scroll event and nothing else animates it —
-  // that is the whole point. A settle-to-rest animation lived here briefly and Mo's verdict was
-  // immediate: "if touch scroll up or down it just springs up and down." Snapping to an endpoint
-  // when the finger stops is a spring, however short the curve; the header has to just stay where
-  // the gesture left it.
+  // The fastest the header may cross its ENTIRE range, however violently the list is flicked.
+  // Mo, after the settle was removed: "I feel like it sometimes still springs too fast" — and
+  // "sometimes" is the tell. Nothing animates the header any more, so the speed was coming
+  // straight from the scroller: iOS momentum delivers hundreds of pixels in a handful of frames,
+  // so a flick crossed all 170px of COLLAPSE_PX almost instantly while a slow drag felt right.
+  // A speed limit fixes only the fast case — a slow drag never reaches it, so 1:1 tracking (the
+  // part he liked) is untouched.
+  const MIN_TRAVEL_MS = 340;
+  // NO CSS TRANSITION, EVER. The header is driven frame by frame from the scroll position; a
+  // settle-to-rest animation lived here briefly and Mo's verdict was immediate: "if touch scroll
+  // up or down it just springs up and down." Snapping to an ENDPOINT when the finger stops is a
+  // spring however short the curve. Rate-limiting is a different thing: it never changes WHERE
+  // the header ends up, only how fast it is allowed to get there.
   const paintCollapse = useCallback((c) => {
     const wrap = topBarRef.current, inner = topBarInnerRef.current;
     if (!wrap) return;
@@ -12612,6 +12622,29 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       inner.style.pointerEvents = op < 0.35 ? "none" : "auto";
     }
   }, []);
+  // Follow the target at a capped speed. This is NOT an animation to a resting position — it has
+  // no notion of an endpoint and no easing curve; it simply refuses to move faster than
+  // 1/MIN_TRAVEL_MS of the range per millisecond. Under a slow drag the follower reaches the
+  // target within the same frame, so the header still tracks the finger exactly.
+  const tick = useCallback(() => {
+    const now = performance.now();
+    // A first frame (or one after a long gap) must not be handed a huge dt and allowed to jump.
+    const dt = lastFrameRef.current ? Math.min(64, now - lastFrameRef.current) : 0;
+    lastFrameRef.current = now;
+    const cur = collapseRef.current, target = targetRef.current;
+    const diff = target - cur;
+    const maxStep = dt / MIN_TRAVEL_MS;
+    const next = Math.abs(diff) <= maxStep ? target : cur + Math.sign(diff) * maxStep;
+    collapseRef.current = next;
+    paintCollapse(next);
+    // Stop the loop once it has arrived, so an idle workout screen isn't burning a frame callback.
+    if (Math.abs(targetRef.current - next) > 0.0005) {
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      rafRef.current = 0;
+      lastFrameRef.current = 0;
+    }
+  }, [paintCollapse]);
   const onExerciseScroll = useCallback(e => {
     const el = e.currentTarget;
     const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
@@ -12630,9 +12663,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     if (d < 0 && shrink > 0) d = Math.min(0, d + shrink);
     // Always fully open once scrolled back near the top — never leave the header hidden over the
     // start of the list, which is where Discard/Finish are most likely to be reached for.
-    collapseRef.current = y < 8 ? 0 : Math.min(1, Math.max(0, collapseRef.current + d / COLLAPSE_PX));
-    paintCollapse(collapseRef.current);
-  }, [paintCollapse]);
+    // The scroll handler now only sets the TARGET; the rAF follower below does the moving, so a
+    // burst of momentum can move the destination instantly but not the header.
+    targetRef.current = y < 8 ? 0 : Math.min(1, Math.max(0, targetRef.current + d / COLLAPSE_PX));
+    if (!rafRef.current) {
+      lastFrameRef.current = 0; // first frame measures no elapsed time, so it cannot jump
+      rafRef.current = requestAnimationFrame(tick);
+    }
+  }, [tick]);
   // Measure the real header height from the INNER (unclipped) node — the outer wrapper's own
   // scrollHeight is what we are busy constraining. The rest-tools row can be one or two lines
   // depending on whether a superset badge is showing, so this re-measures on every render and
@@ -12644,6 +12682,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       paintCollapse(collapseRef.current);
     }
   });
+  // Cancel the follower on unmount — finishing a workout tears this component down, and a frame
+  // callback still holding refs to a dead node would keep painting into nothing.
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
   const [showGroupShare, setShowGroupShare] = useState(false); // group picker after finish-and-share-to-groups
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [show1RM, setShow1RM] = useState(false);
