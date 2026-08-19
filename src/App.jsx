@@ -1,4 +1,4 @@
-// v178091716871
+// v178091716872
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8245,7 +8245,12 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
               <polyline points="9 18.5 12 21.5 15 18.5"/>
             </svg>
           } />
-          <Key label="Next" onPress={onNext} bg={C.primary} color={C.onPrimary} fontSize={15} flex={3} />
+          {/* Deliberately the SAME neutral fill as the digit keys, not the primary-CTA treatment
+              it had before. Next only moves focus to the next field — it does not log the set,
+              that's the row's own done-tick — and the primary-filled version read as the action
+              that finishes the set, which it isn't. Label unchanged; only the visual weight is
+              toned down so it stops making a promise the tap doesn't keep. */}
+          <Key label="Next" onPress={onNext} fontSize={15} flex={3} />
         </div>
       </div>
     </div>
@@ -8497,7 +8502,11 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           and settled/idle renders, where the refs haven't been written to yet for this gesture. */}
       <div ref={checkHintRef} style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"flex-start", paddingLeft:16, background:`${C.green}E5`, opacity: swipeDir==="right" ? Math.min(1, swipeDx/45) : 0, borderRadius:11, transition:"opacity 0.08s" }}>
         <div ref={checkIconRef} style={{ transform: `scale(${Math.min(1, swipeDx/60)})`, transition:"transform 0.08s ease-out" }}>
-          <Icon name="check" size={20} color="#fff" strokeWidth={3}/>
+          {/* C.onAccent, not "#fff": on the dark theme C.green (#34d399) is a light mint fill —
+              white on it measures 1.92:1, under even the 3:1 graphical-object floor. onAccent's
+              dark value (#0d0d10) clears 9.9:1 there; its light value (#fff) is what light-theme's
+              darker green (#047f59) already needed, so one token covers both fills correctly. */}
+          <Icon name="check" size={20} color={C.onAccent} strokeWidth={3}/>
         </div>
       </div>
       {onDelete && (
@@ -8532,7 +8541,8 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         }}
       >
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-        <div style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:isDone?C.green:C.divider, color:isDone?"#fff":C.sub, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, fontFamily:MONO }}>{si+1}</div>
+        {/* C.onAccent, not "#fff" — see the swipe-hint check icon above for why. */}
+        <div style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:isDone?C.green:C.divider, color:isDone?C.onAccent:C.sub, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, fontFamily:MONO }}>{si+1}</div>
         
         <div style={{ position:"relative", flexShrink:0 }}>
           <button
@@ -8652,16 +8662,21 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         {/* THE most-tapped control in the app, and it was a 32x32 target. seshd-hit gives it the
             full 44x44 without growing the tick, which has to stay small to keep weight/reps/RPE
             and itself on one 428px row. */}
+        {/* Colour, not "#fff": the most-tapped control on the screen, and on the dark theme
+            C.green (#34d399) is a light mint fill — white text/icon on it was 1.92:1, under the
+            3:1 floor for a graphical control. C.onAccent supplies the right ink on both themes
+            (dark #0d0d10 here at 9.9:1; light #fff, which the darker light-theme green already
+            clears at 5:1). */}
         <button onClick={onToggleDone} className="seshd-hit" style={{
           width:32, height:32, borderRadius:9, flexShrink:0,
           border:`2px solid ${isDone?C.green:C.border}`, background:isDone?C.green:"transparent",
-          color:isDone?"#fff":C.muted, cursor:"pointer",
+          color:isDone?C.onAccent:C.muted, cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"center",
           transition:"all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
           animation: isDone ? "seshdPop 0.32s cubic-bezier(0.34, 1.8, 0.64, 1)" : "none",
         }}>
           <span key={isDone ? "y" : "n"} style={{ display:"flex", animation: isDone ? "seshdPop 0.32s cubic-bezier(0.34, 1.8, 0.64, 1)" : "none" }}>
-            <Icon name="check" size={16} color={isDone?"#fff":C.muted} strokeWidth={2.8}/>
+            <Icon name="check" size={16} color={isDone?C.onAccent:C.muted} strokeWidth={2.8}/>
           </span>
         </button>
       </div>
@@ -13167,6 +13182,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         if (resolvedReps === "" || resolvedReps === undefined || resolvedReps === null) {
           resolvedReps = prevVals?.r != null ? String(prevVals.r) : resolvedReps;
         }
+      }
+
+      // A set with NEITHER field filled (no typed value, and no previous session to fall back
+      // to — a brand-new exercise, or a warmup, which skips the fallback above entirely) must
+      // not be bankable as done: it would commit as a real 0x0 set, counted by workingDone()
+      // and sessionVolume() like any other, and able to feed a false-floor data point into the
+      // stall/deload maths (the same shape Math.max(1, s.topReps||0) already guards against
+      // downstream — this stops the 0 from being written in the first place).
+      const isBlank = v => v === "" || v === undefined || v === null;
+      if (nowDone && isBlank(resolvedWeight) && isBlank(resolvedReps)) {
+        haptic("warn");
+        toast("Enter a weight or reps first", "error");
+        return p;
       }
 
       let prTypes = [];
