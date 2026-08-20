@@ -34,3 +34,7 @@ src/App.verify.jsx
 # /impeccable's own runtime scaffolding (live-server PID/port/token) — ephemeral, never committed.
 # .impeccable/critique/ snapshots are a separate, real archive and are NOT excluded here.
 .impeccable/live/
+
+# Isolated worktrees background agents work in (e.g. a cold-context audit) — scratch checkouts
+# of the repo itself, never a deliverable to commit.
+.claude/worktrees/
