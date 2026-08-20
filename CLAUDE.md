@@ -86,12 +86,13 @@ through — including two fixes that shipped inert and a ReferenceError that bro
 independence that matters in practice is a FRESH CONTEXT, not a different model.
 
 ## Verification methodology (how we catch regressions)
-**Run the whole battery with one command: `node build/run_sims.mjs`** (47 sims, ~90s). It rebuilds the
-bundle first (stale bundle = false failures) and reads each sim's real exit code. `--no-build`
-skips the rebuild. Use it before any commit touching workout, health, profile, feed or gesture
-code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
+**Run the whole battery with one command: `node build/run_sims.mjs`** (49 sims, ~90s — count grows as
+sims get added; verify with the runner's own summary line rather than trusting a number in this
+file). It rebuilds the bundle first (stale bundle = false failures) and reads each sim's real exit
+code. `--no-build` skips the rebuild. Use it before any commit touching workout, health, profile,
+feed or gesture code. Add `sim_*.mjs` to `build/` and the runner picks it up automatically.
 
-**`node build/run_sims.mjs --pw` also runs the 42 Playwright suites** (+~3min): it builds dist with
+**`node build/run_sims.mjs --pw` also runs the 46 Playwright suites** (+~3min): it builds dist with
 STUB env, serves it on :8199, runs every `pw_*.mjs`, then stops the server and deletes `.env.local`
 in a `finally` (a lingering stub `.env.local` is how a published bundle ends up unable to sign
 anyone in — the delete must never be skippable). These were opt-in-by-memory for a while, which is
@@ -566,6 +567,14 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   and that surviving band is Discard, the timer and Finish, fully transparent and still
   hit-testable mid-scroll. `pointerEvents` is gated on the same opacity value that drives the fade,
   so the two can never disagree about when the header stops being visible.
+  **Superseded, caught by a cold-context audit (Aug 20):** the header content now also translates
+  upward by what the wrapper loses (`translateY(-c * H)`, added for the sliced-glyph fix below), so
+  the cut moved to the TOP edge — the surviving strip on a partial collapse is now the BOTTOM row
+  (Progress + tools), and Discard/timer/Finish are the FIRST things to go, the opposite of what this
+  entry says. The `pointerEvents` gate described above is now redundant (`overflow:hidden` on the
+  wrapper already stops hit-testing on anything past the clip) but harmless, so it was left in place
+  rather than pulled out for its own sake. Left the original text above rather than rewriting it —
+  it's what motivated the translate fix and the reasoning still holds, just for the opposite edge.
 - **A HEADER THAT "SNAPS" ON A THRESHOLD IS NOT THE SAME THING AS ONE THAT TRACKS THE GESTURE.**
   The first cut of hide-on-scroll-down/reveal-on-scroll-up was a boolean + `transition:max-height`
   — collapsed or open, animated between the two on a fixed clock once a scroll-distance threshold

@@ -1,4 +1,4 @@
-// v178091716872
+// v178091716873
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2919,9 +2919,8 @@ function isBarbellExercise(name) {
 // editor showed it correctly in violet — and both copies mapped Quads and Hamstrings to the exact
 // same green, so a leg day's stripes couldn't tell them apart. Same shape as the plate-colour bug:
 // one map trying to answer a question for two different callers. Hamstrings now gets its own
-// colour (a deep brown, chosen to sit far in hue from every neighbour rather than a shade of an
-// existing hue — two ADJACENT shades of one hue is the same illegible-twins problem as sharing one
-// exactly).
+// colour, chosen to sit far in hue from every neighbour rather than a shade of an existing hue —
+// two ADJACENT shades of one hue is the same illegible-twins problem as sharing one exactly.
 // `MUSCLE_STRIPE_INK` is the light-theme variant, same trick as `accentInk`: a couple of these hexes
 // read fine as a small fill but fail 3:1 as a thin stripe against a WHITE card (measured — the old
 // shoulders colour was 1.31:1). Deepen the same hue rather than pick a different colour, so the
@@ -2930,9 +2929,19 @@ function isBarbellExercise(name) {
 // PRs and progress everywhere else. On a shoulders exercise the stripe, the icon tile, the rep chip
 // and the "?" button all rendered the exact same lime, so the one colour meant four different
 // things on one row. Fuchsia (hue ~292°) sits in the widest open gap between the other 12 hues.
+// HAMSTRINGS WAS FIRST SHIPPED AS #92400E (a deep brown) AND A COLD-CONTEXT AUDIT CAUGHT IT AT
+// 2.39:1 ON DARK — a regression from the shared green it replaced (6.68:1), and worse than the bug
+// this whole map exists to fix: the stated goal was leg-day legibility, and dark theme (the app's
+// default) shipped a stripe you effectively could not see. The map has no per-theme override for
+// this direction (MUSCLE_STRIPE_INK only deepens a too-LIGHT hue for a white card; nothing lightens
+// a too-DARK one), and being a hardcoded literal rather than a theme token, `sim_a11y`'s token sweep
+// can't see it either — exactly the "A HARDCODED SURFACE IS INVISIBLE TO sim_a11y" rule already
+// documented above. #767A1E (hue ~62°, an olive/khaki — the widest open gap between biceps' amber
+// at 38° and core's lime at 84°) clears 3:1 on BOTH surfaces without needing a per-theme override
+// (4.65:1 on a white card, 3.65:1 on the dark surface), unlike the brown it replaced.
 const MUSCLE_STRIPE_COLORS = {
   chest:"#EF4444", back:"#3B82F6", shoulders:"#D946EF", "rear delts":"#8B5CF6",
-  biceps:"#F59E0B", triceps:"#F97316", quads:"#10B981", hamstrings:"#92400E",
+  biceps:"#F59E0B", triceps:"#F97316", quads:"#10B981", hamstrings:"#767A1E",
   glutes:"#EC4899", calves:"#06B6D4", core:"#84CC16", traps:"#6366F1", "full body":"#2563EB",
 };
 const MUSCLE_STRIPE_INK = {
