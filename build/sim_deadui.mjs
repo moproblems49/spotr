@@ -14,31 +14,52 @@
 // static instead: build/deadui_scan.mjs walks the AST for useState setters that can never open
 // what they gate, and for PascalCase functions nobody references.
 //
-// Runs the scan over the JSX-transformed file and fails on any finding.
+// COVERS src/lazy/*.jsx TOO, as of the Aug 20 code-splitting pass. deadui_scan.mjs excludes each
+// file's own `export default function X` from the "unused component" check (that's a false
+// positive by construction — see the comment at its exclusion), so only the "unreachable state"
+// half of the check runs meaningfully on a lazy file; that half is exactly as valid there as in
+// App.jsx (a useState gate that nothing can ever open is the same bug regardless of which file it
+// lives in).
+//
+// Runs the scan over the JSX-transformed file(s) and fails on any finding.
 import { spawnSync } from "child_process";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, readdirSync } from "fs";
 import { tmpdir } from "os";
-import { join, dirname } from "path";
+import { join, dirname, basename } from "path";
 import { fileURLToPath } from "url";
 
 const BUILD = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(BUILD, "..");
 const tmp = mkdtempSync(join(tmpdir(), "deadui-"));
-const out = join(tmp, "app.transformed.js");
-let code = 1;
-try {
-  const t = spawnSync("npx", ["esbuild", "src/App.jsx", "--loader:.jsx=jsx", "--format=esm",
+
+const lazyDir = join(ROOT, "src", "lazy");
+let lazyFiles = [];
+try { lazyFiles = readdirSync(lazyDir).filter(f => f.endsWith(".jsx")).map(f => join("src", "lazy", f)); } catch {}
+
+const targets = ["src/App.jsx", ...lazyFiles];
+let overallCode = 0;
+
+for (const rel of targets) {
+  const out = join(tmp, basename(rel) + ".transformed.js");
+  const t = spawnSync("npx", ["esbuild", rel, "--loader:.jsx=jsx", "--format=esm",
     "--jsx=automatic", `--outfile=${out}`], { cwd: ROOT, encoding: "utf8" });
   if (t.status !== 0) {
-    console.log("FAIL could not transform src/App.jsx");
+    console.log(`FAIL could not transform ${rel}`);
     console.log((t.stderr || "").split("\n").slice(0, 6).join("\n"));
-  } else {
-    const r = spawnSync(process.execPath, [join(BUILD, "deadui_scan.mjs"), out], { encoding: "utf8" });
-    process.stdout.write(r.stdout || "");
-    if (r.status === 0) { console.log("PASS no unreachable UI state, no orphaned components"); code = 0; }
-    else console.log("FAIL something is built but cannot be reached — see above");
+    overallCode = 1;
+    continue;
   }
-} finally {
-  rmSync(tmp, { recursive: true, force: true });
+  const r = spawnSync(process.execPath, [join(BUILD, "deadui_scan.mjs"), out], { encoding: "utf8" });
+  const outText = (r.stdout || "").trim();
+  if (outText) console.log(`[${rel}]\n${outText}`);
+  if (r.status === 0) {
+    console.log(`PASS ${rel}: no unreachable UI state, no orphaned components`);
+  } else {
+    console.log(`FAIL ${rel}: something is built but cannot be reached — see above`);
+    overallCode = 1;
+  }
 }
-process.exit(code);
+
+rmSync(tmp, { recursive: true, force: true });
+if (overallCode === 0) console.log(`\nPASS all ${targets.length} file(s) clean`);
+process.exit(overallCode);

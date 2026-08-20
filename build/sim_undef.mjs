@@ -1,4 +1,4 @@
-// NO IDENTIFIER IN App.jsx MAY RESOLVE TO NOTHING.
+// NO IDENTIFIER IN App.jsx (OR src/lazy/*.jsx) MAY RESOLVE TO NOTHING.
 //
 // Two shipped bugs of this exact shape were found on 2026-08-15, both invisible to the whole
 // battery and to esbuild (which resolves imports, not free variables):
@@ -14,31 +14,55 @@
 // error boundaries, and the many `catch (e) {}` blocks the conventions file warns about. So the
 // whole class needs a static check rather than another test per feature.
 //
-// Transforms the JSX away with esbuild, then runs build/undef_scan.mjs over the result.
+// COVERS src/lazy/*.jsx TOO, as of the Aug 20 code-splitting pass — those files gained a
+// hand-written `import {...} from "../App.jsx"` list each, which is exactly the kind of
+// free-identifier-prone edit this check exists for, and a cold-context audit specifically flagged
+// that this file only checked App.jsx. undef_scan.mjs treats `import` specifiers as real bindings
+// (acorn's own module scoping), so it can't tell you an imported name isn't ACTUALLY exported from
+// App.jsx — that half is covered by `npm run build` (a real SyntaxError on a bad/missing export).
+// This half catches the free-variable case: something referenced that's neither a prop, a local,
+// an import, nor a known global.
+//
+// Transforms the JSX away with esbuild (each file independently — a lazy file's relative import of
+// "../App.jsx" doesn't need to resolve for this scan, since imported names are just bindings to
+// acorn), then runs build/undef_scan.mjs over each result.
 import { spawnSync } from "child_process";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, readdirSync } from "fs";
 import { tmpdir } from "os";
-import { join, dirname } from "path";
+import { join, dirname, basename } from "path";
 import { fileURLToPath } from "url";
 
 const BUILD = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(BUILD, "..");
 const tmp = mkdtempSync(join(tmpdir(), "undef-"));
-const out = join(tmp, "app.transformed.js");
-let code = 1;
-try {
-  const t = spawnSync("npx", ["esbuild", "src/App.jsx", "--loader:.jsx=jsx", "--format=esm",
+
+const lazyDir = join(ROOT, "src", "lazy");
+let lazyFiles = [];
+try { lazyFiles = readdirSync(lazyDir).filter(f => f.endsWith(".jsx")).map(f => join("src", "lazy", f)); } catch {}
+
+const targets = ["src/App.jsx", ...lazyFiles];
+let overallCode = 0;
+
+for (const rel of targets) {
+  const out = join(tmp, basename(rel) + ".transformed.js");
+  const t = spawnSync("npx", ["esbuild", rel, "--loader:.jsx=jsx", "--format=esm",
     "--jsx=automatic", `--outfile=${out}`], { cwd: ROOT, encoding: "utf8" });
   if (t.status !== 0) {
-    console.log("FAIL could not transform src/App.jsx");
+    console.log(`FAIL could not transform ${rel}`);
     console.log((t.stderr || "").split("\n").slice(0, 6).join("\n"));
-  } else {
-    const r = spawnSync(process.execPath, [join(BUILD, "undef_scan.mjs"), out], { encoding: "utf8" });
-    process.stdout.write(r.stdout || "");
-    if (r.status === 0) { console.log("PASS every identifier in App.jsx resolves to a binding or a known global"); code = 0; }
-    else console.log("FAIL App.jsx references at least one identifier that is not defined anywhere");
+    overallCode = 1;
+    continue;
   }
-} finally {
-  rmSync(tmp, { recursive: true, force: true });
+  const r = spawnSync(process.execPath, [join(BUILD, "undef_scan.mjs"), out], { encoding: "utf8" });
+  process.stdout.write((r.stdout || "").trimEnd() ? `[${rel}] ${(r.stdout || "").trim()}\n` : "");
+  if (r.status === 0) {
+    console.log(`PASS ${rel}: every identifier resolves to a binding or a known global`);
+  } else {
+    console.log(`FAIL ${rel}: references at least one identifier that is not defined anywhere`);
+    overallCode = 1;
+  }
 }
-process.exit(code);
+
+rmSync(tmp, { recursive: true, force: true });
+if (overallCode === 0) console.log(`\nPASS all ${targets.length} file(s) clean`);
+process.exit(overallCode);

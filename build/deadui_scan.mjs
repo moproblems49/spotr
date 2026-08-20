@@ -98,7 +98,15 @@ function walk(node, parent) {
     }
   }
 
-  if (node.type === "FunctionDeclaration" && node.id && /^[A-Z]/.test(node.id.name))
+  // `export default function X(){}` is used BY CONSTRUCTION — its whole job is to be imported
+  // elsewhere (src/lazy/*.jsx, since the Aug 20 code-splitting pass), and that reference is
+  // invisible to a single-file scan (a dynamic `import()` never writes the identifier "X" anywhere
+  // in the importing file either — App.jsx just calls it "X" locally after `lazy(() =>
+  // import(...))`, no name from the source module crosses the boundary as text this scanner could
+  // find). Without this exclusion every one of those files would report its own default export as
+  // an unused component, every single time — a guaranteed false positive, not a real finding.
+  const isDefaultExport = parent?.type === "ExportDefaultDeclaration";
+  if (node.type === "FunctionDeclaration" && node.id && /^[A-Z]/.test(node.id.name) && !isDefaultExport)
     declaredFns.set(node.id.name, node.loc.start.line);
   // ALSO cover `const X = memo(function X(){})`, `const X = () => …` and `const X = function(){}`.
   // Only FunctionDeclarations were considered at first, which left 95 of this file's PascalCase
