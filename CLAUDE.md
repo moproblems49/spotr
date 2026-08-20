@@ -2232,15 +2232,23 @@ before a submission build. Two things to know before acting on its output:
   Inter and the containment question — both already parked by Mo. Check a finding against the
   Conventions above before changing anything.
 
-## Code-splitting (`src/lazy/`) — started Aug 20, 2026
+## Code-splitting (`src/lazy/`) — Aug 20, 2026, all 8 originally-identified candidates DONE
 `App.jsx` is still THE app (this file's opening line still holds) — `src/lazy/` holds a handful of
 screens/modals pulled out ONLY so they load on demand instead of shipping in the eager bundle for
-every session. Four done so far: `Onboarding` (shown once ever per user), `WrappedModal` (+ its
+every session. Eight done: `Onboarding` (shown once ever per user), `WrappedModal` (+ its
 `buildWrappedSVG`/`wrapStorySVG` helpers — rarely opened), `AICoachModal` (a big embedded fallback-
 program library, only needed if the live AI call fails), `ProgramBuilder` ("Build Your Own", opened
-only when a user picks it over a template). Result: the main chunk went **997KB → 792KB** (~20.6%
-smaller, unminified-gzip terms ~268KB→~202KB), plus ~45KB across the four on-demand chunks that
-most sessions never fetch at all.
+only when a user picks it over a template), `GroupDetail` (opened only from a specific group),
+`DiscoverScreen` (not the default landing tab — carries `GroupsScreen`/`FriendsActivityScreen` as
+still-App.jsx-resident dependents, see the scope note below), `AuthScreen` (never rendered for an
+already-signed-in session — the highest never-touched fraction of the eight, since a Keychain
+session persists across launches), `EditHistoryModal` (opened only from a History row's edit
+action; the one with the highest correctness stakes — see its own ReferenceError history above its
+definition — so its extraction leaned harder on Playwright verification than the others).
+**Result: the main chunk went 997KB → 726.81KB (27.1% smaller, gzip ~268KB→~189KB)**, plus eight
+on-demand chunks (8-22KB each, ~112KB total) that most sessions never fetch at all. Each one was
+verified with the full 49-sim + 46-Playwright battery and published as its own OTA bundle before
+moving to the next — no batching, matching the standing one-change-verify-commit workflow rule.
 **The pattern, precisely:**
 1. Catalog every non-prop identifier the component/helpers reference (grep the body for capitalized
    and camelCase names, cross off local vars/props) — this IS the import list for the new file.
@@ -2269,10 +2277,29 @@ most sessions never fetch at all.
    back into `App-*.js`), run the full battery (`node build/run_sims.mjs --pw`) — `sim_undef` walks
    App.jsx's own scopes but can't see a broken cross-file import, so the REAL Vite build succeeding is
    the load-bearing check here, same as step 5.
-**Next candidates, not yet done, in rough size/frequency order**: `GroupDetail`, `DiscoverScreen`,
-`AuthScreen` (only ever rendered for signed-out sessions — i.e. never for the vast majority of app
-opens), `EditHistoryModal`. Same one-at-a-time, verify-then-commit-then-publish discipline as these
-four — CLAUDE.md's standing workflow rule applies here exactly as it does to any other change.
+**A third real gotcha, hit on `DiscoverScreen`, beyond the two already listed above (the
+always-mounted-Sheet case, the bulk-export collision): a module-level MUTABLE `let` (the
+`_trackerSubTab`/`_discoverSubTab` sub-tab-memory pattern) can be READ across a lazy-file boundary
+via a bare `export let`, but not WRITTEN — ESM import bindings are read-only from the importing
+side even when the exporting module's own `let` is mutable. Reassigning an imported binding is a
+SyntaxError. Fixed with a getter/setter pair (`getDiscoverSubTab`/`setDiscoverSubTabValue`) instead
+of a bare export; use the same pattern for any future lazy file that needs to touch a module-level
+mutable value.
+**Scope calls made along the way, worth knowing before extending any of these further:**
+`GroupsScreen` and `FriendsActivityScreen` are used exclusively by `DiscoverScreen` — by the
+"move it if exclusive" rule above they COULD have moved into `DiscoverScreen.jsx` too for more
+savings, but were left in App.jsx (exported) instead to keep that extraction's blast radius
+contained, the same tradeoff made for `ExercisePickerSheet` during the `ProgramBuilder` extraction.
+Both remain valid future extraction targets on their own, independent of Discover.
+**Remaining candidates, if this gets picked up again** (none carry the urgency the original eight
+did — this was the full list from the initial size/frequency survey): `ProfileScreen` (1316 lines,
+but it's a bottom-tab screen visited almost every session, so the frequency case for lazy-loading
+it is weak — likely NOT worth it), `GroupsScreen`/`FriendsActivityScreen` (see above), `PostCard`/
+`SetRow`/other high-reuse components (NOT candidates — they render on the critical path across many
+screens, extracting them would only add Suspense overhead for no on-demand benefit). The bigger
+remaining lever for bundle size at this point is likely `bodyMapData.js` (258KB, already its own
+chunk via a static import — could be converted to dynamic `import()` gated on first BodyMap render)
+rather than further App.jsx screen extraction.
 
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.
