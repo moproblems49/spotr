@@ -1,4 +1,4 @@
-// v178091716873
+// v178091716874
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16,7 +16,7 @@
 //   body-log input validation (posNum), post-delete failure toast+revert, messages empty-state icon,
 //   numberpad steppers 44px tap target, exercise library browse-all capped (perf), dead helper removed
 // PATCHED v29 - BUILD 2026-06-08 - HRV/RHR recovery vs 60-day baseline drives readiness + Recovery% chip
-import { useState, useEffect, useRef, memo, useCallback, useMemo, Component } from "react";
+import { useState, useEffect, useRef, memo, useCallback, useMemo, Component, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
@@ -1351,7 +1351,7 @@ const THEMES = {
 // olive border rather than an accent. Use this for anything painted on such a slab.
 const ACCENT_ON_SLAB = THEMES.dark.accent;
 
-const F = "'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
+export const F = "'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
 // Display face for headline moments only (wordmark, screen titles, Wrapped). Body text
 // stays Inter — the condensed athletic face is seasoning, not the whole meal.
 const DISPLAY = "'Barlow Condensed','Inter',-apple-system,sans-serif";
@@ -1422,7 +1422,7 @@ const RADIUS = { xs: 8, sm: 10, md: 12, lg: 16, xl: 24, pill: 999 };
 const TYPE = { micro: 9, tiny: 10, small: 11, base: 12, body: 13, lg: 14, xl: 16, hero: 18 };
 
 // ─── Premium icon system — line icons, single accent ──────────────────────────
-function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
+export function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }) {
   const props = { width:size, height:size, viewBox:"0 0 24 24", fill:"none", stroke:color, strokeWidth, strokeLinecap:"round", strokeLinejoin:"round" };
   switch (name) {
     case "flame": return <svg {...props}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 17c1.4 0 2.5-1 2.5-2.5 0-2-2.5-3-2.5-5 0-2.5 2.5-3 2.5-3s1 4.5 4 6.5c2 1.5 3 3 3 5a7 7 0 1 1-14 0c0-2.5 2-4 3-5.5"/></svg>;
@@ -7088,7 +7088,7 @@ const TOPBAR_ICON_BTN = {
   padding: 11, margin: "-3px 0",
   display: "flex", alignItems: "center", justifyContent: "center",
 };
-function SeshdLogo({ C, big = false, size }) {
+export function SeshdLogo({ C, big = false, size }) {
   const sz = size || (big ? 44 : 30);
   const word = size ? Math.round(sz * 0.5) : (big ? 28 : 19);
   return (
@@ -7103,7 +7103,7 @@ function SeshdLogo({ C, big = false, size }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // AVATAR
 // ═════════════════════════════════════════════════════════════════════════════
-function Avatar({ user, size = 36, onClick, C, ring = false }) {
+export function Avatar({ user, size = 36, onClick, C, ring = false }) {
   const imgSrc = user?.avatarUrl || user?.profileImage;
   const content = imgSrc
     ? <img src={imgSrc} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
@@ -9516,7 +9516,7 @@ function WrappedModal({ store, C, onClose, onPostToFeed, range }) {
 // first screen. The third is the "Browse templates" sheet. Nothing caught it because no sim
 // drives onboarding as a brand-new user and the templates sheet was never opened by a test.
 // `pw_templates` covers both paths now.
-const PROGRAM_TEMPLATES = [
+export const PROGRAM_TEMPLATES = [
   { id:"full3", name:"Full Body", icon:"🎯", desc:"3-day · most popular for beginners", days:[
     { name:"Full Body A", exercises:["Barbell Back Squat","Barbell Bench Press","Barbell Row","Overhead Press (Barbell)","Barbell Curl","Plank"] },
     { name:"Full Body B", exercises:["Deadlift","Incline DB Press","Lat Pulldown (Wide)","Leg Press","Tricep Rope Pushdown","Hanging Leg Raise"] },
@@ -9562,7 +9562,7 @@ const PROGRAM_TEMPLATES = [
   ]},
 ];
 
-function recommendTemplateId({ goal, experience, daysPerWeek } = {}) {
+export function recommendTemplateId({ goal, experience, daysPerWeek } = {}) {
   const days = parseInt(daysPerWeek) || 3;
   if (days <= 2) return "full3";
   if (days === 3) return goal === "strength" ? "sl5x5" : "full3";
@@ -9587,219 +9587,13 @@ function buildProgramFromTemplate(t) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ONBOARDING
+// ONBOARDING — lazy-loaded (src/lazy/Onboarding.jsx). Shown exactly once per new user
+// (gated on store.seenOnboarding / seshd_onboarded), so it's dead weight in the initial
+// bundle for every returning user — which is nearly every app open. The call site below
+// wraps it in <Suspense>. PROGRAM_TEMPLATES/recommendTemplateId stay here (exported) since
+// App.jsx's own onboarding-completion handler and the "Browse templates" sheet need them too.
 // ═════════════════════════════════════════════════════════════════════════════
-function Onboarding({ C, onComplete, suggestedUsers = [] }) {
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState({ goal: null, experience: null, daysPerWeek: null });
-  const [followIds, setFollowIds] = useState(() => new Set());
-
-  // Intro screens followed by quick personalization questions.
-  const introScreens = [
-    { icon:"barbell", title:"Track every rep", body:"Swipe to log sets in seconds. Seshd remembers your last weights and suggests what to lift next." },
-    { icon:"activity", title:"Know your body", body:"See which muscles you've trained, how recovered you are, and how your lifts measure up to real strength standards." },
-    { icon:"spark", title:"Coached weekly", body:"A weekly review reads your training and tells you exactly what to work on — plus streaks and friends to keep you consistent." },
-  ];
-  const questions = [
-    { key:"goal", q:"What's your main goal?", opts:[
-      { v:"strength", label:"Get stronger" },
-      { v:"muscle", label:"Build muscle" },
-      { v:"lean", label:"Get lean" },
-      { v:"general", label:"Stay healthy" },
-    ]},
-    { key:"experience", q:"How long have you been lifting?", opts:[
-      { v:"new", label:"Just starting" },
-      { v:"some", label:"Less than a year" },
-      { v:"experienced", label:"1–3 years" },
-      { v:"advanced", label:"3+ years" },
-    ]},
-    { key:"daysPerWeek", q:"How many days a week can you train?", opts:[
-      { v:2, label:"2 days" },
-      { v:3, label:"3 days" },
-      { v:4, label:"4 days" },
-      { v:5, label:"5+ days" },
-    ]},
-    { key:"profile", q:"A bit about you", profile:true },
-  ];
-  // step layout: [intro screens][questions][follow suggestions][closing]
-  const hasFollowStep = suggestedUsers.length > 0;
-  const totalSteps = introScreens.length + questions.length + (hasFollowStep ? 1 : 0) + 1;
-  const closingStep = totalSteps - 1;
-  const followStep = hasFollowStep ? closingStep - 1 : -1;
-  const inIntro = step < introScreens.length;
-  const qIndex = step - introScreens.length;
-  const inQuestions = qIndex >= 0 && qIndex < questions.length;
-  const inFollowStep = step === followStep;
-  const inClosing = step === closingStep;
-
-  function next() {
-    if (step < totalSteps - 1) setStep(step + 1);
-    else onComplete(answers, Array.from(followIds));
-  }
-  function back() { if (step > 0) setStep(step - 1); }
-  function pick(key, v) {
-    setAnswers(a => ({ ...a, [key]: v }));
-    // Auto-advance shortly after a tap for a snappy feel (into the next question or the closing screen)
-    setTimeout(() => setStep(s => Math.min(s + 1, closingStep)), 220);
-  }
-  function toggleFollowSuggestion(id) {
-    setFollowIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  const s = inIntro ? introScreens[step] : null;
-  const question = inQuestions ? questions[qIndex] : null;
-
-  // Personalized closing copy from their answers
-  const goalLabel = { strength:"getting stronger", muscle:"building muscle", lean:"getting lean", general:"staying healthy" }[answers.goal] || "your goals";
-  const dpw = answers.daysPerWeek || 3;
-  const recProgram = PROGRAM_TEMPLATES.find(t => t.id === recommendTemplateId(answers));
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
-      {/* Back button — available after the first screen */}
-      {step > 0 && !inClosing && (
-        <button onClick={back} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 16px)", left:18, background:"none", border:"none", fontSize:24, color:C.sub, cursor:"pointer", fontFamily:F, zIndex:2, padding:12 }}>‹</button>
-      )}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
-        <div style={{ marginBottom:48 }}>
-          <SeshdLogo C={C} big/>
-        </div>
-        {inIntro ? (
-          <>
-            <div key={step} className="seshd-enter" style={{
-              width:88, height:88, borderRadius:24, background:C.text, color:C.bg,
-              display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28
-            }}>
-              <Icon name={s.icon} size={40} color={C.bg} strokeWidth={1.7}/>
-            </div>
-            <div className="seshd-enter" style={{ fontSize:30, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.8, lineHeight:1.1 }}>{s.title}</div>
-            <div className="seshd-enter" style={{ fontSize:15, color:C.sub, lineHeight:1.5, maxWidth:300 }}>{s.body}</div>
-          </>
-        ) : inClosing ? (
-          <div key="closing" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ width:88, height:88, borderRadius:24, background:C.primary, color:C.onPrimary, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28, marginLeft:"auto", marginRight:"auto" }}>
-              <Icon name="check" size={42} color="#fff" strokeWidth={2}/>
-            </div>
-            <div style={{ fontSize:28, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.6, lineHeight:1.15 }}>You're all set</div>
-            <div style={{ fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:8 }}>
-              We'll tailor things around {goalLabel}, {dpw} days a week.{recProgram ? <> We've set you up with a <strong style={{ color:C.text, fontWeight:700 }}>{recProgram.name}</strong> program to start — tweak it anytime.</> : ""} Your progress builds from here.
-            </div>
-          </div>
-        ) : inFollowStep ? (
-          <div key="follow" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.5, lineHeight:1.2 }}>Follow some lifters</div>
-            <div style={{ fontSize:14, color:C.sub, marginBottom:20, lineHeight:1.4 }}>Your feed is more fun with friends in it. You can always follow more people later.</div>
-            <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, overflow:"hidden", maxHeight:340, overflowY:"auto", textAlign:"left" }}>
-              {suggestedUsers.map((u, idx) => {
-                const picked = followIds.has(u.id);
-                return (
-                  <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < suggestedUsers.length-1 ? `1px solid ${C.divider}` : "none" }}>
-                    <Avatar user={u} size={40} C={C}/>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.username}</div>
-                      <div style={{ fontSize:12, color:C.sub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name}</div>
-                    </div>
-                    <button onClick={() => toggleFollowSuggestion(u.id)} style={{
-                      padding:"7px 16px", borderRadius:20, fontSize:12, fontWeight:700, flexShrink:0,
-                      background: picked ? "transparent" : C.accent,
-                      color: picked ? C.text : "#fff",
-                      border: `1.5px solid ${picked ? C.border : C.accent}`,
-                      cursor:"pointer", fontFamily:F
-                    }}>{picked ? "Following" : "Follow"}</button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (inQuestions && question.profile) ? (
-          <div key="profile" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
-            <div style={{ fontSize:14, color:C.sub, marginBottom:24, lineHeight:1.4 }}>This tailors your strength standards and recovery estimates. You can change it later.</div>
-            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Biological sex</div>
-            <div style={{ display:"flex", gap:10, marginBottom:24 }}>
-              {[["male","Male"],["female","Female"]].map(([v,label]) => {
-                const sel = answers.sex === v;
-                return (
-                  <button key={v} onClick={() => setAnswers(a => ({ ...a, sex: v }))} style={{
-                    flex:1, padding:"16px", borderRadius:14, cursor:"pointer", fontFamily:F,
-                    background: sel ? C.primary : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
-                    color: sel ? C.onPrimary : C.text, fontSize:15, fontWeight:600,
-                  }}>{label}</button>
-                );
-              })}
-            </div>
-            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Age <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
-            <input type="text" inputMode="numeric" autoComplete="off" autoCorrect="off" spellCheck={false} data-1p-ignore data-lpignore="true" placeholder="e.g. 28" min="14" max="99"
-              value={answers.age || ""}
-              onChange={e => { const a = parseInt(e.target.value); setAnswers(p => ({ ...p, age: (a > 0 && a < 100) ? a : null })); }}
-              style={{ width:"100%", padding:"15px 16px", borderRadius:14, border:`1.5px solid ${C.border}`, background:C.surface, color:C.text, fontSize:15, fontWeight:600, fontFamily:F, outline:"none", boxSizing:"border-box" }}/>
-          </div>
-        ) : (
-          <div key={step} className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:24, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-              {question.opts.map(opt => {
-                const selected = answers[question.key] === opt.v;
-                return (
-                  <button key={String(opt.v)} onClick={() => pick(question.key, opt.v)} style={{
-                    width:"100%", padding:"16px 18px", borderRadius:14, cursor:"pointer", fontFamily:F,
-                    background: selected ? C.primary : C.surface,
-                    border:`1.5px solid ${selected ? C.accent : C.border}`,
-                    color: selected ? C.onPrimary : C.text,
-                    fontSize:15, fontWeight:600, textAlign:"left", transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
-                  }}>{opt.label}</button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-      <div style={{ padding:"0 32px 44px" }}>
-        <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:24 }}>
-          {Array.from({ length: totalSteps }).map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s cubic-bezier(0.22, 1, 0.36, 1)" }}/>)}
-        </div>
-        {inIntro && (
-          <button onClick={next} style={{
-            width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
-            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
-          }}>
-            Continue
-          </button>
-        )}
-        {inQuestions && question.profile && (
-          <button onClick={next} disabled={!answers.sex} style={{
-            width:"100%", background: answers.sex ? C.text : C.surface, color: answers.sex ? C.bg : C.muted,
-            border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700,
-            cursor: answers.sex ? "pointer" : "not-allowed", fontFamily:F, letterSpacing:-0.2
-          }}>
-            Continue
-          </button>
-        )}
-        {inFollowStep && (
-          <button onClick={next} style={{
-            width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
-            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
-          }}>
-            {followIds.size > 0 ? `Continue (${followIds.size} selected)` : "Skip for now"}
-          </button>
-        )}
-        {inClosing && (
-          <button onClick={() => onComplete(answers, Array.from(followIds))} style={{
-            width:"100%", background:C.primary, color:C.onPrimary, border:"none", borderRadius:14, padding:"16px",
-            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
-          }}>
-            Let's go
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
+const Onboarding = lazy(() => import("./lazy/Onboarding.jsx"));
 // ═════════════════════════════════════════════════════════════════════════════
 // PROGRAM BUILDER — Build your own custom program
 // ═════════════════════════════════════════════════════════════════════════════
@@ -24801,7 +24595,8 @@ function AppInner() {
       .filter(u => u.id !== currentUserId && !following.includes(u.id) && !blockedForSuggestions.includes(u.id))
       .sort((a, b) => (b.followers?.length || 0) - (a.followers?.length || 0))
       .slice(0, 8);
-    return <Onboarding C={C} suggestedUsers={suggestedUsers} onComplete={async (answers, followIds) => {
+    return <Suspense fallback={<div style={{ position:"fixed", inset:0, background:C.bg }}/>}>
+      <Onboarding C={C} suggestedUsers={suggestedUsers} onComplete={async (answers, followIds) => {
       const target = answers?.daysPerWeek ? Math.min(7, Math.max(1, parseInt(answers.daysPerWeek))) : 3;
       try { localStorage.setItem("seshd_onboarded", "1"); } catch {}
       const oSex = answers?.sex === "female" ? "female" : answers?.sex === "male" ? "male" : undefined;
@@ -24856,7 +24651,8 @@ function AppInner() {
       for (const uid_ of (followIds || [])) {
         try { await handleFollow(uid_); } catch (e) { devError("onboarding auto-follow error:", e); }
       }
-    }}/>;
+    }}/>
+    </Suspense>;
   }
 
   if (chatPeerId) {
