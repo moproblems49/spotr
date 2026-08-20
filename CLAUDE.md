@@ -2232,6 +2232,48 @@ before a submission build. Two things to know before acting on its output:
   Inter and the containment question — both already parked by Mo. Check a finding against the
   Conventions above before changing anything.
 
+## Code-splitting (`src/lazy/`) — started Aug 20, 2026
+`App.jsx` is still THE app (this file's opening line still holds) — `src/lazy/` holds a handful of
+screens/modals pulled out ONLY so they load on demand instead of shipping in the eager bundle for
+every session. Four done so far: `Onboarding` (shown once ever per user), `WrappedModal` (+ its
+`buildWrappedSVG`/`wrapStorySVG` helpers — rarely opened), `AICoachModal` (a big embedded fallback-
+program library, only needed if the live AI call fails), `ProgramBuilder` ("Build Your Own", opened
+only when a user picks it over a template). Result: the main chunk went **997KB → 792KB** (~20.6%
+smaller, unminified-gzip terms ~268KB→~202KB), plus ~45KB across the four on-demand chunks that
+most sessions never fetch at all.
+**The pattern, precisely:**
+1. Catalog every non-prop identifier the component/helpers reference (grep the body for capitalized
+   and camelCase names, cross off local vars/props) — this IS the import list for the new file.
+2. If an identifier is used ONLY by the thing you're extracting, move it into the new file too
+   (`buildWrappedSVG`/`wrapStorySVG` did this). If it's shared with other call sites elsewhere in
+   App.jsx, it stays in App.jsx and gets `export` added — never duplicate a shared helper into a lazy
+   file, and never move something with a documented cross-reference (PROGRAM_TEMPLATES stays in
+   App.jsx on purpose — see its own ReferenceError history right above its definition).
+3. In App.jsx: delete the extracted body, replace with `const X = lazy(() => import("./lazy/X.jsx"))`.
+4. Wrap every call site in `<Suspense fallback={...}>`. Simple conditional-render call sites
+   (`{show && <X/>}`) are trivial. **A component that's UNCONDITIONALLY mounted for its own exit-
+   animation timing (the `<Sheet>` pattern) is not** — naively lazy-loading it fetches the chunk on
+   every mount of its PARENT regardless of whether it's ever opened, which defeats the entire point.
+   `AICoachModal` hit this: fixed with a `hasOpenedAICoachRef` that flips true (and stays true) on
+   first genuine open, gating whether the lazy JSX renders at all, so the import only fires once
+   real intent exists and the component still stays mounted afterward for Sheet's own close timing.
+5. **Check for export collisions before trusting esbuild's quick check.** Several pure functions
+   already have a bulk `export { a, b, c, ... }` statement (~line 5759, there for the jsdom sim
+   harness) — adding `export` to the function's own declaration too is a duplicate-export SyntaxError
+   that only `npm run build` (the real bundler) catches; the fast `esbuild --bundle --packages=external`
+   compile check used for JSX-only sanity does NOT resolve cross-file imports and will not see this.
+   This is the same "esbuild isn't the real build" trap the JSX-warning gotcha describes — for any
+   change touching `src/lazy/`, `npm run build` is not optional, it's the only check that agrees with
+   what actually ships.
+6. Rebuild, confirm the new file shows as its own chunk in the `npm run build` output (not folded
+   back into `App-*.js`), run the full battery (`node build/run_sims.mjs --pw`) — `sim_undef` walks
+   App.jsx's own scopes but can't see a broken cross-file import, so the REAL Vite build succeeding is
+   the load-bearing check here, same as step 5.
+**Next candidates, not yet done, in rough size/frequency order**: `GroupDetail`, `DiscoverScreen`,
+`AuthScreen` (only ever rendered for signed-out sessions — i.e. never for the vast majority of app
+opens), `EditHistoryModal`. Same one-at-a-time, verify-then-commit-then-publish discipline as these
+four — CLAUDE.md's standing workflow rule applies here exactly as it does to any other change.
+
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.
 - Don't assume libraries are installed — check `package.json`. `@dnd-kit` is used (drag-drop reorder).
