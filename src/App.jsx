@@ -1,4 +1,4 @@
-// v178091716891
+// v178091716892
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13423,6 +13423,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })()}
 
+                {/* A nameless row (never had a name — showNameInput false) has no real sets to
+                    lose data from: cleanExercises drops any exercise with no name before Finish
+                    ever writes to the server, so a fully-tickable set table under a blank row is
+                    pure data loss waiting to happen — type weight/reps, tick it done, the row
+                    still has no name at Finish, gone with no warning. Once the row HAS a name (or
+                    ever did — hadName), these are real sets and stay visible for editing. */}
+                {showNameInput && (<>
                 {/* Column headers */}
                 <div style={{ display:"grid", gridTemplateColumns:"32px 36px 1fr 76px 76px 36px", gap:4, padding:"0 14px 4px" }}>
                   {["Set","Type","Previous",unit.toUpperCase(),"Reps",""].map((h,i) => (
@@ -13562,6 +13569,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   })()}
                   {ex.sets.length > 1 && <button className="seshd-hit-y" onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
                 </div>
+                </>)}
               </div>
             );
           })}
