@@ -1,4 +1,4 @@
-// v178091716890
+// v178091716891
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7354,19 +7354,30 @@ function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleStrin
   const rafRef = useRef(0);
   const pulseTimerRef = useRef(0);
   // `settled` (default true — every existing caller is unaffected) is for a screen that UNMOUNTS
-  // on tab-away and remounts fresh on return (the profile header's Workouts/Followers/Following):
-  // a mount-time fetch resolving a moment later reads as a genuine VALUE CHANGE, so it played the
-  // count-up on almost every visit. First cut of this fix suppressed any change within a fixed
-  // 900ms of mount — but that's a TIMEOUT racing an UNBOUNDED network fetch (Supabase round-trip,
-  // no upper bound short of sb.query's own 20s), so on anything slower than 900ms the exact bug
-  // resurfaces. `settled` shifts the decision to the caller, who actually knows when its fetch
-  // resolved (see ProfileScreen's postsSettled), instead of guessing a duration — a change is
-  // suppressed only while the caller is explicitly still loading, for however long that takes.
-  // `!animateOnMount` guards it so the two props can't fight if a future caller passes both —
-  // animateOnMount's whole point is animating the FIRST transition, so it always wins.
+  // on tab-away and remounts fresh on return (the profile header's Workouts/Posts count): a
+  // mount-time fetch resolving a moment later reads as a genuine VALUE CHANGE, so it played the
+  // count-up on almost every visit. First cut suppressed any change within a fixed 900ms of mount
+  // — a TIMEOUT racing an UNBOUNDED network fetch, so anything slower than 900ms resurfaced the
+  // exact bug. Second cut shifted the decision to the caller (ProfileScreen's postsSettled, set
+  // true when its fetch resolves) and gated on the CURRENT settled value — but React batches
+  // setStore(posts) and setPostsSettled(true) into ONE commit when both fire from the same async
+  // continuation (proven with a runnable probe: 1 render, animated, 0 snapped), so this component
+  // saw settled=true and the new value SIMULTANEOUSLY and never once took the suppress branch for
+  // the fetch it exists to cover — provably inert for its actual purpose, not just imperfect.
+  //
+  // Fixed by asking a different question: not "is settled true right now" but "did settled just
+  // BECOME true in this very update, alongside this value change" — a settle and a value change
+  // landing in the same commit is exactly the pattern to suppress; a value change arriving any
+  // time AFTER settled was already true (even if that was only one render earlier) is real and
+  // should animate. prevSettledRef must be tracked in the SAME effect that reads `value`, with
+  // `settled` in the dependency array too — leaving settled out would let this ref go stale across
+  // a settled-only update with no accompanying value change, misjudging the NEXT real change.
+  const prevSettledRef = useRef(settled);
   useEffect(() => {
+    const justSettled = !prevSettledRef.current && settled;
+    prevSettledRef.current = settled;
     if (display === value) return;
-    if (!animateOnMount && !settled) {
+    if (!animateOnMount && (!settled || justSettled)) {
       setDisplay(value);
       fromRef.current = value;
       return;
@@ -7395,8 +7406,12 @@ function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleStrin
       cancelAnimationFrame(rafRef.current);
       if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
     };
+    // `settled` IS a real dependency now (not just `value`) — the effect must re-run on a
+    // settled-only change (no accompanying value change) to keep prevSettledRef current, or a
+    // LATER real value change would compare against a stale ref and misjudge itself as "just
+    // settled."
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [value, settled]);
   return (
     <span style={{
       ...style,
@@ -16896,6 +16911,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   // fetch instead of a duration.
   const [postsSettled, setPostsSettled] = useState(false);
   useEffect(() => {
+    // Reset FIRST, unconditionally — same reason as foreignTopLifts above: ProfileScreen has no
+    // key={userId}, so tapping from one profile straight into another (a followers-list row, a
+    // post author) reuses this instance, and postsSettled would otherwise stay stuck true from
+    // the PREVIOUS profile, giving the new one's Workouts/Posts count no suppression at all.
+    setPostsSettled(false);
     if (!userId) { setPostsSettled(true); return; }
     let alive = true;
     (async () => {
@@ -17256,6 +17276,13 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 the inner number's top was 180 here vs 184 in the buttons). Not a device quirk,
                 a real padding mismatch, reproducible in any browser. */}
             <div style={{ padding:"4px 8px" }}><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500} settled={postsSettled}/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (posts.length === 1 ? "Workout" : "Workouts") : (posts.length === 1 ? "Post" : "Posts")}</div></div>
+            {/* No `settled` here — these read store.users, not the posts fetch postsSettled tracks,
+                and loadUserData writes `users` with EMPTY followers/following arrays first, then
+                backfills the real counts several awaits later (two separate setStore calls) — on
+                every foreground while sitting on Profile, not just on mount. Wiring postsSettled
+                here would be actively wrong (it settles on an unrelated fetch); a correct fix needs
+                its own signal from loadUserData, which touches nearly every screen in the app and
+                deserves its own careful pass rather than a rushed addition here. Known open issue. */}
             <button onClick={() => setListModal("followers")} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>{followers === 1 ? "Follower" : "Followers"}</div>
