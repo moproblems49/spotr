@@ -1,4 +1,4 @@
-// v178091716888
+// v178091716889
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7343,7 +7343,7 @@ function PullToRefresh({ onRefresh, C, children, navClearance = true }) {
 
 // AnimatedNumber — smoothly tweens between values with a brief scale pulse on change.
 // Use for stats that update during interaction (e.g. running volume during a workout).
-function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleString(), style, animateOnMount = false }) {
+function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleString(), style, animateOnMount = false, suppressSettle = false }) {
   // When animateOnMount is true, the display starts at 0 and counts up to `value`
   // on first render (used for the finish-screen hero number). Otherwise it starts
   // at `value` and only animates when `value` later changes (used for running totals).
@@ -7353,20 +7353,28 @@ function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleStrin
   const startRef = useRef(0);
   const rafRef = useRef(0);
   const pulseTimerRef = useRef(0);
-  // A running-total instance (animateOnMount=false, e.g. the profile header's Workouts/Followers/
-  // Following) starts `display` AT `value`, so no animation plays on a normal mount — but these
-  // screens routinely UNMOUNT on tab-away and remount fresh on return (the swipe track only keeps
-  // the current tab's panel), and a mount-time fetch settling a moment later (posts/follow counts
-  // catching up to the server) reads as a genuine VALUE CHANGE, so it played the count-up on almost
-  // every visit — the thing Mo reported. The first post-mount change is near-certainly that settle,
-  // not a real update happening while the user watches, so it snaps instead of animating; every
-  // change after that is trusted as real. Doesn't apply to animateOnMount, which WANTS its first
-  // (0 -> value) transition to animate.
-  const settledOnceRef = useRef(animateOnMount);
+  // suppressSettle (opt-in, NOT the default) is for a screen that UNMOUNTS on tab-away and
+  // remounts fresh on return (the profile header's Workouts/Followers/Following) — a mount-time
+  // fetch settling a moment later (posts/follow counts catching up to the server) reads as a
+  // genuine VALUE CHANGE, so it played the count-up on almost every visit. This was ORIGINALLY a
+  // blanket fix on every animateOnMount=false instance, which broke the component's OWN canonical
+  // use case (the docstring above): the live workout header's running volume, which unmounts on
+  // every tab-away too (same swipe-track mechanism) but where every change IS real and SHOULD
+  // animate — the first set logged in a session, or after switching back from Feed mid-workout,
+  // silently stopped animating. suppressSettle is passed true only at the 3 profile-header call
+  // sites, so a caller that never opts in gets the original always-animate behavior back.
+  //
+  // Time-windowed, not "first change only": the original version flipped a ref on the first
+  // CHANGE, but a visit where the mount value is ALREADY correct (nothing to settle) never sees a
+  // change at all, so the ref never flips — and the NEXT change, a genuinely real one (a new
+  // follower arriving while the screen is still open), got wrongly swallowed as if it were the
+  // settle. A settle happens within one fetch round-trip of mount; a real interaction the user is
+  // watching happens whenever it happens. 900ms comfortably covers the former without reaching
+  // into the latter.
+  const mountedAtRef = useRef(suppressSettle ? performance.now() : -Infinity);
   useEffect(() => {
     if (display === value) return;
-    if (!settledOnceRef.current) {
-      settledOnceRef.current = true;
+    if (suppressSettle && performance.now() - mountedAtRef.current < 900) {
       setDisplay(value);
       fromRef.current = value;
       return;
@@ -11554,6 +11562,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // appending. 0 is a valid row index, so callers must check `!== false`, never truthiness.
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const swipeDismissKeyboard = useSwipeDismiss(blurIfTextInput);
+  // Rows that have shown the real ExerciseInput at least once — reading `ex.name` LIVE to decide
+  // picker-button-vs-input meant backspacing a name down to "" flipped the ternary on the very
+  // last keystroke: ExerciseInput unmounted mid-edit, the keyboard dropped, and the row became the
+  // "Search exercises..." button — you could no longer clear-and-retype a name in place, only
+  // reach it through the sheet. Once a row has graduated to the real input it stays there for the
+  // rest of its life, even through a temporary empty string; only a row that's NEVER had a name
+  // (a fresh Quick-Start blank) shows the picker button.
+  const inputGraduatedRef = useRef(new Set());
 
   // Tell the shell whether a workout is in progress. Mid-set you don't need the logo, the DM and
   // activity icons, or four nav tabs — that chrome was eating ~15% of the screen on the one screen
@@ -13138,8 +13154,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         <div onScroll={e => { blurIfTextInput(); onExerciseScroll(e); }} {...swipeDismissKeyboard} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
+            const rowKey = ex.id || ei;
+            if (ex.name) inputGraduatedRef.current.add(rowKey);
+            const showNameInput = !!ex.name || inputGraduatedRef.current.has(rowKey);
             return (
-              <div key={ex.id || ei}>
+              <div key={rowKey}>
                 {/* Exercise header */}
                 <div style={{ padding:"14px 14px 6px", display:"flex", alignItems:"flex-start", gap:10 }}>
                   <button onClick={() => ex.name && setViewingExercise(ex.name)} aria-label={ex.name ? `${ex.name} details` : undefined} style={{ background:"none", border:"none", padding:0, cursor: ex.name ? "pointer" : "default", flexShrink:0, marginTop:2 }}>
@@ -13147,7 +13166,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </button>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      {ex.name ? (
+                      {showNameInput ? (
                         <ExerciseInput value={ex.name}
                           onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>{
                             if (i!==ei) return x;
@@ -17232,13 +17251,13 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 a plain div with none, so its number/label sat 4px higher than theirs (measured:
                 the inner number's top was 180 here vs 184 in the buttons). Not a device quirk,
                 a real padding mismatch, reproducible in any browser. */}
-            <div style={{ padding:"4px 8px" }}><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (posts.length === 1 ? "Workout" : "Workouts") : (posts.length === 1 ? "Post" : "Posts")}</div></div>
+            <div style={{ padding:"4px 8px" }}><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500} suppressSettle/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (posts.length === 1 ? "Workout" : "Workouts") : (posts.length === 1 ? "Post" : "Posts")}</div></div>
             <button onClick={() => setListModal("followers")} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500} suppressSettle/></div>
               <div style={{ fontSize:12, color:C.sub }}>{followers === 1 ? "Follower" : "Followers"}</div>
             </button>
             <button onClick={() => setListModal("following")} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
-              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={following2} duration={500}/></div>
+              <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={following2} duration={500} suppressSettle/></div>
               <div style={{ fontSize:12, color:C.sub }}>Following</div>
             </button>
           </div>
