@@ -1,4 +1,4 @@
-// v178091716881
+// v178091716882
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17099,10 +17099,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         </div>
         {!isMe ? (
           <div style={{ display:"flex", gap:6 }}>
+            {/* C.primary/C.onPrimary, not C.accent/"#fff" — the same white-on-volt pairing
+                CLAUDE.md already documents and has fixed twice elsewhere (1.31:1 dark, 3.09:1
+                light). This site survived because sim_accentbutton's regex only matches a bare
+                `background:C.accent`, not a ternary — see the check's own fix note. */}
             <button onClick={toggleFollow} style={{
-              flex:1, padding:"8px", background:(isFollowing||requestPending)?"transparent":C.accent,
-              border:`1px solid ${(isFollowing||requestPending)?C.border:C.accent}`, borderRadius:8,
-              fontSize:13, fontWeight:600, color:(isFollowing||requestPending)?C.text:"#fff",
+              flex:1, padding:"8px", background:(isFollowing||requestPending)?"transparent":C.primary,
+              border:`1px solid ${(isFollowing||requestPending)?C.border:C.primary}`, borderRadius:8,
+              fontSize:13, fontWeight:600, color:(isFollowing||requestPending)?C.text:C.onPrimary,
               cursor:"pointer", fontFamily:F
             }}>{isFollowing ? "Following" : requestPending ? "Requested" : "Follow"}</button>
             {onMessage && (
@@ -17844,10 +17848,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                             padding:"7px 16px", borderRadius:8, fontSize:12, fontWeight:600,
                             // "Following" is the resting state, so it stays quiet — but quiet on a
                             // dark sheet still needs a surface of its own, or the button vanishes
-                            // into the card. "Follow" is the action, so it takes the accent.
-                            background: amFollowing ? C.divider : C.accent,
+                            // into the card. "Follow" is the action, so it takes the primary fill.
+                            // C.primary, not C.accent — the pairing here was already C.onPrimary
+                            // (not onAccent), a mismatched-token bug measuring 3.09:1 on light.
+                            background: amFollowing ? C.divider : C.primary,
                             color: amFollowing ? C.text : C.onPrimary,
-                            border: `1px solid ${amFollowing ? C.border : C.accent}`,
+                            border: `1px solid ${amFollowing ? C.border : C.primary}`,
                             cursor:"pointer", fontFamily:F
                           }}>{amFollowing ? "Following" : "Follow"}</button>
                         </div>

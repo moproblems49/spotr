@@ -86,6 +86,35 @@ for (const m of accentSites) {
 check("4. no accent-filled wrapper is undone by an Icon color prop that overrides its ink",
   overriddenIcon === 0, `${overriddenIcon} site(s) set the right ink then override it on the Icon`);
 
-console.log(`   (${accentSites.length} background:C.accent sites + ${propSites.length} bg={C.accent} prop sites scanned)`);
+// 5. C.accent ANYWHERE inside a `background:` VALUE EXPRESSION, not just immediately after the
+// colon — checks 1/2 only match `background:\s*C.accent` and so are blind to a ternary
+// (`background:(isFollowing||requestPending)?"transparent":C.accent`), which is exactly how the
+// Profile Follow button's 1.31:1/3.09:1 pairing survived both checks for months. Scoped to the
+// `background:`/`color:` VALUE (up to the next comma or closing brace), not the whole style
+// object, so a ternary's accent branch and a ternary's white/onPrimary branch in the SAME
+// declaration are what gets flagged — deliberately a little eager (it can't correlate which
+// ternary branch pairs with which), matching this file's existing bias toward over-flagging
+// something a human then reads once, over staying silent on a real bug.
+// Strip comments first — a source-level regex this broad ("background:" followed by loose text)
+// will otherwise match prose describing an already-fixed bug (this file has several: past fixes
+// are documented in comments that literally contain the old `background:BLUE`/`color:"#fff"`
+// strings as evidence of what shipped). Block comments only; this codebase's style-object lines
+// don't contain `//`.
+const srcNoComments = src.replace(/\/\*[\s\S]*?\*\//g, m => " ".repeat(m.length));
+const bgValueSites = [...srcNoComments.matchAll(/background:\s*([^,}]+)/g)]
+  .filter(m => /C\.accent(?!Soft|Ink|2)\b/.test(m[1]));
+let ternaryMismatch = 0;
+for (const m of bgValueSites) {
+  const window = srcNoComments.slice(Math.max(0, m.index - 60), m.index + 320);
+  const objEnd = window.indexOf("}}");
+  const scoped = objEnd === -1 ? window : window.slice(0, objEnd);
+  const colorMatch = scoped.match(/color:\s*([^,}]+)/);
+  if (!colorMatch) continue;
+  if (/"#fff"|C\.onPrimary\b/.test(colorMatch[1])) ternaryMismatch++;
+}
+check("5. no C.accent inside a background: VALUE EXPRESSION (incl. a ternary branch) pairs with a color: expression containing \"#fff\"/C.onPrimary",
+  ternaryMismatch === 0, `${ternaryMismatch} site(s) hide the check-1/2 bug inside a ternary`);
+
+console.log(`   (${accentSites.length} background:C.accent sites + ${propSites.length} bg={C.accent} prop sites + ${bgValueSites.length} background-value-expression sites scanned)`);
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);
