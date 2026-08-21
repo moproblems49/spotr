@@ -1,4 +1,4 @@
-// v178091716882
+// v178091716883
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1798,9 +1798,15 @@ function muscleReadiness(store) {
   return { readiness, recMod, rec, usedRpe, anyData: Object.keys(hits).length > 0 };
 }
 
-// Readiness ramp: 0 = recovering (red), 0.5 = amber, 1 = ready (green).
-function _readyColor(t) {
-  const stops = [[239,68,68],[245,158,11],[34,197,94]];
+// Readiness ramp: 0 = recovering (red), 0.5 = amber, 1 = ready (green). Was a fixed rgb() triple —
+// the exact pre-fix light-theme red/amber/green THEMES.light once shipped, measuring 3.45-3.76:1 /
+// 1.97-2.15:1 / 2.09-2.28:1 as TEXT on the light theme (this ramp colors the recovery-verdict text
+// and dot, not decoration) — invisible to sim_a11y because it never went through a theme token.
+// Same fix shape as _heatColor(t, C): take C and interpolate between the already-AA-safe
+// C.red/C.gold/C.green tokens per theme instead of one fixed triple.
+function _readyColor(t, C) {
+  const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const stops = C ? [hexToRgb(C.red), hexToRgb(C.gold), hexToRgb(C.green)] : [[239,68,68],[245,158,11],[34,197,94]];
   const seg = t < 0.5 ? 0 : 1; const lt = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
   const a = stops[seg], b = stops[seg + 1];
   const mix = a.map((v, i) => Math.round(v + (b[i] - v) * lt));
@@ -1884,12 +1890,12 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
       // ~85%+ recovered is "ready to train again" — at a normal 2x/week cadence a muscle
       // sits at 85-95% on its next session day, and that should read GREEN, not amber.
       const t = Math.min(1, raw / 0.85);
-      return _readyColor(t);
+      return _readyColor(t, C);
     }
     if (mode === "strength") {
       const r = key.split(":")[1];
       if (!strength.ready || strength.regionFrac[r] == null) return bodyCol; // no standard -> no data
-      return _readyColor(_strengthDisplayFrac(strength.regionFrac[r])); // weak (red) -> strong (green), score-curve scaled
+      return _readyColor(_strengthDisplayFrac(strength.regionFrac[r]), C); // weak (red) -> strong (green), score-curve scaled
     }
     // Volume: absolute scale against the evidence-based ~10-20 hard-sets/week band
     // (t = sets/20, so the ramp's midpoint sits at the bottom of the target band).
@@ -1942,7 +1948,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   // "Longest since trained: …" plus the recovery/sleep nudges under it were noise on a screen whose
   // whole job is the picture. `daysSinceMuscleTrained()` is still live — the coach summary uses it.
   const Tab = ({ id, label }) => (
-    <button onClick={() => { setMode(id); haptic("tap"); }} style={{
+    <button onClick={() => { setMode(id); haptic("tap"); }} className="seshd-hit-y" style={{
       flex:1, padding:"7px 0", background: mode === id ? C.primary : "transparent",
       color: mode === id ? C.onPrimary : C.sub, border:"none", borderRadius:11,
       fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:F
@@ -1961,7 +1967,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </div>
         <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
           {[["Male","male"],["Female","female"]].map(([label, val]) => (
-            <button key={val} onClick={() => setSex(val)} style={{
+            <button key={val} onClick={() => setSex(val)} className="seshd-hit-y" style={{
               padding:"4px 11px", background: sex === val ? C.primary : "transparent",
               color: sex === val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
               fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
@@ -2014,10 +2020,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   colors={[1, 0.82, 0.62, 0.37, 0.12].map(t => _heatColor(t, C))}/>
               ) : mode === "strength" ? (
                 (strength.ready ? <ScaleStrip C={C} topLabel="Stronger" bottomLabel="Weaker"
-                  colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/> : null)
+                  colors={[1, 0.75, 0.5, 0.25, 0].map(t => _readyColor(t, C))}/> : null)
               ) : (
                 <ScaleStrip C={C} topLabel="Ready" bottomLabel="Recovering"
-                  colors={[1, 0.75, 0.5, 0.25, 0].map(_readyColor)}/>
+                  colors={[1, 0.75, 0.5, 0.25, 0].map(t => _readyColor(t, C))}/>
               )}
             </div>
           </div>
@@ -2031,7 +2037,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   // effective dose (muted), 4-9 = growing — most of the gains happen here
                   // (light ramp green), 10-20 = maximizing (accent + check), >20 = diminishing
                   // returns / recovery cost (amber). No red: high volume isn't "wrong".
-                  const col = sets > 20 ? "#f59e0b" : sets >= 10 ? C.accent : sets >= 4 ? _heatColor(0.45, C) : C.muted;
+                  const col = sets > 20 ? C.gold : sets >= 10 ? C.accent : sets >= 4 ? _heatColor(0.45, C) : C.muted;
                   return (
                     <span key={mName} style={{ fontSize:11, fontWeight:600, color:C.sub, whiteSpace:"nowrap" }}>
                       {mName} <span style={{ fontFamily:MONO, fontWeight:800, color:col }}>{sets}{sets >= 10 && sets <= 20 ? "✓" : ""}</span>
@@ -2047,7 +2053,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             <>
               {(() => {
                 const bb = computeBodyBattery(store);
-                const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
+                const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? C.gold : C.red;
                 // This line's whole job is explaining the number beside it, so it has to
                 // RECONCILE. Rest recovery was missing, and it's the one positive term: the card
                 // rendered "Woke at 94 · −16 training · −2 activity · −9 today" next to a headline
@@ -2080,7 +2086,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
               {showBatteryDetail && (() => {
                 const bb = computeBodyBattery(store);
-                const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? "#f59e0b" : "#ef4444";
+                const fill = bb.level >= 60 ? C.accent : bb.level >= 30 ? C.gold : C.red;
                 // Steps and active energy are shown here — next to the drain they cause — and
                 // NOWHERE else in the app. Seshd isn't a step tracker (your phone, the Fitness
                 // rings and Health all already do that); the reason to surface them is that they
@@ -2135,7 +2141,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           <div key={i} style={{ background:C.surface, borderRadius:10, padding:"8px 10px",
                             gridColumn: (i === rows.length - 1 && rows.length % 2 === 1) ? "span 2" : "auto" }}>
                             <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
-                            <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, marginTop:2, color: String(r.value).startsWith("−") ? "#ef4444" : C.accent }}>{r.value}</div>
+                            <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, marginTop:2, color: String(r.value).startsWith("−") ? C.red : C.accent }}>{r.value}</div>
                             <div style={{ fontSize:10, color:C.sub, marginTop:2, lineHeight:1.3 }}>{r.detail}</div>
                           </div>
                         ))}
@@ -2158,7 +2164,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               {(() => {
                 const tl = trainingLoadRatio(store, store.unit || "lbs");
                 if (!tl) return null;
-                const col = tl.status === "high" ? "#ef4444" : tl.status === "caution" ? "#f59e0b"
+                // C.red/C.gold, not the raw Tailwind hex — this whole card was hardcoded and every
+                // one of these literals failed light-theme text contrast (1.6-3.8:1); see the note
+                // on _readyColor above.
+                const col = tl.status === "high" ? C.red : tl.status === "caution" ? C.gold
                   : tl.status === "low" ? C.sub : C.accent;
                 // 0.8 / 1.3 / 1.5 mapped onto the bar so the marker reads against the bands.
                 const pos = Math.max(0, Math.min(1, tl.ratio / 2));
@@ -2183,15 +2192,17 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               {rec && typeof rec.recoveryScore === "number" && (
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"2px 16px 6px" }}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 11px", borderRadius:999, background:C.divider, fontSize:11, fontWeight:700, color:C.text }}>
-                    <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(rec.recoveryScore) }}/>
+                    <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(rec.recoveryScore, C) }}/>
                     Recovery {Math.round(rec.recoveryScore * 100)}%
-                    <span style={{ color:_readyColor(rec.recoveryScore) }}>· {recoveryVerdict(rec.recoveryScore)}</span>
+                    <span style={{ color:_readyColor(rec.recoveryScore, C) }}>· {recoveryVerdict(rec.recoveryScore)}</span>
                   </span>
                   {(() => {
                     // Plain-English driver tiles ("HRV 42 vs 32" meant nothing to normal
                     // humans): each metric gets a value, a direction arrow, and a worded
                     // comparison against the user's own baseline, colored good/off.
-                    const GOOD = "#4ade80", OFF = "#f59e0b";
+                    // C.green/C.gold, not the raw Tailwind hex — GOOD measured 1.60:1 on light-theme
+                    // text (see the _readyColor note above; same bug, same block).
+                    const GOOD = C.green, OFF = C.gold;
                     const tiles = [];
                     if (rec.hrv != null && rec.hrvBaseline) {
                       const base = Math.round(rec.hrvBaseline); const good = rec.hrv >= base;
@@ -2228,7 +2239,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const s = rec.vo2MaxSeries && rec.vo2MaxSeries.length >= 2 ? rec.vo2MaxSeries : null;
                     const d = rec.vo2MaxDelta || 0;
                     const up = d > 0.05, down = d < -0.05;
-                    const col = up ? "#4ade80" : down ? "#f59e0b" : C.accent;   // steady = accent, never grey
+                    const col = up ? C.green : down ? C.gold : C.accent;   // steady = accent, never grey
                     // VO₂ Max carries one decimal (45.2), so keep it in the range labels.
                     const spark = s ? <TrendSparkline series={s} color={col} C={C} format={v => v.toFixed(1)}/> : null;
                     return (
@@ -2247,7 +2258,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   {rec.restingHr != null && rec.rhrSeries && rec.rhrSeries.length >= 2 && (() => {
                     const s = rec.rhrSeries, d = rec.rhrTrendDelta || 0;
                     const down = d < -0.5, up = d > 0.5;
-                    const col = down ? "#4ade80" : up ? "#f59e0b" : C.accent;   // steady = accent, never grey
+                    const col = down ? C.green : up ? C.gold : C.accent;   // steady = accent, never grey
                     return (
                       <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
@@ -2274,7 +2285,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     const hasAny = (rec.resp != null || rec.wristTemp != null);
                     if (!hasAny) return null;
                     return (
-                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", fontSize:10, color: flags.length ? "#f59e0b" : C.muted, textAlign:"center", fontWeight:600, lineHeight:1.4 }}>
+                      <div style={{ width:"100%", maxWidth:340, margin:"6px auto 0", fontSize:10, color: flags.length ? C.gold : C.muted, textAlign:"center", fontWeight:600, lineHeight:1.4 }}>
                         {flags.length
                           ? `Heads up: ${flags.join(" · ")} — your body may be fighting something or under-recovered. Consider an easier day.`
                           : "Overnight signals (breathing rate, wrist temp) look normal for you."}
@@ -2294,7 +2305,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                         just the colour scale rewritten as a sentence; a RELATIONSHIP between groups
                         ("your pull is behind your push") is the one thing the map cannot show. */}
                     {strength.imbalances && strength.imbalances.length
-                      ? <span style={{ color:"#f59e0b", fontWeight:600, fontSize:12 }}>{strength.imbalances.join(" · ")}.</span>
+                      ? <span style={{ color:C.gold, fontWeight:600, fontSize:12 }}>{strength.imbalances.join(" · ")}.</span>
                       : <>Well-balanced across muscle groups.</>}
                     <br/>Overall: {strength.overall}. Grey = no strength standard for that muscle.
                   </div>
@@ -2380,8 +2391,8 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14 }}>
                 <span style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{label}</span>
-                <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, color:_readyColor(readyT) }}>
-                  <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(readyT) }}/>
+                <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, color:_readyColor(readyT, C) }}>
+                  <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(readyT, C) }}/>
                   {readyPct >= 85 ? "Ready" : readyPct >= 55 ? "Recovering" : "Fatigued"} · {readyPct}%
                 </span>
               </div>
@@ -7370,7 +7381,10 @@ function StreakBadge({ streak, size = "sm", status, thisWeek, target }) {
     // else stays white
   }
 
-  if (status === "at-risk") { bg = "#f59e0b"; fg = "#fff"; flameColor = "#fff"; }
+  // Amber is a LIGHT fill in both themes (it's a fixed hex, not a theme token) — white text/icon on
+  // it measured 2.15:1, under both the 4.5:1 text floor and the 3:1 graphical floor. Dark ink reads
+  // 9.22:1.
+  if (status === "at-risk") { bg = "#f59e0b"; fg = "#0a0a0a"; flameColor = "#0a0a0a"; }
   else if (!streak && thisWeek) { bg = "#262626"; fg = "#fff"; flameColor = "#a3a3a3"; }
 
   return (
@@ -9520,11 +9534,15 @@ export function HrStat({ hr, C, size = 14, align = "center" }) {
   const word = { fontSize: 10, fontWeight: 700, color: C.sub, fontFamily: F, marginLeft: 3, letterSpacing: 0.2 };
   return (
     <div style={{ textAlign: align }}>
-      <div style={{ fontSize: size, fontWeight: 800, color: "#ef4444", fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+      <div style={{ fontSize: size, fontWeight: 800, color: C.red, fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
         ♥{hr.avg}<span style={word}>avg</span>
       </div>
       {hr.peak ? (
-        <div style={{ fontSize: Math.max(10, size - 3), fontWeight: 700, color: "#ef4444", opacity: 0.72, fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+        // Was a hardcoded "#ef4444" (fails light 4.5:1 as-is: 4.55-4.96) dimmed further with
+        // opacity:0.72, which drags the blended color to 3.25-4.44:1 against every card surface —
+        // opacity de-emphasis doesn't have room to spend on an already-marginal color. C.red at
+        // full opacity; the smaller size + lighter weight already tell avg and peak apart.
+        <div style={{ fontSize: Math.max(10, size - 3), fontWeight: 700, color: C.red, fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
           {hr.peak}<span style={word}>peak</span>
         </div>
       ) : null}
@@ -17062,7 +17080,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {/* Tucked into the top-right corner. The vertical offset is status-bar clearance and
                 can't go to zero — the cover deliberately bleeds up behind the clock, and this
                 button used to sit underneath it. +4 is as tight as it gets. */}
-            <button onClick={() => coverRef.current?.click()} aria-label="Edit cover" style={{ position:"absolute", top: onBack ? "calc(env(safe-area-inset-top) + 4px)" : "6px", right:8, background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, padding:"5px 10px", fontSize:11, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1.5 }}>Edit cover</button>
+            <button onClick={() => coverRef.current?.click()} aria-label="Edit cover" className="seshd-hit" style={{ position:"absolute", top: onBack ? "calc(env(safe-area-inset-top) + 4px)" : "6px", right:8, background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:14, padding:"5px 10px", fontSize:11, fontWeight:700, color:"#fff", cursor:"pointer", fontFamily:F, lineHeight:1.5 }}>Edit cover</button>
           </>
         )}
       </div>
@@ -17079,11 +17097,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
             <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>{posts.length === 1 ? "Workout" : "Workouts"}</div></div>
-            <button onClick={() => setListModal("followers")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
+            <button onClick={() => setListModal("followers")} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>{followers === 1 ? "Follower" : "Followers"}</div>
             </button>
-            <button onClick={() => setListModal("following")} style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
+            <button onClick={() => setListModal("following")} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={following2} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>Following</div>
             </button>
@@ -17149,7 +17167,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           </div>
         ) : (
           <div style={{ display:"flex", gap:6 }}>
-            <button onClick={() => setShowEdit(true)} style={{
+            <button onClick={() => setShowEdit(true)} className="seshd-hit-y" style={{
               flex:1, padding:"7px", background:"transparent",
               border:`1px solid ${C.border}`, borderRadius:8,
               fontSize:13, fontWeight:600, color:C.text,
@@ -17157,6 +17175,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             }}>Edit profile</button>
             <button
               onClick={() => setShowBody(true)}
+              className="seshd-hit-y"
               style={{
                 padding:"7px 12px", background:"transparent",
                 border:`1px solid ${C.border}`, borderRadius:8,
@@ -17175,6 +17194,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 haptic("tap");
               }}
               aria-label="Share profile"
+              className="seshd-hit-y"
               style={{
                 width:38, padding:"7px 0", background:"transparent",
                 border:`1px solid ${C.border}`, borderRadius:8,
@@ -17186,6 +17206,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             <button
               onClick={() => setShowSettings(true)}
               aria-label="Settings"
+              className="seshd-hit-y"
               style={{
                 width:38, padding:"7px 0", background:"transparent",
                 border:`1px solid ${C.border}`, borderRadius:8,
@@ -17208,11 +17229,20 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           {(() => {
             const sex = store.strengthSex || "male";
             const ss = strengthScore;
-            const LEVEL_COLOR = { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Proficient:"#7ed957", Advanced:"#c8f135", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" };
+            // One fixed hex map served both themes — as TEXT (below, and on each lift row) every
+            // tier failed light-theme contrast (1.31-3.67:1: Advanced/Elite/Proficient/Intermediate
+            // didn't even clear the 3:1 GRAPHICAL floor for the bar/badge fill it doubles as). Dark
+            // theme's tones stay; light gets its own darker set clearing 4.5:1+ as text (and, since
+            // darker, the badge below now needs light ink instead of the near-black it used against
+            // the old light-theme fills).
+            const LEVEL_COLOR = C.isDark
+              ? { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Proficient:"#7ed957", Advanced:"#c8f135", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" }
+              : { Untrained:C.muted, Novice:"#1d4ed8", Intermediate:"#047857", Proficient:"#4d7c0f", Advanced:"#3f6212", Exceptional:"#c2410c", Elite:"#92400e", "World Class":"#be123c" };
+            const levelBadgeInk = C.isDark ? "#0a0a0a" : "#ffffff";
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
-                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} style={{
+                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} className="seshd-hit-y" style={{
                     padding:"4px 10px", background: sex===val ? C.primary : "transparent",
                     color: sex===val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
@@ -17253,7 +17283,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
                         <CountUpNumber value={ss.score} style={{ fontSize:46, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:0.9, letterSpacing:-1 }}/>
                       </div>
-                      <div style={{ display:"inline-block", marginTop:10, padding:"4px 11px", borderRadius:999, background:lvlColor, color:"#0a0a0a", fontSize:12, fontWeight:800, letterSpacing:0.3 }}>{ss.overall.toUpperCase()}</div>
+                      <div style={{ display:"inline-block", marginTop:10, padding:"4px 11px", borderRadius:999, background:lvlColor, color:levelBadgeInk, fontSize:12, fontWeight:800, letterSpacing:0.3 }}>{ss.overall.toUpperCase()}</div>
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
                       <SexToggle/>
@@ -17790,7 +17820,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     </div>
                     {incomingRequests.map(u => (
                       <div key={`req-${u.id}`} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.border}`, background:C.accentSoft }}>
-                        <div onClick={() => { setListModal(null); if (onUserClick) onUserClick(u.id); }} style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
+                        <div onClick={() => { setListModal(null); if (onUserClick) onUserClick(u.id); }}
+                        role="button" tabIndex={0}
+                        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setListModal(null); if (onUserClick) onUserClick(u.id); } }}
+                        style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
                           <Avatar user={u} size={44} C={C}/>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
@@ -17822,7 +17855,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   const isMyself = u.id === currentUserId;
                   return (
                     <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.border}` }}>
-                      <div onClick={() => { setListModal(null); if (onUserClick) onUserClick(u.id); }} style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
+                      <div onClick={() => { setListModal(null); if (onUserClick) onUserClick(u.id); }}
+                        role="button" tabIndex={0}
+                        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setListModal(null); if (onUserClick) onUserClick(u.id); } }}
+                        style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
                         <Avatar user={u} size={44} C={C}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
@@ -17840,7 +17876,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               onConfirm: () => onRemoveFollower && onRemoveFollower(u.id),
                             })} style={{
                               padding:"7px 12px", borderRadius:8, fontSize:12, fontWeight:600,
-                              background:"transparent", color:"#EF4444", border:`1px solid #EF444455`,
+                              background:"transparent", color:C.red, border:`1px solid ${C.red}55`,
                               cursor:"pointer", fontFamily:F
                             }}>Remove</button>
                           )}
