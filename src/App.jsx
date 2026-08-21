@@ -1,4 +1,4 @@
-// v178091716892
+// v178091716893
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2718,11 +2718,29 @@ function ToastHost() {
 // SET TYPES
 // ═════════════════════════════════════════════════════════════════════════════
 const SET_TYPES = [
-  { id:"normal",  label:"Normal",   color:"#8e8e93", short:"N" },
-  { id:"warmup",  label:"Warm-up",  color:"#f97316", short:"W" },
-  { id:"drop",    label:"Drop Set", color:"#a855f7", short:"D" },
-  { id:"failure", label:"Failure",  color:"#ef4444", short:"F" },
+  { id:"normal",  label:"Normal",   short:"N" },
+  { id:"warmup",  label:"Warm-up",  short:"W" },
+  { id:"drop",    label:"Drop Set", short:"D" },
+  { id:"failure", label:"Failure",  short:"F" },
 ];
+// Per-theme colors for the set-type badge/stripe. `stripe` is the graphical color (the exercise
+// row's left border, the badge fill/border) — measured against a 3:1 floor. `ink` is a separate,
+// further-adjusted value for the 10-11px TEXT rendered on the badge's own `${stripe}18` tint —
+// the raw stripe colors read 2.6-4.6:1 there across the four types and both themes, under the
+// 4.5:1 AA floor for real text (the badge letter, the type-picker dropdown glyph). Light-theme
+// warmup also needed a darker stripe of its own: the raw Tailwind orange-500 (#f97316, still used
+// on dark) measured 2.80:1 against a white card, under the 3:1 floor for a graphical object.
+const SET_TYPE_COLORS = {
+  normal:  { stripe:{ dark:"#8e8e93", light:"#8e8e93" }, ink:{ dark:"#8e8e93", light:"#6f6f74" } },
+  warmup:  { stripe:{ dark:"#f97316", light:"#ef6606" }, ink:{ dark:"#f97316", light:"#b34d05" } },
+  drop:    { stripe:{ dark:"#a855f7", light:"#a855f7" }, ink:{ dark:"#b268f8", light:"#942ef5" } },
+  failure: { stripe:{ dark:"#ef4444", light:"#ef4444" }, ink:{ dark:"#f15757", light:"#d91313" } },
+};
+function setTypeColors(id, C) {
+  const c = SET_TYPE_COLORS[id] || SET_TYPE_COLORS.normal;
+  const key = C.isDark ? "dark" : "light";
+  return { stripe: c.stripe[key], ink: c.ink[key] };
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // UTILITIES
@@ -8561,10 +8579,18 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
     [store.history, exName, set.type, prevIndex, si, unit]
   );
   const setType = SET_TYPES.find(t => t.id === set.type) || SET_TYPES[0];
+  const { stripe: setTypeStripe, ink: setTypeInk } = setTypeColors(setType.id, C);
   // Cap reps at 12 for the estimate — same cap getSetPRTypes() uses for the e1RM PR badge,
   // so the displayed number always matches what's actually being checked against the PR bar.
   const est1RM = set.weight && set.reps ? calc1RM(set.weight, Math.min(parseInt(set.reps) || 0, 12)) : null;
   const isDone = set.done;
+  // Light theme's done-set tint (the weight/reps box's `${C.green}10` layered on the row's own
+  // `${C.green}0E`) is a real composited color, not raw C.bg/C.surface — measured, C.green and
+  // C.muted as text there read 3.98-4.28:1, under the 4.5:1 AA floor for real text (the logged
+  // weight/reps value, the unit/"reps" label). Dark theme already clears it (7-8:1) and stays as
+  // C.green/C.muted. Deepened just enough to clear 4.5:1 against either plausible parent bg.
+  const doneGreenInk = C.isDark ? C.green : "#04704f";
+  const doneMutedInk = C.isDark ? C.muted : "#66635f";
 
   // Duration-based exercise detection — show duration input instead of weight + reps.
   // Cardio (running, biking) tracks duration + distance. Yoga tracks duration only.
@@ -8633,7 +8659,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           borderBottom:`1.5px solid ${isDone?C.green+"30":C.divider}`,
           // Colored left stripe for non-normal set types — visually rhythmic across an exercise.
           // Always 4px so changing the type doesn't shift layout; transparent when "normal".
-          borderLeft: `4px solid ${setType.id !== "normal" ? setType.color : "transparent"}`,
+          borderLeft: `4px solid ${setType.id !== "normal" ? setTypeStripe : "transparent"}`,
           borderRadius:11, padding:"8px 10px",
           transform: `translateX(${swipeDx}px)`,
           transition: swipeState.current.swiping ? "none" : "transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)",
@@ -8660,7 +8686,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
               setMenuPos({ top, left: r.left });
               setShowTypeMenu(true);
             }}
-            style={{ padding:"3px 7px", background:`${setType.color}18`, border:`1.5px solid ${setType.color}40`, borderRadius:6, color:setType.color, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"pan-x pan-y", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
+            style={{ padding:"3px 7px", background:`${setTypeStripe}18`, border:`1.5px solid ${setTypeStripe}40`, borderRadius:6, color:setTypeInk, fontSize:10, fontWeight:700, cursor:"pointer", minWidth:32, touchAction:"pan-x pan-y", userSelect:"none", WebkitTapHighlightColor:"transparent" }}>{setType.short}</button>
         </div>
         {showTypeMenu && menuPos && createPortal(
           <>
@@ -8683,6 +8709,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
             }}>
               {SET_TYPES.map((t, i) => {
                 const isCurrent = t.id === set.type;
+                const { stripe: tStripe, ink: tInk } = setTypeColors(t.id, C);
                 return (
                   <button
                     key={t.id}
@@ -8701,9 +8728,9 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                     }}>
                     <div style={{
                       width:26, height:26, borderRadius:7, flexShrink:0,
-                      background: `${t.color}18`,
-                      color: t.color,
-                      border: `1.5px solid ${t.color}40`,
+                      background: `${tStripe}18`,
+                      color: tInk,
+                      border: `1.5px solid ${tStripe}40`,
                       display:"flex", alignItems:"center", justifyContent:"center",
                       fontSize:11, fontWeight:800, fontFamily:MONO,
                     }}>{t.short}</div>
@@ -8727,35 +8754,35 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
           <>
             <div style={{ position:"relative", width:70 }}>
               <div data-set-field="weight" onClick={() => onFocusInput && onFocusInput("weight")}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
-                  {set.weight || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?doneGreenInk:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.weight || <span style={{ color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>min</span>
+              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:10, color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>min</span>
             </div>
             <div style={{ position:"relative", width:62 }}>
               <div data-set-field="reps" onClick={() => onFocusInput && onFocusInput("reps")}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
-                  {set.reps || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 22px 6px 6px", fontSize:15, fontWeight:700, color:isDone?doneGreenInk:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.reps || <span style={{ color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
+              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{unit==="kg"?"km":"mi"}</span>
             </div>
           </>
         ) : (
           <>
             <div style={{ position:"relative", width:70 }}>
               <div data-set-field="weight" onClick={() => onFocusInput && onFocusInput("weight")}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
-                  {set.weight || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?doneGreenInk:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.weight || <span style={{ color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{prev?.w||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>{unit}</span>
+              <span style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", fontSize:10, color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{unit}</span>
             </div>
 
             <div style={{ position:"relative", width:58 }}>
               <div data-set-field="reps" onClick={() => onFocusInput && onFocusInput("reps")}
-                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?C.green:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
-                  {set.reps || <span style={{ color:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
+                style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?doneGreenInk:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
+                  {set.reps || <span style={{ color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:C.muted, fontWeight:600 }}>reps</span>
+              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>reps</span>
             </div>
           </>
         )}
@@ -8768,7 +8795,11 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
             3:1 floor for a graphical control. C.onAccent supplies the right ink on both themes
             (dark #0d0d10 here at 9.9:1; light #fff, which the darker light-theme green already
             clears at 5:1). */}
-        <button onClick={onToggleDone} className="seshd-hit" style={{
+        <button onClick={onToggleDone} className="seshd-hit" role="checkbox" aria-checked={isDone}
+          aria-label={isCardio
+            ? `Set ${si+1}, ${set.weight || "0"} min${set.reps ? `, ${set.reps} ${unit==="kg"?"km":"mi"}` : ""}`
+            : `Set ${si+1}, ${set.weight || "0"} ${unit} times ${set.reps || "0"} reps`
+          } style={{
           width:32, height:32, borderRadius:9, flexShrink:0,
           border:`2px solid ${isDone?C.green:C.border}`, background:isDone?C.green:"transparent",
           color:isDone?C.onAccent:C.muted, cursor:"pointer",
@@ -13238,10 +13269,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <button onClick={() => setRestPickerEx(restPickerEx === ei ? null : ei)}
                       title="Rest time for this exercise"
                       style={{ background: restPickerEx === ei ? C.primary : "none", border:`1px solid ${restPickerEx === ei ? C.primary : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={restPickerEx === ei ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={restPickerEx === ei ? C.onPrimary : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/>
                       </svg>
-                      {ex.rest ? <span style={{ fontSize:10, fontWeight:700, color: restPickerEx === ei ? "#fff" : C.sub, fontFamily:MONO }}>{ex.rest >= 60 ? `${ex.rest/60}m`.replace(".0m","m").replace(".5m","½m") : `${ex.rest}s`}</span> : null}
+                      {ex.rest ? <span style={{ fontSize:10, fontWeight:700, color: restPickerEx === ei ? C.onPrimary : C.sub, fontFamily:MONO }}>{ex.rest >= 60 ? `${ex.rest/60}m`.replace(".0m","m").replace(".5m","½m") : `${ex.rest}s`}</span> : null}
                     </button>
                     {/* Bar-type picker — only for true barbell lifts (not T-bar/landmine, which
                         load plates directly with no bar weight to subtract). Defaults to
@@ -13251,10 +13282,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       <button onClick={() => { setBarPickerEx(barPickerEx === ei ? null : ei); setCustomBarInput(""); }}
                         title="Bar type for this exercise"
                         style={{ background: barPickerEx === ei ? C.primary : "none", border:`1px solid ${barPickerEx === ei ? C.primary : C.border}`, borderRadius:6, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={barPickerEx === ei ? "#fff" : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={barPickerEx === ei ? C.onPrimary : C.sub} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="2" y="10" width="20" height="4" rx="1"/><rect x="0" y="9" width="3" height="6" rx="0.5"/><rect x="21" y="9" width="3" height="6" rx="0.5"/>
                         </svg>
-                        <span style={{ fontSize:10, fontWeight:700, color: barPickerEx === ei ? "#fff" : C.sub, fontFamily:MONO }}>{getBarWeight(ex.barType, unit)}{unit}</span>
+                        <span style={{ fontSize:10, fontWeight:700, color: barPickerEx === ei ? C.onPrimary : C.sub, fontFamily:MONO }}>{getBarWeight(ex.barType, unit)}{unit}</span>
                       </button>
                     )}
                     {/* Overflow menu — superset link + swap moved here so long exercise names
