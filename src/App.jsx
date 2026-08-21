@@ -1,4 +1,4 @@
-// v178091716887
+// v178091716888
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4719,16 +4719,34 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
 }
 
 // "Swipe the keyboard down" — the OS-level drag-to-dismiss gesture Mo asked for isn't reliably
-// reachable in a WKWebView the way it is in a native scroll view, and this app's own scroll
-// listeners already own touch handling on the screens where it matters (the workout screen's
-// header-collapse scroller, the exercise picker's results list). Blurring whatever real text
-// input is focused the moment either list scrolls gives the same outcome — scroll = dismiss —
-// without touching either of those scroll handlers' own logic. Checks the TAG, not a ref, so it
-// only ever blurs a genuine <input>/<textarea> (the set-weight/reps fields are DIVs driven by the
-// in-app NumberPad on purpose, and never focus a real input at all, so this can't interrupt them).
+// reachable in a WKWebView. Checks the TAG, not a ref, so it only ever blurs a genuine
+// <input>/<textarea> (the set-weight/reps fields are DIVs driven by the in-app NumberPad on
+// purpose, and never focus a real input at all, so this can't interrupt them).
 function blurIfTextInput() {
   const el = typeof document !== "undefined" ? document.activeElement : null;
   if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && typeof el.blur === "function") el.blur();
+}
+
+// First cut of "swipe to dismiss" fired on the SCROLL event of specific lists — Mo reported it
+// not working. Two real gaps: a short results list never generates a scroll event at all (nothing
+// to scroll), and NumberPad's fields are DIVs with no scrollable list nearby for a scroll handler
+// to even attach to. This tracks the raw TOUCH instead, so it fires on drag distance regardless of
+// whether anything actually scrolls — same mechanism a real interactive keyboard dismiss uses.
+// Ref-driven (the gesture-perf pattern this file uses everywhere else): no re-render per frame,
+// just two cheap ref reads, and it never calls preventDefault/stopPropagation, so it can't fight
+// the scroll or any other gesture — it only ever ADDS a dismiss on top of whatever already happens.
+function useSwipeDismiss(onDismiss) {
+  const startY = useRef(null);
+  const firedRef = useRef(false);
+  return {
+    onTouchStart: e => { startY.current = e.touches?.[0]?.clientY ?? null; firedRef.current = false; },
+    onTouchMove: e => {
+      if (startY.current == null || firedRef.current) return;
+      const y = e.touches?.[0]?.clientY;
+      if (y == null) return;
+      if (y - startY.current > 14) { firedRef.current = true; onDismiss(); }
+    },
+  };
 }
 
 // Haptic helpers - tiered patterns
@@ -7832,6 +7850,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [creating, setCreating] = useState(false);
   const ref = useRef(null);
+  const swipeDismiss = useSwipeDismiss(blurIfTextInput);
   // Creation is offered only where the caller wired in store access (e.g. the live workout).
   const canCreate = !!(store && setStore);
 
@@ -7954,7 +7973,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
             ))}
           </div>
 
-          <div onScroll={blurIfTextInput} style={{ maxHeight: 240, overflowY: "auto" }}>
+          <div onScroll={blurIfTextInput} {...swipeDismiss} style={{ maxHeight: 240, overflowY: "auto" }}>
             {q.length === 0 && selectedCategory === "All" && recent.length > 0 && (
               <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>RECENT</div>
             )}
@@ -8019,6 +8038,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
   const [category, setCategory] = useState("All");
   const [creating, setCreating] = useState(false);
   const canCreate = !!(store && setStore);
+  const swipeDismiss = useSwipeDismiss(blurIfTextInput);
 
   // Fresh state on every open, not on unmount — Sheet keeps rendering the last children while
   // it animates closed, so resetting only on `open` (not e.g. a cleanup fn) avoids clearing the
@@ -8072,7 +8092,13 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
 
   return (
     <Sheet open={open} onClose={onClose} z={3200}
-      panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0",
+      // borderTop + boxShadow — every other near-full-height Sheet in the app (the Finish modal,
+      // the group-share picker) pairs background:C.bg with a `1px solid C.border` top edge; this
+      // one didn't get it, and C.bg is the SAME fill the screen behind it already uses (the live
+      // workout's own outer div is background:C.bg too), so on the dark theme the sheet had no
+      // visible edge at all — screenshotted as "blends in with the background."
+      panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", borderTop:`1px solid ${C.border}`,
+        boxShadow:"0 -8px 24px rgba(0,0,0,0.25)",
         height:"calc(100dvh - env(safe-area-inset-top) - 40px)",
         display:"flex", flexDirection:"column", fontFamily:F }}>
       <div style={{ flexShrink:0, padding:"14px 16px 10px", borderBottom:`1px solid ${C.divider}` }}>
@@ -8108,7 +8134,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
           ))}
         </div>
       </div>
-      <div onScroll={blurIfTextInput} style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+      <div onScroll={blurIfTextInput} {...swipeDismiss} style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
         paddingBottom:"calc(env(safe-area-inset-bottom) + 12px)" }}>
         {browsingAll && recent.length > 0 && (
           <>
@@ -8197,6 +8223,10 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
     setTimeout(() => document.removeEventListener("click", swallow, true), 500);
     exitTimer.current = setTimeout(onClose, PAD_MS);
   };
+  // Swipe-down-to-close, on top of the existing tap-anywhere-above backdrop — "hard to get rid of
+  // it" was reported even with the backdrop tap already there, and a drag reads more like closing
+  // a sheet than a tap does.
+  const swipeDismiss = useSwipeDismiss(closePad);
   const Key = ({ label, onPress, flex = 1, bg, color, fontSize = 22, ariaLabel }) => (
     <button
       aria-label={ariaLabel}
@@ -8239,8 +8269,10 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
         pointerEvents: closing ? "none" : "auto",
       }}
     >
-      {/* Grab handle — tap to dismiss (visual affordance for closing the pad). */}
-      <div onClick={closePad} style={{ display:"flex", justifyContent:"center", padding:"4px 0 8px", cursor:"pointer" }}>
+      {/* Grab handle — tap OR swipe down to dismiss. Scoped to just this handle (not the whole
+          pad, which also holds the number keys) so a tap on a digit with a little natural finger
+          drift can't misfire as a close. */}
+      <div onClick={closePad} {...swipeDismiss} style={{ display:"flex", justifyContent:"center", padding:"4px 0 8px", cursor:"pointer" }}>
         <div style={{ width:40, height:5, borderRadius:3, background:C.border }}/>
       </div>
       {/* Current field indicator, then BOTH steppers together on the right.
@@ -11521,6 +11553,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // replacing the name on exercises[showExercisePicker] (a blank Quick-Start row) instead of
   // appending. 0 is a valid row index, so callers must check `!== false`, never truthiness.
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const swipeDismissKeyboard = useSwipeDismiss(blurIfTextInput);
 
   // Tell the shell whether a workout is in progress. Mid-set you don't need the logo, the DM and
   // activity icons, or four nav tabs — that chrome was eating ~15% of the screen on the one screen
@@ -13102,7 +13135,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Exercises */}
 
-        <div onScroll={e => { blurIfTextInput(); onExerciseScroll(e); }} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+        <div onScroll={e => { blurIfTextInput(); onExerciseScroll(e); }} {...swipeDismissKeyboard} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             return (
