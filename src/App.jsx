@@ -1,4 +1,4 @@
-// v178091716885
+// v178091716886
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17132,7 +17132,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {/* On a foreign profile `posts` is ownPosts only — real shared posts, not every
                 workout logged (profileHistoryItems, which fills in unposted sessions, is [] when
                 !isMe) — so this was labeled "Workouts" while actually counting posts. */}
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (posts.length === 1 ? "Workout" : "Workouts") : (posts.length === 1 ? "Post" : "Posts")}</div></div>
+            {/* padding:"4px 8px" matches the Followers/Following buttons beside it — this tile is
+                a plain div with none, so its number/label sat 4px higher than theirs (measured:
+                the inner number's top was 180 here vs 184 in the buttons). Not a device quirk,
+                a real padding mismatch, reproducible in any browser. */}
+            <div style={{ padding:"4px 8px" }}><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (posts.length === 1 ? "Workout" : "Workouts") : (posts.length === 1 ? "Post" : "Posts")}</div></div>
             <button onClick={() => setListModal("followers")} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>{followers === 1 ? "Follower" : "Followers"}</div>
