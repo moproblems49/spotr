@@ -1,4 +1,4 @@
-// v178091716884
+// v178091716885
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5848,7 +5848,9 @@ function BodyBatteryChart({ store, fill, C }) {
     for (const p of points) { const d = Math.abs(p.ts - ts); if (d < bd) { bd = d; best = p; } }
     setScrub({ xPct: (xAt(best.ts) / W) * 100, yPct: (yAt(best.level) / H) * 100, level: best.level, timeLabel: fmtClock(best.ts) });
   };
-  const scrubColor = scrub ? (scrub.level >= 60 ? C.accent : scrub.level >= 30 ? "#f59e0b" : "#ef4444") : fill;
+  // C.gold/C.red, not the raw hex — third copy of the same Body Battery fill ternary (2056/2089
+  // already tokenised); the hold-to-read scrub value and the fill it's read off must agree.
+  const scrubColor = scrub ? (scrub.level >= 60 ? C.accent : scrub.level >= 30 ? C.gold : C.red) : fill;
 
   return (
     <div style={{ marginBottom:16, padding:"12px 14px", background:C.surface, borderRadius:10 }}>
@@ -14169,8 +14171,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             const isBuilding = !ws.count && ws.thisWeek > 0;
             return (
               <div style={{
+                // Amber is a LIGHT fill in both themes — same fixed hex StreakBadge uses, same
+                // documented bug (white text/icon on it measures 2.15:1, the exact figure this
+                // slab's own twin was fixed against). Dark ink here too.
                 background: isAtRisk ? "#f59e0b" : (isBuilding ? C.surface : C.text),
-                color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg),
+                color: isBuilding ? C.text : (isAtRisk ? "#0a0a0a" : C.bg),
                 border: isBuilding ? `1px solid ${C.border}` : "none",
                 borderRadius:14, padding:"11px 13px", flex:1, minWidth:0,
                 display:"flex", alignItems:"center", gap:10,
@@ -14178,17 +14183,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 {/* Week-progress pips: one per target workout, filled by this week's count.
                     Makes the streak feel alive during the week, not just when it ticks over. */}
                 {(() => {
-                  const onColor = isBuilding ? C.text : (isAtRisk ? "#fff" : C.bg);
-                  const offColor = isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.18)");
+                  const onColor = isBuilding ? C.text : (isAtRisk ? "#0a0a0a" : C.bg);
+                  const offColor = isBuilding ? C.divider : (isAtRisk ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.18)");
                   const pips = Math.min(7, Math.max(1, ws.target || 3));
                   const filled = Math.min(pips, ws.thisWeek);
                   return (
                     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, flexShrink:0 }}>
                       <div style={{
                         width:32, height:32, borderRadius:10,
-                        background: isBuilding ? C.divider : (isAtRisk ? "rgba(255,255,255,0.2)" : C.bg),
+                        background: isBuilding ? C.divider : (isAtRisk ? "rgba(0,0,0,0.14)" : C.bg),
                         display:"flex", alignItems:"center", justifyContent:"center",
-                        color: isBuilding ? C.text : (isAtRisk ? "#fff" : C.text),
+                        color: isBuilding ? C.text : (isAtRisk ? "#0a0a0a" : C.text),
                       }}>
                         <Icon name="flame" size={17}/>
                       </div>
@@ -14713,7 +14718,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:C.red, fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}</div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                           {/* THE BADGE HAS ONE FORM: `PRTag`. This chip was missed when the badge
@@ -16815,14 +16820,18 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   // store.prs.
   const [foreignTopLifts, setForeignTopLifts] = useState(null);
   useEffect(() => {
-    if (isMe || !userId) { setForeignTopLifts(null); return; }
+    // Reset FIRST, unconditionally — ProfileScreen has no key={userId}, so navigating from one
+    // foreign profile straight to another reuses this instance and the previous user's PRs would
+    // otherwise stay on screen (under the NEW user's name) until the new fetch resolves.
+    setForeignTopLifts(null);
+    if (isMe || !userId) return;
     let alive = true;
     (async () => {
       const tok = token || loadSession()?.access_token;
       if (!tok) return;
       try {
         const rows = await sb.query(
-          `personal_records?user_id=eq.${userId}&select=exercise_name,weight_lbs,updated_at&order=weight_lbs.desc&limit=5`,
+          `personal_records?user_id=eq.${userId}&select=exercise_name,weight_lbs&order=weight_lbs.desc&limit=5`,
           {}, tok
         );
         if (alive) setForeignTopLifts(Array.isArray(rows) ? rows : []);
@@ -17148,14 +17157,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 CLAUDE.md already documents and has fixed twice elsewhere (1.31:1 dark, 3.09:1
                 light). This site survived because sim_accentbutton's regex only matches a bare
                 `background:C.accent`, not a ternary — see the check's own fix note. */}
-            <button onClick={toggleFollow} style={{
+            <button onClick={toggleFollow} className="seshd-hit-y" style={{
               flex:1, padding:"8px", background:(isFollowing||requestPending)?"transparent":C.primary,
               border:`1px solid ${(isFollowing||requestPending)?C.border:C.primary}`, borderRadius:8,
               fontSize:13, fontWeight:600, color:(isFollowing||requestPending)?C.text:C.onPrimary,
               cursor:"pointer", fontFamily:F
             }}>{isFollowing ? "Following" : requestPending ? "Requested" : "Follow"}</button>
             {onMessage && (
-              <button onClick={() => onMessage(userId)} style={{
+              <button onClick={() => onMessage(userId)} className="seshd-hit-y" style={{
                 flex:1, padding:"8px", background:"transparent",
                 border:`1px solid ${C.border}`, borderRadius:8,
                 fontSize:13, fontWeight:600, color:C.text,
@@ -17163,7 +17172,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               }}>Message</button>
             )}
             <div style={{ position:"relative", flexShrink:0 }}>
-              <button onClick={() => setMoreOpen(o => !o)} aria-label="More options" style={{
+              <button onClick={() => setMoreOpen(o => !o)} aria-label="More options" className="seshd-hit-y" style={{
                 padding:"8px 12px", background:"transparent",
                 border:`1px solid ${C.border}`, borderRadius:8,
                 fontSize:15, fontWeight:700, color:C.text, letterSpacing:1,
@@ -17306,7 +17315,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 <div style={{ padding:"18px 18px 16px", background:`linear-gradient(135deg, ${tint}, ${tintFade})`, borderBottom:`1px solid ${C.divider}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                     <div>
-                      <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:lvlColor, marginBottom:8 }}>STRENGTH SCORE</div>
+                      {/* C.isDark ? lvlColor : C.text — on light theme this label sits on the hero's
+                          own `${lvlColor}28` tint (135deg puts the visible end top-left, right under
+                          this label), and measured against that composite 4 of 8 tiers fall short of
+                          4.5:1 (4.05-4.39). C.sub was tried first and is WORSE here (3.72-4.02) —
+                          the tint is a touch darker than the plain white C.sub is calibrated
+                          against, which costs a mid-grey more contrast than it gains. C.text clears
+                          every tier by 13:1+ regardless of composite. The tier itself is still
+                          conveyed by the badge below (a solid fill, not a tint) and the per-lift
+                          bars, so losing the kicker's hue costs nothing. Dark theme keeps lvlColor;
+                          its tint composite already clears AA there. */}
+                      <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, color:C.isDark ? lvlColor : C.text, marginBottom:8 }}>STRENGTH SCORE</div>
                       <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
                         <CountUpNumber value={ss.score} style={{ fontSize:46, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:0.9, letterSpacing:-1 }}/>
                       </div>
@@ -18166,7 +18185,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{w.dayName}</div>
                           {isSelected && <div style={{ color:C.accent, fontSize:18 }}>✓</div>}
                         </div>
-                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}{w.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}>{hrInline(w.hrSummary)}</span> : null}</div>
+                        <div style={{ fontSize:12, color:C.sub, marginTop:3 }}>{fmtTime(w.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {w.unit||"lbs"}{w.hrSummary?.avg ? <span style={{ color:C.red, fontWeight:600 }}>{hrInline(w.hrSummary)}</span> : null}</div>
                       </div>
                     );
                   })}
