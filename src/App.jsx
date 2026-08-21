@@ -1,4 +1,4 @@
-// v178091716883
+// v178091716884
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16806,6 +16806,30 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     })();
     return () => { alive = false; };
   }, [userId, token]);
+  // Foreign-profile top lifts: personal_records is readable by an accepted follower or on a
+  // public profile (RLS: owner OR profile_is_public(user_id) OR follower — the "private account"
+  // three-layer policy). Was a dead end before this — a foreign profile with no posts showed
+  // literally nothing between the header and an empty feed, and even WITH posts there was no
+  // number a viewer could actually use ("what do they lift" was answerable only via math on the
+  // feed cards). Only fetched for someone else's profile; your own PRs already live locally in
+  // store.prs.
+  const [foreignTopLifts, setForeignTopLifts] = useState(null);
+  useEffect(() => {
+    if (isMe || !userId) { setForeignTopLifts(null); return; }
+    let alive = true;
+    (async () => {
+      const tok = token || loadSession()?.access_token;
+      if (!tok) return;
+      try {
+        const rows = await sb.query(
+          `personal_records?user_id=eq.${userId}&select=exercise_name,weight_lbs,updated_at&order=weight_lbs.desc&limit=5`,
+          {}, tok
+        );
+        if (alive) setForeignTopLifts(Array.isArray(rows) ? rows : []);
+      } catch (e) { if (alive) setForeignTopLifts([]); }
+    })();
+    return () => { alive = false; };
+  }, [isMe, userId, token]);
   // HEART RATE LIVES ON THE SESSION, NOT ON THE POST — so re-attach it here rather than adding a
   // third writer. `readWorkoutHeartRate` resolves seconds AFTER the workout is saved (it's
   // fire-and-forget at finish), so every share payload is frozen before the data exists and no
@@ -17096,7 +17120,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             )}
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
-            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>{posts.length === 1 ? "Workout" : "Workouts"}</div></div>
+            {/* On a foreign profile `posts` is ownPosts only — real shared posts, not every
+                workout logged (profileHistoryItems, which fills in unposted sessions, is [] when
+                !isMe) — so this was labeled "Workouts" while actually counting posts. */}
+            <div><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500}/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (posts.length === 1 ? "Workout" : "Workouts") : (posts.length === 1 ? "Post" : "Posts")}</div></div>
             <button onClick={() => setListModal("followers")} className="seshd-hit-y" style={{ background:"none", border:"none", cursor:"pointer", textAlign:"center", padding:"4px 8px" }}>
               <div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={followers} duration={500}/></div>
               <div style={{ fontSize:12, color:C.sub }}>{followers === 1 ? "Follower" : "Followers"}</div>
@@ -17342,6 +17369,24 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               </button>
             );
           })()}
+        </div>
+      )}
+
+      {!isMe && foreignTopLifts && foreignTopLifts.length > 0 && (
+        <div style={{ padding:"0 14px 4px" }}>
+          <div style={{ borderRadius:18, background:C.surface, border:`1px solid ${C.border}`, padding:"14px 16px" }}>
+            <SectionLabel C={C} style={{ marginBottom:8 }}>Top lifts</SectionLabel>
+            {foreignTopLifts.map(pr => (
+              <div key={pr.exercise_name} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding:"6px 0", borderTop:`1px solid ${C.divider}` }}>
+                <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{pr.exercise_name}</span>
+                {/* C.accentInk, not C.accent — accent-as-text fails 3.09:1 on light (see the
+                    accentInk/accent convention). */}
+                <span style={{ fontFamily:MONO, fontSize:14, fontWeight:800, color:C.accentInk }}>
+                  {cvt(pr.weight_lbs, "lbs", displayUnit)}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>{displayUnit}</span>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
