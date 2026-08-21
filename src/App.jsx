@@ -1,4 +1,4 @@
-// v178091716893
+// v178091716894
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2725,16 +2725,20 @@ const SET_TYPES = [
 ];
 // Per-theme colors for the set-type badge/stripe. `stripe` is the graphical color (the exercise
 // row's left border, the badge fill/border) — measured against a 3:1 floor. `ink` is a separate,
-// further-adjusted value for the 10-11px TEXT rendered on the badge's own `${stripe}18` tint —
-// the raw stripe colors read 2.6-4.6:1 there across the four types and both themes, under the
-// 4.5:1 AA floor for real text (the badge letter, the type-picker dropdown glyph). Light-theme
-// warmup also needed a darker stripe of its own: the raw Tailwind orange-500 (#f97316, still used
-// on dark) measured 2.80:1 against a white card, under the 3:1 floor for a graphical object.
+// further-adjusted value for the 10-11px TEXT rendered on the badge's own `${stripe}18` tint.
+// The badge's tint sits on THREE different backing surfaces depending on where it's rendered — a
+// plain card (C.surface), a completed set's row (a `${C.green}0E` tint over C.bg), and the
+// type-picker dropdown panel (C.bg directly) — and an ink calibrated against only the first of
+// those (an earlier pass here) still measured 3.9-4.4:1 on the other two, under the 4.5:1 AA floor
+// for real text (the badge letter, the type-picker dropdown glyph). Every ink below clears 4.5:1
+// against all three composited surfaces on both themes. Light-theme warmup also needed a darker
+// stripe of its own: the raw Tailwind orange-500 (#f97316, still used on dark) measured 2.80:1
+// against a white card, under the 3:1 floor for a graphical object.
 const SET_TYPE_COLORS = {
-  normal:  { stripe:{ dark:"#8e8e93", light:"#8e8e93" }, ink:{ dark:"#8e8e93", light:"#6f6f74" } },
-  warmup:  { stripe:{ dark:"#f97316", light:"#ef6606" }, ink:{ dark:"#f97316", light:"#b34d05" } },
-  drop:    { stripe:{ dark:"#a855f7", light:"#a855f7" }, ink:{ dark:"#b268f8", light:"#942ef5" } },
-  failure: { stripe:{ dark:"#ef4444", light:"#ef4444" }, ink:{ dark:"#f15757", light:"#d91313" } },
+  normal:  { stripe:{ dark:"#8e8e93", light:"#8e8e93" }, ink:{ dark:"#939398", light:"#606065" } },
+  warmup:  { stripe:{ dark:"#f97316", light:"#ef6606" }, ink:{ dark:"#f97316", light:"#9f4404" } },
+  drop:    { stripe:{ dark:"#a855f7", light:"#a855f7" }, ink:{ dark:"#b772f8", light:"#8511f4" } },
+  failure: { stripe:{ dark:"#ef4444", light:"#ef4444" }, ink:{ dark:"#f16060", light:"#c61111" } },
 };
 function setTypeColors(id, C) {
   const c = SET_TYPE_COLORS[id] || SET_TYPE_COLORS.normal;
@@ -8796,10 +8800,16 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
             (dark #0d0d10 here at 9.9:1; light #fff, which the darker light-theme green already
             clears at 5:1). */}
         <button onClick={onToggleDone} className="seshd-hit" role="checkbox" aria-checked={isDone}
-          aria-label={isCardio
-            ? `Set ${si+1}, ${set.weight || "0"} min${set.reps ? `, ${set.reps} ${unit==="kg"?"km":"mi"}` : ""}`
-            : `Set ${si+1}, ${set.weight || "0"} ${unit} times ${set.reps || "0"} reps`
-          } style={{
+          aria-label={(() => {
+            // Fall back to the previous session's weight/reps, same as the greyed placeholder
+            // the box itself shows — otherwise a row displaying "135 × 8" (nothing typed yet)
+            // announces as "0 lbs times 0 reps", which is wrong, not just imprecise.
+            const w = set.weight || prev?.w || "0";
+            const r = set.reps || prev?.r || "0";
+            return isCardio
+              ? `Set ${si+1}, ${w} min${r !== "0" ? `, ${r} ${unit==="kg"?"km":"mi"}` : ""}`
+              : `Set ${si+1}, ${w} ${unit} times ${r} reps`;
+          })()} style={{
           width:32, height:32, borderRadius:9, flexShrink:0,
           border:`2px solid ${isDone?C.green:C.border}`, background:isDone?C.green:"transparent",
           color:isDone?C.onAccent:C.muted, cursor:"pointer",
@@ -12344,6 +12354,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
   async function finishWorkout(share, groupShare = null) {
     if (!session || finishing) return;
+    // A row that once had a name and got cleared back to blank (hadName:true, name:"" — e.g.
+    // mid-retype of a typo) still shows its full set table, so real logged sets can sit there —
+    // but cleanEx below filters on e.name truthy same as any other unnamed row, and would drop it
+    // silently, the exact data loss this session's blank-row fix exists to prevent. Block Finish
+    // and say so, rather than discarding it the same way.
+    const orphanedHadName = session.exercises.filter(ex =>
+      !ex.name && ex.hadName && (ex.sets||[]).some(s => s.weight || s.reps || s.done));
+    if (orphanedHadName.length > 0) {
+      toast(`${orphanedHadName.length === 1 ? "An exercise has" : `${orphanedHadName.length} exercises have`} logged sets but no name — name ${orphanedHadName.length === 1 ? "it" : "them"} or remove ${orphanedHadName.length === 1 ? "it" : "them"} before finishing`, "error");
+      return;
+    }
     setFinishing(true);
     setShowFinish(false);
     setShowGroupShare(false);
@@ -13455,7 +13476,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })()}
 
                 {/* A nameless row (never had a name — showNameInput false) has no real sets to
-                    lose data from: cleanExercises drops any exercise with no name before Finish
+                    lose data from: cleanEx drops any exercise with no name before Finish
                     ever writes to the server, so a fully-tickable set table under a blank row is
                     pure data loss waiting to happen — type weight/reps, tick it done, the row
                     still has no name at Finish, gone with no warning. Once the row HAS a name (or
