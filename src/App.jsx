@@ -1,4 +1,4 @@
-// v178091716886
+// v178091716887
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4718,6 +4718,19 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
   };
 }
 
+// "Swipe the keyboard down" — the OS-level drag-to-dismiss gesture Mo asked for isn't reliably
+// reachable in a WKWebView the way it is in a native scroll view, and this app's own scroll
+// listeners already own touch handling on the screens where it matters (the workout screen's
+// header-collapse scroller, the exercise picker's results list). Blurring whatever real text
+// input is focused the moment either list scrolls gives the same outcome — scroll = dismiss —
+// without touching either of those scroll handlers' own logic. Checks the TAG, not a ref, so it
+// only ever blurs a genuine <input>/<textarea> (the set-weight/reps fields are DIVs driven by the
+// in-app NumberPad on purpose, and never focus a real input at all, so this can't interrupt them).
+function blurIfTextInput() {
+  const el = typeof document !== "undefined" ? document.activeElement : null;
+  if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && typeof el.blur === "function") el.blur();
+}
+
 // Haptic helpers - tiered patterns
 // Haptic feedback vocabulary
 //
@@ -7322,8 +7335,24 @@ function AnimatedNumber({ value, duration = 600, format = (n) => n.toLocaleStrin
   const startRef = useRef(0);
   const rafRef = useRef(0);
   const pulseTimerRef = useRef(0);
+  // A running-total instance (animateOnMount=false, e.g. the profile header's Workouts/Followers/
+  // Following) starts `display` AT `value`, so no animation plays on a normal mount — but these
+  // screens routinely UNMOUNT on tab-away and remount fresh on return (the swipe track only keeps
+  // the current tab's panel), and a mount-time fetch settling a moment later (posts/follow counts
+  // catching up to the server) reads as a genuine VALUE CHANGE, so it played the count-up on almost
+  // every visit — the thing Mo reported. The first post-mount change is near-certainly that settle,
+  // not a real update happening while the user watches, so it snaps instead of animating; every
+  // change after that is trusted as real. Doesn't apply to animateOnMount, which WANTS its first
+  // (0 -> value) transition to animate.
+  const settledOnceRef = useRef(animateOnMount);
   useEffect(() => {
     if (display === value) return;
+    if (!settledOnceRef.current) {
+      settledOnceRef.current = true;
+      setDisplay(value);
+      fromRef.current = value;
+      return;
+    }
     fromRef.current = display;
     startRef.current = performance.now();
     setPulse(true);
@@ -7925,7 +7954,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
             ))}
           </div>
 
-          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+          <div onScroll={blurIfTextInput} style={{ maxHeight: 240, overflowY: "auto" }}>
             {q.length === 0 && selectedCategory === "All" && recent.length > 0 && (
               <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>RECENT</div>
             )}
@@ -8079,7 +8108,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
           ))}
         </div>
       </div>
-      <div style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+      <div onScroll={blurIfTextInput} style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
         paddingBottom:"calc(env(safe-area-inset-bottom) + 12px)" }}>
         {browsingAll && recent.length > 0 && (
           <>
@@ -11488,6 +11517,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       return s;
     } catch { return null; }
   });
+  // false = closed; true = open in APPEND mode ("+ Add Exercise"); a number = open in FILL mode,
+  // replacing the name on exercises[showExercisePicker] (a blank Quick-Start row) instead of
+  // appending. 0 is a valid row index, so callers must check `!== false`, never truthiness.
   const [showExercisePicker, setShowExercisePicker] = useState(false);
 
   // Tell the shell whether a workout is in progress. Mid-set you don't need the logo, the DM and
@@ -13070,7 +13102,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Exercises */}
 
-        <div onScroll={onExerciseScroll} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+        <div onScroll={e => { blurIfTextInput(); onExerciseScroll(e); }} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             return (
@@ -13082,27 +13114,42 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   </button>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <ExerciseInput value={ex.name}
-                        onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>{
-                          if (i!==ei) return x;
-                          // Only re-pull the standing bar override once the typed name resolves to a
-                          // KNOWN exercise whose canonical name differs from the bar's anchor — this
-                          // ignores transient/unresolved strings mid-edit (e.g. a typo overshoot) so
-                          // an already-picked bar survives a same-exercise correction, but still resets
-                          // cleanly on a genuine switch to a different exercise.
-                          const newEntry = getExEntry(v);
-                          // No barTypeFor yet (a freshly-added blank row, or an empty starting
-                          // name) counts as "needs evaluation" too — otherwise the very first
-                          // name typed into a new row never picks up a saved bar override.
-                          const switchedAway = newEntry && (!x.barTypeFor || canonicalExName(newEntry.name) !== x.barTypeFor);
-                          return {...x, name:v,
-                            note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[canonicalExName(v)] || ""),
-                            barType: switchedAway ? (store.barTypes?.[canonicalExName(v)] || undefined) : x.barType,
-                            barTypeFor: switchedAway ? canonicalExName(v) : x.barTypeFor,
-                          };
-                        }) }))}
-                        C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}
-                        store={store} setStore={setStore} currentUserId={currentUserId} token={token}/>
+                      {ex.name ? (
+                        <ExerciseInput value={ex.name}
+                          onChange={v => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>{
+                            if (i!==ei) return x;
+                            // Only re-pull the standing bar override once the typed name resolves to a
+                            // KNOWN exercise whose canonical name differs from the bar's anchor — this
+                            // ignores transient/unresolved strings mid-edit (e.g. a typo overshoot) so
+                            // an already-picked bar survives a same-exercise correction, but still resets
+                            // cleanly on a genuine switch to a different exercise.
+                            const newEntry = getExEntry(v);
+                            // No barTypeFor yet (a freshly-added blank row, or an empty starting
+                            // name) counts as "needs evaluation" too — otherwise the very first
+                            // name typed into a new row never picks up a saved bar override.
+                            const switchedAway = newEntry && (!x.barTypeFor || canonicalExName(newEntry.name) !== x.barTypeFor);
+                            return {...x, name:v,
+                              note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[canonicalExName(v)] || ""),
+                              barType: switchedAway ? (store.barTypes?.[canonicalExName(v)] || undefined) : x.barType,
+                              barTypeFor: switchedAway ? canonicalExName(v) : x.barTypeFor,
+                            };
+                          }) }))}
+                          C={C} recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}
+                          store={store} setStore={setStore} currentUserId={currentUserId} token={token}/>
+                      ) : (
+                        // A blank row (Quick Start seeds exercises with name:"") has no existing
+                        // name to CORRECT — it's the same "browse and pick" job as "+ Add Exercise",
+                        // just triggered from mid-list instead of the button at the bottom. Routing
+                        // it through ExerciseInput's own small inline dropdown (search/category
+                        // chips crammed under the iOS AutoFill bar) is what Mo screenshotted as
+                        // "ugly"; the full ExercisePickerSheet is the one built for this. FILL mode
+                        // (a row index, not `true`) tells the shared sheet below to replace THIS
+                        // row's name instead of appending a new exercise.
+                        <button onClick={() => setShowExercisePicker(ei)} style={{
+                          flex:1, textAlign:"left", background:"transparent", border:"none",
+                          padding:"8px 0", fontSize:16, fontWeight:600, color:C.sub, cursor:"pointer", fontFamily:F,
+                        }}>Search exercises...</button>
+                      )}
                     </div>
                     {exInfo?.muscle && (
                       <div style={{ fontSize:11, color:C.sub, marginTop:1, display:"flex", alignItems:"center", gap:6 }}>
@@ -13463,8 +13510,24 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             background:C.bg, border:`1px solid ${C.border}`,
             borderRadius:16, fontSize:13, color:C.text, fontWeight:700, cursor:"pointer", fontFamily:F
           }}>+ Add Exercise</button>
-          <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
-            onSelect={name => setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name,reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }))}
+          {/* open={showExercisePicker !== false}, not the raw value — FILL mode passes a row INDEX,
+              and index 0 is falsy in JS, which would silently fail to open (and skip the sheet's
+              own `if (open)` reset effect) for the very first row. */}
+          <ExercisePickerSheet open={showExercisePicker !== false} onClose={() => setShowExercisePicker(false)}
+            onSelect={name => {
+              if (typeof showExercisePicker === "number") {
+                const fillAt = showExercisePicker;
+                setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=> i!==fillAt ? x : {
+                  ...x, name,
+                  note: (x.note && x.note.trim()) ? x.note : (store.exerciseNotes?.[canonicalExName(name)] || ""),
+                  barType: store.barTypes?.[canonicalExName(name)] || undefined,
+                  barTypeFor: canonicalExName(name),
+                }) }));
+              } else {
+                setSession(p => ({ ...p, exercises:[...p.exercises,{id:uid(),name,reps:"",note:"",sets:[{id:uid(),weight:"",reps:"",done:false,type:"normal"}]}] }));
+              }
+              setShowExercisePicker(false);
+            }}
             C={C} store={store} setStore={setStore} currentUserId={currentUserId} token={token}
             recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
         </div>
