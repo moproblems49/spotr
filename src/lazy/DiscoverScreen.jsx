@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import {
   F, MONO, Icon, Avatar, MuscleIcon, NAV_CLEARANCE, toast, haptic, cvt, sb, devWarn,
   shareLink, EXERCISE_DB, getDiscoverSubTab, setDiscoverSubTabValue,
-  GroupsScreen, FriendsActivityScreen, ExerciseDetail, SectionLabel,
+  GroupsScreen, FriendsActivityScreen, ExerciseDetail, SectionLabel, FlatRow,
 } from "../App.jsx";
 
 export default function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow }) {
@@ -151,7 +151,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                 {userResults.map((u, idx) => {
                   const amFollowing = following.includes(u.id);
                   return (
-                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none" }}>
+                    <FlatRow key={u.id} idx={idx} C={C} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0" }}>
                       <div onClick={() => onUserClick && onUserClick(u.id)} style={{ display:"flex", alignItems:"center", gap:12, flex:1, cursor:"pointer" }}>
                         <Avatar user={u} size={44} C={C}/>
                         <div>
@@ -171,7 +171,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                         border: `1.5px solid ${amFollowing ? C.border : C.primary}`,
                         cursor:"pointer", fontFamily:F
                       }}>{amFollowing ? "Following" : "Follow"}</button>
-                    </div>
+                    </FlatRow>
                   );
                 })}
               </div>
@@ -182,7 +182,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
               <SectionLabel C={C} style={{ marginTop:8 }}>Exercises</SectionLabel>
               <div style={{ marginBottom:12 }}>
                 {exerciseResults.map((ex, idx) => (
-                  <div key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none", cursor:"pointer" }}>
+                  <FlatRow key={ex.name} idx={idx} C={C} onClick={() => setViewingExercise(ex.name)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0" }}>
                     <div style={{ width:40, height:40, borderRadius:12, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                       <MuscleIcon muscle={ex.muscle||""} size={26} name={ex.name} C={C}/>
                     </div>
@@ -194,7 +194,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                       <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:11, color:C.gold, fontWeight:700, fontFamily:MONO }}><Icon name="trophy" size={12} color={C.gold}/> {store.prs[ex.name]} {store.unit||"lbs"}</div>
                     )}
                     <span style={{ fontSize:14, color:C.sub }}>›</span>
-                  </div>
+                  </FlatRow>
                 ))}
               </div>
             </>
@@ -470,10 +470,10 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
             return (<>
               <SectionLabel C={C}>Suggested people</SectionLabel>
               <div>
-                {suggested.map((u, idx, arr) => {
+                {suggested.map((u, idx) => {
                   const isF = following.includes(u.id);
                   return (
-                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none" }}>
+                    <FlatRow key={u.id} idx={idx} C={C} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0" }}>
                       <Avatar user={u} size={46} C={C} onClick={() => onUserClick(u.id)}/>
                       <div style={{ flex:1, cursor:"pointer", minWidth:0 }} onClick={() => onUserClick(u.id)}>
                         <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
@@ -487,7 +487,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                         fontSize:12, fontWeight:700, color:isF?C.text:C.onPrimary,
                         cursor:"pointer", flexShrink:0, fontFamily:F
                       }}>{isF?"Following":"Follow"}</button>
-                    </div>
+                    </FlatRow>
                   );
                 })}
               </div>

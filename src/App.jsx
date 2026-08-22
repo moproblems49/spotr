@@ -1,4 +1,4 @@
-// v178091716902
+// v178091716903
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2898,6 +2898,16 @@ const dKey = (d = new Date()) => {
   const dt = (d instanceof Date) ? d : new Date(d);
   return dateKeyOf(dt);
 };
+
+// "Today"/"Yesterday"/"Nd ago" for a date key, relative to another date key (defaults to today).
+// Two call sites had this hand-rolled byte-for-byte identically (the program day editor's
+// last-performed lookup, twice — once for the reorder list, once for the day-detail sheet), each
+// re-deriving the local-noon date math dateFromKey already exists to do. One definition now.
+function dayAgoLabel(dk, todayKey = dKey()) {
+  if (dk >= todayKey) return "Today";
+  const d = Math.max(0, Math.floor((dateFromKey(todayKey).getTime() - dateFromKey(dk).getTime()) / 86400000));
+  return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
+}
 
 const LBS_TO_KG = 0.453592;
 const LBS_PER_KG = 1 / LBS_TO_KG; // 2.2046 — single source of truth for kg→lbs (replaces scattered 2.205 literals)
@@ -11142,10 +11152,7 @@ function SortableDayCard({ day, di, prog, store, C, onPreview, onEdit, onStart }
     const dates = Object.keys(store.history || {}).sort().reverse();
     for (const dk of dates) {
       if (Object.values(store.history[dk] || {}).some(s => s.dayName === day.name)) {
-        const today = dKey();
-        if (dk >= today) return "Today";
-        const d = Math.max(0, Math.floor((new Date(today + "T12:00:00").getTime() - new Date(dk + "T12:00:00").getTime()) / 86400000));
-        return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
+        return dayAgoLabel(dk);
       }
     }
     return null;
@@ -11446,6 +11453,24 @@ export function SectionLabel({ children, C, style }) {
       fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase",
       color: C.sub, fontFamily: F, marginBottom: 10, ...style,
     }}>{children}</div>
+  );
+}
+
+// A row in a flat, divider-separated list — the containment-pass convention (no card, a divider
+// between rows, none above the first). This exists because that divider-except-first guard has
+// already drifted for real once: Top Lifts kept an unconditional borderTop after its card wrapper
+// was removed, and a cold-context audit was what caught it. Six call sites (Next Up, Personal
+// records, Top Lifts, and Discover's People/Exercises/Suggested People) hand-rolled the same
+// `idx > 0 ? border : "none"` ternary independently — exactly the shape that drifts again next
+// time a new flat list is added. This owns ONLY that one detail, and borderTop always wins over
+// whatever `style` passes in, which is the actual point of using it. Layout (padding/gap/
+// alignItems) stays per-site on purpose — rows are legitimately different densities (a PR row is
+// tighter than an avatar row) and forcing one layout on all of them isn't the drift this guards.
+export function FlatRow({ idx, C, onClick, style, children }) {
+  return (
+    <div onClick={onClick} style={{ cursor: onClick ? "pointer" : undefined, ...style, borderTop: idx > 0 ? `1px solid ${C.divider}` : "none" }}>
+      {children}
+    </div>
   );
 }
 
@@ -14491,11 +14516,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <SectionLabel C={C}>NEXT UP · {nextDay.name}</SectionLabel>
                     <div>
                       {targets.map((t, i) => (
-                        <div key={t.name} style={{
-                          display:"flex", alignItems:"center", justifyContent:"space-between",
-                          padding:"11px 0",
-                          borderTop: i > 0 ? `1px solid ${C.divider}` : "none",
-                        }}>
+                        <FlatRow key={t.name} idx={i} C={C} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 0" }}>
                           <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
                             <div style={{ fontSize:13, fontWeight:600, color:C.text, lineHeight:1.2, marginBottom:3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.name}</div>
                             <div style={{ fontSize:10, color:C.sub, lineHeight:1.3 }}>{t.suggestion.reason}</div>
@@ -14510,7 +14531,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             <Icon name={t.suggestion.type === "deload" ? "chevron-left" : "trending-up"} size={11} strokeWidth={2.6}/>
                             <span style={{ fontFamily:MONO, fontSize:12, fontWeight:700 }}>{t.suggestion.weight}<span style={{ opacity:0.5, margin:"0 2px" }}>×</span>{t.suggestion.reps}</span>
                           </div>
-                        </div>
+                        </FlatRow>
                       ))}
                     </div>
                   </div>
@@ -14824,13 +14845,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
               <SectionLabel C={C} style={{ marginBottom:10 }}>Personal records</SectionLabel>
               <div>
-                {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i, arr) => (
-                  <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 0", borderTop:i>0?`1px solid ${C.divider}`:"none" }}>
+                {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i) => (
+                  <FlatRow key={name} idx={i} C={C} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 0" }}>
                     <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{name}</div>
                     <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>
                       {cvt(weight,"lbs",store.unit||"lbs")} {store.unit||"lbs"}
                     </div>
-                  </div>
+                  </FlatRow>
                 ))}
               </div>
             </div>
@@ -15181,10 +15202,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const lastPerformed = (() => {
     for (const dk of Object.keys(store.history||{}).sort().reverse()) {
       if (Object.values(store.history[dk]||{}).some(s => s.dayName === editDay.name)) {
-        const today = dKey();
-        if (dk >= today) return "Today";
-        const d = Math.max(0, Math.floor((new Date(today + "T12:00:00").getTime() - new Date(dk + "T12:00:00").getTime()) / 86400000));
-        return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
+        return dayAgoLabel(dk);
       }
     }
     return null;
@@ -17612,14 +17630,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         <div style={{ padding:"16px 14px 8px" }}>
           <SectionLabel C={C} style={{ marginBottom:8 }}>Top lifts</SectionLabel>
           {foreignTopLifts.map((pr, idx) => (
-            <div key={pr.exercise_name} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding:"6px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none" }}>
+            <FlatRow key={pr.exercise_name} idx={idx} C={C} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding:"6px 0" }}>
               <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{pr.exercise_name}</span>
               {/* C.accentInk, not C.accent — accent-as-text fails 3.09:1 on light (see the
                   accentInk/accent convention). */}
               <span style={{ fontFamily:MONO, fontSize:14, fontWeight:800, color:C.accentInk }}>
                 {cvt(pr.weight_lbs, "lbs", displayUnit)}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>{displayUnit}</span>
               </span>
-            </div>
+            </FlatRow>
           ))}
         </div>
       )}
