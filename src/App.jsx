@@ -1,4 +1,4 @@
-// v178091716898
+// v178091716899
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7636,42 +7636,6 @@ function MuscleBalance({ store, C, days = 30 }) {
   );
 }
 
-// "Most Trained" muscle pills — last-30-day set volume per muscle. Lives in the History tab
-// (moved out of the Muscle Balance card on Profile). Self-contained: computes from store.history
-// using the same robust resolveMuscle classification.
-function MostTrainedMuscles({ store, C, days = 30 }) {
-  const muscles = useMemo(() => {
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days); cutoff.setHours(0,0,0,0);
-    const muscleSets = {};
-    for (const d of Object.keys(store.history || {})) {
-      if (new Date(d + "T12:00:00") < cutoff) continue;
-      for (const sess of Object.values(store.history[d] || {})) {
-        for (const ex of (sess.exercises || [])) {
-          const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
-          if (!done) continue;
-          const muscle = resolveMuscle(ex.name) || "Other";
-          muscleSets[muscle] = (muscleSets[muscle] || 0) + done;
-        }
-      }
-    }
-    return Object.entries(muscleSets).map(([name, sets]) => ({ name, sets })).sort((a, b) => b.sets - a.sets);
-  }, [store.history, days]);
-
-  if (!muscles.length) return null;
-  return (
-    <div style={{ padding:"4px 0 12px" }}>
-      <SectionLabel C={C} style={{ marginBottom:8 }}>{`Most trained · last ${days}d`}</SectionLabel>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-        {muscles.slice(0, 8).map(mu => (
-          <div key={mu.name} style={{ padding:"5px 10px", background:C.divider, borderRadius:20, fontSize:11, color:C.text }}>
-            {mu.name} <span style={{ color:C.sub, fontFamily:MONO }}>{mu.sets}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Heatmap — consistency view (kept available; profile now uses MuscleBalance by default).
 function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
   const [view, setView] = useState("heat"); // "heat" | "cal"
@@ -14797,10 +14761,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             />
           </div>
 
-          <div style={{ padding:"4px 14px 0" }}>
-            <MostTrainedMuscles store={store} C={C}/>
-          </div>
-
           {/* Volume chart - last 8 weeks */}
           {(() => {
             const weeks = 8;
@@ -14846,13 +14806,14 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             ) : null;
           })()}
 
-          {/* PRs strip */}
+          {/* PRs strip — no card, same reasoning as Next Up/Top Lifts/Muscle Balance elsewhere:
+              a repeated list of name+value rows is one item among many, not a widget. */}
           {Object.keys(store.prs||{}).length > 0 && (
             <div style={{ padding:"14px 14px", borderBottom:`1px solid ${C.divider}` }}>
               <SectionLabel C={C} style={{ marginBottom:10 }}>Personal records</SectionLabel>
-              <div style={{ display:"flex", flexDirection:"column", gap:0, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+              <div>
                 {Object.entries(store.prs||{}).sort(([,a],[,b]) => b-a).map(([name, weight], i, arr) => (
-                  <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", borderBottom:i<arr.length-1?`1px solid ${C.divider}`:"none" }}>
+                  <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 0", borderTop:i>0?`1px solid ${C.divider}`:"none" }}>
                     <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{name}</div>
                     <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>
                       {cvt(weight,"lbs",store.unit||"lbs")} {store.unit||"lbs"}
