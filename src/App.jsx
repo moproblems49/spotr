@@ -1,4 +1,4 @@
-// v178091716897
+// v178091716898
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2210,7 +2210,11 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     }
                     if (rec.restingHr != null && rec.rhrBaseline) {
                       const base = Math.round(rec.rhrBaseline); const good = rec.restingHr <= base;
-                      tiles.push({ label:"Resting pulse", value:`${rec.restingHr}`, unit:"bpm", arrow: good ? "▼" : "▲", note:`${good ? "below" : "above"} your usual ${base}`, good });
+                      // "Today" only when the reading has actually earned that — the label was bare
+                      // before (no window at all), which reads as "now" by default. rec.restingHrAgeDays
+                      // is computed from the reading's real clock age, not a calendar-key comparison.
+                      const when = rec.restingHrAgeDays == null ? "" : rec.restingHrAgeDays === 0 ? "today" : rec.restingHrAgeDays === 1 ? "yesterday" : `${rec.restingHrAgeDays}d ago`;
+                      tiles.push({ label: when ? `Resting pulse · ${when}` : "Resting pulse", value:`${rec.restingHr}`, unit:"bpm", arrow: good ? "▼" : "▲", note:`${good ? "below" : "above"} your usual ${base}`, good });
                     }
                     if (rec.sleepHours != null) {
                       const h = rec.sleepHours; const good = h >= 7;
@@ -6649,7 +6653,18 @@ async function readRecoveryFrom(H, now) {
     // reported 80. The rest of this file already buckets overnight signals noon-to-noon for the
     // same reason; the baseline below matches.
     const todayRhr = newestGroup(rhrPts, nightKeyOf, null);
-    if (todayRhr.length) out.restingHr = Math.round(medianOf(todayRhr.map(x => x.v)));
+    if (todayRhr.length) {
+      out.restingHr = Math.round(medianOf(todayRhr.map(x => x.v)));
+      // Age of the reading, so the UI can say "today" only when it's earned that — a watch that
+      // hasn't synced yet means the newest group on hand can still be a night or more old. This is
+      // hours-since-the-actual-sample, NOT a nightKeyOf(now) comparison: nightKeyOf shifts by 12h
+      // to bucket NIGHTTIME samples, so calling it on an arbitrary "now" during the day answers
+      // "which night is coming up tonight", not "was this reading today" — a first cut of this used
+      // that comparison and it labeled a 7am reading "yesterday" when checked that same afternoon.
+      const newestT = Math.max(...todayRhr.map(x => x.t));
+      const ageHours = (now.getTime() - newestT) / 36e5;
+      out.restingHrAgeDays = ageHours <= 20 ? 0 : Math.round(ageHours / 24);
+    }
   }
   // Sleep — most recent night only. The 36h lookback can span two nights, so cluster:
   // keep asleep samples whose end falls within 14h of the latest sample's end. Also keep
