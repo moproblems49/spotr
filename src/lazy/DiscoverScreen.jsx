@@ -141,14 +141,17 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
       {/* Search results */}
       {showResults && (
         <div style={{ padding:"0 16px", marginBottom:8 }}>
+          {/* No card — a repeating list of rows is one item among many, not a widget. Same
+              treatment as the flat lists on Profile/Workout/History (Muscle Balance, Next Up,
+              Personal records). */}
           {userResults.length > 0 && (
             <>
               <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"8px 0 10px" }}>PEOPLE</div>
-              <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:12 }}>
+              <div style={{ marginBottom:12 }}>
                 {userResults.map((u, idx) => {
                   const amFollowing = following.includes(u.id);
                   return (
-                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < userResults.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none" }}>
                       <div onClick={() => onUserClick && onUserClick(u.id)} style={{ display:"flex", alignItems:"center", gap:12, flex:1, cursor:"pointer" }}>
                         <Avatar user={u} size={44} C={C}/>
                         <div>
@@ -156,11 +159,16 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                           <div style={{ fontSize:12, color:C.sub }}>{u.name} · {u.followers?.length||0} followers</div>
                         </div>
                       </div>
+                      {/* C.primary/C.onPrimary, not C.accent + hardcoded white — the same
+                          near-white-on-volt bug (1.31:1 dark theme) already fixed everywhere else
+                          in App.jsx, but this file lives under src/lazy/ and sim_accentbutton only
+                          scans src/App.jsx, so it never saw this one. Matches Profile's own Follow
+                          button, which already uses this pair. */}
                       <button onClick={() => onFollow && onFollow(u.id)} style={{
                         padding:"7px 16px", borderRadius:20, fontSize:12, fontWeight:700, flexShrink:0,
-                        background: amFollowing ? "transparent" : C.accent,
-                        color: amFollowing ? C.text : "#fff",
-                        border: `1.5px solid ${amFollowing ? C.border : C.accent}`,
+                        background: amFollowing ? "transparent" : C.primary,
+                        color: amFollowing ? C.text : C.onPrimary,
+                        border: `1.5px solid ${amFollowing ? C.border : C.primary}`,
                         cursor:"pointer", fontFamily:F
                       }}>{amFollowing ? "Following" : "Follow"}</button>
                     </div>
@@ -172,9 +180,9 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
           {exerciseResults.length > 0 && (
             <>
               <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"8px 0 10px" }}>EXERCISES</div>
-              <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:12 }}>
+              <div style={{ marginBottom:12 }}>
                 {exerciseResults.map((ex, idx) => (
-                  <div key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < exerciseResults.length-1 ? `1px solid ${C.divider}` : "none", cursor:"pointer" }}>
+                  <div key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none", cursor:"pointer" }}>
                     <div style={{ width:40, height:40, borderRadius:12, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                       <MuscleIcon muscle={ex.muscle||""} size={26} name={ex.name} C={C}/>
                     </div>
@@ -461,20 +469,22 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
             );
             return (<>
               <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>SUGGESTED PEOPLE</div>
-              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, overflow:"hidden" }}>
+              <div>
                 {suggested.map((u, idx, arr) => {
                   const isF = following.includes(u.id);
                   return (
-                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: idx < arr.length-1 ? `1px solid ${C.divider}` : "none" }}>
+                    <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none" }}>
                       <Avatar user={u} size={46} C={C} onClick={() => onUserClick(u.id)}/>
                       <div style={{ flex:1, cursor:"pointer", minWidth:0 }} onClick={() => onUserClick(u.id)}>
                         <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{u.username}</div>
                         <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}{u.bio ? ` · ${u.bio}` : ""}</div>
                       </div>
+                      {/* Same C.accent + hardcoded white bug as the search-results Follow button
+                          above — see its comment. */}
                       <button onClick={() => toggleFollow(u.id)} style={{
-                        padding:"7px 16px", background:isF?"transparent":C.accent,
-                        border:`1.5px solid ${isF?C.border:C.accent}`, borderRadius:20,
-                        fontSize:12, fontWeight:700, color:isF?C.text:"#fff",
+                        padding:"7px 16px", background:isF?"transparent":C.primary,
+                        border:`1.5px solid ${isF?C.border:C.primary}`, borderRadius:20,
+                        fontSize:12, fontWeight:700, color:isF?C.text:C.onPrimary,
                         cursor:"pointer", flexShrink:0, fontFamily:F
                       }}>{isF?"Following":"Follow"}</button>
                     </div>

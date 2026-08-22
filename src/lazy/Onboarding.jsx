@@ -124,11 +124,13 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                       <div style={{ fontSize:14, fontWeight:600, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.username}</div>
                       <div style={{ fontSize:12, color:C.sub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name}</div>
                     </div>
+                    {/* C.primary/C.onPrimary, not C.accent + hardcoded white — same bug, same fix
+                        as DiscoverScreen.jsx's Follow buttons (see its comment). */}
                     <button onClick={() => toggleFollowSuggestion(u.id)} style={{
                       padding:"7px 16px", borderRadius:20, fontSize:12, fontWeight:700, flexShrink:0,
-                      background: picked ? "transparent" : C.accent,
-                      color: picked ? C.text : "#fff",
-                      border: `1.5px solid ${picked ? C.border : C.accent}`,
+                      background: picked ? "transparent" : C.primary,
+                      color: picked ? C.text : C.onPrimary,
+                      border: `1.5px solid ${picked ? C.border : C.primary}`,
                       cursor:"pointer", fontFamily:F
                     }}>{picked ? "Following" : "Follow"}</button>
                   </div>
