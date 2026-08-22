@@ -18,76 +18,46 @@ in chat: subtitle, description, keywords, promo text.)
 > (The account was created directly in the database; if login ever fails, sign up fresh in the
 > app with the same email and tell me — I'll re-point the demo data.)
 
-**Notes** (paste into the App Review "Notes" box) — rewritten for the Aug 22, 2026 Guideline 2.1
-resubmission, which asked for all 7 items below explicitly. Item 1's device/OS is filled in as
-iPhone 17 Pro / iOS 26.6, from Mo's own testing.
+**Notes** (paste into the App Review "Notes" box) — for the Aug 22, 2026 Guideline 2.1
+resubmission, which asked for all 8 items below. **App Store Connect's Notes field has a
+4000-character limit** — the first draft here was 4274 and got rejected by the form; this version
+is ~2800, comfortably under. If you need to trim it further, cut section 4 first (external
+services) — it's the least essential to a reviewer's pass/fail decision.
 
 ```
 1. TESTED ON
 iPhone 17 Pro, iOS 26.6. A screen recording made on this device is attached to this submission.
 
 2. WHAT SESHD IS
-Seshd is a gym workout tracker for people who lift weights, from casual gym-goers to serious
-lifters. Core problem it solves: most workout-log apps are either a spreadsheet with no social
-layer, or a generic fitness app with a social feed bolted on that isn't tied to real training
-data. Seshd's core loop is logging sets/reps/weight during a workout (with a rest timer and plate
-calculator), tracking progress (PRs, 1RM estimates, volume, muscle-group balance) over time, and
-an OPTIONAL social layer (feed, groups, DMs) where what gets shared is a real logged workout, not
-a generic post. Target audience: recreational and serious gym lifters who already track their
-training or want to start. Free to use — no paywall, no subscription, no in-app purchase in this
-build.
+Seshd is a gym workout tracker for lifters, from casual gym-goers to competitive lifters. It solves the gap between spreadsheet-style logging apps with no social layer, and generic fitness apps whose feed isn't tied to real training data. Core loop: log sets/reps/weight (rest timer, plate calculator), track progress (PRs, 1RM estimates, volume, muscle balance), and an OPTIONAL social layer (feed, groups, DMs) built on real logged workouts, not generic posts. Free — no paywall, subscription, or IAP.
 
 3. HOW TO ACCESS IT
-No account is needed for the core app: on the welcome screen, tap "Start Tracking" to use workout
-logging, history, the plate calculator, 1RM estimator, and program building in guest mode.
+No account needed for the core app: tap "Start Tracking" on the welcome screen for workout logging, history, the plate calculator, 1RM estimator, and program building in guest mode.
+For social/account features, sign in with the demo account (entered above): appreview@getseshd.app / SeshdDemo2026. It's fully populated: ~27 logged workouts, PRs, progress charts, training history. It follows other users (their posts appear in the Home feed) and is in a private group ("Seshd Crew").
 
-For the social/account features, sign in with the demo account below (already entered in the
-"Sign-In Required" field of this submission):
-  Email: appreview@getseshd.app
-  Password: SeshdDemo2026
-This is a fully populated account: ~27 logged workouts over the last two months, personal
-records, progress charts, and training history (History tab, and each exercise's detail screen).
-It follows several other users (their posts appear in the Home feed) and is a member of a private
-group ("Seshd Crew") with its own group feed — so social features are all live and testable
-without any extra setup.
-
-4. EXTERNAL SERVICES USED
-- Supabase (Postgres database, authentication, file storage, and edge functions) — the entire
-  backend: accounts, workout data, social features.
-- Resend — transactional email only (signup confirmation, password reset), sent via Supabase's
-  SMTP integration.
-- Apple HealthKit — OPTIONAL, on-device only. If the user grants access, HRV/resting heart
-  rate/sleep power a "Training Readiness" recovery screen. The app is fully functional without it.
-- Apple Push Notification service (APNs) — OPTIONAL. Used only for direct messages, kudos/
-  comments, new followers, and a weekly streak reminder.
-- Vercel — hosts the app's support/privacy/terms pages, and a self-hosted update endpoint used by
-  @capgo/capacitor-updater (the Capacitor live-update mechanism) to deliver signed web-bundle
-  bug-fix updates between App Store releases — the same "hot code push" pattern any Capacitor/
-  Cordova hybrid app uses; it never adds a native capability or changes the app's core purpose.
-No AI/ML services, no payment processor, no analytics SDK currently active in this build.
+4. EXTERNAL SERVICES
+- Supabase: Postgres DB, auth, storage, edge functions (entire backend).
+- Resend: transactional email only (signup/reset), via Supabase SMTP.
+- Apple HealthKit: OPTIONAL, on-device. Powers a "Training Readiness" recovery screen if granted; app works fully without it.
+- APNs: OPTIONAL push, for DMs/kudos/comments/new followers/streak reminders.
+- Vercel: hosts support/privacy/terms pages and a self-hosted update endpoint for @capgo/capacitor-updater (standard Capacitor live-update for bug-fix bundles between App Store releases; adds no native capability).
+No AI/ML services, payment processor, or active analytics SDK in this build.
 
 5. REGIONAL DIFFERENCES
-None. Seshd functions identically in every region/App Store territory — no region-locked
-content, no region-based feature gating, no region-specific pricing (the app is free, no IAP).
+None — functions identically in every region. No region-locked content, feature gating, or pricing differences (free, no IAP).
 
-6. REGULATED INDUSTRY / PROTECTED THIRD-PARTY MATERIAL
-Not applicable. Seshd is a personal fitness/workout tracker: it makes no medical claims, offers
-no financial services, and includes no licensed or protected third-party material — exercise
-names and muscle-group diagrams are original artwork or generic anatomical terms, not licensed
-content.
+6. REGULATED INDUSTRY / PROTECTED MATERIAL
+Not applicable. No medical claims, no financial services, no licensed or protected third-party material — exercise names and muscle diagrams are original artwork or generic anatomical terms.
 
 7. USER-GENERATED CONTENT SAFETY (Guideline 1.2)
-Users can Report and Block from every surface that shows other people's content:
- - A post: tap the ••• on any Home-feed post → Report.
- - A person: open a profile (e.g. tap "Coach Kai") → ••• (top right) → Report or Block.
- - A conversation: open a chat → ••• in the header → Report.
-Reports are stored privately (insert-only, not readable by other users) and reviewed within 24
-hours. Blocking hides the user immediately. Terms with a zero-tolerance policy for objectionable
-content and abusive users are agreed to at account creation (linked on the Create Account screen).
+Report/Block available everywhere other users' content appears:
+- Post: ••• on any Home-feed post -> Report.
+- Person: open a profile -> ••• -> Report or Block.
+- Chat: ••• in the header -> Report.
+Reports are insert-only (not readable by other users) and reviewed within 24h. Blocking hides the user immediately. Terms with a zero-tolerance policy for objectionable content are agreed to at signup.
 
 8. ACCOUNT DELETION
-Settings → scroll to the bottom → "Delete account" (typed "DELETE" confirmation required, App
-Store-standard destructive-action pattern). Fully removes the account and its data.
+Settings -> scroll to bottom -> "Delete account" (type DELETE to confirm).
 
 Contact: mohaggagz@gmail.com
 ```
