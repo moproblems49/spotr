@@ -1,4 +1,4 @@
-// v178091716901
+// v178091716902
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2210,11 +2210,17 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     }
                     if (rec.restingHr != null && rec.rhrBaseline) {
                       const base = Math.round(rec.rhrBaseline); const good = rec.restingHr <= base;
-                      // "Today" only when the reading has actually earned that — the label was bare
-                      // before (no window at all), which reads as "now" by default. rec.restingHrAgeDays
-                      // is computed from the reading's real clock age, not a calendar-key comparison.
-                      const when = rec.restingHrAgeDays == null ? "" : rec.restingHrAgeDays === 0 ? "today" : rec.restingHrAgeDays === 1 ? "yesterday" : `${rec.restingHrAgeDays}d ago`;
-                      tiles.push({ label: when ? `Resting pulse · ${when}` : "Resting pulse", value:`${rec.restingHr}`, unit:"bpm", arrow: good ? "▼" : "▲", note:`${good ? "below" : "above"} your usual ${base}`, good });
+                      // "Today's pulse" only when the reading has EARNED that claim — rec.restingHrAgeDays
+                      // is a local-calendar-day comparison (dateKeyOf/dateFromKey, noon-anchored), not a
+                      // flat hours-since-sample cutoff, so it can't mislabel a stale reading as today's just
+                      // because it's under some fixed hour count. If the watch hasn't synced yet, this tile
+                      // stays honest about it instead — "Resting pulse · yesterday"/"· Nd ago", never
+                      // "Today's pulse" for data that isn't today's.
+                      const label = rec.restingHrAgeDays === 0 ? "Today's pulse"
+                        : rec.restingHrAgeDays === 1 ? "Resting pulse · yesterday"
+                        : rec.restingHrAgeDays > 1 ? `Resting pulse · ${rec.restingHrAgeDays}d ago`
+                        : "Resting pulse";
+                      tiles.push({ label, value:`${rec.restingHr}`, unit:"bpm", arrow: good ? "▼" : "▲", note:`${good ? "below" : "above"} your usual ${base}`, good });
                     }
                     if (rec.sleepHours != null) {
                       const h = rec.sleepHours; const good = h >= 7;
