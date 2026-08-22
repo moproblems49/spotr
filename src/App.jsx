@@ -1,4 +1,4 @@
-// v178091716895
+// v178091716896
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17613,21 +17613,25 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         </div>
       )}
 
+      {/* No card — a short static list is "one item among many," not a widget, and the rest of
+          this screen (header, stats, Muscle balance) already treats that case flat: a section
+          label plus divider-separated rows. This one was still card-wrapped; matched to the
+          MuscleBalance pattern below it (padding:"16px 0 8px" there vs the 14px side-padding this
+          block needs of its own, since — unlike MuscleBalance — it isn't already nested in a
+          14px-padded parent). */}
       {!isMe && foreignTopLifts && foreignTopLifts.length > 0 && (
-        <div style={{ padding:"0 14px 4px" }}>
-          <div style={{ borderRadius:18, background:C.surface, border:`1px solid ${C.border}`, padding:"14px 16px" }}>
-            <SectionLabel C={C} style={{ marginBottom:8 }}>Top lifts</SectionLabel>
-            {foreignTopLifts.map(pr => (
-              <div key={pr.exercise_name} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding:"6px 0", borderTop:`1px solid ${C.divider}` }}>
-                <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{pr.exercise_name}</span>
-                {/* C.accentInk, not C.accent — accent-as-text fails 3.09:1 on light (see the
-                    accentInk/accent convention). */}
-                <span style={{ fontFamily:MONO, fontSize:14, fontWeight:800, color:C.accentInk }}>
-                  {cvt(pr.weight_lbs, "lbs", displayUnit)}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>{displayUnit}</span>
-                </span>
-              </div>
-            ))}
-          </div>
+        <div style={{ padding:"16px 14px 8px" }}>
+          <SectionLabel C={C} style={{ marginBottom:8 }}>Top lifts</SectionLabel>
+          {foreignTopLifts.map(pr => (
+            <div key={pr.exercise_name} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding:"6px 0", borderTop:`1px solid ${C.divider}` }}>
+              <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{pr.exercise_name}</span>
+              {/* C.accentInk, not C.accent — accent-as-text fails 3.09:1 on light (see the
+                  accentInk/accent convention). */}
+              <span style={{ fontFamily:MONO, fontSize:14, fontWeight:800, color:C.accentInk }}>
+                {cvt(pr.weight_lbs, "lbs", displayUnit)}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>{displayUnit}</span>
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
