@@ -1,4 +1,4 @@
-// v178091716894
+// v178091716895
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4761,7 +4761,19 @@ function useSwipeDismiss(onDismiss) {
   const startY = useRef(null);
   const firedRef = useRef(false);
   return {
-    onTouchStart: e => { startY.current = e.touches?.[0]?.clientY ?? null; firedRef.current = false; },
+    onTouchStart: e => {
+      // Never arm over a region that owns its own gesture — SetRow's swipe-to-delete/complete is
+      // the one that matters here (`[data-no-tab-swipe]`, same bail list `handleSwipeStart` uses
+      // for the tab swipe). This hook's own onTouchMove never calls preventDefault/stopPropagation,
+      // so on its own it can't out-and-out block anything — but wiring it onto the exercise
+      // scroller (an ancestor of every SetRow) gave that ancestor an active touchmove listener it
+      // never had before, and Mo reported the swipe-to-delete gesture "messed up" right after that
+      // shipped. Leaving startY unset here means this hook is a guaranteed no-op for any touch that
+      // starts on a set row, which removes the ancestor listener from that gesture's path entirely
+      // rather than relying on it staying inert.
+      if (e.target && e.target.closest && e.target.closest("[data-no-tab-swipe]")) { startY.current = null; return; }
+      startY.current = e.touches?.[0]?.clientY ?? null; firedRef.current = false;
+    },
     onTouchMove: e => {
       if (startY.current == null || firedRef.current) return;
       const y = e.touches?.[0]?.clientY;
