@@ -1,4 +1,4 @@
-// v178091716903
+// v178091716904
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2196,6 +2196,15 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     Recovery {Math.round(rec.recoveryScore * 100)}%
                     <span style={{ color:_readyColor(rec.recoveryScore, C) }}>· {recoveryVerdict(rec.recoveryScore)}</span>
                   </span>
+                  {(() => {
+                    const hrs = recoveryTimeHours(store, rec, new Date());
+                    if (hrs == null) return null;
+                    return (
+                      <div style={{ fontSize:11, color:C.sub, fontWeight:600 }}>
+                        {hrs === 0 ? "Fully recovered from your last session" : `~${hrs}h until fully recovered`}
+                      </div>
+                    );
+                  })()}
                   {(() => {
                     // Plain-English driver tiles ("HRV 42 vs 32" meant nothing to normal
                     // humans): each metric gets a value, a direction arrow, and a worded
@@ -5058,6 +5067,57 @@ function sessionDrain(sets, avgRpe) {
   return Math.max(4, Math.min(24, Math.round(4 + sets * 0.6 + (avgRpe ? (avgRpe - 7) * 2 : 0))));
 }
 
+// Garmin-style "hours until recovered" for the most recent finished workout. Reuses sessionDrain
+// (the one workout-drain formula, already shared by the Body Battery headline and its 24h curve)
+// rather than inventing a second training-stress number — see the "one workout-drain formula"
+// convention. Null when there's no finished session to base an estimate on. Exported for the sim
+// harness.
+function recoveryTimeHours(store, rec, now) {
+  // Newest date-key first: once a day HAS a session, no earlier day can beat it, so this can
+  // break out early instead of scanning the whole history (same pattern as SortableDayCard's
+  // lastDone / getLastExerciseSession, applied here for the same reason).
+  const dates = Object.keys(store.history || {}).sort().reverse();
+  let best = null;
+  for (const dk of dates) {
+    for (const sess of Object.values(store.history[dk] || {})) {
+      const endMs = sess.finishedAt || new Date(dk + "T12:00:00").getTime();
+      if (endMs > now.getTime()) continue; // guard a bad future-dated row, same as the drain curve
+      if (!best || endMs > best.endMs) best = { sess, endMs };
+    }
+    if (best) break;
+  }
+  if (!best) return null;
+  let sets = 0, rpeSum = 0, rpeN = 0;
+  for (const ex of (best.sess.exercises || [])) {
+    for (const s of (ex.sets || [])) {
+      if (s.type === "warmup") continue;
+      if (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) {
+        sets++; const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
+      }
+    }
+  }
+  if (!sets) return null;
+  const avgRpe = rpeN ? rpeSum / rpeN : null;
+  const drain = sessionDrain(sets, avgRpe); // 4-24
+
+  // Map drain onto a base recovery WINDOW in hours: an easy accessory session (drain 4) is
+  // basically done by the next morning (~8h); a maximal session (drain 24) can carry real fatigue
+  // for a couple of days (~64h). Linear between those anchors — no exercise-science claim beyond
+  // "harder session, longer window," tracking the same training-stress number Body Battery
+  // already uses rather than a second, disconnected one.
+  const baseHours = 8 + (drain - 4) * 2.8;
+
+  // Scale by how recovered you already are: well-recovered (recoveryScore near 1) needs less of
+  // the base window than under-recovered (near 0) — 0.5x at a perfect score, 1.5x at zero. Only
+  // scale when a score actually exists; the unscaled base is still a reasonable generic estimate,
+  // closer to the truth than showing nothing.
+  const scale = (rec && typeof rec.recoveryScore === "number") ? 1.5 - rec.recoveryScore : 1;
+  const totalHours = baseHours * scale;
+
+  const elapsedHours = (now.getTime() - best.endMs) / 36e5;
+  return Math.max(0, Math.round(totalHours - elapsedHours));
+}
+
 // DAYTIME RECOVERY. Garmin's battery climbs back during calm periods because a watch feeds it a
 // continuous heart-rate stream. We don't have that — but HealthKit's per-hour step/energy buckets
 // are enough to tell a still afternoon from a walk, which is the distinction that matters.
@@ -5852,7 +5912,7 @@ function pickSleepBlock(samples) {
   if (main.length) return main.reduce((a, b) => (b.endMs > a.endMs ? b : a));
   return pool.reduce((a, b) => (b.minutes > a.minutes ? b : a));
 }
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, stageMinutes, sleepQualityMult, strengthScoreHistory, pinToLastNight, personalBaseline, hrvReading, recoveryScoreFrom, readRecoveryFrom, softCapActivity, softCapWorkout, softCapHour, activityRawSinceWake, trustedSleepWindow, earliestActiveHourToday, recoveryVerdict, pickSleepBlock, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, exerciseProgressed, loadIncrement, getExerciseTrend, parseRepRange, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, sessionDrain, recoveryTimeHours, sb }; // for the sim harness — pure functions
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
 // so it can own the hold-to-read scrub state — the previous inline IIFE couldn't hold hooks.
