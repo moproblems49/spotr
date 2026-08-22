@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import {
   F, MONO, Icon, Avatar, MuscleIcon, NAV_CLEARANCE, toast, haptic, cvt, sb, devWarn,
   shareLink, EXERCISE_DB, getDiscoverSubTab, setDiscoverSubTabValue,
-  GroupsScreen, FriendsActivityScreen, ExerciseDetail,
+  GroupsScreen, FriendsActivityScreen, ExerciseDetail, SectionLabel,
 } from "../App.jsx";
 
 export default function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow }) {
@@ -146,7 +146,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
               Personal records). */}
           {userResults.length > 0 && (
             <>
-              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"8px 0 10px" }}>PEOPLE</div>
+              <SectionLabel C={C} style={{ marginTop:8 }}>People</SectionLabel>
               <div style={{ marginBottom:12 }}>
                 {userResults.map((u, idx) => {
                   const amFollowing = following.includes(u.id);
@@ -179,7 +179,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
           )}
           {exerciseResults.length > 0 && (
             <>
-              <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1, padding:"8px 0 10px" }}>EXERCISES</div>
+              <SectionLabel C={C} style={{ marginTop:8 }}>Exercises</SectionLabel>
               <div style={{ marginBottom:12 }}>
                 {exerciseResults.map((ex, idx) => (
                   <div key={ex.name} onClick={() => setViewingExercise(ex.name)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none", cursor:"pointer" }}>
@@ -468,7 +468,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
               </div>
             );
             return (<>
-              <div style={{ fontSize:12, fontWeight:700, color:C.sub, letterSpacing:0.8, marginBottom:12 }}>SUGGESTED PEOPLE</div>
+              <SectionLabel C={C}>Suggested people</SectionLabel>
               <div>
                 {suggested.map((u, idx, arr) => {
                   const isF = following.includes(u.id);

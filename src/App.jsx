@@ -1,4 +1,4 @@
-// v178091716900
+// v178091716901
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6657,13 +6657,19 @@ async function readRecoveryFrom(H, now) {
       out.restingHr = Math.round(medianOf(todayRhr.map(x => x.v)));
       // Age of the reading, so the UI can say "today" only when it's earned that — a watch that
       // hasn't synced yet means the newest group on hand can still be a night or more old. This is
-      // hours-since-the-actual-sample, NOT a nightKeyOf(now) comparison: nightKeyOf shifts by 12h
-      // to bucket NIGHTTIME samples, so calling it on an arbitrary "now" during the day answers
-      // "which night is coming up tonight", not "was this reading today" — a first cut of this used
-      // that comparison and it labeled a 7am reading "yesterday" when checked that same afternoon.
+      // NOT a nightKeyOf(now) comparison: nightKeyOf shifts by 12h to bucket NIGHTTIME samples, so
+      // calling it on an arbitrary "now" during the day answers "which night is coming up tonight",
+      // not "was this reading today" — a first cut of this used that comparison and it labeled a
+      // 7am reading "yesterday" when checked that same afternoon.
+      // A flat "hours since sample <= 20" cutoff (the second cut) has the SAME bug in the other
+      // direction: checked at 3am with no new reading synced yet, a genuinely-yesterday 8am sample
+      // is only 19h old and reads "today". "Today" means the reading's LOCAL CALENDAR DAY matches
+      // now's, so compare calendar-day keys — anchored at local noon via dateFromKey, same as the
+      // day-badge pattern elsewhere in this file (dKey()-based "Today"/"Yesterday"/"Nd ago"), which
+      // survives DST because noon is never 12h from a zone transition.
       const newestT = Math.max(...todayRhr.map(x => x.t));
-      const ageHours = (now.getTime() - newestT) / 36e5;
-      out.restingHrAgeDays = ageHours <= 20 ? 0 : Math.round(ageHours / 24);
+      const dayDiff = Math.round((dateFromKey(dateKeyOf(now.getTime())).getTime() - dateFromKey(dateKeyOf(newestT)).getTime()) / 86400000);
+      out.restingHrAgeDays = Math.max(0, dayDiff);
     }
   }
   // Sleep — most recent night only. The 36h lookback can span two nights, so cluster:
@@ -11428,7 +11434,7 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
 // One section heading treatment for the whole app. These labels had drifted into two sizes and
 // two letter-spacings across History/Profile, which is the kind of thing that reads as "slightly
 // cheap" without anyone being able to say why.
-function SectionLabel({ children, C, style }) {
+export function SectionLabel({ children, C, style }) {
   return (
     <div style={{
       fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase",
@@ -17599,8 +17605,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {!isMe && foreignTopLifts && foreignTopLifts.length > 0 && (
         <div style={{ padding:"16px 14px 8px" }}>
           <SectionLabel C={C} style={{ marginBottom:8 }}>Top lifts</SectionLabel>
-          {foreignTopLifts.map(pr => (
-            <div key={pr.exercise_name} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding:"6px 0", borderTop:`1px solid ${C.divider}` }}>
+          {foreignTopLifts.map((pr, idx) => (
+            <div key={pr.exercise_name} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding:"6px 0", borderTop: idx > 0 ? `1px solid ${C.divider}` : "none" }}>
               <span style={{ fontSize:13, fontWeight:600, color:C.text }}>{pr.exercise_name}</span>
               {/* C.accentInk, not C.accent — accent-as-text fails 3.09:1 on light (see the
                   accentInk/accent convention). */}
