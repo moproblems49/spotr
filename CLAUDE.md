@@ -8,7 +8,12 @@ Seshd is a gym/workout tracker built as a **single-file React + Vite PWA**, ship
 - Supabase project ref: `zwsoxvekobvtvsphesef`
 - Owned domain: `getseshd.app` — used ONLY for transactional email (Resend SMTP, sender
   `hello@getseshd.app`); the app itself still lives on spotr-drab.vercel.app.
-- A friend (Ashley) handles all Xcode / TestFlight / Mac-side work.
+- **There is no Ashley doing separate work.** Mo does all Xcode/TestFlight/Mac-side work himself,
+  typing whatever commands/clicks Claude tells him to, on a Mac he has access to that belongs to a
+  friend named Ashley. Every "Mac day" walkthrough in this file is Mo at the keyboard, one step at
+  a time — never assume a second person is present or needs separately-addressed instructions.
+  (Corrected Aug 22, 2026 — an earlier session's "Ashley checklist" framing was wrong; ignore any
+  wording below that still addresses a separate "Ashley.")
 
 ## Who I'm working with
 Mo is **non-technical**. He doesn't write code. So:
@@ -1993,7 +1998,7 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Gesture-perf refactor (merged to main):** every touch/drag gesture in the app — `SetRow` swipe, tab-swipe, the shared `PullToRefresh` component (History/Profile/Messages), the feed's own pull-to-refresh, `StoryViewer` drag, `InsightCards` swipe, and the profile cover-photo position drag — was re-pointed from per-frame `setState` (re-rendering the whole screen on every `touchmove`) to the ref-write pattern documented above, plus a fix for vertical-scroll bleed-through during the tab swipe. A code review of this refactor caught and fixed one real regression before merge: the cover-photo drag's mouse path could freeze `coverPosDraft` at the gesture's first frame if the cursor left the small drag area before mouseup (now uses `window`-level listeners — see the Conventions note above).
 
-**Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Ashley checklist below.**
+**Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
 **⚠️ PRE-APP-STORE-SUBMISSION CHECKLIST (do these the day Mo says "submit"):**
 (1) ~~Remove the tiny `d1 ·` boot-diagnostic line from the sign-in screen~~ — **DONE** (Aug 8,
@@ -2198,7 +2203,7 @@ share-to-Instagram-Stories plugin, converting the top bar to a true scroll-under
 overlay (marked TODO(device-test) in App.jsx), iOS 18 light/dark icon variants (light art exists at `assets/AppIcon-1024-light.png`,
 decision was to stay single dark icon).
 
-**Mo: PC-side prerequisites (do BEFORE Mac day so Ashley isn't blocked)**
+**Mo: PC-side prerequisites (do BEFORE Mac day so nothing blocks Mo once he's on the Mac)**
 1. ~~APNs key~~ — DONE in a prior session. The `.p8` file is on the Mac; setting the
    `APNS_PRIVATE_KEY` secret from it is Step 0a of Mac day above. All other APNS_* secrets
    are already set. (Claude can't set secrets — no tool for it, and pasting the key into

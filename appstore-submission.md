@@ -19,15 +19,12 @@ in chat: subtitle, description, keywords, promo text.)
 > app with the same email and tell me — I'll re-point the demo data.)
 
 **Notes** (paste into the App Review "Notes" box) — rewritten for the Aug 22, 2026 Guideline 2.1
-resubmission, which asked for all 7 items below explicitly. Fill in the **device/OS bracket in
-item 2** with whatever Ashley actually tested on before pasting — that's the one fact in here I
-can't know myself.
+resubmission, which asked for all 7 items below explicitly. Item 1's device/OS is filled in as
+iPhone 17 Pro / iOS 26.6, from Mo's own testing.
 
 ```
 1. TESTED ON
-[FILL IN: e.g. "iPhone 14, iOS 18.x" — the physical device(s) and iOS version(s) this build was
-tested on before submission. A screen recording made on that same device is attached to this
-submission / available on request.]
+iPhone 17 Pro, iOS 26.6. A screen recording made on this device is attached to this submission.
 
 2. WHAT SESHD IS
 Seshd is a gym workout tracker for people who lift weights, from casual gym-goers to serious
@@ -121,8 +118,8 @@ flow is real, not the demo login. Suggested path, ~2–3 minutes:
    the recording just before actually confirming, so the test account survives for any follow-up
    question from the reviewer — don't leave the account deleted, or a re-review can't sign into it).
 
-Once recorded, Ashley uploads it directly in App Store Connect's App Review Information section
-(there's an attachment/upload option there, separate from the Notes text field above).
+Once recorded, upload it directly in App Store Connect's App Review Information section (there's
+an attachment/upload option there, separate from the Notes text field above).
 
 ---
 
