@@ -1,4 +1,4 @@
-// v178091716896
+// v178091716897
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14493,15 +14493,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 }).filter(Boolean);
                 if (!targets.length) return null;
                 return (
+                  // No card — same reasoning as Profile's Top Lifts and Muscle Balance sections:
+                  // a short list is one item among many, not a widget, so a section label plus
+                  // divider-separated rows carries the grouping without a background/border box.
                   <div style={{ marginBottom:16 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>NEXT UP · {nextDay.name.toUpperCase()}</div>
-                    </div>
-                    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"4px 0", overflow:"hidden" }}>
+                    <SectionLabel C={C}>NEXT UP · {nextDay.name}</SectionLabel>
+                    <div>
                       {targets.map((t, i) => (
                         <div key={t.name} style={{
                           display:"flex", alignItems:"center", justifyContent:"space-between",
-                          padding:"11px 14px",
+                          padding:"11px 0",
                           borderTop: i > 0 ? `1px solid ${C.divider}` : "none",
                         }}>
                           <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
@@ -14526,7 +14527,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               })()}
 
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>ACTIVE PROGRAM</div>
+                <SectionLabel C={C} style={{ marginBottom:0 }}>Active program</SectionLabel>
                 <div style={{ fontSize:12, fontWeight:600, color:C.textDim }}>{prog.name}</div>
               </div>
               <DayCardList
