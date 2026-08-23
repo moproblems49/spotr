@@ -2129,6 +2129,28 @@ and had NOT submitted; the archived build predates the whole Aug 12–16 era and
 Mo-side and NOT needing a Mac, worth doing first: paste the branded auth email templates from
 `supabase/email-templates/` into the Supabase dashboard, and set the SMTP Sender name to "Seshd".
 
+**★★ THE MAC-DAY CAPABILITIES WERE NEVER COMMITTED TO GIT, AND THE CURRENTLY-INSTALLED BUILD IS
+NOW MISSING THEM (found Aug 23, 2026).** Mo deleted+reinstalled the app to test the fresh-signup
+flow; afterward, neither the Health nor the push-notification permission prompt appeared, and
+Seshd disappeared from Settings → Health entirely. Chasing it through a new manual "reconnect"
+button (`HealthConnectRow`, Settings) got a real native error instead of a guess: **"Missing
+com.apple.developer.healthkit entitlement."** The app literally isn't signed with permission to
+touch Health data. Confirmed from the repo: **`find ios -iname "*.entitlements"` returns nothing,
+and `project.pbxproj` has zero `CODE_SIGN_ENTITLEMENTS`/`com.apple.developer` references.** Every
+capability from the original Mac Day checklist (HealthKit, Push Notifications, Background Modes,
+Associated Domains) was ticked through Xcode's Signing & Capabilities UI on some Mac in July and
+NEVER git-committed — it only ever existed as local, unsaved Xcode project state. If that state
+was reset or the project re-cloned since, all four capabilities silently vanish from the next
+build with nothing in the diff to show it, which is consistent with BOTH push and Health prompts
+failing on the same test. **This cannot be fixed via OTA** — it's a native signing issue, not app
+code; every OTA-shippable fix in the reconnect flow above is correct and simply can't reach a
+permission the binary was never granted. Fix needs a Mac: reopen Xcode → Signing & Capabilities,
+re-add all four capabilities, and — the part that was skipped last time — **commit the resulting
+`.entitlements` file and the `project.pbxproj` diff to git before archiving**, so this can't
+silently disappear again. As of Aug 23 this is unconfirmed-but-likely for Push/Background
+Modes/Associated Domains too (same missing-commit root cause) — verify all four in the same Mac
+session rather than doing this one capability at a time.
+
 **~~NEXT MAC DAY checklist (one-time, activates OTA)~~ — ✅ DONE.** The installed build carries
 `@capgo/capacitor-updater` and OTA is device-verified: six bundles shipped to Mo's phone on
 July 29 alone. **No Mac is needed for app-code changes any more** — publish per the recipe in
