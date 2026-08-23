@@ -1,4 +1,4 @@
-// v178091716908
+// v178091716909
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11584,6 +11584,59 @@ function AppVersionRow({ C }) {
   );
 }
 
+// Manual Apple Health (re)connect. The boot-time sync (AppInner's healthSyncRef effect) requests
+// authorization silently on every cold launch/foreground, with no user-facing control — so when it
+// doesn't work (most commonly: the app was deleted and reinstalled, which resets HealthKit's
+// per-app grant AND removes Seshd from Health's own app list — standard Apple behavior, confirmed
+// live Aug 23 2026), there was previously no way to retry short of killing and relaunching the app
+// and hoping. This calls the same requestHealthPermission()/readRecovery() the boot sync uses, so
+// tapping it is exactly "run the boot sync again, right now, with visible feedback."
+function HealthConnectRow({ C, setStore }) {
+  const [checking, setChecking] = useState(false);
+  const [note, setNote] = useState("");
+  if (!healthKitAvailable()) return null; // nothing to connect on web or a non-native shell
+
+  async function reconnect() {
+    setChecking(true); setNote("");
+    try {
+      const ok = await requestHealthPermission();
+      if (!ok) { setNote("Couldn't reach HealthKit on this device."); return; }
+      const [rec, act, actHourly] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity()]);
+      if (rec || act || actHourly) {
+        setStore(p => ({
+          ...p, recovery: rec || p.recovery, activity: act || p.activity,
+          activityHourly: (actHourly && actHourly.hours) || p.activityHourly,
+          activityPrevEvening: (actHourly && actHourly.prevEvening) || p.activityPrevEvening,
+          activityHourlyDate: (actHourly && actHourly.date) || p.activityHourlyDate,
+        }));
+      }
+      // Apple never tells an app whether a read type was actually granted, so `rec` coming back
+      // is the only honest positive signal — its absence just as plausibly means "allowed but
+      // nothing recorded yet" as "denied," so the note below says exactly that rather than guessing.
+      setNote(rec
+        ? "Connected — recovery data updated."
+        : "Requested access. If a permission prompt appeared, allow it there; otherwise check Settings → Privacy & Security → Health → Seshd.");
+    } catch (e) {
+      setNote("Couldn't reach HealthKit — try again.");
+    } finally { setChecking(false); }
+  }
+
+  return (
+    <button onClick={reconnect} disabled={checking} style={{
+      width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+      display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
+      cursor: checking ? "default" : "pointer", fontFamily:F, textAlign:"left",
+    }}>
+      <div style={{ minWidth:0 }}>
+        <div style={{ fontSize:14, color:C.text }}>Apple Health</div>
+        {note && <div style={{ fontSize:11, color:C.sub, marginTop:3, lineHeight:1.35 }}>{note}</div>}
+        {!note && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{isHealthConnected() ? "Connected — tap to refresh" : "Tap to connect"}</div>}
+      </div>
+      <div style={{ fontFamily:MONO, fontSize:11, color:C.sub, flexShrink:0 }}>{checking ? "connecting…" : ""}</div>
+    </button>
+  );
+}
+
 // Trend sparkline with its lowest and highest values labelled. These charts (resting HR, VO₂ Max)
 // are only ~120x26 — far too small to scrub with a finger (~10px per point vs a ~44px fingertip),
 // so instead of an interactive readout they just state their range. The line is drawn in an inset
@@ -18115,6 +18168,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ fontSize:12, color:C.sub }}>{email || ""}</div>
                 </div>
                 <AppVersionRow C={C}/>
+                <HealthConnectRow C={C} setStore={setStore}/>
                 <button onClick={exportData} style={{
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
                   display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
