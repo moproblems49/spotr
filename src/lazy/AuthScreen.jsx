@@ -4,7 +4,7 @@
 import { useState } from "react";
 import {
   F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, devWarn,
-  SUPABASE_URL, SUPABASE_KEY,
+  SUPABASE_URL, SUPABASE_KEY, useSwipeDismiss, blurIfTextInput,
 } from "../App.jsx";
 
 export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null }) {
@@ -20,6 +20,13 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  // The form container is a fixed-height flex column with no scroll (see the sign-in/sign-up
+  // return below), so on the sign-up form specifically — 4 fields plus copy, vertically CENTERED
+  // rather than pinned to the top — the WKWebView keyboard covers the lower fields (Password) with
+  // no way to reach them. Mo hit this live. Same fix as the rest of the app: make the container
+  // scrollable and wire the same swipe-down-to-dismiss-keyboard gesture WorkoutTracker's exercise
+  // scroller already uses, rather than inventing a second mechanism.
+  const swipeDismissKeyboard = useSwipeDismiss(blurIfTextInput);
 
   // Forgot-password: always report success — never reveal whether an account exists.
   async function handleReset() {
@@ -231,7 +238,13 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   // ── Sign in / Sign up form ────────────────────────────────────
   return (
     <div style={{
-      minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
+      // MUST be a hard height, not minHeight. `body` is position:fixed + overflow:hidden for the
+      // app's entire lifetime (including this pre-login screen), so it can never scroll — a
+      // minHeight lets this container grow taller than the viewport with nowhere for the overflow
+      // to go, which is exactly how the keyboard covering the Password field on sign-up became
+      // unreachable: the inner form div's own overflowY:auto never engages because THIS container
+      // was never actually squeezed down to the visible height in the first place.
+      height:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
       padding:"0 24px",
       paddingTop:"max(env(safe-area-inset-top), 20px)",
       paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
@@ -253,7 +266,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         </button>
       </div>
 
-      <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", maxWidth:380, width:"100%", margin:"0 auto" }}>
+      <div onScroll={blurIfTextInput} {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", display:"flex", flexDirection:"column", justifyContent:"center", maxWidth:380, width:"100%", margin:"0 auto" }}>
         {/* Big centered brand mark fills the empty upper area so the screen doesn't read top-heavy-empty. */}
         <div style={{ display:"flex", justifyContent:"center", marginBottom:40 }}><SeshdLogo C={C} size={72}/></div>
         <h1 style={{

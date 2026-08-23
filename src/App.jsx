@@ -1,4 +1,4 @@
-// v178091716906
+// v178091716907
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4773,7 +4773,7 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
 // reachable in a WKWebView. Checks the TAG, not a ref, so it only ever blurs a genuine
 // <input>/<textarea> (the set-weight/reps fields are DIVs driven by the in-app NumberPad on
 // purpose, and never focus a real input at all, so this can't interrupt them).
-function blurIfTextInput() {
+export function blurIfTextInput() {
   const el = typeof document !== "undefined" ? document.activeElement : null;
   if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && typeof el.blur === "function") el.blur();
 }
@@ -4786,7 +4786,7 @@ function blurIfTextInput() {
 // Ref-driven (the gesture-perf pattern this file uses everywhere else): no re-render per frame,
 // just two cheap ref reads, and it never calls preventDefault/stopPropagation, so it can't fight
 // the scroll or any other gesture — it only ever ADDS a dismiss on top of whatever already happens.
-function useSwipeDismiss(onDismiss) {
+export function useSwipeDismiss(onDismiss) {
   const startY = useRef(null);
   const firedRef = useRef(false);
   return {
