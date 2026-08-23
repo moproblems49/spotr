@@ -266,7 +266,15 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         </button>
       </div>
 
-      <div onScroll={blurIfTextInput} {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", display:"flex", flexDirection:"column", justifyContent:"center", maxWidth:380, width:"100%", margin:"0 auto" }}>
+      <div onScroll={blurIfTextInput} {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", display:"flex", flexDirection:"column", maxWidth:380, width:"100%", margin:"0 auto" }}>
+        {/* margin:"auto 0" on this wrapper (not justifyContent:center on the scroll container
+            itself) is what centers a short form vertically while still letting a tall one
+            (sign-up, with the keyboard open) scroll all the way to its own top and bottom — a
+            centering flex-parent that's ALSO the scroll container clips whichever edge sticks out
+            past the viewport, same shape as the alignItems:center backdrop bug elsewhere in the
+            app. Auto margins collapse to 0 once there's no spare space, so this is a no-op on a
+            form that already overflows. */}
+        <div style={{ margin:"auto 0", width:"100%" }}>
         {/* Big centered brand mark fills the empty upper area so the screen doesn't read top-heavy-empty. */}
         <div style={{ display:"flex", justifyContent:"center", marginBottom:40 }}><SeshdLogo C={C} size={72}/></div>
         <h1 style={{
@@ -424,6 +432,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
             : <>Have an account? <span style={{ color:C.accent, fontWeight:700 }}>Sign in</span></>
           }
         </button>
+        </div>
       </div>
     </div>
   );

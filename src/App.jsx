@@ -1,4 +1,4 @@
-// v178091716907
+// v178091716908
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5080,7 +5080,7 @@ function recoveryTimeHours(store, rec, now) {
   let best = null;
   for (const dk of dates) {
     for (const sess of Object.values(store.history[dk] || {})) {
-      const endMs = sess.finishedAt || new Date(dk + "T12:00:00").getTime();
+      const endMs = sess.finishedAt || dateFromKey(dk).getTime();
       if (endMs > now.getTime()) continue; // guard a bad future-dated row, same as the drain curve
       if (!best || endMs > best.endMs) best = { sess, endMs };
     }
@@ -5089,11 +5089,8 @@ function recoveryTimeHours(store, rec, now) {
   if (!best) return null;
   let sets = 0, rpeSum = 0, rpeN = 0;
   for (const ex of (best.sess.exercises || [])) {
-    for (const s of (ex.sets || [])) {
-      if (s.type === "warmup") continue;
-      if (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) {
-        sets++; const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
-      }
+    for (const s of workingDone(ex.sets)) {
+      sets++; const r = parseFloat(s.rpe); if (!isNaN(r) && r > 0) { rpeSum += r; rpeN++; }
     }
   }
   if (!sets) return null;
@@ -16940,7 +16937,13 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   async function deleteAccount() {
     if (deleteText.trim().toUpperCase() !== "DELETE") return;
     setDeleting(true);
-    const tok = token;
+    // Read fresh each time rather than closing over one snapshot — this flow makes 14
+    // sequential network calls (13 table deletes + the identity-revoking edge function), and if
+    // the user lingers on the confirmation screen or the connection is slow, a token refreshed
+    // elsewhere in the app during that window must still reach the LAST call, the one that
+    // actually closes the login (the "a refreshed token must reach the writes that follow it"
+    // rule — this is exactly that bug, on the highest-stakes write in the app).
+    const getTok = () => loadSession()?.access_token || token;
     try {
       const uid_ = currentUserId;
       // [table query, isCritical] — "critical" rows hold personal data that MUST be gone for
@@ -16963,7 +16966,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       ];
       let criticalFailed = false;
       for (const [t, critical] of tables) {
-        try { await sb.query(t, { method: "DELETE" }, tok); }
+        try { await sb.query(t, { method: "DELETE" }, getTok()); }
         catch (e) { if (critical) criticalFailed = true; }
       }
       // Clear all local data so nothing lingers on-device regardless
@@ -16988,7 +16991,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}` },
+          headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${getTok()}` },
         });
         const body = await res.json().catch(() => null);
         authDeleteOk = res.ok && body?.ok === true;
@@ -22138,11 +22141,21 @@ function AppInner() {
                 return u;
               }),
             }));
+            toast("Request sent — they'll need to approve it", "success");
+          } else {
+            // status === "accepted": the optimistic "following" update above already matches
+            // reality, but a STALE pendingFollows entry from an earlier attempt on this same
+            // user must not survive alongside it, or the UI shows "Following" and "Requested"
+            // at once until the next reload.
+            setStore(prev => ({ ...prev, pendingFollows: (prev.pendingFollows||[]).filter(id => id !== userId) }));
           }
-          // status === "accepted" (or unresolvable): the optimistic "following" update above
-          // already matches reality — nothing more to do, and no error to show.
           return;
-        } catch (e2) { /* couldn't resolve the real status — fall through to the generic path */ }
+        } catch (e2) {
+          // Couldn't resolve the real status, but the 409 itself already proves the row exists
+          // server-side — that's not a failure, so don't fall through to the generic revert and
+          // show a false error for something that's already true. Leave the optimistic state.
+          return;
+        }
       }
       // Revert both sides on failure
       setStore(prev => ({
