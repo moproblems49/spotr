@@ -1,4 +1,4 @@
-// v178091716904
+// v178091716905
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16977,13 +16977,29 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         return;
       }
       // Delete the auth user itself — without this, re-signing up with the same
-      // email reactivates the old account rather than starting fresh.
+      // email reactivates the old account rather than starting fresh. This CANNOT go through
+      // the public self-service `DELETE /auth/v1/user` endpoint — confirmed live (Aug 23, 2026)
+      // that it 405s on this project, and the failure was being silently swallowed here, so
+      // "Delete account" told the user it worked while their login credentials stayed live and
+      // fully functional. Deleting an auth identity needs the service-role key, which can never
+      // sit in the client, so this goes through the `delete-account` edge function instead, which
+      // resolves the caller's own id from their own token and uses the admin API server-side.
+      let authDeleteOk = false;
       try {
-        await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-          method: "DELETE",
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+          method: "POST",
           headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${tok}` },
         });
-      } catch (e) { /* best-effort — data is already gone */ }
+        const body = await res.json().catch(() => null);
+        authDeleteOk = res.ok && body?.ok === true;
+      } catch (e) { /* authDeleteOk stays false — reported below, not swallowed */ }
+      if (!authDeleteOk) {
+        // Your DATA is gone (the loop above already succeeded), but the login itself still
+        // works — don't tell the user the account is deleted when it can still sign them in.
+        setDeleting(false);
+        toast("Your data was removed, but the account login couldn't be fully closed — contact support to finish.", "error");
+        return;
+      }
       haptic("success");
       toast("Your account has been deleted", "success");
       setTimeout(() => onSignOut && onSignOut(), 600);
