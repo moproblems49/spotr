@@ -1,4 +1,4 @@
-// v178091716905
+// v178091716906
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -22115,6 +22115,35 @@ function AppInner() {
       }
     } catch (e) {
       devError("follow error:", e);
+      // A 409 on the follow INSERT means the row already exists — the follow (or a pending
+      // request) is already there server-side. That's not a failure, it's exactly the state
+      // the tap was trying to reach, so don't revert the optimistic update or scare the user
+      // with a red error for something already true. This is reachable in practice: onboarding
+      // suggests people to follow off the CLIENT's local `following` list, and a stale local
+      // list (e.g. a follow made from another session/device) can suggest someone already
+      // followed — confirmed live, six 409s in one onboarding pass. Resolve which status the
+      // EXISTING row actually has (same private-account pending/accepted rule the success path
+      // already applies) rather than assuming "accepted".
+      if (e && e.httpStatus === 409 && !isFollowing) {
+        try {
+          const existing = await sb.query(`follows?follower_id=eq.${currentUserId}&following_id=eq.${userId}&select=status`, {}, tok);
+          const status = Array.isArray(existing) ? existing[0]?.status : null;
+          if (status === "pending") {
+            setStore(prev => ({
+              ...prev,
+              pendingFollows: [...new Set([...(prev.pendingFollows||[]), userId])],
+              users: prev.users.map(u => {
+                if (u.id === currentUserId) return { ...u, following: (u.following||[]).filter(id => id !== userId) };
+                if (u.id === userId) return { ...u, followers: (u.followers||[]).filter(id => id !== currentUserId) };
+                return u;
+              }),
+            }));
+          }
+          // status === "accepted" (or unresolvable): the optimistic "following" update above
+          // already matches reality — nothing more to do, and no error to show.
+          return;
+        } catch (e2) { /* couldn't resolve the real status — fall through to the generic path */ }
+      }
       // Revert both sides on failure
       setStore(prev => ({
         ...prev,
