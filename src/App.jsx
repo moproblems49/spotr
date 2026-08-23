@@ -1,4 +1,4 @@
-// v178091716909
+// v178091716910
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6157,17 +6157,22 @@ function requestHealthAuth(H) {
   return run;
 }
 
+// Returns a reason alongside ok/fail — a bare boolean collapsed three genuinely different
+// failures (no native Health plugin at all, HealthKit reporting itself unavailable, and the
+// native requestAuthorization call actually throwing) into one indistinguishable "couldn't
+// reach HealthKit" message, which is useless for telling "you're testing the web build" apart
+// from "the native call is failing for a real reason."
 async function requestHealthPermission() {
   const H = nativeHealth();
-  if (!H) return false;
+  if (!H) return { ok: false, reason: "not_native" };
   try {
     const avail = await H.isAvailable();
-    if (avail && avail.available === false) return false;
+    if (avail && avail.available === false) return { ok: false, reason: avail.reason || "unavailable" };
     await requestHealthAuth(H);
     markHealthConnected();
-    return true;
+    return { ok: true };
   } catch (e) {
-    return false;
+    return { ok: false, reason: String(e?.message || e || "unknown") };
   }
 }
 
@@ -11599,8 +11604,14 @@ function HealthConnectRow({ C, setStore }) {
   async function reconnect() {
     setChecking(true); setNote("");
     try {
-      const ok = await requestHealthPermission();
-      if (!ok) { setNote("Couldn't reach HealthKit on this device."); return; }
+      const res = await requestHealthPermission();
+      if (!res.ok) {
+        setNote(
+          res.reason === "not_native" ? "HealthKit isn't available here — this only works in the installed app, not a browser."
+          : `Couldn't request access: ${res.reason}`
+        );
+        return;
+      }
       const [rec, act, actHourly] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity()]);
       if (rec || act || actHourly) {
         setStore(p => ({
