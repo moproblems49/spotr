@@ -1,4 +1,4 @@
-// v178091716915
+// v178091716916
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14993,12 +14993,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   {weekData.map((w, i) => (
                     <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
                       <div style={{ fontSize:10, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
-                      <div style={{
-                        width:"100%", borderRadius:"3px 3px 0 0",
-                        background: i === weeks-1 ? C.primary : `${C.accent}66`,
-                        height: Math.max(4, (w.vol/maxVol)*64),
-                        transition:"height 0.3s"
-                      }}/>
+                      <div style={{ width:"100%", height:64, borderRadius:"3px 3px 0 0", overflow:"hidden", display:"flex", alignItems:"flex-end" }}>
+                        <div style={{
+                          width:"100%", height:64,
+                          background: i === weeks-1 ? C.primary : `${C.accent}66`,
+                          transform:`scaleY(${Math.max(4, (w.vol/maxVol)*64)/64})`,
+                          transformOrigin:"bottom center", willChange:"transform",
+                          transition:"transform 0.3s"
+                        }}/>
+                      </div>
                       <div style={{ fontSize:7, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
                     </div>
                   ))}
