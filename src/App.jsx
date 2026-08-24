@@ -1,4 +1,4 @@
-// v178091716921
+// v178091716922
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7182,6 +7182,10 @@ function migrateTbarPRs(store) {
 }
 function loadStore() {
   cleanupStaleLocalStorage();
+  // Only reached when nothing is persisted yet (see the merge below), so this can only ever
+  // affect a genuinely first-ever boot — never overrides a returning user's saved choice.
+  let systemPrefersDark = false;
+  try { systemPrefersDark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches; } catch {}
   const defaults = {
     users: [],
     posts: [],
@@ -7196,7 +7200,7 @@ function loadStore() {
     notificationPrefs: { messages: true, kudos: true, comments: true, follows: true },
     defaultRestTime: 120,
     unit: "lbs",
-    theme: "light",
+    theme: systemPrefersDark ? "dark" : "light",
     historyInteractions: {},
     workoutDates: {},
     blockedUsers: [],
