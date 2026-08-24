@@ -1,4 +1,4 @@
-// v178091716911
+// v178091716912
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1645,7 +1645,12 @@ export function weeklyMuscleVolume(store, days = 7) {
   const add = (mn, w) => {
     const regs = _regionsFor(mn);
     regs.forEach(([v, r]) => { const k = v + ":" + r; region[k] = (region[k] || 0) + w; });
-    if (regs.length) byMuscle[mn] = (byMuscle[mn] || 0) + w;
+    // Normalize through _cleanMuscle before keying byMuscle — a PRIMARY credit arrives as
+    // "Rear Delts" (every exercise's muscle: field) while a SECONDARY credit arrives as
+    // "RearDelts" (every EXERCISE_SECONDARIES entry), and without this they silently split into
+    // two separate keys. daysSinceMuscleTrained already normalizes; this writer didn't, so a
+    // lifter's dedicated rear-delt work never made it into the Shoulders total below.
+    if (regs.length) { const key = _cleanMuscle(mn); byMuscle[key] = (byMuscle[key] || 0) + w; }
   };
   const hist = store.history || {};
   for (const d of Object.keys(hist)) {
@@ -1944,7 +1949,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
   const majorSets = (() => {
     const g = (k) => byMuscle[k] || 0;
     const m = {
-      Chest: g("Chest"), Back: g("Back"), Shoulders: g("Shoulders") + g("RearDelts"),
+      Chest: g("Chest"), Back: g("Back"), Shoulders: g("Shoulders") + g("Rear Delts"),
       Quads: g("Quads"), Hamstrings: g("Hamstrings"), Glutes: g("Glutes"),
       Biceps: g("Biceps"), Triceps: g("Triceps"), Calves: g("Calves"),
       Core: g("Core") + g("Abs") + g("Obliques"),
@@ -2860,7 +2865,7 @@ function RestChip({ C, onTap }) {
     <button onClick={onTap} aria-label="Rest timer — tap to return to workout" style={{
       display:"flex", alignItems:"center", gap:5, padding:"4px 9px", borderRadius:999,
       background: low ? "#EF444418" : C.accentSoft || `${C.accent}18`, border:`1px solid ${low ? "#EF4444" : C.accent}55`,
-      color: low ? "#EF4444" : C.accent, fontSize:12, fontWeight:700, fontFamily:MONO, cursor:"pointer", lineHeight:1,
+      color: low ? "#EF4444" : C.accentInk, fontSize:12, fontWeight:700, fontFamily:MONO, cursor:"pointer", lineHeight:1,
       animation:"seshd-pulse-soft 2s ease infinite",
     }}>
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4M12 2h0M9 2h6"/></svg>
@@ -3620,18 +3625,18 @@ function getProgressInsight(store, unit, returnAll = false) {
         const ex = (sess.exercises || []).find(e => e.name === exName);
         if (!ex) continue;
         const su = sess.unit || "lbs";
-        (ex.sets || []).forEach(s => {
-          const done = s.done === true || (s.done === undefined && parseFloat(s.reps) > 0);
-          if (done && s.type !== "warmup") {
-            const w = cvt(parseFloat(s.weight) || 0, su, unit);
-            const r = parseFloat(s.reps) || 0;
-            // Epley 1RM is only reliable up to ~12 reps. Above that, a burnout/endurance
-            // set would inflate the estimate and produce a false "you got stronger" claim,
-            // so we don't let those sets define an e1RM for insight purposes.
-            const e1rm = (r >= 1 && r <= 12) ? (calc1RM(w, r) || 0) : 0;
-            out.push({ date: d, t: new Date(d).getTime(), w, r, e1rm });
-          }
-        });
+        for (const s of workingDone(ex.sets)) {
+          const w = cvt(parseFloat(s.weight) || 0, su, unit);
+          const r = parseFloat(s.reps) || 0;
+          // Epley 1RM is only reliable up to ~12 reps. Above that, a burnout/endurance
+          // set would inflate the estimate and produce a false "you got stronger" claim,
+          // so we don't let those sets define an e1RM for insight purposes.
+          const e1rm = (r >= 1 && r <= 12) ? (calc1RM(w, r) || 0) : 0;
+          // dateFromKey, not new Date(d) — a bare "YYYY-MM-DD" key parses as midnight UTC,
+          // which shifts every set a day earlier west of Greenwich and can push it across the
+          // 8-week strength-gain boundary below into the wrong bucket.
+          out.push({ date: d, t: dateFromKey(d).getTime(), w, r, e1rm });
+        }
       }
     }
     return out;
@@ -3683,11 +3688,12 @@ function getProgressInsight(store, unit, returnAll = false) {
   const volByWeek = {};
   for (const d of dates) {
     for (const sess of Object.values(history[d] || {})) {
-      const su = sess.unit || "lbs";
-      const v = (sess.exercises || []).reduce((a, ex) => a + (ex.sets || [])
-        .filter(s => (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) && s.type !== "warmup")
-        .reduce((b, s) => b + cvt(parseFloat(s.weight) || 0, su, unit) * (parseFloat(s.reps) || 0), 0), 0);
-      const wk = weekKey(new Date(d));
+      // sessionVolume() is the ONE volume definition — this used to reimplement its filter
+      // inline (a third variant, differing from exerciseSets' own inline copy above it), so this
+      // "Biggest week yet" banner could disagree with what History/Profile report for the same
+      // week. dateFromKey, not new Date(d) — see the note in exerciseSets above.
+      const v = cvt(sessionVolume(sess), sess.unit || "lbs", unit);
+      const wk = weekKey(dateFromKey(d));
       volByWeek[wk] = (volByWeek[wk] || 0) + v;
     }
   }
@@ -8936,7 +8942,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 display:"flex", alignItems:"center", gap:4,
                 background: suggestion.type === "weight" ? `${C.accent}18` : suggestion.type === "deload" ? "#f59e0b18" : `${C.green}18`,
                 border: `1px solid ${suggestion.type === "weight" ? `${C.accent}40` : suggestion.type === "deload" ? "#f59e0b40" : `${C.green}40`}`,
-                color: suggestion.type === "weight" ? C.accent : suggestion.type === "deload" ? "#f59e0b" : C.green,
+                color: suggestion.type === "weight" ? C.accentInk : suggestion.type === "deload" ? "#f59e0b" : C.green,
                 borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:F,
               }}>
               <Icon name={suggestion.type === "weight" ? "trending-up" : suggestion.type === "deload" ? "chevron-left" : "trending-up"} size={10} strokeWidth={2.6}/>
@@ -8944,7 +8950,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
             </button>
           )}
           {!suggestion && prev && (!set.weight || !set.reps) && (
-            <button onClick={() => { onUpdate({weight:prev.w,reps:prev.r}); haptic("tap"); }} style={{ background:`${C.accent}15`, border:`1px solid ${C.accent}30`, color:C.accent, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:F }}>Use last</button>
+            <button onClick={() => { onUpdate({weight:prev.w,reps:prev.r}); haptic("tap"); }} style={{ background:`${C.accent}15`, border:`1px solid ${C.accent}30`, color:C.accentInk, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:F }}>Use last</button>
           )}
           {isDone && set.prTypes?.length > 0 && (
             <div style={{ display:"flex", alignItems:"center", gap:3, fontSize:10, color:C.gold, fontWeight:700, fontFamily:MONO, background:`${C.gold}18`, border:`1px solid ${C.gold}40`, padding:"2px 7px", borderRadius:5 }}>
@@ -10652,7 +10658,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 
         <button onClick={() => setShowExercisePicker(true)} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${C.accent}55`, borderRadius:16, color:INK, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
         <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
-          onSelect={name => addEx(name)} C={C} store={store} token={token}
+          onSelect={name => addEx(name)} C={C} store={store} setStore={onSaveStore} token={token}
           recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
         <button onClick={() => {
           const nd = { id:uid(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
@@ -12773,9 +12779,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         for (const dk of dayKeys) {
           const match = Object.values(store.history[dk] || {}).find(s => s.dayName === session.dayName);
           if (match) {
-            const lastVolLbs = (match.exercises || []).reduce((a, ex) =>
-              a + (ex.sets || []).filter(s => (s.done === true || s.done === undefined) && s.type !== "warmup")
-                .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
+            // sessionVolume() — the same helper totalVol above already goes through — instead of
+            // a hand-rolled filter that counted `done === undefined` as complete. totalVol does
+            // NOT count that (workingDone requires done strictly truthy), so the two sides of
+            // this subtraction used to disagree on what "a completed set" means whenever a
+            // legacy session had sets with no explicit done field.
+            const lastVolLbs = sessionVolume(match);
             // Convert last session's stored volume into the current display unit
             const lastVol = (match.unit || "lbs") === unit ? lastVolLbs
               : cvt(lastVolLbs, match.unit || "lbs", unit);
@@ -12820,7 +12829,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           const histExcludingNow = { ...store, history: store.history };
           const sug = suggestNextSet(histExcludingNow, ex.name, ex.reps, unit, 0);
           if (!sug) return;
-          const doneSets = (ex.sets||[]).filter(s => s.done && s.type !== "warmup");
+          const doneSets = workingDone(ex.sets);
           if (!doneSets.length) return;
           const topWeight = Math.max(...doneSets.map(s => parseFloat(s.weight)||0));
           const topReps = Math.max(...doneSets.filter(s => parseFloat(s.weight) === topWeight).map(s => parseFloat(s.reps)||0));
@@ -14285,7 +14294,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         {reorderMode && session && (
           <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:C.bg, zIndex:300, maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column", paddingTop:"env(safe-area-inset-top)" }}>
             <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>
-              <button onClick={() => setReorderMode(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accent, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
+              <button onClick={() => setReorderMode(false)} style={{ background:"none", border:"none", fontSize:14, fontWeight:600, color:C.accentInk, cursor:"pointer", fontFamily:F, padding:"6px 4px" }}>Done</button>
               <div style={{ fontSize:15, fontWeight:700, color:C.text, letterSpacing:-0.2 }}>Reorder exercises</div>
               <div style={{ width:48 }}/>
             </div>
@@ -14665,7 +14674,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                             display:"flex", alignItems:"center", gap:5, flexShrink:0,
                             background: t.suggestion.type === "weight" ? `${C.accent}15` : t.suggestion.type === "deload" ? "#f59e0b15" : `${C.green}15`,
                             border: `1px solid ${t.suggestion.type === "weight" ? `${C.accent}35` : t.suggestion.type === "deload" ? "#f59e0b35" : `${C.green}35`}`,
-                            color: t.suggestion.type === "weight" ? C.accent : t.suggestion.type === "deload" ? "#f59e0b" : C.green,
+                            color: t.suggestion.type === "weight" ? C.accentInk : t.suggestion.type === "deload" ? "#f59e0b" : C.green,
                             borderRadius:8, padding:"5px 10px",
                           }}>
                             <Icon name={t.suggestion.type === "deload" ? "chevron-left" : "trending-up"} size={11} strokeWidth={2.6}/>
@@ -16537,7 +16546,7 @@ export function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, o
   // Compute stats for one friend from their fetched workout_history rows.
   // friendUnit: the unit the friend tracks in ("lbs" or "kg"). Volume gets
   // converted to the viewer's unit so all rows compare apples-to-apples.
-  function computeFriendStats(rows, prCount, friendUnit = "lbs") {
+  function computeFriendStats(rows, prCount, friendUnit = "lbs", friendWeeklyTarget = 3) {
     const viewerUnit = unit || "lbs";
     const now = Date.now();
     const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
@@ -16560,7 +16569,10 @@ export function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, o
     if (friendUnit !== viewerUnit) {
       volume = cvt(volume, friendUnit, viewerUnit);
     }
-    const ws = calcWeeklyStreak(workoutDates, store.weeklyTarget || 3);
+    // The FRIEND's own weekly target, not the viewer's — a friend genuinely hitting their own
+    // goal (e.g. 2x/week) read as streak-broken here whenever the signed-in viewer's own target
+    // (e.g. 5x/week) was higher, because store.weeklyTarget is always the viewer's.
+    const ws = calcWeeklyStreak(workoutDates, friendWeeklyTarget || 3);
     return { sessions, volume: Math.round(volume), streak: ws.count, prs: prCount ?? 0, loaded:true };
   }
 
@@ -16599,7 +16611,7 @@ export function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, o
             {}, token
           ).catch(() => []),
           sb.query(
-            `public_profiles?id=in.(${idList})&select=id,unit`,
+            `public_profiles?id=in.(${idList})&select=id,unit,weekly_target`,
             {}, token
           ).catch(() => []),
         ]);
@@ -16614,15 +16626,17 @@ export function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, o
         // Count PRs per user
         const prByUser = {};
         (prCounts || []).forEach(p => { prByUser[p.user_id] = (prByUser[p.user_id] || 0) + 1; });
-        // Friend's unit (default lbs)
+        // Friend's unit and weekly target (default lbs / 3)
         const unitByUser = {};
-        (profiles || []).forEach(p => { unitByUser[p.id] = p.unit || "lbs"; });
+        const targetByUser = {};
+        (profiles || []).forEach(p => { unitByUser[p.id] = p.unit || "lbs"; targetByUser[p.id] = p.weekly_target || 3; });
 
-        // Compute stats per friend — convert their volume into viewer's unit
+        // Compute stats per friend — convert their volume into viewer's unit, but score their
+        // streak against THEIR OWN weekly target, not the viewer's.
         const next = {};
         friendIds.forEach(fid => {
           const friendUnit = unitByUser[fid] || "lbs";
-          next[fid] = computeFriendStats(byUser[fid] || [], prByUser[fid] || 0, friendUnit);
+          next[fid] = computeFriendStats(byUser[fid] || [], prByUser[fid] || 0, friendUnit, targetByUser[fid] || 3);
         });
         setFriendStats(prev => ({ ...prev, ...next }));
       } catch (e) {
@@ -20031,6 +20045,13 @@ function AppInner() {
   // what we just read; only a genuine edit afterwards triggers a write. Best-effort; full maps are
   // small, so last-write-wins is correct.
   const lastPrefsSyncRef = useRef(null);
+  // Set the instant a real edit is detected below, read by loadUserData's merge further down.
+  // Without this, a background refresh (foreground reconnect, another loadUserData call) racing
+  // an in-flight PATCH would let the SERVER's still-stale value win — and because it then
+  // rebases lastPrefsSyncRef to that reverted value, the edit looks "already synced" and is
+  // never retried. A 20s grace window covers the 1.5s debounce plus a slow round trip; outside
+  // it, normal server-wins-per-key merging resumes so genuine cross-device sync still works.
+  const lastPrefsEditAtRef = useRef(0);
   useEffect(() => {
     if (!prefsLoadedRef.current || isGuest) return;
     const tok = tokenRef.current || token;
@@ -20039,6 +20060,7 @@ function AppInner() {
     if (lastPrefsSyncRef.current === null) { lastPrefsSyncRef.current = sig; return; } // baseline from the load
     if (sig === lastPrefsSyncRef.current) return; // nothing actually changed
     lastPrefsSyncRef.current = sig;
+    lastPrefsEditAtRef.current = Date.now();
     sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({
       exercise_notes: store.exerciseNotes || {},
       bar_types: store.barTypes || {},
@@ -20449,14 +20471,28 @@ function AppInner() {
         // particular would quietly change warmup/plate math. Server wins per key; keep any local
         // keys the server lacks (e.g. an offline edit not yet synced). Skip the local merge on a
         // user switch so one account's settings can't leak into another's.
-        exerciseNotes: { ...((prev.currentUserId === currentUserId) ? (prev.exerciseNotes || {}) : {}), ...(me?.exercise_notes || {}) },
-        // Private per-workout notes (profiles.workout_notes is owner-only; not in public_profiles).
-        // Merge local-unsynced over the server copy, but drop a previous user's notes on account switch.
-        workoutNotes: { ...((prev.currentUserId === currentUserId) ? (prev.workoutNotes || {}) : {}), ...(me?.workout_notes || {}) },
-        barTypes: { ...((prev.currentUserId === currentUserId) ? (prev.barTypes || {}) : {}), ...(me?.bar_types || {}) },
-        closeFriends: (Array.isArray(me?.close_friends) && me.close_friends.length)
-          ? me.close_friends
-          : ((prev.currentUserId === currentUserId) ? (prev.closeFriends || []) : []),
+        // sameUser && recently-edited: trust the LOCAL copy outright and don't merge the server's
+        // in at all — see lastPrefsEditAtRef above for why (a race here silently reverted an edit
+        // and made it un-retryable).
+        ...(() => {
+          const sameUser = prev.currentUserId === currentUserId;
+          const recent = sameUser && (Date.now() - lastPrefsEditAtRef.current < 20000);
+          if (recent) return {
+            exerciseNotes: prev.exerciseNotes || {},
+            workoutNotes: prev.workoutNotes || {},
+            barTypes: prev.barTypes || {},
+            closeFriends: prev.closeFriends || [],
+          };
+          return {
+            exerciseNotes: { ...(sameUser ? (prev.exerciseNotes || {}) : {}), ...(me?.exercise_notes || {}) },
+            // Private per-workout notes (profiles.workout_notes is owner-only; not in public_profiles).
+            workoutNotes: { ...(sameUser ? (prev.workoutNotes || {}) : {}), ...(me?.workout_notes || {}) },
+            barTypes: { ...(sameUser ? (prev.barTypes || {}) : {}), ...(me?.bar_types || {}) },
+            closeFriends: (Array.isArray(me?.close_friends) && me.close_friends.length)
+              ? me.close_friends
+              : (sameUser ? (prev.closeFriends || []) : []),
+          };
+        })(),
         // Insight dismissals persist server-side (profiles.dismissed_insights) so they
         // survive re-login and new devices. Union with whatever is on-device.
         dismissedInsights: Array.from(new Set([
@@ -21031,7 +21067,12 @@ function AppInner() {
       } else if (groupImageFailures > 0) {
         toast("Posted, but the photo didn't reach your group" + (groupImageFailures > 1 ? "s" : ""), "error");
       }
-    } catch (e) { devError("post error:", e); toast("Couldn't save post", "error"); }
+      // Return value is opt-in: existing callers that don't check it behave exactly as before
+      // (this used to resolve to undefined on every path either way). A caller that DOES need to
+      // know whether it's safe to show its own success feedback now can await and check it,
+      // instead of toasting success unconditionally before the write is even attempted.
+      return true;
+    } catch (e) { devError("post error:", e); toast("Couldn't save post", "error"); return false; }
   }
 
   const kudosInFlightRef = useRef({});

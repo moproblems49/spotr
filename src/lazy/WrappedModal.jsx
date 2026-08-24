@@ -302,9 +302,14 @@ export default function WrappedModal({ store, C, onClose, onPostToFeed, range })
               if (!onPostToFeed) return;
               const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta, bodyMapData });
               const imageData = await svgToDataURL(wrapStorySVG(svg), 1080, 1920);
-              onPostToFeed({ type: "story", caption: "", imageData });
-              toast("Posted to your story", "success");
-              onClose();
+              // Awaited now, and only toasts success if the write actually landed — this used to
+              // toast "Posted!" and close immediately, before the (async, network) write even
+              // started, so a failure showed a confident success toast followed moments later by
+              // handleNewPost's own "Couldn't save post" with no context tying the two together.
+              const ok = await onPostToFeed({ type: "story", caption: "", imageData });
+              if (ok) { toast("Posted to your story", "success"); onClose(); }
+              // On failure, handleNewPost already showed its own error toast — don't stack a
+              // second, and leave the sheet open so the user can see what happened and retry.
             } catch (err) {
               toast("Couldn't post story", "error");
             } finally {
@@ -316,27 +321,35 @@ export default function WrappedModal({ store, C, onClose, onPostToFeed, range })
             cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2
           }}>Share to Story</button>
           {onPostToFeed && (
-            <button onClick={() => {
-              const { region, max } = weeklyMuscleVolume(store, 7);
-              onPostToFeed({
-                type: "achievement",
-                caption: "",
-                achievement: {
-                  type: "wrapped",
-                  workouts,
-                  volume: Math.round(volume),
-                  weekPRs,
-                  streak,
-                  unit,
-                  sex,
-                  muscles: region,
-                  muscleMax: max,
-                  volDeltaPct,
-                  woDelta,
-                },
-              });
-              toast("Posted to your feed", "success");
-              onClose();
+            <button onClick={async (e) => {
+              if (e.currentTarget.dataset.posting === "1") return;
+              e.currentTarget.dataset.posting = "1";
+              const btn = e.currentTarget;
+              try {
+                const { region, max } = weeklyMuscleVolume(store, 7);
+                const ok = await onPostToFeed({
+                  type: "achievement",
+                  caption: "",
+                  achievement: {
+                    type: "wrapped",
+                    workouts,
+                    volume: Math.round(volume),
+                    weekPRs,
+                    streak,
+                    unit,
+                    sex,
+                    muscles: region,
+                    muscleMax: max,
+                    volDeltaPct,
+                    woDelta,
+                  },
+                });
+                // Same fix as Share to Story above: only claim success once the write actually
+                // landed. handleNewPost already toasts its own failure, so nothing to add here.
+                if (ok) { toast("Posted to your feed", "success"); onClose(); }
+              } finally {
+                btn && (btn.dataset.posting = "0");
+              }
             }} style={{
               width:"100%", background:"rgba(255,255,255,0.08)", color:"#fff",
               border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"13px",

@@ -256,15 +256,23 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
                             <button onClick={() => setEditingPost(null)} style={{ padding:"7px 14px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, fontSize:12, fontWeight:600, color:C.text, cursor:"pointer", fontFamily:F }}>Cancel</button>
                             <button onClick={async () => {
                               const t = editText.trim();
+                              const prevCaption = post.caption;
                               setEditingPost(null);
-                              if (t === (post.caption || "").trim() || !token) return;
+                              if (t === (prevCaption || "").trim() || !token) return;
                               setPosts(p => p.map(x => x.id === post.id ? { ...x, caption: t } : x));
                               try {
-                                await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
+                                const res = await fetch(`${SUPABASE_URL}/rest/v1/group_posts?id=eq.${post.id}`, {
                                   method:"PATCH", headers:{ "apikey":SUPABASE_KEY, "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
                                   body: JSON.stringify({ caption: t })
                                 });
-                              } catch (e) { toast("Couldn't save edit — check connection", "error"); }
+                                // A bare fetch resolves on 4xx/5xx — unlike a thrown transport error,
+                                // this used to sail past the catch below and leave the optimistic
+                                // caption showing as saved when the server never actually took it.
+                                if (!res.ok) throw new Error(`caption edit failed (${res.status})`);
+                              } catch (e) {
+                                setPosts(p => p.map(x => x.id === post.id ? { ...x, caption: prevCaption } : x));
+                                toast("Couldn't save edit — check connection", "error");
+                              }
                             }} style={{ padding:"7px 14px", background:C.primary, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:C.onPrimary, cursor:"pointer", fontFamily:F }}>Save</button>
                           </div>
                         </div>
