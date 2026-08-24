@@ -22099,7 +22099,12 @@ function AppInner() {
                       </div>
                     </div>
                   ) : isGuest ? (
-                    <div style={{ textAlign:"center", padding:"60px 24px", color:C.sub }}>
+                    // 22vh top padding, not the usual 60px: this is the only thing on the screen
+                    // below the story row for a cold-start guest, and pinning it right under the
+                    // stories left most of the screen empty underneath — a plain padding nudge
+                    // rather than flex centering, since this sits inside PullToRefresh's
+                    // ref-driven pullContentRef wrapper and shouldn't have its layout disturbed.
+                    <div style={{ textAlign:"center", padding:"22vh 24px 40px", color:C.sub }}>
                       <div style={{
                         width:80, height:80, borderRadius:24,
                         background:`linear-gradient(135deg,${C.accent}26,${C.accent}0d)`,

@@ -122,7 +122,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
   }
 
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+    <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE, display:"flex", flexDirection:"column" }}>
       {/* Search bar */}
       <div style={{ padding:"14px 16px 10px", position:"relative" }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:30, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
@@ -207,7 +207,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
 
       {/* Default discover view */}
       {!showResults && (
-        <div style={{ padding:"4px 16px 0" }}>
+        <div style={{ padding:"4px 16px 0", flex:1, display:"flex", flexDirection:"column" }}>
           {/* Quick access cards */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
             {/* The accent ring + lift that Quick Start uses, at HALF strength. These are the two
@@ -448,8 +448,12 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
             // button, so tapping it actually does something rather than just restating "share
             // your profile" as a sentence with no button behind it.
             if (!suggested.length) return (
-              <div style={{ padding:"18px 2px 8px" }}>
-                <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:12 }}>
+              // Centered in whatever room is left below the cards/leaderboard, instead of sitting
+              // pinned under them with the rest of the screen just empty — this is the ONLY thing
+              // on the screen at this point for a cold-start guest, so it should read as the
+              // screen's content, not as a caption trailing off above dead space.
+              <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", textAlign:"center", padding:"18px 24px 8px" }}>
+                <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:12, maxWidth:280 }}>
                   No one to suggest yet — search for friends above, or share your profile so they can find you.
                 </div>
                 <button onClick={() => {
