@@ -112,7 +112,13 @@ check("it counts toward History's TOTAL workouts", /1 TOTAL/.test(hist2), hist2.
 check("it counts toward LIFETIME volume", forms(WORKING).test(hist2), hist2.slice(0, 240));
 check("it counts toward the weekly volume chart", forms(WORKING).test(hist2), hist2.slice(0, 260));
 check("it sets a PERSONAL RECORD", /PERSONAL RECORDS[\s\S]*Barbell Back Squat/.test(hist2), hist2.slice(0, 320));
-check("it counts toward Most Trained muscles", /MOST TRAINED[\s\S]*Quads/.test(hist2), hist2.slice(0, 300));
+// There is no "Most Trained" section on History — the only "most trained" text in the app is the
+// lowercase caption on the Feed's dismissible LAST WEEK recap card (App.jsx ~22967), which is
+// gated to workouts strictly inside the PRIOR Mon-Sun window (weeklyRecap, App.jsx ~19892). ROW is
+// dated today (this week), so that card can never render for it, on top of the check's own
+// case/screen mismatch (uppercase "MOST TRAINED" vs the real lowercase text). The property this
+// was trying to test — an unposted workout still moves per-muscle derived stats — is already
+// covered above by the (not week-scoped) Muscle Balance check on Profile.
 
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
