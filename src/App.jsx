@@ -1,4 +1,4 @@
-// v178091716912
+// v178091716913
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -496,7 +496,7 @@ const sb = (() => {
     return data;
   }
 
-  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth, signInWithApple, recover, updatePassword };
+  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth, signInWithApple, recover, updatePassword, WRITE_QUEUE_CAP };
 })();
 
 // Upload image to Supabase Storage, return public URL
@@ -10340,7 +10340,7 @@ function SortableEditorCard({ id, CARD, BORD, isDark, children }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // PROGRAM DETAIL VIEW
 // ═════════════════════════════════════════════════════════════════════════════
-function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, onProgramEdited, startWorkout, initialDayIdx = 0, token }) {
+function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgram, onSaveStore, onProgramEdited, startWorkout, initialDayIdx = 0, token, currentUserId }) {
   const [localProg, setLocalProg] = useState(() => JSON.parse(JSON.stringify(prog)));
   const [editorReorder, setEditorReorder] = useState(false);
   const editorSensors = useSensors(
@@ -10658,7 +10658,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
 
         <button onClick={() => setShowExercisePicker(true)} style={{ width:"100%", marginTop:4, padding:"15px", background:isDark?"#141414":"#fff", border:`1.5px dashed ${C.accent}55`, borderRadius:16, color:INK, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F }}>+ Add Exercise</button>
         <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
-          onSelect={name => addEx(name)} C={C} store={store} setStore={onSaveStore} token={token}
+          onSelect={name => addEx(name)} C={C} store={store} setStore={onSaveStore} token={token} currentUserId={currentUserId}
           recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
         <button onClick={() => {
           const nd = { id:uid(), name:`Day ${(localProg.days||[]).length+1}`, exercises:[] };
@@ -11618,12 +11618,17 @@ function AppVersionRow({ C }) {
 function HealthConnectRow({ C, setStore }) {
   const [checking, setChecking] = useState(false);
   const [note, setNote] = useState("");
+  // Settings' content fully unmounts (not just hides) when the sheet closes, so a slow request
+  // outliving a navigation-away must not touch state on an unmounted component.
+  const cancelledRef = useRef(false);
+  useEffect(() => () => { cancelledRef.current = true; }, []);
   if (!healthKitAvailable()) return null; // nothing to connect on web or a non-native shell
 
   async function reconnect() {
     setChecking(true); setNote("");
     try {
       const res = await requestHealthPermission();
+      if (cancelledRef.current) return;
       if (!res.ok) {
         setNote(
           res.reason === "not_native" ? "HealthKit isn't available here — this only works in the installed app, not a browser."
@@ -11632,6 +11637,7 @@ function HealthConnectRow({ C, setStore }) {
         return;
       }
       const [rec, act, actHourly] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity()]);
+      if (cancelledRef.current) return;
       if (rec || act || actHourly) {
         setStore(p => ({
           ...p, recovery: rec || p.recovery, activity: act || p.activity,
@@ -11647,8 +11653,8 @@ function HealthConnectRow({ C, setStore }) {
         ? "Connected — recovery data updated."
         : "Requested access. If a permission prompt appeared, allow it there; otherwise check Settings → Privacy & Security → Health → Seshd.");
     } catch (e) {
-      setNote("Couldn't reach HealthKit — try again.");
-    } finally { setChecking(false); }
+      if (!cancelledRef.current) setNote("Couldn't reach HealthKit — try again.");
+    } finally { if (!cancelledRef.current) setChecking(false); }
   }
 
   return (
@@ -11732,6 +11738,12 @@ export function NoteField({ value, onChange, placeholder, style }) {
 // for the session without touching the (fragile) swipe track's mounting.
 let _trackerSubTab = "workout";
 let _discoverSubTab = "discover";
+// Set the instant a locally-owned profile setting is edited (exercise/workout notes, bar-type
+// overrides, Close Friends, weekly target, the public-profile toggle) — read by loadUserData's
+// merge to avoid a background refresh racing an in-flight write and silently reverting it. Module-
+// level because the edits happen in ProfileScreen but the merge that must see them lives in
+// AppInner, a different component in the same file — same pattern as the sub-tab memory above.
+let _lastSettingsEditAt = 0;
 // ESM import bindings are read-only from the importing side even when the source `let` is
 // mutable — DiscoverScreen (src/lazy/DiscoverScreen.jsx) needs to both read AND write this
 // module-level value (that's the whole point of it — see the note above), so it goes through
@@ -14797,6 +14809,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             onSaveStore={setStore}
             onProgramEdited={onProgramEdited}
             token={token}
+            currentUserId={currentUserId}
             startWorkout={(day, progId) => {
               setPreviewDay({ day, programName: prog.name, progId });
             }}
@@ -18089,6 +18102,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       return (
                         <button key={label} onClick={async () => {
                           setStore(p => ({ ...p, isPublic: val }));
+                          _lastSettingsEditAt = Date.now();
                           const tok = token || loadSession()?.access_token;
                           if (tok) {
                             try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
@@ -18156,6 +18170,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     {[2, 3, 4, 5].map(n => (
                       <button key={n} onClick={async () => {
                         setStore(p => ({ ...p, weeklyTarget: n }));
+                        _lastSettingsEditAt = Date.now();
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
                           try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n }) }, tok); }
@@ -20045,13 +20060,14 @@ function AppInner() {
   // what we just read; only a genuine edit afterwards triggers a write. Best-effort; full maps are
   // small, so last-write-wins is correct.
   const lastPrefsSyncRef = useRef(null);
-  // Set the instant a real edit is detected below, read by loadUserData's merge further down.
-  // Without this, a background refresh (foreground reconnect, another loadUserData call) racing
-  // an in-flight PATCH would let the SERVER's still-stale value win — and because it then
-  // rebases lastPrefsSyncRef to that reverted value, the edit looks "already synced" and is
-  // never retried. A 20s grace window covers the 1.5s debounce plus a slow round trip; outside
-  // it, normal server-wins-per-key merging resumes so genuine cross-device sync still works.
-  const lastPrefsEditAtRef = useRef(0);
+  // _lastSettingsEditAt (module-level, near _trackerSubTab) is set the instant a real edit is
+  // detected below, read by loadUserData's merge further down AND by the isPublic/weeklyTarget
+  // toggles in ProfileScreen. Without this, a background refresh (foreground reconnect, another
+  // loadUserData call) racing an in-flight PATCH would let the SERVER's still-stale value win —
+  // and because it then rebases lastPrefsSyncRef to that reverted value, the edit looks
+  // "already synced" and is never retried. A 20s grace window covers the 1.5s debounce plus a
+  // slow round trip; outside it, normal server-wins-per-key merging resumes so genuine
+  // cross-device sync still works.
   useEffect(() => {
     if (!prefsLoadedRef.current || isGuest) return;
     const tok = tokenRef.current || token;
@@ -20060,7 +20076,7 @@ function AppInner() {
     if (lastPrefsSyncRef.current === null) { lastPrefsSyncRef.current = sig; return; } // baseline from the load
     if (sig === lastPrefsSyncRef.current) return; // nothing actually changed
     lastPrefsSyncRef.current = sig;
-    lastPrefsEditAtRef.current = Date.now();
+    _lastSettingsEditAt = Date.now();
     sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({
       exercise_notes: store.exerciseNotes || {},
       bar_types: store.barTypes || {},
@@ -20436,12 +20452,6 @@ function AppInner() {
         defaultRestTime: me?.default_rest_time || 120,
         seenOnboarding: me?.seen_onboarding === true,
         notificationPrefs: { messages: true, kudos: true, comments: true, follows: true, ...(me?.notification_prefs || {}) },
-        // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back
-        // to the on-device value, then the default. Persisted to profiles.weekly_target.
-        weeklyTarget: (me?.weekly_target != null ? me.weekly_target : (prev.weeklyTarget || 3)),
-        // Public-profile opt-in (controls whether the public share page shows anything).
-        // Defaults to private (false) until the user turns it on in Settings.
-        isPublic: me?.is_public === true,
         // Body tracking + onboarding answers + strength sex persist server-side
         // (profiles.body_log / onboarding_answers / strength_sex) so they survive re-login and
         // new devices. Prefer the server copy, fall back to whatever's on-device.
@@ -20472,18 +20482,27 @@ function AppInner() {
         // keys the server lacks (e.g. an offline edit not yet synced). Skip the local merge on a
         // user switch so one account's settings can't leak into another's.
         // sameUser && recently-edited: trust the LOCAL copy outright and don't merge the server's
-        // in at all — see lastPrefsEditAtRef above for why (a race here silently reverted an edit
-        // and made it un-retryable).
+        // in at all — see _lastSettingsEditAt above for why (a race here silently reverted an
+        // edit and made it un-retryable). weeklyTarget/isPublic have the identical "optimistic
+        // setStore + immediate queueWrite, no debounce" shape as the other four fields here and
+        // were found to have the exact same unprotected race in an audit of this fix itself.
         ...(() => {
           const sameUser = prev.currentUserId === currentUserId;
-          const recent = sameUser && (Date.now() - lastPrefsEditAtRef.current < 20000);
+          const recent = sameUser && (Date.now() - _lastSettingsEditAt < 20000);
           if (recent) return {
             exerciseNotes: prev.exerciseNotes || {},
             workoutNotes: prev.workoutNotes || {},
             barTypes: prev.barTypes || {},
             closeFriends: prev.closeFriends || [],
+            weeklyTarget: prev.weeklyTarget || 3,
+            isPublic: prev.isPublic === true,
           };
           return {
+            // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back
+            // to the on-device value, then the default. Persisted to profiles.weekly_target.
+            weeklyTarget: (me?.weekly_target != null ? me.weekly_target : (sameUser ? (prev.weeklyTarget || 3) : 3)),
+            // Public-profile opt-in. Defaults to private (false) until the user turns it on.
+            isPublic: me?.is_public === true,
             exerciseNotes: { ...(sameUser ? (prev.exerciseNotes || {}) : {}), ...(me?.exercise_notes || {}) },
             // Private per-workout notes (profiles.workout_notes is owner-only; not in public_profiles).
             workoutNotes: { ...(sameUser ? (prev.workoutNotes || {}) : {}), ...(me?.workout_notes || {}) },
@@ -21005,7 +21024,10 @@ function AppInner() {
         } else {
           toast(`Shared to ${groupIds.length} group${groupIds.length>1?"s":""}`, "success");
         }
-        return;
+        // Same true/false contract as the main return below — this path used to always resolve
+        // undefined regardless of outcome, which is falsy and would read as "failed" to any
+        // caller that awaits and checks it, even on a full success.
+        return succeeded > 0;
       }
 
       const nowIso = new Date().toISOString();
@@ -21567,7 +21589,11 @@ function AppInner() {
       const body = JSON.stringify({ name: prog.name, days: prog.days });
       if (idx >= 0) q[idx] = { ...q[idx], body, ts: Date.now() };
       else q.push({ path, method: "PATCH", body, headers_extra: null, ts: Date.now() });
-      localStorage.setItem("seshd_write_queue", JSON.stringify(q));
+      // Same cap sb.queueWrite's own writeQueue() enforces — writing straight to localStorage
+      // here without it let the combined queue grow unbounded, so the NEXT offline write routed
+      // through sb.queueWrite would silently trim the OLDEST entries down to 200, which might not
+      // be this one (an audit of this exact fix found the gap).
+      localStorage.setItem("seshd_write_queue", JSON.stringify(q.slice(-sb.WRITE_QUEUE_CAP)));
     } catch (e) {}
   }
   function unqueueProgramWrite(prog) {

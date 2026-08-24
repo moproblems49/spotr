@@ -348,7 +348,14 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
                 <input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} name={`r-${ei}-${si}`} data-1p-ignore data-lpignore="true" data-form-type="other" enterKeyHint="done" value={s.reps || ""} onFocus={e => e.target.select()} onChange={e => updateSet(ei, si, { reps: e.target.value.replace(/[^0-9]/g, "") })}
                   style={{ width:"100%", background:C.bg, border:`1.5px solid ${C.divider}`, borderRadius:8, padding:"7px 8px", fontSize:14, fontWeight:700, color:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box" }}
                 />
-                <button onClick={() => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: x.sets.filter((_, j) => j !== si) }))} aria-label="Delete set" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:0 }}>×</button>
+                <button onClick={() => {
+                  const removeNow = () => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: x.sets.filter((_, j) => j !== si) }));
+                  // Same "only confirm when there's real data at risk" rule the live workout's own
+                  // remove buttons use — a blank/never-filled row doesn't need a prompt.
+                  if (s.weight || s.reps) {
+                    confirmAction({ title:"Delete this set?", message:"This removes it from the workout. Tap Save afterward to make it permanent.", confirmLabel:"Delete", destructive:true, onConfirm:removeNow });
+                  } else { removeNow(); }
+                }} aria-label="Delete set" style={{ background:"none", border:"none", color:C.sub, fontSize:18, cursor:"pointer", padding:0 }}>×</button>
               </div>
             ))}
             <button onClick={() => setExercises(p => p.map((x, i) => i !== ei ? x : { ...x, sets: [...x.sets, { id: uid(), weight: "", reps: "", done: true, type: "normal" }] }))}
