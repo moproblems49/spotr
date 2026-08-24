@@ -1,4 +1,4 @@
-// v178091716920
+// v178091716921
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13807,7 +13807,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             );
           })}
 
-          <button onClick={() => setShowExercisePicker(true)} style={{
+          <button onClick={() => {
+            // Fill an existing blank row (Quick Start seeds one) instead of appending beside it —
+            // a new user has no obvious reason to know that ghost "Search exercises..." row above
+            // needs deleting rather than just leaving alone once a real exercise is added.
+            const blankIdx = session.exercises.findIndex(x => !x.name);
+            setShowExercisePicker(blankIdx !== -1 ? blankIdx : true);
+          }} style={{
             width:"calc(100% - 28px)", margin:"14px 14px 0", padding:"13px",
             background:C.bg, border:`1px solid ${C.border}`,
             borderRadius:16, fontSize:13, color:C.text, fontWeight:700, cursor:"pointer", fontFamily:F
@@ -14183,7 +14189,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })()}
               </div>
-              <div style={{ padding:"12px 18px 32px", display:"flex", flexDirection:"column", gap:8 }}>
+              {/* Bottom padding cleared to 160px, not the usual 32: the "Workout saved"/"Workout
+                  posted" toast fires the instant this sheet opens and floats fixed at bottom:90
+                  (ToastHost), so a short bottom pad left it sitting right on top of "Don't share"
+                  and "Undo finish & edit" below it — 110px cleared the first but not the second. */}
+              <div style={{ padding:"12px 18px 160px", display:"flex", flexDirection:"column", gap:8 }}>
                 {(() => {
                   const selectedGroups = workoutSummary.shareToGroups || [];
                   const hasGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0;
