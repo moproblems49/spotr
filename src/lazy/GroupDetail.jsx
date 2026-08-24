@@ -512,7 +512,7 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
 
       {/* Post options sheet: edit caption / confirm-then-delete */}
       <Sheet open={!!postMenu} onClose={() => setPostMenu(null)} z={600} backdrop="rgba(0,0,0,0.55)"
-        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"10px 14px calc(env(safe-area-inset-bottom) + 14px)", fontFamily:F }}>
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`, padding:"10px 14px calc(env(safe-area-inset-bottom) + 14px)", fontFamily:F }}>
         {postMenu && (
           <>
             <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 12px" }}/>

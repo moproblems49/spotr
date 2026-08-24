@@ -1,4 +1,4 @@
-// v178091716914
+// v178091716915
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2093,7 +2093,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 );
               })()}
               <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000}
-                panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0",
+                panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`,
                   maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
                   overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
                   padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
@@ -2365,7 +2365,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
       )}
       </div>
       <Sheet open={!!selectedRegion} onClose={() => setSelectedRegion(null)} z={3000}
-        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`, padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
       {selectedRegion && (() => {
         const { key, region: regionName } = selectedRegion;
         const label = _regionLabel(key);
@@ -13068,7 +13068,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
         <Sheet open={swapEx != null && !!session.exercises[swapEx]} onClose={() => setSwapEx(null)} z={480}
           backdrop="rgba(0,0,0,0.55)"
-          panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
+          panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, borderTop:`1px solid ${C.border}`, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
         {swapEx != null && session.exercises[swapEx] && (() => {
           const cur = session.exercises[swapEx];
           const subs = suggestExerciseSubstitutes(cur.name, 10);
@@ -17978,7 +17978,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
 
       {/* Feedback modal — portaled for the same reason as above. */}
       <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000}
-        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`, padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
         {showFeedback && (
           <>
             <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>Send feedback</div>
@@ -18982,7 +18982,7 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
   };
   return (
     <Sheet open={!!open} onClose={onClose} z={500}
-      panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+      panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, borderTop:`1px solid ${C.border}`, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>Weekly Review</div>
