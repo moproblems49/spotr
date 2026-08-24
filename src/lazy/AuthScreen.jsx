@@ -7,7 +7,7 @@ import {
   SUPABASE_URL, SUPABASE_KEY, useSwipeDismiss, blurIfTextInput,
 } from "../App.jsx";
 
-export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null }) {
+export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null, theme = "light" }) {
   const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup" | "reset"
   // Remember me: pre-fill the last email used to sign in. The session itself already persists
   // (Keychain), so this just saves re-typing the address on the sign-in screen.
@@ -74,7 +74,12 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
                   name: name || uname,
                   bio: "",
                   unit: "lbs",
-                  theme: "dark",
+                  // Carries forward whatever the guest session already has (system-preference
+                  // default from loadStore, or a manual toggle) instead of hardcoding one value —
+                  // this used to always write "dark" regardless, so an OS-light user who'd just
+                  // been shown a light-themed guest session got yanked into dark the instant they
+                  // signed up, once loadUserData re-reads `theme` from this same row.
+                  theme,
                   is_public: true,
                   email: email,
                   seen_onboarding: false,

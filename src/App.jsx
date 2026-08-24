@@ -1,4 +1,4 @@
-// v178091716923
+// v178091716924
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13814,8 +13814,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           <button onClick={() => {
             // Fill an existing blank row (Quick Start seeds one) instead of appending beside it —
             // a new user has no obvious reason to know that ghost "Search exercises..." row above
-            // needs deleting rather than just leaving alone once a real exercise is added.
-            const blankIdx = session.exercises.findIndex(x => !x.name);
+            // needs deleting rather than just leaving alone once a real exercise is added. Must
+            // also require !hadName: a row whose name was CLEARED (not a fresh Quick-Start blank)
+            // keeps hadName:true and its real logged sets on screen (see the showNameInput comment
+            // above) — matching it here would rename a different exercise's already-logged sets
+            // onto whatever gets picked, silently reattaching real volume/PRs to the wrong lift.
+            const blankIdx = session.exercises.findIndex(x => !x.name && !x.hadName);
             setShowExercisePicker(blankIdx !== -1 ? blankIdx : true);
           }} style={{
             width:"calc(100% - 28px)", margin:"14px 14px 0", padding:"13px",
@@ -21282,6 +21286,7 @@ function AppInner() {
         setTab("tracker"); // drop them right into tracker
       }}
       C={C}
+      theme={store.theme || "light"}
     /></Suspense>;
   }
 
@@ -21295,6 +21300,7 @@ function AppInner() {
       }}
       onGuest={() => setAuthPrompt(null)}
       C={C}
+      theme={store.theme || "light"}
       initialMode="signup"
       promptReason={authPrompt.reason}
     /></Suspense>;
