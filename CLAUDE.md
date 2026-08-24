@@ -85,10 +85,13 @@ with `SET LOCAL ROLE`/`request.jwt.claims` role-sims; direct HTTPS to supabase.c
 sandbox network policy (use MCP, not curl). Vercel note: pushes to main DO deploy — a "404" on a
 policy page turned out to be pure browser cache (incognito confirmed live), don't chase deploy ghosts.
 
-**Audits run on Opus 5, not Fable** (Mo, Aug 3). Fable ran out of usage credits three times
-mid-audit and produced nothing each time. Cold-context Opus agents have found real bugs all the way
-through — including two fixes that shipped inert and a ReferenceError that broke sharing — so the
-independence that matters in practice is a FRESH CONTEXT, not a different model.
+**Fable 5 is back in rotation for audits and complicated work** (Mo, Aug 24) — the Aug 3 credit
+issue (three mid-audit run-outs, produced nothing each time) is resolved. Cold-context Opus agents
+had found real bugs all the way through in the interim — including two fixes that shipped inert and
+a ReferenceError that broke sharing — which is the reminder that the independence that matters in
+practice is a FRESH CONTEXT, not which model runs it. Use either; if a Fable-run audit round comes
+back empty or a run visibly fails partway through, say so plainly rather than reporting a clean
+pass, and fall back to Opus for that round.
 
 ## Verification methodology (how we catch regressions)
 **Run the whole battery with one command: `node build/run_sims.mjs`** (49 sims, ~90s — count grows as
