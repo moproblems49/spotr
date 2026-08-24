@@ -83,11 +83,14 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
               // upsertProfile()'s own fetch() can REJECT (a thrown transport error — the actual
               // "mobile connection hiccup" scenario this retry exists for), not just resolve with
               // a bad status. The first cut only retried on !res.ok, so a rejected first attempt
-              // skipped straight past the retry into the outer catch — covered here too.
-              const attempt = async () => { try { return await upsertProfile(); } catch { return null; } };
+              // skipped straight past the retry into the outer catch — covered here too. Keeps
+              // the last thrown error (not just swallowing it to null) so a genuine network
+              // failure still logs its real message instead of a bare "network error".
+              let lastNetErr = null;
+              const attempt = async () => { try { return await upsertProfile(); } catch (netErr) { lastNetErr = netErr; return null; } };
               let res = await attempt();
               if (!res || !res.ok) res = await attempt();
-              if (!res || !res.ok) devWarn("profile upsert failed twice:", res ? res.status : "network error", res ? await res.text().catch(() => "") : "");
+              if (!res || !res.ok) devWarn("profile upsert failed twice:", res ? res.status : (lastNetErr?.message || "network error"), res ? await res.text().catch(() => "") : "");
             }
           } catch (profErr) { devWarn("profile upsert:", profErr); }
           track("signup_completed");

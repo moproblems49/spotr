@@ -1,4 +1,4 @@
-// v178091716913
+// v178091716914
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11618,26 +11618,31 @@ function AppVersionRow({ C }) {
 function HealthConnectRow({ C, setStore }) {
   const [checking, setChecking] = useState(false);
   const [note, setNote] = useState("");
-  // Settings' content fully unmounts (not just hides) when the sheet closes, so a slow request
-  // outliving a navigation-away must not touch state on an unmounted component.
+  // Guards the row's OWN local state only (setChecking/setNote) — Settings' content fully
+  // unmounts when the sheet closes, so a slow request outliving a navigation-away must not touch
+  // state on an unmounted component. Deliberately does NOT guard the setStore call below: that
+  // write belongs to AppInner, which stays mounted regardless of this row, and the fetched
+  // recovery/activity data is real and still worth keeping even if the user has moved on — an
+  // earlier draft of this guard threw that data away instead of just skipping the local UI update.
+  // Reset on mount, not just cleared on unmount: without it, React StrictMode's dev double-invoke
+  // (mount → cleanup → re-run on the SAME ref) would latch this true forever and make the row
+  // permanently stuck at "connecting…".
   const cancelledRef = useRef(false);
-  useEffect(() => () => { cancelledRef.current = true; }, []);
+  useEffect(() => { cancelledRef.current = false; return () => { cancelledRef.current = true; }; }, []);
   if (!healthKitAvailable()) return null; // nothing to connect on web or a non-native shell
 
   async function reconnect() {
     setChecking(true); setNote("");
     try {
       const res = await requestHealthPermission();
-      if (cancelledRef.current) return;
       if (!res.ok) {
-        setNote(
+        if (!cancelledRef.current) setNote(
           res.reason === "not_native" ? "HealthKit isn't available here — this only works in the installed app, not a browser."
           : `Couldn't request access: ${res.reason}`
         );
         return;
       }
       const [rec, act, actHourly] = await Promise.all([readRecovery(), readTodayActivity(), readHourlyActivity()]);
-      if (cancelledRef.current) return;
       if (rec || act || actHourly) {
         setStore(p => ({
           ...p, recovery: rec || p.recovery, activity: act || p.activity,
@@ -11646,6 +11651,7 @@ function HealthConnectRow({ C, setStore }) {
           activityHourlyDate: (actHourly && actHourly.date) || p.activityHourlyDate,
         }));
       }
+      if (cancelledRef.current) return;
       // Apple never tells an app whether a read type was actually granted, so `rec` coming back
       // is the only honest positive signal — its absence just as plausibly means "allowed but
       // nothing recorded yet" as "denied," so the note below says exactly that rather than guessing.
