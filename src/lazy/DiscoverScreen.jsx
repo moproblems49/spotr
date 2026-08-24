@@ -694,7 +694,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
             />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={() => setShowCreate(false)} style={{ flex:1, padding:"11px", background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, cursor:"pointer", fontFamily:F }}>Cancel</button>
-              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.primary, border:"none", borRadius:8, borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
+              <button onClick={createGroup} style={{ flex:1, padding:"11px", background:C.primary, border:"none", borderRadius:8, color:C.onPrimary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Create</button>
             </div>
           </>
         )}

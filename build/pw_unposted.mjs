@@ -80,7 +80,7 @@ await page.screenshot({ path: "build/shot_unposted_profile.png", fullPage: true 
 console.log("PROFILE:", prof.slice(0, 300));
 check("it DOES appear on your own profile", /Unposted Leg Day/.test(prof), prof.slice(0, 300));
 check("the profile's Workouts count includes it (not 0)",
-  !/\b0 Workouts\b/.test(prof) && /1 Workout\b|1 Workouts\b/.test(prof.replace(/(\d+)\s+(Workouts?)/g, "$1 $2")) || /Workout/.test(prof),
+  !/\b0 Workouts?\b/.test(prof) && /\b1 Workouts?\b/.test(prof),
   prof.slice(0, 200));
 
 // The app abbreviates volume with fmtVol: >=1000 becomes "3.9k". Match its own output, plus the
@@ -102,7 +102,11 @@ check("it counts toward the profile's Workouts number", /\b1 Workout\b/.test(pro
 check("it counts toward Muscle Balance (3 working sets, warmups excluded)",
   /3 sets · last 30d/.test(prof), prof.slice(0, 300));
 check("it counts toward the weekly streak badge", /1\/3/.test(prof), prof.slice(0, 160));
-check("it drains Body Battery (training load registered)", /training/.test(prof), prof.slice(0, 400));
+// Not a bare /training/ — that also matches Muscle Balance's EMPTY-state copy ("...how your
+// training splits across muscle groups"), so it could pass even with no training load registered.
+// The specific "−N training" fragment (App.jsx's Body Battery breakdown, `bb.workoutDrain`) only
+// renders when a workout has actually drained the battery.
+check("it drains Body Battery (training load registered)", /\d+ training\b/.test(prof), prof.slice(0, 400));
 
 await page.mouse.click(164, 869); await page.waitForTimeout(800);
 const h2 = page.getByText("History", { exact: false }).first();
@@ -110,7 +114,12 @@ if (await h2.count()) { await h2.click(); await page.waitForTimeout(1200); }
 const hist2 = await bodyText();
 check("it counts toward History's TOTAL workouts", /1 TOTAL/.test(hist2), hist2.slice(0, 200));
 check("it counts toward LIFETIME volume", forms(WORKING).test(hist2), hist2.slice(0, 240));
-check("it counts toward the weekly volume chart", forms(WORKING).test(hist2), hist2.slice(0, 260));
+// Scoped to the chart's own section, not just "somewhere on hist2" — a bare re-test of the same
+// regex over the same text as the LIFETIME check above can't tell a right chart apart from a wrong
+// one next to a right lifetime tile (exactly the class of bug this exercise is CLAUDE.md's own
+// worked example of: the weekly chart printing 6.1k under a 3,850 lifetime tile).
+const chartSection = hist2.slice(hist2.indexOf("VOLUME BY WEEK"), hist2.indexOf("PERSONAL RECORDS"));
+check("it counts toward the weekly volume chart", forms(WORKING).test(chartSection), chartSection.slice(0, 260));
 check("it sets a PERSONAL RECORD", /PERSONAL RECORDS[\s\S]*Barbell Back Squat/.test(hist2), hist2.slice(0, 320));
 // There is no "Most Trained" section on History — the only "most trained" text in the app is the
 // lowercase caption on the Feed's dismissible LAST WEEK recap card (App.jsx ~22967), which is

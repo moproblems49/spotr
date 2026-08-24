@@ -1,4 +1,4 @@
-// v178091716919
+// v178091716920
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14979,15 +14979,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   {weekData.map((w, i) => (
                     <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
                       <div style={{ fontSize:10, color:C.muted, fontFamily:MONO }}>{w.vol > 0 ? (w.vol >= 1000 ? (w.vol/1000).toFixed(1)+"k" : w.vol) : ""}</div>
-                      <div style={{ width:"100%", height:64, borderRadius:"3px 3px 0 0", overflow:"hidden", display:"flex", alignItems:"flex-end" }}>
-                        <div style={{
-                          width:"100%", height:64,
-                          background: i === weeks-1 ? C.primary : `${C.accent}66`,
-                          transform:`scaleY(${Math.max(4, (w.vol/maxVol)*64)/64})`,
-                          transformOrigin:"bottom center", willChange:"transform",
-                          transition:"transform 0.3s"
-                        }}/>
-                      </div>
+                      {/* Deliberately `height`, not the usual scaleX/scaleY-transform pattern: a scaleY
+                          attempt (Aug 24) fixed the bar to a stationary 64px box and scaled the fill
+                          inside it, which detached the volume label above from the bar's real visible
+                          top (huge gap on a short bar) and left the rounded top corner on the outer
+                          box instead of the fill, so it only showed on a full-height bar. This chart
+                          only re-renders on data change, not per-frame — the layout-thrash concern
+                          that motivates the transform rule elsewhere doesn't apply here. */}
+                      <div style={{
+                        width:"100%", borderRadius:"3px 3px 0 0",
+                        background: i === weeks-1 ? C.primary : `${C.accent}66`,
+                        height: Math.max(4, (w.vol/maxVol)*64),
+                        transition:"height 0.3s"
+                      }}/>
                       <div style={{ fontSize:7, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
                     </div>
                   ))}
