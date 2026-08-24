@@ -50,11 +50,17 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         const data = await sb.signUp(email, password, username.toLowerCase().replace(/\s/g,""), name || username);
         if (data.access_token) {
           // Explicitly upsert the profile row — never rely on a DB trigger that may not exist.
+          // A bare fetch RESOLVES on 4xx/5xx, so this used to check nothing at all and treat a
+          // failed upsert as a silent success. Retried once (this is the second network call in
+          // a row, right after signup — the single most likely moment for a mobile connection to
+          // hiccup) and now actually checked. `profiles.is_public` defaults to true at the column
+          // level as of this fix too, so even if both attempts fail the account still starts
+          // public rather than silently private — this is belt-and-suspenders, not the only fix.
           try {
             const userId = data.user?.id;
             const uname = username.toLowerCase().replace(/\s/g,"");
             if (userId) {
-              await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+              const upsertProfile = () => fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -74,6 +80,9 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
                   seen_onboarding: false,
                 }),
               });
+              let res = await upsertProfile();
+              if (!res.ok) res = await upsertProfile();
+              if (!res.ok) devWarn("profile upsert failed twice:", res.status, await res.text().catch(() => ""));
             }
           } catch (profErr) { devWarn("profile upsert:", profErr); }
           track("signup_completed");

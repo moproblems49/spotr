@@ -5,7 +5,7 @@
 import { useState, useMemo } from "react";
 import {
   F, MONO, uid, EXERCISE_DB, _exNorm, sb, toast, haptic, devError, cvt,
-  historyMaxPRs, matchesSession, postWorkoutPayload, CreateExercisePicker,
+  historyMaxPRs, matchesSession, postWorkoutPayload, CreateExercisePicker, confirmAction,
 } from "../App.jsx";
 
 export default function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setStore, onClose }) {
@@ -321,7 +321,12 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
               <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                 <button onClick={() => moveExercise(ei, -1)} disabled={ei === 0} style={{ background:"none", border:"none", color: ei === 0 ? C.muted : C.sub, fontSize:16, fontWeight:700, cursor: ei === 0 ? "default" : "pointer", fontFamily:F, padding:"2px 6px", opacity: ei === 0 ? 0.35 : 1 }}>↑</button>
                 <button onClick={() => moveExercise(ei, 1)} disabled={ei === exercises.length - 1} style={{ background:"none", border:"none", color: ei === exercises.length - 1 ? C.muted : C.sub, fontSize:16, fontWeight:700, cursor: ei === exercises.length - 1 ? "default" : "pointer", fontFamily:F, padding:"2px 6px", opacity: ei === exercises.length - 1 ? 0.35 : 1 }}>↓</button>
-                <button onClick={() => removeExercise(ei)} style={{ background:"none", border:"none", color:C.muted, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"2px 4px" }}>Remove</button>
+                <button onClick={() => confirmAction({
+                  title: `Remove ${ex.name || "this exercise"}?`,
+                  message: "This removes it — and its logged sets — from this past workout. Tap Save afterward to make it permanent.",
+                  confirmLabel: "Remove", destructive: true,
+                  onConfirm: () => removeExercise(ei),
+                })} style={{ background:"none", border:"none", color:C.muted, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F, padding:"2px 4px" }}>Remove</button>
               </div>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"30px 1fr 1fr 28px", gap:8, alignItems:"center", marginBottom:6 }}>

@@ -1,4 +1,4 @@
-// v178091716910
+// v178091716911
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -331,8 +331,16 @@ const sb = (() => {
       headers,
       body: JSON.stringify({ refresh_token }),
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error_description || "Session expired");
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.error) {
+      const e = new Error((data && data.error_description) || `refresh failed (${res.status})`);
+      // 4xx = the server actually rejected THIS token (expired/revoked/invalid) — a genuinely
+      // dead session, safe to sign out of. 5xx or an unparsable body means the server itself is
+      // having trouble, not that the token is bad — callers must not confuse a Supabase hiccup
+      // with "this session is dead," or a transient outage would wrongly sign everyone out.
+      if (res.status >= 400 && res.status < 500) e.authExpired = true;
+      throw e;
+    }
     return data;
   }
 
@@ -10583,7 +10591,12 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
                     <ExerciseInput value={ex.name} onChange={name => updateEx(ei,{name})} C={C} store={store} token={token}/>
                     {exInfo?.muscle && <div style={{ fontSize:11, color:SUB, marginTop:1 }}>{exInfo.muscle}</div>}
                   </div>
-                  <button onClick={() => removeEx(ei)} aria-label="Remove exercise" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"4px 6px", lineHeight:1 }}>×</button>
+                  <button onClick={() => confirmAction({
+                    title: `Remove ${ex.name || "this exercise"}?`,
+                    message: "This removes it from the program. Edits here save automatically.",
+                    confirmLabel: "Remove", destructive: true,
+                    onConfirm: () => removeEx(ei),
+                  })} aria-label="Remove exercise" className="seshd-hit" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"4px 6px", lineHeight:1 }}>×</button>
                 </div>
 
                 {/* Sets / Reps / Rest */}
@@ -13768,7 +13781,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       </button>
                     );
                   })()}
-                  {ex.sets.length > 1 && <button className="seshd-hit-y" onClick={() => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }))} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
+                  {ex.sets.length > 1 && <button className="seshd-hit-y" onClick={() => {
+                    const removeNow = () => setSession(p => ({ ...p, exercises: p.exercises.map((x,i)=>i!==ei?x:{...x,sets:x.sets.slice(0,-1)}) }));
+                    const lastSet = ex.sets[ex.sets.length - 1];
+                    if (lastSet && lastSet.done) {
+                      confirmAction({ title:"Remove this set?", message:"This removes your last logged set for this exercise — there's no undo.", confirmLabel:"Remove", destructive:true, onConfirm:removeNow });
+                    } else { removeNow(); }
+                  }} style={{ flex:1, minWidth:80, padding:"10px 12px", background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, color:C.sub, fontSize:13, cursor:"pointer", fontFamily:F, textAlign:"right" }}>Remove</button>}
                 </div>
                 </>)}
               </div>
@@ -14667,7 +14686,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 prog={prog}
                 store={store}
                 C={C}
-                onPreview={(day) => setPreviewDay({ day, programName: prog.name })}
+                onPreview={(day) => setPreviewDay({ day, programName: prog.name, progId: prog.id })}
                 onEdit={(di) => { setViewingProgram(prog.id); setInitialDayIdx(di); }}
                 onStart={(day) => startWorkout(day, prog.id)}
                 onReorder={(ds) => onSaveProgram({ ...prog, days: ds, _silent: true })}
@@ -15301,10 +15320,16 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const BLUEBG= C.accentSoft;
   const INK   = C.accentInk;   // accent as TEXT on that tint — a darker value on the light theme
 
+  // Matched by progId + the day's own stable id, never by name — two programs can easily share a
+  // day name (every new program's first day defaults to "Day 1"), and matching by name alone
+  // silently saved an edit into the WRONG program whenever that collided.
+  function findOwningProgram() {
+    return store.programs.find(p => p.id === previewDay.progId);
+  }
   function saveAndStart() {
     if (editMode && onSaveProgram) {
-      const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
-      if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === previewDay.day.name ? editDay : d) });
+      const prog = findOwningProgram();
+      if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.id === editDay.id ? editDay : d) });
     }
     onStart(editMode ? editDay : previewDay.day);
   }
@@ -15361,15 +15386,15 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
         </div>
         <button onClick={() => {
           // Open picker: share this day OR the whole program
-          const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
+          const prog = findOwningProgram();
           setShareModal({ stage: "picker", prog, day: editDay });
         }} aria-label="Share" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
           <Icon name="share" size={16} color={TXT}/>
         </button>
         <button onClick={() => {
           if (editMode && onSaveProgram) {
-            const prog = store.programs.find(p => p.days?.some(d => d.name === previewDay.day.name));
-            if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.name === previewDay.day.name ? editDay : d) });
+            const prog = findOwningProgram();
+            if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.id === editDay.id ? editDay : d) });
           }
           setEditMode(m => !m);
         }} className="seshd-hit" style={{
@@ -19953,9 +19978,11 @@ function AppInner() {
         const merged = { ...saved, ...fresh };
         saveSession(merged);
         setSession(merged);
-      } catch {
-        clearSession();
-        setSession(null);
+      } catch (e) {
+        // Only a genuine rejection (the token really is dead) should sign the user out. A
+        // transient network blip at cold boot must not destroy a perfectly valid session — the
+        // interval/foreground refreshers below will retry once connectivity is back.
+        if (e && e.authExpired) { clearSession(); setSession(null); }
       } finally {
         setAuthLoading(false);
       }
@@ -19973,6 +20000,13 @@ function AppInner() {
         setSession(merged);
       } catch (e) {
         devWarn("Token refresh failed:", e.message);
+        // Previously this NEVER signed out, on any failure — a genuinely dead refresh token
+        // (password changed elsewhere, revoked, past its lifetime after a long background) left
+        // the user stuck forever: every subsequent load/foreground would 401, retry, and show a
+        // generic "check connection" error with no path back to sign-in short of a manual sign
+        // out. Only a real rejection routes them back; a transient network blip just waits for
+        // the next interval, same as before.
+        if (e && e.authExpired) { clearSession(); setSession(null); toast("Your session expired — please sign in again", "error"); }
       }
     }, 45 * 60 * 1000);
     return () => clearInterval(refreshInterval);
@@ -20040,6 +20074,14 @@ function AppInner() {
           setSession(merged);
         } catch (e) {
           devWarn("Foreground token refresh failed:", e.message);
+          // Same fix as the 45-min interval refresh: only a genuine rejection signs the user
+          // out. Returning here (instead of falling through to loadUserData with a token that's
+          // definitely dead) also skips a guaranteed-failing fetch on the same foreground event.
+          if (e && e.authExpired) {
+            clearSession(); setSession(null);
+            toast("Your session expired — please sign in again", "error");
+            return;
+          }
         }
       }
       loadUserData(0, { background: true });
@@ -21468,6 +21510,33 @@ function AppInner() {
 
   // Save program edits (notes, exercise changes) back to Supabase
   const saveProgramDebounceRef = useRef({});
+  // A plain setTimeout is not durable: it simply never fires if the WebView is suspended or
+  // killed before the delay elapses — common on mobile (home button, app switch, OS reclaim) —
+  // which silently dropped the edit with nothing left to retry on the next launch. These two
+  // helpers write directly into the SAME durable localStorage queue sb.queueWrite()/
+  // flushWriteQueue() already use (same key, same {path,method,body,ts} shape, same
+  // same-path+method merge-by-overwrite rule), so a program edit is durable the INSTANT it
+  // happens, not 1.5s later. The debounce below still exists — it only throttles how often we
+  // ATTEMPT to send it over the network, never whether the edit is safely recorded.
+  function queueProgramWrite(prog) {
+    try {
+      const path = `programs?id=eq.${prog.id}`;
+      const q = JSON.parse(localStorage.getItem("seshd_write_queue") || "[]");
+      const idx = q.findIndex(item => item.path === path && item.method === "PATCH");
+      const body = JSON.stringify({ name: prog.name, days: prog.days });
+      if (idx >= 0) q[idx] = { ...q[idx], body, ts: Date.now() };
+      else q.push({ path, method: "PATCH", body, headers_extra: null, ts: Date.now() });
+      localStorage.setItem("seshd_write_queue", JSON.stringify(q));
+    } catch (e) {}
+  }
+  function unqueueProgramWrite(prog) {
+    try {
+      const path = `programs?id=eq.${prog.id}`;
+      const q = JSON.parse(localStorage.getItem("seshd_write_queue") || "[]")
+        .filter(item => !(item.path === path && item.method === "PATCH"));
+      localStorage.setItem("seshd_write_queue", JSON.stringify(q));
+    } catch (e) {}
+  }
   async function handleProgramEdited(prog) {
     // Always save to local state first
     setStore(prev => ({
@@ -21476,13 +21545,19 @@ function AppInner() {
     }));
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     if (!tok || !prog.id) return;
+    queueProgramWrite(prog);
     clearTimeout(saveProgramDebounceRef.current[prog.id]);
     saveProgramDebounceRef.current[prog.id] = setTimeout(async () => {
       try {
         await sb.query(`programs?id=eq.${prog.id}`, {
           method:"PATCH", body: JSON.stringify({ name: prog.name, days: prog.days })
         }, tok);
-      } catch (e) { devError("program edit sync error:", e); }
+        unqueueProgramWrite(prog); // sent — the durable fallback copy is no longer needed
+      } catch (e) {
+        devError("program edit sync error:", e);
+        // Left queued on purpose: flushWriteQueue (boot + reconnect) owns the retry from here,
+        // same as every other durable write in the app.
+      }
     }, 1500);
   }
 
