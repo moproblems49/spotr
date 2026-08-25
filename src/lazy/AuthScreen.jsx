@@ -271,7 +271,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
       paddingTop:"max(env(safe-area-inset-top), 20px)",
       paddingBottom:"max(env(safe-area-inset-bottom), 24px)",
     }}>
-      <div style={{ display:"flex", alignItems:"center", height:48 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", height:48 }}>
         <button onClick={() => {
           // From the reset form, Back returns to sign-in (not the welcome screen).
           if (mode === "reset") { setMode("signin"); setError(""); setResetSent(false); return; }
@@ -286,9 +286,31 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           <span style={{ fontSize:14, fontWeight:600 }}>Back</span>
         </button>
+        {/* App Store Guideline 2.1(a) rejection (Aug 25 2026, iPad Air 11" M3 / iPadOS 26.6): the
+            reviewer couldn't scroll the sign-up form far enough to reach the sign-in/sign-up toggle,
+            which previously only existed at the very BOTTOM of the scrollable content, past the
+            name/username/email/password fields, the Create Account button and the Terms text — the
+            tallest content this screen ever renders. Rather than chase an iPad-only scroll quirk
+            that can't be reproduced outside real hardware, the toggle now also lives here, in the
+            header row ABOVE the scroll container entirely — so switching modes is reachable no
+            matter what the scrollable area does on any given device. The original bottom-of-form
+            toggle stays too (below); this is additive, not a replacement. */}
+        {(mode === "signin" || mode === "signup") && (
+          <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
+            background:"none", border:"none", padding:"10px 4px", cursor:"pointer", fontFamily:F,
+            fontSize:13, fontWeight:700, color:C.accent,
+          }}>
+            {mode === "signin" ? "Sign up" : "Sign in"}
+          </button>
+        )}
       </div>
 
-      <div onScroll={blurIfTextInput} {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", display:"flex", flexDirection:"column", maxWidth:380, width:"100%", margin:"0 auto" }}>
+      {/* touch-action:pan-y is explicit, not assumed — see the tap-target/gesture conventions
+          elsewhere in this app for why relying on the browser's default is a sharp edge on iPadOS
+          specifically (a dnd-kit handle needed the same explicit rule for the same reason). Belt
+          and suspenders alongside the header toggle above: this guarantees the vertical swipe/
+          scroll gesture itself is never silently claimed by anything else on this container. */}
+      <div onScroll={blurIfTextInput} {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", touchAction:"pan-y", display:"flex", flexDirection:"column", maxWidth:380, width:"100%", margin:"0 auto" }}>
         {/* margin:"auto 0" on this wrapper (not justifyContent:center on the scroll container
             itself) is what centers a short form vertically while still letting a tall one
             (sign-up, with the keyboard open) scroll all the way to its own top and bottom — a
