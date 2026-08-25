@@ -1,4 +1,4 @@
-// v178091716924
+// v178091716925
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19842,6 +19842,16 @@ function AppInner() {
     const tok = authData.access_token;
     const newUserId = authData.user.id;
     if (!tok || !newUserId) return;
+    // Sync theme BEFORE the hasGuestData early-return, unconditionally: AuthScreen's own signup
+    // upsert only fires when signup returns an access_token immediately, which email confirmation
+    // (on since July 30 — see CLAUDE.md) prevents for the dominant real signup. The account then
+    // completes via this function instead (either the confirmation-link magic-login in AUTH_CALLBACK,
+    // or the guest-upgrade prompt's onAuth) — both are exclusively "guest becoming a fresh account"
+    // moments, so the LOCAL theme (system-preference default from loadStore, or a manual toggle) is
+    // always the right one to write, with no risk of clobbering a returning user's real preference.
+    // Without this, `handle_new_user`'s trigger-created row keeps the column default ('light'), and
+    // the next loadUserData silently flips an OS-dark guest back to light the moment they sign in.
+    try { await sb.query(`profiles?id=eq.${newUserId}`, { method:"PATCH", body: JSON.stringify({ theme: store.theme || "light" }) }, tok); } catch (e) { devError("migrate theme:", e); }
     // Nothing to move? Clear the flag and say nothing. `seshd_guest` can outlive the guest data —
     // it's only removed at the very END of a successful run, so an interrupted one leaves it set,
     // and it then re-fires on every later sign-in. That's why a plain LOGIN announced "Account
