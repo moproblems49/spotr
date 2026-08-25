@@ -2327,9 +2327,13 @@ but it's a bottom-tab screen visited almost every session, so the frequency case
 it is weak — likely NOT worth it), `GroupsScreen`/`FriendsActivityScreen` (see above), `PostCard`/
 `SetRow`/other high-reuse components (NOT candidates — they render on the critical path across many
 screens, extracting them would only add Suspense overhead for no on-demand benefit). The bigger
-remaining lever for bundle size at this point is likely `bodyMapData.js` (258KB, already its own
-chunk via a static import — could be converted to dynamic `import()` gated on first BodyMap render)
-rather than further App.jsx screen extraction.
+remaining lever for bundle size at this point is likely `bodyMapData.js` (258KB) — rather than
+further App.jsx screen extraction. **Checked Aug 25: this is already done.** `loadBodyMapData()`
+(top of App.jsx, near `useBodyMapData`) uses a real `import("./bodyMapData.js")` inside a
+promise-cached loader, consumed only through the `useBodyMapData()` hook — confirmed in the build
+output too (its own chunk, no `modulepreload` for it in `dist/index.html`, no static importers
+anywhere in `src/`). This note previously called it "already its own chunk via a static import,"
+which was wrong — it was already dynamic. Nothing left to do here.
 
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.
