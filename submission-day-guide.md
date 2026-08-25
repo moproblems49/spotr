@@ -1,7 +1,8 @@
 # 🚀 SUBMISSION DAY — App Store, step by step (written for Mo)
 
 **What today achieves:** the code on GitHub becomes a build on TestFlight you can check on your
-phone, and then that same build goes to Apple for review.
+phone, and then that same build goes to Apple for review. It also re-fixes Health/Push, which
+broke on the current install because a July setting was never saved to git (Step 5a below).
 
 **You will not write any code.** The keyboard plugin is already wired up in the project — you only
 need to pull it down. Every step is: paste a command, or click something.
@@ -114,6 +115,49 @@ npx cap open ios
 
 Xcode opens. Give it a minute to finish indexing (progress bar at the top).
 
+## Step 5a · ⚠️ NEW (Aug 23) — turn Health/Push back on and SAVE it this time
+
+Found Aug 23: Health syncing and push notifications stopped working on the installed app. The
+cause — this exact setting was turned on back in July, but it only lived on the Mac's copy of the
+project. It was never saved into the files that get pushed to GitHub, so a fresh build (or a
+reinstall) silently loses it. **Today's build needs to redo this AND actually save it, or the
+next reinstall breaks it again.**
+
+1. Left sidebar → blue **App** icon at the top.
+2. Select the **App** target → the **Signing & Capabilities** tab (next to General).
+3. Near the top, confirm a real **Team** is selected (your Apple Developer account) — not
+   "None"/"Add Account". If it says that, stop and tell me before continuing.
+4. Click **+ Capability** (top-left of that tab) and add these four, one at a time — type the
+   name into the search box that pops up, then double-click it:
+   - **HealthKit**
+   - **Push Notifications**
+   - **Background Modes** — once it's added, a checklist appears under it; tick **Remote
+     notifications**.
+   - **Associated Domains** — once it's added, click the **+** under it and type exactly:
+     `applinks:spotr-drab.vercel.app`
+
+**✅ Success:** four separate boxes now show in the Signing & Capabilities tab, none with a red
+warning triangle.
+
+**Now save it into git — this is the step that got skipped in July, don't skip it again.** Back
+in Terminal (leave Xcode open):
+
+```
+git status
+```
+
+You should see it list a new file ending in `.entitlements` plus a changed `project.pbxproj`.
+**If you don't see an `.entitlements` file listed here, stop and tell me** — that means Step 5a
+above didn't take, and continuing would ship the same broken build again.
+
+```
+git add ios/
+git commit -m "Add HealthKit, Push, Background Modes, Associated Domains entitlements"
+git push origin main
+```
+
+**✅ Success:** ends with a line like `main -> main` and no red `error:`.
+
 ## Step 6 · Set the build number ⚠️ THE ONE THING PEOPLE GET WRONG
 
 Apple rejects an upload if the build number has been used before. July's build was number **1**,
@@ -222,3 +266,5 @@ simple cause:
 | App builds but sign-in fails | `.env.local` missing — Step 3 |
 | `npm ERR!` during install | Paste it to me; do **not** try `npm ci` |
 | Looking for a `Podfile` | There isn't one — this project uses Swift Package Manager. Read the plugin list `cap sync` prints instead |
+| "Missing com.apple.developer.healthkit entitlement" in the app | Step 5a wasn't done or wasn't saved to git — redo it, and don't skip the `git add`/`commit`/`push` |
+| `+ Capability` list doesn't show HealthKit/Push/etc | Team isn't signed in — Step 5a point 3 |
