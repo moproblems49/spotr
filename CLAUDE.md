@@ -804,6 +804,54 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   `USING (true)` and broke this for every private user, and the Settings toggle DEFAULTS TO OFF, so
   it applied to every new tester. If you add a table holding user content, copy that three-way
   policy — don't write `USING (true)`.
+- **★ `comments` AND `kudos` HAD THE SAME `USING (true)` BUG AND NOBODY HAD CHECKED THEM (found in a
+  full security audit, Aug 25 2026).** The three-way policy above was applied to `posts`/
+  `workout_history`/`personal_records` but never to their two sibling engagement tables — both had a
+  flat `SELECT USING (true)`, no join back to the post's own visibility, no `is_blocked_between`
+  check. Proven live with `SET LOCAL ROLE anon` (no auth at all): 18 real comments readable,
+  including text and user_id, with zero connection to whether the underlying post was public. A
+  synthetic rolled-back-transaction test (flip a real user's `is_public` to false inside a
+  transaction, insert a comment, check visibility, then `ROLLBACK` — never touches real data) proved
+  the fix: anon → 0, a genuine non-follower stranger → 0, an accepted follower → 1, the owner → 1.
+  Fixed via migration `fix_comments_kudos_privacy_leak`: both tables now join to `posts` and reuse
+  the exact same three-way rule. **When copying a visibility policy to sibling tables, grep for
+  EVERY table that references the same parent (`post_id` here), not just the one that prompted the
+  fix** — engagement tables (comments, likes, reactions, anything hanging off a post) are exactly the
+  kind of table that gets added later and quietly inherits the naive default.
+- **★ SIGNING OUT LEFT THE ENTIRE LOCAL STORE ON THE DEVICE, AND THE NEXT ACCOUNT COULD INHERIT IT
+  (found in the same audit).** `handleSignOut` already had a comment explaining it clears the
+  session keys specifically because an in-progress workout used to survive sign-out on a shared
+  phone — but the fix that comment describes was scoped too narrowly. It never touched `seshd_v1`
+  (the whole store: full history, PRs, programs, body-log photos), `seshd_feed_cache`,
+  `seshd_pending_workouts`, or `seshd_write_queue`. `setStore(loadStore())` right after sign-out just
+  re-read that still-present store back into memory — so on a shared or handed-over phone, the next
+  person tapping "Continue as guest" inherited the PREVIOUS account's entire local data under a
+  nominally fresh guest session, and if they signed up, `migrateGuestData` uploaded every bit of it —
+  programs, PRs, workout history — as belonging to THEM, permanently, via their own valid token (RLS
+  can't stop this: the writer genuinely owns the row it's writing, it has no way to know the data
+  describes someone else). `handleSignOut` now clears all four keys. **A second, independent gap
+  covers the case where a session ends WITHOUT an explicit sign-out** (a token expiring, the app
+  just staying on the auth screen): `loadUserData`'s `setStore` callback already gated `prs`/
+  `prsE1rm`/`prsVolume`/`exerciseNotes`/`workoutNotes`/`barTypes`/`closeFriends`/`weeklyTarget` on
+  `prev.currentUserId === currentUserId` before falling back to `prev`, but SEVEN more fields had the
+  identical fallback shape with no guard at all: `bodyLog` (photos included), `prEvents`,
+  `customExercises`, `onboardingAnswers`, `strengthSex`, `dismissedInsights`, `bodyType`, `age`. All
+  seven now carry the same guard. **When one field in an object literal has a security-motivated
+  guard and eight of its neighbors have the exact same fallback shape without it, that's not eight
+  separate decisions — it's one guard that didn't get copied.** Grep the whole literal for the
+  pattern, not just the field that prompted the fix.
+- **A SHARE-CODE REDEMPTION RPC IS A BRUTE-FORCE ORACLE IF THE CODE SPACE IS SMALL AND NOTHING RATE-
+  LIMITS IT.** `redeem_program_by_code`/`redeem_workout_code` are `SECURITY DEFINER`, callable by
+  `anon`, and bypass RLS entirely by design (the whole feature is "look this up by a code you don't
+  need an account to redeem"). `generateShareCode()` was already bumped from a 4-char suffix
+  (32^4 ≈ 1M combinations — confirmed brute-forceable) to 6 chars (32^6 ≈ 1.07B) for exactly this
+  reason. **Residual, not yet acted on:** old 4-char codes already issued still redeem (backward
+  compat, by design) and are NOT rotated — a live one was found in production (`IGNITE-5W7E`).
+  Rotating it isn't free: share codes get embedded directly in post captions ("Try my program:
+  IGNITE-5W7E"), so a rotated code silently breaks an already-posted caption. Decide with the user
+  before rotating any live code. No evidence of server-side rate limiting on the RPC either — Postgres
+  functions called via PostgREST don't get Supabase Auth's throttling, only whatever the platform's
+  general API gateway happens to apply.
 - **Storage buckets need a size limit AND a MIME allowlist.** `images` is publicly readable and had
   neither, so a signed-in user could upload arbitrary files of unbounded size served from the project
   domain (free file hosting, uncapped bill, SVG/HTML carrying script). All three buckets are now
