@@ -1,4 +1,4 @@
-// v178091716925
+// v178091716926
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19534,27 +19534,36 @@ function AppInner() {
         notificationPrefs: { messages: true, kudos: true, comments: true, follows: true, ...(me?.notification_prefs || {}) },
         // Body tracking + onboarding answers + strength sex persist server-side
         // (profiles.body_log / onboarding_answers / strength_sex) so they survive re-login and
-        // new devices. Prefer the server copy, fall back to whatever's on-device.
-        bodyLog: (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : (prev.bodyLog || []),
+        // new devices. Prefer the server copy, fall back to whatever's on-device — but ONLY when
+        // `prev` still belongs to the SAME account (a cold-context audit found these seven fields
+        // missing the same `prev.currentUserId === currentUserId` guard the prs/prsE1rm/prsVolume/
+        // exerciseNotes/etc. fields already have above and below: on a shared or handed-over phone,
+        // signing out used to leave the previous user's full local store in place, so the very next
+        // sign-in as someone else inherited their body-log entries — PHOTOS INCLUDED — PR-hit log,
+        // custom exercises, onboarding answers, sex and age via these exact fallbacks. Paired with
+        // the handleSignOut fix that now wipes the local store on sign-out, but this guard is the
+        // one that also closes the gap when a session ends WITHOUT an explicit sign-out (e.g. an
+        // expired token), which handleSignOut can't see.
+        bodyLog: (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : (prev.currentUserId === currentUserId ? (prev.bodyLog || []) : []),
         // Dated PR-hit log: prefer the server copy, then any local copy; if both are empty, rebuild
         // it from history so Wrapped/recaps reflect real PRs instead of 0 (see reconstructPrEvents).
         prEvents: (() => {
-          const stored = (Array.isArray(me?.pr_events) && me.pr_events.length) ? me.pr_events : (prev.prEvents || []);
+          const stored = (Array.isArray(me?.pr_events) && me.pr_events.length) ? me.pr_events : (prev.currentUserId === currentUserId ? (prev.prEvents || []) : []);
           return stored.length ? stored : reconstructedPrEvents;
         })(),
         // Custom exercises persist on the profile (profiles.custom_exercises). Merge server + local
         // by id/name so nothing is lost if either side has entries the other doesn't.
         customExercises: (() => {
           const srv = Array.isArray(me?.custom_exercises) ? me.custom_exercises : [];
-          const loc = Array.isArray(prev.customExercises) ? prev.customExercises : [];
+          const loc = (prev.currentUserId === currentUserId && Array.isArray(prev.customExercises)) ? prev.customExercises : [];
           const byKey = new Map();
           for (const e of [...loc, ...srv]) {
             if (e && e.name) byKey.set((e.id || e.name).toString(), e);
           }
           return Array.from(byKey.values());
         })(),
-        onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.onboardingAnswers || {}),
-        strengthSex: me?.strength_sex || prev.strengthSex || "male",
+        onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.currentUserId === currentUserId ? (prev.onboardingAnswers || {}) : {}),
+        strengthSex: me?.strength_sex || (prev.currentUserId === currentUserId ? prev.strengthSex : null) || "male",
         // Standing per-exercise notes + bar-type overrides and the Close Friends picks now persist
         // server-side (profiles.exercise_notes / bar_types / close_friends) so they survive a
         // reinstall / new device instead of silently resetting — a lost bar-type override in
@@ -19593,13 +19602,14 @@ function AppInner() {
           };
         })(),
         // Insight dismissals persist server-side (profiles.dismissed_insights) so they
-        // survive re-login and new devices. Union with whatever is on-device.
+        // survive re-login and new devices. Union with whatever is on-device — but only the SAME
+        // account's on-device copy (see the bodyLog/prEvents/etc. comment above this block).
         dismissedInsights: Array.from(new Set([
           ...(Array.isArray(me?.dismissed_insights) ? me.dismissed_insights : []),
-          ...(prev.dismissedInsights || []),
+          ...(prev.currentUserId === currentUserId ? (prev.dismissedInsights || []) : []),
         ])),
-        bodyType: me?.body_type || prev.bodyType || undefined,
-        age: me?.age != null ? me.age : prev.age,
+        bodyType: me?.body_type || (prev.currentUserId === currentUserId ? prev.bodyType : undefined) || undefined,
+        age: me?.age != null ? me.age : (prev.currentUserId === currentUserId ? prev.age : undefined),
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));
       // Mark prefs as server-loaded so the save effect can start syncing local edits back — gated
@@ -19977,12 +19987,30 @@ function AppInner() {
     // out mid-workout on a shared or handed-over phone, the next person signs in and lands inside
     // YOUR live workout with your logged sets; if they tap Finish, your sets are written to their
     // account and posted from their feed. Verified end to end.
+    //
+    // THIS FIX WAS INCOMPLETE — a cold-context security audit found it only cleared the SESSION
+    // keys, never `seshd_v1` (the whole local store: full history, PRs, programs, body-log photos)
+    // or the offline queues. `setStore(loadStore())` right below this used to just re-read that
+    // still-present store back into memory — so the very next person to tap "Continue as guest" on
+    // the same device inherited the PREVIOUS account's entire training history under a nominally
+    // fresh guest session, and if they then signed up, `migrateGuestData` uploaded every one of it
+    // — programs, PRs, workout history — as belonging to THEM. Any workouts still queued offline
+    // (`seshd_pending_workouts`) or durable writes still queued for retry (`seshd_write_queue`)
+    // would also flush under the next signed-in account's own token, since RLS only checks that the
+    // WRITER owns the row it's writing — it has no way to know the data describes someone else.
+    // Clearing all four here means `loadStore()` right below returns genuinely clean defaults, and
+    // `loadUserData`'s own `prev.currentUserId === currentUserId` guards (see the bodyLog/prEvents/
+    // etc. comment there) become a no-op safety net rather than the only line of defense.
     try {
       localStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(WSTART_KEY);
       localStorage.removeItem(LAST_ACTIVITY_KEY);
       localStorage.removeItem("seshd_rest");
       localStorage.removeItem("seshd_dismissed_deloads");
+      localStorage.removeItem(SK);
+      localStorage.removeItem("seshd_feed_cache");
+      localStorage.removeItem("seshd_pending_workouts");
+      localStorage.removeItem("seshd_write_queue");
     } catch {}
     setSession(null);
     setStore(loadStore());
