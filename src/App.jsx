@@ -1,4 +1,4 @@
-// v178091716931
+// v178091716932
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15645,10 +15645,19 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
         </div>
       )}
 
-      {/* Hero band */}
+      {/* Summary line.
+          Was three boxed stat tiles on a raised band. They were the first instance of this screen's
+          real problem — everything, at every level, was a rounded container — and they spent a full
+          hero-sized block restating three small facts. Now one quiet baseline row: the numbers stay
+          bold and tabular so they still read at a glance, the labels sit beside them at body weight,
+          and the icons are gone (a dumbbell glyph above the word "exercises" was pure decoration).
+          The VALUE-then-LABEL sibling order is load-bearing, not incidental: pw_daysets reads this
+          by finding the div whose text is exactly "total sets" and taking its previousElementSibling.
+          That guard exists because this tile once summed the REPS field (see below) — keep the two
+          elements adjacent and in this order, or the "71 total sets" bug loses its only alarm. */}
       {!editMode && (
-        <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:"20px 20px 18px", flexShrink:0 }}>
-          <div style={{ display:"flex", gap:20 }}>
+        <div style={{ borderBottom:`1px solid ${C.border}`, padding:"13px 20px 14px", flexShrink:0 }}>
+          <div style={{ display:"flex", gap:18, flexWrap:"wrap", alignItems:"baseline" }}>
             {[
               ["dumbbell", editDay.exercises.length, "exercises"],
               // progSetCount, NOT parseInt(ex.reps). This tile is labelled "total sets" and was
@@ -15662,15 +15671,14 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
               ["package", editDay.exercises.reduce((a,ex)=>a+progSetCount(ex),0), "total sets"],
               ...(lastPerformed ? [["check","Done",lastPerformed]] : [["spark","New","first time"]]),
             ].map(([icon,val,label]) => (
-              /* Theme tokens, not white-on-purple. These three carried hardcoded #fff and
+              /* Theme tokens, not white-on-purple. These carried hardcoded #fff and
                  rgba(255,255,255,·) because the band behind them used to be a saturated violet
-                 gradient; with the band on C.surface those values are near-invisible on the light
-                 theme. An earlier fix here darkened the tile's veil to rescue the white text — that
-                 was the right fix for the old band and is moot now the band is neutral. */
-              <div key={label} style={{ flex:1, background:C.bg, borderRadius:12, padding:"10px 8px", textAlign:"center" }}>
-                <div style={{ marginBottom:4, display:"flex", justifyContent:"center", color:C.sub }}><Icon name={icon} size={18}/></div>
-                <div style={{ fontSize:15, fontWeight:800, color:C.text, lineHeight:1 }}>{val}</div>
-                <div style={{ fontSize:10, color:C.sub, marginTop:3, fontWeight:500 }}>{label}</div>
+                 gradient; with the band neutral those values are near-invisible on the light theme.
+                 An earlier fix darkened the tile's veil to rescue the white text — that was right
+                 for the old band and is moot now there is no fill at all. */
+              <div key={label} style={{ display:"flex", alignItems:"baseline", gap:5 }}>
+                <div style={{ fontSize:15, fontWeight:800, color:C.text, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>{val}</div>
+                <div style={{ fontSize:12, color:C.sub, fontWeight:500 }}>{label}</div>
               </div>
             ))}
           </div>
@@ -15690,34 +15698,58 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             const pr = store.prs?.[ex.name];
             const muscleColor = muscleStripeColor(exInfo?.muscle, isDark);
             return (
-              <div key={i} style={{ background:CARD, borderRadius:14, padding:"14px 16px", marginBottom:10, display:"flex", alignItems:"center", gap:14, boxShadow: isDark?"none":"0 1px 2px rgba(24,22,16,0.04), 0 6px 18px rgba(24,22,16,0.07)", borderLeft:`4px solid ${muscleColor}` }}>
-                <div style={{ width:42, height:42, borderRadius:10, background:`${muscleColor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <MuscleIcon muscle={exInfo?.muscle||""} size={26} name={ex.name} C={C}/>
-                </div>
+              /* A LIST ROW, NOT A CARD. This screen used to be five identical maximal cards — each
+                 with a rounded container, a drop shadow, a 4px muscle-coloured left rail and a
+                 tinted muscle-icon tile — which is the single most recognisable "assembled from a
+                 component kit" shape in the app, and the exact accent-rail-on-rounded-card tell the
+                 design critique named. Worse, the hierarchy was upside down: the loudest thing on
+                 every row was the gold PR badge, a number about the PAST, while the line you
+                 actually load off — what you lifted last time — was the smallest, dimmest text on
+                 the card. Now: hairline dividers instead of containers, the muscle group as a single
+                 dot instead of rail + tile + word, and "Last" promoted to the visual anchor. */
+              <div key={i} style={{ padding:"14px 2px", borderTop: i === 0 ? "none" : `1px solid ${C.border}`, display:"flex", alignItems:"flex-start", gap:10 }}>
+                {/* The muscle colour still encodes the same thing it always did; it just no longer
+                    needs a 4px rail and a 42px tinted tile to say it. */}
+                <div style={{ width:8, height:8, borderRadius:4, background:muscleColor, flexShrink:0, marginTop:6, boxShadow:`0 0 0 3px ${muscleColor}22` }}/>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:TXT, marginBottom:4 }}>{ex.name}</div>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
-                    {/* Plain text, not a coloured pill — a rep RANGE never changes week to week,
-                        so it shouldn't out-compete an actual achievement for attention. */}
-                    <span style={{ fontSize:11, fontWeight:600, color:SUB }}>{progSetsReps(ex)}</span>
-                    {exInfo?.muscle && <span style={{ fontSize:11, color:SUB, padding:"3px 0" }}>· {exInfo.muscle}</span>}
-                    {/* Was a near-black fill (1.17:1 against this dark card — it read as plain text,
-                        not a badge). C.gold is this app's existing PR/trophy colour (used on the
-                        exercise-picker's PR icon); it now actually pops off the card in both themes. */}
-                    {pr && <span style={{ fontSize:10, fontWeight:800, color: isDark ? "#0a0a0a" : "#ffffff", background:C.gold, padding:"3px 8px", borderRadius:6, letterSpacing:0.8 }}>PR {cvt(pr,"lbs",unit)}{unit}</span>}
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ fontSize:15, fontWeight:600, color:TXT, letterSpacing:-0.2, flex:1, minWidth:0 }}>{ex.name}</div>
+                    {/* The trophy earns its place without a fill. A solid gold badge out-shouted the
+                        exercise name for a lifetime best that may be months old; as gold text with a
+                        small trophy it still reads instantly as an achievement and stops competing
+                        with today's numbers. C.gold clears AA as text on both themes' cards. */}
+                    {pr && <span style={{ fontSize:11, fontWeight:700, color:C.gold, flexShrink:0, display:"flex", alignItems:"center", gap:3, fontVariantNumeric:"tabular-nums" }}>
+                      <Icon name="trophy" size={11}/>{cvt(pr,"lbs",unit)}{unit}
+                    </span>}
                   </div>
-                  {/* The one fact this app actually has that a template couldn't fake: what you
-                      lifted last time you did THIS exercise, not a lifetime best from months back. */}
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginTop:6 }}>
+                    {/* MUST stay a <span> whose text is "N×range" — pw_daysets asserts the chips'
+                        set counts sum to the "total sets" tile, which is how the bare-range bug
+                        (a day showing no set count anywhere) stays caught. */}
+                    <span style={{ fontSize:12, fontWeight:600, color:TXT, fontFamily:MONO, background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"2px 7px" }}>{progSetsReps(ex)}</span>
+                    {exInfo?.muscle && <span style={{ fontSize:12, color:SUB }}>{exInfo.muscle}</span>}
+                    {ex.note && <span style={{ fontSize:10, color:C.muted, textTransform:"uppercase", letterSpacing:0.8, fontWeight:600, border:`1px solid ${C.border}`, borderRadius:5, padding:"1px 6px" }}>{ex.note}</span>}
+                  </div>
+                  {/* The one fact this app has that a template couldn't fake: what you lifted last
+                      time you did THIS exercise, not a lifetime best from months back. It is the
+                      reason you opened this screen, so it is now the brightest data on the row. */}
                   {(() => {
                     const last = getLastExerciseSession(store, ex.name);
                     if (!last) return null;
                     const top3 = [...last.sets].sort((a,b) => b.w - a.w || b.r - a.r).slice(0, 3);
-                    const txt = top3.map(s => `${Math.round(cvt(s.w, last.unit, unit))}×${s.r}`).join(" · ");
-                    return <div style={{ fontSize:11, color:SUB, marginTop:4 }}>Last: <span style={{ color:TXT, fontWeight:600, fontFamily:MONO }}>{txt}</span></div>;
+                    const txt = top3.map(s => `${Math.round(cvt(s.w, last.unit, unit))}×${s.r}`).join("   ");
+                    return (
+                      <div style={{ display:"flex", alignItems:"baseline", gap:9, marginTop:8 }}>
+                        <span style={{ fontSize:10, letterSpacing:1.2, textTransform:"uppercase", color:C.muted, fontWeight:700, flexShrink:0 }}>Last</span>
+                        <span style={{ fontSize:13, color:TXT, fontWeight:600, fontFamily:MONO, fontVariantNumeric:"tabular-nums", whiteSpace:"pre" }}>{txt}</span>
+                      </div>
+                    );
                   })()}
-                  {ex.note && <div style={{ fontSize:11, color:SUB, marginTop:4, fontStyle:"italic" }}>{ex.note}</div>}
                 </div>
-                <button onClick={() => setViewingExercise(ex.name)} aria-label={`${ex.name} details`} className="seshd-hit" style={{ width:32, height:32, borderRadius:8, background:BLUEBG, border:"none", cursor:"pointer", color:INK, fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>?</button>
+                {/* Ghost, not a filled olive box. Five of those read as unfinished placeholders and
+                    were the third-loudest thing on every row for a help affordance. Same button,
+                    same aria-label, same 44pt .seshd-hit halo — only the paint is gone. */}
+                <button onClick={() => setViewingExercise(ex.name)} aria-label={`${ex.name} details`} className="seshd-hit" style={{ width:26, height:26, borderRadius:"50%", background:"transparent", border:`1px solid ${C.border}`, cursor:"pointer", color:C.muted, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:2 }}>?</button>
               </div>
             );
           })

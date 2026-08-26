@@ -435,6 +435,31 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   before — so the replacement landed inside a COMMENT, silently, and the real button kept its broken
   `color:"#fff"`. `git diff` caught it. Replace on a unique full string with a `count == 1` assert;
   an index-based edit into a 25k-line file will eventually find the wrong occurrence.
+- **★ THE DAY PREVIEW'S CARDS ARE GONE — THE FIRST DELIBERATE "LESS CONTAINMENT" CHANGE, AND THE
+  HIERARCHY WAS THE REAL BUG.** Mo, from a screenshot: "I feel like it needs to be changed/redone."
+  The screen was five identical maximal cards — rounded container + drop shadow + 4px muscle-coloured
+  left rail + a 42px tinted muscle-icon tile — which is the **accent-rail-on-a-rounded-card** tell by
+  name, five times, under three more rounded stat tiles. But the sharper problem was ranking, not
+  decoration: the loudest element on every row was the **gold PR badge**, a lifetime best that may be
+  months old, while the line you actually load off — `Last: 105×9 · 105×6` — was the smallest, dimmest
+  text on the card. You open this screen to answer "what do I put on the bar today"; the design
+  answered "here is a trophy". Now: hairline dividers instead of per-row containers, the muscle group
+  as ONE dot (same `muscleStripeColor`, no rail + tile + word saying it three times), `Last` promoted
+  to the visual anchor (mono, tabular, its own small label), the PR reduced to gold text + a trophy
+  glyph, and the three stat tiles flattened to one baseline line. **What was deliberately NOT done:**
+  the "?" became a ghost circle rather than being deleted in favour of a tappable row — that changes
+  interaction and a11y semantics on a live screen, and this was already a large enough single change.
+  **Two contracts constrain any future edit here, and they are why the guards survived a full visual
+  rewrite**: `pw_daysets` finds the div whose text is exactly `total sets` and reads its
+  `previousElementSibling`, so the VALUE must stay the label's immediately-preceding sibling; and the
+  rep chip must stay a `<span>` whose text matches `N×range`, because the chips' set counts are
+  asserted to SUM to that tile. Restyle around them — do not rewrite the test to fit a layout, which
+  would retire the only alarm on the "71 total sets" bug. `sim_designscale` also caught this work
+  mid-flight: the first cut introduced `9.5/11.5/13.5px` font sizes and a `13` radius. Half-pixels and
+  anything under 10px are retired app-wide; a stray `12.5` renders fine, breaks nothing else and is
+  invisible in a screenshot, so that source-level check is the only thing that can see it. The 26px
+  round button uses `borderRadius:"50%"`, not `13` — circle geometry should say so rather than look
+  like a card corner sneaking back onto the scale.
 - **THE 7-COLOUR DAY RAINBOW IS GONE, AND THE REASON GENERALISES: A PALETTE THAT ENCODES NOTHING
   COMPETES WITH THE ONES THAT DO.** `DAY_COLORS` (violet/blue/green/amber/red/cyan, indexed by the
   day's POSITION in the program, declared twice) painted the day preview's hero band and both Start
