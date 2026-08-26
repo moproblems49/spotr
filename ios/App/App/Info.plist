@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CAPACITOR_DEBUG</key>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Seshd</string>
+	<string>Seshd</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,8 +22,24 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Seshd uses the camera so you can take photos for your posts and profile.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Seshd reads your heart rate variability, resting and workout heart rate, sleep, respiratory rate, wrist temperature, steps, active energy, and body weight. These power your recovery score and Body Battery, flag possible illness or overtraining, and auto-fill your weight log.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Seshd saves your logged workouts to Apple Health so your training counts toward your activity.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Seshd saves images you export (like your Wrapped recap) to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Seshd accesses your photo library so you can attach photos to posts and set a profile picture.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -45,17 +61,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Seshd uses the camera so you can take photos for your posts and profile.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Seshd accesses your photo library so you can attach photos to posts and set a profile picture.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Seshd saves images you export (like your Wrapped recap) to your photo library.</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>Seshd reads your heart rate variability, resting and workout heart rate, sleep, respiratory rate, wrist temperature, steps, active energy, and body weight. These power your recovery score and Body Battery, flag possible illness or overtraining, and auto-fill your weight log.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>Seshd saves your logged workouts to Apple Health so your training counts toward your activity.</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 </dict>
 </plist>
