@@ -1,4 +1,4 @@
-// v178091716928
+// v178091716929
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4773,6 +4773,20 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
 // reachable in a WKWebView. Checks the TAG, not a ref, so it only ever blurs a genuine
 // <input>/<textarea> (the set-weight/reps fields are DIVs driven by the in-app NumberPad on
 // purpose, and never focus a real input at all, so this can't interrupt them).
+//
+// ★ NEVER WIRE THIS DIRECTLY TO `onScroll` — that was the "first cut" the comment below describes,
+// and it was never fully removed when the touch-distance hook replaced it, so all four of its call
+// sites fired this on EVERY scroll event, not just a user's deliberate swipe. Reported live (Aug 26
+// 2026, Mo's own phone, screen recording): on the sign-up form, tapping into "Full name" opens the
+// keyboard, iOS's own "scroll the focused field into view" kicks in a moment later, THAT scroll
+// event fires this straight through onScroll, and the keyboard that had just opened instantly
+// closes again — with no swipe from the user at all. Confirmed frame-by-frame: the layout visibly
+// snaps (no transition) the instant the keyboard finishes animating in, and the field loses focus
+// within about a second, unprompted. The touch-distance hook below already replaced this correctly
+// for the real "swipe to dismiss" gesture — it only fires on an actual drag, never a programmatic
+// or keyboard-triggered scroll — so the bare `onScroll={blurIfTextInput}` at each call site was
+// pure leftover from before that hook existed. Removed from all four sites; the hook alone is the
+// intended mechanism now.
 export function blurIfTextInput() {
   const el = typeof document !== "undefined" ? document.activeElement : null;
   if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && typeof el.blur === "function") el.blur();
@@ -8089,7 +8103,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
             ))}
           </div>
 
-          <div onScroll={blurIfTextInput} {...swipeDismiss} style={{ maxHeight: 240, overflowY: "auto" }}>
+          <div {...swipeDismiss} style={{ maxHeight: 240, overflowY: "auto" }}>
             {q.length === 0 && selectedCategory === "All" && recent.length > 0 && (
               <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>RECENT</div>
             )}
@@ -8250,7 +8264,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
           ))}
         </div>
       </div>
-      <div onScroll={blurIfTextInput} {...swipeDismiss} style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+      <div {...swipeDismiss} style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
         paddingBottom:"calc(env(safe-area-inset-bottom) + 12px)" }}>
         {browsingAll && recent.length > 0 && (
           <>
@@ -13381,7 +13395,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Exercises */}
 
-        <div onScroll={e => { blurIfTextInput(); onExerciseScroll(e); }} {...swipeDismissKeyboard} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+        <div onScroll={onExerciseScroll} {...swipeDismissKeyboard} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             const rowKey = ex.id || ei;

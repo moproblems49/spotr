@@ -1526,6 +1526,26 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   was removed. **Before "fixing" a native-feel tell, grep the stylesheet for it** — that one
   shipped with a stated premise that was already false. Links were the one genuine gap: the
   tap-highlight rule covers `button` and `[role="button"]`, not `a`.
+- **★ WHEN YOU REPLACE A MECHANISM, DELETE EVERY CALL SITE OF THE OLD ONE — A SURVIVOR WILL FIGHT
+  THE NEW ONE, AND NO TEST IN THIS BATTERY CAN SEE IT.** "Swipe down to dismiss the keyboard" was
+  first built as `onScroll={blurIfTextInput}`, then correctly rebuilt as `useSwipeDismiss` — a
+  touch-DISTANCE hook that only fires on a real finger drag (its own comment says it exists because
+  the scroll version didn't work). The rebuild added the hook to all four call sites and **left the
+  old `onScroll` prop sitting right beside it on every one of them.** `onScroll` fires on ANY
+  scroll, including the one WKWebView performs ITSELF to bring a focused input above the keyboard —
+  so on the sign-up form, tapping "Full name" opened the keyboard, iOS scrolled the field into
+  view, that scroll blurred the input, and **the keyboard slammed shut about a second after opening
+  with no gesture from the user at all.** Mo reported it as two things ("doesn't feel smooth" and
+  "the keyboard instantly disappears on its own"); it was one bug — the hard layout snap when the
+  keyboard closes IS the un-smoothness. Invisible to the whole battery: 50 sims and 48 Playwright
+  suites all passed on the broken build, because jsdom has no keyboard and Chromium's headless
+  viewport never performs the focus-scroll that triggers it. **A screen recording from a real device
+  found it in eight seconds.** The fix is `{...swipeDismiss}` alone at all four sites, and
+  `blurIfTextInput`'s own definition now carries a "never wire this to onScroll" warning. Two
+  standing lessons: grep for the OLD mechanism's call sites when you land a replacement (the
+  duplicated-formula rule in this file, applied to event handlers); and **for anything involving the
+  software keyboard, a device recording outranks the entire test suite** — the battery cannot
+  reproduce a keyboard at all.
 - **NO BACKTICKS IN THE INJECTED STYLESHEET'S COMMENTS.** The whole thing is one template literal,
   so a backtick in a CSS comment terminates it and the build dies with a syntax error pointing at
   the next word. This has broken the build twice, both times while writing a comment ABOUT the

@@ -342,7 +342,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           specifically (a dnd-kit handle needed the same explicit rule for the same reason). Belt
           and suspenders alongside the header toggle above: this guarantees the vertical swipe/
           scroll gesture itself is never silently claimed by anything else on this container. */}
-      <div onScroll={blurIfTextInput} {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", touchAction:"pan-y", display:"flex", flexDirection:"column", maxWidth:380, width:"100%", margin:"0 auto" }}>
+      <div {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", touchAction:"pan-y", display:"flex", flexDirection:"column", maxWidth:380, width:"100%", margin:"0 auto" }}>
         {/* margin:"auto 0" on this wrapper (not justifyContent:center on the scroll container
             itself) is what centers a short form vertically while still letting a tall one
             (sign-up, with the keyboard open) scroll all the way to its own top and bottom — a
