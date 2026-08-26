@@ -1,7 +1,7 @@
 // Lazy-loaded: the signed-out welcome/sign-in/sign-up/reset screen. It is NEVER rendered for an
 // already-signed-in session — which is nearly every app open, since a session persists in the
 // iOS Keychain — so it was dead weight in the eager bundle for the overwhelming majority of opens.
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, devWarn,
   SUPABASE_URL, SUPABASE_KEY, useSwipeDismiss, blurIfTextInput,
@@ -19,7 +19,21 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Success / info message shown in GREEN, separate from `error` (red). "Account created! Check
+  // your email…" used to render through the red error slot — a success dressed as a failure.
+  const [notice, setNotice] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  // Top-align the form while a field is focused instead of vertically centering it. Capacitor's
+  // default iOS keyboard resize mode is `native`, which SHRINKS the whole webview when the keyboard
+  // opens — so this fixed-height (100dvh) form re-centers into the smaller box about a second later,
+  // which is the delayed "the screen moves up a bit to adjust ~1s after tapping a field" Mo reported
+  // (device-only; a headless browser has no keyboard, so no test here could see it). Pinning to the
+  // top the instant a field is focused removes the re-centering (there's no `auto` top-margin left
+  // to recompute) AND lifts the lower fields clear of the keyboard, leaving iOS little or nothing to
+  // scroll. focus/blur is the trigger — a focused field means the keyboard is up on mobile — and the
+  // requestAnimationFrame blur-guard stops it flickering when focus moves from one field to the next.
+  const [typing, setTyping] = useState(false);
+  const formRef = useRef(null);
   // The form container is a fixed-height flex column with no scroll (see the sign-in/sign-up
   // return below), so on the sign-up form specifically — 4 fields plus copy, vertically CENTERED
   // rather than pinned to the top — the WKWebView keyboard covers the lower fields (Password) with
@@ -30,7 +44,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
 
   // Forgot-password: always report success — never reveal whether an account exists.
   async function handleReset() {
-    setError("");
+    setError(""); setNotice("");
     if (!email.trim()) { setError("Enter your email or username first"); return; }
     setLoading(true);
     try { await sb.recover(email); } catch (e) { /* silent by design */ }
@@ -39,7 +53,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   }
 
   async function handleSubmit() {
-    setError("");
+    setError(""); setNotice("");
     if (!email || !password) { setError("Email and password required"); return; }
     if (mode === "signup" && !username) { setError("Username required"); return; }
     if (mode === "signup" && username.length < 3) { setError("Username must be at least 3 characters"); return; }
@@ -106,7 +120,9 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
             const signInData = await sb.signIn(email, password);
             if (signInData.access_token) { onAuth(signInData); return; }
           } catch (e2) {}
-          setError("Account created! Check your email to confirm, then sign in.");
+          // GREEN, not the red error slot — this is a success. It also survives the setMode below
+          // (which only clears `error`), so the user still sees it after landing on the sign-in form.
+          setNotice("Account created! Check your email to confirm, then sign in.");
           setMode("signin");
         }
       } else {
@@ -302,11 +318,11 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", height:48 }}>
         <button onClick={() => {
           // From the reset form, Back returns to sign-in (not the welcome screen).
-          if (mode === "reset") { setMode("signin"); setError(""); setResetSent(false); return; }
+          if (mode === "reset") { setMode("signin"); setError(""); setNotice(""); setResetSent(false); return; }
           // Opened as an in-app guest gate (promptReason set): Back returns to the app, not to
           // the marketing welcome screen — a guest mid-session shouldn't land on "Start Tracking".
           if (promptReason && onGuest) { onGuest(); return; }
-          setMode("welcome"); setError("");
+          setMode("welcome"); setError(""); setNotice("");
         }} style={{
           background:"none", border:"none", padding:"10px 4px",
           display:"flex", alignItems:"center", gap:4, cursor:"pointer", fontFamily:F, color:C.text,
@@ -328,7 +344,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
             wasn't what caused the rejection; don't conflate the two fixes.) The original
             bottom-of-form toggle stays too (below); this is additive, not a replacement. */}
         {(mode === "signin" || mode === "signup") && (
-          <button className="seshd-hit" onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
+          <button className="seshd-hit" onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }} style={{
             background:"none", border:"none", padding:"10px 4px", cursor:"pointer", fontFamily:F,
             fontSize:13, fontWeight:700, color:C.accentInk,
           }}>
@@ -342,7 +358,22 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           specifically (a dnd-kit handle needed the same explicit rule for the same reason). Belt
           and suspenders alongside the header toggle above: this guarantees the vertical swipe/
           scroll gesture itself is never silently claimed by anything else on this container. */}
-      <div {...swipeDismissKeyboard} style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", touchAction:"pan-y", display:"flex", flexDirection:"column", maxWidth:380, width:"100%", margin:"0 auto" }}>
+      <div
+        ref={formRef}
+        {...swipeDismissKeyboard}
+        // focusin/focusout (React's onFocus/onBlur, which bubble) rather than per-input handlers:
+        // one pair here covers every field in every mode, including ones added later.
+        onFocus={e => { if (e.target?.tagName === "INPUT") setTyping(true); }}
+        onBlur={() => {
+          // Defer: moving between two fields fires blur BEFORE the next focus, so reacting
+          // immediately would drop `typing` to false for a frame and bounce the layout between
+          // every field. If focus has genuinely left the form by the next frame, un-pin.
+          requestAnimationFrame(() => {
+            const el = typeof document !== "undefined" ? document.activeElement : null;
+            if (!formRef.current || !el || !formRef.current.contains(el) || el.tagName !== "INPUT") setTyping(false);
+          });
+        }}
+        style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", touchAction:"pan-y", display:"flex", flexDirection:"column", maxWidth:380, width:"100%", margin:"0 auto" }}>
         {/* margin:"auto 0" on this wrapper (not justifyContent:center on the scroll container
             itself) is what centers a short form vertically while still letting a tall one
             (sign-up, with the keyboard open) scroll all the way to its own top and bottom — a
@@ -350,7 +381,9 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
             past the viewport, same shape as the alignItems:center backdrop bug elsewhere in the
             app. Auto margins collapse to 0 once there's no spare space, so this is a no-op on a
             form that already overflows. */}
-        <div style={{ margin:"auto 0", width:"100%" }}>
+        {/* `auto 0` centers a short form in spare space; `0` pins it to the top while a field is
+            focused (see the `typing` state above) so the keyboard opening can't re-center it. */}
+        <div style={{ margin: typing ? "0" : "auto 0", width:"100%" }}>
         {/* Big centered brand mark fills the empty upper area so the screen doesn't read top-heavy-empty. */}
         <div style={{ display:"flex", justifyContent:"center", marginBottom:40 }}><SeshdLogo C={C} size={72}/></div>
         <h1 style={{
@@ -403,7 +436,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
               </span>
               <span style={{ fontSize:12, fontWeight:600, color:C.sub }}>Remember me</span>
             </button>
-            <button onClick={() => { setMode("reset"); setError(""); setResetSent(false); }} style={{
+            <button onClick={() => { setMode("reset"); setError(""); setNotice(""); setResetSent(false); }} style={{
               background:"none", border:"none", color:C.sub, fontSize:12, fontWeight:600,
               cursor:"pointer", fontFamily:F, padding:"0 2px",
             }}>Forgot password?</button>
@@ -413,6 +446,11 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         {error && (
           <div style={{ fontSize:13, color:C.red, marginBottom:10, textAlign:"center", lineHeight:1.4 }}>
             {error}
+          </div>
+        )}
+        {notice && !error && (
+          <div style={{ fontSize:13, color:C.green || "#22c55e", marginBottom:10, textAlign:"center", lineHeight:1.5 }}>
+            {notice}
           </div>
         )}
         {mode === "reset" && resetSent && (
@@ -499,7 +537,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         </button>
         )}
 
-        <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
+        <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }} style={{
           width:"100%", background:"none", border:"none", color:C.sub,
           fontSize:13, cursor:"pointer", fontFamily:F, padding:8
         }}>

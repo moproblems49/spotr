@@ -1526,6 +1526,27 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   was removed. **Before "fixing" a native-feel tell, grep the stylesheet for it** — that one
   shipped with a stated premise that was already false. Links were the one genuine gap: the
   tap-highlight rule covers `button` and `[role="button"]`, not `a`.
+- **★ A VERTICALLY-CENTRED FIXED-HEIGHT CONTAINER IS A *MOVING* LAYOUT THE MOMENT THE VIEWPORT CAN
+  RESIZE — AND THE iOS KEYBOARD RESIZES IT.** Mo: "feels like it's still laggy, screen moves up a
+  bit to adjust about 1 sec after clicking one of the type-in boxes." Nothing was slow. Capacitor's
+  default iOS keyboard resize mode is `native`, which SHRINKS the whole webview when the keyboard
+  opens; `AuthScreen`'s form is `height:100dvh` with its inner wrapper centred via `margin:"auto 0"`
+  (that centring is itself load-bearing — see the comment there — it's what lets a short form centre
+  while a tall one still scrolls to both edges). So the keyboard opening re-ran the centring against
+  a shorter box and the whole form visibly drifted upward **a measured 84px at 390×844**, arriving
+  a beat after the tap because it waits on the keyboard's own animation. Reads exactly like lag; is
+  actually a layout recomputation. Fix: a `typing` state (bubbling `onFocus`/`onBlur` on the scroll
+  container) swaps the wrapper to `margin:"0"` while any input is focused, so there is no `auto`
+  margin left to recompute — and as a bonus it lifts the lower fields clear of the keyboard. The
+  `onBlur` handler MUST defer through `requestAnimationFrame` and re-check `document.activeElement`:
+  moving between two fields fires blur BEFORE the next focus, so reacting immediately drops `typing`
+  for one frame and bounces the layout on every field change. **Device-only and invisible to the
+  whole battery** — headless Chromium has no software keyboard, so all 50 sims and 48 Playwright
+  suites passed both before and after. Mo's screen recording caught it; that is the SECOND bug in
+  one night found that way (see the keyboard-dismiss entry below), which is the real lesson: for
+  anything involving the software keyboard, a device recording outranks the entire test suite.
+  Focus/blur IS testable headlessly though — `pw_authkeyboard`-style checks can pin the margin
+  swap (unfocused 84px → focused 0px → back to 84px on blur) even when the keyboard itself can't be.
 - **★ WHEN YOU REPLACE A MECHANISM, DELETE EVERY CALL SITE OF THE OLD ONE — A SURVIVOR WILL FIGHT
   THE NEW ONE, AND NO TEST IN THIS BATTERY CAN SEE IT.** "Swipe down to dismiss the keyboard" was
   first built as `onScroll={blurIfTextInput}`, then correctly rebuilt as `useSwipeDismiss` — a
