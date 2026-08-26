@@ -7,7 +7,7 @@
 // duplicated here) because they're ALSO used by App.jsx's own onboarding-completion handler
 // and the "Browse templates" sheet — see the ReferenceError history on PROGRAM_TEMPLATES in
 // App.jsx right above its definition before touching either.
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Icon, SeshdLogo, Avatar, PROGRAM_TEMPLATES, recommendTemplateId, F } from "../App.jsx";
 
 export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
@@ -78,6 +78,19 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   const goalLabel = { strength:"getting stronger", muscle:"building muscle", lean:"getting lean", general:"staying healthy" }[answers.goal] || "your goals";
   const dpw = answers.daysPerWeek || 3;
   const recProgram = PROGRAM_TEMPLATES.find(t => t.id === recommendTemplateId(answers));
+  // Keyboard handling for the one step that has a real text input (Age, on the sex/age step).
+  // Same bug and same fix as AuthScreen and NewPasswordScreen: Capacitor's `native` keyboard
+  // resize mode SHRINKS the webview, so this `justifyContent:"center"` column re-centres itself
+  // a beat after the field is tapped and the whole step visibly jumps — measured 178px of drift
+  // here, the largest of the three, and this is the step EVERY new signup walks through. `typing`
+  // switches the content column to top-aligned while a field is focused so there is nothing left
+  // to re-centre. The rAF blur-guard re-checks document.activeElement because blur fires BEFORE
+  // the next focus, so reacting immediately would unpin for a frame on every field change.
+  // The step also gains `overflowY:auto` while typing: it had NO scrollable container at all, so
+  // if the keyboard ever covered the Continue button there was no way to reach it — the shape of
+  // the App Store 2.1(a) rejection. Continue currently rides above the keyboard as a flex sibling,
+  // so this is a safety net rather than a fix for a live symptom.
+  const [typing, setTyping] = useState(false);
 
   return (
     <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
@@ -85,7 +98,24 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
       {step > 0 && !inClosing && (
         <button onClick={back} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 16px)", left:18, background:"none", border:"none", fontSize:24, color:C.sub, cursor:"pointer", fontFamily:F, zIndex:2, padding:12 }}>‹</button>
       )}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 32px", textAlign:"center" }}>
+      <div
+        onFocus={e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) setTyping(true); }}
+        onBlur={() => { requestAnimationFrame(() => {
+          const el = typeof document !== "undefined" ? document.activeElement : null;
+          if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) setTyping(false);
+        }); }}
+        style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center",
+          overflowY:"auto", WebkitOverflowScrolling:"touch",
+          padding:"40px 32px", textAlign:"center", boxSizing:"border-box" }}>
+        {/* Centred by this wrapper's `margin:auto`, NOT by justifyContent on the scroller above.
+            Two reasons, both documented in CLAUDE.md: a centring flex parent that is ALSO the
+            scroll container clips whichever edge overflows (the alignItems:center backdrop bug),
+            and auto margins collapse to 0 on their own once there is no spare space — so on a
+            step tall enough to overflow, the keyboard opening changes nothing and `typing` is a
+            no-op. `typing` only matters on the steps that still fit, where it stops the content
+            re-centring into the shrunken box. Switching justifyContent instead was measured
+            leaving 34px of residual jump; this leaves none. */}
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", alignItems:"center", margin: typing ? "0" : "auto 0" }}>
         <div style={{ marginBottom:48 }}>
           <SeshdLogo C={C} big/>
         </div>
@@ -180,6 +210,7 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
             </div>
           </div>
         )}
+        </div>
       </div>
       <div style={{ padding:"0 32px 44px" }}>
         <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:24 }}>

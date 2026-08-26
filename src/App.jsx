@@ -1,4 +1,4 @@
-// v178091716930
+// v178091716931
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2080,6 +2080,14 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               })()}
               <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000}
                 panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`,
+                  // boxSizing is load-bearing on THIS one, not cosmetic: with the content-box
+                  // default (this app has no global border-box reset) the ~40px of vertical
+                  // padding below is added ON TOP of maxHeight, so once the content is tall enough
+                  // to hit the cap the sheet renders taller than the cap was meant to allow. It is
+                  // bottom-anchored, so the overflow clips the TOP — the title and the battery
+                  // score — which is the exact failure this maxHeight was added to prevent (see
+                  // the "tall BOTTOM sheet pushes its own header off the TOP" note in CLAUDE.md).
+                  boxSizing:"border-box",
                   maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
                   overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
                   padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
@@ -18130,6 +18138,20 @@ function NewPasswordScreen({ token, onDone, C }) {
   const [pw2, setPw2] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Same keyboard handling AuthScreen needed, for the same three reasons — this screen had all of
+  // them at once and is the one place a user MUST type to finish an account-recovery flow:
+  //   1. It was `justifyContent:"center"` on a 100dvh box, so the iOS keyboard shrinking the
+  //      webview (Capacitor's `native` resize mode) re-ran the centring and the form visibly
+  //      drifted a beat after the tap — the "feels laggy" bug Mo caught on the auth screen.
+  //   2. It had NO scroll container at all, so anything the keyboard covered was simply
+  //      unreachable — the exact shape of the App Store 2.1(a) rejection, on the screen where
+  //      the only control that matters ("Save new password") sits BELOW both password fields.
+  //   3. `minHeight:100dvh` + padding with no `boxSizing`, so the box was always taller than the
+  //      viewport by its own padding (this app has no global border-box reset).
+  // `typing` pins the form to the top while a field is focused; the rAF blur-guard is required
+  // because blur fires BEFORE the next focus when moving between the two password fields, so
+  // reacting immediately would unpin for a frame and bounce the layout on every field change.
+  const [typing, setTyping] = useState(false);
   async function submit() {
     setError("");
     if (pw.length < 8) { setError("Password must be at least 8 characters"); return; }
@@ -18145,9 +18167,16 @@ function NewPasswordScreen({ token, onDone, C }) {
     fontFamily:F, boxSizing:"border-box", marginBottom:10
   };
   return (
-    <div style={{ minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column", justifyContent:"center",
-      padding:"0 24px", paddingTop:"max(env(safe-area-inset-top), 20px)", paddingBottom:"max(env(safe-area-inset-bottom), 24px)" }}>
-      <div style={{ maxWidth:380, width:"100%", margin:"0 auto" }}>
+    <div
+      onFocus={e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) setTyping(true); }}
+      onBlur={() => { requestAnimationFrame(() => {
+        const el = typeof document !== "undefined" ? document.activeElement : null;
+        if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) setTyping(false);
+      }); }}
+      style={{ boxSizing:"border-box", height:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
+        overflowY:"auto", WebkitOverflowScrolling:"touch", touchAction:"pan-y",
+        padding:"0 24px", paddingTop:"max(env(safe-area-inset-top), 20px)", paddingBottom:"max(env(safe-area-inset-bottom), 24px)" }}>
+      <div style={{ maxWidth:380, width:"100%", margin: typing ? "0 auto" : "auto" }}>
         <h1 style={{ fontSize:28, fontWeight:900, color:C.text, marginBottom:6, letterSpacing:-0.8, fontFamily:F }}>Set a new password</h1>
         <p style={{ fontSize:14, color:C.sub, marginBottom:28, fontFamily:F }}>You're signed in — choose a new password to finish.</p>
         <input value={pw} onChange={e => setPw(e.target.value)} placeholder="New password" type="password" style={inputStyle} autoComplete="new-password"/>
@@ -18197,7 +18226,10 @@ function PublicProfileView({ userId, C, onOpenApp }) {
     return () => { cancelled = true; };
   }, [userId]);
 
-  const wrap = { minHeight:"100dvh", background:C.bg, color:C.text, fontFamily:F, display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(env(safe-area-inset-top) + 40px) 24px 40px" };
+  // boxSizing: this is a minHeight:100dvh box with ~80px+inset of vertical padding and no global
+  // border-box reset in the app, so without it the wrapper is always taller than the viewport by
+  // that padding. Reachable PRE-LOGIN via a shared /u/<id> link, i.e. by anyone.
+  const wrap = { boxSizing:"border-box", minHeight:"100dvh", background:C.bg, color:C.text, fontFamily:F, display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(env(safe-area-inset-top) + 40px) 24px 40px" };
   if (state.loading) {
     return <div style={{ ...wrap, justifyContent:"center" }}><Spinner C={C} size={30}/></div>;
   }
@@ -22876,7 +22908,7 @@ class ErrorBoundary extends Component {
       reload();
     };
     return (
-      <div style={{ minHeight:"100dvh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", background:"#0A0A0A", color:"#fff", fontFamily:"-apple-system, BlinkMacSystemFont, system-ui, sans-serif", textAlign:"center" }}>
+      <div style={{ boxSizing:"border-box", minHeight:"100dvh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", background:"#0A0A0A", color:"#fff", fontFamily:"-apple-system, BlinkMacSystemFont, system-ui, sans-serif", textAlign:"center" }}>
         <div style={{ marginBottom:16, fontSize:34, fontWeight:900, letterSpacing:-1 }}>S</div>
         <div style={{ fontSize:20, fontWeight:800, marginBottom:8, letterSpacing:-0.4 }}>Something went sideways</div>
         <div style={{ fontSize:14, color:"#999", marginBottom:28, maxWidth:300, lineHeight:1.5 }}>The app hit an unexpected error. Reloading usually fixes it — your workouts are saved on the server.</div>

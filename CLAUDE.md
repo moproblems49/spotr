@@ -1547,6 +1547,32 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   anything involving the software keyboard, a device recording outranks the entire test suite.
   Focus/blur IS testable headlessly though — `pw_authkeyboard`-style checks can pin the margin
   swap (unfocused 84px → focused 0px → back to 84px on blur) even when the keyboard itself can't be.
+- **★ THE KEYBOARD-DRIFT SWEEP, AND THE HONEST LIMIT OF THE WEB-SIDE FIX.** After the AuthScreen
+  drift was fixed, a cold-context sweep of every real `<input>` in the app (~56 of them) found the
+  same class on four more screens, ranked by who reaches them: **`Onboarding`'s age step** (178px,
+  the largest, and on EVERY new signup including App Review), **Edit Profile** (156px),
+  **`NewPasswordScreen`** (which had all three problems at once — centred, no scroll container at
+  all, and no `boxSizing` — on the one screen a user MUST type on to finish account recovery), plus
+  the `boxSizing` latents on the **Body Battery sheet** (clips its own title/score when tall — the
+  exact failure its `maxHeight` exists to prevent), **`PublicProfileView`** (reachable PRE-LOGIN via
+  a shared `/u/` link) and the ErrorBoundary. All fixed. **`src/App.css` was DELETED in the same
+  pass**: nothing imported it, yet it held the repo's only `box-sizing:border-box` rule, so anyone
+  grepping would conclude a global reset existed — plausibly how this whole class survived so long.
+  **What the fix can and cannot do, measured rather than assumed:** on a screen whose content
+  OVERFLOWS the shrunken box, `margin:auto 0` collapses to 0 by itself and the pin is a genuine
+  no-op — nothing moves. On a screen whose content still FITS (the onboarding age step), the
+  content must go somewhere when the webview loses ~340px, so a residual ~29px shift remains and
+  **top-pinning cannot remove it** — it only makes the resting position predictable and guarantees
+  the field clears the keyboard. Switching `justifyContent` instead of using an auto-margin wrapper
+  measured *worse* (34px) and reintroduces the documented "centring flex parent that is ALSO the
+  scroll container clips the overflowing edge" bug — use the wrapper. **The only thing that removes
+  the movement entirely is native**: `Keyboard.resize` in `capacitor.config.json` (unset here, so
+  iOS defaults to `native`, which physically shrinks the webview). `resize:"none"` stops the resize
+  app-wide — but it is NOT OTA-able, changes keyboard behaviour on every screen at once, and cannot
+  be verified in this repo's battery at all (no software keyboard in jsdom or headless Chromium),
+  so it was deliberately NOT taken hours before an App Store submission. Test it on device
+  deliberately, with the scroll containers that now exist on the auth/onboarding/reset screens as
+  the safety net, before considering it.
 - **★ WHEN YOU REPLACE A MECHANISM, DELETE EVERY CALL SITE OF THE OLD ONE — A SURVIVOR WILL FIGHT
   THE NEW ONE, AND NO TEST IN THIS BATTERY CAN SEE IT.** "Swipe down to dismiss the keyboard" was
   first built as `onScroll={blurIfTextInput}`, then correctly rebuilt as `useSwipeDismiss` — a
