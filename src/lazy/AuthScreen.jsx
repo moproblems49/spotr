@@ -145,6 +145,17 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   if (mode === "welcome") {
     return (
       <div style={{
+        // boxSizing:border-box — same missing-piece bug as the sign-in/sign-up form below (see its
+        // comment): no boxSizing here meant minHeight:100dvh + this div's own ~82px of vertical
+        // padding made its true minimum height 100dvh+82px in the browser's default content-box
+        // model, clipped by #root's `overflow:hidden`. Measured before this fix: the container was
+        // reliably 82px taller than the viewport at every size, and the only reason the bottom CTAs
+        // (including "Already have an account? Sign in") were ever reachable at all was that the
+        // two decorative absolute-positioned gradient blobs below happened to inflate scrollHeight
+        // enough to hand this div's own overflowY:auto some accidental scroll room — fragile, and
+        // at a short viewport (375×667) the bottom Sign-in button measured off-screen regardless.
+        // border-box makes minHeight:100dvh the TOTAL box, so this is no longer accidental.
+        boxSizing:"border-box",
         minHeight:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
         paddingTop:"max(env(safe-area-inset-top), 32px)", paddingBottom:"calc(max(env(safe-area-inset-bottom), 34px) + 16px)",
         paddingLeft:24, paddingRight:24, position:"relative", overflowY:"auto", overflowX:"hidden",
@@ -266,6 +277,23 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
       // to go, which is exactly how the keyboard covering the Password field on sign-up became
       // unreachable: the inner form div's own overflowY:auto never engages because THIS container
       // was never actually squeezed down to the visible height in the first place.
+      //
+      // A REAL, SEPARATE bug found the same night (Aug 2026), NOT the cause of the App Store
+      // rejection below — don't conflate the two. This div had no `boxSizing`, and this file has
+      // no global box-sizing:border-box reset anywhere (checked — none exists in the whole app).
+      // With the browser default (content-box), `height:100dvh` sets the CONTENT height and padding
+      // is added ON TOP of that, so this container's true rendered height was always 100dvh + its
+      // own vertical padding (44px here) — overflowing the viewport by that amount on every device.
+      // An independent audit confirmed the extra 44px sat entirely BELOW the last element at every
+      // viewport tested (not clipping it) via elementFromPoint hit-testing — so this specific gap
+      // was not what stranded the reviewer's Sign In button. The actual mechanism, and the actual
+      // fix, is the header toggle above: with the on-screen keyboard open, the scroll container's
+      // maxScroll measured 0 at real iPad dimensions even though the bottom toggle sat below the
+      // visible area under the keyboard — a scroll-based reachability guarantee can't survive that,
+      // which is why the fix is a control that isn't scroll-gated at all. This boxSizing fix is
+      // still correct and worth keeping (it makes `height:100dvh` the TOTAL box as the "MUST be a
+      // hard height" comment above always intended), just not the rejection's root cause.
+      boxSizing:"border-box",
       height:"100dvh", background:C.bg, display:"flex", flexDirection:"column",
       padding:"0 24px",
       paddingTop:"max(env(safe-area-inset-top), 20px)",
@@ -289,16 +317,20 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         {/* App Store Guideline 2.1(a) rejection (Aug 25 2026, iPad Air 11" M3 / iPadOS 26.6): the
             reviewer couldn't scroll the sign-up form far enough to reach the sign-in/sign-up toggle,
             which previously only existed at the very BOTTOM of the scrollable content, past the
-            name/username/email/password fields, the Create Account button and the Terms text — the
-            tallest content this screen ever renders. Rather than chase an iPad-only scroll quirk
-            that can't be reproduced outside real hardware, the toggle now also lives here, in the
-            header row ABOVE the scroll container entirely — so switching modes is reachable no
-            matter what the scrollable area does on any given device. The original bottom-of-form
-            toggle stays too (below); this is additive, not a replacement. */}
+            name/username/email/password fields, the Create Account button and the Terms text.
+            THIS is the actual fix, confirmed by an independent audit: with the on-screen keyboard
+            open (as it would be after tapping into any field), the scroll container's measured
+            `maxScroll` was 0 at real iPad dimensions — the browser saw nothing to scroll even
+            though the bottom toggle sat below the visible area under the keyboard. Putting the
+            toggle here, in the header row ABOVE the scroll container entirely, makes it reachable
+            regardless of scroll state or keyboard. (A real but SEPARATE bug was also fixed the same
+            night — this container was missing `boxSizing:"border-box"` — worth keeping, but it
+            wasn't what caused the rejection; don't conflate the two fixes.) The original
+            bottom-of-form toggle stays too (below); this is additive, not a replacement. */}
         {(mode === "signin" || mode === "signup") && (
-          <button onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
+          <button className="seshd-hit" onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }} style={{
             background:"none", border:"none", padding:"10px 4px", cursor:"pointer", fontFamily:F,
-            fontSize:13, fontWeight:700, color:C.accent,
+            fontSize:13, fontWeight:700, color:C.accentInk,
           }}>
             {mode === "signin" ? "Sign up" : "Sign in"}
           </button>

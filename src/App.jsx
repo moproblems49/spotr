@@ -1,4 +1,4 @@
-// v178091716927
+// v178091716928
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20011,6 +20011,14 @@ function AppInner() {
       localStorage.removeItem("seshd_feed_cache");
       localStorage.removeItem("seshd_pending_workouts");
       localStorage.removeItem("seshd_write_queue");
+      // Found in an independent audit of the fix above: without this, the next person to sign UP
+      // (not sign in) on this device would have this stale "already onboarded" flag from the
+      // previous account and silently skip the whole first-run flow — no goal questions, no
+      // starter program. Safe to clear unconditionally: a RETURNING user's onboarding state is
+      // gated on server data (store.seenOnboarding / real history), never on this local flag alone
+      // (see the `onboardedLocally` check), so clearing it can only ever affect a genuinely new
+      // account, which should see onboarding anyway.
+      localStorage.removeItem("seshd_onboarded");
     } catch {}
     setSession(null);
     setStore(loadStore());

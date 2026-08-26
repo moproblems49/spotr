@@ -1539,6 +1539,39 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   (`maxHeight: calc(100dvh - env(safe-area-inset-top) - 10px)`) and give it `overflow-y:auto` +
   `overscroll-behavior:contain`; fix the SHEET, never the content. Same family as the
   `alignItems:center` note below. Sim: `pw_bbsheet`.
+- **★ AN APP STORE REJECTION, AND THE FIX THAT ACTUALLY MATTERED WASN'T THE ONE THAT LOOKED LIKE
+  THE ROOT CAUSE (Aug 25 2026).** Apple rejected under Guideline 2.1(a): a reviewer on an iPad Air
+  11" (M3), iPadOS 26.6, couldn't scroll the sign-up form far enough to reach the sign-in/sign-up
+  toggle link (only at the bottom of the scrollable content then). First fix: added the toggle to
+  the header row too, ABOVE the scroll container, so it's reachable no matter what the scrollable
+  area does. Investigating further, found `AuthScreen`'s form container had `height:"100dvh"` PLUS
+  padding with no `boxSizing` set — and this app has NO global `box-sizing:border-box` reset
+  anywhere (checked: `src/index.css` has none; the only `box-sizing` in the repo is in
+  `src/App.css`, which nothing imports — dead file). With the browser's content-box default,
+  `height:100dvh` sets the CONTENT height and padding is added ON TOP, so the container's true
+  rendered height was always `100dvh + its own padding`, permanently overflowing the real viewport.
+  This looked like a clean explanation and got documented as "the actual root cause" — **which an
+  independent audit then disproved**: reverting just the boxSizing fix and hit-testing with
+  `elementFromPoint` (not `getBoundingClientRect`, which was what the first pass used and which
+  quietly overclaimed) showed the extra padding sat entirely BELOW the last element at every
+  viewport tested — not clipping it. The real mechanism: with the on-screen keyboard open (as it
+  would be after tapping any field), the scroll container's measured `maxScroll` was **0** at real
+  iPad dimensions, even though the toggle sat below the visible area under the keyboard — the
+  browser saw nothing to scroll. A scroll-based reachability guarantee cannot survive that; a
+  control that isn't scroll-gated at all (the header toggle, fix #1) can. **The boxSizing fix is
+  still real and still correct** — content-box + padding + a hard height IS a live bug, worth
+  keeping — it just wasn't the rejection's cause, and the same pattern was found on the WELCOME
+  screen too (`minHeight:100dvh` + ~82px padding, measured 82px overflow at every size, clipped by
+  `#root{overflow:hidden}` — the only reason it ever scrolled at all was two decorative gradient
+  blobs accidentally inflating `scrollHeight`; fixed the same way). **Two lessons, not one: (1) a
+  scroll/keyboard-shaped bug needs a fix that doesn't depend on scroll or keyboard state working
+  correctly, not just a better scroll container; (2) `getBoundingClientRect` math can look like
+  proof and still be wrong — `elementFromPoint` hit-testing is what actually confirmed both the
+  bug and the fix here, and is worth reaching for before calling something "root cause."** Grep
+  `height:"100dvh"` / `height:"100vh"` for other fixed-height-plus-padding, no-boxSizing instances
+  before assuming this is fully swept — a partial audit found several more (`NewPasswordScreen`,
+  `PublicProfileView`, the ErrorBoundary, the Body Battery sheet's panel) that are latent today only
+  because their content isn't yet tall enough to reach the clipped edge.
 - **A fullscreen overlay owns the status-bar area itself** — it's anchored at `top:0` over the
   app's own top bar, so it needs `calc(env(safe-area-inset-top) + Npx)` on its header or the title
   and buttons sit under the clock/battery. `ProgramDetailView`, `ProgramBuilder` and
