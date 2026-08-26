@@ -1639,6 +1639,18 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   before assuming this is fully swept — a partial audit found several more (`NewPasswordScreen`,
   `PublicProfileView`, the ErrorBoundary, the Body Battery sheet's panel) that are latent today only
   because their content isn't yet tall enough to reach the clipped edge.
+  **The standing guard is `pw_authreach`** — added Aug 26, because for a day the fix for a
+  REJECTION-causing bug had nothing protecting it, which is exactly how one gets reintroduced by an
+  unrelated layout change. It hit-tests the header toggle at four viewports (iPhone, iPad portrait,
+  and two cramped sizes standing in for the keyboard eating the lower half) and asserts three
+  things: the toggle is on screen **with no scrolling performed at all** (a check that scrolls first
+  would pass on the very build Apple rejected), it is hit-testable rather than merely on-screen
+  (`elementFromPoint`, never `getBoundingClientRect` — see above for why rect math already lied once
+  here), and tapping it actually switches mode. Red-proofed by deleting the header toggle and
+  rebuilding: 20 failures, including "tapping it switches to sign-in" failing with the heading still
+  reading "Create your account" — the user stuck on the form, which IS the rejection. Its
+  "form actually rendered" checks stayed green throughout, which is what distinguishes a real
+  failure from a broken fixture.
 - **A fullscreen overlay owns the status-bar area itself** — it's anchored at `top:0` over the
   app's own top bar, so it needs `calc(env(safe-area-inset-top) + Npx)` on its header or the title
   and buttons sit under the clock/battery. `ProgramDetailView`, `ProgramBuilder` and
