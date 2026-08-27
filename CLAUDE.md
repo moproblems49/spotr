@@ -2703,7 +2703,13 @@ library + name resolution; a LEAF importing nothing) and `src/engine/strength.js
 readiness, days-since-trained; imports core+exercises+workout, NOTHING from health — the extractor
 asserts that layering rather than assuming it). **App.jsx 23,095 → 19,726 lines.** Layering is
 strictly one-way: core and exercises import nothing, everything else imports only downward,
-App.jsx imports all five.
+App.jsx imports all of them. Round 5 added `src/engine/plates.js` (9 symbols, 3 exported: bar &
+plate maths, the IWF/IPF colour code, warmup generation) and `src/engine/insights.js` (7 symbols,
+4 exported: streaks, progress-insight cards, PR-event reconstruction), and moved `uid` to core
+(**App.jsx → 19,329**). `buildCoachContext`/`generateWeeklyReview` were DELIBERATELY left behind:
+their closure drags in the HealthKit auth chain and the AI endpoint — a "pure-looking" function
+whose closure reaches device or network config is glue, not logic, and the closure blowing up like
+that is the tell.
 `dKey` is a thin today-default wrapper over `dateKeyOf` and was moved AS-IS rather than
 consolidated — merging them is a behaviour change (`dateKeyOf(undefined)` is an Invalid Date) and
 must not ride along inside a mechanical move.
@@ -2813,8 +2819,22 @@ comments, but the import-needs check ran a bare regex over raw body text — str
 and a doc block glued above `strengthScoreHistory` carried `computeStrengthScore`'s contract in its
 first four lines — a PRE-EXISTING mis-attachment carried verbatim. A glued block reads plausibly at
 both ends; read it to the END before trusting it.
-**Next candidates**, same pattern: formatting/text helpers and the insight/coach-context builders,
-then stop and reassess — most of what remains is state and wiring. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
+**★ ROUND 5'S BUG CLASS WAS THE CLOSURE TOOL'S OWN BLIND SPOT: IT READS App.jsx ONLY.** It
+declared `calcStreak` and `uid` "referenced by nothing" while six `src/lazy/` files import them —
+the build's MISSING_EXPORT errors caught it, which is the split working as designed, but grep
+`src/lazy/` for every moved name BEFORE trusting a privacy call. Same round: re-pointing
+`sim_platecolors` at plates.js broke its THEMES checks because ONE `src` variable served two
+files' worth of assertions (split into `src` + `platesSrc`, each with a loud throw); and its
+one-definition check silently became one-copy-tolerant when the canonical map left App.jsx —
+`<= 1` was written when the canonical copy lived there, so a reintroduced modal copy would have
+counted 1 and PASSED (tightened to `=== 0` in App.jsx + `=== 2` in plates.js, red-proofed). The
+audit also found `PlateCalcModal` carries its own pre-existing local `PLATES_LBS`/`PLATES_KG` +
+`calcPlates` — older than round 5, never consolidated; a future pass should route it through
+`calcPlatesPerSide`/the canonical lists.
+**The split is COMPLETE for now (rounds 1-5, Aug 27-28 2026).** What remains in App.jsx is state,
+wiring, device/network glue and components — the parts we agreed to BRAKE, not extract. New
+feature logic goes in a new `src/engine/` module (or the one it belongs to), not appended to
+`AppInner`/`WorkoutTracker`. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
 are 34% of the file and the growth is landing there (+336 / +410 since Aug 9), but what accumulates
 in them is STATE and WIRING, which is exactly what makes extraction dangerous — and they are being
 edited most weeks. Put a brake on their growth (new feature code goes in a new module) rather than

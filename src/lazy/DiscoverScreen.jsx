@@ -3,9 +3,10 @@
 // Not the default landing tab, so this only needs to load once someone actually switches to it.
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
-import { cvt, dKey, dateFromKey, devWarn } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
+import { cvt, dKey, dateFromKey, devWarn, uid } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
 import { EXERCISE_DB } from "../engine/exercises.js";
-import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, uid, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, calcWeeklyStreak } from "../App.jsx";
+import { calcWeeklyStreak } from "../engine/insights.js";
+import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow } from "../App.jsx";
 
 // GROUP DETAIL — lazy-loaded (src/lazy/GroupDetail.jsx). Most sessions never open a group.
 const GroupDetail = lazy(() => import("./GroupDetail.jsx"));

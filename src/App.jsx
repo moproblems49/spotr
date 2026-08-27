@@ -1,4 +1,4 @@
-// v178091716943
+// v178091716944
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -21,11 +21,13 @@ import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { LBS_PER_KG, cvt, dKey, dateFromKey, dateKeyOf, devError, devWarn, workingDone } from "./engine/core.js";
+import { LBS_PER_KG, cvt, dKey, dateFromKey, dateKeyOf, devError, devWarn, uid, workingDone } from "./engine/core.js";
 import { recoveryTimeHours, recoveryVerdict, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom } from "./engine/health.js";
 import { getExerciseSessions, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio } from "./engine/workout.js";
 import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
+import { plateColor, calcPlatesPerSide, generateWarmupSets } from "./engine/plates.js";
+import { calcWeeklyStreak, getProgressInsights, reconstructPrEvents } from "./engine/insights.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DURABLE NATIVE STORAGE
@@ -2082,11 +2084,7 @@ function setTypeColors(id, C) {
   return { stripe: c.stripe[key], ink: c.ink[key] };
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// UTILITIES
-// ═════════════════════════════════════════════════════════════════════════════
-export const uid = () => Math.random().toString(36).slice(2,10);
-// RFC4122 v4 UUID — needed (unlike uid() above) wherever the id is sent to a Postgres `uuid`
+// RFC4122 v4 UUID — needed (unlike the base36 uid() in engine/core.js) wherever the id is sent to a Postgres `uuid`
 // column, e.g. as an idempotency key on a retried insert. crypto.randomUUID covers modern
 // WebViews; the fallback keeps older iOS WebViews working without it.
 const genUUID = () => {
@@ -2227,31 +2225,6 @@ function dayAgoLabel(dk, todayKey = dKey()) {
   return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
 }
 
-// Reusable plate-per-side calculator
-// Returns array of { p, count } or null if unachievable
-const BARBELL_BAR_LBS = 45;
-const BARBELL_BAR_KG = 20;
-const PLATES_LBS_LIST = [45, 35, 25, 10, 5, 2.5];
-const PLATES_KG_LIST = [25, 20, 15, 10, 5, 2.5, 1.25];
-// Plate disc colours, following the IWF/IPF competition colour code — which is what any gym with
-// colour-coded bumpers actually has on the rack: in KILOS 25 is red, 20 blue, 15 yellow, 10 green;
-// the POUND plates that mirror them are 45 blue, 35 yellow, 25 green.
-// ★ THIS IS KEYED ON THE UNIT AS WELL AS THE NUMBER, AND IT HAS TO BE. `25` is a different colour
-// in the two systems (25 lb is green, 25 kg is red) and so is `10` (10 lb white, 10 kg green), so
-// the single numeric map this replaced could only ever be right for one unit — it painted a 25kg
-// plate green and a 45lb plate red, neither of which matches any federation.
-// The small change plates are deliberately NOT accurate: in real life 10 lb and 5 kg are white,
-// 2.5 lb is black and 1.25 kg is chrome, and a white disc vanishes against the light theme's
-// near-white card while a black one vanishes against the dark theme. They get distinct theme-safe
-// values instead, running grey → purple → pink as they get lighter. Colour is never the only cue —
-// every swatch in the legend sits beside its own "3×45" label, and disc HEIGHT already scales with
-// weight — so a substitution here costs nothing an accurate colour would have bought.
-const PLATE_COLORS_LBS = { 45:"#3b82f6", 35:"#eab308", 25:"#22c55e", 10:"#a1a1aa", 5:"#8b5cf6", 2.5:"#ec4899" };
-const PLATE_COLORS_KG  = { 25:"#ef4444", 20:"#3b82f6", 15:"#eab308", 10:"#22c55e", 5:"#a1a1aa", 2.5:"#8b5cf6", 1.25:"#ec4899" };
-// Returns null (not a colour) for an unknown plate so each caller keeps its own fallback token.
-function plateColor(p, unit) {
-  return (unit === "kg" ? PLATE_COLORS_KG : PLATE_COLORS_LBS)[p] || null;
-}
 // EVERY PLATE DISC NEEDS A RIM, AND THE REASON IS THE LIGHT THEME. A saturated yellow — which is
 // what a 35 lb / 15 kg plate IS — measures 1.76:1 against the light theme's near-white card, well
 // under the 3:1 WCAG floor for a graphical object, so a 9px yellow disc on that surface reads as
@@ -2340,80 +2313,6 @@ function getBarWeight(barType, unit) {
   return unit === "kg" ? preset.kg : preset.lbs;
 }
 
-function calcPlatesPerSide(totalWeight, unit, oneSided = false, barWeightOverride = null) {
-  const t = parseFloat(totalWeight);
-  const plates = unit === "kg" ? PLATES_KG_LIST : PLATES_LBS_LIST;
-  if (oneSided) {
-    // No bar subtraction, no halving — the entered weight IS the plate weight on one end.
-    if (!t || t <= 0) return null;
-    let remaining = t;
-    const result = [];
-    for (const p of plates) {
-      const count = Math.floor(remaining / p);
-      if (count > 0) {
-        result.push({ p, count });
-        remaining = Math.round((remaining - p * count) * 1000) / 1000;
-      }
-    }
-    if (!result.length) return null;
-    // Attach the un-loadable remainder (per side) so the UI can show "≈ closest" instead of
-    // silently giving nothing when the exact weight isn't achievable with standard plates.
-    result.leftover = remaining > 0.01 ? remaining : 0;
-    return result;
-  }
-  const bar = barWeightOverride != null ? barWeightOverride : (unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS);
-  if (!t || t <= bar) return null;
-  let remaining = (t - bar) / 2;
-  const result = [];
-  for (const p of plates) {
-    const count = Math.floor(remaining / p);
-    if (count > 0) {
-      result.push({ p, count });
-      remaining = Math.round((remaining - p * count) * 1000) / 1000;
-    }
-  }
-  if (!result.length) return null;
-  // leftover = weight per side that couldn't be made with standard plates (0 if exact).
-  result.leftover = remaining > 0.01 ? remaining : 0;
-  return result;
-}
-// Generate warmup sets ramping up to a working weight.
-// Returns 4 sets: empty bar, then ~45%, ~65%, ~85% of working weight, each rounded
-// to the nearest achievable weight given standard plates. Reps taper as weight rises.
-// Used by the opt-in "Add warmup" button on compound barbell lifts.
-function generateWarmupSets(workingWeight, unit, barWeightOverride = null) {
-  const w = parseFloat(workingWeight);
-  if (!w || w <= 0) return [];
-  const bar = barWeightOverride != null ? barWeightOverride : (unit === "kg" ? BARBELL_BAR_KG : BARBELL_BAR_LBS);
-  // Smallest increment we can actually load (plate × 2 sides)
-  const minPlate = unit === "kg" ? 1.25 : 2.5;
-  const step = minPlate * 2;
-  // Round a target weight to the nearest achievable barbell load (>= bar)
-  const roundToBar = (target) => {
-    if (target <= bar) return bar;
-    const rounded = Math.round((target - bar) / step) * step + bar;
-    return Math.max(bar, rounded);
-  };
-  // Only warm up if the working weight is meaningfully above the bar
-  if (w <= bar + step) return [];
-  const ramp = [
-    { pct: 0, reps: 8 },     // empty bar
-    { pct: 0.45, reps: 5 },
-    { pct: 0.65, reps: 3 },
-    { pct: 0.85, reps: 2 },
-  ];
-  const sets = [];
-  let lastWeight = -1;
-  for (const r of ramp) {
-    const target = r.pct === 0 ? bar : roundToBar(w * r.pct);
-    // Skip if this warmup weight equals the working weight or duplicates the previous step
-    if (target >= w || target === lastWeight) continue;
-    lastWeight = target;
-    sets.push({ id: uid(), weight: String(target), reps: String(r.reps), done: false, type: "warmup" });
-  }
-  return sets;
-}
-
 // Sanitize a free-text numeric input into a valid positive number, or null.
 // Rejects NaN, non-positive, and absurd magnitudes so bad data never reaches the store.
 export function posNum(v, max = 100000) {
@@ -2426,139 +2325,6 @@ export function posNum(v, max = 100000) {
 const PR_TYPE_LABEL = { weight: "Weight", e1rm: "Est. 1RM", volume: "Volume" };
 export const PR_TYPE_LABEL_SHORT = { weight: "Wt", e1rm: "e1RM", volume: "Vol" };
 
-// Rebuild the dated PR-hit log (store.prEvents — what Wrapped/recaps count) from workout history
-// by replaying every session in chronological order and tracking a running max per exercise for
-// each PR category (weight, estimated 1RM, single-set volume), exactly mirroring the live
-// finish-time check in getSetPRTypes/finishWorkout. A PR event is emitted the first time a set
-// beats any running max — so the very first time you do an exercise counts, same as the app would
-// have recorded it. Used only when the stored log is empty (the log is otherwise append-only at
-// finish, so an edited workout or a finish whose PR write didn't land leaves it blank or short).
-function reconstructPrEvents(history) {
-  const sessions = [];
-  Object.entries(history || {}).forEach(([dk, day]) => {
-    Object.entries(day || {}).forEach(([sid, s]) => {
-      sessions.push({
-        dk, sid,
-        finishedAt: s?.finishedAt || new Date(dk + "T12:00:00").getTime(),
-        unit: s?.unit || "lbs",
-        exercises: s?.exercises || [],
-      });
-    });
-  });
-  // Chronological: oldest first, so each running max reflects only prior sessions.
-  sessions.sort((a, b) => a.finishedAt - b.finishedAt);
-  const maxW = {}, maxE = {}, maxV = {};
-  const events = [];
-  for (const sess of sessions) {
-    const toLbs = w => sess.unit === "lbs" ? w : cvt(w, "kg", "lbs");
-    for (const ex of sess.exercises) {
-      if (!ex?.name) continue;
-      let bw = 0, be = 0, bv = 0;
-      for (const s of (ex.sets || [])) {
-        const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
-        if (!done || s?.type === "warmup") continue;
-        const wt = parseFloat(s.weight), r = parseInt(s.reps);
-        if (!wt || wt <= 0 || !r || r < 1) continue;
-        const lbs = toLbs(wt);
-        const e1 = Math.round(epley1RM(lbs, r, 12));
-        const v = lbs * r;
-        if (lbs > bw) bw = lbs;
-        if (e1 > be) be = e1;
-        if (v > bv) bv = v;
-      }
-      const types = [];
-      if (bw > 0 && bw > (maxW[ex.name] || 0)) { maxW[ex.name] = bw; types.push("weight"); }
-      if (be > 0 && be > (maxE[ex.name] || 0)) { maxE[ex.name] = be; types.push("e1rm"); }
-      if (bv > 0 && bv > (maxV[ex.name] || 0)) { maxV[ex.name] = bv; types.push("volume"); }
-      if (types.length) events.push({ date: sess.dk, sid: sess.sid, name: ex.name, weightLbs: bw, types });
-    }
-  }
-  return events.slice(-300); // same cap the finish-time appender uses
-}
-
-// Get ISO week boundary (Mon 00:00 local) for a given date
-function weekStart(d = new Date()) {
-  const date = new Date(d);
-  date.setHours(0, 0, 0, 0);
-  const day = date.getDay(); // 0 (Sun) - 6 (Sat)
-  const offset = day === 0 ? 6 : day - 1; // distance back to Monday
-  date.setDate(date.getDate() - offset);
-  return date;
-}
-function weekKey(d) {
-  const w = weekStart(d);
-  return `${w.getFullYear()}-W${String(Math.floor((w.getTime() - new Date(w.getFullYear(), 0, 1).getTime()) / 604800000) + 1).padStart(2, "0")}`;
-}
-
-// Streak v2 — "active week" model.
-// User has a weekly workout target (default 3). Each week they hit the target counts as "active".
-// Streak is # of consecutive active weeks ending in the current or previous week.
-// Returns: { count, target, thisWeek, weeksActive, status } where status is "active" | "at-risk" | "lost"
-export function calcWeeklyStreak(workoutDates, target = 3) {
-  const keys = Object.keys(workoutDates || {});
-  if (!keys.length) return { count: 0, target, thisWeek: 0, status: "lost" };
-
-  // Group workouts by week key. Parse the date key at LOCAL noon — `new Date("2026-06-15")`
-  // is parsed as UTC midnight, which in negative-UTC timezones lands on the previous day
-  // and can bump a workout into the wrong week (showing "0 done" after training).
-  const byWeek = {};
-  for (const dk of keys) {
-    const wk = weekKey(new Date(dk + "T12:00:00"));
-    byWeek[wk] = (byWeek[wk] || 0) + 1;
-  }
-
-  // Start from the most recent week we have activity in, walk backward
-  const now = new Date();
-  const thisWeekKey = weekKey(now);
-  const thisWeekCount = byWeek[thisWeekKey] || 0;
-
-  // Determine streak: count consecutive active weeks ending in this week OR last week
-  // (this week not counted as failure until the week is over)
-  let streak = 0;
-  let cursor = new Date(now);
-  let countingThisWeek = thisWeekCount >= target;
-
-  // Move cursor to start of this week, then iterate weeks
-  cursor = weekStart(cursor);
-  // Skip this week if it's not yet "made" — only count if hit target OR allow grace
-  if (!countingThisWeek) {
-    // Don't count this week toward streak yet, but don't break it either — start from last week
-    cursor.setDate(cursor.getDate() - 7);
-  }
-
-  for (let i = 0; i < 104; i++) { // up to 2 years
-    const wk = weekKey(cursor);
-    const count = byWeek[wk] || 0;
-    if (count >= target) {
-      streak++;
-      cursor.setDate(cursor.getDate() - 7);
-    } else {
-      break;
-    }
-  }
-
-  // Status: active if hit this week, at-risk if last week was active but this week isn't yet
-  let status = "lost";
-  if (countingThisWeek) status = "active";
-  else if (streak > 0) status = "at-risk"; // had a streak going, this week not yet made
-
-  return { count: streak, target, thisWeek: thisWeekCount, status };
-}
-
-// Legacy daily-streak helper — kept for components that haven't migrated yet
-export function calcStreak(workoutDates) {
-  const keys = Object.keys(workoutDates||{}).sort().reverse();
-  if (!keys.length) return 0;
-  const set = new Set(keys);
-  let streak = 0;
-  const check = new Date(); check.setHours(0,0,0,0);
-  for (let i = 0; i < 365; i++) {
-    if (set.has(dKey(check))) streak++;
-    else if (i > 0) break;
-    check.setDate(check.getDate()-1);
-  }
-  return streak;
-}
 
 function getPrev(store, exName, si, unit) {
   // `si` here is the WORKING-set index (warmups excluded). We match it against the
@@ -2636,160 +2402,6 @@ function stripProgramPlug(caption) {
     .trim();
 }
 
-// ─── Progress Insights Engine ───────────────────────────────────────────────
-// Scans workout history and surfaces the single most compelling TRUE fact about
-// the user's recent progress. Returns { icon, headline, sub } or null.
-// Everything here is derived from data already on hand — no new tracking needed.
-// The whole point: make the user feel their progress, which they often don't notice.
-function getProgressInsight(store, unit, returnAll = false) {
-  const history = store.history || {};
-  const dates = Object.keys(history).sort(); // ascending
-  if (dates.length < 2) return null; // need some history to say anything meaningful
-
-  const now = Date.now();
-  const DAY = 86400000;
-  const candidates = [];
-
-  // Helper: collect all completed (non-warmup) sets for an exercise with their date
-  function exerciseSets(exName) {
-    const out = [];
-    for (const d of dates) {
-      for (const sess of Object.values(history[d] || {})) {
-        const ex = (sess.exercises || []).find(e => e.name === exName);
-        if (!ex) continue;
-        const su = sess.unit || "lbs";
-        for (const s of workingDone(ex.sets)) {
-          const w = cvt(parseFloat(s.weight) || 0, su, unit);
-          const r = parseFloat(s.reps) || 0;
-          // Epley 1RM is only reliable up to ~12 reps. Above that, a burnout/endurance
-          // set would inflate the estimate and produce a false "you got stronger" claim,
-          // so we don't let those sets define an e1RM for insight purposes.
-          const e1rm = (r >= 1 && r <= 12) ? (calc1RM(w, r) || 0) : 0;
-          // dateFromKey, not new Date(d) — a bare "YYYY-MM-DD" key parses as midnight UTC,
-          // which shifts every set a day earlier west of Greenwich and can push it across the
-          // 8-week strength-gain boundary below into the wrong bucket.
-          out.push({ date: d, t: dateFromKey(d).getTime(), w, r, e1rm });
-        }
-      }
-    }
-    return out;
-  }
-
-  // 1. Strength gain on a key lift over the last ~8 weeks (best e1RM then vs now)
-  const allExercises = new Set();
-  for (const d of dates) {
-    for (const sess of Object.values(history[d] || {})) {
-      (sess.exercises || []).forEach(e => e.name && allExercises.add(e.name));
-    }
-  }
-  for (const exName of allExercises) {
-    const sets = exerciseSets(exName);
-    if (sets.length < 4) continue; // need enough data
-    const eightWeeksAgo = now - 56 * DAY;
-    const older = sets.filter(s => s.t < eightWeeksAgo);
-    const recent = sets.filter(s => s.t >= eightWeeksAgo);
-    if (!older.length || !recent.length) {
-      // Not enough span — compare first quarter vs last quarter of available data
-      const q = Math.max(1, Math.floor(sets.length / 4));
-      const earlyBest = Math.max(...sets.slice(0, q).map(s => s.e1rm));
-      const lateBest = Math.max(...sets.slice(-q).map(s => s.e1rm));
-      if (earlyBest > 0 && lateBest > earlyBest) {
-        const gain = Math.round(lateBest - earlyBest);
-        if (gain >= (unit === "kg" ? 5 : 10)) {
-          candidates.push({ key: `strength:${exName}`, priority: 2, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max since you started tracking it` });
-        }
-      }
-      continue;
-    }
-    const olderBest = Math.max(...older.map(s => s.e1rm));
-    const recentBest = Math.max(...recent.map(s => s.e1rm));
-    if (olderBest > 0 && recentBest > olderBest) {
-      const gain = Math.round(recentBest - olderBest);
-      if (gain >= (unit === "kg" ? 5 : 10)) {
-        candidates.push({ key: `strength:${exName}`, priority: 1, icon: "trending", headline: `Your ${exName} is up ${gain} ${unit}`, sub: `Estimated 1-rep max, recent sessions vs earlier` });
-      }
-    }
-  }
-
-  // 2. Weekly streak milestone
-  const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
-  if (ws.count >= 2) {
-    candidates.push({ key: `streak:${ws.count}`, priority: ws.count >= 4 ? 1 : 3, icon: "flame", headline: `${ws.count} week streak`, sub: `You've hit your weekly target ${ws.count} weeks running. Keep it alive.` });
-  }
-
-  // 3. Biggest-volume week ever (this week vs all prior weeks)
-  const volByWeek = {};
-  for (const d of dates) {
-    for (const sess of Object.values(history[d] || {})) {
-      // sessionVolume() is the ONE volume definition — this used to reimplement its filter
-      // inline (a third variant, differing from exerciseSets' own inline copy above it), so this
-      // "Biggest week yet" banner could disagree with what History/Profile report for the same
-      // week. dateFromKey, not new Date(d) — see the note in exerciseSets above.
-      const v = cvt(sessionVolume(sess), sess.unit || "lbs", unit);
-      const wk = weekKey(dateFromKey(d));
-      volByWeek[wk] = (volByWeek[wk] || 0) + v;
-    }
-  }
-  const thisWk = weekKey(new Date());
-  const thisWkVol = volByWeek[thisWk] || 0;
-  const priorVols = Object.entries(volByWeek).filter(([k]) => k !== thisWk).map(([, v]) => v);
-  if (thisWkVol > 0 && priorVols.length >= 2 && thisWkVol > Math.max(...priorVols)) {
-    candidates.push({ key: `bigweek:${thisWk}`, priority: 2, icon: "trophy", headline: `Biggest week yet`, sub: `${Math.round(thisWkVol).toLocaleString()} ${unit} lifted this week — a personal best` });
-  }
-
-  // 4. Total sessions milestone
-  const totalSessions = dates.reduce((a, d) => a + Object.keys(history[d] || {}).length, 0);
-  if ([10, 25, 50, 100, 150, 200, 250, 300, 500].includes(totalSessions)) {
-    candidates.push({ key: `sessions:${totalSessions}`, priority: 1, icon: "trophy", headline: `${totalSessions} workouts logged`, sub: `That's real consistency. Proud of you.` });
-  }
-
-  // 5. Recovery awareness — if the user has trained one muscle group 3+ times in the
-  // last 4 days, gently flag it (could use a rest day for that group). Quiet, low-priority
-  // so it doesn't dominate when there's better news.
-  {
-    const sevenDayAgo = now - 4 * DAY;
-    const muscleHits = {};
-    for (const d of dates) {
-      const dms = new Date(d + "T12:00:00").getTime();
-      if (dms < sevenDayAgo) continue;
-      for (const sess of Object.values(history[d] || {})) {
-        const musclesThisSession = new Set();
-        (sess.exercises || []).forEach(ex => {
-          if (!ex.name) return;
-          // Only count if there were real working sets
-          const worked = (ex.sets || []).some(s => s.type !== "warmup" && (s.done === true || parseFloat(s.reps) > 0));
-          if (!worked) return;
-          const m = (getMuscle(ex.name)) || "";
-          if (m && m !== "Cardio" && m !== "Yoga") musclesThisSession.add(m);
-        });
-        musclesThisSession.forEach(m => { muscleHits[m] = (muscleHits[m] || 0) + 1; });
-      }
-    }
-    const overworked = Object.entries(muscleHits).filter(([m, c]) => c >= 3);
-    if (overworked.length > 0) {
-      const [m, c] = overworked[0];
-      candidates.push({ key: `recovery:${m}:${weekKey(new Date())}`, priority: 5, icon: "trending", headline: `${m} trained ${c}× in 4 days`, sub: `Consider a rest day for that group — recovery is where the gains stick.` });
-    }
-  }
-
-  if (!candidates.length) return returnAll ? [] : null;
-  // Drop any insight the user has already swiped away (persisted keys).
-  const dismissed = new Set(store.dismissedInsights || []);
-  const live = candidates.filter(c => !c.key || !dismissed.has(c.key));
-  if (!live.length) return returnAll ? [] : null;
-  // Lower priority number = more compelling. Tie-break randomly so it varies.
-  live.sort((a, b) => a.priority - b.priority || Math.random() - 0.5);
-  return returnAll ? live : live[0];
-}
-
-// Returns ALL insight candidates (sorted, most compelling first) for the swipeable
-// card stack on the workout tab. Wraps getProgressInsight's collection by exposing
-// the internal candidate list via the optional `returnAll` flag.
-function getProgressInsights(store, unit) {
-  return getProgressInsight(store, unit, true) || [];
-}
-
-// Parse rep range like "8-12" or "8–12" or "5,3,1" or "8" → { low, high }
 const APP_BUILD = "2026-06-11";
 // Crash/error reporter — writes to the client_errors table (insert-only RLS).
 // Throttled to 5 unique errors per session so a render loop can't flood the table.
@@ -13137,7 +12749,7 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
 
 // GroupsScreen moved into src/lazy/DiscoverScreen.jsx (Aug 24) — it's used exclusively from
 // there, so it and its own GroupDetail lazy-import now ship only in that already-lazy chunk
-// instead of the eager main bundle. calcWeeklyStreak/Skeleton gained `export` above for it;
+// instead of the eager main bundle. Skeleton gained `export` above for it (calcWeeklyStreak now comes from engine/insights.js);
 // dKey now lives in src/engine/core.js and DiscoverScreen imports it from there.
 
 // ═════════════════════════════════════════════════════════════════════════════

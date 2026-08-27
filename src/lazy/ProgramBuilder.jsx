@@ -4,7 +4,8 @@
 import { useState } from "react";
 import { progSetCount } from "../engine/workout.js";
 import { getExEntry } from "../engine/exercises.js";
-import { F, MONO, uid, toast, haptic, MuscleIcon, NoteField, ExercisePickerSheet } from "../App.jsx";
+import { uid } from "../engine/core.js";
+import { F, MONO, toast, haptic, MuscleIcon, NoteField, ExercisePickerSheet } from "../App.jsx";
 
 export default function ProgramBuilder({ C, onCancel, onSave }) {
   const [name, setName] = useState("");

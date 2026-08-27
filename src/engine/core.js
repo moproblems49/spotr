@@ -69,4 +69,10 @@ function cvt(w, from, to) {
 }
 
 
-export { IS_DEV, devWarn, devError, dateKeyOf, dateFromKey, workingDone, dKey, LBS_TO_KG, LBS_PER_KG, cvt };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// UTILITIES
+// ═════════════════════════════════════════════════════════════════════════════
+const uid = () => Math.random().toString(36).slice(2,10);
+
+export { IS_DEV, devWarn, devError, dateKeyOf, dateFromKey, workingDone, dKey, LBS_TO_KG, LBS_PER_KG, cvt, uid };

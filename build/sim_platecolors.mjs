@@ -52,10 +52,15 @@ check("2b. 10 is a different colour in lbs and kg (10kg is green, 10lb is not)",
 // A plate with no entry falls through to C.muted/C.accent at the call site, so two DIFFERENT
 // plates would paint the same and the legend would be lying. Read the lists from source so adding
 // a plate size to the app fails here until it's given a colour.
+// TWO sources on purpose: the plate LISTS live in src/engine/plates.js since the round-5
+// extraction (module-private, so source text is the only way to read them), while THEMES and the
+// disc/rim JSX stay in App.jsx — re-pointing the single `src` at plates.js broke checks 4+ with
+// "could not find THEMES.dark". The throws below are the loud-failure path if either moves again.
 const src = readFileSync(join(ROOT, "src/App.jsx"), "utf8");
+const platesSrc = readFileSync(join(ROOT, "src/engine/plates.js"), "utf8");
 const listOf = name => {
-  const m = new RegExp(`const ${name} = \\[([^\\]]*)\\]`).exec(src);
-  if (!m) throw new Error(`could not find ${name} in src/App.jsx`);
+  const m = new RegExp(`const ${name} = \\[([^\\]]*)\\]`).exec(platesSrc);
+  if (!m) throw new Error(`could not find ${name} in src/engine/plates.js`);
   return m[1].split(",").map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
 };
 for (const [unit, listName] of [["lbs", "PLATES_LBS_LIST"], ["kg", "PLATES_KG_LIST"]]) {
@@ -128,9 +133,17 @@ check("4b. no plate fill is near-identical to a theme surface (a rimmed disc the
 // ── 5. One definition, not two ───────────────────────────────────────────────────────────────
 // PlateCalcModal carried its own byte-identical copy of the map. Two copies of one legend is how
 // the calculator and the live workout's barbell come to disagree about what colour a 35 is.
+// The canonical map lives in src/engine/plates.js since round 5, so App.jsx must contain ZERO
+// inline copies — the old `<= 1` silently became one-copy-tolerant the moment the canonical copy
+// left this file (the "scan that stops covering code as that code moves" class, in miniature),
+// and a re-introduced modal copy would have counted 1 and passed. plates.js itself must contain
+// exactly the two canonical maps (kg + lbs).
 const inlineMaps = [...src.matchAll(/\{\s*45:\s*"#[0-9a-fA-F]{6}"/g)].length;
-check("5. the colour map is defined once (no inline copy in the calculator modal)",
-  inlineMaps <= 1, `${inlineMaps} literal plate-colour maps found`);
+check("5. no inline plate-colour map remains in App.jsx (canonical lives in plates.js)",
+  inlineMaps === 0, `${inlineMaps} literal plate-colour map(s) found in App.jsx`);
+const canonMaps = [...platesSrc.matchAll(/\{\s*(?:45|25):\s*"#[0-9a-fA-F]{6}"/g)].length;
+check("5b. plates.js holds exactly the two canonical maps (kg + lbs)",
+  canonMaps === 2, `${canonMaps} map(s) in plates.js`);
 
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

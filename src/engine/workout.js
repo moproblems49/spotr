@@ -278,6 +278,7 @@ function getLastExerciseSession(store, exName, skipSid) {
 }
 
 
+// Parse rep range like "8-12" or "8–12" or "5,3,1" or "8" → { low, high }
 function parseRepRange(reps) {
   if (!reps) return null;
   let s = String(reps).replace(/\s/g,"");
