@@ -19,10 +19,25 @@ const parse=s=>(s.match(/[\d.]+/g)||[]).slice(0,3).map(Number);
 const mk=(name,n)=>({name,sets:Array.from({length:n},()=>({weight:"100",reps:"10",done:true}))});
 // A push/legs week with REAL zeros: nothing hits Biceps. A fixture that trains everything cannot
 // see this bug at all — the whole failure only exists on an untrained region.
-const sess={id:"s1",finishedAt:Date.now()-2*864e5,duration:3600,unit:"lbs",exercises:[
-  mk("Overhead Press (Barbell)",10),mk("Lateral Raises (Cable)",10),mk("Triceps Pushdown",11),
-  mk("Barbell Bench Press",8),mk("Back Squat",8),mk("Standing Calf Raise",6),mk("Romanian Deadlift",4)]};
-const store={currentUserId:ME,unit:"lbs",theme:"dark",programs:[],history:{"2026-08-25":{s1:sess}},
+//
+// The history KEY is derived from the same clock as finishedAt, never hardcoded: weeklyMuscleVolume
+// windows on the KEY against a Date.now()-based 7-day cutoff, so a fixed "2026-08-25" literal aged
+// out of the window five days after it was written and the whole map went empty — two spurious reds
+// whose message ("missing data hooks") pointed at exactly the wrong cause. Inverse of the pw_datekey
+// rule: there a Date.now() fixture drifted across a fixed boundary; here a fixed fixture drifted
+// across a Date.now() boundary. Either way, fixture dates and the code's clock must share a source.
+//
+// Every exercise name below is verified against the library — "Triceps Pushdown" and "Back Squat"
+// were plausible-looking near-misses that resolve to NO muscle (the documented demo-corpus class),
+// which silently made Quads a second untested zero and left Triceps trained only via 0.5x secondary
+// credit. Resolve names through getExEntry before trusting a muscle fixture.
+const SESS_AT = Date.now()-2*864e5;
+const _d = new Date(SESS_AT);
+const SESS_KEY = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,"0")}-${String(_d.getDate()).padStart(2,"0")}`;
+const sess={id:"s1",finishedAt:SESS_AT,duration:3600,unit:"lbs",exercises:[
+  mk("Overhead Press (Barbell)",10),mk("Lateral Raises (Cable)",10),mk("Tricep Rope Pushdown",11),
+  mk("Barbell Bench Press",8),mk("Barbell Back Squat",8),mk("Standing Calf Raise",6),mk("Romanian Deadlift",4)]};
+const store={currentUserId:ME,unit:"lbs",theme:"dark",programs:[],history:{[SESS_KEY]:{s1:sess}},
   workoutDates:{},weeklyTarget:4,bodyLog:[],prs:{},prEvents:[],posts:[],bodyType:"male",
   profile:{username:"momo",name:"Mo"},users:[{id:ME,username:"momo",name:"Mo",followers:[],following:[]}]};
 

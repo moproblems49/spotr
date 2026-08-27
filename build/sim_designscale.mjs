@@ -17,7 +17,7 @@
 // scan that stops covering code as that code moves is worse than no scan, because the green tick
 // still appears.) The LITERAL checks now sweep every source file; the TOKEN checks stay on App.jsx,
 // which is where TYPE and RADIUS are defined.
-import { readFileSync, readdirSync } from "fs";
+import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { allSourceFiles } from "./source_files.mjs";

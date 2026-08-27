@@ -23,7 +23,7 @@
 //
 // Runs the scan over the JSX-transformed file(s) and fails on any finding.
 import { spawnSync } from "child_process";
-import { mkdtempSync, rmSync, readdirSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname, basename } from "path";
 import { fileURLToPath } from "url";
@@ -32,10 +32,6 @@ import { jsxFiles } from "./source_files.mjs";
 const BUILD = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(BUILD, "..");
 const tmp = mkdtempSync(join(tmpdir(), "deadui-"));
-
-const lazyDir = join(ROOT, "src", "lazy");
-let lazyFiles = [];
-try { lazyFiles = readdirSync(lazyDir).filter(f => f.endsWith(".jsx")).map(f => join("src", "lazy", f)); } catch {}
 
 const targets = jsxFiles();
 let overallCode = 0;

@@ -76,6 +76,10 @@ Do this BEFORE deleting the old zip. Delete `.env.local` right after the build, 
 (VITE_POSTHOG_KEY is deliberately empty in every published bundle so far — analytics is off.)
 Shell note: never put `pkill` in a `&&` chain — it kills the whole shell (exit 144) and the rest of
 the chain silently never runs. A version bump chained after a `pkill` got skipped exactly that way.
+Sibling trap: a background wait-loop polling `pgrep -f run_sims.mjs` MATCHES ITSELF — the pattern
+string is in its own command line — so two such loops see each other and spin forever after the
+battery exits. Four deadlocked monitors accumulated this way in one session ("I see 4 tasks
+running"). Poll a PID file or a marker file, not a `pgrep -f` of a string your own command carries.
 In remote (claude.ai) sessions the standing directive is to push every change to BOTH the
 session branch AND `main` (`git push -u origin <branch> && git branch -f main HEAD && git push origin main`
 — main has always been a fast-forward so far). Version-bump one-liner that avoids hand-editing:
@@ -648,7 +652,17 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   map's bug, not the pattern's, and worth checking the sibling before assuming a sweep. Sim:
   `pw_musclezero`, which needed two things to be honest: `data-muscle`/`data-body` hooks on the
   paths (the fills are computed, so there is nothing to assert without them) and a fixture with a
-  REAL zero in it — a fixture that trains every group cannot see this bug at all.
+  REAL zero in it — a fixture that trains every group cannot see this bug at all. **A cold-context
+  audit then found the guard itself shipped with two defects**: its history KEY was a hardcoded
+  date-string while `weeklyMuscleVolume` windows on the KEY against `Date.now()`, so five days
+  after it was written the session would age out of the window and the suite would go red with a
+  message ("missing data hooks") pointing at exactly the wrong cause — the INVERSE of the
+  `pw_datekey` rule (there a `Date.now()` fixture drifted over a fixed boundary; here a fixed
+  fixture drifted over a `Date.now()` one; either way the fixture's dates and the code's clock must
+  share a source). And two of its seven exercise names ("Triceps Pushdown", "Back Squat") were
+  library-invisible near-misses — the documented demo-corpus class, reproduced inside a guard the
+  same week that story was retold — silently making Quads a second untested zero. Resolve every
+  fixture exercise through `getExEntry` before trusting a muscle fixture.
 - **A WATCH THAT HASN'T SYNCED YET NEEDS A SECOND CHANCE.** Mo: "avg and peak heart rate hasn't
   showing in my last 2 workouts." The History card already renders both correctly
   (`♥ {avg} avg · {peak} peak` — not a rendering bug, easy to miss because "peak" only appears in
@@ -2748,7 +2762,14 @@ file, a free identifier into an engine file, an unreachable component into a laz
 guard that cannot fail is worse than no guard. **Worth recording: the first a11y red-proof attempt
 FAILED to go red** — stripping an `aria-label="Back"` proved nothing, because that button is not
 *provably* icon-only under the scanner's conservative rules. A clean `a11y_scan` run means "no
-PROVABLE misses", not "certainly zero", exactly as its own comment claims.
+PROVABLE misses", not "certainly zero", exactly as its own comment claims. **An audit then closed
+the list's own escape hatch: `listDir` returned `[]` for a missing directory**, so renaming
+`src/lazy/` would have shrunk every guard back to blindness while all five kept printing PASS —
+the exact disease the file exists to cure, concentrated in one place. It THROWS now on a missing
+or empty directory (red-proofed: `mv src/engine` aside → exit 1 naming the dir); retiring a
+directory means editing the list in the same commit. And the red-proof of the red-proof: checking
+that exit code through `node … | tail` reported tail's 0, not node's 1 — the documented PIPESTATUS
+trap, hit while verifying the fix for a guard-blindness bug. Never gate on a piped exit code.
 **★ ROUND 3 HIT BOTH COMMENT-TRAP DIRECTIONS AT ONCE, WHICH IS WHAT A STRANDED BLOCK GUARANTEES.**
 `src/engine/exercises.js` (21 symbols → 14 exported: the 292-entry `EXERCISE_DB` plus the whole
 name→muscle/region/equipment/secondaries resolution layer). It is a LEAF — imports nothing, like

@@ -27,7 +27,7 @@
 // "../App.jsx" doesn't need to resolve for this scan, since imported names are just bindings to
 // acorn), then runs build/undef_scan.mjs over each result.
 import { spawnSync } from "child_process";
-import { mkdtempSync, rmSync, readdirSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname, basename } from "path";
 import { fileURLToPath } from "url";
@@ -37,18 +37,12 @@ const BUILD = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(BUILD, "..");
 const tmp = mkdtempSync(join(tmpdir(), "undef-"));
 
-const lazyDir = join(ROOT, "src", "lazy");
-let lazyFiles = [];
-try { lazyFiles = readdirSync(lazyDir).filter(f => f.endsWith(".jsx")).map(f => join("src", "lazy", f)); } catch {}
-
 // src/engine/*.js must be in here. Extracting the health engine out of App.jsx moved ~1,500 lines
 // of the most-simulated code in the repo OUT of this guard, which is the standing alarm for the
 // dominant ReferenceError class ("run it after deleting anything"). A scan that silently stops
-// covering code as that code moves is worse than no scan, because the green tick still appears.
-const engineDir = join(ROOT, "src", "engine");
-let engineFiles = [];
-try { engineFiles = readdirSync(engineDir).filter(f => f.endsWith(".js")).map(f => join("src", "engine", f)); } catch {}
-
+// covering code as that code moves is worse than no scan, because the green tick still appears —
+// which is why the list comes from source_files.mjs (shared, enumerated, dies loudly on a missing
+// dir) rather than being assembled here.
 const targets = allSourceFiles();
 let overallCode = 0;
 

@@ -8,7 +8,6 @@
 // 2. No icon-only <button> ships with no aria-label/title — a screen-reader user gets literally
 //    nothing from one. Reuses build/a11y_scan.mjs's AST walk over the JSX-transformed bundle.
 import { spawnSync } from "child_process";
-import { readdirSync } from "fs";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname } from "path";

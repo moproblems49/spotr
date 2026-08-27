@@ -15,10 +15,19 @@ import { fileURLToPath } from "url";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+// A guard that cannot enumerate its targets must DIE LOUDLY, not narrow quietly. Returning []
+// for a missing/renamed directory would shrink every guard back to blindness while they all kept
+// printing PASS — the exact failure class this file exists to prevent, concentrated in one place.
+// So an empty or absent directory throws; if a directory is genuinely retired, delete its line
+// from the lists below in the same commit.
 const listDir = (rel, ext) => {
   const abs = join(ROOT, rel);
-  if (!existsSync(abs)) return [];
-  return readdirSync(abs).filter(f => f.endsWith(ext)).sort().map(f => `${rel}/${f}`);
+  if (!existsSync(abs))
+    throw new Error(`source_files.mjs: ${rel}/ does not exist — a renamed or deleted source dir must be updated here, not silently skipped`);
+  const files = readdirSync(abs).filter(f => f.endsWith(ext)).sort().map(f => `${rel}/${f}`);
+  if (files.length === 0)
+    throw new Error(`source_files.mjs: ${rel}/ contains no ${ext} files — refusing to hand the guards an empty target list`);
+  return files;
 };
 
 /** Files containing JSX — everything the UI-shaped scanners (a11y, dead UI, accent) must see. */
