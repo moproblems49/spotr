@@ -40,7 +40,15 @@ const lazyDir = join(ROOT, "src", "lazy");
 let lazyFiles = [];
 try { lazyFiles = readdirSync(lazyDir).filter(f => f.endsWith(".jsx")).map(f => join("src", "lazy", f)); } catch {}
 
-const targets = ["src/App.jsx", ...lazyFiles];
+// src/engine/*.js must be in here. Extracting the health engine out of App.jsx moved ~1,500 lines
+// of the most-simulated code in the repo OUT of this guard, which is the standing alarm for the
+// dominant ReferenceError class ("run it after deleting anything"). A scan that silently stops
+// covering code as that code moves is worse than no scan, because the green tick still appears.
+const engineDir = join(ROOT, "src", "engine");
+let engineFiles = [];
+try { engineFiles = readdirSync(engineDir).filter(f => f.endsWith(".js")).map(f => join("src", "engine", f)); } catch {}
+
+const targets = ["src/App.jsx", ...lazyFiles, ...engineFiles];
 let overallCode = 0;
 
 for (const rel of targets) {

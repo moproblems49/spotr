@@ -1,10 +1,8 @@
 // Lazy-loaded: bodyweight, measurements, progress photos over time. Only rendered when
 // ProfileScreen's showBody flag is set (its "Body" button) — most sessions never open it.
 import { useState, useMemo } from "react";
-import {
-  F, MONO, Icon, ExerciseVolumeChart, toast, haptic, uid, dKey, posNum,
-  loadSession, sb, devError,
-} from "../App.jsx";
+import { devError } from "../engine/core.js";
+import { F, MONO, Icon, ExerciseVolumeChart, toast, haptic, uid, dKey, posNum, loadSession, sb } from "../App.jsx";
 
 const MEASURE_FIELDS = [
   { key:"chest", label:"Chest" },

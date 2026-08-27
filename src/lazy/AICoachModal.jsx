@@ -3,7 +3,8 @@
 // programs' worth of exercises/reps, used only if the AI call fails) that was dead weight in the
 // eager bundle for every session that never opens it.
 import { useState, useEffect, useRef } from "react";
-import { Sheet, Icon, F, EASE_NAV, aiAuthHeaders, aiEndpoint, devWarn, uid } from "../App.jsx";
+import { devWarn } from "../engine/core.js";
+import { Sheet, Icon, F, EASE_NAV, aiAuthHeaders, aiEndpoint, uid } from "../App.jsx";
 
 export default function AICoachModal({ open, C, onClose, onImport, store }) {
   const [step, setStep] = useState(0);

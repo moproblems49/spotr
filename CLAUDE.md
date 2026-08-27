@@ -2671,6 +2671,59 @@ output too (its own chunk, no `modulepreload` for it in `dist/index.html`, no st
 anywhere in `src/`). This note previously called it "already its own chunk via a static import,"
 which was wrong — it was already dynamic. Nothing left to do here.
 
+## The engine split (`src/engine/`) — started Aug 27, 2026
+`App.jsx` is still the app, but the PURE LOGIC is moving out into plain modules. This is NOT the
+`src/lazy/` work — that was about bundle size (load on demand). This is about turning a class of
+silent runtime bug into a build failure: in one 23k-line file with no linter and no types, a name
+that binds to nothing compiles clean and only throws when that line runs, into a swallowing catch
+(`PROGRAM_TEMPLATES` killed every new signup for twelve days; `todayMs` meant the Weekly Review had
+never once run). Across a module boundary the same mistake is a `npm run build` error. That is the
+whole point — it is not tidiness.
+**Done so far:** `src/engine/core.js` (6 leaf primitives — `IS_DEV`, `devWarn`, `devError`,
+`dateKeyOf`, `dateFromKey`, `workingDone`; imports NOTHING, keep it that way) and
+`src/engine/health.js` (42 symbols: recovery, Body Battery, sleep, HRV, activity). App.jsx
+23,095 → 21,672 lines.
+**The method, and it matters — do not do this by reading:**
+1. **Compute the dependency closure from the AST**, not by eye. Parse the JSX-transformed file with
+   acorn, build the top-level symbol table, take the transitive closure of the seeds, then split it:
+   referenced ONLY from inside the closure → MOVE (becomes module-private); referenced from outside
+   too → it is a shared primitive and belongs in a LOWER module that both import. That last rule is
+   what avoids a circular import between a 20k-line file and its own helpers — which behaves
+   differently under Vite than under esbuild and is not worth discovering later. It also found that
+   23 of the health symbols (`softCap`, `medianOf`, `nightKeyOf`, `READY_TO_PUSH`, the tuning
+   constants) are used by nothing else, so they became genuinely private rather than just relocated.
+2. **Move the comment block above each function with it.** They are this repo's real documentation.
+   A block separated from its function by an intervening comment will be missed by a mechanical
+   move — `dateKeyOf`'s consolidation history was left orphaned in App.jsx exactly that way.
+3. **Strip a leading `export ` from any moved declaration** — each module ends with ONE bulk
+   `export {}`, and a declaration that also exports itself is a duplicate-export SyntaxError. The
+   fast `esbuild --bundle --packages=external` check does NOT resolve cross-file exports and will
+   not see it; only `npm run build` does. Three core primitives were exported this way.
+4. **Grep `src/lazy/*.jsx` for the moved names.** Those files import shared helpers FROM App.jsx, so
+   moving one breaks them. Point them at the new module rather than re-exporting through App.jsx —
+   App.jsx being the universal hub is the thing this work exists to reduce.
+5. **The bulk sim-harness `export {}` needs care.** There are TWO top-level `export {}` statements
+   in App.jsx (the small `hydrateFromNative` one and the ~46-name sim list) — target by SIZE, never
+   by first match. A moved symbol App.jsx still uses stays in the list (an imported binding can be
+   re-exported); one it no longer uses must move to `export { … } from "./engine/…"` INSTEAD of the
+   list, or it is exported twice.
+6. **Verify the move was semantically identical rather than assuming it.** A cold-context audit
+   re-parsed both revisions and compared all 51 declarations whitespace-normalised: 0 body diffs, 0
+   lines lost, 0 duplicated. Worth doing on every module — the failure mode of a bulk move is silent.
+**★ AND THE ONE THAT NEARLY GOT AWAY: A SCAN THAT STOPS COVERING CODE AS THAT CODE MOVES IS WORSE
+THAN NO SCAN, BECAUSE THE GREEN TICK STILL APPEARS.** `sim_undef`'s target list was
+`["src/App.jsx", ...src/lazy/*.jsx]`, so the moment 1,500 lines of the most-simulated code in the
+repo left App.jsx, the standing guard for the dominant ReferenceError class silently stopped
+watching them — and still reported PASS. It globs `src/engine/*.js` now and reports 13 files, not
+11. **Any future extraction must check the guards still reach the code**, not just that they pass.
+**Next candidates**, same pattern: workout maths (`sessionVolume`, `epley1RM`, `progSetCount`,
+`postWorkoutPayload`, the PR/deload/overload family), dates & units (`cvt`, `LBS_PER_KG`), and
+formatting. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
+are 34% of the file and the growth is landing there (+336 / +410 since Aug 9), but what accumulates
+in them is STATE and WIRING, which is exactly what makes extraction dangerous — and they are being
+edited most weeks. Put a brake on their growth (new feature code goes in a new module) rather than
+rewriting them mid-flight.
+
 ## Environment notes
 - Dev machine: Windows + PowerShell, Node v24.15.0. Local repo `C:\Users\mohag\spotr`.
 - Don't assume libraries are installed — check `package.json`. `@dnd-kit` is used (drag-drop reorder).

@@ -2,10 +2,8 @@
 // already-signed-in session — which is nearly every app open, since a session persists in the
 // iOS Keychain — so it was dead weight in the eager bundle for the overwhelming majority of opens.
 import { useState, useRef } from "react";
-import {
-  F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, devWarn,
-  SUPABASE_URL, SUPABASE_KEY, useSwipeDismiss, blurIfTextInput,
-} from "../App.jsx";
+import { devWarn } from "../engine/core.js";
+import { F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, SUPABASE_URL, SUPABASE_KEY, useSwipeDismiss, blurIfTextInput } from "../App.jsx";
 
 export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null, theme = "light" }) {
   const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup" | "reset"

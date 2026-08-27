@@ -3,10 +3,8 @@
 // so every dependency here is traced precisely rather than guessed (see the ReferenceError history
 // in the comment on `eu` below — this exact function has crashed the whole app once already).
 import { useState, useMemo } from "react";
-import {
-  F, MONO, uid, EXERCISE_DB, _exNorm, sb, toast, haptic, devError, cvt,
-  historyMaxPRs, matchesSession, postWorkoutPayload, CreateExercisePicker, confirmAction,
-} from "../App.jsx";
+import { devError } from "../engine/core.js";
+import { F, MONO, uid, EXERCISE_DB, _exNorm, sb, toast, haptic, cvt, historyMaxPRs, matchesSession, postWorkoutPayload, CreateExercisePicker, confirmAction } from "../App.jsx";
 
 export default function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setStore, onClose }) {
   const { date, sid, sess } = editing;
