@@ -4,8 +4,8 @@
 // the eager bundle for every session that never opens it. buildWrappedSVG/wrapStorySVG are
 // exclusive to this screen and moved with it; shareSvgCard/svgToDataURL stay in App.jsx
 // (exported) because shareSvgCard also has a caller in the exercise-progress share flow.
-import { Icon, DISPLAY, F, MONO, cvt, calcStreak, fmtVol, toast, weeklyMuscleVolume,
-  useBodyMapData, shareSvgCard, svgToDataURL, PR_TYPE_LABEL_SHORT } from "../App.jsx";
+import { cvt } from "../engine/core.js";
+import { Icon, DISPLAY, F, MONO, calcStreak, fmtVol, toast, weeklyMuscleVolume, useBodyMapData, shareSvgCard, svgToDataURL, PR_TYPE_LABEL_SHORT } from "../App.jsx";
 
 // Builds a self-contained 1080×1350 share-card SVG (dark, branded) with the week's trained-muscle
 // body map, headline stats, and new PRs. Self-contained (paths + text only) so it rasterizes to a

@@ -44,4 +44,29 @@ function dateFromKey(v) {
   return new Date(str.length <= 10 ? str + "T12:00:00" : str);
 }
 
-export { IS_DEV, devWarn, devError, dateKeyOf, dateFromKey, workingDone };
+
+// Local-date key YYYY-MM-DD. MUST use local components, not toISOString() (which is
+// UTC and shifts the day for users in positive-UTC timezones, misaligning the
+// heatmap/calendar and day-grouping of workouts).
+const dKey = (d = new Date()) => {
+  const dt = (d instanceof Date) ? d : new Date(d);
+  return dateKeyOf(dt);
+};
+
+
+const LBS_TO_KG = 0.453592;
+
+const LBS_PER_KG = 1 / LBS_TO_KG; // 2.2046 — single source of truth for kg→lbs (replaces scattered 2.205 literals)
+
+
+function cvt(w, from, to) {
+  if (!w || from === to) return w;
+  const n = parseFloat(w);
+  if (isNaN(n)) return w;
+  if (from === "lbs" && to === "kg") return Math.round(n * LBS_TO_KG * 10) / 10;
+  if (from === "kg" && to === "lbs") return Math.round(n / LBS_TO_KG * 10) / 10;
+  return n;
+}
+
+
+export { IS_DEV, devWarn, devError, dateKeyOf, dateFromKey, workingDone, dKey, LBS_TO_KG, LBS_PER_KG, cvt };

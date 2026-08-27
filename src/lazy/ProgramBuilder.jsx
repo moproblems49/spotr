@@ -2,10 +2,8 @@
 // chooses to build a program from scratch rather than starting a template — most sessions
 // never touch it, so it was dead weight in the eager bundle for everyone else.
 import { useState } from "react";
-import {
-  F, MONO, uid, toast, haptic, MuscleIcon, getExEntry, progSetCount,
-  NoteField, ExercisePickerSheet,
-} from "../App.jsx";
+import { progSetCount } from "../engine/workout.js";
+import { F, MONO, uid, toast, haptic, MuscleIcon, getExEntry, NoteField, ExercisePickerSheet } from "../App.jsx";
 
 export default function ProgramBuilder({ C, onCancel, onSave }) {
   const [name, setName] = useState("");

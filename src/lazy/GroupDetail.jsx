@@ -2,7 +2,8 @@
 // Most sessions never open a group at all, so this is dead weight in the eager bundle otherwise.
 import { useState, useMemo, useRef, useEffect } from "react";
 import { devError, dateFromKey, workingDone } from "../engine/core.js";
-import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, PRTag, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, postWorkoutPayload, sessionVolume, NAV_CLEARANCE } from "../App.jsx";
+import { postWorkoutPayload, sessionVolume } from "../engine/workout.js";
+import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, PRTag, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, NAV_CLEARANCE } from "../App.jsx";
 
 export default function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
   const [tab, setTab] = useState("feed");

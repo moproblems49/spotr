@@ -2679,10 +2679,15 @@ that binds to nothing compiles clean and only throws when that line runs, into a
 (`PROGRAM_TEMPLATES` killed every new signup for twelve days; `todayMs` meant the Weekly Review had
 never once run). Across a module boundary the same mistake is a `npm run build` error. That is the
 whole point — it is not tidiness.
-**Done so far:** `src/engine/core.js` (6 leaf primitives — `IS_DEV`, `devWarn`, `devError`,
-`dateKeyOf`, `dateFromKey`, `workingDone`; imports NOTHING, keep it that way) and
-`src/engine/health.js` (42 symbols: recovery, Body Battery, sleep, HRV, activity). App.jsx
-23,095 → 21,672 lines.
+**Done so far:** `src/engine/core.js` (**10** leaf primitives — `IS_DEV`, `devWarn`, `devError`,
+`dateKeyOf`, `dateFromKey`, `workingDone`, `dKey`, `cvt`, `LBS_PER_KG`, `LBS_TO_KG`; imports
+NOTHING, keep it that way), `src/engine/health.js` (42 symbols: recovery, Body Battery, sleep, HRV,
+activity) and `src/engine/workout.js` (27 symbols: volume/set counting, 1RM, PR detection,
+progression, training load). **App.jsx 23,095 → 20,947 lines.** Layering is strictly one-way:
+core imports nothing, health and workout import only core, App.jsx imports all three.
+`dKey` is a thin today-default wrapper over `dateKeyOf` and was moved AS-IS rather than
+consolidated — merging them is a behaviour change (`dateKeyOf(undefined)` is an Invalid Date) and
+must not ride along inside a mechanical move.
 **The method, and it matters — do not do this by reading:**
 1. **Compute the dependency closure from the AST**, not by eye. Parse the JSX-transformed file with
    acorn, build the top-level symbol table, take the transitive closure of the seeds, then split it:
@@ -2716,9 +2721,24 @@ THAN NO SCAN, BECAUSE THE GREEN TICK STILL APPEARS.** `sim_undef`'s target list 
 repo left App.jsx, the standing guard for the dominant ReferenceError class silently stopped
 watching them — and still reported PASS. It globs `src/engine/*.js` now and reports 13 files, not
 11. **Any future extraction must check the guards still reach the code**, not just that they pass.
-**Next candidates**, same pattern: workout maths (`sessionVolume`, `epley1RM`, `progSetCount`,
-`postWorkoutPayload`, the PR/deload/overload family), dates & units (`cvt`, `LBS_PER_KG`), and
-formatting. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
+**★ ROUND 2 FOUND THE MIRROR OF ROUND 1'S COMMENT BUG, AND BOTH DIRECTIONS ARE REAL.** Round 1
+LEFT a block behind (`dateKeyOf`'s consolidation history stayed in App.jsx while the function
+left). Round 2 CARRIED ONE ALONG: a 12-line "HEALTHKIT / Body battery" section banner had been
+stranded above the ACWR constants by round 1 — the health code it described moved out from under
+it — so round 2's contiguous-leading-comment sweep attached it to `trainingLoadRatio` and
+`workout.js` ended up announcing that the acute:chronic workload ratio was about the Capacitor
+health plugin. **After each round, read the comment at the TOP of each moved block and ask whether
+it describes the thing underneath it**; a mechanical sweep cannot tell a belonging comment from an
+adjacent one, and a stranded banner from the previous round is exactly what it will grab.
+**Guard-coverage check, repeated every round and clean this time:** `sim_undef` globs
+`src/engine/*.js` (14 files). `sim_deadui`/`sim_accentbutton` cover App.jsx + `src/lazy/` and the
+engine files carry no JSX or colours, so nothing left their reach. **But two guards are ALREADY
+partially blind and it predates this work:** `sim_designscale` reads only App.jsx while ~290
+`fontSize` literals now live in `src/lazy/*.jsx`, and `sim_a11y`'s icon-button scan transforms only
+App.jsx. That dates to the Aug 20 lazy split. Widening them is its own task — it may surface real
+violations that need fixing — so don't fold it into an extraction commit.
+**Next candidates**, same pattern: dates & units beyond what already moved, formatting/text
+helpers, and the exercise-library lookups. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
 are 34% of the file and the growth is landing there (+336 / +410 since Aug 9), but what accumulates
 in them is STATE and WIRING, which is exactly what makes extraction dangerous — and they are being
 edited most weeks. Put a brake on their growth (new feature code goes in a new module) rather than
