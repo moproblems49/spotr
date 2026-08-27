@@ -1,4 +1,4 @@
-// v178091716934
+// v178091716935
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15438,11 +15438,19 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   // filled button; the only colour left on the screen means something.
 
   return (
-    <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, background:BG, zIndex:200, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto" }}>
+    <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, zIndex:200, maxWidth:480, margin:"0 auto" }}>
+    {/* EdgeSwipeBack: this overlay was the one pushed screen WITHOUT the edge-swipe exit — chat,
+        Messages and Activity all have it, and here the only way out was a 36px button in the
+        hardest one-handed reach on the phone (a dual-assessment critique flagged both halves of
+        that independently). The positioned wrapper stays OUTSIDE; the swipe panel carries the
+        background and layout, per the Activity precedent. The gesture mirrors the Back button
+        exactly, including in edit mode, where both discard un-saved edits — same behaviour,
+        same answer. */}
+    <EdgeSwipeBack onBack={onClose} style={{ background:BG, height:"100%", display:"flex", flexDirection:"column" }}>
 
       {/* Top bar */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"calc(env(safe-area-inset-top) + 14px) 18px 14px", background:CARD, borderBottom:`1px solid ${BORD}`, flexShrink:0 }}>
-        <button onClick={onClose} aria-label="Back" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <button onClick={onClose} aria-label="Back" className="seshd-hit" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
         </button>
         <div style={{ flex:1 }}>
@@ -15458,7 +15466,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           // Open picker: share this day OR the whole program
           const prog = findOwningProgram();
           setShareModal({ stage: "picker", prog, day: editDay });
-        }} aria-label="Share" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+        }} aria-label="Share" className="seshd-hit" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
           <Icon name="share" size={16} color={TXT}/>
         </button>
         <button onClick={() => {
@@ -15478,8 +15486,14 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
         }}>{editMode ? "Done" : "Edit"}</button>
       </div>
 
-      {/* Share Modal */}
-      {shareModal && (
+      {/* Share Modal. PORTALED to document.body, and this is load-bearing, not tidiness: the
+          overlay's content now sits inside EdgeSwipeBack, whose node carries willChange:"transform"
+          at rest — which creates a containing block for fixed AND absolute descendants. Left in
+          place, this "fixed" backdrop would anchor to the swipe panel instead of the viewport (the
+          documented followers-sheet bug: a backdrop starting and ending short of the screen, the
+          page visible and scrollable through the gaps). Same convention as every other fixed
+          overlay inside a transformed ancestor in this app. */}
+      {shareModal && createPortal(
         <div onClick={() => setShareModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
           <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
             background:"#0A0A0A", borderRadius:24, padding:"32px 24px",
@@ -15652,7 +15666,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             )}
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Summary line.
           Was three boxed stat tiles on a raised band. They were the first instance of this screen's
@@ -15708,6 +15722,16 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           only makes the CTA taller, never shorter), so its usable tap area shrank to 27x18. */}
       <div style={{ flex:1, overflowY:"auto", padding:"12px 16px", paddingBottom: editMode ? 160 : 140 }}>
         {!editMode ? (
+          editDay.exercises.length === 0 ? (
+            // A day with nothing in it used to render "0 exercises · 0 total sets", a void, and a
+            // live Start Workout button — starting an empty session nobody can log anything into.
+            // Say what the screen needs instead, and the CTA below relabels itself to open the
+            // editor rather than start.
+            <div style={{ padding:"48px 24px", textAlign:"center" }}>
+              <div style={{ fontSize:14, fontWeight:600, color:TXT, marginBottom:6 }}>Nothing in this day yet</div>
+              <div style={{ fontSize:13, color:SUB, lineHeight:1.5 }}>Add exercises to plan what you'll lift, then start it from here.</div>
+            </div>
+          ) :
           editDay.exercises.map((ex, i) => {
             const exInfo = getExEntry(ex.name);
             const pr = store.prs?.[ex.name];
@@ -15756,7 +15780,12 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                         set counts sum to the "total sets" tile, which is how the bare-range bug
                         (a day showing no set count anywhere) stays caught. */}
                     <span style={{ fontSize:12, fontWeight:600, color:TXT, fontFamily:MONO, background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"2px 7px" }}>{progSetsReps(ex)}</span>
-                    {exInfo?.muscle && <span style={{ fontSize:12, color:SUB }}>{exInfo.muscle}</span>}
+                    {/* The muscle word yields to the note. Dot + word + a header already naming the
+                        groups is triple encoding, and on a noted row the word and the note sat at
+                        near-identical weight and blurred together (the critique's one chunking
+                        failure). When a note exists it takes the slot; the dot and the exercise
+                        name still carry the muscle. */}
+                    {exInfo?.muscle && !ex.note && <span style={{ fontSize:12, color:SUB }}>{exInfo.muscle}</span>}
                     {/* Plain italic, NOT a bordered chip. As a chip it looked like a sibling of the
                         set-target chip beside it, and the two are different kinds of thing: the
                         target is a prescription the program sets, the note is freeform text the
@@ -15770,12 +15799,21 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                   {(() => {
                     const last = getLastExerciseSession(store, ex.name);
                     if (!last) return null;
-                    const top3 = [...last.sets].sort((a,b) => b.w - a.w || b.r - a.r).slice(0, 3);
-                    const txt = top3.map(s => `${Math.round(cvt(s.w, last.unit, unit))}×${s.r}`).join("   ");
+                    // PERFORMED ORDER, not sorted-by-weight. The first cut sorted descending and
+                    // sliced to 3, which under a "4×…" chip read as "I only did 3 sets" and
+                    // re-sequenced the session — hiding exactly the patterns a lifter reads this
+                    // line for (a back-off set looks like the opening set, a pyramid disappears).
+                    // The line answers "what did last time actually look like", so it shows the
+                    // sets as they happened, and owns up to the cut with a muted +N instead of
+                    // silently editing history.
+                    const shown = last.sets.slice(0, 3);
+                    const extra = last.sets.length - shown.length;
+                    const txt = shown.map(s => `${Math.round(cvt(s.w, last.unit, unit))}×${s.r}`).join("   ");
                     return (
                       <div style={{ display:"flex", alignItems:"baseline", gap:9, marginTop:8 }}>
                         <span style={{ fontSize:10, letterSpacing:1.2, textTransform:"uppercase", color:C.muted, fontWeight:700, flexShrink:0 }}>Last</span>
                         <span style={{ fontSize:13, color:TXT, fontWeight:600, fontFamily:MONO, fontVariantNumeric:"tabular-nums", whiteSpace:"pre" }}>{txt}</span>
+                        {extra > 0 && <span style={{ fontSize:11, color:C.muted, fontWeight:600, fontFamily:MONO }}>+{extra}</span>}
                       </div>
                     );
                   })()}
@@ -15786,15 +15824,20 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           })
         ) : (
           <>
+            {/* THE SAME LIST LANGUAGE AS VIEW MODE. Edit mode used to toggle back into the design
+                system the redesign had just retired — rounded cards, tinted MuscleIcon tiles, a
+                blue dashed add button — so tapping Edit swapped visual worlds mid-screen (the
+                critique's consistency finding). Same hairline rows, same muscle dot, same left
+                edge now; only the fields change. The inputs sit on C.bg with the shared border
+                token instead of per-theme hex literals. */}
             {editDay.exercises.map((ex, i) => {
               const exInfo = getExEntry(ex.name);
+              const muscleColor = muscleStripeColor(exInfo?.muscle, isDark);
               return (
-                <div key={i} style={{ background:CARD, borderRadius:14, padding:"14px", marginBottom:10, border:`1px solid ${BORD}` }}>
+                <div key={i} style={{ padding:"14px 2px", borderTop: i === 0 ? "none" : `1px solid ${C.border}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-                    <div style={{ width:34, height:34, borderRadius:9, background:isDark?"#252525":"#EEF2F7", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                      <MuscleIcon muscle={exInfo?.muscle||""} size={20} name={ex.name} C={C}/>
-                    </div>
-                    <div style={{ flex:1, fontSize:13, fontWeight:700, color:TXT }}>{ex.name}</div>
+                    <div style={{ width:8, height:8, borderRadius:4, background:muscleColor, flexShrink:0, boxShadow:`0 0 0 3px ${muscleColor}22` }}/>
+                    <div style={{ flex:1, fontSize:15, fontWeight:600, color:TXT, letterSpacing:-0.2, minWidth:0 }}>{ex.name}</div>
                     {/* This removes an exercise from a SAVED program and "Done" makes it permanent —
                         no undo. Every other destructive control in the app confirms first; this one
                         didn't, and at 20px square with no .seshd-hit halo it was also the easiest
@@ -15806,24 +15849,24 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                       onConfirm: () => removeEx(i),
                     })} aria-label={`Remove ${ex.name}`} className="seshd-hit" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 2px", lineHeight:1 }}>×</button>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, paddingLeft:18 }}>
                     <div>
                       <div style={{ fontSize:10, fontWeight:600, color:SUB, letterSpacing:0.5, marginBottom:4 }}>SETS × REPS</div>
                       <input value={ex.reps||""} onChange={e => updateEx(i,{reps:e.target.value})} placeholder="3×8–12"
-                        style={{ width:"100%", background:isDark?"#1a1a1a":"#F8FAFC", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 10px", fontSize:13, fontWeight:600, color:TXT, outline:"none", fontFamily:F, boxSizing:"border-box" }}/>
+                        style={{ width:"100%", background:C.bg, border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 10px", fontSize:13, fontWeight:600, color:TXT, outline:"none", fontFamily:F, boxSizing:"border-box" }}/>
                     </div>
                     <div>
                       <div style={{ fontSize:10, fontWeight:600, color:SUB, letterSpacing:0.5, marginBottom:4 }}>NOTE</div>
                       <NoteField value={ex.note||""} onChange={e => updateEx(i,{note:e.target.value})} placeholder="Optional..."
-                        style={{ width:"100%", background:isDark?"#1a1a1a":"#F8FAFC", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 10px", fontSize:13, color:TXT, outline:"none", fontFamily:F }}/>
+                        style={{ width:"100%", background:C.bg, border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 10px", fontSize:13, color:TXT, outline:"none", fontFamily:F, boxSizing:"border-box" }}/>
                     </div>
                   </div>
                 </div>
               );
             })}
             <button onClick={() => setShowExercisePicker(true)} style={{
-              width:"100%", background:CARD, border:`1.5px dashed ${isDark?"#2563eb55":"#BFDBFE"}`,
-              borderRadius:14, padding:"14px", cursor:"pointer", fontFamily:F,
+              width:"100%", background:"transparent", border:`1.5px dashed ${BORD}`,
+              borderRadius:10, padding:"13px", cursor:"pointer", fontFamily:F, marginTop:10,
               fontSize:13, fontWeight:700, color:INK, textAlign:"center",
             }}>+ Add Exercise</button>
             <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
@@ -15841,14 +15884,23 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           : "linear-gradient(165deg, rgba(255,255,255,0.78) 0%, rgba(240,243,248,0.82) 100%)",
         backdropFilter:"blur(20px) saturate(1.5)", WebkitBackdropFilter:"blur(20px) saturate(1.5)",
         borderTop:`1px solid ${isDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.9)"}` }}>
-        <button onClick={saveAndStart} style={{
+        <button onClick={() => {
+          // An empty day must not start an empty session — route the tap to the thing the screen
+          // actually needs: the editor (from view mode) or the exercise picker (already editing).
+          if (editDay.exercises.length === 0) {
+            if (editMode) setShowExercisePicker(true); else setEditMode(true);
+            return;
+          }
+          saveAndStart();
+        }} style={{
           width:"100%", background:C.primary, color:C.onPrimary, border:"none",
           borderRadius:14, padding:"17px", fontSize:16, fontWeight:800,
           cursor:"pointer", fontFamily:F, letterSpacing:-0.3
         }}>
-          {editMode ? "Save & Start Workout →" : "Start Workout →"}
+          {editDay.exercises.length === 0 ? "Add exercises to start" : editMode ? "Save & Start Workout →" : "Start Workout →"}
         </button>
       </div>
+    </EdgeSwipeBack>
     </div>
   );
 }

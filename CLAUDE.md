@@ -460,6 +460,28 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   invisible in a screenshot, so that source-level check is the only thing that can see it. The 26px
   round button uses `borderRadius:"50%"`, not `13` — circle geometry should say so rather than look
   like a card corner sneaking back onto the scale.
+  **A dual-assessment `/impeccable critique` then scored the shipped result 31/40 and drove five
+  follow-ups, all now in.** The design-review half and the detector/browser half ran isolated; the
+  detector found ZERO in-scope findings (the flattening removed the shapes it hunts) and the browser
+  half measured a clean bill (fonts on scale, no contrast failures, dots over 3:1 both themes). The
+  five UX fixes: (1) **the overlay had no edge-swipe exit** — chat/Messages/Activity all wrap
+  `EdgeSwipeBack` and this one didn't, leaving a 36px top-left Back as the only way out (both
+  assessment halves flagged it independently). Wrapped now, Back/Share got `.seshd-hit` halos, and
+  **the share modal had to move to `createPortal(…, document.body)`** because `EdgeSwipeBack`'s
+  `willChange:"transform"` makes a containing block for fixed children — the documented
+  followers-sheet trap, caught before it shipped rather than after. (2) **the `Last` line sorted sets
+  by weight and sliced to 3**, so a 4-set session read as 3 re-sequenced sets under a "4×…" chip,
+  hiding back-off/pyramid patterns — it shows performed order with a muted `+N` now. (3) **edit mode
+  was still the pre-redesign card kit** (rounded cards, MuscleIcon tiles, blue dashed add button) —
+  flattened to the same dot+divider list, only the fields differ. (4) **a zero-exercise day rendered
+  a void with a live Start button** that began an unloggable empty session — empty state + the CTA
+  relabels to "Add exercises to start" and opens the editor. (5) **dot + muscle word + a header
+  already naming the groups was triple encoding**, and on a noted row the word and note blurred at
+  equal weight — the word yields to the note when one exists. Sim: `verify_critique_fixes` drives all
+  five (performed-order `Last`, real edge-swipe TouchEvents, empty-day CTA routing to edit, flattened
+  edit rows, portaled share modal), and two of its own first-draft assertions were probe bugs, not
+  app bugs (the overlay-finder matched on day-name text that becomes an `<input>` in edit mode;
+  `NoteField` is a textarea, not an input) — verified against the app before trusting either.
   **A self-critique of the shipped result then found three more, and the lesson is that flattening a
   layout re-opens questions the old layout had already answered.** (1) The status stat rode in the
   same value+label array as the two counts, which reads correctly STACKED in a tile and became the
