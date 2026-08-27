@@ -1,4 +1,4 @@
-// v178091716932
+// v178091716933
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15658,8 +15658,14 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
       {!editMode && (
         <div style={{ borderBottom:`1px solid ${C.border}`, padding:"13px 20px 14px", flexShrink:0 }}>
           <div style={{ display:"flex", gap:18, flexWrap:"wrap", alignItems:"baseline" }}>
+            {/* Only the two COUNTS take the value+label shape. The third stat used to ride along in
+                this same array and, once the tiles were flattened to one line, rendered as the
+                run-on "New first time" — a value/label pair reads fine stacked in a tile and turns
+                into broken English inline. It is a plain phrase now ("Done 4d ago" / "First time"),
+                which also draws the right distinction: the counts are DATA about the day, the
+                status is context about you. */}
             {[
-              ["dumbbell", editDay.exercises.length, "exercises"],
+              [editDay.exercises.length, "exercises"],
               // progSetCount, NOT parseInt(ex.reps). This tile is labelled "total sets" and was
               // summing the REPS field: parseInt("10-15") is 10, so the number under it was the sum
               // of the low end of every rep range. Mo's 8-exercise Push B read "71 total sets" for
@@ -15668,19 +15674,19 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
               // number comes out right by accident — so every template day, and every test fixture
               // copied from one, looked correct. It only misreports for a day whose reps are a bare
               // range, which is exactly what the day editor writes.
-              ["package", editDay.exercises.reduce((a,ex)=>a+progSetCount(ex),0), "total sets"],
-              ...(lastPerformed ? [["check","Done",lastPerformed]] : [["spark","New","first time"]]),
-            ].map(([icon,val,label]) => (
+              [editDay.exercises.reduce((a,ex)=>a+progSetCount(ex),0), "total sets"],
+            ].map(([val,label]) => (
               /* Theme tokens, not white-on-purple. These carried hardcoded #fff and
                  rgba(255,255,255,·) because the band behind them used to be a saturated violet
                  gradient; with the band neutral those values are near-invisible on the light theme.
-                 An earlier fix darkened the tile's veil to rescue the white text — that was right
-                 for the old band and is moot now there is no fill at all. */
+                 VALUE FIRST, LABEL SECOND, ADJACENT: pw_daysets reads this tile by finding the div
+                 whose text is exactly "total sets" and taking its previousElementSibling. */
               <div key={label} style={{ display:"flex", alignItems:"baseline", gap:5 }}>
                 <div style={{ fontSize:15, fontWeight:800, color:C.text, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>{val}</div>
                 <div style={{ fontSize:12, color:C.sub, fontWeight:500 }}>{label}</div>
               </div>
             ))}
+            <div style={{ fontSize:12, color:C.sub, fontWeight:500 }}>{lastPerformed ? `Done ${lastPerformed}` : "First time"}</div>
           </div>
         </div>
       )}
@@ -15707,7 +15713,14 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                  actually load off — what you lifted last time — was the smallest, dimmest text on
                  the card. Now: hairline dividers instead of containers, the muscle group as a single
                  dot instead of rail + tile + word, and "Last" promoted to the visual anchor. */
-              <div key={i} style={{ padding:"14px 2px", borderTop: i === 0 ? "none" : `1px solid ${C.border}`, display:"flex", alignItems:"flex-start", gap:10 }}>
+              /* THE ROW IS THE BUTTON. This used to end in a per-row "?" — first a filled olive
+                 box, then a ghost circle — which was a permanent right-hand COLUMN repeating once
+                 per exercise for a help affordance. Quieting it didn't fix the shape of the
+                 mistake. Tapping the row opens the same exercise detail, so the column is gone and
+                 a single muted "›" signals the row is tappable (the standard list-row disclosure,
+                 not another control). Accessible name comes from the row's own text — no
+                 aria-label needed, and nothing here is icon-only. */
+              <button key={i} onClick={() => setViewingExercise(ex.name)} style={{ width:"100%", textAlign:"left", background:"none", cursor:"pointer", font:"inherit", color:"inherit", padding:"14px 2px", border:"none", borderTop: i === 0 ? "none" : `1px solid ${C.border}`, display:"flex", alignItems:"flex-start", gap:10 }}>
                 {/* The muscle colour still encodes the same thing it always did; it just no longer
                     needs a 4px rail and a 42px tinted tile to say it. */}
                 <div style={{ width:8, height:8, borderRadius:4, background:muscleColor, flexShrink:0, marginTop:6, boxShadow:`0 0 0 3px ${muscleColor}22` }}/>
@@ -15728,7 +15741,12 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                         (a day showing no set count anywhere) stays caught. */}
                     <span style={{ fontSize:12, fontWeight:600, color:TXT, fontFamily:MONO, background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"2px 7px" }}>{progSetsReps(ex)}</span>
                     {exInfo?.muscle && <span style={{ fontSize:12, color:SUB }}>{exInfo.muscle}</span>}
-                    {ex.note && <span style={{ fontSize:10, color:C.muted, textTransform:"uppercase", letterSpacing:0.8, fontWeight:600, border:`1px solid ${C.border}`, borderRadius:5, padding:"1px 6px" }}>{ex.note}</span>}
+                    {/* Plain italic, NOT a bordered chip. As a chip it looked like a sibling of the
+                        set-target chip beside it, and the two are different kinds of thing: the
+                        target is a prescription the program sets, the note is freeform text the
+                        user typed. Same visual treatment for different meanings is the duplicated
+                        -map problem wearing a design hat. */}
+                    {ex.note && <span style={{ fontSize:12, color:C.muted, fontStyle:"italic" }}>{ex.note}</span>}
                   </div>
                   {/* The one fact this app has that a template couldn't fake: what you lifted last
                       time you did THIS exercise, not a lifetime best from months back. It is the
@@ -15746,11 +15764,8 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     );
                   })()}
                 </div>
-                {/* Ghost, not a filled olive box. Five of those read as unfinished placeholders and
-                    were the third-loudest thing on every row for a help affordance. Same button,
-                    same aria-label, same 44pt .seshd-hit halo — only the paint is gone. */}
-                <button onClick={() => setViewingExercise(ex.name)} aria-label={`${ex.name} details`} className="seshd-hit" style={{ width:26, height:26, borderRadius:"50%", background:"transparent", border:`1px solid ${C.border}`, cursor:"pointer", color:C.muted, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:2 }}>?</button>
-              </div>
+                <span aria-hidden="true" style={{ color:C.muted, fontSize:17, lineHeight:1, flexShrink:0, marginTop:3 }}>›</span>
+              </button>
             );
           })
         ) : (

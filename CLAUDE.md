@@ -460,6 +460,26 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   invisible in a screenshot, so that source-level check is the only thing that can see it. The 26px
   round button uses `borderRadius:"50%"`, not `13` — circle geometry should say so rather than look
   like a card corner sneaking back onto the scale.
+  **A self-critique of the shipped result then found three more, and the lesson is that flattening a
+  layout re-opens questions the old layout had already answered.** (1) The status stat rode in the
+  same value+label array as the two counts, which reads correctly STACKED in a tile and became the
+  run-on **"New first time"** once inlined — a pattern can be right in one geometry and ungrammatical
+  in another, so re-read the words after any layout change, not just the pixels. It is a plain
+  phrase now ("Done 4d ago" / "First time") and only the counts keep the pair shape. (2) The freeform
+  `ex.note` was styled as a bordered chip sitting next to the bordered set-target chip, so a
+  PRESCRIPTION and a USER NOTE became visual siblings — the duplicated-map problem in design form.
+  The note is plain italic muted text now. (3) The "?" was quieted from a filled box to a ghost
+  circle but was still a permanent right-hand COLUMN repeating once per exercise; quieting a
+  repeated control does not fix the fact that it is repeated. **The row is now the button** and a
+  single muted `›` carries the disclosure — which also improved a11y rather than costing it, since
+  the row takes its accessible name from its own text and there is no icon-only control left to
+  label. Verified by driving a real tap through to the exercise detail; `sim_a11y` clean.
+  **Measurement note worth keeping:** the critique's first contrast pass reported the exercise name
+  as 13px when the source says 15px, because the query hit the workout tab UNDERNEATH the overlay —
+  the documented "an overlay does not remove the DOM beneath it" trap, hit again. The tell was the
+  number disagreeing with the code. Scope measurements to `[data-fullscreen-overlay]`. That same
+  pass also flagged the Edit button as failing contrast, which was an artifact of the ratio helper
+  not compositing an alpha background — do not report a colour finding without compositing.
 - **THE 7-COLOUR DAY RAINBOW IS GONE, AND THE REASON GENERALISES: A PALETTE THAT ENCODES NOTHING
   COMPETES WITH THE ONES THAT DO.** `DAY_COLORS` (violet/blue/green/amber/red/cyan, indexed by the
   day's POSITION in the program, declared twice) painted the day preview's hero band and both Start
