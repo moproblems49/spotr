@@ -8,10 +8,12 @@
 // 2. No icon-only <button> ships with no aria-label/title — a screen-reader user gets literally
 //    nothing from one. Reuses build/a11y_scan.mjs's AST walk over the JSX-transformed bundle.
 import { spawnSync } from "child_process";
+import { readdirSync } from "fs";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { jsxFiles } from "./source_files.mjs";
 
 const BUILD = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(BUILD, "..");
@@ -58,20 +60,30 @@ for (const [name, t] of [["dark", dark], ["light", light]]) {
 }
 
 // ── 2. Icon-only buttons need an accessible name ────────────────────────────────────────────
+// COVERAGE: this scanned src/App.jsx alone until Aug 27 2026 and so went quietly blind as screens
+// moved into src/lazy/ — ten files of real UI, several of them full of icon buttons, policed by
+// nothing while this check still printed PASS. (Same class as the sim_undef gap the engine split
+// found.) It sweeps every JSX file now. src/engine/*.js is deliberately NOT scanned: those modules
+// are pure logic and contain no JSX at all, so there is nothing there for this to see.
+const jsxTargets = jsxFiles();
 const tmp = mkdtempSync(join(tmpdir(), "a11y-"));
-const out = join(tmp, "app.transformed.js");
 try {
-  const t = spawnSync("npx", ["esbuild", "src/App.jsx", "--loader:.jsx=jsx", "--format=esm",
-    "--jsx=automatic", `--outfile=${out}`], { cwd: ROOT, encoding: "utf8" });
-  if (t.status !== 0) {
-    check("could transform src/App.jsx for the button scan", false, (t.stderr || "").slice(0, 200));
-  } else {
+  const dirty = [];
+  for (const rel of jsxTargets) {
+    const out = join(tmp, rel.replace(/[\/.]/g, "_") + ".js");
+    const t = spawnSync("npx", ["esbuild", rel, "--loader:.jsx=jsx", "--format=esm",
+      "--jsx=automatic", `--outfile=${out}`], { cwd: ROOT, encoding: "utf8" });
+    if (t.status !== 0) { check(`could transform ${rel} for the button scan`, false, (t.stderr || "").slice(0, 200)); continue; }
     const r = spawnSync(process.execPath, [join(BUILD, "a11y_scan.mjs"), out], { encoding: "utf8" });
     const stdout = r.stdout || "";
-    console.log(stdout.trim().split("\n").map(l => "  " + l).join("\n"));
-    const noFindings = /No provably icon-only buttons/.test(stdout);
-    check("no icon-only <button> ships without an accessible name", noFindings, stdout.split("\n")[2] || "");
+    if (!/No provably icon-only buttons/.test(stdout)) {
+      dirty.push(rel);
+      console.log(`  ── ${rel}`);
+      console.log(stdout.trim().split("\n").map(l => "    " + l).join("\n"));
+    }
   }
+  check(`no icon-only <button> ships without an accessible name (${jsxTargets.length} JSX file(s) scanned)`,
+    dirty.length === 0, dirty.length ? `findings in: ${dirty.join(", ")}` : "");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

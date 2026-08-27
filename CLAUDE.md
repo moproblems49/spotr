@@ -2730,13 +2730,25 @@ it — so round 2's contiguous-leading-comment sweep attached it to `trainingLoa
 health plugin. **After each round, read the comment at the TOP of each moved block and ask whether
 it describes the thing underneath it**; a mechanical sweep cannot tell a belonging comment from an
 adjacent one, and a stranded banner from the previous round is exactly what it will grab.
-**Guard-coverage check, repeated every round and clean this time:** `sim_undef` globs
-`src/engine/*.js` (14 files). `sim_deadui`/`sim_accentbutton` cover App.jsx + `src/lazy/` and the
-engine files carry no JSX or colours, so nothing left their reach. **But two guards are ALREADY
-partially blind and it predates this work:** `sim_designscale` reads only App.jsx while ~290
-`fontSize` literals now live in `src/lazy/*.jsx`, and `sim_a11y`'s icon-button scan transforms only
-App.jsx. That dates to the Aug 20 lazy split. Widening them is its own task — it may surface real
-violations that need fixing — so don't fold it into an extraction commit.
+**★ GUARD COVERAGE IS NOW STRUCTURAL — `build/source_files.mjs` IS THE ONE LIST, AND EVERY
+SOURCE-LEVEL GUARD ENUMERATES THROUGH IT.** Blindness had happened twice, both times silently:
+`sim_undef` lost 1,500 lines to the engine split (round 1 caught it), and `sim_designscale` +
+`sim_a11y`'s button scan had been blind to ALL TEN `src/lazy/` screens since the Aug 20 code-split
+— ~290 `fontSize` literals and ten files of real UI policed by nothing, both printing PASS
+throughout. Measured before widening: the unwatched files were CLEAN (no half-pixels, nothing under
+10px, no retired radii, no unlabelled icon-only buttons), so nothing had actually slipped through —
+but that was luck, not the guard working. Coverage went `sim_designscale` 1 → 14 files and
+`sim_a11y` 1 → 11. All five (`sim_undef`, `sim_designscale`, `sim_a11y`, `sim_deadui`,
+`sim_accentbutton`) now call `jsxFiles()` / `allSourceFiles()` instead of hardcoding a path, so a
+file MOVE can never drop out of a guard's reach again and a new source directory is ONE edit rather
+than five. **Two hardcoded paths deliberately remain and are correct**: `sim_a11y` reads `THEMES`
+and `sim_platecolors` reads `plateColor`, both of which exist only in App.jsx. Each guard was
+re-red-proofed AFTER the centralisation (a half-pixel and a retired radius injected into a lazy
+file, a free identifier into an engine file, an unreachable component into a lazy file) — a widened
+guard that cannot fail is worse than no guard. **Worth recording: the first a11y red-proof attempt
+FAILED to go red** — stripping an `aria-label="Back"` proved nothing, because that button is not
+*provably* icon-only under the scanner's conservative rules. A clean `a11y_scan` run means "no
+PROVABLE misses", not "certainly zero", exactly as its own comment claims.
 **Next candidates**, same pattern: dates & units beyond what already moved, formatting/text
 helpers, and the exercise-library lookups. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
 are 34% of the file and the growth is landing there (+336 / +410 since Aug 9), but what accumulates

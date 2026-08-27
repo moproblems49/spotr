@@ -34,14 +34,10 @@
 import { readFileSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { jsxFiles } from "./source_files.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const targets = [
-  { path: "src/App.jsx", src: readFileSync(join(ROOT, "src/App.jsx"), "utf8") },
-  ...readdirSync(join(ROOT, "src/lazy"))
-    .filter(f => f.endsWith(".jsx"))
-    .map(f => ({ path: `src/lazy/${f}`, src: readFileSync(join(ROOT, "src/lazy", f), "utf8") })),
-];
+const targets = jsxFiles().map(p => ({ path: p, src: readFileSync(join(ROOT, p), "utf8") }));
 
 let fails = 0;
 let totalAccentSites = 0, totalPropSites = 0, totalBgValueSites = 0;

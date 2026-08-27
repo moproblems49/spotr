@@ -31,6 +31,7 @@ import { mkdtempSync, rmSync, readdirSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname, basename } from "path";
 import { fileURLToPath } from "url";
+import { allSourceFiles } from "./source_files.mjs";
 
 const BUILD = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(BUILD, "..");
@@ -48,7 +49,7 @@ const engineDir = join(ROOT, "src", "engine");
 let engineFiles = [];
 try { engineFiles = readdirSync(engineDir).filter(f => f.endsWith(".js")).map(f => join("src", "engine", f)); } catch {}
 
-const targets = ["src/App.jsx", ...lazyFiles, ...engineFiles];
+const targets = allSourceFiles();
 let overallCode = 0;
 
 for (const rel of targets) {
