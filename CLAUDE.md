@@ -2696,9 +2696,14 @@ whole point — it is not tidiness.
 **Done so far:** `src/engine/core.js` (**10** leaf primitives — `IS_DEV`, `devWarn`, `devError`,
 `dateKeyOf`, `dateFromKey`, `workingDone`, `dKey`, `cvt`, `LBS_PER_KG`, `LBS_TO_KG`; imports
 NOTHING, keep it that way), `src/engine/health.js` (42 symbols: recovery, Body Battery, sleep, HRV,
-activity) and `src/engine/workout.js` (27 symbols: volume/set counting, 1RM, PR detection,
-progression, training load). **App.jsx 23,095 → 20,947 lines.** Layering is strictly one-way:
-core imports nothing, health and workout import only core, App.jsx imports all three.
+activity), `src/engine/workout.js` (27 symbols: volume/set counting, 1RM, PR detection,
+progression, training load), `src/engine/exercises.js` (21 symbols, 14 exported: the exercise
+library + name resolution; a LEAF importing nothing) and `src/engine/strength.js` (21 symbols,
+8 exported: strength score, per-muscle strength vs standards, weekly muscle volume, muscle
+readiness, days-since-trained; imports core+exercises+workout, NOTHING from health — the extractor
+asserts that layering rather than assuming it). **App.jsx 23,095 → 19,726 lines.** Layering is
+strictly one-way: core and exercises import nothing, everything else imports only downward,
+App.jsx imports all five.
 `dKey` is a thin today-default wrapper over `dateKeyOf` and was moved AS-IS rather than
 consolidated — merging them is a behaviour change (`dateKeyOf(undefined)` is an Invalid Date) and
 must not ride along inside a mechanical move.
@@ -2797,10 +2802,19 @@ audit agent had to BUILD in order to check anything, and a concurrent build dist
 the battery is serving on :8199. Telling the agent "don't run the battery" is not enough — building
 alone is sufficient to break it. Run the audit BEFORE or AFTER, never alongside, and treat a
 contiguous alphabetical tail of failures as infrastructure until proven otherwise.
-**Next candidates**, same pattern: strength/muscle analytics (`computeStrengthScore`,
-`strengthScoreHistory`, `muscleStrength`, `muscleReadiness`, `weeklyMuscleVolume`,
-`daysSinceMuscleTrained` — these sit directly on top of `exercises.js` and are the natural round 4),
-then formatting/text helpers. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
+**Round 4 (strength.js) was the first mechanically CLEAN move — every earlier round's trap was
+pre-checked instead of audit-found** (statement sweep before extracting, comment integrity at both
+ends of every seam, layering asserted in the extractor, all 21 symbols AST-identical). The audit
+still earned its keep on three trims: the extract script exported all 21 symbols while the header
+promised 13 privates (trimmed to 8 — write the export list from the PUBLIC set, never from the
+full move list); the dependency-needs regex counted a COMMENT mention of `EXERCISE_SECONDARIES` as
+a reference and minted a dead import in two files (the closure itself walks the AST and ignores
+comments, but the import-needs check ran a bare regex over raw body text — strip comments first);
+and a doc block glued above `strengthScoreHistory` carried `computeStrengthScore`'s contract in its
+first four lines — a PRE-EXISTING mis-attachment carried verbatim. A glued block reads plausibly at
+both ends; read it to the END before trusting it.
+**Next candidates**, same pattern: formatting/text helpers and the insight/coach-context builders,
+then stop and reassess — most of what remains is state and wiring. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
 are 34% of the file and the growth is landing there (+336 / +410 since Aug 9), but what accumulates
 in them is STATE and WIRING, which is exactly what makes extraction dangerous — and they are being
 edited most weeks. Put a brake on their growth (new feature code goes in a new module) rather than
