@@ -1,4 +1,4 @@
-// v178091716935
+// v178091716936
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15381,6 +15381,16 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const [shareModal, setShareModal] = useState(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
 
+  // Share sheet is a modal dialog: move VoiceOver focus into it on open (it took none before, so a
+  // screen-reader user who tapped Share was left reading the exercise list underneath it). Keyed on
+  // the OPEN transition only — not the picker→code stage change — so focus isn't re-stolen mid-flow.
+  const shareCardRef = useRef(null);
+  useEffect(() => {
+    if (!shareModal) return;
+    const t = setTimeout(() => shareCardRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [!!shareModal]);
+
   const isDark = C.isDark ?? (C.bg === "#0a0a0c");
   const BG    = C.bg;
   const CARD  = C.surface;
@@ -15389,6 +15399,18 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const TXT   = C.text;
   const BLUEBG= C.accentSoft;
   const INK   = C.accentInk;   // accent as TEXT on that tint — a darker value on the light theme
+
+  // Share-card palette. The card was hardcoded dark (black bg, white ink, rgba(255,255,255,·)
+  // surfaces) on BOTH themes — a jarring black modal on the light app, flagged by the critique as
+  // theme-blind. These invert with the theme: dark keeps the brand-dark card; light becomes a
+  // normal surface card with dark ink. sInkRGB feeds every translucent surface/border/label so one
+  // switch flips them all. sAcc* is the inverted PRIMARY fill (icon tiles + the Share button):
+  // white-on-dark / dark-on-light, so the CTA stays loud on both.
+  const sBg     = isDark ? "#0A0A0A" : CARD;
+  const sInkRGB = isDark ? "255,255,255" : "17,17,17";
+  const sInk    = `rgba(${sInkRGB},1)`;
+  const sAccBg  = isDark ? "#fff" : TXT;
+  const sAccInk = isDark ? "#0A0A0A" : "#fff";
 
   // Matched by progId + the day's own stable id, never by name — two programs can easily share a
   // day name (every new program's first day defaults to "Day 1"), and matching by name alone
@@ -15495,29 +15517,29 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           overlay inside a transformed ancestor in this app. */}
       {shareModal && createPortal(
         <div onClick={() => setShareModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
-            background:"#0A0A0A", borderRadius:24, padding:"32px 24px",
-            width:"100%", maxWidth:360, color:"#fff", position:"relative",
-            fontFamily:F, overflow:"hidden",
+          <div ref={shareCardRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Share program or workout" onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{
+            background:sBg, borderRadius:24, padding:"32px 24px",
+            width:"100%", maxWidth:360, color:sInk, position:"relative",
+            fontFamily:F, overflow:"hidden", outline:"none",
           }}>
             <div style={{
               position:"absolute", inset:0, opacity:0.04, pointerEvents:"none",
-              backgroundImage:`linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+              backgroundImage:`linear-gradient(${sInk} 1px, transparent 1px), linear-gradient(90deg, ${sInk} 1px, transparent 1px)`,
               backgroundSize:"24px 24px",
             }}/>
             <button onClick={() => setShareModal(null)} aria-label="Close" style={{
-              position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.08)",
-              border:"none", color:"#fff", width:30, height:30, borderRadius:10,
+              position:"absolute", top:14, right:14, background:`rgba(${sInkRGB},0.08)`,
+              border:"none", color:sInk, width:30, height:30, borderRadius:10,
               cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1
             }}>
-              <Icon name="x" size={14} color="#fff"/>
+              <Icon name="x" size={14} color={sInk}/>
             </button>
 
             {/* Stage 1: Picker - share day or program */}
             {shareModal.stage === "picker" && (
               <div style={{ position:"relative", zIndex:1 }}>
-                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:8, textAlign:"center" }}>SHARE</div>
-                <div style={{ fontSize:18, fontWeight:800, color:"#fff", marginBottom:24, textAlign:"center", letterSpacing:-0.3 }}>What do you want to share?</div>
+                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:`rgba(${sInkRGB},0.5)`, marginBottom:8, textAlign:"center" }}>SHARE</div>
+                <div style={{ fontSize:18, fontWeight:800, color:sInk, marginBottom:24, textAlign:"center", letterSpacing:-0.3 }}>What do you want to share?</div>
 
                 <button onClick={async () => {
                   const day = shareModal.day;
@@ -15548,19 +15570,19 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     toast("Couldn't generate share code", "error");
                   }
                 }} style={{
-                  width:"100%", background:"rgba(255,255,255,0.06)",
-                  border:"1px solid rgba(255,255,255,0.12)", borderRadius:14,
+                  width:"100%", background:`rgba(${sInkRGB},0.06)`,
+                  border:`1px solid rgba(${sInkRGB},0.12)`, borderRadius:14,
                   padding:"16px", marginBottom:10, cursor:"pointer", fontFamily:F,
-                  display:"flex", alignItems:"center", gap:12, color:"#fff", textAlign:"left",
+                  display:"flex", alignItems:"center", gap:12, color:sInk, textAlign:"left",
                 }}>
-                  <div style={{ width:36, height:36, borderRadius:10, background:"#fff", color:"#0A0A0A", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                    <Icon name="dumbbell" size={18} color="#0A0A0A"/>
+                  <div style={{ width:36, height:36, borderRadius:10, background:sAccBg, color:sAccInk, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <Icon name="dumbbell" size={18} color={sAccInk}/>
                   </div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.2 }}>This workout</div>
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", marginTop:1 }}>{shareModal.day?.name || ""} · {(shareModal.day?.exercises||[]).length} exercises</div>
+                    <div style={{ fontSize:11, color:`rgba(${sInkRGB},0.55)`, marginTop:1 }}>{shareModal.day?.name || ""} · {(shareModal.day?.exercises||[]).length} exercises</div>
                   </div>
-                  <Icon name="chevron-right" size={16} color="rgba(255,255,255,0.4)"/>
+                  <Icon name="chevron-right" size={16} color={`rgba(${sInkRGB},0.4)`}/>
                 </button>
 
                 {shareModal.prog && (
@@ -15594,19 +15616,19 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                       }
                     }
                   }} style={{
-                    width:"100%", background:"rgba(255,255,255,0.06)",
-                    border:"1px solid rgba(255,255,255,0.12)", borderRadius:14,
+                    width:"100%", background:`rgba(${sInkRGB},0.06)`,
+                    border:`1px solid rgba(${sInkRGB},0.12)`, borderRadius:14,
                     padding:"16px", marginBottom:6, cursor:"pointer", fontFamily:F,
-                    display:"flex", alignItems:"center", gap:12, color:"#fff", textAlign:"left",
+                    display:"flex", alignItems:"center", gap:12, color:sInk, textAlign:"left",
                   }}>
-                    <div style={{ width:36, height:36, borderRadius:10, background:"#fff", color:"#0A0A0A", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                      <Icon name="calendar" size={18} color="#0A0A0A"/>
+                    <div style={{ width:36, height:36, borderRadius:10, background:sAccBg, color:sAccInk, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      <Icon name="calendar" size={18} color={sAccInk}/>
                     </div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.2 }}>Whole program</div>
-                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", marginTop:1 }}>{shareModal.prog.name} · {(shareModal.prog.days||[]).length} days</div>
+                      <div style={{ fontSize:11, color:`rgba(${sInkRGB},0.55)`, marginTop:1 }}>{shareModal.prog.name} · {(shareModal.prog.days||[]).length} days</div>
                     </div>
-                    <Icon name="chevron-right" size={16} color="rgba(255,255,255,0.4)"/>
+                    <Icon name="chevron-right" size={16} color={`rgba(${sInkRGB},0.4)`}/>
                   </button>
                 )}
               </div>
@@ -15615,24 +15637,24 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             {/* Stage 2: Code display */}
             {shareModal.stage === "code" && (
               <div style={{ position:"relative", zIndex:1, textAlign:"center" }}>
-                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:6 }}>
+                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:`rgba(${sInkRGB},0.5)`, marginBottom:6 }}>
                   {shareModal.kind === "day" ? "WORKOUT CODE" : "PROGRAM CODE"}
                 </div>
-                <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", marginBottom:24, fontWeight:500 }}>{shareModal.name || ""}</div>
+                <div style={{ fontSize:13, color:`rgba(${sInkRGB},0.6)`, marginBottom:24, fontWeight:500 }}>{shareModal.name || ""}</div>
                 {shareModal.generating ? (
-                  <div style={{ fontFamily:MONO, fontSize:32, fontWeight:700, color:"rgba(255,255,255,0.3)", padding:"20px 0", letterSpacing:2 }}>···</div>
+                  <div style={{ fontFamily:MONO, fontSize:32, fontWeight:700, color:`rgba(${sInkRGB},0.3)`, padding:"20px 0", letterSpacing:2 }}>···</div>
                 ) : (
                   <div style={{
-                    fontFamily:MONO, fontSize:32, fontWeight:800, color:"#fff",
+                    fontFamily:MONO, fontSize:32, fontWeight:800, color:sInk,
                     letterSpacing:2, padding:"24px 0",
-                    borderTop:"1px solid rgba(255,255,255,0.08)",
-                    borderBottom:"1px solid rgba(255,255,255,0.08)",
+                    borderTop:`1px solid rgba(${sInkRGB},0.08)`,
+                    borderBottom:`1px solid rgba(${sInkRGB},0.08)`,
                     marginBottom:24,
                   }}>
                     {shareModal.code}
                   </div>
                 )}
-                <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)", marginBottom:20, lineHeight:1.5 }}>
+                <div style={{ fontSize:12, color:`rgba(${sInkRGB},0.55)`, marginBottom:20, lineHeight:1.5 }}>
                   Anyone with this code can import {shareModal.kind === "day" ? "this workout" : "this program"}.
                 </div>
                 {!shareModal.generating && (
@@ -15642,12 +15664,12 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                       const text = `Try my ${label} on Seshd — ${shareModal.code}`;
                       shareLink({ title:`${label} code`, text }, () => toast("Code copied", "success"));
                     }} style={{
-                      width:"100%", background:"#fff", color:"#0A0A0A",
+                      width:"100%", background:sAccBg, color:sAccInk,
                       border:"none", borderRadius:12, padding:"14px", fontSize:14, fontWeight:700,
                       cursor:"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2,
                       display:"flex", alignItems:"center", justifyContent:"center", gap:8,
                     }}>
-                      <Icon name="share" size={16} color="#0A0A0A"/>
+                      <Icon name="share" size={16} color={sAccInk}/>
                       Share code
                     </button>
                     <button onClick={() => {
@@ -15656,8 +15678,8 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                         toast("Code copied", "success");
                       }
                     }} style={{
-                      width:"100%", background:"transparent", color:"rgba(255,255,255,0.85)",
-                      border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"13px",
+                      width:"100%", background:"transparent", color:`rgba(${sInkRGB},0.85)`,
+                      border:`1px solid rgba(${sInkRGB},0.12)`, borderRadius:12, padding:"13px",
                       fontSize:13, cursor:"pointer", fontFamily:F, fontWeight:600,
                     }}>Copy to clipboard</button>
                   </>

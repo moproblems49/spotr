@@ -482,6 +482,26 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   edit rows, portaled share modal), and two of its own first-draft assertions were probe bugs, not
   app bugs (the overlay-finder matched on day-name text that becomes an `<input>` in edit mode;
   `NoteField` is a textarea, not an input) — verified against the app before trusting either.
+  **A dual-agent `/impeccable critique` was then run against the SHIPPED redesign** (design-review
+  half + detector/browser-evidence half, isolated): score **31/40 Good**, up from the pre-redesign
+  screen's **20/40** (trend persisted at `.impeccable/critique/…__src-app-jsx-daypreviewmodal.md`).
+  The detector found ZERO in-scope findings (the flattening removed the shapes it hunts); the browser
+  half measured fonts on-scale, zero text-contrast failures both themes, and the muscle dots above
+  the 3:1 graphical floor both themes. Every P1/P2/P3 it raised had ALREADY shipped in `…y` (the
+  critique reviewed bundle w/x, pre-fix) — so the only NET-NEW work it drove was **the share modal**,
+  which was hardcoded dark (black bg, white ink, `rgba(255,255,255,·)` surfaces) on BOTH themes — a
+  jarring black card on the light app, and it also took **no focus on open** (a VoiceOver user who
+  tapped Share was left reading the exercise list underneath). Fixed by threading a theme-inverted
+  palette through the whole modal (`sBg`/`sInkRGB`/`sInk` for the card + every translucent surface,
+  `sAccBg`/`sAccInk` for the inverted PRIMARY fill on the icon tiles and Share button — white-on-dark
+  / dark-on-light so the CTA stays loud on both) and giving the card `role="dialog"
+  aria-modal="true"` + a `shareCardRef` focused via a `useEffect` keyed on the OPEN transition only
+  (`[!!shareModal]`, so the picker→code stage change can't re-steal focus). The dark card is
+  byte-identical to before; light is now a normal surface card. Sim: `verify_sharemodal` (asserts
+  role=dialog, focus-on-open, and that the card bg DIFFERS between themes and is not the old
+  near-black on light). **Two provocations were deliberately declined by Mo**: rebalancing so LAST
+  (the anchor) rather than the PR owns the row's colour — the quiet gold PR is intended motivational
+  value — and adding a duration estimate to the summary line (the screen was just decluttered).
   **A self-critique of the shipped result then found three more, and the lesson is that flattening a
   layout re-opens questions the old layout had already answered.** (1) The status stat rode in the
   same value+label array as the two counts, which reads correctly STACKED in a tile and became the
