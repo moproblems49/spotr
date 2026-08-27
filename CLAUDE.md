@@ -499,7 +499,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   (`[!!shareModal]`, so the picker→code stage change can't re-steal focus). The dark card is
   byte-identical to before; light is now a normal surface card. Sim: `verify_sharemodal` (asserts
   role=dialog, focus-on-open, and that the card bg DIFFERS between themes and is not the old
-  near-black on light). **Two provocations were deliberately declined by Mo**: rebalancing so LAST
+  near-black on light). **A cold-context audit of that share-modal change then found the ONE thing
+  both guards were blind to: the light theme's muted TEXT.** The translucent-ink alphas (0.5 kicker,
+  0.55 captions, 0.4 chevron) were copied byte-for-byte from the dark card and had only `sInkRGB`
+  flipped to dark — but an alpha calibrated as light ink over near-black FAILS AA as dark ink over
+  white (the same "re-measure every hardcoded colour when the surface changes" class as the muscle
+  dots). Measured on light: caption 4.03, kicker 3.54, chevron 2.61 — all under the 4.5:1 text / 3:1
+  graphical floors, all comfortably passing on dark. Fixed with three light-boosted TEXT tokens
+  (`sKick`/`sMut` at 0.66 → ~5.8-6.1:1, `sChev` at 0.5 → ~3.4:1); dark values are byte-identical, and
+  the surface/border alphas (0.06/0.08/0.12) stay on `sInkRGB` untouched — they carry no contrast
+  requirement. `pw_sharemodal` was extended to alpha-composite each muted text over its real bg stack
+  and assert AA on the LIGHT theme specifically (goes red at the old 4.03/3.54/2.61) — because the
+  card-bg-only assertion it shipped with, and `sim_a11y`'s token sweep, both miss text painted from
+  literals. **The lesson repeated: theming a hardcoded-dark surface means re-measuring every alpha as
+  the surface flips, not just swapping the ink.** **Two provocations were deliberately declined by Mo**: rebalancing so LAST
   (the anchor) rather than the PR owns the row's colour — the quiet gold PR is intended motivational
   value — and adding a duration estimate to the summary line (the screen was just decluttered).
   **A self-critique of the shipped result then found three more, and the lesson is that flattening a

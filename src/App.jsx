@@ -1,4 +1,4 @@
-// v178091716936
+// v178091716937
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15411,6 +15411,15 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   const sInk    = `rgba(${sInkRGB},1)`;
   const sAccBg  = isDark ? "#fff" : TXT;
   const sAccInk = isDark ? "#0A0A0A" : "#fff";
+  // Muted TEXT alphas can't be shared between the two themes: an alpha calibrated as light ink over
+  // the dark card's near-black FAILS WCAG AA as dark ink over the light card's white — the contrast
+  // asymmetry flips with the surface (the documented "re-measure every hardcoded colour when the
+  // surface changes" class). Dark keeps its exact prior values (byte-identical card); light is
+  // boosted to clear 4.5:1 for text and 3:1 for the graphical chevron. The 0.06/0.08/0.12 alphas
+  // stay on sInkRGB — they're surfaces/borders, not text, and don't carry a contrast requirement.
+  const sKick = isDark ? "rgba(255,255,255,0.5)"  : "rgba(17,17,17,0.66)"; // small-caps kicker labels
+  const sMut  = isDark ? "rgba(255,255,255,0.55)" : "rgba(17,17,17,0.66)"; // muted captions / subtext
+  const sChev = isDark ? "rgba(255,255,255,0.4)"  : "rgba(17,17,17,0.5)";  // disclosure chevron (graphical)
 
   // Matched by progId + the day's own stable id, never by name — two programs can easily share a
   // day name (every new program's first day defaults to "Day 1"), and matching by name alone
@@ -15538,7 +15547,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             {/* Stage 1: Picker - share day or program */}
             {shareModal.stage === "picker" && (
               <div style={{ position:"relative", zIndex:1 }}>
-                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:`rgba(${sInkRGB},0.5)`, marginBottom:8, textAlign:"center" }}>SHARE</div>
+                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:sKick, marginBottom:8, textAlign:"center" }}>SHARE</div>
                 <div style={{ fontSize:18, fontWeight:800, color:sInk, marginBottom:24, textAlign:"center", letterSpacing:-0.3 }}>What do you want to share?</div>
 
                 <button onClick={async () => {
@@ -15580,9 +15589,9 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                   </div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.2 }}>This workout</div>
-                    <div style={{ fontSize:11, color:`rgba(${sInkRGB},0.55)`, marginTop:1 }}>{shareModal.day?.name || ""} · {(shareModal.day?.exercises||[]).length} exercises</div>
+                    <div style={{ fontSize:11, color:sMut, marginTop:1 }}>{shareModal.day?.name || ""} · {(shareModal.day?.exercises||[]).length} exercises</div>
                   </div>
-                  <Icon name="chevron-right" size={16} color={`rgba(${sInkRGB},0.4)`}/>
+                  <Icon name="chevron-right" size={16} color={sChev}/>
                 </button>
 
                 {shareModal.prog && (
@@ -15626,9 +15635,9 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     </div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.2 }}>Whole program</div>
-                      <div style={{ fontSize:11, color:`rgba(${sInkRGB},0.55)`, marginTop:1 }}>{shareModal.prog.name} · {(shareModal.prog.days||[]).length} days</div>
+                      <div style={{ fontSize:11, color:sMut, marginTop:1 }}>{shareModal.prog.name} · {(shareModal.prog.days||[]).length} days</div>
                     </div>
-                    <Icon name="chevron-right" size={16} color={`rgba(${sInkRGB},0.4)`}/>
+                    <Icon name="chevron-right" size={16} color={sChev}/>
                   </button>
                 )}
               </div>
@@ -15637,7 +15646,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
             {/* Stage 2: Code display */}
             {shareModal.stage === "code" && (
               <div style={{ position:"relative", zIndex:1, textAlign:"center" }}>
-                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:`rgba(${sInkRGB},0.5)`, marginBottom:6 }}>
+                <div style={{ fontSize:11, letterSpacing:3, fontWeight:700, color:sKick, marginBottom:6 }}>
                   {shareModal.kind === "day" ? "WORKOUT CODE" : "PROGRAM CODE"}
                 </div>
                 <div style={{ fontSize:13, color:`rgba(${sInkRGB},0.6)`, marginBottom:24, fontWeight:500 }}>{shareModal.name || ""}</div>
@@ -15654,7 +15663,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     {shareModal.code}
                   </div>
                 )}
-                <div style={{ fontSize:12, color:`rgba(${sInkRGB},0.55)`, marginBottom:20, lineHeight:1.5 }}>
+                <div style={{ fontSize:12, color:sMut, marginBottom:20, lineHeight:1.5 }}>
                   Anyone with this code can import {shareModal.kind === "day" ? "this workout" : "this program"}.
                 </div>
                 {!shareModal.generating && (
