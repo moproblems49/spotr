@@ -96,9 +96,16 @@ for (const [dayName, expect, note] of [
   // The rep chip must read "N×range" — the SAME N the tile totals. Mo's day showed a bare "5–7"
   // because the chip rendered ex.reps raw, so a program written with bare ranges never showed a set
   // count anywhere on this screen.
+  // ANCHORED AT BOTH ENDS. `/^\d+×\d/` (unanchored at the tail) also matches the redesigned "Last"
+  // line, whose span reads like "225×9   220×6   215×6" — a single string of several pairs. This
+  // fixture seeds no history so that span never renders today and the check has always passed, but
+  // it is a booby trap: adding history to the fixture would spuriously fail the chip COUNT with a
+  // message about rep chips, pointing at the wrong thing entirely. `$` after the range makes a chip
+  // the only thing that can match, and is strictly TIGHTER than before — nothing that matched
+  // previously stops matching.
   const chips = await page.evaluate(() => [...document.querySelectorAll("span")]
     .map(e => (e.textContent||"").trim())
-    .filter(t => /^\d+×\d/.test(t)).slice(0, 8));
+    .filter(t => /^\d+×[\d–—-]+$/.test(t)).slice(0, 8));
   const got = await readTile("total sets");
   const ex  = await readTile("exercises");
   console.log(`   ${dayName}: ${ex} exercises · ${got} total sets   (${note})`);

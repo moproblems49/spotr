@@ -1,4 +1,4 @@
-// v178091716933
+// v178091716934
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3013,9 +3013,18 @@ const MUSCLE_STRIPE_COLORS = {
   biceps:"#F59E0B", triceps:"#F97316", quads:"#10B981", hamstrings:"#767A1E",
   glutes:"#EC4899", calves:"#06B6D4", core:"#84CC16", traps:"#6366F1", "full body":"#2563EB",
 };
+// The light-theme deepened variants. RE-TUNED against `C.bg` (#f6f5f3), not `C.surface` (#ffffff):
+// these were originally calibrated when the muscle colour appeared on a white CARD, and the Day
+// Preview's flat-list redesign moved the dot onto the warm off-white CANVAS instead. A darker
+// ground needs a darker ink, so four of them silently slipped under the 3:1 graphical floor —
+// triceps 3.07→2.82, quads 3.12→2.87, calves 3.26→2.99, core 3.25→2.98 — and biceps sat at 3.01
+// with no margin. Deepening only ever RAISES contrast on the lighter white surface too (3.38–3.40
+// there), so the day editor, which shares this map via muscleStripeColor, is unaffected except
+// favourably. Caught by audit, not by a test: `sim_a11y` sweeps theme TOKENS against bg/surface and
+// cannot see a hardcoded palette like this one — the same blind spot the plate-colour work hit.
 const MUSCLE_STRIPE_INK = {
-  biceps:"#c57f08", triceps:"#f46806",
-  quads:"#0ea674", calves:"#059cb6", core:"#669e11",
+  biceps:"#bd7a08", triceps:"#e76306",
+  quads:"#0d9f6f", calves:"#0599b3", core:"#649a11",
 };
 function muscleStripeColor(muscle, isDark) {
   const key = (muscle || "").toLowerCase();
@@ -15731,7 +15740,14 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                         exercise name for a lifetime best that may be months old; as gold text with a
                         small trophy it still reads instantly as an achievement and stops competing
                         with today's numbers. C.gold clears AA as text on both themes' cards. */}
-                    {pr && <span style={{ fontSize:11, fontWeight:700, color:C.gold, flexShrink:0, display:"flex", alignItems:"center", gap:3, fontVariantNumeric:"tabular-nums" }}>
+                    {/* aria-label restores the word the badge used to say out loud. Dropping the
+                        literal "PR " was right visually — the trophy carries it, and the row is
+                        scanned, not read — but the row is a BUTTON now, so its accessible name is
+                        its whole text, and a bare "225lbs" in that string is an unlabelled number
+                        sitting next to the exercise name. The label replaces this node's subtree in
+                        the name computation, so a screen reader hears "Personal record 225 lbs"
+                        while the eye still sees the glyph. */}
+                    {pr && <span aria-label={`Personal record ${cvt(pr,"lbs",unit)} ${unit}`} style={{ fontSize:11, fontWeight:700, color:C.gold, flexShrink:0, display:"flex", alignItems:"center", gap:3, fontVariantNumeric:"tabular-nums" }}>
                       <Icon name="trophy" size={11}/>{cvt(pr,"lbs",unit)}{unit}
                     </span>}
                   </div>

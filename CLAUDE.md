@@ -479,7 +479,35 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   the documented "an overlay does not remove the DOM beneath it" trap, hit again. The tell was the
   number disagreeing with the code. Scope measurements to `[data-fullscreen-overlay]`. That same
   pass also flagged the Edit button as failing contrast, which was an artifact of the ratio helper
-  not compositing an alpha background — do not report a colour finding without compositing.
+  not compositing an alpha background — do not report a colour finding without compositing. Settled
+  properly afterwards: `C.accentSoft` + `C.accentInk` composites to **9.56:1 dark / 6.34:1 light**,
+  the documented value for that pair, so the Edit button was never a contrast problem. The
+  "buttons go neutral" rule targets a FILLED `background:C.accent` with white on it (1.31:1), not a
+  tint — don't conflate the two.
+  **★ MOVING A COLOURED DOT/STRIPE FROM `C.surface` TO `C.bg` CAN BREAK ITS CONTRAST, AND NO TEST
+  HERE CAN SEE IT.** A cold-context audit of the flattening caught the one real regression it
+  introduced: `MUSCLE_STRIPE_INK` was calibrated when the muscle colour sat on a white CARD, and
+  removing the cards moved the dot onto the warm off-white CANVAS (`#f6f5f3`). A darker ground needs
+  a darker ink, so four of the five slipped under the 3:1 graphical floor — triceps 3.07→2.82, quads
+  3.12→2.87, calves 3.26→2.99, core 3.25→2.98 — with biceps left at 3.01 and no margin. All five
+  deepened; the new values clear 3:1 on the canvas AND score higher on white (3.38-3.40), so the day
+  editor that shares this map via `muscleStripeColor` only improves. **`sim_a11y` cannot catch this
+  class**: it sweeps theme TOKENS against `bg`/`surface`, and this is a hardcoded palette — the same
+  blind spot the plate-colour work hit. When a redesign changes which SURFACE an element sits on,
+  re-measure every hardcoded colour on it, not just the tokens.
+  **A row that becomes a `<button>` inherits its whole text as its accessible name.** The same audit
+  found the PR had quietly lost its word: dropping the literal "PR " was right visually (the trophy
+  carries it, and the row is scanned rather than read), but with the row now a button, a screen
+  reader heard a bare "225lbs" adjacent to the exercise name. An `aria-label` on that span restores
+  "Personal record 225 lbs" without putting the word back on screen. Check the accessible NAME, not
+  just the pixels, whenever a container becomes interactive.
+  **And a booby trap in the guard itself, worth the general rule.** `pw_daysets`' rep-chip selector
+  was `/^\d+×\d/` — unanchored at the tail, so it also matches the redesigned "Last" span
+  ("225×9   220×6   215×6"). That fixture seeds no history, so it has never fired and the check has
+  always passed; but adding history to the fixture later would have failed the chip COUNT with a
+  message about rep chips, pointing at entirely the wrong thing. Anchored at both ends now, which is
+  strictly tighter — nothing that matched before stops matching. **A regex that is accidentally
+  right because of what the fixture omits is a future misdiagnosis, not a passing test.**
 - **THE 7-COLOUR DAY RAINBOW IS GONE, AND THE REASON GENERALISES: A PALETTE THAT ENCODES NOTHING
   COMPETES WITH THE ONES THAT DO.** `DAY_COLORS` (violet/blue/green/amber/red/cyan, indexed by the
   day's POSITION in the program, declared twice) painted the day preview's hero band and both Start
