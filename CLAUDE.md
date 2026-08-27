@@ -623,6 +623,16 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   HRV+sleep+RHR composite, not a countdown) — note it now shares the word with the muscle map's
   Readiness tab further down the same screen, which is the SAME question at two scopes (whole body
   vs per muscle) rather than two questions sharing a noun, so it reads as a family, not a clash.
+  **Then Mo cut the score pill too — "one is enough" — and the card got BETTER, not thinner.** The
+  screen already carried Body Battery and Training Load as headline composites, and the muscle map
+  card's own heading is literally TRAINING READINESS, so a third score restated in a pill under it
+  was the redundancy. What survives is what the number was only ever SUMMARISING: the three drivers
+  (HRV, resting pulse, sleep), each against your own baseline, which unlike a percentage tell you
+  WHICH input is off. `recoveryScore` is still computed — it gates the block, colours the muscle map
+  and feeds Body Battery's morning charge — it is simply no longer printed; `recoveryVerdict` and
+  `recoveryTimeHours` now both have no UI caller and stay covered by their sims. **The general
+  lesson: a composite score earns its place only when the reader can't get the same answer from the
+  drivers sitting right under it.**
 - **★ A ZERO IS DATA, AND THE MUSCLE MAP PAINTED IT AS ABSENCE.** Mo: "if the muscle is not colored
   it kinda blends in." `_heatColor(t<=0)` returned `C.isDark ? "#3f4049" : "#cdd1d8"` — **the exact
   `bodyCol` literal the silhouette is drawn with**, so a muscle you trained ZERO times rendered at

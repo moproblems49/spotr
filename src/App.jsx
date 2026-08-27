@@ -1,4 +1,4 @@
-// v178091716938
+// v178091716939
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2211,22 +2211,21 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   </div>
                 );
               })()}
-              {/* The pill is a SYSTEMIC daily readiness read: HRV 50% + resting HR 25% + sleep 25%.
-                  It used to carry a second line underneath it — recoveryTimeHours(), the training
-                  fatigue left from the LAST WORKOUT — and the two read as one number contradicting
-                  itself ("Recovery 54%" directly above "Fully recovered from your last session"),
-                  because both printed the word "recover" for two different subjects. That line is
-                  GONE: it was a workout-scoped fact parked in the middle of a day-scoped card, which
-                  is why it read as random even once the wording was disambiguated. recoveryTimeHours
-                  is still live and still covered by sim_recoverytime — it just has no UI caller now.
-                  Don't reinstate it here; if that number comes back it belongs with the workout. */}
+              {/* THIS BLOCK ONCE CARRIED TWO SUMMARY LINES ABOVE ITS TILES, AND BOTH ARE NOW GONE.
+                  First to go was recoveryTimeHours() ("Fully recovered from your last session") — a
+                  WORKOUT-scoped fact parked in a DAY-scoped card, which also collided on the word
+                  "recover" with the score above it, so the pair read as one number contradicting
+                  itself. Second was the score pill itself (`Readiness 54% · Moderate`): the screen
+                  already shows Body Battery and Training Load as headline numbers, and the word
+                  Readiness again on the muscle map below — a third composite was one score too many.
+                  What survives is the part that was never redundant: the DRIVERS (HRV, resting
+                  pulse, sleep), each against your own baseline, which is what the number was
+                  summarising in the first place. `recoveryScore` is still computed and still gates
+                  this block — it is the "we have a real read" precondition — and both it and
+                  recoveryVerdict/recoveryTimeHours stay covered by their sims. Don't reinstate
+                  either line here; the card is deliberately drivers-only now. */}
               {rec && typeof rec.recoveryScore === "number" && (
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"2px 16px 6px" }}>
-                  <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 11px", borderRadius:999, background:C.divider, fontSize:11, fontWeight:700, color:C.text }}>
-                    <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(rec.recoveryScore, C) }}/>
-                    Readiness {Math.round(rec.recoveryScore * 100)}%
-                    <span style={{ color:_readyColor(rec.recoveryScore, C) }}>· {recoveryVerdict(rec.recoveryScore)}</span>
-                  </span>
                   {(() => {
                     // Plain-English driver tiles ("HRV 42 vs 32" meant nothing to normal
                     // humans): each metric gets a value, a direction arrow, and a worded
