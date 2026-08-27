@@ -1,4 +1,4 @@
-// v178091716937
+// v178091716938
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1658,8 +1658,20 @@ export function weeklyMuscleVolume(store, days = 7) {
 }
 
 // Interpolate grey -> light accent -> deep accent by normalized intensity (0..1).
+// ZERO IS DATA, NOT ABSENCE — and it used to be painted the body's own colour. This branch returned
+// the exact `bodyCol` literal (#3f4049 / #cdd1d8), so a muscle that got ZERO sets this week rendered
+// at 1.00:1 against the silhouette behind it: byte-identical, separated only by a 0.5px seam. The
+// map's whole job is "what did I miss", the list under it calls a zero out by name ("Back 0,
+// Biceps 0"), and the picture was the one place you could not see it — Mo reported it as the
+// uncoloured muscles blending in. An empty muscle now sits one step off the body so the SHAPE reads
+// as a region with nothing in it, while staying neutral and quiet enough that the volt-filled
+// muscles still own the map (1.37:1 dark / 1.33:1 light against the silhouette — visible, not loud;
+// the ramp's own lowest legend stop, _heatColor(0.12), is olive and stays clearly distinct from it).
+// Deliberately NOT tinted toward the volt ramp: a green-ish zero would imply some training happened.
+// Strength mode's "no standard for this muscle" case still returns bodyCol directly at its own call
+// site, because that genuinely IS absence of data rather than a measured zero.
 function _heatColor(t, C) {
-  if (t <= 0) return C?.isDark ? "#3f4049" : "#cdd1d8";
+  if (t <= 0) return C?.isDark ? "#525460" : "#b0b6c1";
   // Volt ramp: faint grey-green → volt → deep olive (dark), or pale → lime → forest (light).
   const stops = C?.isDark
     ? [[60,70,45],[200,241,53],[120,150,30]]
@@ -1916,10 +1928,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 silhouette (the stock art is "floating islands" — without this, the gaps
                 between muscle groups show the card background as white channels) */}
             <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/>
-            <path d={f._body} fill={bodyCol} stroke={bodyCol} strokeWidth={3} strokeLinejoin="round"/>
+            <path data-body="1" d={f._body} fill={bodyCol} stroke={bodyCol} strokeWidth={3} strokeLinejoin="round"/>
           </>}
           {muscles.map(mk => (
-            <path key={mk} d={f[mk]} fill={fillFor(view + ":" + mk)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"
+            /* data-muscle makes the map measurable: pw_musclezero reads a zero-volume region's
+               computed fill and compares it against the silhouette's, which is the only way to
+               catch the two collapsing to the same colour again (they were byte-identical). */
+            <path key={mk} data-muscle={mk} d={f[mk]} fill={fillFor(view + ":" + mk)} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"
               onClick={() => { setSelectedRegion({ key: view + ":" + mk, region: mk }); haptic("tap"); }} style={{ cursor:"pointer" }}/>
           ))}
         </svg>
@@ -2196,22 +2211,22 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   </div>
                 );
               })()}
+              {/* The pill is a SYSTEMIC daily readiness read: HRV 50% + resting HR 25% + sleep 25%.
+                  It used to carry a second line underneath it — recoveryTimeHours(), the training
+                  fatigue left from the LAST WORKOUT — and the two read as one number contradicting
+                  itself ("Recovery 54%" directly above "Fully recovered from your last session"),
+                  because both printed the word "recover" for two different subjects. That line is
+                  GONE: it was a workout-scoped fact parked in the middle of a day-scoped card, which
+                  is why it read as random even once the wording was disambiguated. recoveryTimeHours
+                  is still live and still covered by sim_recoverytime — it just has no UI caller now.
+                  Don't reinstate it here; if that number comes back it belongs with the workout. */}
               {rec && typeof rec.recoveryScore === "number" && (
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"2px 16px 6px" }}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 11px", borderRadius:999, background:C.divider, fontSize:11, fontWeight:700, color:C.text }}>
                     <span style={{ width:8, height:8, borderRadius:999, background:_readyColor(rec.recoveryScore, C) }}/>
-                    Recovery {Math.round(rec.recoveryScore * 100)}%
+                    Readiness {Math.round(rec.recoveryScore * 100)}%
                     <span style={{ color:_readyColor(rec.recoveryScore, C) }}>· {recoveryVerdict(rec.recoveryScore)}</span>
                   </span>
-                  {(() => {
-                    const hrs = recoveryTimeHours(store, rec, new Date());
-                    if (hrs == null) return null;
-                    return (
-                      <div style={{ fontSize:11, color:C.sub, fontWeight:600 }}>
-                        {hrs === 0 ? "Fully recovered from your last session" : `~${hrs}h until fully recovered`}
-                      </div>
-                    );
-                  })()}
                   {(() => {
                     // Plain-English driver tiles ("HRV 42 vs 32" meant nothing to normal
                     // humans): each metric gets a value, a direction arrow, and a worded
@@ -2255,7 +2270,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           ))}
                         </div>
                         <div style={{ fontSize:10, color:C.muted, textAlign:"center", marginTop:5, lineHeight:1.4 }}>
-                          Measured against your own recent baseline — higher HRV and a lower resting pulse mean you're recovered.
+                          Measured against your own recent baseline — higher HRV and a lower resting pulse mean you're ready to train.
                         </div>
                       </div>
                     );
@@ -5103,6 +5118,11 @@ function sessionDrain(sets, avgRpe) {
 // rather than inventing a second training-stress number — see the "one workout-drain formula"
 // convention. Null when there's no finished session to base an estimate on. Exported for the sim
 // harness.
+// NO UI CALLER as of Aug 27. This shipped as a second line under the readiness pill and was
+// removed: a workout-scoped number sitting in the middle of a day-scoped card read as random,
+// and sharing the word "recover" with the pill above it made the pair look self-contradictory.
+// Kept (and still covered by sim_recoverytime) because the maths is sound and this belongs with
+// the WORKOUT surface if it comes back — not re-parked on the readiness card.
 function recoveryTimeHours(store, rec, now) {
   // Newest date-key first: once a day HAS a session, no earlier day can beat it, so this can
   // break out early instead of scanning the whole history (same pattern as SortableDayCard's

@@ -1,0 +1,71 @@
+// A ZERO IS DATA AND MUST BE VISIBLE. The Volume map painted an untrained muscle with _heatColor(0),
+// which returned the body silhouette's own literal — so "trained this muscle zero times" and "this
+// isn't a muscle" rendered at 1.00:1, byte-identical, separated only by a 0.5px seam. The list under
+// the map calls the zero out by name ("Biceps 0") while the picture could not show it; Mo reported
+// the uncoloured muscles blending in. This asserts the two fills stay distinguishable.
+//
+// Structurally RED on pre-fix code: there, the zero-muscle fill and the body fill are the same
+// string, so both the inequality and the contrast check fail.
+import { chromium } from "playwright-core";
+const ME="11111111-1111-4111-8111-111111111111";
+let fails=0;
+const check=(l,c,d)=>{ if(c) console.log(`  PASS ${l}`); else { fails++; console.log(`  FAIL ${l}${d?" — "+d:""}`); } };
+
+const lin=c=>{c/=255;return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4);};
+const lum=([r,g,b])=>0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);
+const ratio=(a,b)=>{const L1=lum(a),L2=lum(b);return (Math.max(L1,L2)+0.05)/(Math.min(L1,L2)+0.05);};
+const parse=s=>(s.match(/[\d.]+/g)||[]).slice(0,3).map(Number);
+
+const mk=(name,n)=>({name,sets:Array.from({length:n},()=>({weight:"100",reps:"10",done:true}))});
+// A push/legs week with REAL zeros: nothing hits Biceps. A fixture that trains everything cannot
+// see this bug at all — the whole failure only exists on an untrained region.
+const sess={id:"s1",finishedAt:Date.now()-2*864e5,duration:3600,unit:"lbs",exercises:[
+  mk("Overhead Press (Barbell)",10),mk("Lateral Raises (Cable)",10),mk("Triceps Pushdown",11),
+  mk("Barbell Bench Press",8),mk("Back Squat",8),mk("Standing Calf Raise",6),mk("Romanian Deadlift",4)]};
+const store={currentUserId:ME,unit:"lbs",theme:"dark",programs:[],history:{"2026-08-25":{s1:sess}},
+  workoutDates:{},weeklyTarget:4,bodyLog:[],prs:{},prEvents:[],posts:[],bodyType:"male",
+  profile:{username:"momo",name:"Mo"},users:[{id:ME,username:"momo",name:"Mo",followers:[],following:[]}]};
+
+const b=await chromium.launch({executablePath:"/opt/pw-browsers/chromium-1194/chrome-linux/chrome",args:["--no-sandbox"]});
+for(const theme of ["dark","light"]){
+  const p=await b.newPage({viewport:{width:428,height:926},deviceScaleFactor:2,hasTouch:true,isMobile:true});
+  p.setDefaultTimeout(6000);
+  p.on("pageerror",e=>{fails++;console.log("  PAGEERROR:",e.message.slice(0,160));});
+  await p.addInitScript(([st,th])=>{localStorage.setItem("seshd_v1",JSON.stringify({...st,theme:th}));
+    localStorage.setItem("seshd_session",JSON.stringify({access_token:"t",user:{id:st.currentUserId}}));
+    localStorage.setItem("seshd_onboarded","1");localStorage.setItem("seshd_custom_merge_v1","1");},[store,theme]);
+  await p.route("**/auth/v1/**",r=>r.fulfill({status:200,contentType:"application/json",body:JSON.stringify({access_token:"t",user:{id:ME}})}));
+  await p.route("**/rest/v1/**",r=>r.abort());
+  await p.goto("http://127.0.0.1:8199/",{waitUntil:"domcontentloaded"});
+  await p.waitForTimeout(3000);
+  await p.evaluate(()=>{const x=[...document.querySelectorAll("button")].find(e=>(e.getAttribute("aria-label")||"")==="Profile");x&&x.click();});
+  await p.waitForTimeout(1800);
+  // The map opens on Readiness; the zero-blend only exists on VOLUME.
+  const onVolume=await p.evaluate(()=>{const t=[...document.querySelectorAll("button")].find(e=>(e.textContent||"").trim()==="Volume");
+    if(!t) return false; t.click(); return true;});
+  check(`[${theme}] reached the Volume map`, onVolume);          // fixture-reached-the-screen guard
+  if(!onVolume){ await p.close(); continue; }
+  await p.waitForTimeout(800);
+
+  const m=await p.evaluate(()=>{
+    const body=document.querySelector('path[data-body="1"]');
+    const bi=document.querySelector('path[data-muscle="Biceps"]');
+    // a trained region, to prove the fixture really produced volume somewhere
+    const tri=document.querySelector('path[data-muscle="Triceps"]');
+    if(!body||!bi) return null;
+    const f=el=>getComputedStyle(el).fill;
+    return { body:f(body), zero:f(bi), trained:tri?f(tri):null,
+             listSaysZero:/Biceps\s*0/.test(document.body.innerText) };
+  });
+  check(`[${theme}] found body + zero-muscle paths`, !!m, "missing data hooks");
+  if(!m){ await p.close(); continue; }
+  check(`[${theme}] the list really reports Biceps 0 (fixture is a true zero)`, m.listSaysZero===true);
+  check(`[${theme}] zero-volume muscle is NOT the body colour`, m.zero!==m.body, `both ${m.body}`);
+  const r=ratio(parse(m.zero),parse(m.body));
+  check(`[${theme}] zero vs body is perceptible (>=1.2:1)`, r>=1.2, `${r.toFixed(2)}:1`);
+  check(`[${theme}] a trained muscle still differs from an untrained one`, m.trained && m.trained!==m.zero, `trained=${m.trained} zero=${m.zero}`);
+  await p.close();
+}
+await b.close();
+console.log(fails?`${fails} FAIL(S)`:"ok");
+process.exit(fails?1:0);

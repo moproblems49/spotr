@@ -601,6 +601,44 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   "N×" stripped for the range (or it prints twice). Because both the chip and the tile go through
   `progSetCount`, `pw_daysets` can assert the chips' set counts SUM to the tile, which is a much
   stronger check than either number alone.
+- **★ TWO TRUE NUMBERS THAT SHARE A NOUN READ AS ONE NUMBER CONTRADICTING ITSELF.** Mo, from his
+  own screen: "it says Recovery 54% · Moderate, and under it Fully recovered from your last session
+  — seems to contradict each other." Neither number was wrong. The pill is `rec.recoveryScore` — a
+  SYSTEMIC daily read (HRV 50% + resting HR 25% + sleep 25%); the line under it is
+  `recoveryTimeHours()` — the training fatigue left from your LAST WORKOUT (`sessionDrain` vs
+  elapsed). They answer different questions and can legitimately disagree: Tuesday's soreness is
+  gone while today's short sleep and below-baseline HRV still say take it easy. But both printed the
+  word "recover", stacked two lines apart, so they read as one claim at war with itself. Fixed as
+  COPY, not maths — the pill says **Readiness**, the line says **fatigue** ("No leftover fatigue from
+  your last session" / "~Nh until your last session clears"), and the driver caption under the tiles
+  stopped saying "you're recovered" too. **The general rule: before shipping two metrics on one
+  screen, read them ALOUD in sequence.** Nothing in the battery can catch this — every number was
+  correct, every test passed, and the bug existed only in the sentence the two of them formed
+  together. **Mo's own call on the fix was to DELETE the second line, not reword it** — and he was
+  right for a reason the rewording missed: it was a WORKOUT-scoped fact parked in the middle of a
+  DAY-scoped card ("random spot"), so disambiguating the nouns fixed the contradiction and left the
+  placement problem. `recoveryTimeHours` is still live and still covered by `sim_recoverytime`, with
+  no UI caller; if that number returns it belongs on the workout surface. The pill kept the
+  **Readiness** rename (its own verdicts are "Ready to push"/"Ready"/"Take it easy", and it is an
+  HRV+sleep+RHR composite, not a countdown) — note it now shares the word with the muscle map's
+  Readiness tab further down the same screen, which is the SAME question at two scopes (whole body
+  vs per muscle) rather than two questions sharing a noun, so it reads as a family, not a clash.
+- **★ A ZERO IS DATA, AND THE MUSCLE MAP PAINTED IT AS ABSENCE.** Mo: "if the muscle is not colored
+  it kinda blends in." `_heatColor(t<=0)` returned `C.isDark ? "#3f4049" : "#cdd1d8"` — **the exact
+  `bodyCol` literal the silhouette is drawn with**, so a muscle you trained ZERO times rendered at
+  **1.00:1** against the body behind it: byte-identical, separated only by a 0.5px seam. The map's
+  whole job is "what did I miss", the list directly under it names the zeros ("Back 0, Biceps 0"),
+  and the picture was the one place they were invisible. An empty muscle now sits one step off the
+  body (`#525460` / `#b0b6c1`, 1.37:1 dark / 1.33:1 light) so the SHAPE reads as a region with
+  nothing in it, while staying quiet enough that the volt-filled muscles still own the map.
+  Deliberately NOT tinted toward the volt ramp — a green-ish zero would imply some training
+  happened. Strength mode's `bodyCol` return stays as-is: "no strength standard for this muscle" is
+  genuinely absence of data, not a measured zero. **The Wrapped recap card's own copy of this map
+  was already correct** (zero `#26262e` vs body `#34343e`, 1.22:1, going DARKER) — so this was one
+  map's bug, not the pattern's, and worth checking the sibling before assuming a sweep. Sim:
+  `pw_musclezero`, which needed two things to be honest: `data-muscle`/`data-body` hooks on the
+  paths (the fills are computed, so there is nothing to assert without them) and a fixture with a
+  REAL zero in it — a fixture that trains every group cannot see this bug at all.
 - **A WATCH THAT HASN'T SYNCED YET NEEDS A SECOND CHANCE.** Mo: "avg and peak heart rate hasn't
   showing in my last 2 workouts." The History card already renders both correctly
   (`♥ {avg} avg · {peak} peak` — not a rendering bug, easy to miss because "peak" only appears in
