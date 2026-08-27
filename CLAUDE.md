@@ -2749,8 +2749,37 @@ guard that cannot fail is worse than no guard. **Worth recording: the first a11y
 FAILED to go red** — stripping an `aria-label="Back"` proved nothing, because that button is not
 *provably* icon-only under the scanner's conservative rules. A clean `a11y_scan` run means "no
 PROVABLE misses", not "certainly zero", exactly as its own comment claims.
-**Next candidates**, same pattern: dates & units beyond what already moved, formatting/text
-helpers, and the exercise-library lookups. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
+**★ ROUND 3 HIT BOTH COMMENT-TRAP DIRECTIONS AT ONCE, WHICH IS WHAT A STRANDED BLOCK GUARANTEES.**
+`src/engine/exercises.js` (21 symbols → 14 exported: the 292-entry `EXERCISE_DB` plus the whole
+name→muscle/region/equipment/secondaries resolution layer). It is a LEAF — imports nothing, like
+core.js. App.jsx 20,958 → 20,420. The audit's one real defect: `daysSinceMuscleTrained`'s doc block
+was carried INTO the module AND attached to the wrong function (`_cleanMuscle`), leaving the
+function it documents bare in App.jsx. Root cause: that block was ALREADY stranded before round 3,
+so the contiguous-comment sweep grabbed two unrelated blocks at once — a stranded comment doesn't
+stay put, it migrates and mislabels. **Re-read the comment above each moved symbol AND check the
+symbol it left behind still has one.**
+**A MODULE-LEVEL STATEMENT IS NOT A DECLARATION, AND THE RANGE-FINDER ONLY TRACKS DECLARATIONS.**
+`EXERCISE_DB.forEach(...)` builds the `_muscleExact`/`_muscleNorm` indexes at import time and was
+captured only because it happens to sit between two declarations. It survived — verified as the
+only module-level ExpressionStatement in any of the five removed regions, and proven by importing
+the module in bare Node (292 exact / 260 norm entries built) — but it survived by luck. **Sweep the
+moved region for non-declaration statements before trusting a range-based extraction.**
+**EXPORT ONLY WHAT IS IMPORTED.** Round 3 first exported all 21 symbols; the audit cut it to the 14
+anything actually imports. Beyond tidiness, `_customExercises` is a mutable `let` — exporting it
+invites the read-only-import-binding trap, and keeping it private means the only way to write it is
+`setCustomExerciseRegistry`, so a stray direct assignment is a hard error rather than a silent
+no-op.
+**★ DO NOT RUN A COLD-CONTEXT AUDIT CONCURRENTLY WITH THE BATTERY.** Round 3's first battery run
+reported **20 FAILING Playwright suites** — all 50 sims green, failures a contiguous ALPHABETICAL
+block from `pw_prunwind` to the end. That is the server-death signature, not 20 regressions: the
+audit agent had to BUILD in order to check anything, and a concurrent build disturbs the `dist/`
+the battery is serving on :8199. Telling the agent "don't run the battery" is not enough — building
+alone is sufficient to break it. Run the audit BEFORE or AFTER, never alongside, and treat a
+contiguous alphabetical tail of failures as infrastructure until proven otherwise.
+**Next candidates**, same pattern: strength/muscle analytics (`computeStrengthScore`,
+`strengthScoreHistory`, `muscleStrength`, `muscleReadiness`, `weeklyMuscleVolume`,
+`daysSinceMuscleTrained` — these sit directly on top of `exercises.js` and are the natural round 4),
+then formatting/text helpers. **Deliberately NOT next: `AppInner` (4,339 lines) and `WorkoutTracker` (3,591).** They
 are 34% of the file and the growth is landing there (+336 / +410 since Aug 9), but what accumulates
 in them is STATE and WIRING, which is exactly what makes extraction dangerous — and they are being
 edited most weeks. Put a brake on their growth (new feature code goes in a new module) rather than

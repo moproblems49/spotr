@@ -3,7 +3,8 @@
 // never touch it, so it was dead weight in the eager bundle for everyone else.
 import { useState } from "react";
 import { progSetCount } from "../engine/workout.js";
-import { F, MONO, uid, toast, haptic, MuscleIcon, getExEntry, NoteField, ExercisePickerSheet } from "../App.jsx";
+import { getExEntry } from "../engine/exercises.js";
+import { F, MONO, uid, toast, haptic, MuscleIcon, NoteField, ExercisePickerSheet } from "../App.jsx";
 
 export default function ProgramBuilder({ C, onCancel, onSave }) {
   const [name, setName] = useState("");
