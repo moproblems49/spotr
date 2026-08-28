@@ -1,4 +1,4 @@
-// v178091716949
+// v178091716950
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2114,7 +2114,7 @@ const genUUID = () => {
   });
 };
 
-// Generate a friendly shareable code like "IGNITE-X9K2"
+// Generate a friendly shareable code like "IGNITE-X9K2P7Q4"
 // Excludes ambiguous chars: 0, O, 1, I, L
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function generateShareCode(prefix = "IGNITE") {
@@ -7144,7 +7144,7 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
           value={code}
           onChange={e => { setCode(e.target.value.toUpperCase()); setError(""); setPreview(null); }}
           onKeyDown={e => { if (e.key === "Enter") lookup(); }}
-          placeholder="IGNITE-X9K2P7 or WO-X9K2P7"
+          placeholder="IGNITE-X9K2P7Q4 or WO-X9K2P7Q4"
           autoCapitalize="characters"
           autoCorrect="off"
           style={{

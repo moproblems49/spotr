@@ -84,11 +84,12 @@ for (const [label, id, needles] of TABS) {
 
 // 2 — History's stat tiles must read a real 0, not blank and not NaN. A tile whose value is
 // missing entirely renders as an empty box that looks like a loading state forever.
-await nav("Workout"); await tap("History");
+await nav("Workout");
+check("History sub-tab opens", await tap("History"));
 const hist = await body();
 check("[history] empty log state", /No workouts logged yet/.test(hist));
 for (const tile of ["TOTAL", "THIS MONTH", "LIFETIME LBS"])
-  check(`[history] "${tile}" tile reads 0`, new RegExp(`0\\s*\\|?\\s*${tile}`).test(hist.split("\n").join(" | ")), hist.slice(0,200));
+  check(`[history] "${tile}" tile reads 0`, new RegExp(`(?:^|\\n)0\\n${tile}`).test(hist), hist.slice(0,200));
 
 // 3 — Weekly Review. Zero data must produce the "come back Sunday" copy, NOT the silent error
 // state its ReferenceError used to produce (which rendered as a generic failure with no cause).
@@ -102,12 +103,21 @@ const wr = await page.evaluate(() => {
   return c.length ? c[c.length - 1].innerText : "";
 });
 check("[weekly review] zero-data copy, not an error state", /weekly review lands on Sunday/i.test(wr), JSON.stringify(wr.slice(0, 160)));
-check("[weekly review] no junk", !JUNK.test(wr));
+check("[weekly review] no junk", wr.length > 0 && !JUNK.test(wr));
 
 // 4 — Body Battery on an account with no HealthKit and no workouts. It must say "Est. start"
 // (it is an estimate — claiming "Woke at" would assert a measurement that does not exist), and
 // the level must be a finite integer in range rather than the NaN a zero-history walk can yield.
-await page.keyboard.press("Escape"); await page.waitForTimeout(700);
+await page.evaluate(() => {
+  const x = [...document.querySelectorAll('button[aria-label="Close"]')].filter(b => b.offsetParent).pop();
+  x && x.click();
+});
+await page.waitForTimeout(900);
+const stillOpen = await page.evaluate(() => [...document.querySelectorAll("div")].some(d => {
+  const s = getComputedStyle(d);
+  return s.position === "fixed" && (+s.zIndex || 0) >= 100 && d.offsetHeight > 200 && /Weekly Review/.test(d.innerText || "");
+}));
+check("[weekly review] sheet actually closed (Escape is a no-op on <Sheet>)", !stillOpen);
 await nav("Profile");
 const bb = (await body()).match(/BODY BATTERY[\s\S]{0,120}/);
 const lvl = bb && bb[0].match(/(\d+)\/100/);

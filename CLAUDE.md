@@ -121,6 +121,18 @@ it found something real that nobody had reported: a mid-review demo corpus that 
 5. **Storage/table growth** — orphaned images, a table growing faster than the user count explains.
 Report findings even when everything is clean; "the error rate went from 1,650/day to single
 digits" is the point of running it again after a fix.
+**Sweep #3 (Aug 28, ~04:40 UTC), for the next run's baseline:** 950 of 953 daily Postgres errors
+were still the personal_records 23505 in replay bursts — but the last burst was 00:00 UTC and the
+client's fixed URL can't produce this error at all, so it was the pre-`2026-08-28b` bundle
+finishing its run; NEXT SWEEP MUST CONFIRM ~0. Auth logs clean. `client_errors` (a real table —
+device-side crash telemetry, worth reading in step 5) had logged nothing in 12 days; its newest
+rows are the missing-push-entitlement (Mac-day item) and one pre-fix PROGRAM_TEMPLATES hit.
+Two orphaned `post-images` objects (~5.4MB, May 1 + May 29, momo's own, predate the Aug 16
+storage-delete work, confirmed unreferenced by posts AND group_posts) — left in place, delete only
+if Mo asks. `workout_codes` carries two duplicate permissive DELETE policies ("Users delete own
+workout codes" + "own workout_codes") — harmless, consolidate whenever that table is next touched.
+The two backup tables show "RLS enabled, no policy" in advisors: that means clients can't read
+them at all, which is CORRECT for a backup — not a finding.
 
 ## Verification methodology (how we catch regressions)
 **Run the whole battery with one command: `node build/run_sims.mjs`** (49 sims, ~90s — count grows as
@@ -1415,7 +1427,16 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   (caption forced to "Woke at"; the zero-data review replaced with an error state; a `NaN` injected
   into the profile), each check failing on its own. **The audit that produced it found NOTHING
   broken** — every empty state was already real, specific copy — which is precisely why it became a
-  file: a clean walk with no standing guard is worth nothing next month.
+  file: a clean walk with no standing guard is worth nothing next month. **A cold-context audit of
+  the suite itself then found three probe-quality defects, all fixed, one general:**
+  `page.keyboard.press("Escape")` is a NO-OP on `<Sheet>` — only ConfirmHost, ReportHost and the
+  comment-edit input listen for Escape — so the Weekly Review sheet stayed open and two later
+  sections measured the profile THROUGH it, passing only because `innerText` reports covered DOM
+  (the documented overlay trap, hit from a new direction: not a wrong assertion, a wrong
+  ASSUMPTION about how to leave). Close a sheet the way a finger would (its × / backdrop) and
+  assert it actually closed. Also: the History-tile regex was left-unanchored so "10\nTOTAL"
+  satisfied "reads 0" (anchored now — the pw_daysets class again), and the review's junk check
+  passed vacuously on an empty string (tied to `wr.length > 0`).
 - **Where an UNPOSTED workout belongs (settled, Aug 1):** History and your OWN profile — never the
   feed. `ProfileScreen.profileHistoryItems` builds cards from all of `store.history` when `isMe`,
   minus the ones already shared as posts, so your Workouts count = posted + unposted; viewers other
