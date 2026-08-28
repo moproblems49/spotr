@@ -2837,6 +2837,22 @@ crops are byte-identical in size (428x119) with 8 bars and no collision — my o
 labels, might crowd" worry was simply wrong, and looking settled it in one screenshot. The
 sparkline was the one real risk (a 38px-tall box); measured after the bump, its labels overflow
 their svg by 1px into the card's own 10px padding, and the crop shows nothing clipped.
+**Finding 4, FIXED: the Body Battery sheet had SIX LIME NUMBERS AND TWO RED ONES, and both halves
+were wrong.** Its eight stat tiles coloured by sign alone — `startsWith("−") ? C.red : C.accent` —
+so morning charge, deep sleep, resting HR, HRV, steps and active energy all came out volt. Volt is
+reserved for PRs, progress, the muscle map and the streak; a resting pulse and a step count are
+READOUTS, not progress. And with six of eight tiles lime the colour discriminated nothing, which is
+the same "palette that encodes nothing" problem that retired the day rainbow, reached from a third
+direction. The red was the worse half: it sat directly above the words "Normal energy use through
+the day", so the colour contradicted its own caption and reported an ordinary day as an alarm.
+All tile values are `C.text` now — the −/+ glyph in tabular mono already states the direction
+without spending colour on it — so **the sheet has exactly one coloured number, the score it exists
+to explain** (the headline keeps `fill`, which is real: it encodes the level band accent/gold/red).
+**Deliberately NOT flattened**, though this sheet ranked second on container count: each tile
+groups three lines (kicker / value / caption) in a two-column grid, so the containers are doing
+real work and removing them yields a wall of text. Second time the count pointed at a screen whose
+containment was fine — see Settings above. *Reduce containment* is not a rule to apply mechanically;
+LOOK at the screen the number sent you to.
 
 ## The impeccable design skill (installed Aug 18)
 `.claude/skills/impeccable/` — a third-party design skill pack (Apache-2.0, pbakaus/impeccable),

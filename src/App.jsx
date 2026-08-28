@@ -1,4 +1,4 @@
-// v178091716953
+// v178091716954
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1480,7 +1480,21 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                           <div key={i} style={{ background:C.surface, borderRadius:10, padding:"8px 10px",
                             gridColumn: (i === rows.length - 1 && rows.length % 2 === 1) ? "span 2" : "auto" }}>
                             <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>{r.label}</div>
-                            <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, marginTop:2, color: String(r.value).startsWith("−") ? C.red : C.accent }}>{r.value}</div>
+                            {/* ONE COLOURED NUMBER ON THIS SHEET, AND IT IS THE SCORE THE SHEET
+                                EXISTS TO EXPLAIN. These eight tiles used `startsWith("−") ? red :
+                                accent`, which painted six of them volt and two red. Both halves
+                                were wrong. Volt is reserved for PRs, progress, the muscle map and
+                                the streak (the lime pass) — a resting pulse and a step count are
+                                readouts, not progress — and with six of eight tiles lime the
+                                colour discriminated nothing, the same "palette that encodes
+                                nothing" problem that retired the day rainbow. The red was worse:
+                                it sat directly above the words "Normal energy use through the
+                                day", so the colour contradicted its own caption and reported a
+                                normal day as an alarm. The value already carries a −/+ glyph in
+                                tabular mono, which states the direction without spending colour
+                                on it. The headline keeps `fill`, which is real: it encodes the
+                                level band (accent/gold/red). */}
+                            <div style={{ fontFamily:MONO, fontSize:16, fontWeight:800, marginTop:2, color:C.text }}>{r.value}</div>
                             <div style={{ fontSize:10, color:C.sub, marginTop:2, lineHeight:1.3 }}>{r.detail}</div>
                           </div>
                         ))}
