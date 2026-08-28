@@ -2794,7 +2794,32 @@ entries 1/5 and 2/6 were byte-identical, so a 6-day program showed two separate 
 the same colour (the original's flaw was one collision; this had two). It painted a 4px rail plus a
 tinted number tile, making colour the FOURTH encoding of "which day is this" after the name, the
 number and the row order. Rail is now the card's own hairline, tile is neutral.
-**Finding 2, OPEN: chart axis labels render at 7px / 8.5px / 9px.** The app retired every 8px and
+**Finding 2, FIXED: a BOOLEAN IS A SWITCH, NOT A TWO-SEGMENT "On | Off" PICKER.** The container
+count sent me to Settings (11 cards, depth 3) and LOOKING at it changed the diagnosis — worth
+recording, because the metric was right about the screen and wrong about the cause. Its grouped
+inset section cards are what iOS Settings actually looks like; flattening them to hairline
+dividers would make the screen LESS native, not more. **Do not "reduce containment" on a settings
+screen.** The real defect was the CONTROLS: five booleans (public profile + four notification
+prefs) rendered as segmented On/Off pairs, which is the wrong control for the job — a segmented
+control chooses among alternatives you can name, and "Off" is not an alternative, it is the
+absence of the thing. Four identical pills also made the heaviest elements on the screen four
+controls all sitting in their default state. New `Switch` component, deliberately reusing the
+EXACT tokens the segmented control already used (`C.primary` filled / `C.divider` empty) — a
+geometry change, not a repaint, so volt stays reserved. The genuine multi-choice rows (Light/Dark,
+LBS/KG, weekly target 2-5) correctly stayed segmented.
+**★ AND THE KNOB IS THE LESSON: ONE FIXED RIM ALPHA CANNOT SERVE BOTH THEMES.** The light knob is
+white on a pale OFF track — measured **1.18:1**, and the knob's POSITION is what identifies the
+state. The obvious fix is a rim (the PLATE_RING answer), but measuring the alphas showed the value
+that clears light (0.5 → 3.37:1) drops the DARK knob from 4.64:1 to 1.63:1: the fix for one theme
+is the bug in the other. The rim is theme-gated now (none on dark, 0.5 on light). Same family as
+the share modal's muted-text alphas that were copied from the dark card and failed AA the moment
+the surface flipped — **re-measure every hardcoded alpha on BOTH themes, and never assume one
+value works for both.** Sim: `pw_switch` (both themes: five switches exist, no leftover On/Off
+buttons, all labelled, the seeded OFF pref renders off, the knob edge clears 3:1, on/off tracks
+differ by 3:1, and toggling both flips aria-checked AND writes to the server — a local-only
+setState would be the dominant bug class in this app). Red-proofed by restoring the single fixed
+rim: dark stays green, light fails at exactly 1.18:1.
+**Finding 3, OPEN: chart axis labels render at 7px / 8.5px / 9px.** The app retired every 8px and
 9px literal across 62 sites for sitting under the 11px legibility floor — but `sim_designscale`
 scans `fontSize:` in style objects and **cannot see SVG `font-size` attributes**, so History's month
 labels ("Jul", 7px) and the Y-axis numbers on the exercise-detail and body charts (8.5px JetBrains

@@ -1,0 +1,107 @@
+// Settings' five booleans are SWITCHES, not two-segment "On | Off" pickers. A segmented control
+// is for choosing among alternatives you can name, and "Off" is not an alternative — it is the
+// absence of the thing. Four identical On/Off pills also made the heaviest elements on the screen
+// four controls all sitting in their default state.
+//
+// The check that matters most here is the LIGHT-THEME KNOB. It is white on a pale track, and the
+// knob's position is what identifies the switch's state — the first cut measured 1.18:1, and a
+// single fixed rim alpha cannot fix it, because the value that clears light (0.5 → 3.37:1) drops
+// the dark knob from 4.64:1 to 1.63:1. Nothing else in the battery can see this: sim_a11y sweeps
+// theme TOKENS and this control paints its knob from literals (the documented blind spot, same as
+// the plate colours and the share modal's muted text).
+import { chromium } from "playwright-core";
+const ME = "11111111-1111-4111-8111-111111111111";
+let fails = 0;
+const check = (l, c, d) => { if (c) console.log(`  PASS ${l}`); else { fails++; console.log(`  FAIL ${l}${d ? " — " + d : ""}`); } };
+
+const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+const ratio = (a, b) => { const L1 = lum(a), L2 = lum(b); return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05); };
+const parse = s => (s.match(/[\d.]+/g) || []).map(Number);
+const over = (fg, bg) => { const a = fg[3] ?? 1; return [0, 1, 2].map(i => fg[i] * a + bg[i] * (1 - a)); };
+
+const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
+
+for (const theme of ["dark", "light"]) {
+  const page = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  page.setDefaultTimeout(6000);
+  page.on("pageerror", e => { fails++; console.log("  PAGEERROR:", e.message.slice(0, 160)); });
+  await page.addInitScript(([me, th]) => {
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme: th, unit: "lbs",
+      profile: { username: "momo", name: "Mo" }, weeklyTarget: 3 }));
+    localStorage.setItem("seshd_session", JSON.stringify({ access_token: "t", user: { id: me } }));
+    localStorage.setItem("seshd_onboarded", "1"); localStorage.setItem("seshd_custom_merge_v1", "1");
+  }, [ME, theme]);
+  await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "t", user: { id: ME } }) }));
+  const writes = [];
+  await page.route("**/rest/v1/**", r => {
+    const q = r.request();
+    if (q.method() === "PATCH") writes.push(q.postData() || "");
+    // Seed THROUGH the stub: loadUserData replaces the store with the server copy, so a
+    // localStorage-only fixture renders defaults rather than what it seeded. One switch is
+    // deliberately OFF, because a fixture where everything is on cannot see the off-state at all.
+    let body = "[]";
+    if (/\/rest\/v1\/profiles\?/.test(q.url()) && q.method() === "GET")
+      body = JSON.stringify([{ id: ME, username: "momo", name: "Mo", unit: "lbs", theme, is_public: true,
+        seen_onboarding: true, weekly_target: 3, pr_events: [],
+        notification_prefs: { messages: true, kudos: true, comments: false, follows: true } }]);
+    r.fulfill({ status: 200, contentType: "application/json", body });
+  });
+  await page.goto("http://127.0.0.1:8199/", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3200);
+  await page.evaluate(() => { const p = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => (x.getAttribute("aria-label") || "") === "Profile"); p && p.click(); });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { const s = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => (x.getAttribute("aria-label") || "") === "Settings"); s && s.click(); });
+  await page.waitForTimeout(1300);
+
+  const info = await page.evaluate(() => {
+    const sw = [...document.querySelectorAll('[role="switch"]')];
+    const read = (el) => {
+      const knob = el.querySelector("span");
+      const cs = getComputedStyle(el), ks = getComputedStyle(knob);
+      return { label: el.getAttribute("aria-label"), checked: el.getAttribute("aria-checked"),
+        track: cs.backgroundColor, knob: ks.backgroundColor, shadow: ks.boxShadow,
+        w: Math.round(el.getBoundingClientRect().width) };
+    };
+    return { switches: sw.map(read),
+      // The old control rendered literal On/Off buttons; they must be gone from this screen.
+      onOffButtons: [...document.querySelectorAll("button")].filter(b => /^(On|Off)$/.test((b.textContent || "").trim())).length };
+  });
+
+  check(`[${theme}] five booleans render as switches`, info.switches.length === 5, `found ${info.switches.length}`);
+  check(`[${theme}] no leftover "On"/"Off" segmented buttons`, info.onOffButtons === 0, `${info.onOffButtons} found`);
+  const labels = info.switches.map(s => s.label).join(",");
+  check(`[${theme}] all five are labelled for a screen reader`,
+    ["Public profile", "Messages", "Kudos", "Comments", "New followers"].every(l => labels.includes(l)), labels);
+  const off = info.switches.find(s => s.checked === "false");
+  const on = info.switches.find(s => s.checked === "true");
+  check(`[${theme}] the seeded OFF pref renders off`, off && off.label === "Comments", off && off.label);
+
+  // The knob must be distinguishable from its own track. Composite the rim over the knob fill
+  // the way the browser paints it, then measure against the track.
+  if (off) {
+    const rim = (off.shadow.match(/inset[^,)]*rgba?\([^)]*\)|rgba?\([^)]*\)\s+0px\s+0px\s+0px\s+1px\s+inset/i) || [])[0] || "";
+    const rimCol = rim ? parse(rim.replace(/inset/i, "")).slice(0, 4) : null;
+    const knobRGB = parse(off.knob).slice(0, 3);
+    const edge = rimCol && rimCol.length >= 4 ? over(rimCol, knobRGB) : knobRGB;
+    const r = ratio(edge, parse(off.track).slice(0, 3));
+    check(`[${theme}] OFF knob edge is visible against its track (3:1)`, r >= 3, `${r.toFixed(2)}:1`);
+  }
+  // The state signal itself: the track fill must differ hugely between on and off.
+  if (on && off) {
+    const r = ratio(parse(on.track).slice(0, 3), parse(off.track).slice(0, 3));
+    check(`[${theme}] on/off tracks are unmistakable (3:1)`, r >= 3, `${r.toFixed(2)}:1`);
+  }
+
+  // It must actually work, not just look right: toggling writes the whole prefs object.
+  await page.evaluate(() => { const k = [...document.querySelectorAll('[role="switch"]')].find(s => s.getAttribute("aria-label") === "Kudos"); k && k.click(); });
+  await page.waitForTimeout(700);
+  const after = await page.evaluate(() => { const k = [...document.querySelectorAll('[role="switch"]')].find(s => s.getAttribute("aria-label") === "Kudos"); return k && k.getAttribute("aria-checked"); });
+  check(`[${theme}] toggling flips aria-checked`, after === "false", after);
+  const w = writes.filter(x => /notification_prefs/.test(x)).pop() || "";
+  check(`[${theme}] toggling writes to the server (not a local-only setState)`, /"kudos":false/.test(w), w.slice(0, 90));
+  await page.close();
+}
+await browser.close();
+console.log(fails ? `${fails} FAIL(S)` : "ok");
+process.exit(fails ? 1 : 0);

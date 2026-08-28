@@ -110,13 +110,21 @@ else check("the weekly-goal control is present", false, "no day-count button fou
 
 // ── Private account ──────────────────────────────────────────────────────────────────────────
 const mPriv = writes.length;
-// The public/private control is an On/Off segmented pair, not a switch element — a generic
-// "find the pointer-cursor sibling of the label" walk found nothing and the case silently
-// skipped itself, which is indistinguishable from the setting not persisting. Click "On"
-// directly (the fixture starts private, so On is a real change).
+// The public/private control is a real switch now (it was an On/Off segmented pair; a boolean is
+// not a choice between two named alternatives). Only the DRIVER changed here — every assertion
+// below is byte-identical, because what this section exists to catch is a settings edit that never
+// reaches the server, not the shape of the control. A generic "find the pointer-cursor sibling of
+// the label" walk once found nothing and skipped itself silently, which is indistinguishable from
+// the setting not persisting, so target the switch by role+label and REFUSE to proceed unless it
+// was genuinely off first — clicking an already-on switch would turn this into a no-op that still
+// "passes" the click.
 const toggled = await page.evaluate(() => {
-  const b = [...document.querySelectorAll("button")].find(x => (x.textContent||"").trim() === "On");
-  if (b) { b.click(); return true; } return false;
+  const sw = [...document.querySelectorAll('[role="switch"]')]
+    .find(x => (x.getAttribute("aria-label") || "") === "Public profile");
+  if (!sw) return false;
+  if (sw.getAttribute("aria-checked") !== "false") return false; // fixture starts private
+  sw.click();
+  return true;
 });
 await page.waitForTimeout(900);
 check("the private-account toggle is present", toggled);

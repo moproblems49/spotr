@@ -1,4 +1,4 @@
-// v178091716951
+// v178091716952
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12252,6 +12252,55 @@ function useExerciseCues() {
 //
 // Mounted ONLY for first-time exercises, which is what keeps the ~75KB cues module off the
 // critical path of every other workout: the lazy import fires from this component's own hook.
+// A BOOLEAN IS A SWITCH, NOT A SEGMENTED "On | Off" PAIR. Settings had five booleans (public
+// profile + the four notification prefs) rendered as two-segment pickers, which is the wrong
+// control for the job: a segmented control is for choosing among alternatives you can name, and
+// "Off" is not an alternative, it is the absence of the thing. It also cost real weight — four
+// identical On/Off pills stacked down the notifications card, each with a loud filled segment,
+// so the heaviest elements on the screen were four controls all sitting in their default state.
+//
+// Deliberately reuses the EXACT tokens the segmented control already used (`C.primary` filled /
+// `C.divider` empty) rather than introducing a colour: this is a geometry change, not a repaint,
+// and volt stays reserved for PRs, progress, the muscle map and the streak. The knob takes
+// `C.onPrimary` when on so it contrasts against the filled track on both themes, and carries a
+// shadow so it still reads against the pale OFF track on the light theme.
+function Switch({ checked, onChange, label, C }) {
+  const W = 46, H = 28, PAD = 3, KNOB = H - PAD * 2;
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className="seshd-hit"
+      style={{
+        width: W, height: H, flexShrink: 0, padding: 0, cursor: "pointer",
+        border: "none", borderRadius: H / 2,
+        background: checked ? C.primary : C.divider,
+        position: "relative",
+        transition: `background 0.22s ${EASE_NAV}`,
+      }}>
+      <span style={{
+        position: "absolute", top: PAD, left: PAD,
+        width: KNOB, height: KNOB, borderRadius: "50%",
+        background: checked ? C.onPrimary : (C.isDark ? "#8b8f99" : "#fff"),
+        // THE RIM HAS TO BE THEME-AWARE, and one fixed alpha cannot do it. On light the knob is
+        // white on a pale OFF track — 1.18:1, and the knob's position is what tells you the state
+        // — so it needs a real boundary (0.5 measures 3.37:1). On dark the knob is already #8b8f99
+        // at 4.64:1 and that same rim would drop it to 1.63:1, i.e. the fix for one theme is the
+        // bug in the other. Same trap as the share modal's muted-text alphas, which were copied
+        // from the dark card and failed AA the moment the surface flipped. (The STATE itself is
+        // never ambiguous either way: the track fill goes 16:1 between off and on.)
+        boxShadow: C.isDark
+          ? "0 1px 3px rgba(0,0,0,0.3)"
+          : "0 1px 3px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.5)",
+        transform: `translateX(${checked ? W - KNOB - PAD * 2 : 0}px)`,
+        transition: `transform 0.22s ${EASE_NAV}, background 0.22s ${EASE_NAV}`,
+      }}/>
+    </button>
+  );
+}
+
 function FirstTimeCues({ name, muscle, C, onOpenGuide }) {
   const exerciseCues = useExerciseCues();
   if (!exerciseCues) return null;                    // still loading — show nothing rather than a spinner
@@ -13937,28 +13986,20 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         now have to ask before they can see anything. */}
                     <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>On: anyone can see your workouts and follow you straight away. Off: people must ask to follow, and until you approve them they see nothing.</div>
                   </div>
-                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1, flexShrink:0 }}>
-                    {[["On", true], ["Off", false]].map(([label, val]) => {
-                      const isPublic = store.isPublic === true; // default off (private) until opted in
-                      const active = isPublic === val;
-                      return (
-                        <button key={label} onClick={async () => {
-                          setStore(p => ({ ...p, isPublic: val }));
-                          _lastSettingsEditAt = Date.now();
-                          const tok = token || loadSession()?.access_token;
-                          if (tok) {
-                            try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
-                            catch (e) { devError("privacy save error:", e); }
-                          }
-                          haptic("tap");
-                        }} style={{
-                          padding:"6px 16px", background: active ? C.primary : "transparent",
-                          color: active ? C.onPrimary : C.sub, border:"none", borderRadius:20,
-                          fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-                        }}>{label}</button>
-                      );
-                    })}
-                  </div>
+                  <Switch
+                    checked={store.isPublic === true} // default off (private) until opted in
+                    label="Public profile"
+                    C={C}
+                    onChange={async (val) => {
+                      setStore(p => ({ ...p, isPublic: val }));
+                      _lastSettingsEditAt = Date.now();
+                      const tok = token || loadSession()?.access_token;
+                      if (tok) {
+                        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
+                        catch (e) { devError("privacy save error:", e); }
+                      }
+                      haptic("tap");
+                    }}/>
                 </div>
               </div>
 
@@ -13975,27 +14016,20 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   return (
                     <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom: i < 3 ? `1px solid ${C.divider}` : "none" }}>
                       <div style={{ fontSize:14, color:C.text }}>{label}</div>
-                      <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
-                        {[["On", true], ["Off", false]].map(([btnLabel, val]) => {
-                          const active = on === val;
-                          return (
-                            <button key={btnLabel} onClick={async () => {
-                              const nextPrefs = { ...prefs, [key]: val };
-                              setStore(p => ({ ...p, notificationPrefs: nextPrefs }));
-                              const tok = token || loadSession()?.access_token;
-                              if (tok) {
-                                try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
-                                catch (e) { devError("notification_prefs save error:", e); }
-                              }
-                              haptic("tap");
-                            }} style={{
-                              padding:"6px 14px", background: active ? C.primary : "transparent",
-                              color: active ? C.onPrimary : C.sub, border:"none", borderRadius:20,
-                              fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-                            }}>{btnLabel}</button>
-                          );
-                        })}
-                      </div>
+                      <Switch
+                        checked={on}
+                        label={label}
+                        C={C}
+                        onChange={async (val) => {
+                          const nextPrefs = { ...prefs, [key]: val };
+                          setStore(p => ({ ...p, notificationPrefs: nextPrefs }));
+                          const tok = token || loadSession()?.access_token;
+                          if (tok) {
+                            try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
+                            catch (e) { devError("notification_prefs save error:", e); }
+                          }
+                          haptic("tap");
+                        }}/>
                     </div>
                   );
                 })}
