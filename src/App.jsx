@@ -1,4 +1,4 @@
-// v178091716945
+// v178091716946
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7266,7 +7266,7 @@ function mergeExerciseNames(mapping, store, setStore, currentUserId, token) {
       try { sb.queueWrite(`workout_history?id=eq.${sid}`, { method: "PATCH", body: JSON.stringify({ exercises }) }, tok).catch(() => {}); } catch (e) {}
     });
     prUpserts.forEach(({ exercise_name, weight_lbs }) => {
-      try { sb.queueWrite(`personal_records`, { method: "POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name, weight_lbs }) }, tok).catch(() => {}); } catch (e) {}
+      try { sb.queueWrite(`personal_records?on_conflict=user_id,exercise_name`, { method: "POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name, weight_lbs }) }, tok).catch(() => {}); } catch (e) {}
     });
     prDeletes.forEach((oldName) => {
       try { sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(oldName)}`, { method: "DELETE" }, tok).catch(() => {}); } catch (e) {}
@@ -10564,7 +10564,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           (workoutSummary.prs || []).forEach(pr => {
                             const prevWeight = u.prevPRs?.[pr.name];
                             if (typeof prevWeight === "number") {
-                              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: pr.name, weight_lbs: prevWeight }) }, tok).catch(() => {});
+                              sb.queueWrite(`personal_records?on_conflict=user_id,exercise_name`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: pr.name, weight_lbs: prevWeight }) }, tok).catch(() => {});
                             } else {
                               sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(pr.name)}`, { method:"DELETE" }, tok).catch(() => {});
                             }
@@ -16066,7 +16066,7 @@ function AppInner() {
         if (tokPR && currentUserId && !isGuest) {
           Object.entries(historyPRs).forEach(([name, w]) => {
             if (typeof w === "number" && w > (appPrs[name] || 0)) {
-              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, tokPR).catch(()=>{});
+              sb.queueWrite(`personal_records?on_conflict=user_id,exercise_name`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, tokPR).catch(()=>{});
             }
           });
           // Persist a freshly-rebuilt PR-hit log when the server had none, so Wrapped works on
@@ -17034,7 +17034,7 @@ function AppInner() {
           sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ pr_events: keptPrEvents }) }, tok).catch(() => {});
           for (const [n, w] of delPrChanged) {
             if (w > 0) {
-              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: w }) }, tok).catch(()=>{});
+              sb.queueWrite(`personal_records?on_conflict=user_id,exercise_name`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: w }) }, tok).catch(()=>{});
             } else {
               sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(n)}`, { method: "DELETE" }, tok).catch(()=>{});
             }
@@ -18786,7 +18786,7 @@ function AppInner() {
                     // lets loadUserData's max-wins merge resurrect the deleted PR on next launch.
                     for (const [n, w] of prChanged) {
                       if (w > 0) {
-                        sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: w }) }, tok).catch(()=>{});
+                        sb.queueWrite(`personal_records?on_conflict=user_id,exercise_name`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: w }) }, tok).catch(()=>{});
                       } else {
                         sb.queueWrite(`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(n)}`, { method: "DELETE" }, tok).catch(()=>{});
                       }

@@ -189,7 +189,7 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
           changed.forEach(([name, w]) => {
             const path = `personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(name)}`;
             if (w > 0) {
-              sb.queueWrite(`personal_records`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, token).catch(()=>{});
+              sb.queueWrite(`personal_records?on_conflict=user_id,exercise_name`, { method:"POST", headers_extra: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: currentUserId, exercise_name: name, weight_lbs: w }) }, token).catch(()=>{});
             } else {
               // The server row must go too, or loadUserData's max-wins merge resurrects it.
               sb.queueWrite(path, { method: "DELETE" }, token).catch(()=>{});

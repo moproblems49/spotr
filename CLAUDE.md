@@ -663,6 +663,32 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   library-invisible near-misses — the documented demo-corpus class, reproduced inside a guard the
   same week that story was retold — silently making Quads a second untested zero. Resolve every
   fixture exercise through `getExEntry` before trusting a muscle fixture.
+- **★ `Prefer: resolution=merge-duplicates` WITHOUT `?on_conflict=` RESOLVES AGAINST THE PRIMARY
+  KEY — WHICH A FRESH INSERT NEVER HITS — SO EVERY "UPSERT" ON A SECONDARY UNIQUE KEY WAS AN
+  INSERT THAT 23505'D.** Found by a routine logs sweep, not a report: **1,650 identical Postgres
+  errors in 24 hours**, bursts of exactly ~50, all `duplicate key … personal_records_user_id_
+  exercise_name_key`. All six `personal_records` POST sites sent merge-duplicates with no conflict
+  target, so PostgREST emitted `ON CONFLICT ("id")` while the real unique key is
+  `(user_id, exercise_name)`. Consequences: a PR's FIRST insert worked, **every later improvement
+  failed** — server PRs frozen at their first value for every user (this is also the real mechanism
+  behind the stale `120 vs 135` row the t-bar fix stumbled over), the leaderboard reading frozen
+  numbers — and `loadUserData`'s self-heal re-sent the same ~50 corrections on every foreground,
+  forever, because the write it heals with was the write that fails. Fix: name the target
+  (`personal_records?on_conflict=user_id,exercise_name`) at all six sites; each device then heals
+  its own rows on the next foreground, so no server-side backfill was needed. **The guard had a
+  hole exactly where the bug was**: `pw_journey`'s stub blindly `push`ed PR rows (the documented
+  a-stub-that-accepts-anything class), so it now models the unique constraint — 409 with code
+  23505 on a duplicate whose URL lacks the target, merge when it names it — and a new section 6
+  corrupts the server row downward and asserts the relaunch self-heal actually heals it (red on
+  the pre-fix client, naming the bare URL). **Red-proofing that section exposed a second, older
+  hole: the journey had been finishing ZERO-set workouts all along** — its "tick the done control"
+  clicked `btns[last]`, which is the + weight stepper, and checks 7-12 stayed green because an
+  empty workout still upserts a row. The fixture now sets real weight (fresh-query clicks — a
+  stepper reference goes stale after the first click's re-render), real reps via the NumberPad
+  (`[data-set-field="reps"]` — the visible "0" is a placeholder SPAN, so leaf-div text hunting
+  fails), and ticks the row's only empty-text button. Rule: when a flow check passes, ask what the
+  server would hold if the flow had silently done NOTHING — an empty workout row satisfied
+  "workout reached the server" for weeks.
 - **A WATCH THAT HASN'T SYNCED YET NEEDS A SECOND CHANCE.** Mo: "avg and peak heart rate hasn't
   showing in my last 2 workouts." The History card already renders both correctly
   (`♥ {avg} avg · {peak} peak` — not a rendering bug, easy to miss because "peak" only appears in

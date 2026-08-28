@@ -91,7 +91,21 @@ await page.route("**/rest/v1/**", r => {
     return J(db.posts.map(p => ({ ...p, kudos: [], comments: [] })));
   }
   if (/\/rest\/v1\/personal_records/.test(u)) {
-    if (m === "POST") { db.personal_records.push(one); return J([one]); }
+    if (m === "POST") {
+      db._prPosts = (db._prPosts||0) + 1; db._prLastUrl = u;
+      // Model the real UNIQUE (user_id, exercise_name) constraint. The old blind push let a POST
+      // with no on_conflict target pass this journey while prod threw 23505 on every PR UPDATE —
+      // server PRs froze at their first value and loadUserData's self-heal replayed ~50 failing
+      // writes per foreground (1,650 errors/day found in the logs). PostgREST only merges on the
+      // named conflict target; merge-duplicates alone targets the PK, which a fresh row never hits.
+      const dup = db.personal_records.find(r => r.user_id === one.user_id && r.exercise_name === one.exercise_name);
+      if (dup) {
+        if (!/on_conflict=user_id%2Cexercise_name|on_conflict=user_id,exercise_name/.test(u))
+          return J({ code: "23505", message: "duplicate key value violates unique constraint \"personal_records_user_id_exercise_name_key\"" }, 409);
+        Object.assign(dup, one); return J([dup]);
+      }
+      db.personal_records.push(one); return J([one]);
+    }
     return J(db.personal_records);
   }
   if (/\/rest\/v1\/profiles/.test(u)) {
@@ -162,16 +176,52 @@ if (!inWorkout) check("7/8. the workout legs could not run (no session started)"
 
 // ── 4. Log a set, finish, share ──────────────────────────────────────────────────────────────
 if (inWorkout) {
-  // Tick the first set's done control.
+  // Give the first set a REAL weight + reps, then tick it. Three probe traps live here, all hit
+  // while writing this leg: (1) a stepper reference goes STALE after the first click re-renders
+  // the row — click through a fresh query each time; (2) the row's "last button" is the + stepper,
+  // not the tick, so the journey had been finishing ZERO-set workouts while checks 7-12 stayed
+  // green (an empty workout still upserts a row); (3) a reps-less set can't mint a PR, and the
+  // normal flow's personal_records row is written by loadUserData's self-heal, not by finish.
+  for (let i = 0; i < 4; i++) {
+    await page.evaluate(() => {
+      const first = document.querySelectorAll("[data-no-tab-swipe]")[0];
+      const plus = first && [...first.querySelectorAll("button")].find(b => (b.textContent||"").trim() === "+");
+      plus && plus.click();
+    });
+    await page.waitForTimeout(150);
+  }
+  const padDiag = await page.evaluate(() => {
+    const first = document.querySelectorAll("[data-no-tab-swipe]")[0];
+    const box = first && first.querySelector('[data-set-field="reps"]');
+    if (!box) return { found: false };
+    box.click();
+    return { found: true };
+  });
+  await page.waitForTimeout(700);
+  const padState = await page.evaluate(() => {
+    const pad = [...document.querySelectorAll("div")].filter(d => getComputedStyle(d).position === "fixed" && getComputedStyle(d).zIndex === "450").pop();
+    if (!pad) return { open: false };
+    const key = [...pad.querySelectorAll("button")].find(b => (b.textContent||"").trim() === "8");
+    key && key.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    return { open: true, pressed8: !!key };
+  });
+  await page.waitForTimeout(400);
   await page.evaluate(() => {
-    const rows = [...document.querySelectorAll("[data-no-tab-swipe]")];
-    const first = rows[0];
+    const hide = document.querySelector('button[aria-label="Hide keypad"]');
+    hide && hide.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  });
+  await page.waitForTimeout(800); // outlive closePad's 500ms ghost-click swallower
+  console.log(`  log leg: repsCell=${JSON.stringify(padDiag)} pad=${JSON.stringify(padState)}`);
+
+  await page.evaluate(() => {
+    const first = document.querySelectorAll("[data-no-tab-swipe]")[0];
     if (!first) return;
-    const btns = [...first.querySelectorAll("button")];
-    const tick = btns[btns.length - 1];
+    const ticks = [...first.querySelectorAll("button")].filter(b => (b.textContent||"").trim() === "");
+    const tick = ticks[ticks.length - 1];
     tick && tick.click();
   });
   await page.waitForTimeout(900);
+  await page.screenshot({ path: "/tmp/claude-0/-home-user-spotr/3440bec9-ce0f-5edd-b04a-6a0acfe4e512/scratchpad/journey_log_leg.png" });
 
   await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish$/i.test((x.textContent||"").trim())); b && b.click(); });
   await page.waitForTimeout(800);
@@ -217,6 +267,30 @@ const relaunched = await body();
 check("12. the app does not land back on an empty first-run state",
   !/start your first program|no active program/i.test(relaunched) && !/went sideways/i.test(relaunched),
   relaunched.slice(0, 140).replace(/\n/g, " | "));
+
+// ── 6. THE PR SELF-HEAL MUST BE ABLE TO UPDATE AN EXISTING ROW ───────────────────────────────
+// Replays the production failure found in the logs (1,650 errors/day): every personal_records
+// POST relied on Prefer: merge-duplicates with no on_conflict target, so PostgREST conflicted on
+// the PRIMARY KEY — which a fresh insert never hits — and the real UNIQUE (user_id, exercise_name)
+// fired 23505. First-ever inserts worked; UPDATES never did, so server PRs froze at their first
+// value and loadUserData's self-heal replayed the same failing writes on every foreground.
+// The stub models the constraint (409 on a duplicate without the on_conflict target); here we
+// corrupt the server row downward — the frozen-stale state — and relaunch: the self-heal must
+// actually heal it. Goes red on the pre-fix client (row stays at 1).
+if (db.personal_records.length > 0) {
+  const prRow = db.personal_records[0];
+  const trueWeight = Number(prRow.weight_lbs);
+  prRow.weight_lbs = 1; // simulate the frozen server value this bug leaves behind
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(5000);
+  check("13. the PR self-heal can UPDATE an existing server row (on_conflict target present)",
+    Number(db.personal_records[0].weight_lbs) === trueWeight && db.personal_records.length >= 1,
+    `server row weight_lbs=${db.personal_records[0].weight_lbs}, expected ${trueWeight}, rows=${db.personal_records.length}, PR POSTs seen=${db._prPosts||0}, last=${(db._prLastUrl||"").slice(-70)}`);
+} else {
+  check("13. fixture minted a PR row for the self-heal leg", false,
+    "no personal_records row; first workout sets=" +
+    JSON.stringify((db.workout_history[0]?.exercises||[])[0]?.sets||[]).slice(0,160));
+}
 
 await browser.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
