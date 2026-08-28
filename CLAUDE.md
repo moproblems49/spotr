@@ -97,6 +97,31 @@ practice is a FRESH CONTEXT, not which model runs it. Use either; if a Fable-run
 back empty or a run visibly fails partway through, say so plainly rather than reporting a clean
 pass, and fall back to Opus for that round.
 
+## The health sweep (Mo's standing request: "run the sweep", every few days)
+A production-side check that needs no Mac and no device. It is NOT the sim battery — the battery
+proves the code is right, the sweep proves the LIVE SYSTEM is behaving. Both times it has been run
+it found something real that nobody had reported: a mid-review demo corpus that had gone stale
+(the reviewer's own account showed an empty muscle map), and 1,650 Postgres errors a day from
+`personal_records` upserts that had never once updated a row.
+**When Mo says "run the sweep" (or "do a sweep"), do all five:**
+1. **Postgres error rate.** `query_logs`, `source='postgres_logs'`, group by
+   `log_attributes['parsed.error_severity']`, then by `sql_state_code` + `parsed.query`. A handful
+   of errors is normal; hundreds is a bug. **Bursts of a round number (~50) are the tell for a
+   client queue replaying a write that can never succeed.** Note: the ClickHouse backend rejects
+   `positionCaseInsensitive`/`body` predicates — filter on `log_attributes[...]` equality instead,
+   and there is no `body` column.
+2. **Security + performance advisors** (`get_advisors`). Check every finding against this file
+   before acting: `public_profiles` SECURITY DEFINER, the two redeem RPCs and
+   `profile_is_public` are all DELIBERATE. `profile_is_public`'s EXECUTE grant is load-bearing —
+   it is called inside six RLS policies, which evaluate with the CALLER's privileges, so revoking
+   it would break visibility rather than harden it.
+3. **Auth logs** for failed-login spikes or reset-email failures (`source='auth_logs'`).
+4. **Demo-corpus freshness** — see the pre-submission checklist item. Newest persona post should
+   read "yesterday", and every persona needs workouts inside the 7-day muscle-map window.
+5. **Storage/table growth** — orphaned images, a table growing faster than the user count explains.
+Report findings even when everything is clean; "the error rate went from 1,650/day to single
+digits" is the point of running it again after a fix.
+
 ## Verification methodology (how we catch regressions)
 **Run the whole battery with one command: `node build/run_sims.mjs`** (49 sims, ~90s — count grows as
 sims get added; verify with the runner's own summary line rather than trusting a number in this
