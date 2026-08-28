@@ -17,6 +17,13 @@
 // scan that stops covering code as that code moves is worse than no scan, because the green tick
 // still appears.) The LITERAL checks now sweep every source file; the TOKEN checks stay on App.jsx,
 // which is where TYPE and RADIUS are defined.
+//
+// COVERAGE, PART TWO: it also read only `fontSize:` in STYLE OBJECTS, so every SVG `fontSize="7"`
+// attribute was invisible to it. That is how the retired 8/9px sizes survived on the charts — the
+// containment audit measured History's month ticks rendering at 7px and the progress chart's
+// y-axis at 8.5px, months after those sizes were supposedly gone app-wide, with this check green
+// throughout. Same disease as the two coverage gaps above, third instance: the guard was right
+// about what it looked at and simply wasn't looking everywhere the property can appear.
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -52,6 +59,33 @@ const tiny89 = sweep(/fontSize:\s*([89])(?![0-9])/g);
 check("no 8px or 9px literal font sizes (retired below the 11px floor, snapped up to 10)",
   tiny89.length === 0,
   tiny89.length ? `${tiny89.length} found: ${[...new Set(tiny89.map(h=>h.v))].sort().join(", ")} in ${where(tiny89)}` : "");
+
+// ── 1c. The same two rules, for SVG font-size ATTRIBUTES ─────────────────────────────────────
+// JSX renders these as `fontSize="7"` / `fontSize={7}`; hand-built SVG strings (the Wrapped story
+// card, the exercise share image) use `font-size="68"`. Those string-built cards are EXCLUDED on
+// purpose: they draw into a 1080x1920 canvas, so a `font-size="26"` there is a large label once
+// the image is scaled down — the px floor is a screen rule and does not apply to them. Only
+// attributes on real JSX elements, which render at CSS pixels, are swept.
+const svgAttr = (re) => {
+  const hits = [];
+  for (const { rel, text } of srcFiles) {
+    for (const m of text.matchAll(re)) {
+      // Skip anything inside a template-literal SVG string (those carry `font-size`, hyphenated).
+      hits.push({ rel, v: m[1] });
+    }
+  }
+  return hits;
+};
+const svgHalf = svgAttr(/fontSize=(?:"|\{)([0-9]+\.5)(?:"|\})/g);
+check("no half-pixel SVG font-size attributes (the charts' y-axis ticks were 8.5)",
+  svgHalf.length === 0,
+  svgHalf.length ? `${svgHalf.length} found: ${[...new Set(svgHalf.map(h=>h.v))].sort().join(", ")} in ${where(svgHalf)}` : "");
+
+const svgTiny = svgAttr(/fontSize=(?:"|\{)([0-9]|10)(?:"|\})/g);
+const svgUnder10 = svgTiny.filter(h => Number(h.v) < 10);
+check("no SVG font-size attribute below 10px (same 11px-floor rule as style objects)",
+  svgUnder10.length === 0,
+  svgUnder10.length ? `${svgUnder10.length} found: ${[...new Set(svgUnder10.map(h=>h.v))].sort().join(", ")} in ${where(svgUnder10)}` : "");
 
 // ── 2. The tokens still exist and keep their documented shape ────────────────────────────────
 const typeMatch = src.match(/const TYPE = \{([^}]*)\}/);

@@ -1,4 +1,4 @@
-// v178091716952
+// v178091716953
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8008,9 +8008,14 @@ function TrendSparkline({ series, color, C, format = (v) => String(Math.round(v)
         <>
           <circle cx={xAt(hiIdx)} cy={yAt(hi)} r="2.2" fill={color}/>
           <circle cx={xAt(loIdx)} cy={yAt(lo)} r="2.2" fill={color}/>
-          <text x={clampX(xAt(hiIdx))} y={TOP - 4} textAnchor="middle" fontSize="8" fontWeight="700"
+          {/* 8 -> 10, same direction as the 62 style-object sites the app-wide retirement snapped
+              UP. This is the one place the bump could clip: the box is 38px tall, the hi label's
+              baseline is TOP-4 (7) and the lo label's is BOT+9 (36). A 10px cap-height is ~7px so
+              both still sit inside 0..38, and the svg carries overflow:visible regardless.
+              Verified on screen rather than reasoned about. */}
+          <text x={clampX(xAt(hiIdx))} y={TOP - 4} textAnchor="middle" fontSize="10" fontWeight="700"
             fill={C.sub} fontFamily={MONO}>{format(hi)}</text>
-          <text x={clampX(xAt(loIdx))} y={BOT + 9} textAnchor="middle" fontSize="8" fontWeight="700"
+          <text x={clampX(xAt(loIdx))} y={BOT + 9} textAnchor="middle" fontSize="10" fontWeight="700"
             fill={C.sub} fontFamily={MONO}>{format(lo)}</text>
         </>
       )}
@@ -11323,7 +11328,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                         height: Math.max(4, (w.vol/maxVol)*64),
                         transition:"height 0.3s"
                       }}/>
-                      <div style={{ fontSize:7, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
+                      <div style={{ fontSize:10, color:C.muted, textAlign:"center", transform:"rotate(-45deg)", transformOrigin:"center", whiteSpace:"nowrap" }}>{w.label.split(" ")[0]}</div>
                     </div>
                   ))}
                 </div>
@@ -12473,7 +12478,7 @@ export function ExerciseVolumeChart({ data, unit, C }) {
         return (
           <g key={i}>
             <line x1={PAD.l} y1={y} x2={W-PAD.r} y2={y} stroke={C.divider} strokeWidth="1" opacity={tv === lo ? 0.9 : 0.5}/>
-            <text x={PAD.l-7} y={y+3} textAnchor="end" fontSize="8.5" fill={C.muted || C.sub} fontFamily={MONO}>{fmtTick(tv)}</text>
+            <text x={PAD.l-7} y={y+3} textAnchor="end" fontSize="10" fill={C.muted || C.sub} fontFamily={MONO}>{fmtTick(tv)}</text>
           </g>
         );
       })}
@@ -12486,8 +12491,8 @@ export function ExerciseVolumeChart({ data, unit, C }) {
         <circle key={i} cx={px(i)} cy={py(d.value)} r="3.5" fill={C.accent}/>
       ))}
       {/* X labels — first and last */}
-      <text x={PAD.l} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[0]?.label}</text>
-      {data.length > 1 && <text x={px(data.length-1)} y={H-2} textAnchor="middle" fontSize="9" fill={C.sub}>{data[data.length-1]?.label}</text>}
+      <text x={PAD.l} y={H-2} textAnchor="middle" fontSize="10" fill={C.sub}>{data[0]?.label}</text>
+      {data.length > 1 && <text x={px(data.length-1)} y={H-2} textAnchor="middle" fontSize="10" fill={C.sub}>{data[data.length-1]?.label}</text>}
       {/* Hold guide — drawn inside the svg so it lands in viewBox space with the dots */}
       {scrub && (
         <>

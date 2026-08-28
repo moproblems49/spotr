@@ -2819,14 +2819,24 @@ buttons, all labelled, the seeded OFF pref renders off, the knob edge clears 3:1
 differ by 3:1, and toggling both flips aria-checked AND writes to the server — a local-only
 setState would be the dominant bug class in this app). Red-proofed by restoring the single fixed
 rim: dark stays green, light fails at exactly 1.18:1.
-**Finding 3, OPEN: chart axis labels render at 7px / 8.5px / 9px.** The app retired every 8px and
-9px literal across 62 sites for sitting under the 11px legibility floor — but `sim_designscale`
-scans `fontSize:` in style objects and **cannot see SVG `font-size` attributes**, so History's month
-labels ("Jul", 7px) and the Y-axis numbers on the exercise-detail and body charts (8.5px JetBrains
-Mono) survived. Same blind-spot family as the hardcoded-colour gaps `sim_a11y` misses. Not yet
-fixed: bumping them can crowd a dense axis, so it needs a device look, and the guard should learn
-to read SVG attributes at the same time. (The `31.92px`/`19.32px` entries in the inventory are an
-avatar initial under a scale transform — an artifact, not a source size.)
+**Finding 3, FIXED: chart axis labels rendered at 7px / 8.5px / 9px — and the GUARD had a third
+coverage hole.** The app retired every 8px and 9px literal across 62 sites for sitting under the
+11px floor, but `sim_designscale` swept `fontSize:` in STYLE OBJECTS only, so every SVG
+`fontSize="7"` ATTRIBUTE was invisible to it: History's rotated month ticks (7px), the shared
+progress chart's y-axis (8.5px mono) and its two date labels (9px) all survived the retirement
+with the check green throughout. Same disease as the `sim_undef` engine-split gap and the
+`src/lazy` blindness — third instance — so the rule is now explicit: **a property can appear as a
+style key AND as an SVG attribute, and a guard that sweeps one is not sweeping the other.** All
+bumped to 10 (UP, never down, same direction as the original 62). `sim_designscale` grew two SVG
+sweeps and **immediately found two more sites nobody had spotted** — `TrendSparkline`'s hi/lo
+labels at 8px — which is the guard paying for itself on its first run. Deliberately NOT swept:
+the hand-built SVG STRINGS (`font-size="68"`, the Wrapped story card and the exercise share
+image), because those draw into a 1080x1920 canvas where the px floor is meaningless.
+**Measured, not assumed, because bumping an axis can crowd it:** the weekly chart's before/after
+crops are byte-identical in size (428x119) with 8 bars and no collision — my own "~20 rotated
+labels, might crowd" worry was simply wrong, and looking settled it in one screenshot. The
+sparkline was the one real risk (a 38px-tall box); measured after the bump, its labels overflow
+their svg by 1px into the card's own 10px padding, and the crop shows nothing clipped.
 
 ## The impeccable design skill (installed Aug 18)
 `.claude/skills/impeccable/` — a third-party design skill pack (Apache-2.0, pbakaus/impeccable),
