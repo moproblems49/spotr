@@ -1146,9 +1146,26 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   the trigger. Verified by CALLING the real RPCs: new codes return 1 row, old return 0. Backup:
   `sharecode_rotation_backup_20260828`. **Still open and NOT fixed by length: the redeem RPCs have
   no rate limiting** — PostgREST function calls bypass Supabase Auth's throttling entirely, so
-  length only raises the cost of guessing. That is the real control when volume arrives. No evidence of server-side rate limiting on the RPC either — Postgres
-  functions called via PostgREST don't get Supabase Auth's throttling, only whatever the platform's
-  general API gateway happens to apply.
+  length only raises the cost of guessing. **CLOSED Aug 28 2026 — the RPCs are rate-limited inside
+  the function**, since PostgREST calls bypass Supabase Auth's throttling entirely: 10 failed
+  attempts per minute and 60 per hour, keyed on `auth.uid()` when signed in and otherwise the
+  client IP. **Counts FAILURES only** — a successful redeem is legitimate use and must never count
+  against you. Three things were measured rather than assumed. (1) **The caller IS identifiable**:
+  a direct SQL connection sees no `request.headers` at all, so this was verified through the REAL
+  path (a disposable probe function called via `net.http_post` → PostgREST), which showed
+  `cf-connecting-ip` and `x-forwarded-for` both populated. Prefer `cf-connecting-ip`: Cloudflare
+  SETS it and overwrites any client value, whereas a caller can forge an `x-forwarded-for` prefix
+  to evade a limit. (2) **A naive counter is not a limit under concurrency** — firing 15 concurrent
+  guesses let TWELVE through a limit of 10, because each call read the count before the others
+  committed. `pg_advisory_xact_lock(hashtext('redeem:'||actor))` serializes per actor (two
+  different callers never contend, so only the traffic you want to slow down queues); re-measured
+  at exactly 10 through / 10 refused out of 20. (3) The ledger table `code_redeem_failures` has RLS
+  on with NO policy and EXECUTE revoked from the helpers — clients can never read it, which matters
+  because it holds IPs; the SECURITY DEFINER functions bypass RLS legitimately. Old rows are
+  deleted opportunistically on each call so it cannot grow unbounded. Client-side, `sb.rpc` already
+  threw with the server's message and the catch was discarding it; the refusal now surfaces as
+  "Too many invalid codes — wait a minute and try again" while an ordinary wrong code still says
+  "Code not found". Sim: `pw_redeemlimit` (both branches; red-proofed by restoring the discard).
 - **Storage buckets need a size limit AND a MIME allowlist.** `images` is publicly readable and had
   neither, so a signed-in user could upload arbitrary files of unbounded size served from the project
   domain (free file hosting, uncapped bill, SVG/HTML carrying script). All three buckets are now

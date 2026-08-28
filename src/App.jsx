@@ -1,4 +1,4 @@
-// v178091716956
+// v178091716957
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7060,7 +7060,14 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
         }
       }
     } catch (e) {
-      setError("Couldn't look up code");
+      // The redeem RPCs are rate-limited server-side (they are SECURITY DEFINER, callable by anon,
+      // and PostgREST function calls bypass Supabase Auth's throttling entirely, so the limit lives
+      // in the function). That refusal is ACTIONABLE — "wait a minute" — unlike a generic failure,
+      // and `sb.rpc` already throws with the server's own message, so it only needed surfacing.
+      // Matched on the P0001 text rather than a status code because PostgREST reports a raised
+      // exception as a plain 400, indistinguishable from a malformed request.
+      const msg = String(e?.message || "");
+      setError(/too many invalid codes/i.test(msg) ? msg : "Couldn't look up code");
     } finally {
       setLoading(false);
     }
