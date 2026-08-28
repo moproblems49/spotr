@@ -1,4 +1,4 @@
-// v178091716954
+// v178091716955
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10933,9 +10933,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       {ws.count > 0 ? ws.count : `${ws.thisWeek}/${ws.target}`}
                     </div>
                     <div style={{ fontSize:10, fontWeight:600, opacity:0.6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {/* NOT "this week" — the kicker two lines above ALREADY says THIS WEEK in
+                          this branch, so the card read "THIS WEEK / 1/3 / this week". Every number
+                          was right and nothing in the battery can see a defect like this; it only
+                          exists in the sentence the three lines form together, which is why the
+                          house rule is to read a card's lines ALOUD in sequence after a copy or
+                          layout change. The caption's job here is to name what the numbers ARE.
+                          The streak branch below is unaffected and already reads correctly
+                          ("WEEKLY STREAK / 3 / wks · 1/3"). */}
                       {ws.count > 0
                         ? `wk${ws.count === 1 ? "" : "s"} · ${ws.thisWeek}/${ws.target}`
-                        : "this week"}
+                        : `workout${ws.target === 1 ? "" : "s"}`}
                     </div>
                   </div>
                 </div>

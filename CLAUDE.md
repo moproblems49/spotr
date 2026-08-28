@@ -2865,6 +2865,22 @@ groups three lines (kicker / value / caption) in a two-column grid, so the conta
 real work and removing them yields a wall of text. Second time the count pointed at a screen whose
 containment was fine — see Settings above. *Reduce containment* is not a rule to apply mechanically;
 LOOK at the screen the number sent you to.
+**Finding 5, FIXED: the streak card said "THIS WEEK" twice, two lines apart.** In the
+no-streak-yet branch the kicker is `THIS WEEK` and the caption was the literal `"this week"`, so
+the card read **"THIS WEEK / 1/3 / this week"** — the value sandwiched between two copies of the
+same phrase. Every number was correct and nothing in the battery can see a defect like this; it
+exists only in the sentence the three lines form together, which is the same class as the
+Recovery-vs-fatigue contradiction and is why the house rule is to **read a card's lines ALOUD in
+sequence after any copy or layout change**. The caption now names what the numbers ARE
+("workouts"); the streak branch was already correct ("WEEKLY STREAK / 11 / wks · 3/3") and is
+untouched. Found by LOOKING at the screen the container count had pointed to — the count was about
+containment, the actual defect was copy.
+**And the tracker's containment was deliberately left alone.** It ranks #1 (7 cards) and the three
+program-day cards are the repeated-maximal-card shape the Day Preview flattening removed — but each
+one carries THREE actions (tap-to-preview, Edit, Start), and a card is a reasonable container for a
+multi-action object. That is the third screen in a row where the count pointed at containment doing
+real work (see Settings and the Body Battery sheet). Mo also explicitly likes the Quick Start card's
+lime glow border, so it stays.
 
 ## The impeccable design skill (installed Aug 18)
 `.claude/skills/impeccable/` — a third-party design skill pack (Apache-2.0, pbakaus/impeccable),
