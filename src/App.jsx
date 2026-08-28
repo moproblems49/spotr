@@ -1,4 +1,4 @@
-// v178091716944
+// v178091716945
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5474,29 +5474,14 @@ function PlateCalcModal({ onClose, unit, C }) {
   const BAR_WEIGHT = barTypeId === "custom" && parseFloat(customBar) > 0
     ? parseFloat(customBar)
     : (BAR_TYPES.find(b => b.id === barTypeId) || BAR_TYPES[0])[unit === "kg" ? "kg" : "lbs"];
-  const PLATES_LBS = [45, 35, 25, 10, 5, 2.5];
-  const PLATES_KG  = [25, 20, 15, 10, 5, 2.5, 1.25];
-  const plates = unit === "kg" ? PLATES_KG : PLATES_LBS;
-  // (This modal used to carry its own byte-identical copy of the colour map. Two copies of one
-  // legend is how the calculator and the live workout's barbell end up disagreeing about what
-  // colour a 35 is; both go through plateColor() now.)
-
-  function calcPlates(total) {
-    const t = parseFloat(total);
-    if (!t || t <= BAR_WEIGHT) return null;
-    let remaining = (t - BAR_WEIGHT) / 2;
-    const result = [];
-    for (const p of plates) {
-      const count = Math.floor(remaining / p);
-      if (count > 0) { result.push({ p, count }); remaining = Math.round((remaining - p * count) * 1000) / 1000; }
-    }
-    if (!result.length) return null;
-    // Show the closest achievable load instead of refusing — note any per-side shortfall.
-    result.leftover = remaining > 0.01 ? remaining : 0;
-    return result;
-  }
-
-  const result = calcPlates(target);
+  // (This modal used to carry its own byte-identical copies of the colour map AND, until Aug 28,
+  // of the plate lists and the per-side calculator itself — the same one-legend-two-copies drift
+  // the colour map already exhibited, just waiting on the maths. Everything goes through
+  // engine/plates.js now: plateColor() for the discs, calcPlatesPerSide() with this modal's
+  // bar-type override for the loadout. The boundaries were diffed before consolidating — empty
+  // and non-numeric targets, target at exactly bar weight, and the leftover attachment behave
+  // identically.)
+  const result = calcPlatesPerSide(target, unit, false, BAR_WEIGHT);
   const achievable = target && parseFloat(target) > BAR_WEIGHT && result !== null;
   const notAchievable = target && parseFloat(target) > BAR_WEIGHT && result === null;
 

@@ -2829,8 +2829,15 @@ one-definition check silently became one-copy-tolerant when the canonical map le
 `<= 1` was written when the canonical copy lived there, so a reintroduced modal copy would have
 counted 1 and PASSED (tightened to `=== 0` in App.jsx + `=== 2` in plates.js, red-proofed). The
 audit also found `PlateCalcModal` carries its own pre-existing local `PLATES_LBS`/`PLATES_KG` +
-`calcPlates` — older than round 5, never consolidated; a future pass should route it through
-`calcPlatesPerSide`/the canonical lists.
+`calcPlates` — older than round 5, never consolidated. **Consolidated Aug 28**: the modal's local
+copy was byte-for-byte the canonical two-sided algorithm, and `calcPlatesPerSide`'s
+`barWeightOverride` parameter fit its bar-type selector exactly; boundaries (empty/NaN target,
+target == bar, leftover attachment) diffed identical before cutting. Verified by DRIVING the
+modal: 225 on a 45 bar renders 2×45/side + Total 225, 226 shows the shortfall note. All three
+probe drafts failed on PROBE bugs while the app was right each time (typed into the Custom BAR
+input; hunted for a NumberPad the field doesn't use — TARGET is a real input whose grey "225" is
+its PLACEHOLDER; asserted "+1×25", which is wrong arithmetic). Screenshot-and-look settled every
+one — do that before ever "fixing" the app to satisfy a probe.
 **The split is COMPLETE for now (rounds 1-5, Aug 27-28 2026).** What remains in App.jsx is state,
 wiring, device/network glue and components — the parts we agreed to BRAKE, not extract. New
 feature logic goes in a new `src/engine/` module (or the one it belongs to), not appended to
