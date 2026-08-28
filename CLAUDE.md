@@ -2363,8 +2363,21 @@ rather than rendering blank and passing).
 (demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
 (3) **RE-DATE THE DEMO CORPUS.** The five personas' posts and workouts go stale on a clock, and a
 reviewer opening a feed whose newest post is three weeks old sees an abandoned app. Last shifted
-Aug 13; note it took TWO offsets, not one, because posts and workouts had drifted apart. Verify
-after: nothing future-dated, and no comment or kudos earlier than its post.
+**Aug 28 (+6 days, mid-review)** — with the review pending, the reviewer's own demo account had
+drifted to the very edge of the 7-day muscle-map window, i.e. an empty "Muscles Trained" on the
+account named in the review notes. Method notes that survive to the next shift: pick the offset so
+`max(existing timestamp) + offset < now()` (a +6d was safe where +7d was not); `workout_history`
+has BOTH `created_at` and `workout_date` — shift both; `group_posts` is guarded by
+`trg_enforce_group_post_author_edit`, so act AS each author via `set_config('request.jwt.claims',…)`
+in a DO loop (the documented tbar method), never by disabling the trigger; shift MESSAGES only
+where BOTH parties are personas (a persona DM to a real user is part of a real conversation); and
+the trap that produced two fix-ups this time — **a persona kudos on a RECENT REAL post goes FUTURE
+under the shift, and "restore it from backup" is the wrong fix when its POST also shifted** (the
+restore re-created kudos-before-post): the correct placement is the `[post.created_at, now())`
+window. Verify after, DATABASE-WIDE not persona-scoped: nothing future-dated in any shifted table,
+no comment or kudos earlier than its post. Backup: `demo_shift_backup_20260828` (249 rows — drop
+it once review clears). pr_events/personal_records deliberately NOT shifted: not on the
+reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
 
 **OPEN, as of Aug 16 2026 (agreed with Mo):**
 - **THE ONE BLOCKER IS A MAC REBUILD.** Everything since the archived TestFlight build ships in the
