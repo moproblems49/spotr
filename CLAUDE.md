@@ -2881,6 +2881,41 @@ one carries THREE actions (tap-to-preview, Edit, Start), and a card is a reasona
 multi-action object. That is the third screen in a row where the count pointed at containment doing
 real work (see Settings and the Body Battery sheet). Mo also explicitly likes the Quick Start card's
 lime glow border, so it stays.
+**★ THE AUDIT OF THE SWITCH COMMIT FOUND THE FIELD THAT NEVER GOT THE SETTINGS-RACE GUARD.**
+`notificationPrefs` was the ONE field with the optimistic-`setStore`-plus-immediate-`queueWrite`
+shape and no protection: `loadUserData`'s `recent` branch (a 20s "an edit just happened" window)
+covers exerciseNotes/workoutNotes/barTypes/closeFriends/weeklyTarget/isPublic, and the four
+notification toggles never even stamped `_lastSettingsEditAt`. A foreground refresh landing before
+the PATCH re-served the stale value and **the switch flipped back under the user's finger** — then
+self-healed on a later load, which is precisely why nobody reported it. PRE-EXISTING (the old
+segmented control had byte-identical behaviour); the switch commit was simply the moment it should
+have been caught. Both halves fixed: the stamp on the notification path, and the field added to
+the guard.
+**★★ AND THE TIMING IS THE LESSON — TWO THROTTLES HAVE TO BE LINED UP OR THE TEST IS A NO-OP.**
+The foreground refresh is throttled to once per 30s (`lastFetchRef`), so dispatching
+`visibilitychange` a few seconds after boot does NOTHING. The first draft of the check did exactly
+that, and **PASSED against the broken build** — the documented "a script that cannot fail" trap,
+reached through a throttle rather than a bad selector. It must wait past 30s BEFORE the edit, which
+is also the realistic shape of the bug (app open a while → change a setting → background). Note the
+two windows barely overlap: the edit guard is 20s and the refresh throttle is 30s, so the race is
+only reachable when the last fetch was already stale when you toggled. Red-proofed in BOTH
+directions afterwards — red on the unguarded build (flips back to `true`), green with the fix.
+Sim: `pw_switch`'s `[race]` section. **A second trap in the same session: restoring `src/App.jsx`
+from a scratch copy does NOT rebuild `dist`, so the next probe run measured the OLD bundle** — the
+red-proof result and the "fixed" result were swapped. Rebuild after every restore, or the two runs
+you are comparing are not the two builds you think.
+**Guard holes closed in the same pass.** The SVG sweeps added for the axis-label fix had six
+constructible false negatives (`fontSize={ 7 }`, `fontSize = {7}`, `fontSize="7px"`,
+`fontSize={"7"}`, `fontSize="9.25"`, and the hyphenated JSX form `font-size="7"`, which renders at
+a real 7 CSS px). None existed in the tree, but a guard is worth what its worst case catches. One
+tolerant regex now covers both attribute spellings, whitespace, braces, quotes and a `px` suffix,
+and the template-string exemption is done by LOCATION (counting unescaped backticks) rather than by
+hyphenation — which is what the first draft accidentally relied on while its comment claimed
+otherwise. Red-proofed on all seven shapes, plus the complement: a `font-size="7"` injected INSIDE
+a template-literal card stays GREEN, proving the exemption is real and not an accident.
+`containment_audit`'s overlay picker also now requires `childElementCount > 0` — the `···` overflow
+menus render a childless `position:fixed; inset:0; zIndex:50` click-catcher that cleared every
+other filter, so opening one would have made it the root and reported a confident, wrong ~0.
 
 ## The impeccable design skill (installed Aug 18)
 `.claude/skills/impeccable/` — a third-party design skill pack (Apache-2.0, pbakaus/impeccable),

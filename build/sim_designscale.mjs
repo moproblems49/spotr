@@ -66,23 +66,41 @@ check("no 8px or 9px literal font sizes (retired below the 11px floor, snapped u
 // purpose: they draw into a 1080x1920 canvas, so a `font-size="26"` there is a large label once
 // the image is scaled down — the px floor is a screen rule and does not apply to them. Only
 // attributes on real JSX elements, which render at CSS pixels, are swept.
-const svgAttr = (re) => {
+// Both JSX forms, tolerant of the shapes a real edit produces. A cold-context audit constructed
+// six that evaded the first draft — `fontSize={ 7 }`, `fontSize = {7}`, `fontSize="7px"` (a legal
+// SVG value), `fontSize={"7"}`, `fontSize="9.25"`, and the hyphenated JSX form `font-size="7"`,
+// which renders at a real 7 CSS px and was indistinguishable from the template-string cards this
+// check deliberately skips. None existed in the tree, but a guard is only worth what its worst
+// case catches. `[\s\S]` after the name allows whitespace/`=`; the value may be quoted, braced,
+// braced-and-quoted, and may carry a `px` suffix.
+const SVG_SIZE = /(?:fontSize|font-size)\s*=\s*\{?\s*"?\s*([0-9]*\.?[0-9]+)\s*(?:px)?\s*"?\s*\}?/g;
+// Template-literal SVG STRINGS are the one deliberate exemption: the Wrapped story card and the
+// exercise share image draw into a 1080x1920 canvas, where a font-size of 26 is a large label once
+// the image is scaled down — the px floor is a screen rule and does not apply. Skip by LOCATION
+// (inside a backtick string) rather than by hyphenation, which is what the first draft accidentally
+// relied on; the old comment claimed a skip the code did not implement.
+const inTemplateString = (text, idx) => {
+  // Count unescaped backticks before this point: odd => we are inside a template literal.
+  let ticks = 0;
+  for (let i = 0; i < idx; i++) if (text[i] === "`" && text[i - 1] !== "\\") ticks++;
+  return ticks % 2 === 1;
+};
+const svgAttr = (pred) => {
   const hits = [];
   for (const { rel, text } of srcFiles) {
-    for (const m of text.matchAll(re)) {
-      // Skip anything inside a template-literal SVG string (those carry `font-size`, hyphenated).
-      hits.push({ rel, v: m[1] });
+    for (const m of text.matchAll(SVG_SIZE)) {
+      if (inTemplateString(text, m.index)) continue;
+      if (pred(Number(m[1]))) hits.push({ rel, v: m[1] });
     }
   }
   return hits;
 };
-const svgHalf = svgAttr(/fontSize=(?:"|\{)([0-9]+\.5)(?:"|\})/g);
-check("no half-pixel SVG font-size attributes (the charts' y-axis ticks were 8.5)",
+const svgHalf = svgAttr(v => Number.isFinite(v) && v % 1 !== 0);
+check("no fractional SVG font-size attributes (the charts' y-axis ticks were 8.5)",
   svgHalf.length === 0,
   svgHalf.length ? `${svgHalf.length} found: ${[...new Set(svgHalf.map(h=>h.v))].sort().join(", ")} in ${where(svgHalf)}` : "");
 
-const svgTiny = svgAttr(/fontSize=(?:"|\{)([0-9]|10)(?:"|\})/g);
-const svgUnder10 = svgTiny.filter(h => Number(h.v) < 10);
+const svgUnder10 = svgAttr(v => Number.isFinite(v) && v < 10);
 check("no SVG font-size attribute below 10px (same 11px-floor rule as style objects)",
   svgUnder10.length === 0,
   svgUnder10.length ? `${svgUnder10.length} found: ${[...new Set(svgUnder10.map(h=>h.v))].sort().join(", ")} in ${where(svgUnder10)}` : "");

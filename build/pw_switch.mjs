@@ -102,6 +102,56 @@ for (const theme of ["dark", "light"]) {
   check(`[${theme}] toggling writes to the server (not a local-only setState)`, /"kudos":false/.test(w), w.slice(0, 90));
   await page.close();
 }
+// ── The race the switch inherited from the control it replaced ───────────────────────────────
+// A settings edit is an optimistic setStore + an immediate queueWrite, and `loadUserData` REPLACES
+// its keys wholesale from the server. Six sibling fields carry a 20s "an edit just happened"
+// guard; notificationPrefs was the one field with that exact shape and no guard, so a foreground
+// refresh landing before the PATCH re-served the stale value and the switch flipped back under
+// the user's finger. The write is durable, so it self-heals later — which is what makes it read
+// as a glitch rather than a failure, and why nothing reported it.
+//
+// TIMING IS LOAD-BEARING HERE. The foreground refresh is throttled to once per 30s, so firing
+// visibilitychange sooner is a SILENT NO-OP: the first draft of this check did that and passed
+// against the broken build. Wait past the throttle BEFORE the edit — which is also the realistic
+// shape of the bug (app open a while, change a setting, background/foreground).
+{
+  const page = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  page.setDefaultTimeout(6000);
+  await page.addInitScript(me => {
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme: "dark", unit: "lbs", weeklyTarget: 3, profile: { username: "momo", name: "Mo" } }));
+    localStorage.setItem("seshd_session", JSON.stringify({ access_token: "t", user: { id: me } }));
+    localStorage.setItem("seshd_onboarded", "1"); localStorage.setItem("seshd_custom_merge_v1", "1");
+  }, ME);
+  await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "t", user: { id: ME } }) }));
+  // The server ALWAYS serves kudos:true — it has not yet received the PATCH. That IS the race.
+  await page.route("**/rest/v1/**", r => {
+    const q = r.request(); let body = "[]";
+    if (/\/rest\/v1\/profiles\?/.test(q.url()) && q.method() === "GET")
+      body = JSON.stringify([{ id: ME, username: "momo", name: "Mo", unit: "lbs", theme: "dark", is_public: true,
+        seen_onboarding: true, weekly_target: 3, pr_events: [],
+        notification_prefs: { messages: true, kudos: true, comments: true, follows: true } }]);
+    r.fulfill({ status: 200, contentType: "application/json", body });
+  });
+  await page.goto("http://127.0.0.1:8199/", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3200);
+  await page.waitForTimeout(31000);                      // outlast the 30s refresh throttle
+  await page.evaluate(() => { const p = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => (x.getAttribute("aria-label") || "") === "Profile"); p && p.click(); });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { const s = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => (x.getAttribute("aria-label") || "") === "Settings"); s && s.click(); });
+  await page.waitForTimeout(1200);
+  const readKudos = () => page.evaluate(() => { const k = [...document.querySelectorAll('[role="switch"]')].find(s => s.getAttribute("aria-label") === "Kudos"); return k && k.getAttribute("aria-checked"); });
+  check("[race] Kudos starts on, from the server", await readKudos() === "true");
+  await page.evaluate(() => { const k = [...document.querySelectorAll('[role="switch"]')].find(s => s.getAttribute("aria-label") === "Kudos"); k && k.click(); });
+  await page.waitForTimeout(500);
+  check("[race] Kudos reads off immediately after the tap", await readKudos() === "false");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForTimeout(2500);
+  const after = await readKudos();
+  check("[race] Kudos STAYS off through a refresh serving the stale value", after === "false", `flipped back to ${after}`);
+  await page.close();
+}
+
 await browser.close();
 console.log(fails ? `${fails} FAIL(S)` : "ok");
 process.exit(fails ? 1 : 0);

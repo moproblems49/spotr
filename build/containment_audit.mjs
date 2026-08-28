@@ -141,10 +141,18 @@ const collect = (screen) => page.evaluate((screen) => {
       if (cs.position !== "fixed" && cs.position !== "absolute") return false;
       if ((+cs.zIndex || 0) < 40) return false;
       const r = el.getBoundingClientRect();
-      return r.height > 240 && r.width > 200;
+      if (r.height <= 240 || r.width <= 200) return false;
+      // A CLICK-CATCHER IS NOT AN OVERLAY. The `···` overflow menus render a childless
+      // `position:fixed; inset:0; zIndex:50` backdrop purely to catch the next tap. It clears
+      // every other filter, so opening one would make it the root and the screen would report
+      // ~0 containers — a confident, wrong zero. Require the candidate to actually contain
+      // something.
+      return el.childElementCount > 0;
     });
     if (!cands.length) return null;
-    return cands.sort((a, b) => (+getComputedStyle(b).zIndex || 0) - (+getComputedStyle(a).zIndex || 0))[0];
+    // Highest z wins; on a tie prefer the LAST in document order, which is the one painted on top
+    // (a stable sort would otherwise hand back the lower of two equal-z overlays).
+    return cands.sort((a, b) => (+getComputedStyle(a).zIndex || 0) - (+getComputedStyle(b).zIndex || 0)).pop();
   })();
   const root = overlayRoot || document.body;
   const scoped = overlayRoot ? `overlay z=${getComputedStyle(overlayRoot).zIndex}` : "page";

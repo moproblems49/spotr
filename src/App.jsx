@@ -1,4 +1,4 @@
-// v178091716955
+// v178091716956
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14050,6 +14050,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         onChange={async (val) => {
                           const nextPrefs = { ...prefs, [key]: val };
                           setStore(p => ({ ...p, notificationPrefs: nextPrefs }));
+                          // Stamp the edit, exactly as the units / weekly-target / public-profile
+                          // writes do. Without it loadUserData's 20s "a settings edit just
+                          // happened" window does not cover this field, and a foreground refresh
+                          // landing before the queued PATCH does re-serves the server's stale
+                          // value — the switch visibly flips back under the user's finger. The
+                          // write is durable so it self-heals on a later load, which is exactly
+                          // what makes it look like a glitch rather than a failure.
+                          _lastSettingsEditAt = Date.now();
                           const tok = token || loadSession()?.access_token;
                           if (tok) {
                             try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
@@ -16121,6 +16129,10 @@ function AppInner() {
             closeFriends: prev.closeFriends || [],
             weeklyTarget: prev.weeklyTarget || 3,
             isPublic: prev.isPublic === true,
+            // Same optimistic-setStore + immediate-queueWrite shape as the six above. It was the
+            // one field with that shape still missing the guard — found by auditing the commit
+            // that turned these into switches, which changed the control and inherited the race.
+            notificationPrefs: prev.notificationPrefs || { messages: true, kudos: true, comments: true, follows: true },
           };
           return {
             // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back
