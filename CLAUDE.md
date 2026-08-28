@@ -2636,8 +2636,19 @@ and had NOT submitted; the archived build predates the whole Aug 12–16 era and
 Mo-side and NOT needing a Mac, worth doing first: paste the branded auth email templates from
 `supabase/email-templates/` into the Supabase dashboard, and set the SMTP Sender name to "Seshd".
 
-**★★ THE MAC-DAY CAPABILITIES WERE NEVER COMMITTED TO GIT, AND THE CURRENTLY-INSTALLED BUILD IS
-NOW MISSING THEM (found Aug 23, 2026).** Mo deleted+reinstalled the app to test the fresh-signup
+**★★ ~~THE MAC-DAY CAPABILITIES WERE NEVER COMMITTED TO GIT~~ — RESOLVED, and this entry is kept
+only because the failure mode is worth remembering. ✅ `ios/App/App/App.entitlements` EXISTS, is
+committed (`877b9fe`) and is referenced by `CODE_SIGN_ENTITLEMENTS` in BOTH build configs; it
+carries `com.apple.developer.healthkit`, `com.apple.developer.associated-domains`
+(`applinks:spotr-drab.vercel.app`) and `aps-environment`, and `UIBackgroundModes`
+(`remote-notification`) is in Info.plist. Verified Aug 28. **One thing to confirm on the next real
+build rather than assume: `aps-environment` reads `development` in the file.** Xcode normally
+rewrites that to `production` when archiving for TestFlight/App Store, so it is probably correct —
+but the APNs key here is PRODUCTION-ONLY, so confirm a push actually lands rather than trusting it.
+The original Aug 23 report follows, and its lesson stands: a capability ticked in Xcode's UI and
+not committed vanishes from the next build with nothing in the diff to show it.**
+
+**(Historic, Aug 23, 2026 — now fixed.)** Mo deleted+reinstalled the app to test the fresh-signup
 flow; afterward, neither the Health nor the push-notification permission prompt appeared, and
 Seshd disappeared from Settings → Health entirely. Chasing it through a new manual "reconnect"
 button (`HealthConnectRow`, Settings) got a real native error instead of a guess: **"Missing
@@ -2748,6 +2759,49 @@ decision was to stay single dark icon).
    `hello@getseshd.app`, Supabase custom SMTP active (email rate limit 30/h).
    Still Mo-side later: "Confirm email" toggle at public launch; DMARC record for
    deliverability; Apple Services ID if Google/Apple sign-in ships at launch.
+
+## The containment pass (started Aug 28, 2026) — MEASURE FIRST, the tool is `build/containment_audit.mjs`
+The design critique's last open item ("less containment / fewer rounded cards" + a typography
+pass), unparked by Mo on Aug 28. **Do not start from an impression of the app — measure.** My own
+read from memory was wrong in BOTH directions last time (I said "everything is the same large
+radius"; measuring found 26 distinct radii, i.e. arbitrariness, plus LOW containment on the screens
+I had called over-contained). `containment_audit.mjs` walks 16 real screens and counts every
+element with a corner radius AND a boundary the eye can see (a background differing from what is
+behind it, a real border, or a shadow), classified by size and — the part a flat count cannot see —
+**nesting depth**, since a card inside a card inside a card is what reads as assembled-from-a-kit.
+It inventories typography on the same walk. It is a PROBE: it asserts nothing, so it is named
+`*_audit.mjs` to stay out of `run_sims.mjs` (which globs `sim_*`/`pw_*`) per the
+"a script that cannot fail does not belong in the battery" rule.
+**It caught two defects in ITSELF before any number was trusted, both inherited from
+`accent_audit.mjs`:** `page.mouse.wheel` is a NO-OP in this app (body is pinned `overflow:hidden`
+for the app's whole lifetime, so scrolling happens in inner containers) — five "scrolled" screens
+came back byte-identical to their unscrolled twins, and only the tour's own is-this-screen-distinct
+check exposed it; and it looked for the Body Battery sheet on the TRACKER tab when it lives on your
+own PROFILE, which is the exact failure CLAUDE.md already documents. `scrollBy()` now drives the
+tallest genuinely-scrollable element directly and REPORTS when nothing moved. **accent_audit.mjs
+still has both bugs** — its Body Battery shot is guarded by an `if` so it silently skips, and its
+scroll shots are duplicates; fix them if that tour is ever re-run for a lime re-measure.
+**Baseline (Aug 28, dark theme, 428×926):** 366 containers over 16 screens. Worst first —
+settings 11 cards/depth 3, body_battery_sheet 7/2, **tracker_home 7/1 (the landing screen)**,
+body_screen 6/2, history_scrolled 6/1. 14 distinct rendered radii (20px dominant at 87 uses, then
+8/47, 14/46, 10/42). Typography: 19 distinct rendered sizes, 59 size/weight/spacing/transform
+combos, 3 families.
+**Finding 1, FIXED: `DAY_CARD_COLORS` was a SURVIVING TWIN of the deleted `DAY_COLORS` rainbow.**
+Same positional indexing (`di % 7`), on the LANDING screen rather than the buried one the rainbow
+was removed from — the "delete every call site of the old mechanism" rule, applied to a palette
+instead of an event handler, and nobody grepped for a sibling. It was also broken as an identifier:
+entries 1/5 and 2/6 were byte-identical, so a 6-day program showed two separate PAIRS of days in
+the same colour (the original's flaw was one collision; this had two). It painted a 4px rail plus a
+tinted number tile, making colour the FOURTH encoding of "which day is this" after the name, the
+number and the row order. Rail is now the card's own hairline, tile is neutral.
+**Finding 2, OPEN: chart axis labels render at 7px / 8.5px / 9px.** The app retired every 8px and
+9px literal across 62 sites for sitting under the 11px legibility floor — but `sim_designscale`
+scans `fontSize:` in style objects and **cannot see SVG `font-size` attributes**, so History's month
+labels ("Jul", 7px) and the Y-axis numbers on the exercise-detail and body charts (8.5px JetBrains
+Mono) survived. Same blind-spot family as the hardcoded-colour gaps `sim_a11y` misses. Not yet
+fixed: bumping them can crowd a dense axis, so it needs a device look, and the guard should learn
+to read SVG attributes at the same time. (The `31.92px`/`19.32px` entries in the inventory are an
+avatar initial under a scale transform — an artifact, not a source size.)
 
 ## The impeccable design skill (installed Aug 18)
 `.claude/skills/impeccable/` — a third-party design skill pack (Apache-2.0, pbakaus/impeccable),

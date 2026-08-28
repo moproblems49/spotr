@@ -1,4 +1,4 @@
-// v178091716950
+// v178091716951
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7514,13 +7514,23 @@ function InsightCards({ insights, C, big, onDismiss }) {
 // drag vertically; other cards slide out of the way; release to drop. Falls back gracefully
 // (the handle only appears with >1 day). Kept self-contained so the drag state can't leak
 // into the rest of the workout tab.
-const DAY_CARD_COLORS = ["#c8f135","#0891b2","#059669","#d97706","#dc2626","#0891b2","#059669"];
+// THE POSITIONAL DAY RAINBOW IS GONE HERE TOO — this was a SURVIVING TWIN of `DAY_COLORS`.
+// That palette was deleted from the day preview for a reason that applies verbatim to this
+// screen, and nobody checked for a sibling (the "delete every call site of the old mechanism"
+// rule, applied to a palette instead of an event handler). It indexed colour by the day's
+// POSITION (`di % 7`) — which encodes nothing, because the day is NAMED on the same line and
+// numbered in the tile beside it, so the rail was the fourth encoding of "which day is this".
+// It was also literally broken as an identifier: entries 1/5 and 2/6 were byte-identical, so a
+// 6-day program showed two separate pairs of days wearing the same colour. And it fought the
+// only colour language on this screen that IS real — the accent, reserved for PRs, progress,
+// the muscle map and the streak. The rail is now the same hairline as the card's other three
+// sides and the number tile is neutral; the day's identity is carried by its name, as it always
+// actually was.
 
 // One sortable day card. Uses dnd-kit's useSortable so the lift/slide/drop motion is
 // hardware-accelerated and the other cards animate out of the way automatically.
 function SortableDayCard({ day, di, prog, store, C, onPreview, onEdit, onStart }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: day.id });
-  const color = DAY_CARD_COLORS[di % 7];
 
   const lastDone = (() => {
     const dates = Object.keys(store.history || {}).sort().reverse();
@@ -7541,7 +7551,7 @@ function SortableDayCard({ day, di, prog, store, C, onPreview, onEdit, onStart }
     borderTop: `1px solid ${isDragging ? C.accent : C.border}`,
     borderRight: `1px solid ${isDragging ? C.accent : C.border}`,
     borderBottom: `1px solid ${isDragging ? C.accent : C.border}`,
-    borderLeft: `4px solid ${color}`,
+    borderLeft: `1px solid ${isDragging ? C.accent : C.border}`,
     borderRadius: 14,
     overflow: "hidden",
     position: "relative",
@@ -7567,8 +7577,8 @@ function SortableDayCard({ day, di, prog, store, C, onPreview, onEdit, onStart }
           flex:1, minWidth:0, background:"none", border:"none", padding:"13px 14px 13px 4px",
           display:"flex", alignItems:"center", gap:12, cursor:"pointer", textAlign:"left", fontFamily:F
         }}>
-          <div style={{ width:38, height:38, borderRadius:10, background:`${color}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-            <span style={{ fontSize:14, fontWeight:800, color }}>{di+1}</span>
+          <div style={{ width:38, height:38, borderRadius:10, background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <span style={{ fontSize:14, fontWeight:800, color:C.sub }}>{di+1}</span>
           </div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{day.name}</div>
