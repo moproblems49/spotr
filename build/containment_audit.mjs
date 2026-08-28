@@ -127,6 +127,28 @@ const typography = [];
 const collect = (screen) => page.evaluate((screen) => {
   const containers = [], type = [];
 
+  // SCOPE TO THE TOPMOST OVERLAY. An overlay does not remove the DOM beneath it, and the first
+  // run of this tour counted both: exercise_detail reported 44 containers, of which SIXTEEN were
+  // the Exercises tab's category chips (All/Chest/Back/...) sitting underneath, plus the nav bar
+  // and the streak badge. Settings and the Body Battery sheet are overlays over the profile and
+  // were inflated the same way — so the "most contained screen" ranking was partly measuring
+  // stacked DOM rather than what the eye sees. This is the exact trap CLAUDE.md documents twice.
+  // The nav bar and top bar are fixed too, hence the height floor: an overlay is a screen-sized
+  // thing, a nav bar is 50px.
+  const overlayRoot = (() => {
+    const cands = [...document.querySelectorAll("[data-fullscreen-overlay], div")].filter(el => {
+      const cs = getComputedStyle(el);
+      if (cs.position !== "fixed" && cs.position !== "absolute") return false;
+      if ((+cs.zIndex || 0) < 40) return false;
+      const r = el.getBoundingClientRect();
+      return r.height > 240 && r.width > 200;
+    });
+    if (!cands.length) return null;
+    return cands.sort((a, b) => (+getComputedStyle(b).zIndex || 0) - (+getComputedStyle(a).zIndex || 0))[0];
+  })();
+  const root = overlayRoot || document.body;
+  const scoped = overlayRoot ? `overlay z=${getComputedStyle(overlayRoot).zIndex}` : "page";
+
   // The effective background behind an element: walk up until something actually paints. Without
   // this, every child of a card looks like it has "a background differing from its parent" the
   // moment the parent is transparent, and the count triples.
@@ -149,7 +171,7 @@ const collect = (screen) => page.evaluate((screen) => {
   };
 
   const isContainer = new WeakSet();
-  const all = [...document.querySelectorAll("*")];
+  const all = [...root.querySelectorAll("*")];
 
   for (const el of all) {
     const r = el.getBoundingClientRect();
@@ -190,7 +212,7 @@ const collect = (screen) => page.evaluate((screen) => {
       tag: el.tagName.toLowerCase(), role: el.getAttribute("role") || (el.tagName === "BUTTON" ? "button" : ""),
       text: (el.textContent || "").trim().slice(0, 40).replace(/\s+/g, " ") });
   }
-  return { containers, type };
+  return { containers, type, scoped };
 }, screen);
 
 let n = 0;
@@ -204,7 +226,7 @@ const shot = async (label, wait = 600) => {
   typography.push(...got.type);
   const cards = got.containers.filter(c => c.kind === 'card').length;
   const deep = got.containers.reduce((m, c) => Math.max(m, c.depth), 0);
-  console.log(`  ${name.padEnd(28)} ${String(got.containers.length).padStart(3)} containers  ${String(cards).padStart(2)} cards  depth ${deep}`);
+  console.log(`  ${name.padEnd(28)} ${String(got.containers.length).padStart(3)} containers  ${String(cards).padStart(2)} cards  depth ${deep}  [${got.scoped}]`);
 };
 // Scroll the app's real scroller. `body` is pinned `overflow:hidden` for the app's whole
 // lifetime (AppInner), so scrolling happens in inner containers and page.mouse.wheel is a no-op —

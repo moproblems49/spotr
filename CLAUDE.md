@@ -2781,10 +2781,22 @@ own PROFILE, which is the exact failure CLAUDE.md already documents. `scrollBy()
 tallest genuinely-scrollable element directly and REPORTS when nothing moved. **accent_audit.mjs
 still has both bugs** — its Body Battery shot is guarded by an `if` so it silently skips, and its
 scroll shots are duplicates; fix them if that tour is ever re-run for a lime re-measure.
-**Baseline (Aug 28, dark theme, 428×926):** 366 containers over 16 screens. Worst first —
-settings 11 cards/depth 3, body_battery_sheet 7/2, **tracker_home 7/1 (the landing screen)**,
-body_screen 6/2, history_scrolled 6/1. 14 distinct rendered radii (20px dominant at 87 uses, then
-8/47, 14/46, 10/42). Typography: 19 distinct rendered sizes, 59 size/weight/spacing/transform
+**★ AND ITS THIRD SELF-INFLICTED BUG IS THE ONE THAT MATTERED: AN OVERLAY DOES NOT REMOVE THE DOM
+BENEATH IT, AND THE FIRST RANKING WAS PARTLY MEASURING STACKED DOM.** `exercise_detail` reported
+**44 containers**, of which SIXTEEN were the Exercises tab's category chips (All/Chest/Back/…)
+sitting underneath the overlay, plus the nav bar and the streak badge. Settings and the Body
+Battery sheet are overlays over the profile and were inflated the same way. Scoped to the topmost
+overlay now (highest-z fixed/absolute element over 240px tall — the height floor is what keeps the
+50px nav bar from being mistaken for an overlay), and every line reports `[page]` or
+`[overlay z=…]` so a wrong root is visible rather than silently shaping the numbers. **Total went
+366 → 264: 28% of the original count was never on screen.** The lesson is the documented one hit
+from a new direction — and note it inverted two conclusions, not just the totals: exercise_detail
+is actually one of the LEAST contained screens (9 containers, 2 cards) and the Body Battery sheet
+has 2 cards, not 7. Both had been on the "worst screens" list.
+**Corrected baseline (Aug 28, dark theme, 428×926):** 264 containers over 16 screens. Worst first
+— **tracker_home 7 cards/depth 1 (the landing screen, and now unambiguously #1)**, settings 6/3,
+history_scrolled 6/1, profile_scrolled 4/2. 14 distinct rendered radii (20px dominant at 87 uses,
+then 8/47, 14/46, 10/42). Typography: 19 distinct rendered sizes, 59 size/weight/spacing/transform
 combos, 3 families.
 **Finding 1, FIXED: `DAY_CARD_COLORS` was a SURVIVING TWIN of the deleted `DAY_COLORS` rainbow.**
 Same positional indexing (`di % 7`), on the LANDING screen rather than the buried one the rainbow
