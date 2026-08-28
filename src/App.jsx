@@ -1,4 +1,4 @@
-// v178091716957
+// v178091716958
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6711,19 +6711,10 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
             if (!prog.shareCode && token) {
               // Generate code, save to DB
               try {
-                let code = generateShareCode("IGNITE");
-                // Try a few times if collision. Checked via the redeem RPC (not a direct table
-                // SELECT) since a collision is, by definition, someone else's row — RLS only
-                // lets you SELECT your own programs, but the RPC can see any row by exact code.
-                for (let i = 0; i < 5; i++) {
-                  const existing = await sb.rpc("redeem_program_by_code", { p_code: code }, token).catch(()=>[]);
-                  if (!existing || existing.length === 0) break;
-                  code = generateShareCode("IGNITE");
-                }
-                await sb.query(`programs?id=eq.${prog.id}`, {
-                  method: "PATCH",
-                  body: JSON.stringify({ share_code: code })
-                }, token);
+                const code = await mintShareCode("IGNITE", (c) => sb.query(
+                  `programs?id=eq.${prog.id}`,
+                  { method: "PATCH", body: JSON.stringify({ share_code: c }) },
+                  token));
                 const updated = { ...localProg, shareCode: code };
                 setLocalProg(updated);
                 if (onProgramEdited) onProgramEdited(updated);
@@ -7010,6 +7001,32 @@ const WSTART_KEY = "seshd_wstart";
 // reproduced with the fix "in place". Verified: seeded stamp present in the init script, null by
 // the time the app had booted.
 const LAST_ACTIVITY_KEY = "seshd_wlast_activity";
+
+// MINTING A SHARE CODE TRUSTS THE UNIQUE CONSTRAINT INSTEAD OF PRE-CHECKING FOR A COLLISION.
+// Both columns are already UNIQUE in the DB (`programs_share_code_key`, `workout_codes_pkey`), so
+// the old "look it up first" loop could not do the job better than the constraint — and it had a
+// real cost once the redeem RPCs became rate-limited: the lookup necessarily MISSES (the code is
+// brand new), so it recorded a failed-attempt against the SHARER's own bucket. Minting ten codes
+// in a minute rate-limited the owner out of redeeming anything, and it filled the abuse ledger
+// with legitimate owner activity. Found by a cold-context audit of the rate-limiting work.
+//
+// Retries only on 23505 (unique violation), which at 31^8 with a few thousand live codes is a
+// ~1e-8 event — the loop is a formality, not a hot path. Any other error propagates, so a genuine
+// failure still surfaces as "Couldn't generate share code" rather than being retried five times.
+async function mintShareCode(prefix, write) {
+  let lastErr = null;
+  for (let i = 0; i < 5; i++) {
+    const code = generateShareCode(prefix);
+    try {
+      await write(code);
+      return code;
+    } catch (e) {
+      lastErr = e;
+      if (!/23505|duplicate key/i.test(String(e?.message || ""))) throw e;
+    }
+  }
+  throw lastErr || new Error("Could not mint a unique share code");
+}
 
 // Inline code-redeem row used in the templates modal
 function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, initialCode = null }) {
@@ -11871,23 +11888,15 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                   if (!day || !token) { setShareModal(null); return; }
                   setShareModal({ stage:"code", kind:"day", name: day.name, generating: true });
                   try {
-                    let code = generateShareCode("WO");
-                    // Checked via the redeem RPC, not a direct table SELECT — see the
-                    // "Try a few times if collision" comment above for why.
-                    for (let i = 0; i < 5; i++) {
-                      const existing = await sb.rpc("redeem_workout_code", { p_code: code }, token).catch(()=>[]);
-                      if (!existing || existing.length === 0) break;
-                      code = generateShareCode("WO");
-                    }
-                    await sb.query("workout_codes", {
+                    const code = await mintShareCode("WO", (c) => sb.query("workout_codes", {
                       method: "POST",
                       body: JSON.stringify({
-                        code,
+                        code: c,
                         user_id: store.currentUserId || undefined,
                         day_name: day.name,
                         exercises: day.exercises || [],
                       })
-                    }, token);
+                    }, token));
                     setShareModal({ stage:"code", kind:"day", name: day.name, code, generating: false });
                   } catch (e) {
                     devError("workout code error:", e);
@@ -11920,18 +11929,10 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     setShareModal({ stage:"code", kind:"program", name: prog.name, generating: true });
                     if (token) {
                       try {
-                        let code = generateShareCode("IGNITE");
-                        // Checked via the redeem RPC, not a direct table SELECT — see the
-                        // "Try a few times if collision" comment in ProgramDetailView for why.
-                        for (let i = 0; i < 5; i++) {
-                          const existing = await sb.rpc("redeem_program_by_code", { p_code: code }, token).catch(()=>[]);
-                          if (!existing || existing.length === 0) break;
-                          code = generateShareCode("IGNITE");
-                        }
-                        await sb.query(`programs?id=eq.${prog.id}`, {
-                          method: "PATCH",
-                          body: JSON.stringify({ share_code: code })
-                        }, token);
+                        const code = await mintShareCode("IGNITE", (c) => sb.query(
+                          `programs?id=eq.${prog.id}`,
+                          { method: "PATCH", body: JSON.stringify({ share_code: c }) },
+                          token));
                         if (onSaveProgram) onSaveProgram({ ...prog, shareCode: code });
                         setShareModal({ stage:"code", kind:"program", name: prog.name, code, generating: false });
                       } catch (e) {

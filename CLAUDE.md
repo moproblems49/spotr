@@ -1166,6 +1166,29 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   threw with the server's message and the catch was discarding it; the refusal now surfaces as
   "Too many invalid codes — wait a minute and try again" while an ordinary wrong code still says
   "Code not found". Sim: `pw_redeemlimit` (both branches; red-proofed by restoring the discard).
+  **★ AND A COLD-CONTEXT AUDIT FOUND THE COUPLING THAT MADE SHARING SPEND THE OWNER'S OWN BUDGET.**
+  Minting a share code used to look the new code up first, "to check for a collision" — a lookup
+  that by definition MISSES, so it recorded a failed attempt against the SHARER's bucket. Minting
+  ten codes in a minute locked the owner out of redeeming anything and filled the abuse ledger with
+  legitimate owner activity. **The fix was a deletion**: both columns are ALREADY UNIQUE in the DB
+  (`programs_share_code_key`, `workout_codes_pkey`), so the constraint was always the real guard and
+  a pre-check could never do better. `mintShareCode(prefix, write)` writes and retries only on 23505
+  (a ~1e-8 event at 31^8), and any other error propagates so a genuine failure still surfaces
+  instead of being retried five times. Three call sites converted. Sim: `pw_sharecode` — whose first
+  version PASSED VACUOUSLY because the program never rendered (seeded into localStorage only, and
+  `loadUserData` replaces `programs` wholesale from the server), so "zero redeem calls" was true
+  only because nothing had happened; seed through the STUB. Red-proofed by restoring the pre-check:
+  the other three checks stay green and only the budget check fails, naming the cause.
+  **What that audit VERIFIED rather than assumed, worth keeping:** RLS on `programs`/`workout_codes`
+  restricts SELECT to your own rows (proven by ROW COUNT — a signed-in stranger sees 0), so the RPC
+  really is the only path to a foreign code and the limit is load-bearing rather than decoration;
+  a spoofed `cf-connecting-ip` is **403'd by Cloudflare at the edge** and never reaches the app,
+  while a spoofed `x-forwarded-for` reaches it and the function still records the TRUE IP; the three
+  helpers are DENIED to anon and authenticated under `SET LOCAL ROLE`; a successful redeem records
+  zero failures (both functions); and the sql→plpgsql rewrite kept both return signatures
+  byte-identical. Residual, not actionable today: the whole IP-keying rests on Supabase continuing
+  to front `*.supabase.co` with Cloudflare — if a direct-to-origin path ever existed, every anon
+  caller would collapse into the shared `unknown` bucket.
 - **Storage buckets need a size limit AND a MIME allowlist.** `images` is publicly readable and had
   neither, so a signed-in user could upload arbitrary files of unbounded size served from the project
   domain (free file hosting, uncapped bill, SVG/HTML carrying script). All three buckets are now
