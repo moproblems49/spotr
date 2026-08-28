@@ -1,4 +1,4 @@
-// v178091716947
+// v178091716948
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2118,11 +2118,26 @@ const genUUID = () => {
 // Excludes ambiguous chars: 0, O, 1, I, L
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function generateShareCode(prefix = "IGNITE") {
-  // 6 chars (32^6 ≈ 1.07B combinations) — a 4-char suffix (32^4 ≈ 1M) was brute-forceable
-  // over the public redeem RPC, which has no rate limit. Old 4-char codes already issued
-  // still work fine (the redeem lookup is an exact string match either length).
+  // 8 chars. CODE_CHARS is 31 symbols (I/L/O and 0/1 dropped so a code can be read aloud and
+  // typed), so 31^8 ≈ 8.5e11. The redeem RPCs are SECURITY DEFINER, callable by anon, and get NO
+  // rate limiting — PostgREST function calls don't go through Supabase Auth's throttling — so the
+  // only thing standing between a guesser and someone else's program is the size of the space.
+  //
+  // WHY 8 AND NOT 6: the exposure scales with SUCCESS, not with time. What matters is the odds of
+  // hitting ANY live code, i.e. space ÷ codes-in-use. At 100 guesses/sec: 6 chars is 51 days with
+  // 2 codes live but only ~2.5 HOURS at a thousand shared programs and ~12 minutes at ten
+  // thousand. 8 chars turns those into ~99 days and ~10 days. The prize is a workout program, not
+  // credentials, so that is a sensible place to stop.
+  //
+  // WHY NOT 10: PostCard's caption detector is /(IGNITE-[A-Z0-9]{4,8}|WO-[A-Z0-9]{4,8})/i, so 8 is
+  // the longest suffix it recognises — a 10-char code would still redeem when typed but the
+  // "Import" chip would silently stop appearing on shared posts. Widen that regex FIRST if this
+  // ever grows again. The real control is rate-limiting the redeem RPC; length only buys time.
+  //
+  // Old 4- and 6-char codes already issued still redeem (the lookup is an exact string match at
+  // any length). The two legacy 4-char codes in prod were rotated on Aug 28 2026.
   let suffix = "";
-  for (let i = 0; i < 6; i++) suffix += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  for (let i = 0; i < 8; i++) suffix += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
   return `${prefix}-${suffix}`;
 }
 function normalizeShareCode(input) {

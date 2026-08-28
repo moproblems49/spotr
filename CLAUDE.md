@@ -1108,11 +1108,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   `anon`, and bypass RLS entirely by design (the whole feature is "look this up by a code you don't
   need an account to redeem"). `generateShareCode()` was already bumped from a 4-char suffix
   (32^4 ≈ 1M combinations — confirmed brute-forceable) to 6 chars (32^6 ≈ 1.07B) for exactly this
-  reason. **Residual, not yet acted on:** old 4-char codes already issued still redeem (backward
-  compat, by design) and are NOT rotated — a live one was found in production (`IGNITE-5W7E`).
-  Rotating it isn't free: share codes get embedded directly in post captions ("Try my program:
-  IGNITE-5W7E"), so a rotated code silently breaks an already-posted caption. Decide with the user
-  before rotating any live code. No evidence of server-side rate limiting on the RPC either — Postgres
+  reason. **Aug 28 2026: bumped again to 8 chars and both legacy codes rotated** (Mo's call).
+  The argument for 8 is that exposure scales with SUCCESS, not time — the odds of hitting ANY live
+  code are space ÷ codes-in-use, so at 100 guesses/sec a 6-char code is 51 days with 2 codes live
+  but ~2.5 HOURS at a thousand shared programs and ~12 minutes at ten thousand; 8 makes those ~99
+  and ~10 days. **8 is also the CEILING, not an arbitrary pick**: `PostCard`'s caption detector is
+  `/(IGNITE-[A-Z0-9]{4,8}|WO-[A-Z0-9]{4,8})/i`, so a 10-char code would still redeem when typed
+  while the "Import" chip silently stopped appearing on every shared post — widen that regex FIRST
+  if this ever grows again. Rotation was safe because all 54 captions mentioning the live code were
+  Mo's OWN (checked before acting: `distinct_authors_overall = 1`), so the same transaction
+  rewrote them; `group_posts` went through the `set_config('request.jwt.claims',…)` author loop per
+  the trigger. Verified by CALLING the real RPCs: new codes return 1 row, old return 0. Backup:
+  `sharecode_rotation_backup_20260828`. **Still open and NOT fixed by length: the redeem RPCs have
+  no rate limiting** — PostgREST function calls bypass Supabase Auth's throttling entirely, so
+  length only raises the cost of guessing. That is the real control when volume arrives. No evidence of server-side rate limiting on the RPC either — Postgres
   functions called via PostgREST don't get Supabase Auth's throttling, only whatever the platform's
   general API gateway happens to apply.
 - **Storage buckets need a size limit AND a MIME allowlist.** `images` is publicly readable and had
