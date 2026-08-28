@@ -1,4 +1,4 @@
-// v178091716946
+// v178091716947
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -256,8 +256,27 @@ const sb = (() => {
         data: { username, name }
       }),
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message || data.msg || "Signup failed");
+    const data = await res.json().catch(() => ({}));
+    // ★ A FAILED SIGNUP MUST NOT LOOK LIKE A SUCCESSFUL ONE. GoTrue reports failures as
+    // { code, error_code, msg } with NO `error` key, so the old `if (data.error)` test never fired
+    // on a real failure: a 500 fell straight through, AuthScreen saw no access_token, took the
+    // email-confirmation branch, and told the user "Account created! Check your email to confirm"
+    // for an account that does not exist — they can never sign in and no email ever arrives.
+    // signIn, recover and updatePassword all check res.ok; signUp was the one that never got the
+    // guard (the same one-guard-didn't-get-copied shape as the sign-out key clearing).
+    if (!res.ok || data.error || data.error_code) {
+      const raw = String(data.error?.message || data.msg || data.error_description || data.error || "");
+      // handle_new_user inserts (id, username, name) and username is UNIQUE (raw AND lowercased),
+      // so it is the only constraint that trigger can violate — which makes GoTrue's opaque
+      // "Database error saving new user" on THIS endpoint mean "that handle is taken". Verified
+      // against the live DB with a rolled-back probe: 23505 on profiles_username_key. There is no
+      // availability check before submit, so this message is the only thing that tells the user.
+      if (/database error saving new user/i.test(raw))
+        throw new Error("That username is already taken — please pick another.");
+      if (/already registered|already been registered|user_already_exists/i.test(raw))
+        throw new Error("An account with that email already exists — try signing in instead.");
+      throw new Error(raw || "Signup failed");
+    }
     return data;
   }
 

@@ -688,6 +688,28 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   library-invisible near-misses — the documented demo-corpus class, reproduced inside a guard the
   same week that story was retold — silently making Quads a second untested zero. Resolve every
   fixture exercise through `getExEntry` before trusting a muscle fixture.
+- **★ A FAILED SIGNUP TOLD THE USER THEIR ACCOUNT WAS CREATED, AND THE ONLY THING THAT COULD HAVE
+  TOLD THEM OTHERWISE WAS THE ONE AUTH CALL MISSING ITS `res.ok` CHECK.** `profiles.username` is
+  UNIQUE (raw AND `lower(username)`) and `handle_new_user` inserts it with no collision handling,
+  so picking a taken handle raises 23505 INSIDE the trigger and aborts the whole `auth.users`
+  insert (verified with a rolled-back probe against prod: `duplicate key … profiles_username_key`).
+  GoTrue reports that as `{ code:500, error_code:"unexpected_failure", msg:"Database error saving
+  new user" }` — **no `error` key** — and `sb.signUp` tested only `data.error`, never `res.ok`. So
+  nothing threw: AuthScreen saw no `access_token`, took the email-confirmation branch, and showed
+  **"Account created! Check your email to confirm, then sign in."** for an account that does not
+  exist. No email ever arrives, every sign-in fails, and **there is no username availability check
+  anywhere before submit**, so that false success was the user's only feedback. `signIn`, `recover`
+  and `updatePassword` ALL check `res.ok` — signUp was the one that never got the guard, the same
+  one-guard-didn't-get-copied shape as the sign-out key clearing. Fixed: check `res.ok ||
+  data.error || data.error_code`, and map the opaque trigger failure to "That username is already
+  taken" (safe to name it: username is the only unique constraint that trigger can violate).
+  **Sim: `pw_signupguard`, which asserts BOTH directions** — a 500 must not claim success, and a
+  200 must still authenticate, because the new guard sits directly on the signup happy path and
+  breaking that would be worse than the bug. Red-proofed: 3 failures on the old code with the
+  happy-path checks staying green. Probe lesson recorded twice over: **Playwright gives precedence
+  to the MOST RECENTLY REGISTERED matching route**, so a catch-all `**/auth/v1/**` added last
+  swallows the specific `/signup` stub — the first draft reported four app failures that were
+  entirely its own (`signupCalled` was false, which is what gave it away).
 - **★ `Prefer: resolution=merge-duplicates` WITHOUT `?on_conflict=` RESOLVES AGAINST THE PRIMARY
   KEY — WHICH A FRESH INSERT NEVER HITS — SO EVERY "UPSERT" ON A SECONDARY UNIQUE KEY WAS AN
   INSERT THAT 23505'D.** Found by a routine logs sweep, not a report: **1,650 identical Postgres
