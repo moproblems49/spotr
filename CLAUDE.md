@@ -1391,6 +1391,31 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   any volume/set/PR maths. `pw_unposted` is its companion: an unposted workout must stay out of the
   FEED while still counting toward workouts, lifetime volume, the weekly chart, PRs, muscle balance,
   streak and Body Battery — all 17 checks assert exactly that.
+- **★ EVERY FIXTURE IN THIS BATTERY STARTS WITH DATA ALREADY IN THE STORE, WHICH IS WHY THE
+  NEW-USER PATH KEEPS SHIPPING BUGS.** `pw_journey` walks signup and then immediately logs a
+  workout; every other suite seeds history, PRs or a program. So the state nothing covered was the
+  one three shipped bugs lived in: an account that is signed in, onboarded and holding NOTHING
+  (`PROGRAM_TEMPLATES` — every new signup got the error boundary for twelve days; the onboarding
+  starter program's bare `setStore`; import-by-code). `pw_freshaccount` seeds exactly that store —
+  no history, no prs, no prEvents, no programs, no posts, no bodyLog, no activityHourly — and
+  walks all four tabs, History, the Weekly Review and the profile's composites. **The store's
+  emptiness IS the fixture**: adding a convenience default to it switches off the whole file.
+  What it asserts, and why each one rather than "the screen has text on it": each tab's OWN
+  empty-state copy (the three that were deliberately made different from each other would still
+  put text on all three if a regression collapsed them back onto one template); History's three
+  stat tiles read a real `0` (a missing value renders as an empty box that reads as a permanent
+  loading state); the Weekly Review's zero-data copy specifically, because that feature had NEVER
+  once run and its `todayMs` ReferenceError surfaced as a generic error state with no cause;
+  Body Battery saying **"Est. start"** and not "Woke at" (with no HealthKit there is no measured
+  wake — the number is honest only because the label says estimate) plus a finite 0-100 level;
+  and the strength score staying GATED behind its unlock copy rather than printing a number
+  derived from a bodyweight nobody logged. Plus a junk sweep over every screen's rendered text
+  (`NaN`/`Infinity`/`undefined`/`[object Object]`/`▲ 0%`) — the tells of a number computed from
+  nothing, which is the specific failure mode of "no data yet". Red-proofed three ways
+  (caption forced to "Woke at"; the zero-data review replaced with an error state; a `NaN` injected
+  into the profile), each check failing on its own. **The audit that produced it found NOTHING
+  broken** — every empty state was already real, specific copy — which is precisely why it became a
+  file: a clean walk with no standing guard is worth nothing next month.
 - **Where an UNPOSTED workout belongs (settled, Aug 1):** History and your OWN profile — never the
   feed. `ProfileScreen.profileHistoryItems` builds cards from all of `store.history` when `isMe`,
   minus the ones already shared as posts, so your Workouts count = posted + unposted; viewers other
