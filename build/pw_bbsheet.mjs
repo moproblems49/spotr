@@ -66,7 +66,15 @@ const m = await page.evaluate(() => {
   const title = [...sheet.querySelectorAll("span")].find(s => /^Body Battery$/i.test(s.textContent.trim()));
   return {
     sheetTop: Math.round(r.top), sheetBottom: Math.round(r.bottom), vh: innerHeight,
+    // The scroll may live on the panel itself OR, when the sheet carries a drag handle, on an
+    // inner wrapper — Sheet moves it there deliberately, because a handle inside a momentum
+    // scroller is claimed by iOS before any JS runs. Assert that SOMETHING in the sheet scrolls,
+    // not that one particular node does; nothing scrolling is still a failure.
     overflowY: cs.overflowY,
+    scrollsSomewhere: [sheet, ...sheet.querySelectorAll("*")].some(el => {
+      const oy = getComputedStyle(el).overflowY;
+      return oy === "auto" || oy === "scroll";
+    }),
     declaresTopInset: /safe-area-inset-top/.test(sheet.getAttribute("style") || ""),
     titleTop: title ? Math.round(title.getBoundingClientRect().top) : null,
   };
@@ -80,7 +88,7 @@ check("the title is visible, not off the top", m && m.titleTop !== null && m.tit
 check("the sheet reserves the status-bar inset in its own height",
   m && m.declaresTopInset, JSON.stringify(m));
 check("over-tall content scrolls INSIDE the sheet rather than overflowing it",
-  m && /auto|scroll/.test(m.overflowY), JSON.stringify(m));
+  m && m.scrollsSomewhere, JSON.stringify(m));
 check("it still sits on the bottom edge (it is a bottom sheet)",
   m && Math.abs(m.sheetBottom - m.vh) <= 1, JSON.stringify(m));
 

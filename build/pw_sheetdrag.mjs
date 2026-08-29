@@ -74,6 +74,53 @@ await openSheet();
 check("sheet reopens cleanly after a drag-close", await sheetOpen());
 check("reopened panel is at rest, not stuck at the drag offset", Math.abs(await panelY()) < 3, `translateY=${await panelY()}`);
 
+// 4. ★ THE HANDLE MUST NOT LIVE INSIDE A SCROLLING CONTAINER.
+// This is the property that was actually broken, and it is iOS-only in EFFECT: a touch beginning
+// inside a momentum scroller is claimed by WebKit's compositor before any JS runs, and
+// touch-action on a child cannot take it back. Chromium happily dragged the handle throughout, so
+// checks 1-3 passed on a build where the gesture did nothing on a real phone. Chromium cannot
+// reproduce the gesture — but it CAN verify the structure, which is the same lesson as the
+// pan-y reorder grip: the property is the bug, so assert the property.
+await openSheet();
+const structure = await page.evaluate(() => {
+  const h = document.querySelector('[data-sheet-handle="1"]');
+  if (!h) return { found:false };
+  const panel = h.parentElement;
+  let scrollingAncestor = null;
+  for (let el = h.parentElement; el && el !== document.body; el = el.parentElement) {
+    const oy = getComputedStyle(el).overflowY;
+    if (oy === "auto" || oy === "scroll") { scrollingAncestor = el.tagName + "." + (el.className || "(no class)"); break; }
+  }
+  return { found:true, scrollingAncestor, touchAction: getComputedStyle(h).touchAction,
+           panelDisplay: getComputedStyle(panel).display };
+});
+check("handle exists on the reopened sheet", structure.found);
+check("handle is NOT inside a scrolling container (iOS would claim the gesture)",
+  structure.scrollingAncestor === null,
+  `nearest scrolling ancestor: ${structure.scrollingAncestor}`);
+check("handle still declares touch-action:none", structure.touchAction === "none", structure.touchAction);
+
+// 5. The sheets that opted in must ACTUALLY have a handle — it was opt-in and only ONE of fifteen
+// sheets had ever passed the prop, which is why "it doesn't work on any other sheet" was correct.
+await page.evaluate(() => { const b=[...document.querySelectorAll("button")].find(x=>/^Close$/.test((x.textContent||"").trim())); b&&b.click(); });
+await page.waitForTimeout(700);
+await page.evaluate(() => { const b=[...document.querySelectorAll("button")].find(x=>(x.getAttribute("aria-label")||"")==="Settings"); b&&b.click(); });
+await page.waitForTimeout(900);
+const settings = await page.evaluate(() => {
+  const h = document.querySelector('[data-sheet-handle="1"]');
+  if (!h) return { found:false };
+  let scrollingAncestor = null;
+  for (let el = h.parentElement; el && el !== document.body; el = el.parentElement) {
+    const oy = getComputedStyle(el).overflowY;
+    if (oy === "auto" || oy === "scroll") { scrollingAncestor = el.tagName; break; }
+  }
+  return { found:true, isSettings: /Settings/.test(h.parentElement.textContent || ""), scrollingAncestor };
+});
+check("a SECOND sheet (Settings) also has a drag handle", settings.found && settings.isSettings,
+  JSON.stringify(settings));
+check("and its handle is outside the scroller too", settings.scrollingAncestor === null,
+  `nearest scrolling ancestor: ${settings.scrollingAncestor}`);
+
 await b.close();
 console.log(fails ? `${fails} FAIL(S)` : "ok");
 process.exit(fails ? 1 : 0);

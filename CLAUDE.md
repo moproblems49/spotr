@@ -3091,6 +3091,45 @@ rotation through abduction is real, if debated. **Squat/leg-press → Hamstrings
 and deliberately LEFT** (Mo's call): genuinely contested in the literature, unlike the isolation
 cases.
 
+## ★ Swipe-to-close was wired to 1 of 15 sheets, and broken on that one (Aug 29, 2026)
+Mo, from the device: "the swipe down to close doesn't work on Body Battery sheet or any other
+sheet." **Both halves were true and they were different bugs.**
+**It was opt-in and only ONE caller had ever opted in.** `dragHandle` was passed to the Body
+Battery sheet and to none of the other fourteen — the feature shipped believing "all nineteen
+sheets can take it", which was a statement about the COMPONENT, not about the app. Same shape as
+the dead `showGroupShare` UI: capability built, call sites never wired. Nine sheets have it now;
+the deliberately non-dismissible ones (`workoutSummary`, `AICoachModal`, both `onClose={() => {}}`)
+and the small `postMenu` do not.
+**★ AND ON THE ONE THAT HAD IT, THE HANDLE SAT INSIDE THE SCROLLER.** The Body Battery panel is
+itself the scroll container (`overflowY:auto` + `WebkitOverflowScrolling:touch`) and `Sheet`
+rendered the handle inside it. On iOS a touch that begins inside a momentum scroller is claimed by
+WebKit's compositor **before any JS runs**, and `touch-action:none` on a child cannot take it back
+— the same class as the `pan-y` reorder grip, and equally invisible in Chromium. `pw_sheetdrag`
+dispatched real TouchEvents, watched the panel follow the finger, and passed throughout. **When a
+handle is present the panel is now a flex column and the caller's scrolling moves to an inner
+element below the handle.**
+**The guard is STRUCTURAL, because the gesture one cannot see this.** `pw_sheetdrag` now asserts
+the handle has no scrolling ancestor. Red-proofed: restoring the old shape leaves every gesture
+check GREEN and fails only the structural one — which is the whole lesson, stated once more: the
+property is the bug, so assert the property.
+**Two regressions the battery caught, both mine, both worth keeping as rules.**
+(1) **Three sheets already drew their own decorative grab bar** (`width:36,height:4`), so enabling
+the real one rendered TWO — and on the finish sheet, which has no `maxHeight`, the extra height
+pushed its buttons out of the viewport. Grep for the hand-drawn shape before adding a component
+that draws it. `GroupDetail`'s copy stays: that sheet has no `dragHandle`.
+(2) **★ A WRAPPER BETWEEN A FLEX PARENT AND A `flex:1` CHILD SILENTLY KILLS THE SCROLL.** The first
+cut wrapped children unconditionally. Settings manages its own column layout — fixed header plus
+its own `flex:1` scroller — so the new non-flex div between panel and scroller left it unable to
+scroll: Playwright scrolled, and Sign Out stayed "outside of the viewport". The wrapper is now
+interposed ONLY when scroll keys were actually extracted (`needsInner`), and the flex defaults are
+spread BEFORE the caller's `panelStyle` so a caller that declares its own layout still wins.
+**A string with leading whitespace matches INSIDE a more-indented line.** Removing the duplicate
+handles by `s.count(...) == 1` failed because the 14-space form is a substring of the 16-space one.
+Match whole lines (`ln.strip() in targets`) when the only difference is indentation.
+**`pw_bbsheet` needed loosening in the RIGHT direction**: it asserted `overflowY` on the PANEL,
+which no longer owns the scroll. It now asserts that SOMETHING inside the sheet scrolls — still
+red if nothing does, so the invariant it protects is intact while the node assumption is gone.
+
 ## ★ Account deletion, completed (Aug 29, 2026) — and MOST of the "gaps" were never gaps
 Mo asked for the account-deletion completeness work to be taken on. **The first thing it produced
 was a correction to the list that prompted it.** An earlier audit flagged `notifications`,

@@ -1,4 +1,4 @@
-// v178091716967
+// v178091716969
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1424,13 +1424,10 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               })()}
               <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000} dragHandle
                 panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`,
-                  // boxSizing is load-bearing on THIS one, not cosmetic: with the content-box
-                  // default (this app has no global border-box reset) the ~40px of vertical
-                  // padding below is added ON TOP of maxHeight, so once the content is tall enough
-                  // to hit the cap the sheet renders taller than the cap was meant to allow. It is
-                  // bottom-anchored, so the overflow clips the TOP — the title and the battery
-                  // score — which is the exact failure this maxHeight was added to prevent (see
-                  // the "tall BOTTOM sheet pushes its own header off the TOP" note in CLAUDE.md).
+                  // boxSizing stays, but the trap it was guarding is gone: with `dragHandle` set,
+                  // Sheet moves the padding and the scrolling to an inner element, so the padding
+                  // is no longer added on top of this maxHeight. Kept because it costs nothing and
+                  // is correct regardless of which element ends up carrying the padding.
                   boxSizing:"border-box",
                   maxHeight:"calc(100dvh - env(safe-area-inset-top) - 10px)",
                   overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
@@ -1714,7 +1711,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
         </>
       )}
       </div>
-      <Sheet open={!!selectedRegion} onClose={() => setSelectedRegion(null)} z={3000}
+      <Sheet open={!!selectedRegion} onClose={() => setSelectedRegion(null)} z={3000} dragHandle
         panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`, padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
       {selectedRegion && (() => {
         const { key, region: regionName } = selectedRegion;
@@ -1770,7 +1767,6 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           : "Under the ~4-set minimum effective dose for growth.";
         return (
           <>
-              <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14 }}>
                 <span style={{ fontSize:16, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{label}</span>
                 <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, color:_readyColor(readyT, C) }}>
@@ -7921,6 +7917,31 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
   }, [open]);
   if (!render) return null;
   const ease = shown ? EASE_NAV : EASE_EXIT;
+  // ★ THE HANDLE MUST NOT SIT INSIDE THE SCROLLING REGION. On iOS a touch that begins inside a
+  // momentum scroller (`-webkit-overflow-scrolling:touch`) is claimed by WebKit's compositor
+  // before any JS runs, and `touch-action:none` on a child cannot take it back — the same class
+  // as the `pan-y` reorder grip, and equally invisible in Chromium, where the suite passed while
+  // the gesture did nothing on a real phone. So when a handle is present the panel becomes a flex
+  // column and the caller's scrolling moves to an inner element BELOW the handle.
+  // Side effect worth knowing: this also retires the boxSizing trap the Body Battery sheet
+  // documents, because the padding is no longer added on top of the panel's own maxHeight.
+  const ps = panelStyle || {};
+  const SCROLL_KEYS = ["overflow", "overflowX", "overflowY", "WebkitOverflowScrolling",
+                       "overscrollBehavior", "padding", "paddingTop", "paddingBottom",
+                       "paddingLeft", "paddingRight"];
+  const outerStyle = { ...ps };
+  const innerStyle = {};
+  if (dragHandle) {
+    for (const k of SCROLL_KEYS) {
+      if (k in outerStyle) { innerStyle[k] = outerStyle[k]; delete outerStyle[k]; }
+    }
+  }
+  // Only interpose a wrapper when there was actually something to move. A sheet that already
+  // manages its own column layout (Settings: a fixed header plus its own `flex:1` scroller) owns
+  // nothing here, and wrapping its children would put a non-flex div between the panel and that
+  // scroller — which silently kills the scroll, because `flex:1` needs a flex PARENT. That is
+  // what broke Sign Out: Playwright scrolled, and the element stayed outside the viewport.
+  const needsInner = dragHandle && Object.keys(innerStyle).length > 0;
   const node = (
     <div {...backdropProps} onClick={onClose} ref={backRef}
       style={{ position:"fixed", inset:0, background:backdrop, zIndex:z, display:"flex",
@@ -7933,14 +7954,25 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
         style={{ width:"100%", maxWidth:480, margin:"0 auto",
                  transform: shown ? "translateY(0)" : "translateY(101%)",
                  transition:`transform ${SHEET_MS}ms ${ease}`, willChange:"transform",
-                 ...panelStyle }}>
+                 // Defaults FIRST so a caller that declares its own layout still wins.
+                 ...(dragHandle ? { display:"flex", flexDirection:"column" } : null),
+                 ...outerStyle }}>
         {dragHandle && (
           <div {...handleProps} data-sheet-handle="1" aria-label="Drag down to close" role="button" tabIndex={-1}
-            style={{ padding:"10px 0 6px", cursor:"grab", touchAction:"none", display:"flex", justifyContent:"center" }}>
+            style={{ padding:"10px 0 6px", cursor:"grab", touchAction:"none", display:"flex",
+                     justifyContent:"center", flex:"0 0 auto" }}>
             <div style={{ width:36, height:4, borderRadius:2, background:"rgba(128,128,128,0.45)" }}/>
           </div>
         )}
-        {open ? children : last.current}
+        {needsInner
+          ? (
+            // minHeight:0 is load-bearing on a flex child that scrolls — without it the child
+            // refuses to shrink below its content and the panel grows past its own maxHeight.
+            <div style={{ ...innerStyle, flex:"1 1 auto", minHeight:0 }}>
+              {open ? children : last.current}
+            </div>
+          )
+          : (open ? children : last.current)}
       </div>
     </div>
   );
@@ -10854,11 +10886,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         })()}
 
         {/* Finish modal */}
-        <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200}
+        <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200} dragHandle
           panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", borderTop:`1px solid ${C.border}` }}>
           {showFinish && (
             <>
-              <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
               <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish workout"}</button>
@@ -10883,13 +10914,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </Sheet>
 
         {/* Group share picker (Save & send to groups path - skips feed) */}
-        <Sheet open={showGroupShare} onClose={() => setShowGroupShare(false)} z={200}
+        <Sheet open={showGroupShare} onClose={() => setShowGroupShare(false)} z={200} dragHandle
           panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto", borderTop:`1px solid ${C.border}` }}>
         {showGroupShare && (() => {
           const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
           return (
             <>
-                <div style={{ width:36, height:4, background:C.divider, borderRadius:2, margin:"0 auto 18px" }}/>
                 <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Send to groups</div>
                 <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>Workout will only be visible in selected groups, not the feed.</div>
 
@@ -14060,7 +14090,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       ), document.body)}
 
       {/* Feedback modal — portaled for the same reason as above. */}
-      <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000}
+      <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000} dragHandle
         panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`, padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
         {showFeedback && (
           <>
@@ -14135,7 +14165,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {/* The two touch handlers are load-bearing and pass straight through: the backdrop swallows
           a drag that starts on itself so the page behind cannot scroll, and the panel stops its
           own drags reaching it so the settings list still scrolls. */}
-      <Sheet open={showSettings} onClose={() => setShowSettings(false)} z={3000}
+      <Sheet open={showSettings} onClose={() => setShowSettings(false)} z={3000} dragHandle
         backdropProps={{ onTouchMove: (e) => { if (e.target === e.currentTarget) e.preventDefault(); }, style:{ touchAction:"none" } }}
         panelProps={{ onTouchMove: (e) => e.stopPropagation() }}
         panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>

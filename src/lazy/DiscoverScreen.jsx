@@ -679,7 +679,7 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
         </div>
       ))}
 
-      <Sheet open={showCreate} onClose={() => setShowCreate(false)} z={300}
+      <Sheet open={showCreate} onClose={() => setShowCreate(false)} z={300} dragHandle
         panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", padding:"18px 18px 32px", borderTop:`1px solid ${C.border}` }}>
         {showCreate && (
           <>
