@@ -1,4 +1,4 @@
-// v178091716966
+// v178091716967
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13163,6 +13163,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${getTok()}` },
+          // The only field the function accepts, and it names no target — it picks a policy for
+          // the caller's OWN created groups. Absent/false means the DB trigger transfers them.
+          body: JSON.stringify({ deleteGroups: deleteOwnedGroups === true }),
         });
         const body = await res.json().catch(() => null);
         authDeleteOk = res.ok && body?.ok === true;
@@ -13381,6 +13384,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const [moreOpen, setMoreOpen] = useState(false); // overflow menu (Report / Block) for other users
   const [showDelete, setShowDelete] = useState(false);
   const [deleteText, setDeleteText] = useState("");
+  // Groups this user CREATED that still have other members. Deleting the account hands each one
+  // to its longest-standing remaining member by default (a DB trigger does it, so it holds on
+  // every deletion path) — but the creator may want the group gone instead, and they have no
+  // other way to say so: there is no delete-group UI anywhere in the app.
+  const [ownedGroups, setOwnedGroups] = useState([]);
+  const [deleteOwnedGroups, setDeleteOwnedGroups] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [listModal, setListModal] = useState(null); // "followers" | "following" | null
   // Lock the page behind full-screen/bottom-sheet overlays so scrolling inside them
@@ -13394,6 +13403,24 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   // Declared after the state it reads: a deps array is evaluated during render, so naming a
   // `const [x] = useState()` from further down is a TDZ ReferenceError, not a stale value.
   useEffect(() => {
+    // Load the owned-group list when the delete modal opens. Read-only and best-effort: if it
+    // fails the modal simply doesn't offer the choice, and the server default (transfer) applies.
+    if (showDelete) {
+      setDeleteOwnedGroups(false);
+      (async () => {
+        try {
+          const rows = await sb.query(
+            `groups?created_by=eq.${currentUserId}&select=id,name,member_ids`, {}, token);
+          setOwnedGroups((Array.isArray(rows) ? rows : [])
+            .map(g => ({ id: g.id, name: g.name,
+                         others: (Array.isArray(g.member_ids) ? g.member_ids : [])
+                                   .filter(m => m !== currentUserId).length }))
+            .filter(g => g.others > 0));
+        } catch { setOwnedGroups([]); }
+      })();
+    } else {
+      setOwnedGroups([]);
+    }
     const open = showSettings || showBody || showDelete || showEdit;
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -14060,6 +14087,37 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>
               This permanently erases your workouts, programs, PRs, body log, posts, and profile. This cannot be undone. Consider exporting your data first.
             </div>
+            {ownedGroups.length > 0 && (
+              <div style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, padding:12, marginBottom:16 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:C.text, marginBottom:2 }}>
+                  You created {ownedGroups.length} group{ownedGroups.length === 1 ? "" : "s"} with other members
+                </div>
+                <div style={{ fontSize:11, color:C.sub, lineHeight:1.5, marginBottom:10 }}>
+                  {ownedGroups.map(g => g.name).join(" · ")}
+                </div>
+                {[
+                  { v:false, t:"Hand them over", d:"The group stays. Another member becomes the owner." },
+                  { v:true,  t:"Delete them",     d:"The group and every member's posts in it are erased." },
+                ].map(o => (
+                  <button key={String(o.v)} onClick={() => setDeleteOwnedGroups(o.v)} disabled={deleting}
+                    aria-pressed={deleteOwnedGroups === o.v}
+                    style={{ display:"flex", alignItems:"flex-start", gap:9, width:"100%", textAlign:"left",
+                             background:"none", border:"none", padding:"7px 0", cursor:"pointer", fontFamily:F }}>
+                    <div style={{ width:16, height:16, borderRadius:"50%", flexShrink:0, marginTop:1,
+                                  border:`1.5px solid ${deleteOwnedGroups === o.v ? "#ef4444" : C.divider}`,
+                                  display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      {deleteOwnedGroups === o.v && (
+                        <div style={{ width:8, height:8, borderRadius:"50%", background:"#ef4444" }}/>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:600, color:C.text }}>{o.t}</div>
+                      <div style={{ fontSize:11, color:C.sub, lineHeight:1.45 }}>{o.d}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>Type <span style={{ fontWeight:700, color:C.text, fontFamily:MONO }}>DELETE</span> to confirm</div>
             <input value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder="DELETE" autoCapitalize="characters"
               style={{ width:"100%", background:C.bg, border:`1.5px solid ${deleteText.trim().toUpperCase()==="DELETE" ? "#ef4444" : C.divider}`, borderRadius:10, padding:"11px 13px", fontSize:15, fontWeight:700, color:C.text, outline:"none", fontFamily:MONO, boxSizing:"border-box", marginBottom:16, letterSpacing:1 }}/>

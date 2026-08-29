@@ -73,6 +73,9 @@ async function runDeleteFlow(rowDeleteStatus, opts = {}) {
     // that stopped selecting image_url would read undefined rather than a path.
     if (/\/rest\/v1\/group_posts\?/.test(u) && m === "GET")
       return J([{ image_url: GROUP_PATH }]);
+    // The delete modal reads the caller's own created groups to offer the transfer/delete choice.
+    if (/\/rest\/v1\/groups\?created_by=/.test(u) && m === "GET")
+      return J(opts.ownedGroups ?? []);
     if (/\/rest\/v1\/(public_)?profiles\?/.test(u))
       return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true }]);
     return J([]);
@@ -80,7 +83,7 @@ async function runDeleteFlow(rowDeleteStatus, opts = {}) {
   await page.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
     body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
   await page.route("**/functions/v1/delete-account", r => {
-    edgeCalls.push(r.request().url());
+    edgeCalls.push({ url: r.request().url(), body: r.request().postDataJSON?.() ?? null });
     if (opts.edgeFails) return r.fulfill({ status:500, contentType:"application/json",
       body: JSON.stringify({ error: "server_error" }) });
     return r.fulfill({ status:200, contentType:"application/json",
@@ -107,6 +110,14 @@ async function runDeleteFlow(rowDeleteStatus, opts = {}) {
     b.scrollIntoView(); b.click(); return true;
   });
   await page.waitForTimeout(700);
+
+  if (opts.chooseDeleteGroups) {
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll("button")].find(x => /^Delete them/.test((x.textContent || "").trim()));
+      if (b) b.click();
+    });
+    await page.waitForTimeout(300);
+  }
 
   const typed = await page.evaluate(() => {
     const i = [...document.querySelectorAll("input")].find(x => (x.placeholder || "") === "DELETE");
@@ -193,6 +204,38 @@ async function runDeleteFlow(rowDeleteStatus, opts = {}) {
   check("4c. and it does not claim the account was deleted either",
     !/account has been deleted/i.test(r.toastText),
     r.toastText.slice(0, 200).replace(/\n/g, " | "));
+}
+
+// ── 5. THE GROUP-OWNERSHIP CHOICE ────────────────────────────────────────────────────────────
+// groups.created_by cascades, so deleting a creator's account used to destroy the group and every
+// OTHER member's posts in it. The default is now a DB-trigger transfer to the longest-standing
+// remaining member; the creator may instead choose to delete. The client's only job is to offer
+// the choice honestly and send it — the enforcement is server-side.
+{
+  const owned = [{ id: GID, name: "Seshd Crew", member_ids: [ME, "22222222-2222-4222-8222-222222222222"] }];
+
+  // 5a-c: the choice is offered, and NOT sending it defaults to transfer.
+  const r1 = await runDeleteFlow(200, { ownedGroups: owned });
+  check("5a. the flow ran to confirmation", r1.opened && r1.typed && r1.confirmed);
+  check("5b. the modal warns that a created group has other members",
+    /created 1 group with other members/i.test(r1.toastText),
+    r1.toastText.slice(0, 200).replace(/\n/g, " | "));
+  check("5c. default sends deleteGroups:false (hand over, do not destroy)",
+    r1.edgeCalls[0] && r1.edgeCalls[0].body && r1.edgeCalls[0].body.deleteGroups === false,
+    JSON.stringify(r1.edgeCalls[0] && r1.edgeCalls[0].body));
+
+  // 5d-e: actively choosing "Delete them" must reach the server as deleteGroups:true. Without
+  // this the whole choice could be inert — the UI would render and change nothing.
+  const r2 = await runDeleteFlow(200, { ownedGroups: owned, chooseDeleteGroups: true });
+  check("5d. the flow ran to confirmation", r2.opened && r2.typed && r2.confirmed);
+  check("5e. choosing 'Delete them' sends deleteGroups:true",
+    r2.edgeCalls[0] && r2.edgeCalls[0].body && r2.edgeCalls[0].body.deleteGroups === true,
+    JSON.stringify(r2.edgeCalls[0] && r2.edgeCalls[0].body));
+
+  // 5f: a user who created no shared group must not see the choice at all.
+  const r3 = await runDeleteFlow(200, { ownedGroups: [] });
+  check("5f. no owned groups -> no ownership choice shown",
+    !/with other members/i.test(r3.toastText));
 }
 
 await browser.close();

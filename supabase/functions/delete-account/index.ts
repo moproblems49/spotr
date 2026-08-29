@@ -1,44 +1,31 @@
-// delete-account — permanently deletes the CALLING user's own Supabase Auth identity, and now
-// their uploaded FILES as well.
+// delete-account — permanently deletes the CALLING user's own Supabase Auth identity, their
+// uploaded FILES, and resolves the fate of any GROUPS they created.
 //
 // WHY THIS EXISTS
 // The client used to call the public self-service `DELETE /auth/v1/user` endpoint directly with
 // the user's own access token. That endpoint 405s on this project (confirmed in the auth logs,
-// Aug 23 2026 — Mo hit this live: deleted a test account, re-registered with the same email, and
-// it skipped straight past signup/onboarding into the OLD identity) — GoTrue's self-service account
-// deletion isn't available here, only the ADMIN API (`DELETE /auth/v1/admin/users/{id}`) is, and
-// that requires the SERVICE ROLE key, which must never live in the client. So account deletion
-// needs a small server-side hop: verify who's calling (resolved from their OWN token, the same way
-// any other authenticated request proves identity), then use the service role to delete exactly
-// that user's identity — never an id supplied in the request body, which would let one user delete
-// another's account.
+// Aug 23 2026) — GoTrue's self-service account deletion isn't available here, only the ADMIN API
+// (`DELETE /auth/v1/admin/users/{id}`) is, and that requires the SERVICE ROLE key, which must
+// never live in the client. So account deletion needs a small server-side hop: verify who's
+// calling (resolved from their OWN token), then use the service role to delete exactly that
+// user's identity — never an id supplied in the request body.
 //
 // STORAGE (added Aug 29 2026). Deleting an account cascaded the DATABASE rows and left every file
-// the user had ever uploaded sitting in storage forever — found by a routine sweep, which turned up
-// three orphaned images belonging to an account that no longer exists in `auth.users` or
-// `profiles`. Those are personal data (progress photos, avatars) and the `images` / `post-images`
-// buckets are PUBLICLY READABLE, so a deleted user's photos stayed at live public URLs. Both of
-// those buckets key objects under a `{userId}/` prefix, so this can enumerate exactly the caller's
-// own files from the id resolved above — no path is ever accepted from the request body, which
-// would let one user delete another's uploads.
+// the user had uploaded sitting in storage forever. Those are personal data (progress photos,
+// avatars) and the `images` / `post-images` buckets are PUBLICLY READABLE, so a deleted user's
+// photos stayed at live public URLs. Both key objects under a `{userId}/` prefix, so this
+// enumerates exactly the caller's own files from the id resolved above.
 //
-// KNOWN REMAINING GAP, deliberate: `group-images` keys objects under `{groupId}/`, not `{userId}/`,
-// so a user's group photos cannot be found by prefix here. The CLIENT handles those: it READS the
-// paths out of `group_posts.image_url` before its row-delete loop (they live nowhere else) and
-// destroys the objects AFTER the rows are gone, per the house rule that a failed row delete must
-// never leave the group looking at a permanently broken image.
-// The authorization there rests on the `group-images: author or creator delete` policy, which is
-// `owner = auth.uid() OR auth.uid() = groups.created_by` — OWNER-OR-CREATOR, *not* membership
-// (membership gates SELECT and INSERT only, via `group_image_member_check`). That covers the
-// normal case, since the uploader owns the object. It does NOT cover an object whose `owner` is
-// NULL when the deleter is not the group's creator — and null-owner objects demonstrably occur in
-// this project (every `post-images` object has one), so if group photos ever start landing with a
-// null owner, that gap becomes real and this comment is the place it was written down.
+// GROUPS (added Aug 29 2026). `group-images` keys objects under `{groupId}/`, not `{userId}/`, so
+// a user's group photos cannot be found by a user prefix. Two different cases:
+//   - photos the caller posted into SOMEONE ELSE'S group: the CLIENT deletes those, reading the
+//     paths out of `group_posts.image_url` before its row-delete loop and destroying the objects
+//     after the rows are gone.
+//   - groups the caller CREATED: handled here, see handleCreatedGroups.
 //
-// Storage is cleared BEFORE the identity is deleted, because the identity is what authorizes
-// nothing here (the service role does the work) but IS what the user is waiting on — and a failure
-// to clear files must not leave a live login behind. If file deletion fails we still delete the
-// identity and report the counts, rather than stranding a half-deleted account.
+// Storage is cleared BEFORE the identity is deleted, because a failure to clear files must not
+// leave a live login behind. If file deletion fails we still delete the identity and report the
+// counts, rather than stranding a half-deleted account.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const CORS = {
@@ -53,25 +40,76 @@ const json = (body: unknown, status = 200) =>
 // — see the note above.
 const USER_PREFIXED_BUCKETS = ["images", "post-images"];
 
-// List every object under `${userId}/` in one bucket. The list endpoint returns names RELATIVE to
-// the prefix, so they are re-qualified before deletion. Paged, because a long-standing account can
-// hold more than one page of photos and a silent truncation would leave files behind.
-async function listUserObjects(url: string, key: string, bucket: string, userId: string): Promise<string[]> {
+// List every object under a `<prefix>/` folder in one bucket. The list endpoint returns names
+// RELATIVE to the prefix, so they are re-qualified before deletion. Paged, because a long-standing
+// account can hold more than one page of photos and a silent truncation would leave files behind.
+async function listPrefixObjects(url: string, key: string, bucket: string, prefix: string): Promise<string[]> {
   const out: string[] = [];
   const LIMIT = 100;
   for (let offset = 0; offset < 5000; offset += LIMIT) {
     const res = await fetch(`${url}/storage/v1/object/list/${bucket}`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ prefix: `${userId}/`, limit: LIMIT, offset }),
+      body: JSON.stringify({ prefix: `${prefix}/`, limit: LIMIT, offset }),
     });
     if (!res.ok) break;
     const rows = await res.json().catch(() => []);
     if (!Array.isArray(rows) || rows.length === 0) break;
-    for (const r of rows) if (r && typeof r.name === "string" && r.name) out.push(`${userId}/${r.name}`);
+    for (const r of rows) if (r && typeof r.name === "string" && r.name) out.push(`${prefix}/${r.name}`);
     if (rows.length < LIMIT) break;
   }
   return out;
+}
+
+// Delete a batch of objects from one bucket. Returns true on success.
+async function deleteObjects(url: string, key: string, bucket: string, paths: string[]): Promise<boolean> {
+  if (!paths.length) return true;
+  try {
+    const del = await fetch(`${url}/storage/v1/object/${bucket}`, {
+      method: "DELETE",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ prefixes: paths }),
+    });
+    return del.ok;
+  } catch { return false; }
+}
+
+// ── Groups the caller CREATED ────────────────────────────────────────────────────────────────
+// Default (`deleteGroups` false/absent): the `trg_transfer_groups_on_profile_delete` BEFORE DELETE
+// trigger hands each group with other members to its longest-standing remaining member, so the
+// group and everyone else's posts survive. Only a group where the caller is the SOLE member dies,
+// via the ordinary cascade.
+//
+// `deleteGroups: true` is the caller explicitly choosing to destroy their groups instead. That is
+// safe to accept from the request body BECAUSE IT NAMES NOTHING — it selects a policy for the
+// caller's own groups, resolved from their own token; it can never reach another user's group.
+//
+// Either way, a group that is about to disappear takes its `{groupId}/` images with it, and once
+// the rows are gone nothing knows those paths — so they are swept FIRST, while the rows still name
+// them. That is the one ordering that has to be right here: the objects outlive their only index.
+async function handleCreatedGroups(url: string, key: string, userId: string, deleteGroups: boolean): Promise<string[]> {
+  const problems: string[] = [];
+  const h = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+  try {
+    const res = await fetch(`${url}/rest/v1/groups?created_by=eq.${userId}&select=id,member_ids`, { headers: h });
+    if (!res.ok) { problems.push(`groups_created:${res.status}`); return problems; }
+    const rows = await res.json().catch(() => []);
+    const doomed = (Array.isArray(rows) ? rows : []).filter((g: { member_ids?: string[] }) => {
+      if (deleteGroups) return true;
+      const others = (Array.isArray(g.member_ids) ? g.member_ids : []).filter((m: string) => m !== userId);
+      return others.length === 0; // sole member -> the cascade will remove it
+    });
+    for (const g of doomed) {
+      const paths = await listPrefixObjects(url, key, "group-images", g.id);
+      if (paths.length && !(await deleteObjects(url, key, "group-images", paths)))
+        problems.push(`group_images/${g.id}`);
+    }
+    if (deleteGroups && doomed.length) {
+      const del = await fetch(`${url}/rest/v1/groups?created_by=eq.${userId}`, { method: "DELETE", headers: h });
+      if (!del.ok) problems.push(`groups_delete:${del.status}`);
+    }
+  } catch { problems.push("groups_created:threw"); }
+  return problems;
 }
 
 // ── Residue that no foreign key reaches ──────────────────────────────────────────────────────
@@ -134,6 +172,15 @@ Deno.serve(async (req: Request) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+  // The ONLY input accepted from the body, and it names no target — it selects a policy for the
+  // caller's own created groups (see handleCreatedGroups). Anything that named a group or a user
+  // would be an authorization hole; this cannot be one.
+  let deleteGroups = false;
+  try {
+    const body = await req.json().catch(() => ({}));
+    deleteGroups = body?.deleteGroups === true;
+  } catch { /* no body is the normal case — default to transfer */ }
+
   const authHeader = req.headers.get("Authorization") || "";
   const callerToken = authHeader.replace(/^Bearer\s+/i, "");
   if (!callerToken) return json({ error: "unauthorized" }, 401);
@@ -160,7 +207,7 @@ Deno.serve(async (req: Request) => {
   const fileErrors: string[] = [];
   for (const bucket of USER_PREFIXED_BUCKETS) {
     try {
-      const paths = await listUserObjects(SUPABASE_URL, SERVICE_KEY, bucket, callerId);
+      const paths = await listPrefixObjects(SUPABASE_URL, SERVICE_KEY, bucket, callerId);
       if (!paths.length) continue;
       const del = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
         method: "DELETE",
@@ -174,10 +221,15 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Groups the caller created: transfer (default) or destroy (explicit choice), and sweep the
+  // images of any group that is about to disappear while its rows still name them.
+  const groupProblems = await handleCreatedGroups(SUPABASE_URL, SERVICE_KEY, callerId, deleteGroups)
+    .catch(() => ["groups_created:threw"]);
+
   // Residue with no FK to cascade through. Best-effort and never fatal, same as storage: a
   // leftover telemetry row must not keep a login alive on an account the user asked to delete.
-  const residueProblems = await scrubUnreferencedResidue(SUPABASE_URL, SERVICE_KEY, callerId)
-    .catch(() => ["residue:threw"]);
+  const residueProblems = (await scrubUnreferencedResidue(SUPABASE_URL, SERVICE_KEY, callerId)
+    .catch(() => ["residue:threw"])).concat(groupProblems);
 
   // Delete via the ADMIN API — the only endpoint on this project that actually removes the auth
   // identity. Scoped to callerId, resolved above from the caller's own token, so this can only

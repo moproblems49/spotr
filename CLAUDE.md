@@ -3148,7 +3148,44 @@ is unverified** — the stub suite cannot see any of this, since it stubs the ed
 **Sweep item to add (step 5):** `select count(*) from groups g, unnest(g.member_ids) m where not
 exists (select 1 from profiles p where p.id = m)` must be **0**. It is the standing detector for
 this whole class, and no Playwright suite can see it.
-**★ OPEN, AND IT IS MO'S CALL: `groups.created_by` CASCADES.** Deleting a group CREATOR's account
+**★ RESOLVED (Mo, Aug 29): `groups.created_by` CASCADED, AND NOW OWNERSHIP TRANSFERS.** Deleting
+a group CREATOR's account used to delete the group and, via `group_posts.group_id`, **every other
+member's posts in it** — data loss for other people, where privacy only requires the creator's own
+rows to die. Every comparable product (WhatsApp, Facebook Groups, Reddit) keeps the container and
+moves or vacates ownership; Discord/GitHub/Slack instead BLOCK deletion until you transfer, which
+was rejected here because Apple requires account deletion to be straightforward (5.1.1(v)) and
+"hand over your groups first" is exactly the friction that invites a review question.
+**How it works now:** `trg_transfer_groups_on_profile_delete`, a BEFORE DELETE trigger on
+`profiles`, hands each group with other members to its longest-standing remaining member (the
+first `member_ids` entry that isn't the leaver — the array is append-ordered) and drops the leaver
+from the array. It runs BEFORE the row dies, so the FK no longer points at it and the cascade never
+reaches the group. **A TRIGGER, not edge-function logic, on purpose**: it is then true for every
+deletion path — the app's flow, an admin API delete, a manual SQL delete, a caller that doesn't
+exist yet. A group where the leaver is the SOLE member is deliberately left to the cascade.
+**The creator can still choose to destroy instead** — and they had no way to say so before, because
+**there is no delete-group UI anywhere in the app** (only an unused `Group creator can delete` RLS
+policy). The delete-account modal now lists the affected groups and offers hand-over (default) or
+delete. The choice reaches the edge function as `{ deleteGroups: true }` — **safe to accept from
+the body BECAUSE IT NAMES NOTHING**: it selects a policy for the caller's own created groups,
+resolved from their own token, and can never reach another user's group. Anything that named a
+group id would be an authorization hole.
+**The image half is the part that is easy to get wrong.** A group that is about to disappear (sole
+member, or an explicit delete) takes its `{groupId}/` objects with it, and once the rows are gone
+NOTHING knows those paths — so `handleCreatedGroups` sweeps them FIRST, while the rows still name
+them. That is the opposite ordering to the client's own group-image cleanup, and both are right:
+there the risk is a live post with a dead image, here the row is guaranteed to die and the only
+risk is an unreachable file.
+**The trigger had to act as the departing creator** for the same `auth.uid()`-is-NULL reason as
+`remove_user_from_all_groups` — `enforce_group_creator_manages` would otherwise refuse the
+membership rewrite. Claims are saved and restored so the impersonation cannot leak into the rest of
+the cascading transaction. Verified in a rolled-back transaction: shared group survived, ownership
+moved to the other member, dead creator dropped from members, **the other member's post survived**,
+solo group still deleted. Sim: `pw_deleteaccount` §5 (choice offered, default sends false, choosing
+delete sends true, no owned groups → no choice); red-proofed by removing the UI and the body.
+**Still open and NOT decided:** `reports.reporter_id` CASCADES, so deleting an account erases every
+abuse report that person FILED. Probably fine (Apple cares about response time, not retention) but
+it is Mo's moderation ledger and it is a one-line decision.
+**Superseded note, kept for the reasoning:** Deleting a group CREATOR's account
 deletes the group and, via `group_posts.group_id`, **every other member's posts in it**. That is
 data loss for other people, not a privacy requirement — privacy only demands the creator's own rows
 die. Blast radius TODAY is effectively zero (2 groups: one is Mo's own with 0 posts by others; the
