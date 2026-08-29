@@ -1,4 +1,4 @@
-// v178091716974
+// v178091716975
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6476,35 +6476,39 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/>
           </svg>
         </button>
+
+        {/* ★ THE SHARE CODE RIDES THE ACTION ROW, PINNED RIGHT (Mo). It began as a full-width
+            bordered panel — the visually HEAVIEST element in the card carrying its least important
+            information; measured on live data, 43 of Mo's 80 posts contain a code and NOBODY
+            else's do, so that box was in practice a permanent advertisement across half of one
+            person's feed presence. It moved to the caption line, and now to the far right of the
+            kudos/comment/share row, which is where it belongs: that row is the card's ACTION
+            strip, importing is an action, and the right half of it was dead space. It also stops
+            the chip interrupting the caption mid-sentence.
+            `marginLeft:auto` rather than `justifyContent:space-between` on the parent, so the
+            three icons keep their tight `gap:4` grouping on the left instead of spreading. */}
+        {postCode && (
+          <button onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-code", { detail: { code: postCode } }))}
+            aria-label={`Import ${postCode.startsWith("WO-") ? "workout" : "program"} ${postCode}`}
+            style={{
+              marginLeft:"auto", display:"inline-flex", alignItems:"center", gap:4,
+              padding:"3px 8px", background:"none", border:`1px solid ${C.border}`,
+              borderRadius:11, cursor:"pointer", fontFamily:F, minWidth:0, maxWidth:"62%",
+            }}>
+            <Icon name={postCode.startsWith("WO-") ? "dumbbell" : "calendar"} size={10} color={C.sub}/>
+            <span style={{ fontFamily:MONO, fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.3,
+                           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{postCode}</span>
+            <span style={{ fontSize:11, fontWeight:700, color:C.accentInk, flexShrink:0 }}>Import</span>
+          </button>
+        )}
       </div>
 
       {/* Caption + comments */}
       <div style={{ padding:"2px 16px 14px" }}>
-        {(displayCaption || postCode) && (
+        {displayCaption && (
           <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
             <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
             {displayCaption}
-            {/* ★ THE SHARE CODE IS AN INLINE CHIP, NOT A PANEL. It used to be a full-width
-                bordered box with an icon tile, a kicker, the code and a CTA — the visually
-                HEAVIEST element in the card, carrying its least important information. Measured
-                on live data: 43 of Mo's 80 posts contain a code and NOBODY else's do, so that box
-                was, in practice, a permanent advertisement on half of one person's feed presence.
-                Inline keeps the discovery path (see a friend's program, take it) at a weight that
-                matches what it is: an aside on the caption. */}
-            {postCode && (
-              <button onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-code", { detail: { code: postCode } }))}
-                aria-label={`Import ${postCode.startsWith("WO-") ? "workout" : "program"} ${postCode}`}
-                style={{
-                  display:"inline-flex", alignItems:"center", gap:4, verticalAlign:"baseline",
-                  marginLeft: displayCaption ? 6 : 0, padding:"1px 7px",
-                  background:"none", border:`1px solid ${C.border}`, borderRadius:11,
-                  cursor:"pointer", fontFamily:F, lineHeight:1.5,
-                }}>
-                <Icon name={postCode.startsWith("WO-") ? "dumbbell" : "calendar"} size={10} color={C.sub}/>
-                <span style={{ fontFamily:MONO, fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.3 }}>{postCode}</span>
-                <span style={{ fontSize:11, fontWeight:700, color:C.accentInk }}>Import</span>
-              </button>
-            )}
           </div>
         )}
         {visibleComments.length > 0 && !showCmts && (
@@ -11216,8 +11220,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   <div style={{ marginBottom:16 }}>
                     <SectionLabel C={C}>NEXT UP · {nextDay.name}</SectionLabel>
                     <div>
+                      {/* The 14px LEFT padding indents the exercise under its section label (Mo).
+                          It goes on FlatRow's own div, which is also where the borderTop lives, so
+                          the hairline divider still runs the full width of the list while the
+                          content steps in — a margin here would pull the divider in with it. */}
                       {targets.map((t, i) => (
-                        <FlatRow key={t.name} idx={i} C={C} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 0" }}>
+                        <FlatRow key={t.name} idx={i} C={C} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 0 11px 14px" }}>
                           <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
                             <div style={{ fontSize:13, fontWeight:600, color:C.text, lineHeight:1.2, marginBottom:3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.name}</div>
                             <div style={{ fontSize:10, color:C.sub, lineHeight:1.3 }}>{t.suggestion.reason}</div>

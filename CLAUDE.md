@@ -3178,10 +3178,27 @@ check could see.
   posts is that he is the only person who has ever shared one. Moving it to the Workout tab was
   considered and rejected: that tab ALREADY has manual code entry, so "moving" it there is just
   deleting the discovery path.
+  **★ AND IT MOVED AGAIN, TO THE ACTION ROW (Mo, same day): "can we move it all the way to the
+  right? Maybe even same line as share/kudos/comment icons."** Right on both counts, and the
+  reasoning generalises past this chip: the kudos/comment/share row is the card's ACTION strip,
+  importing IS an action, and the right half of that row was dead space — so the chip found a row
+  that already means what it means, instead of interrupting a sentence. Pinned with
+  `marginLeft:"auto"` rather than `justifyContent:"space-between"` on the parent, so the three
+  icons keep their tight `gap:4` grouping on the left instead of spreading across the card; and
+  `maxWidth:"62%"` + ellipsis so a long code can never push the icons off. **The caption gate had
+  to come back with it**: it was `(displayCaption || postCode)` while the chip lived inside the
+  caption line, and leaving it that way would render a username with an empty sentence after it on
+  a caption-less coded post. **When you move a child out of a conditional block, re-read the
+  condition — it was written for the child that left.**
 - **HR avg/peak now ALIGN.** They were already stacked, but the ♥ prefixed only the first line, so
   the digits started 8.4px apart. The glyph is its own column now, and `tabular-nums` keeps the
   numbers aligned when the digit counts differ (99 vs 111).
 - TIME/VOL 14 → 12px. HR stays RED and stays its size (Mo's call).
+- **The live workout's NEXT UP list is indented 14px** (Mo, from the same screenshot: "about 2
+  spaces to the right"). The padding goes on `FlatRow`'s own div — which is also where the
+  `borderTop` lives — so the hairline divider still spans the full list width while the content
+  steps in. A `marginLeft` would have pulled the divider in with it, which reads as a narrower
+  list rather than an indented item. Measured after: label at x=14, exercise name at x=28.
 - **The ACTIVE NAV TAB is coloured instead of glowing.** Mo asked about a glow border on the nav;
   declined, and the reasoning is the house rule: a permanent glow on permanent chrome teaches the
   reader nothing and competes with the volt reserved for PRs, progress and the muscle map. But the
