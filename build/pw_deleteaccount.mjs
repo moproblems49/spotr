@@ -68,6 +68,7 @@ async function runDeleteFlow(rowDeleteStatus, opts = {}) {
         return J([]);
       return J([{ id: ME }]);
     }
+    if (m === "DELETE" && /\/rest\/v1\/groups\?/.test(u)) return r.fulfill({ status: 204, body: "" });
     if (m === "DELETE") return r.fulfill({ status: 204, body: "" });
     // The lookup the client does before the loop. Modelled with the real column name so a client
     // that stopped selecting image_url would read undefined rather than a path.
@@ -220,21 +221,34 @@ async function runDeleteFlow(rowDeleteStatus, opts = {}) {
   check("5b. the modal warns that a created group has other members",
     /created 1 group with other members/i.test(r1.toastText),
     r1.toastText.slice(0, 200).replace(/\n/g, " | "));
-  check("5c. default sends deleteGroups:false (hand over, do not destroy)",
-    r1.edgeCalls[0] && r1.edgeCalls[0].body && r1.edgeCalls[0].body.deleteGroups === false,
-    JSON.stringify(r1.edgeCalls[0] && r1.edgeCalls[0].body));
+  // ★ ASSERT THE EFFECT, NOT THE FLAG. The first version of this checked only that a
+  // `deleteGroups` boolean reached the edge function — and it did, into code that could never act
+  // on it, because the client's own `profiles` DELETE fires the transfer trigger first. The flag
+  // arrived and the group was handed over regardless. A guard that watches a message instead of
+  // an outcome cannot see that.
+  const deletedGroup = (r) => r.rest.some(x => x.method === "DELETE" && /\/rest\/v1\/groups\?/.test(x.url));
+  check("5c. default does NOT delete the group (it is handed over)",
+    !deletedGroup(r1),
+    "a group was deleted on the hand-over path");
 
   // 5d-e: actively choosing "Delete them" must reach the server as deleteGroups:true. Without
   // this the whole choice could be inert — the UI would render and change nothing.
   const r2 = await runDeleteFlow(200, { ownedGroups: owned, chooseDeleteGroups: true });
   check("5d. the flow ran to confirmation", r2.opened && r2.typed && r2.confirmed);
-  check("5e. choosing 'Delete them' sends deleteGroups:true",
-    r2.edgeCalls[0] && r2.edgeCalls[0].body && r2.edgeCalls[0].body.deleteGroups === true,
-    JSON.stringify(r2.edgeCalls[0] && r2.edgeCalls[0].body));
+  check("5e. choosing 'Delete them' actually DELETES the group",
+    deletedGroup(r2),
+    "no DELETE on /groups — the choice was accepted by the UI and then discarded");
+  check("5f. and it deletes it BEFORE the profiles delete that would transfer it away",
+    (() => {
+      const gi = r2.rest.findIndex(x => x.method === "DELETE" && /\/rest\/v1\/groups\?/.test(x.url));
+      const pi = r2.rest.findIndex(x => x.method === "DELETE" && /\/rest\/v1\/profiles/.test(x.url));
+      return gi >= 0 && pi >= 0 && gi < pi;
+    })(),
+    "group delete did not precede the profiles delete — the trigger wins and the group survives");
 
   // 5f: a user who created no shared group must not see the choice at all.
   const r3 = await runDeleteFlow(200, { ownedGroups: [] });
-  check("5f. no owned groups -> no ownership choice shown",
+  check("5g. no owned groups -> no ownership choice shown",
     !/with other members/i.test(r3.toastText));
 }
 

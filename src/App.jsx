@@ -1,4 +1,4 @@
-// v178091716969
+// v178091716970
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2028,7 +2028,7 @@ function ReportHost({ C, token, currentUserId }) {
   };
   const accent = C.accent || "#65a30d";
   return (
-    <Sheet open={!!rp} onClose={close} z={4000} backdrop="rgba(0,0,0,0.7)"
+    <Sheet open={!!rp} onClose={close} z={4000} backdrop="rgba(0,0,0,0.7)" dragHandle
       panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", border:`1px solid ${C.border}`, borderBottom:"none" }}>
       {rp && (
         <>
@@ -4546,7 +4546,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
   );
 
   return (
-    <Sheet open={open} onClose={onClose} z={3200}
+    <Sheet open={open} onClose={onClose} z={3200} dragHandle
       // borderTop + boxShadow — every other near-full-height Sheet in the app (the Finish modal,
       // the group-share picker) pairs background:C.bg with a `1px solid C.border` top edge; this
       // one didn't get it, and C.bg is the SAME fill the screen behind it already uses (the live
@@ -9525,7 +9525,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             onClose={() => setViewingExercise(null)}
           />
         )}
-        <Sheet open={swapEx != null && !!session.exercises[swapEx]} onClose={() => setSwapEx(null)} z={480}
+        <Sheet open={swapEx != null && !!session.exercises[swapEx]} onClose={() => setSwapEx(null)} z={480} dragHandle
           backdrop="rgba(0,0,0,0.55)"
           panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, borderTop:`1px solid ${C.border}`, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
         {swapEx != null && session.exercises[swapEx] && (() => {
@@ -11680,7 +11680,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </PullToRefresh>
       )}
 
-      <Sheet open={showTemplates} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} z={200}
+      <Sheet open={showTemplates} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} z={200} dragHandle
         panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
         {showTemplates && (
           <>
@@ -13140,6 +13140,45 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           .filter(u => typeof u === "string" && u && !/^https?:/i.test(u));
       } catch (e) { devError("group image lookup:", e); }
 
+      // ── GROUPS THIS USER CREATED — and this MUST happen before the loop below ────────────────
+      // The loop deletes `profiles`, which fires `trg_transfer_groups_on_profile_delete` and hands
+      // every created group to a live heir. After that instant nothing matches `created_by`, so a
+      // user who explicitly chose "Delete them" would silently get the opposite — the group kept,
+      // handed over, every post intact — with no error anywhere. That is exactly what shipped:
+      // the destroy path lived in the edge function, which runs LAST, long after the trigger.
+      //
+      // Doomed here means: everything they created if they chose to destroy, otherwise only the
+      // groups where they are the sole live member (those die in the cascade regardless, and
+      // sweeping them here is the only chance to reach images posted by members who have since
+      // left — the creator's own are covered by the `group_posts?user_id=eq.me` pass above).
+      try {
+        const created = await sb.query(
+          `groups?created_by=eq.${uid_}&select=id,member_ids`, {}, getTok());
+        for (const g of (Array.isArray(created) ? created : [])) {
+          const others = (Array.isArray(g.member_ids) ? g.member_ids : []).filter(m => m !== uid_);
+          if (!deleteOwnedGroups && others.length > 0) continue;   // will transfer, leave it alone
+          // Read the image paths BEFORE the rows die — they live nowhere else.
+          let paths = [];
+          try {
+            const gp = await sb.query(
+              `group_posts?group_id=eq.${g.id}&image_url=not.is.null&select=image_url`, {}, getTok());
+            paths = (Array.isArray(gp) ? gp : []).map(r => r && r.image_url)
+              .filter(u => typeof u === "string" && u && !/^https?:/i.test(u));
+          } catch (e) { devError("group image lookup:", e); }
+          // Row first, object second, and only if the row actually died. If this DELETE fails the
+          // group simply transfers instead — data preserved rather than destroyed, which is the
+          // safe direction to fail in.
+          let rowGone = false;
+          try { await sb.query(`groups?id=eq.${g.id}`, { method: "DELETE" }, getTok()); rowGone = true; }
+          catch (e) { devError("group delete:", e); }
+          if (rowGone) {
+            for (const pth of paths) {
+              try { await deleteGroupImage(pth, getTok()); } catch (e) { devError("group image cleanup:", e); }
+            }
+          }
+        }
+      } catch (e) { devError("created-group handling:", e); }
+
       let criticalFailed = false;
       let groupPostsDeleted = false;
       // A DELETE that RLS filters down to zero rows returns 200 and raises NOTHING, so a catch
@@ -13193,9 +13232,6 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${getTok()}` },
-          // The only field the function accepts, and it names no target — it picks a policy for
-          // the caller's OWN created groups. Absent/false means the DB trigger transfers them.
-          body: JSON.stringify({ deleteGroups: deleteOwnedGroups === true }),
         });
         const body = await res.json().catch(() => null);
         authDeleteOk = res.ok && body?.ok === true;

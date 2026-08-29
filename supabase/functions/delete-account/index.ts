@@ -17,11 +17,13 @@
 // enumerates exactly the caller's own files from the id resolved above.
 //
 // GROUPS (added Aug 29 2026). `group-images` keys objects under `{groupId}/`, not `{userId}/`, so
-// a user's group photos cannot be found by a user prefix. Two different cases:
-//   - photos the caller posted into SOMEONE ELSE'S group: the CLIENT deletes those, reading the
-//     paths out of `group_posts.image_url` before its row-delete loop and destroying the objects
-//     after the rows are gone.
-//   - groups the caller CREATED: handled here, see handleCreatedGroups.
+// a user's group photos cannot be found by a user prefix — and ALL of it is handled CLIENT-SIDE,
+// deliberately, because of ordering this function cannot satisfy. The client deletes its own
+// `profiles` row, which fires `trg_transfer_groups_on_profile_delete` and hands every created
+// group to a live heir. That happens BEFORE this function ever runs, so by the time it could look,
+// `created_by` matches nothing. A version of this that tried to destroy the caller's groups here
+// shipped and was completely inert — the user's explicit "delete my groups" choice was silently
+// turned into a hand-over. Do not reintroduce it here; the client does it before the profile dies.
 //
 // Storage is cleared BEFORE the identity is deleted, because a failure to clear files must not
 // leave a live login behind. If file deletion fails we still delete the identity and report the
@@ -61,57 +63,6 @@ async function listPrefixObjects(url: string, key: string, bucket: string, prefi
   return out;
 }
 
-// Delete a batch of objects from one bucket. Returns true on success.
-async function deleteObjects(url: string, key: string, bucket: string, paths: string[]): Promise<boolean> {
-  if (!paths.length) return true;
-  try {
-    const del = await fetch(`${url}/storage/v1/object/${bucket}`, {
-      method: "DELETE",
-      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ prefixes: paths }),
-    });
-    return del.ok;
-  } catch { return false; }
-}
-
-// ── Groups the caller CREATED ────────────────────────────────────────────────────────────────
-// Default (`deleteGroups` false/absent): the `trg_transfer_groups_on_profile_delete` BEFORE DELETE
-// trigger hands each group with other members to its longest-standing remaining member, so the
-// group and everyone else's posts survive. Only a group where the caller is the SOLE member dies,
-// via the ordinary cascade.
-//
-// `deleteGroups: true` is the caller explicitly choosing to destroy their groups instead. That is
-// safe to accept from the request body BECAUSE IT NAMES NOTHING — it selects a policy for the
-// caller's own groups, resolved from their own token; it can never reach another user's group.
-//
-// Either way, a group that is about to disappear takes its `{groupId}/` images with it, and once
-// the rows are gone nothing knows those paths — so they are swept FIRST, while the rows still name
-// them. That is the one ordering that has to be right here: the objects outlive their only index.
-async function handleCreatedGroups(url: string, key: string, userId: string, deleteGroups: boolean): Promise<string[]> {
-  const problems: string[] = [];
-  const h = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
-  try {
-    const res = await fetch(`${url}/rest/v1/groups?created_by=eq.${userId}&select=id,member_ids`, { headers: h });
-    if (!res.ok) { problems.push(`groups_created:${res.status}`); return problems; }
-    const rows = await res.json().catch(() => []);
-    const doomed = (Array.isArray(rows) ? rows : []).filter((g: { member_ids?: string[] }) => {
-      if (deleteGroups) return true;
-      const others = (Array.isArray(g.member_ids) ? g.member_ids : []).filter((m: string) => m !== userId);
-      return others.length === 0; // sole member -> the cascade will remove it
-    });
-    for (const g of doomed) {
-      const paths = await listPrefixObjects(url, key, "group-images", g.id);
-      if (paths.length && !(await deleteObjects(url, key, "group-images", paths)))
-        problems.push(`group_images/${g.id}`);
-    }
-    if (deleteGroups && doomed.length) {
-      const del = await fetch(`${url}/rest/v1/groups?created_by=eq.${userId}`, { method: "DELETE", headers: h });
-      if (!del.ok) problems.push(`groups_delete:${del.status}`);
-    }
-  } catch { problems.push("groups_created:threw"); }
-  return problems;
-}
-
 // ── Residue that no foreign key reaches ──────────────────────────────────────────────────────
 // Almost everything dies with the identity: profiles.id cascades from auth.users, and comments,
 // follows, kudos, messages, notifications, posts, programs, personal_records, workout_history,
@@ -142,19 +93,19 @@ async function scrubUnreferencedResidue(url: string, key: string, userId: string
   }
 
   // groups.member_ids is a uuid[] with no FK, so a deleted user's id stays in every group they
-  // joined — inflating the visible member count and leaving a stale entry that keeps satisfying
-  // membership checks shaped like `auth.uid() = ANY(member_ids)` for an id that can no longer
-  // exist.
+  // joined. The BEFORE DELETE trigger on profiles now scrubs this on EVERY deletion path, so this
+  // call is a backstop rather than the only cleanup — kept because it is idempotent and cheap, and
+  // because this is the highest-stakes write in the app.
   //
-  // This CANNOT be a plain PATCH with the service key, and that was measured, not guessed: the
+  // It CANNOT be a plain PATCH with the service key, and that was measured, not guessed: the
   // `enforce_group_creator_manages` BEFORE UPDATE trigger reads `auth.uid()`, which is NULL for a
   // service-role call, so it sees a non-creator rewriting membership without removing exactly
   // themselves and refuses — a live end-to-end test returned `groups/<id>:400`. The trigger is
-  // correct; the caller was. Its own rule already allows a member to remove exactly themselves,
-  // which is precisely what account deletion is, so `remove_user_from_all_groups` acts AS the
-  // departing member for one statement (a LOCAL `request.jwt.claims`) and satisfies the guard
-  // honestly instead of disabling it. EXECUTE is service_role-only — p_user is an arbitrary uuid,
-  // so an exposed grant would let anyone evict anyone from any group.
+  // correct; the caller was wrong. Its own rule already allows a member to remove exactly
+  // themselves, which is precisely what account deletion is, so `remove_user_from_all_groups` acts
+  // AS the departing member for one statement (a LOCAL `request.jwt.claims`) and satisfies the
+  // guard honestly instead of disabling it. EXECUTE is service_role-only — p_user is an arbitrary
+  // uuid, so an exposed grant would let anyone evict anyone from any group.
   try {
     const res = await fetch(`${url}/rest/v1/rpc/remove_user_from_all_groups`, {
       method: "POST", headers: h, body: JSON.stringify({ p_user: userId }),
@@ -171,15 +122,6 @@ Deno.serve(async (req: Request) => {
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-  // The ONLY input accepted from the body, and it names no target — it selects a policy for the
-  // caller's own created groups (see handleCreatedGroups). Anything that named a group or a user
-  // would be an authorization hole; this cannot be one.
-  let deleteGroups = false;
-  try {
-    const body = await req.json().catch(() => ({}));
-    deleteGroups = body?.deleteGroups === true;
-  } catch { /* no body is the normal case — default to transfer */ }
 
   const authHeader = req.headers.get("Authorization") || "";
   const callerToken = authHeader.replace(/^Bearer\s+/i, "");
@@ -221,15 +163,10 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Groups the caller created: transfer (default) or destroy (explicit choice), and sweep the
-  // images of any group that is about to disappear while its rows still name them.
-  const groupProblems = await handleCreatedGroups(SUPABASE_URL, SERVICE_KEY, callerId, deleteGroups)
-    .catch(() => ["groups_created:threw"]);
-
   // Residue with no FK to cascade through. Best-effort and never fatal, same as storage: a
   // leftover telemetry row must not keep a login alive on an account the user asked to delete.
-  const residueProblems = (await scrubUnreferencedResidue(SUPABASE_URL, SERVICE_KEY, callerId)
-    .catch(() => ["residue:threw"])).concat(groupProblems);
+  const residueProblems = await scrubUnreferencedResidue(SUPABASE_URL, SERVICE_KEY, callerId)
+    .catch(() => ["residue:threw"]);
 
   // Delete via the ADMIN API — the only endpoint on this project that actually removes the auth
   // identity. Scoped to callerId, resolved above from the caller's own token, so this can only

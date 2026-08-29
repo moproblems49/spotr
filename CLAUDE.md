@@ -3091,15 +3091,57 @@ rotation through abduction is real, if debated. **Squat/leg-press → Hamstrings
 and deliberately LEFT** (Mo's call): genuinely contested in the literature, unlike the isolation
 cases.
 
+## ★★ THE "DELETE MY GROUPS" CHOICE SHIPPED INERT, AND A STALE uuid COULD BRICK DELETION (Aug 29)
+A cold-context audit of the group-ownership work found two CONFIRMED defects in it, both mine, and
+the second is the more serious thing this project has shipped in a while.
+**★ THE CHOICE WAS SILENTLY DISCARDED — THE UI PROMISED ONE THING AND THE SERVER DID THE OPPOSITE.**
+`deleteAccount`'s table loop deletes `profiles`, which fires
+`trg_transfer_groups_on_profile_delete` and hands every created group to a live heir. The destroy
+path lived in the EDGE FUNCTION, which runs LAST — so by the time it queried
+`groups?created_by=eq.<uid>` the trigger had already changed `created_by` and it matched **zero
+rows**. A user who read "The group and every member's posts in it are erased", picked it, and typed
+DELETE got the group kept, handed over, every post intact, and **no error anywhere**. The feature
+only worked on the path where the client's `profiles` delete FAILED. Fixed by moving the whole
+created-group handling client-side, BEFORE the table loop — the only ordering that can work, since
+the trigger fires the instant the profile dies. `handleCreatedGroups` and the `deleteGroups` body
+flag are deleted from the edge function rather than left as dead code.
+**★ AND THE GUARD COULD NOT SEE IT, BECAUSE IT ASSERTED A MESSAGE INSTEAD OF AN OUTCOME.**
+`pw_deleteaccount` §5 checked that a `deleteGroups` boolean REACHED the edge function. It did —
+into code that could never act on it. **Assert the effect, not the flag**: it now asserts a real
+`DELETE /groups` happens, and that it happens BEFORE the `profiles` delete that would otherwise
+transfer the group away. Red-proofed against the shipped-inert build, where the UI checks stay
+green and only the effect checks fail, naming the cause.
+**★ A STALE uuid IN `member_ids` PERMANENTLY BLOCKED ACCOUNT DELETION — proven live (rolled back).**
+The trigger picked the heir with `... where m <> OLD.id limit 1` and never checked the heir still
+EXISTS. `member_ids` has no FK, so any deletion path that isn't the app's own (dashboard, admin
+API, manual SQL) leaves a dead id behind. Assigning it to `created_by` violates
+`groups_created_by_fkey` → **23503** → the `profiles` DELETE aborts → the whole `auth.users` delete
+aborts → the edge function returns `delete_failed` and the user is told to contact support,
+FOREVER, until someone hand-edits the array. Account deletion must never be blockable by stale
+data, least of all with App Review pending (5.1.1(v)). Fixed three ways: the heir must have a live
+`profiles` row; selection is `unnest(...) WITH ORDINALITY ORDER BY ord` so "longest-standing" is
+requested rather than assumed; and the trigger now scrubs `OLD.id` from EVERY group's `member_ids`,
+not just created ones — closing the SOURCE of stale ids instead of merely surviving them.
+`remove_user_from_all_groups` stays as an idempotent backstop.
+**Repo/deployed divergence caught again**, comment-only this time: the deployed v5 carried a
+sentence the committed copy had truncated, i.e. the deploy came from a working copy that was not
+what got committed. Redeployed from the committed file (v6) and re-synced. **Diff the deployed
+function against the repo whenever either changes** — `get_edge_function` via MCP.
+
 ## ★ Swipe-to-close was wired to 1 of 15 sheets, and broken on that one (Aug 29, 2026)
 Mo, from the device: "the swipe down to close doesn't work on Body Battery sheet or any other
 sheet." **Both halves were true and they were different bugs.**
 **It was opt-in and only ONE caller had ever opted in.** `dragHandle` was passed to the Body
 Battery sheet and to none of the other fourteen — the feature shipped believing "all nineteen
 sheets can take it", which was a statement about the COMPONENT, not about the app. Same shape as
-the dead `showGroupShare` UI: capability built, call sites never wired. Nine sheets have it now;
-the deliberately non-dismissible ones (`workoutSummary`, `AICoachModal`, both `onClose={() => {}}`)
-and the small `postMenu` do not.
+the dead `showGroupShare` UI: capability built, call sites never wired.
+**★ AND THE FIRST FIX MISCOUNTED ITS OWN WORK — "nine sheets have it now" was false, it was
+SEVEN**, leaving five dismissible sheets (ReportHost, ExercisePickerSheet, swap-exercise,
+templates, and the group-create sheet) still without it, i.e. the same complaint could recur
+verbatim. **11 of 15** have it now; the four without are the deliberately non-dismissible
+`workoutSummary` and `AICoachModal` (both `onClose={() => {}}`), the small `postMenu`, and
+GroupDetail's own sheet. Count the call sites with a grep before writing a number into a commit
+message — an audit caught this one, nothing else could have.
 **★ AND ON THE ONE THAT HAD IT, THE HANDLE SAT INSIDE THE SCROLLER.** The Body Battery panel is
 itself the scroll container (`overflowY:auto` + `WebkitOverflowScrolling:touch`) and `Sheet`
 rendered the handle inside it. On iOS a touch that begins inside a momentum scroller is claimed by
