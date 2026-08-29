@@ -2990,6 +2990,24 @@ other filter, so opening one would have made it the root and reported a confiden
   an `Object.is` no-op and the directly-written offset would stay stuck. Sim: `pw_sheetdrag`
   (follows the finger, short drag snaps back, long drag closes, and the panel is at rest — not
   stuck at the drag offset — when reopened).
+- **★ "Should we get rid of custom exercises in settings?" — KEPT, and looking at it found two real
+  defects.** The section is ALREADY conditional (`customExercises.length > 0 &&`), so it does not
+  render at all for anyone who has never made one — it is not clutter, and removing it would leave
+  a typo'd custom exercise unfixable. But **Remove and "Clear all custom exercises" both fired on a
+  single tap with no confirmation**, against the house rule that destructive controls go through
+  `confirmAction`. Worse, the consequence is invisible and permanent-ish: **a custom exercise is
+  what makes its name resolve to a muscle**, so deleting it silently strips the muscle mapping from
+  every past workout that used it. Measured on the engine: a 4-set session went from
+  `{Back: 4}` to `{}` in `weeklyMuscleVolume` the moment the registry lost the name, while
+  `totalSets` still counted 4 — the sets stay in History with their volume and vanish from the
+  muscle map, muscle readiness and "most trained". That is the documented library-invisible-name
+  failure, reachable from a Settings button. Both now confirm, and the message COUNTS the real
+  logged workouts at stake rather than saying "are you sure". Sim: `pw_customex` (red-proof: 5
+  failures on the one-tap version, including proof it wrote to the server before confirming).
+  **Verification note worth keeping:** the first attempt to prove the history damage used
+  "Hammer Row Machine" and showed no change — that name collides with a library entry, so it
+  resolved anyway. A genuinely unmatchable name was needed to see it. Pick a fixture name that
+  cannot collide when testing name RESOLUTION.
 
 ## ★★★ THE BUG CLASSES THAT REPEAT — and what now catches each (Aug 28-29, 2026)
 Mo asked the right question after a run of findings: *which of these could be somewhere else?*

@@ -1,4 +1,4 @@
-// v178091716961
+// v178091716962
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14207,21 +14207,64 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.muscle}{ex.equipment && ex.equipment !== "Other" ? ` · ${ex.equipment}` : ""}</div>
                         </div>
                         <button onClick={() => {
-                          const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
-                          setStore(p => ({ ...p, customExercises: next }));
-                          setCustomExerciseRegistry(next);
-                          const tok = token || loadSession()?.access_token;
-                          if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
-                          haptic("tap");
+                          // REMOVING A CUSTOM EXERCISE SILENTLY STRIPS THE MUSCLE MAPPING FROM
+                          // EVERY PAST WORKOUT THAT USED IT, and until now it happened on one tap
+                          // with no warning. History keeps the name and its volume, but the name
+                          // no longer resolves: measured, a 4-set session went from {Back: 4} to
+                          // {} in weeklyMuscleVolume the moment the registry lost it — so those
+                          // sets stop counting toward the muscle map, muscle readiness and "most
+                          // trained" while still showing in History. That is the documented
+                          // library-invisible-name failure, reachable from a Settings button.
+                          // Destructive controls go through confirmAction in this app; these two
+                          // never did. The count comes from real history so the warning is
+                          // specific rather than a generic "are you sure".
+                          const sessions = Object.values(store.history || {})
+                            .flatMap(day => Object.values(day || {}))
+                            .filter(sess => (sess.exercises || []).some(e => e.name === ex.name)).length;
+                          confirmAction({
+                            title: `Remove ${ex.name}?`,
+                            message: sessions > 0
+                              ? `${sessions} logged workout${sessions === 1 ? "" : "s"} use${sessions === 1 ? "s" : ""} this exercise. ${sessions === 1 ? "It" : "They"} will stay in your history, but ${sessions === 1 ? "its" : "their"} sets will stop counting toward your muscle map.`
+                              : "It will be removed from your exercise list. No logged workouts use it.",
+                            confirmLabel: "Remove",
+                            cancelLabel: "Keep",
+                            destructive: true,
+                            onConfirm: () => {
+                              const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
+                              setStore(p => ({ ...p, customExercises: next }));
+                              setCustomExerciseRegistry(next);
+                              const tok = token || loadSession()?.access_token;
+                              if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
+                              haptic("tap");
+                            },
+                          });
                         }} style={{ flexShrink:0, background:"none", border:"none", color:"#ef4444", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Remove</button>
                       </div>
                     ))}
                     <button onClick={() => {
-                      setStore(p => ({ ...p, customExercises: [] }));
-                      setCustomExerciseRegistry([]);
-                      const tok = token || loadSession()?.access_token;
-                      if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: [] }) }, tok).catch(()=>{}); } catch(e){} }
-                      haptic("success");
+                      // The same hazard as Remove, multiplied by every custom exercise at once —
+                      // and this one fired on a single tap with no confirmation at all.
+                      const names = new Set((store.customExercises || []).map(e => e.name));
+                      const sessions = Object.values(store.history || {})
+                        .flatMap(day => Object.values(day || {}))
+                        .filter(sess => (sess.exercises || []).some(e => names.has(e.name))).length;
+                      const n = (store.customExercises || []).length;
+                      confirmAction({
+                        title: `Clear all ${n} custom exercise${n === 1 ? "" : "s"}?`,
+                        message: sessions > 0
+                          ? `${sessions} logged workout${sessions === 1 ? "" : "s"} use them. They will stay in your history, but their sets will stop counting toward your muscle map.`
+                          : "They will be removed from your exercise list. No logged workouts use them.",
+                        confirmLabel: "Clear all",
+                        cancelLabel: "Keep",
+                        destructive: true,
+                        onConfirm: () => {
+                          setStore(p => ({ ...p, customExercises: [] }));
+                          setCustomExerciseRegistry([]);
+                          const tok = token || loadSession()?.access_token;
+                          if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: [] }) }, tok).catch(()=>{}); } catch(e){} }
+                          haptic("success");
+                        },
+                      });
                     }} style={{ width:"100%", background:"none", border:"none", padding:"13px 14px", textAlign:"left", fontSize:13, color:"#ef4444", fontWeight:600, cursor:"pointer", fontFamily:F }}>Clear all custom exercises</button>
                   </div>
                 </>
