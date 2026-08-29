@@ -1,4 +1,4 @@
-// v178091716959
+// v178091716961
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1079,7 +1079,9 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
           </>}
           {muscles.map(mk => {
             const k = view + ":" + mk;
-            const fill = accent[k] ? accentCol : light[k] ? lightCol : bodyCol;
+            // Uninvolved muscles sit one step off the silhouette rather than ON it, so the
+            // body keeps its anatomy while primary/secondary still own the picture.
+            const fill = accent[k] ? accentCol : light[k] ? lightCol : emptyMuscleCol(C);
             return <path key={mk} d={f[mk]} fill={fill} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>;
           })}
         </svg>
@@ -1123,10 +1125,19 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
 // muscles still own the map (1.37:1 dark / 1.33:1 light against the silhouette — visible, not loud;
 // the ramp's own lowest legend stop, _heatColor(0.12), is olive and stays clearly distinct from it).
 // Deliberately NOT tinted toward the volt ramp: a green-ish zero would imply some training happened.
-// Strength mode's "no standard for this muscle" case still returns bodyCol directly at its own call
-// site, because that genuinely IS absence of data rather than a measured zero.
+// ONE definition of "this muscle has nothing in it", because there were three and only one was
+// fixed. Mo: "the silhouette for Strength and when you click exercises is not the same as the
+// fixed one in Volume." Exactly right — Volume/Readiness went through _heatColor and got the
+// one-step-off-the-body treatment, while Strength's "no standard" branch and the exercise-detail
+// map both still returned `bodyCol`, i.e. 1.00:1, so whole regions disappeared into the
+// silhouette on two of the four views. The old note here argued Strength's case is "absence of
+// data rather than a measured zero" — a true distinction that the reader cannot see and does not
+// care about, whose only visible effect is that the body loses its anatomy. Same class as the
+// palette twins: one fix that didn't get copied to its siblings.
+const emptyMuscleCol = (C) => (C?.isDark ? "#525460" : "#b0b6c1");
+
 function _heatColor(t, C) {
-  if (t <= 0) return C?.isDark ? "#525460" : "#b0b6c1";
+  if (t <= 0) return emptyMuscleCol(C);
   // Volt ramp: faint grey-green → volt → deep olive (dark), or pale → lime → forest (light).
   const stops = C?.isDark
     ? [[60,70,45],[200,241,53],[120,150,30]]
@@ -1223,7 +1234,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
     }
     if (mode === "strength") {
       const r = key.split(":")[1];
-      if (!strength.ready || strength.regionFrac[r] == null) return bodyCol; // no standard -> no data
+      if (!strength.ready || strength.regionFrac[r] == null) return emptyMuscleCol(C); // no standard -> no data
       return _readyColor(_strengthDisplayFrac(strength.regionFrac[r]), C); // weak (red) -> strong (green), score-curve scaled
     }
     // Volume: absolute scale against the evidence-based ~10-20 hard-sets/week band
@@ -1378,7 +1389,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 })}
               </div>
               <div style={{ padding:"6px 16px 14px", textAlign:"center", fontSize:10, color:C.muted }}>
-                {totalSets} working set{totalSets === 1 ? "" : "s"} this week · 4+ sets grows a muscle · 10–20 maximizes it
+                4+ sets grows a muscle · 10–20 maximizes it
               </div>
             </>
           ) : mode === "readiness" ? (
@@ -1411,7 +1422,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   </div>
                 );
               })()}
-              <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000}
+              <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000} dragHandle
                 panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`,
                   // boxSizing is load-bearing on THIS one, not cosmetic: with the content-box
                   // default (this app has no global border-box reset) the ~40px of vertical
@@ -1464,7 +1475,6 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 // alignItems:center clipping noted in the conventions.
                 return (
                   <>
-                      <div style={{ width:36, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                         <span style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>Body Battery</span>
                         <span style={{ fontFamily:MONO, fontSize:32, fontWeight:900, color:fill, letterSpacing:-1 }}>{bb.level}<span style={{ fontSize:14, color:C.sub, fontWeight:600 }}>/100</span></span>
@@ -7828,11 +7838,75 @@ const EASE_EXIT = "cubic-bezier(0.4, 0, 1, 1)";
 // Enter decelerates, exit accelerates — the same pair as everything else that moves.
 const SHEET_MS = 240;
 export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,0,0.6)",
-                 portal = true, panelStyle, backdropProps = {}, panelProps = {} }) {
+                 portal = true, panelStyle, backdropProps = {}, panelProps = {}, dragHandle = false }) {
   const [render, setRender] = useState(open);
   const [shown, setShown] = useState(false);
   const last = useRef(children);
   if (open) last.current = children;
+  // ── Swipe-down-to-close, driven from the grab handle ────────────────────────────────────────
+  // Follows the house gesture pattern: ONE setState on the first real frame (to drop the CSS
+  // transition, which would otherwise fight every direct write), then every later frame writes
+  // straight to the ref'd nodes, then the outcome is committed once on release.
+  //
+  // The drag starts on the HANDLE, not the panel: these sheets scroll (Body Battery is taller
+  // than the viewport and has its own overflow-y), so a panel-wide drag would steal the scroll.
+  // The handle carries `touchAction:"none"` for the reason documented for the reorder grip — on
+  // iOS, leaving the vertical axis to WebKit lets it claim the gesture and a later preventDefault
+  // cannot take it back.
+  const panelRef = useRef(null);
+  const backRef = useRef(null);
+  const dragY = useRef(0);
+  const startY = useRef(null);
+  const dragging = useRef(false);
+  const CLOSE_PX = 90;
+
+  const dragStart = (y) => { startY.current = y; dragY.current = 0; dragging.current = false; };
+  const dragMove = (y) => {
+    if (startY.current == null) return;
+    const dy = Math.max(0, y - startY.current);          // down only; up does nothing
+    if (!dragging.current) {
+      if (dy < 3) return;                                 // let a tap stay a tap
+      dragging.current = true;
+      if (panelRef.current) panelRef.current.style.transition = "none";
+      if (backRef.current) backRef.current.style.transition = "none";
+    }
+    dragY.current = dy;
+    if (panelRef.current) panelRef.current.style.transform = `translateY(${dy}px)`;
+    // Fade the scrim with the drag so the gesture feels attached to something.
+    if (backRef.current) backRef.current.style.opacity = String(Math.max(0, 1 - dy / 420));
+  };
+  const dragEnd = () => {
+    const dy = dragY.current;                             // read the LIVE value, not stale state
+    startY.current = null;
+    if (!dragging.current) return;
+    dragging.current = false;
+    if (dy > CLOSE_PX) { onClose && onClose(); return; }  // unmount path re-writes the transform
+    // Snap back by hand rather than via a re-render: React's last committed transform for this
+    // node is already translateY(0), so a state change would be an Object.is no-op and the
+    // directly-written transform would stay stuck at the drag offset.
+    if (panelRef.current) {
+      panelRef.current.style.transition = `transform ${SHEET_MS}ms ${EASE_NAV}`;
+      panelRef.current.style.transform = "translateY(0)";
+    }
+    if (backRef.current) {
+      backRef.current.style.transition = `opacity ${SHEET_MS}ms ${EASE_NAV}`;
+      backRef.current.style.opacity = "1";
+    }
+  };
+  const handleProps = {
+    onTouchStart: (e) => dragStart(e.touches[0].clientY),
+    onTouchMove:  (e) => dragMove(e.touches[0].clientY),
+    onTouchEnd:   dragEnd,
+    onTouchCancel: dragEnd,
+    onMouseDown:  (e) => {
+      dragStart(e.clientY);
+      const mm = (ev) => dragMove(ev.clientY);
+      // window-level, not element-level: a drag that leaves the 36px handle would otherwise
+      // freeze at its first frame (the documented cover-photo trap).
+      const mu = () => { dragEnd(); window.removeEventListener("mousemove", mm); window.removeEventListener("mouseup", mu); };
+      window.addEventListener("mousemove", mm); window.addEventListener("mouseup", mu);
+    },
+  };
   useEffect(() => {
     if (open) {
       setRender(true);
@@ -7848,18 +7922,24 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
   if (!render) return null;
   const ease = shown ? EASE_NAV : EASE_EXIT;
   const node = (
-    <div {...backdropProps} onClick={onClose}
+    <div {...backdropProps} onClick={onClose} ref={backRef}
       style={{ position:"fixed", inset:0, background:backdrop, zIndex:z, display:"flex",
                alignItems:"flex-end", justifyContent:"center",
                opacity: shown ? 1 : 0, transition:`opacity ${SHEET_MS}ms ${ease}`,
                // Taps during the exit would land on a panel already on its way out.
                pointerEvents: shown ? "auto" : "none",
                ...(backdropProps.style || {}) }}>
-      <div {...panelProps} onClick={e => e.stopPropagation()}
+      <div {...panelProps} onClick={e => e.stopPropagation()} ref={panelRef}
         style={{ width:"100%", maxWidth:480, margin:"0 auto",
                  transform: shown ? "translateY(0)" : "translateY(101%)",
                  transition:`transform ${SHEET_MS}ms ${ease}`, willChange:"transform",
                  ...panelStyle }}>
+        {dragHandle && (
+          <div {...handleProps} data-sheet-handle="1" aria-label="Drag down to close" role="button" tabIndex={-1}
+            style={{ padding:"10px 0 6px", cursor:"grab", touchAction:"none", display:"flex", justifyContent:"center" }}>
+            <div style={{ width:36, height:4, borderRadius:2, background:"rgba(128,128,128,0.45)" }}/>
+          </div>
+        )}
         {open ? children : last.current}
       </div>
     </div>

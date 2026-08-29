@@ -2957,6 +2957,40 @@ a template-literal card stays GREEN, proving the exemption is real and not an ac
 menus render a childless `position:fixed; inset:0; zIndex:50` click-catcher that cleared every
 other filter, so opening one would have made it the root and reported a confident, wrong ~0.
 
+## Device-feedback round (Mo testing, Aug 29 2026) — four reports, three were real bugs
+- **★ "The silhouette for Strength and when you click exercises is not the same as the fixed one in
+  Volume."** Correct, and worse than it looked: **18 muscles** in Strength mode were painted the
+  EXACT body colour and vanished into the silhouette, plus every uninvolved muscle on the
+  exercise-detail map. The zero-muscle fix had only ever reached the paths going through
+  `_heatColor`; Strength's "no standard" branch and the detail map still returned `bodyCol`. The
+  old comment defended that as "absence of data rather than a measured zero" — a true distinction
+  the reader cannot see, whose only visible effect is the body losing its anatomy. One
+  `emptyMuscleCol(C)` now serves all three. **Textbook one-fix-didn't-get-copied**, found by a user
+  looking at two screens side by side, which is the class no automated check here can catch.
+  `pw_musclezero` sweeps all three modes now (red-proof: 18 invisible muscles).
+- **★ "Feels like it's counting too many shoulder exercises."** Real. **57 exercises** gave
+  Shoulders half-credit as a secondary — **31 of them CHEST**, including pure isolation (Pec Deck,
+  Cable Fly, DB Fly, pullovers), plus **11 SHRUGS**, whose primary is already Traps. Removed from
+  isolation and shrugs, KEPT on presses (bench/incline/dips/close-grip) where the front delt
+  genuinely works. Measured on a realistic push+pull week: **14.5 → 11.5** shoulder sets, and the
+  remaining 3.5 is all pressing. Precedent: squat/deadlift were already excluded from Abs credit
+  because bracing is not half a set — a fly is not half a set of shoulders either. **When a user
+  says a number "feels" wrong, quantify it before agreeing OR disagreeing** — the count made the
+  case in one query.
+- **"On Volume, get rid of the # working sets this week."** Done. A whole-body set total mixes
+  chest and calves into one figure no dose-response guidance applies to; the per-muscle counts are
+  the tab's whole point. The "4+ grows · 10-20 maximizes" guidance stays — it explains the list.
+- **Swipe-down-to-close on the Body Battery sheet.** Built into `<Sheet>` (opt-in via `dragHandle`)
+  rather than that one caller, so all nineteen sheets can take it. Follows the house gesture
+  pattern: ONE setState to drop the CSS transition, then direct writes to the ref'd nodes, outcome
+  committed once on release. Two traps handled: the drag starts on the HANDLE, not the panel
+  (these sheets scroll — a panel-wide drag would steal it), and the handle carries
+  `touchAction:"none"` for the documented iOS reason. **The snap-back is animated by hand, not via
+  state**: React's last committed transform is already `translateY(0)`, so a state reset would be
+  an `Object.is` no-op and the directly-written offset would stay stuck. Sim: `pw_sheetdrag`
+  (follows the finger, short drag snaps back, long drag closes, and the panel is at rest — not
+  stuck at the drag offset — when reopened).
+
 ## ★★★ THE BUG CLASSES THAT REPEAT — and what now catches each (Aug 28-29, 2026)
 Mo asked the right question after a run of findings: *which of these could be somewhere else?*
 The answer, measured rather than guessed, is that TWO classes were never one-offs, and both are now

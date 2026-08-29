@@ -79,6 +79,28 @@ for(const theme of ["dark","light"]){
   const r=ratio(parse(m.zero),parse(m.body));
   check(`[${theme}] zero vs body is perceptible (>=1.2:1)`, r>=1.2, `${r.toFixed(2)}:1`);
   check(`[${theme}] a trained muscle still differs from an untrained one`, m.trained && m.trained!==m.zero, `trained=${m.trained} zero=${m.zero}`);
+
+  // ALL THREE MODES, not just Volume. Mo: "the silhouette for Strength and when you click
+  // exercises is not the same as the fixed one in Volume." He was right — this fix originally
+  // reached only the paths that go through _heatColor, so Strength's "no standard" branch and the
+  // exercise-detail map still returned the raw body colour and whole regions vanished into the
+  // silhouette. Same one-fix-didn't-get-copied shape as the palette twins, so the check now
+  // sweeps every mode instead of trusting the one that prompted it.
+  for (const mode of ["Readiness", "Volume", "Strength"]) {
+    const clicked = await p.evaluate(mo => { const b=[...document.querySelectorAll("button")].filter(x=>x.offsetParent).find(x=>(x.textContent||"").trim()===mo); if(!b) return false; b.click(); return true; }, mode);
+    await p.waitForTimeout(700);
+    if (!clicked) { check(`[${theme}] ${mode} tab exists`, false); continue; }
+    const r2 = await p.evaluate(() => {
+      const body = document.querySelector('path[data-body="1"]');
+      const ms = [...document.querySelectorAll('path[data-muscle]')];
+      if (!body || !ms.length) return null;
+      const bf = getComputedStyle(body).fill;
+      return { bf, invisible: ms.filter(x => getComputedStyle(x).fill === bf).map(x => x.getAttribute("data-muscle")) };
+    });
+    check(`[${theme}] ${mode}: no muscle is painted the exact body colour`,
+      r2 && r2.invisible.length === 0,
+      r2 ? `${r2.invisible.length} invisible: ${r2.invisible.slice(0,5).join(", ")}` : "map not found");
+  }
   await p.close();
 }
 await b.close();
