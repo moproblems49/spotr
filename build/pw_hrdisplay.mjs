@@ -96,6 +96,70 @@ console.log("TIGHTEST NODE HOLDING BOTH:", JSON.stringify(together));
 check("6. avg and peak sit together in one small block, not scattered across the card",
   !!together, "no node under 24 chars contains both");
 
+// ── 7-9. THE CARD DECLUTTER (Aug 29) ─────────────────────────────────────────────────────────
+// Mo, from a screenshot: "I feel like we can do a lot better design wise", plus three specifics.
+// These assert SHAPE, because every number on the card was already correct — the defects were
+// purely how loud each one was, which nothing else in the battery can see.
+{
+  const shape = await page.evaluate(() => {
+    // (a) The heart-rate digits must LINE UP. They were stacked already, but the heart glyph
+    // prefixed only the first line, so avg and peak started at different x. Compare left edges.
+    // Measure where the DIGITS actually start, with a Range over just the numeral characters.
+    // Two earlier drafts of this got it wrong in opposite directions: the first used a regex the
+    // old markup could not match (so it reported `null` — proving the selector broke, not that
+    // pixels were wrong), and the second compared the two <div> left edges, which ALWAYS align
+    // because they are block siblings. What was misaligned was the glyphs inside them, because the
+    // heart lived in the first line's text. Ranges measure the glyphs.
+    const norm = d => (d.textContent||"").replace(/\s+/g,"");
+    const nums = [...document.querySelectorAll("div")].filter(d => /^♥?\d+(avg|peak)$/.test(norm(d)));
+    const digitsLeft = (row) => {
+      if (!row) return null;
+      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = walker.nextNode())) {
+        const i = n.textContent.search(/\d/);
+        if (i < 0) continue;
+        let j = i; while (j < n.textContent.length && /\d/.test(n.textContent[j])) j++;
+        const r = document.createRange(); r.setStart(n, i); r.setEnd(n, j);
+        return r.getBoundingClientRect().left;
+      }
+      return null;
+    };
+    const avgL  = digitsLeft(nums.find(d => /avg$/.test(norm(d))));
+    const peakL = digitsLeft(nums.find(d => /peak$/.test(norm(d))));
+    const dx = (avgL !== null && peakL !== null) ? Math.abs(avgL - peakL) : null;
+
+    // (b) ONE loud PR badge per card. The filled lime chip repeated per exercise made the card's
+    // loudest element appear three or four times; per-exercise PRs are a quiet trophy now.
+    // The EXERCISE ROW must carry no filled PR chip — the trophy is its marker now, and the one
+    // loud badge lives in the post header. An earlier draft asserted "<= 1 per row", which a row
+    // holding exactly one restored chip satisfies, so it passed on the build it was meant to fail.
+    const rows = [...document.querySelectorAll("div")].filter(d => /Barbell Bench Press/.test(d.textContent||""));
+    const row = rows.length ? rows[rows.length - 1] : null;
+    const filledPR = row ? [...row.querySelectorAll("span")].filter(x => x.textContent.trim() === "PR"
+                       && getComputedStyle(x).backgroundColor !== "rgba(0, 0, 0, 0)").length : null;
+    const rowTrophy = row ? /🏆/.test(row.textContent || "") : false;
+
+    // (c) The share-code control must not be a full-width panel any more.
+    const imp = [...document.querySelectorAll("button")].find(x => /Import/.test(x.textContent||""));
+    return { dx, filledPR, rowTrophy, impW: imp ? imp.getBoundingClientRect().width : null,
+             vw: window.innerWidth, hasImport: !!imp };
+  });
+  check("7. avg and peak line up under each other (same left edge)",
+    shape.dx !== null && shape.dx <= 1, `left-edge delta = ${shape.dx}px`);
+  check("8. a PR exercise row carries a quiet trophy, not a filled PR chip",
+    shape.filledPR === 0 && shape.rowTrophy,
+    `filled chips in row: ${shape.filledPR}, trophy present: ${shape.rowTrophy}`);
+  // Conditional, and the skip is PRINTED: this fixture's caption carries no share code, so there
+  // is no chip to measure. A check that quietly never runs is worth nothing — say so out loud.
+  if (shape.hasImport) {
+    check("9. the share-code control is an inline chip, not a full-width panel",
+      shape.impW < shape.vw * 0.75, `chip width ${Math.round(shape.impW)} of ${shape.vw}`);
+  } else {
+    console.log("SKIP 9. no share code in this fixture — chip width not measured (see pw_sharecode)");
+  }
+}
+
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

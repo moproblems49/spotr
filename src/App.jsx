@@ -1,4 +1,4 @@
-// v178091716970
+// v178091716971
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6054,20 +6054,27 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 export function HrStat({ hr, C, size = 14, align = "center" }) {
   if (!hr?.avg) return null;
   const word = { fontSize: 10, fontWeight: 700, color: C.sub, fontFamily: F, marginLeft: 3, letterSpacing: 0.2 };
+  // Mo: "make them align under each other (the avg and peak)." They were already stacked, but the
+  // ♥ prefixed only the FIRST line, so the two numbers started at different x positions and the
+  // pair read as ragged rather than as one tile. The glyph is its own column now, vertically
+  // centred across both rows, so the digits line up — and `tabular-nums` keeps them lined up when
+  // the values have different digit counts (99 vs 111), which is the case this would otherwise
+  // still fail on.
+  const num = { fontFamily: MONO, fontVariantNumeric: "tabular-nums", color: C.red, lineHeight: 1.2, whiteSpace: "nowrap" };
   return (
-    <div style={{ textAlign: align }}>
-      <div style={{ fontSize: size, fontWeight: 800, color: C.red, fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
-        ♥{hr.avg}<span style={word}>avg</span>
-      </div>
-      {hr.peak ? (
-        // Was a hardcoded "#ef4444" (fails light 4.5:1 as-is: 4.55-4.96) dimmed further with
-        // opacity:0.72, which drags the blended color to 3.25-4.44:1 against every card surface —
-        // opacity de-emphasis doesn't have room to spend on an already-marginal color. C.red at
-        // full opacity; the smaller size + lighter weight already tell avg and peak apart.
-        <div style={{ fontSize: Math.max(10, size - 3), fontWeight: 700, color: C.red, fontFamily: MONO, lineHeight: 1.2, whiteSpace: "nowrap" }}>
-          {hr.peak}<span style={word}>peak</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 3,
+                  justifyContent: align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start" }}>
+      <span style={{ fontSize: size, color: C.red, lineHeight: 1, flexShrink: 0 }}>♥</span>
+      <div style={{ textAlign: "left" }}>
+        <div style={{ ...num, fontSize: size, fontWeight: 800 }}>
+          {hr.avg}<span style={word}>avg</span>
         </div>
-      ) : null}
+        {hr.peak ? (
+          <div style={{ ...num, fontSize: Math.max(10, size - 3), fontWeight: 700 }}>
+            {hr.peak}<span style={word}>peak</span>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -6346,11 +6353,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
                   <div style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{Math.floor(post.workout.duration/60)}m</div>
+                    <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums" }}>{Math.floor(post.workout.duration/60)}m</div>
                     <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>TIME</div>
                   </div>
                   <div style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:14, fontWeight:800, color:C.text, fontFamily:MONO }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
+                    <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums" }}>{fmtVol(Math.round(cvt(post.workout.volume, postUnit, displayUnit)), displayUnit)}</div>
                     <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>VOL</div>
                   </div>
                   {/* Same field, same avg AND peak as History — only present once Apple Health has
@@ -6366,7 +6373,16 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                 <div key={i} style={{ padding:"10px 16px", borderBottom:`1px solid ${C.divider}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
                     <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{ex.name}</span>
-                    {ex.isPR && <PRTag C={C}/>}
+                    {ex.isPR && (
+                      // Quiet on purpose: the header already carries ONE loud PRTag for the
+                      // session. Repeating the filled lime chip per exercise made the card's
+                      // loudest element appear three or four times, which is how a signal stops
+                      // being one — the same failure the Body Battery sheet had with six lime
+                      // numbers. Gold is this app's existing PR/trophy colour. aria-label because
+                      // a bare glyph is silence to a screen reader.
+                      <span aria-label="Personal record" title="Personal record"
+                        style={{ fontSize:11, color:C.gold, lineHeight:1, flexShrink:0 }}>🏆</span>
+                    )}
                   </div>
                   {/* A LIFTER'S LEDGER, NOT A ROW OF CHIPS. Every set used to sit in its own
                       bordered pill, which is the app's most-repeated shape and made three sets of
@@ -6402,25 +6418,6 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
           </div>
         );
       })()}
-
-      {/* Share code (program/workout) — slim chip under the post body, above the action bar so
-          the import CTA reads as part of the content rather than floating among comments. */}
-      {postCode && (
-        <div style={{ padding:"0 12px 4px" }}>
-          <button onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-code", { detail: { code: postCode } }))} style={{
-            display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 10px",
-            background: C.isDark ? "#141414" : "#F4F6FA", border:`1px solid ${C.border}`,
-            borderRadius:10, cursor:"pointer", fontFamily:F, textAlign:"left",
-          }}>
-            <div style={{ width:24, height:24, borderRadius:7, background:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <Icon name={postCode.startsWith("WO-") ? "dumbbell" : "calendar"} size={12}/>
-            </div>
-            <span style={{ fontSize:10, letterSpacing:1, fontWeight:700, color:C.sub, flexShrink:0 }}>{postCode.startsWith("WO-") ? "WORKOUT" : "PROGRAM"}</span>
-            <span style={{ fontFamily:MONO, fontSize:12, fontWeight:700, color:C.text, letterSpacing:0.5, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{postCode}</span>
-            <span style={{ fontSize:11, fontWeight:700, color:C.accent, flexShrink:0 }}>Import</span>
-          </button>
-        </div>
-      )}
 
       {/* Actions */}
       <div style={{ display:"flex", alignItems:"center", gap:4, padding:"8px 12px 2px" }}>
@@ -6469,10 +6466,31 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
 
       {/* Caption + comments */}
       <div style={{ padding:"2px 16px 14px" }}>
-        {displayCaption && (
+        {(displayCaption || postCode) && (
           <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
             <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
             {displayCaption}
+            {/* ★ THE SHARE CODE IS AN INLINE CHIP, NOT A PANEL. It used to be a full-width
+                bordered box with an icon tile, a kicker, the code and a CTA — the visually
+                HEAVIEST element in the card, carrying its least important information. Measured
+                on live data: 43 of Mo's 80 posts contain a code and NOBODY else's do, so that box
+                was, in practice, a permanent advertisement on half of one person's feed presence.
+                Inline keeps the discovery path (see a friend's program, take it) at a weight that
+                matches what it is: an aside on the caption. */}
+            {postCode && (
+              <button onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-code", { detail: { code: postCode } }))}
+                aria-label={`Import ${postCode.startsWith("WO-") ? "workout" : "program"} ${postCode}`}
+                style={{
+                  display:"inline-flex", alignItems:"center", gap:4, verticalAlign:"baseline",
+                  marginLeft: displayCaption ? 6 : 0, padding:"1px 7px",
+                  background:"none", border:`1px solid ${C.border}`, borderRadius:11,
+                  cursor:"pointer", fontFamily:F, lineHeight:1.5,
+                }}>
+                <Icon name={postCode.startsWith("WO-") ? "dumbbell" : "calendar"} size={10} color={C.sub}/>
+                <span style={{ fontFamily:MONO, fontSize:11, fontWeight:700, color:C.sub, letterSpacing:0.3 }}>{postCode}</span>
+                <span style={{ fontSize:11, fontWeight:700, color:C.accentInk }}>Import</span>
+              </button>
+            )}
           </div>
         )}
         {visibleComments.length > 0 && !showCmts && (
@@ -19398,16 +19416,16 @@ function AppInner() {
         {[
           {
             id: "feed", label: "Home",
-            icon: (active) => (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? C.text : "none"} stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            icon: (active, col) => (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? col : "none"} stroke={col} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 9.5 L12 3 L21 9.5 V20 Q21 21 20 21 H15 V14 H9 V21 H4 Q3 21 3 20 Z"/>
               </svg>
             )
           },
           {
             id: "tracker", label: "Workout",
-            icon: (active) => (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={active ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+            icon: (active, col) => (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth={active ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6.5 6.5 L17.5 17.5"/>
                 <rect x="1" y="9" width="4" height="6" rx="1"/>
                 <rect x="19" y="9" width="4" height="6" rx="1"/>
@@ -19419,8 +19437,8 @@ function AppInner() {
           },
           {
             id: "discover", label: "Discover",
-            icon: (active) => (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={active ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+            icon: (active, col) => (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth={active ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="7"/>
                 <line x1="21" y1="21" x2="16.5" y2="16.5"/>
               </svg>
@@ -19428,8 +19446,8 @@ function AppInner() {
           },
           {
             id: "profile", label: "Profile",
-            icon: (active) => (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? C.text : "none"} stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            icon: (active, col) => (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? col : "none"} stroke={col} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="8" r="4"/>
                 <path d="M3 21 Q3 14 12 14 Q21 14 21 21"/>
               </svg>
@@ -19449,7 +19467,17 @@ function AppInner() {
                 transition: "opacity 0.15s",
               }}
             >
-              {icon(active)}
+              {/* The active tab was distinguished ONLY by opacity (1 vs 0.45) — same colour, same
+                  weight — which is a weak "you are here" for the one control that is on screen
+                  every second the app is open. Colour it instead, and it becomes EARNED colour:
+                  it tells the reader something (where they are) rather than decorating the chrome.
+                  This is deliberately not the glow border that was floated: a permanent glow on
+                  permanent chrome teaches nothing and competes with the volt reserved for PRs,
+                  progress and the muscle map.
+                  `accentInk`, not `accent`: on the LIGHT theme the pill composites to a near-white
+                  surface where accent measures 2.71:1 — under the 3:1 floor for a graphical
+                  object. accentInk is 6.20:1 there and is simply `accent` on dark (10.78:1). */}
+              {icon(active, active ? C.accentInk : C.text)}
             </button>
           );
         })}

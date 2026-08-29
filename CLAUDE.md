@@ -3091,6 +3091,48 @@ rotation through abduction is real, if debated. **Squat/leg-press → Hamstrings
 and deliberately LEFT** (Mo's call): genuinely contested in the literature, unlike the isolation
 cases.
 
+## The feed card declutter (Aug 29, 2026) — from a screenshot, and the numbers were never wrong
+Mo: "I feel like we can do a lot better design wise", plus three specifics. **Every number on that
+card was already correct** — what was wrong was how LOUD each one was, which is a class no existing
+check could see.
+- **★ THE PR BADGE APPEARED FOUR TIMES IN ONE CARD** (once by the username, once per PR exercise).
+  The loudest element in the card, repeated, which is how a signal stops being one — the same
+  failure as the Body Battery sheet's six lime numbers and the day rainbow. ONE filled `PRTag` in
+  the header now says "this session had a PR"; per-exercise PRs are a quiet gold trophy, which
+  still says WHICH lift. Same answer the Day Preview redesign reached (badge → gold + trophy
+  glyph). `aria-label="Personal record"` on the glyph — a bare emoji is silence to a screen reader.
+- **The share code was a full-width bordered panel** — the visually heaviest element in the card
+  carrying its least important information. **Measured on live data: 43 of Mo's 80 posts contain a
+  code and NOBODY else's do**, so it was in practice a permanent advertisement across half of one
+  person's feed presence. It is an inline chip on the caption line now. It was never owner-gated —
+  the chip renders on any caption containing a code; the reason Mo only ever saw it on his own
+  posts is that he is the only person who has ever shared one. Moving it to the Workout tab was
+  considered and rejected: that tab ALREADY has manual code entry, so "moving" it there is just
+  deleting the discovery path.
+- **HR avg/peak now ALIGN.** They were already stacked, but the ♥ prefixed only the first line, so
+  the digits started 8.4px apart. The glyph is its own column now, and `tabular-nums` keeps the
+  numbers aligned when the digit counts differ (99 vs 111).
+- TIME/VOL 14 → 12px. HR stays RED and stays its size (Mo's call).
+- **The ACTIVE NAV TAB is coloured instead of glowing.** Mo asked about a glow border on the nav;
+  declined, and the reasoning is the house rule: a permanent glow on permanent chrome teaches the
+  reader nothing and competes with the volt reserved for PRs, progress and the muscle map. But the
+  active tab really was weak — distinguished ONLY by opacity (1 vs 0.45), same colour, same weight.
+  Colouring it is EARNED colour: it tells you where you are. **`accentInk`, not `accent`** — on the
+  light theme the translucent pill composites to a near-white surface where `accent` measures
+  **2.71:1**, under the 3:1 floor for a graphical object; `accentInk` is 6.20:1 there and is simply
+  `accent` on dark (10.78:1).
+**★ AND THE GUARD FOR THIS TOOK THREE ATTEMPTS, EACH VACUOUS IN A DIFFERENT WAY — worth reading
+before writing any layout assertion.** (1) The alignment check used a regex the OLD markup could
+not match, so the red-proof reported `dx = null`: that proves the SELECTOR broke, not that the
+pixels are wrong, and those are completely different findings. (2) Rewritten to compare the two
+`<div>` left edges — which ALWAYS align, because they are block siblings; what was misaligned was
+the GLYPHS inside them. It now measures a `Range` over just the numeral characters, which is what
+the eye actually sees. (3) The PR check asserted "at most one filled chip per row" scoped to an
+exercise row — a row holding exactly one restored chip satisfies that, so it passed on the very
+build it was written to fail. It asserts ZERO filled chips plus a trophy in the row now. Final
+red-proof reports real numbers: **8.4375px** of misalignment and **1 filled chip, trophy absent**.
+A conditional check that skips now PRINTS `SKIP` — one that quietly never runs is worth nothing.
+
 ## ★★ THE "DELETE MY GROUPS" CHOICE SHIPPED INERT, AND A STALE uuid COULD BRICK DELETION (Aug 29)
 A cold-context audit of the group-ownership work found two CONFIRMED defects in it, both mine, and
 the second is the more serious thing this project has shipped in a while.
