@@ -50,8 +50,13 @@ git push
 **★ ALWAYS PUBLISH THE OTA BUNDLE WITH EVERY CHANGE** (Mo's standing instruction: "always push the
 app"). Pushing to git alone does NOTHING for his phone — the installed app only updates when a new
 bundle is published. So finish every change with the publish recipe in `api/app-update.js`:
-delete the old zip FIRST → build with the real `.env.local` → `cd dist && zip -rq
-../public/bundles/seshd-<ver>.zip .` → bump `LATEST_VERSION` → commit + push. Bump the version
+delete the old zip FIRST → build with the real `.env.local` → `( cd dist && zip -rq
+../public/bundles/seshd-<ver>.zip . )` → bump `LATEST_VERSION` → commit + push. **The parentheses
+are load-bearing.** A bare `cd dist && …` strands the shell in `dist/` if any link of the chain
+fails, and the Bash tool's cwd PERSISTS into the next command — that is how a later
+`rm -f .env.local` ran inside `dist/`, silently missed the real one at the repo root, and left a
+live key sitting in the working tree. A subshell cannot change the caller's cwd at all. Same rule
+anywhere else a `cd` appears in a chain; always re-check with an ABSOLUTE path afterwards. Bump the version
 suffix (…a → …b → …c) each time. Sanity-check the built bundle carries the REAL supabase URL (a
 stub-built bundle breaks sign-in for everyone).
 **"Delete the old zip FIRST" is load-bearing, and it has been getting missed.** `npm run build`
@@ -230,7 +235,8 @@ visual bugs this way (serif-font fallback, cover-scrim smudge, etc.) that no sim
 Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/polish_tour*.mjs`):
 1. Build with stub env — write `.env.local` (VITE_SUPABASE_URL=https://stub.supabase.co,
    VITE_SUPABASE_ANON_KEY=stubkey, VITE_POSTHOG_KEY=) → `npm run build` → delete `.env.local`.
-2. Serve: `cd dist && python3 -m http.server 8199 &` (it dies between long steps — re-check
+2. Serve: `( cd dist && python3 -m http.server 8199 & )` (subshell — see the publish
+   recipe above for why a bare `cd` in a chain is how the cwd gets stranded) (it dies between long steps — re-check
    `curl -s http://127.0.0.1:8199/` before each run or every shot is a Chromium error page).
 3. `npm install --no-save playwright-core jsdom` — install BOTH TOGETHER; any `--no-save`
    install prunes the other one. Chromium binary: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
