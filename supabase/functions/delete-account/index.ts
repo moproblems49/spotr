@@ -1,4 +1,5 @@
-// delete-account — permanently deletes the CALLING user's own Supabase Auth identity.
+// delete-account — permanently deletes the CALLING user's own Supabase Auth identity, and now
+// their uploaded FILES as well.
 //
 // WHY THIS EXISTS
 // The client used to call the public self-service `DELETE /auth/v1/user` endpoint directly with
@@ -12,12 +13,32 @@
 // that user's identity — never an id supplied in the request body, which would let one user delete
 // another's account.
 //
-// The client already deletes all of the user's APP DATA (profiles/posts/history/etc.) itself
-// before calling this — this function's only job is the final step: the AUTH IDENTITY. Without it,
-// "Delete account" silently left the login credentials intact, so re-registering with the same
-// email just logged back into the (data-wiped) old identity instead of starting fresh — exactly the
-// gap Apple's account-deletion requirement (Guideline 5.1.1(v)) exists to catch, and exactly what a
-// reviewer testing the deletion flow would hit too.
+// STORAGE (added Aug 29 2026). Deleting an account cascaded the DATABASE rows and left every file
+// the user had ever uploaded sitting in storage forever — found by a routine sweep, which turned up
+// three orphaned images belonging to an account that no longer exists in `auth.users` or
+// `profiles`. Those are personal data (progress photos, avatars) and the `images` / `post-images`
+// buckets are PUBLICLY READABLE, so a deleted user's photos stayed at live public URLs. Both of
+// those buckets key objects under a `{userId}/` prefix, so this can enumerate exactly the caller's
+// own files from the id resolved above — no path is ever accepted from the request body, which
+// would let one user delete another's uploads.
+//
+// KNOWN REMAINING GAP, deliberate: `group-images` keys objects under `{groupId}/`, not `{userId}/`,
+// so a user's group photos cannot be found by prefix here. The CLIENT handles those: it READS the
+// paths out of `group_posts.image_url` before its row-delete loop (they live nowhere else) and
+// destroys the objects AFTER the rows are gone, per the house rule that a failed row delete must
+// never leave the group looking at a permanently broken image.
+// The authorization there rests on the `group-images: author or creator delete` policy, which is
+// `owner = auth.uid() OR auth.uid() = groups.created_by` — OWNER-OR-CREATOR, *not* membership
+// (membership gates SELECT and INSERT only, via `group_image_member_check`). That covers the
+// normal case, since the uploader owns the object. It does NOT cover an object whose `owner` is
+// NULL when the deleter is not the group's creator — and null-owner objects demonstrably occur in
+// this project (every `post-images` object has one), so if group photos ever start landing with a
+// null owner, that gap becomes real and this comment is the place it was written down.
+//
+// Storage is cleared BEFORE the identity is deleted, because the identity is what authorizes
+// nothing here (the service role does the work) but IS what the user is waiting on — and a failure
+// to clear files must not leave a live login behind. If file deletion fails we still delete the
+// identity and report the counts, rather than stranding a half-deleted account.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const CORS = {
@@ -27,6 +48,31 @@ const CORS = {
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+
+// Buckets whose object names begin with the owner's user id. `group-images` is deliberately absent
+// — see the note above.
+const USER_PREFIXED_BUCKETS = ["images", "post-images"];
+
+// List every object under `${userId}/` in one bucket. The list endpoint returns names RELATIVE to
+// the prefix, so they are re-qualified before deletion. Paged, because a long-standing account can
+// hold more than one page of photos and a silent truncation would leave files behind.
+async function listUserObjects(url: string, key: string, bucket: string, userId: string): Promise<string[]> {
+  const out: string[] = [];
+  const LIMIT = 100;
+  for (let offset = 0; offset < 5000; offset += LIMIT) {
+    const res = await fetch(`${url}/storage/v1/object/list/${bucket}`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ prefix: `${userId}/`, limit: LIMIT, offset }),
+    });
+    if (!res.ok) break;
+    const rows = await res.json().catch(() => []);
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    for (const r of rows) if (r && typeof r.name === "string" && r.name) out.push(`${userId}/${r.name}`);
+    if (rows.length < LIMIT) break;
+  }
+  return out;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -54,6 +100,27 @@ Deno.serve(async (req: Request) => {
   }
   if (!callerId) return json({ error: "unauthorized" }, 401);
 
+  // ── Files first ────────────────────────────────────────────────────────────────────────────
+  // Best-effort and never fatal: a stranded file is bad, but a live login on an account the user
+  // asked to delete is worse. Counts are returned so a failure is visible rather than silent.
+  let filesDeleted = 0;
+  const fileErrors: string[] = [];
+  for (const bucket of USER_PREFIXED_BUCKETS) {
+    try {
+      const paths = await listUserObjects(SUPABASE_URL, SERVICE_KEY, bucket, callerId);
+      if (!paths.length) continue;
+      const del = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
+        method: "DELETE",
+        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ prefixes: paths }),
+      });
+      if (del.ok) filesDeleted += paths.length;
+      else fileErrors.push(`${bucket}:${del.status}`);
+    } catch (e) {
+      fileErrors.push(`${bucket}:threw`);
+    }
+  }
+
   // Delete via the ADMIN API — the only endpoint on this project that actually removes the auth
   // identity. Scoped to callerId, resolved above from the caller's own token, so this can only
   // ever delete the account making the request, never anyone else's.
@@ -66,10 +133,10 @@ Deno.serve(async (req: Request) => {
     // that's the goal state, not a failure.
     if (!del.ok && del.status !== 404) {
       const detail = await del.text().catch(() => "");
-      return json({ error: "delete_failed", status: del.status, detail }, 502);
+      return json({ error: "delete_failed", status: del.status, detail, filesDeleted, fileErrors }, 502);
     }
-    return json({ ok: true });
+    return json({ ok: true, filesDeleted, ...(fileErrors.length ? { fileErrors } : {}) });
   } catch {
-    return json({ error: "server_error" }, 500);
+    return json({ error: "server_error", filesDeleted, fileErrors }, 500);
   }
 });

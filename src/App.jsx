@@ -1,4 +1,4 @@
-// v178091716964
+// v178091716965
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13087,29 +13087,46 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         [`follows?following_id=eq.${uid_}`, false],
         [`profiles?id=eq.${uid_}`, true],
       ];
-      // GROUP PHOTOS FIRST, WHILE THE ROWS THAT NAME THEM STILL EXIST. `group-images` keys objects
-      // under `{groupId}/`, not `{userId}/`, so the delete-account edge function cannot find them
-      // by prefix the way it finds this user's `images` / `post-images` uploads. The paths live
-      // only in `group_posts.image_url`, and the loop below is about to delete those rows — after
-      // which the files are unreachable forever. Best-effort: a stranded file must never block the
-      // deletion the user asked for. (Storage RLS gates on group membership, so this is correctly
-      // authorized by the user's own token.)
+      // COLLECT the group-image paths now — only the LOOKUP has to happen first, not the deletion.
+      // `group-images` keys objects under `{groupId}/`, not `{userId}/`, so the delete-account edge
+      // function cannot find them by prefix the way it finds this user's `images` / `post-images`
+      // uploads; the paths live ONLY in `group_posts.image_url`, and the loop below deletes those
+      // rows. So read them into memory here, and destroy the objects AFTER the rows are gone —
+      // "DESTROY THE ROW FIRST, THE OBJECT SECOND, AND ONLY IF THE ROW ACTUALLY DIED", the same
+      // rule and the same shape as the undo-finish cascade. Deleting the objects here instead
+      // would mean a `group_posts` DELETE that times out (20s, and this flow makes 14 sequential
+      // calls) leaves every OTHER member of that group staring at a permanently broken image that
+      // the poster can no longer repair or remove, because their account is on its way out.
+      // `image_url=not.is.null` keeps this to the few posts that actually carry a photo.
+      let groupImagePaths = [];
       try {
         const myGroupPosts = await sb.query(
-          `group_posts?user_id=eq.${uid_}&select=image_url`, {}, getTok());
-        for (const row of (Array.isArray(myGroupPosts) ? myGroupPosts : [])) {
-          const path = row && row.image_url;
+          `group_posts?user_id=eq.${uid_}&image_url=not.is.null&select=image_url`, {}, getTok());
+        groupImagePaths = (Array.isArray(myGroupPosts) ? myGroupPosts : [])
+          .map(r => r && r.image_url)
           // Stored value is a bare path for group images; skip legacy absolute URLs and nulls.
-          if (typeof path === "string" && path && !/^https?:/i.test(path)) {
-            try { await deleteGroupImage(path, getTok()); } catch (e) { devError("group image cleanup:", e); }
-          }
-        }
-      } catch (e) { devError("group image cleanup lookup:", e); }
+          // Skipping an absolute URL is not a leak: those point into the public `images` bucket
+          // under this user's own `{userId}/` prefix, which the edge function's sweep covers.
+          .filter(u => typeof u === "string" && u && !/^https?:/i.test(u));
+      } catch (e) { devError("group image lookup:", e); }
 
       let criticalFailed = false;
+      let groupPostsDeleted = false;
       for (const [t, critical] of tables) {
-        try { await sb.query(t, { method: "DELETE" }, getTok()); }
+        try {
+          await sb.query(t, { method: "DELETE" }, getTok());
+          if (t.startsWith("group_posts?")) groupPostsDeleted = true;
+        }
         catch (e) { if (critical) criticalFailed = true; }
+      }
+      // The rows are gone, so the objects they named can go too. Gated on that delete having
+      // actually succeeded — `sb.query` throws on both a non-OK status and the 20s timeout, so a
+      // failure really does land in the catch above and leave this false.
+      // Best-effort from here: a stranded file must never block the deletion the user asked for.
+      if (groupPostsDeleted) {
+        for (const pth of groupImagePaths) {
+          try { await deleteGroupImage(pth, getTok()); } catch (e) { devError("group image cleanup:", e); }
+        }
       }
       // Clear all local data so nothing lingers on-device regardless
       try { localStorage.clear(); } catch {}

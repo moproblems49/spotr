@@ -12,7 +12,7 @@
 //    If you already built, `rm -f dist/bundles/*.zip` before zipping.
 // 2. Build the production web bundle with the REAL .env values:  npm run build
 //    Then confirm it is not a stub build, or sign-in breaks for everyone:
-//      grep -roh 'https://[a-z]*\.supabase\.co' dist/assets/*.js   # must be zwsoxvekobvtvsphesef
+//      grep -roh 'https://[a-z0-9]*\.supabase\.co' dist/assets/*.js   # must be zwsoxvekobvtvsphesef
 // 3. Zip the CONTENTS of dist/ so index.html sits at the ZIP ROOT. USE A SUBSHELL —
 //    the parentheses are load-bearing, not style:
 //      ( cd dist && zip -rq ../public/bundles/seshd-<NEW_VERSION>.zip . )
@@ -35,7 +35,7 @@
 // NEVER OTA a change that needs new native plugins/capabilities — that requires a real
 // TestFlight build (cap sync + archive on the Mac).
 
-const LATEST_VERSION = "2026-08-29e"; // null = no OTA update published
+const LATEST_VERSION = "2026-08-29f"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 
 export default async function handler(req, res) {

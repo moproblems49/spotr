@@ -77,7 +77,7 @@ KEY=$(grep -rohE 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'
 printf 'VITE_SUPABASE_URL=https://zwsoxvekobvtvsphesef.supabase.co\nVITE_SUPABASE_ANON_KEY=%s\nVITE_POSTHOG_KEY=\n' "$KEY" > /home/user/spotr/.env.local
 ```
 Do this BEFORE deleting the old zip. Delete `.env.local` right after the build, and always confirm
-`grep -roh 'https://[a-z]*\.supabase\.co' dist/assets/*.js` shows `zwsoxvekobvtvsphesef`, not `stub`.
+`grep -roh 'https://[a-z0-9]*\.supabase\.co' dist/assets/*.js` shows `zwsoxvekobvtvsphesef`, not `stub`.
 (VITE_POSTHOG_KEY is deliberately empty in every published bundle so far — analytics is off.)
 Shell note: never put `pkill` in a `&&` chain — it kills the whole shell (exit 144) and the rest of
 the chain silently never runs. A version bump chained after a `pkill` got skipped exactly that way.
@@ -235,9 +235,16 @@ visual bugs this way (serif-font fallback, cover-scrim smudge, etc.) that no sim
 Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/polish_tour*.mjs`):
 1. Build with stub env — write `.env.local` (VITE_SUPABASE_URL=https://stub.supabase.co,
    VITE_SUPABASE_ANON_KEY=stubkey, VITE_POSTHOG_KEY=) → `npm run build` → delete `.env.local`.
-2. Serve: `( cd dist && python3 -m http.server 8199 & )` (subshell — see the publish
-   recipe above for why a bare `cd` in a chain is how the cwd gets stranded) (it dies between long steps — re-check
-   `curl -s http://127.0.0.1:8199/` before each run or every shot is a Chromium error page).
+2. Serve: `cd dist && python3 -m http.server 8199 &` — **and do NOT "fix" this into a subshell.**
+   It looks like the stranding shape from the publish recipe and is not: in bash `&` terminates the
+   whole AND-OR list, so the ENTIRE `cd … && …` already runs in a background subshell and the
+   caller's cwd is never touched (measured, including with a deliberately failing `cd`). Wrapping
+   it in `( … )` still serves, but the outer subshell exits immediately, so you get an EMPTY `$!`
+   and no `jobs` entry — and the only way left to stop the server is `pkill`, which kills the whole
+   shell (exit 144). The parentheses belong on the ZIP step, where the chain is synchronous and
+   genuinely does strand the shell; they are a regression here.
+   The server dies between long steps — re-check `curl -s http://127.0.0.1:8199/` before each run
+   or every shot is a Chromium error page.
 3. `npm install --no-save playwright-core jsdom` — install BOTH TOGETHER; any `--no-save`
    install prunes the other one. Chromium binary: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
    (launch with `executablePath` + `--no-sandbox`; never `playwright install`).
@@ -2456,8 +2463,8 @@ Forearms, Core, Quads, Hamstrings, Glutes, Calves) inside the 7-day window the h
 reads. `appreview` also follows `momo`, which is how the reviewer sees real PHOTO posts — 19 of
 Mo's 74 posts carry images, so there was no need to fabricate any.
 To wipe later: delete auth.users rows with `%@getseshd.app` emails (except appreview if still
-needed) — profiles/posts/history cascade. Mo is added as an internal TestFlight tester. DMARC is the
-one remaining optional Mo-side item. Earlier: **App Store trust & safety pass** — three things a
+needed) — profiles/posts/history cascade. Mo is added as an internal TestFlight tester. DMARC is DONE (verified live Aug 29 — see the launch-blockers entry).
+The remaining Mo-side items are the email templates and the SMTP sender name. Earlier: **App Store trust & safety pass** — three things a
 UGC app needs for Guideline 1.2 review: (1) **Report flow** — module-level `reportContent(target)`
 + `<ReportHost>` (mirrors `confirmAction`/`ConfirmHost`; rendered next to ConfirmHost in AppInner
 so it needs `token`+`currentUserId` props), wired into profiles (the old standalone Block button
@@ -2639,7 +2646,7 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   history with no subscription, no new access class and no Apple cut. If trainers use it
   constantly, build the tier.
 
-Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). **Email confirmation is ON** (Mo flipped it July 30, before opening the beta). Leaked-password protection is a PAID Supabase feature and is deliberately deferred — it's the single best remaining defence for tester accounts, so re-raise it when he's on a paid plan. Reset emails land in spam while the domain is new — consider a DMARC record (`_dmarc.getseshd.app` TXT `v=DMARC1; p=none;`). **Branded auth email templates are written and waiting in `supabase/email-templates/`** (confirm-signup / reset-password / change-email, plus `preview/*.png` and `_shared.md` with install steps) — they go in the Supabase dashboard, so no deploy; still Mo-side, along with setting the SMTP **Sender name to "Seshd"**. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
+Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). **Email confirmation is ON** (Mo flipped it July 30, before opening the beta). Leaked-password protection is a PAID Supabase feature and is deliberately deferred — it's the single best remaining defence for tester accounts, so re-raise it when he's on a paid plan. **DMARC IS ALREADY LIVE — this was listed as open for weeks and was not.** Verified by DNS query Aug 29 2026: `_dmarc.getseshd.app` TXT = `v=DMARC1; p=none;`. The whole Resend stack checks out — DKIM key at `resend._domainkey.getseshd.app`, SPF `v=spf1 include:amazonses.com ~all` on `send.getseshd.app`, bounce MX at `feedback-smtp.us-east-1.amazonses.com`. `p=none` is monitor-only; the optional upgrade is `p=quarantine`, which is LIKELY safe here because DKIM signs as the From domain, but that was inferred from the DNS layout, not read off a real message header — confirm before enforcing. **Deliberately NOT upgraded while App Review is pending**: enforcement can only ever cause mail to be delivered less, and reset emails reaching testers matters more right now. Check the record before re-adding this as a TODO — `node -e "require('dns').promises.resolveTxt('_dmarc.getseshd.app').then(console.log)"`. **Branded auth email templates are written and waiting in `supabase/email-templates/`** (confirm-signup / reset-password / change-email, plus `preview/*.png` and `_shared.md` with install steps) — they go in the Supabase dashboard, so no deploy; still Mo-side, along with setting the SMTP **Sender name to "Seshd"**. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
 ### OTA UPDATES (@capgo/capacitor-updater, self-hosted — set up July 20, 2026)
 Purpose: ship app-code updates to installed phones WITHOUT the Mac/TestFlight. Fully wired on
@@ -2803,8 +2810,7 @@ decision was to stay single dark icon).
    Support URL set, App Review notes + demo account ready in `appstore-submission.md`.
 3. ~~Resend SMTP~~ — DONE (July 4): domain `getseshd.app` verified, sender
    `hello@getseshd.app`, Supabase custom SMTP active (email rate limit 30/h).
-   Still Mo-side later: "Confirm email" toggle at public launch; DMARC record for
-   deliverability; Apple Services ID if Google/Apple sign-in ships at launch.
+   Still Mo-side later: "Confirm email" toggle at public launch; (DMARC is DONE — see above); Apple Services ID if Google/Apple sign-in ships at launch.
 
 ## The containment pass (started Aug 28, 2026) — MEASURE FIRST, the tool is `build/containment_audit.mjs`
 The design critique's last open item ("less containment / fewer rounded cards" + a typography
@@ -3036,11 +3042,41 @@ side:
     silent truncation would leave files behind). Files are cleared BEFORE the identity, and a file
     failure is never fatal: a stranded file is bad, a live login on an account the user asked to
     delete is worse. Counts come back in the reply so a failure is visible.
-  * **`group-images` → the CLIENT, before its row-delete loop.** That bucket keys objects under
-    `{groupId}/`, so the function cannot find them by prefix; the paths exist only in
-    `group_posts.image_url`, and the loop is about to delete those rows, after which the files are
-    unreachable forever. Doing it client-side is also correctly authorized — the storage policy
-    gates on group membership.
+  * **★ AND THE EDGE-FUNCTION HALF WAS DEPLOYED BUT NEVER COMMITTED — repo and production
+    diverged with nothing in the diff to show it.** `supabase/functions/delete-account/index.ts` in
+    git had NO storage code at all while the deployed function was already at v2 with the full
+    sweep. Anyone running `supabase functions deploy delete-account` from a clean clone would have
+    silently reverted the fix. Same shape as the iOS-entitlements scar recorded further down this
+    file: a change that lives only as remote dashboard/CLI state vanishes on the next deploy and
+    the diff looks innocent. **When a fix has a server-side half, commit the source in the SAME
+    commit as the client half** — and when auditing one, diff the repo copy against the deployed
+    copy (`get_edge_function` via MCP) rather than assuming they match.
+  * **`group-images` → the CLIENT: LOOK UP before the row-delete loop, DESTROY after it.** That
+    bucket keys objects under `{groupId}/`, so the function cannot find them by prefix; the paths
+    exist only in `group_posts.image_url`, and the loop is about to delete those rows.
+    **★ THE FIRST VERSION OF THIS SHIPPED WITH THE ORDER INVERTED, AND THE COMMIT MESSAGE DEFENDED
+    IT WITH REASONING THAT WAS SIMPLY WRONG** ("one line later and the files are unreachable
+    forever" — untrue: the GET already materialises the paths into a JS array, so only the LOOKUP
+    is order-constrained, never the deletion). It deleted objects and then deleted rows, which is
+    the exact shape **"DESTROY THE ROW FIRST, THE OBJECT SECOND — AND ONLY IF THE ROW ACTUALLY
+    DIED"** was written against, with a worked counterexample already in this file 6,000 lines away
+    in the undo-finish cascade. Failure it would have caused: the `group_posts` DELETE times out
+    (20s, and this flow makes 14 sequential calls) → every OTHER member of that group is left
+    staring at a permanently broken image the poster can never repair, because their account is on
+    its way out and their History is gone. Correct shape now: collect paths, run the loop, then
+    delete objects gated on `groupPostsDeleted`. Found by cold-context audit, not by any test.
+    **The authorization note here was ALSO wrong** and is worth correcting rather than deleting:
+    the policy is `group-images: author or creator delete` =
+    `owner = auth.uid() OR auth.uid() = groups.created_by` — **owner-or-creator, NOT membership**
+    (`group_image_member_check` gates SELECT and INSERT only). It works today because the uploader
+    owns the object, but a null-`owner` object deleted by a non-creator member 403s — and
+    `deleteGroupImage` does a bare `fetch` with **no `res.ok` check**, so that failure is totally
+    silent. Null owners demonstrably occur here: all 12 `post-images` objects have one.
+  * **NOTHING IN THE BATTERY DRIVES ACCOUNT DELETION.** No `sim_*`/`pw_*` references
+    `deleteAccount`, so "51 sims + 58 suites green" was true and VACUOUS for this change — the
+    highest-stakes write in the app gained a new failure path under a green tick that could not
+    have gone red. `pw_postimgdelete` §3 polices exactly this contract for the post-delete path and
+    is the ready template if this is ever guarded.
 **Verify orphanhood by scanning EVERY text/jsonb column**, not the two you remember — that is how
 these five were confirmed. Backup: `orphan_image_backup_20260829`. Deleted via the documented
 disposable-edge-function + `net.http_post` route (SQL deletes are refused by
