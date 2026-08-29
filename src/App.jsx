@@ -1,4 +1,4 @@
-// v178091716963
+// v178091716964
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13087,6 +13087,25 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         [`follows?following_id=eq.${uid_}`, false],
         [`profiles?id=eq.${uid_}`, true],
       ];
+      // GROUP PHOTOS FIRST, WHILE THE ROWS THAT NAME THEM STILL EXIST. `group-images` keys objects
+      // under `{groupId}/`, not `{userId}/`, so the delete-account edge function cannot find them
+      // by prefix the way it finds this user's `images` / `post-images` uploads. The paths live
+      // only in `group_posts.image_url`, and the loop below is about to delete those rows — after
+      // which the files are unreachable forever. Best-effort: a stranded file must never block the
+      // deletion the user asked for. (Storage RLS gates on group membership, so this is correctly
+      // authorized by the user's own token.)
+      try {
+        const myGroupPosts = await sb.query(
+          `group_posts?user_id=eq.${uid_}&select=image_url`, {}, getTok());
+        for (const row of (Array.isArray(myGroupPosts) ? myGroupPosts : [])) {
+          const path = row && row.image_url;
+          // Stored value is a bare path for group images; skip legacy absolute URLs and nulls.
+          if (typeof path === "string" && path && !/^https?:/i.test(path)) {
+            try { await deleteGroupImage(path, getTok()); } catch (e) { devError("group image cleanup:", e); }
+          }
+        }
+      } catch (e) { devError("group image cleanup lookup:", e); }
+
       let criticalFailed = false;
       for (const [t, critical] of tables) {
         try { await sb.query(t, { method: "DELETE" }, getTok()); }

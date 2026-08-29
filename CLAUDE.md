@@ -3009,6 +3009,43 @@ other filter, so opening one would have made it the root and reported a confiden
   resolved anyway. A genuinely unmatchable name was needed to see it. Pick a fixture name that
   cannot collide when testing name RESOLUTION.
 
+## ★ Sweep #4 (Aug 29, 2026) — the personal_records fix is CONFIRMED, and account deletion leaked files
+**The 1,650/day → 953 → 83 story ends here.** All 58 remaining `personal_records` 23505s landed in
+a SINGLE hour (Aug 28 14:00) with 11 hours of silence after — one device on a pre-fix bundle
+foregrounding once, replaying its stuck writes, then gone. The fixed client cannot produce that
+error at all. The other ~25 errors were all mine (rate-limit tests, role-sims, the blocked
+`storage.objects` delete). Auth logs clean, demo corpus fresh, advisors unchanged (the new
+`code_redeem_failures` "RLS enabled, no policy" is the intended lockdown), `client_errors` silent
+for 7 days.
+**★ NEW CLASS FOUND: DELETING AN ACCOUNT CASCADED THE ROWS AND LEFT EVERY UPLOADED FILE BEHIND.**
+Five orphaned objects in `images` (~608 kB) — and three belonged to a user id present in NEITHER
+`auth.users` NOR `profiles`, i.e. a deleted account whose photos were still sitting at live PUBLIC
+urls. `deleteAccount` deletes 13 tables and the auth identity and never touched storage. Fixed in
+two halves, because the buckets are keyed differently and only one half can be done safely on each
+side:
+  * **`images` + `post-images` → the `delete-account` EDGE FUNCTION.** Both key objects under
+    `{userId}/`, so the function enumerates exactly the caller's own files from the id it already
+    resolves from the caller's own token — no path is ever accepted from the request body, which
+    would let one user delete another's uploads. Paged (a long-lived account exceeds one page and a
+    silent truncation would leave files behind). Files are cleared BEFORE the identity, and a file
+    failure is never fatal: a stranded file is bad, a live login on an account the user asked to
+    delete is worse. Counts come back in the reply so a failure is visible.
+  * **`group-images` → the CLIENT, before its row-delete loop.** That bucket keys objects under
+    `{groupId}/`, so the function cannot find them by prefix; the paths exist only in
+    `group_posts.image_url`, and the loop is about to delete those rows, after which the files are
+    unreachable forever. Doing it client-side is also correctly authorized — the storage policy
+    gates on group membership.
+**Verify orphanhood by scanning EVERY text/jsonb column**, not the two you remember — that is how
+these five were confirmed. Backup: `orphan_image_backup_20260829`. Deleted via the documented
+disposable-edge-function + `net.http_post` route (SQL deletes are refused by
+`storage.protect_delete()`, correctly), then retired to a 410 stub. It should not be needed again.
+**Front raises no longer credit Traps** (Mo's call, extending the flies→Shoulders reasoning): all
+three variants are shoulder ISOLATION, so the trap involvement is postural rather than a working
+half-set. Lateral raises KEEP their Traps credit — upper-trap contribution to scapular upward
+rotation through abduction is real, if debated. **Squat/leg-press → Hamstrings & Calves was raised
+and deliberately LEFT** (Mo's call): genuinely contested in the literature, unlike the isolation
+cases.
+
 ## ★ The audit that found MY OWN fix inert (Aug 29, 2026) — order beats intent
 A cold-context audit of the settings-race generalisation found the guard was **inert for one of
 its four fields**. `bodyType`'s base key sat AFTER the `recent` spread in the same object literal,
