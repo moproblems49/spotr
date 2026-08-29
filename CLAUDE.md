@@ -2957,6 +2957,50 @@ a template-literal card stays GREEN, proving the exemption is real and not an ac
 menus render a childless `position:fixed; inset:0; zIndex:50` click-catcher that cleared every
 other filter, so opening one would have made it the root and reported a confident, wrong ~0.
 
+## ★★★ THE BUG CLASSES THAT REPEAT — and what now catches each (Aug 28-29, 2026)
+Mo asked the right question after a run of findings: *which of these could be somewhere else?*
+The answer, measured rather than guessed, is that TWO classes were never one-offs, and both are now
+mechanically checked. Read this before concluding a fix is complete — "the one field that didn't
+get the guard" has now happened THREE times in this file's history.
+- **★ CLASS 1: ONE GUARD THAT DIDN'T GET COPIED.** A field gets a correctness guard; its neighbours
+  with the identical shape don't. Instances: the sign-out audit (seven fields had the
+  `currentUserId` fallback without the guard); `notificationPrefs` (the last field with the
+  optimistic-write shape and no settings-race guard); and then **generalising that one found FOUR
+  more** — `unit`, `theme`, `strengthSex`, `bodyType`, all `setStore` + immediate `profiles` PATCH,
+  all server-preferred on reload, none stamping `_lastSettingsEditAt`. **`theme` is the most
+  visible bug this project has had**: choose dark, and a foreground refresh landing before the
+  write flips the WHOLE APP back to light. All self-heal on a later load, which is exactly why
+  nobody reports them. Guard: **`sim_settingsrace`** enumerates every `profiles` PATCH that sits
+  near a `setStore` and asserts each field is either in `loadUserData`'s `recent` branch or named
+  in an EXEMPT list *with a reason*. A new toggle added without protection FAILS the battery.
+  Red-proofed two ways (drop one field; delete the whole guard block).
+  **Its own first draft could not see the bug it was written for**: an 8-line lookback missed
+  `notification_prefs`, because the comment documenting that very fix pushed the `setStore` out of
+  range. Widened to 22. When a detector comes back clean, check it can still see the original.
+- **★ CLASS 2: A TEST THAT CANNOT FAIL.** Four in two days, each looking like a clean green:
+  (a) a `visibilitychange` fired inside the **30s foreground-refresh throttle** — a silent no-op, so
+  the check passed against the broken build; (b) a Playwright **catch-all route registered AFTER**
+  the specific one, so every call got the generic 200 and the "bad code" case passed vacuously
+  because `[]` happens to be that reply; (c) a fixture seeded into localStorage only, so the screen
+  never rendered and "zero redeem calls" was true merely because **nothing had happened**;
+  (d) a colour compared across a **theme switch**, which repaints everything, so it failed for a
+  reason unrelated to the thing under test. The standing rule is unchanged and now has four more
+  scars: **a new check must be shown to go RED against the old code**, and if red-proofing is
+  awkward, that is itself the finding. Corollary learned here: **restoring a file from a scratch
+  copy does NOT rebuild `dist`** — the red-proof and the "fixed" run then measure the same stale
+  bundle, and the two results silently swap.
+- **CLASS 3: A GUARD THAT STOPPED COVERING THE CODE.** Three instances (`sim_undef` losing the
+  engine split; `sim_designscale` blind to all of `src/lazy/`; and the same check unable to see SVG
+  `font-size` ATTRIBUTES because it only swept style objects). Fixed structurally via
+  `build/source_files.mjs`, but the lesson generalises past file paths: **a property can appear in
+  more than one syntax, and sweeping one is not sweeping the other.**
+- **CLASS 4: A NUMBER OR PALETTE THAT ENCODES NOTHING.** `DAY_COLORS`, then its surviving twin
+  `DAY_CARD_COLORS` on the landing screen, then six lime numbers on the Body Battery sheet. No
+  automated check exists and none is proposed — these were all found by LOOKING at a screenshot.
+  That is the honest state of it: the container/type measurements were good at pointing at screens
+  and bad at diagnosing them, and every real finding of the design pass came from reading the
+  rendered screen afterwards.
+
 ## The impeccable design skill (installed Aug 18)
 `.claude/skills/impeccable/` — a third-party design skill pack (Apache-2.0, pbakaus/impeccable),
 invoked explicitly as `/impeccable`. **Its detector is the part that has actually earned its keep**:

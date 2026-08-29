@@ -1,4 +1,4 @@
-// v178091716958
+// v178091716959
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1202,6 +1202,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
 
   const setSex = (val) => {
     setStore && setStore(p => ({ ...p, bodyType: val }));
+    _lastSettingsEditAt = Date.now();
     const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
     if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_type: val }) }, tok).catch(()=>{}); } catch(e){} }
     haptic("tap");
@@ -13628,7 +13629,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
-                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} className="seshd-hit-y" style={{
+                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); _lastSettingsEditAt = Date.now(); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} className="seshd-hit-y" style={{
                     padding:"4px 10px", background: sex===val ? C.primary : "transparent",
                     color: sex===val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
@@ -13998,7 +13999,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         setStore(p => ({ ...p, unit: u }));
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
-                          try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ unit: u }) }, tok); }
+                          _lastSettingsEditAt = Date.now();
+                        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ unit: u }) }, tok); }
                           catch (e) { devError("unit save error:", e); }
                         }
                       }} style={{
@@ -16141,6 +16143,16 @@ function AppInner() {
             // one field with that shape still missing the guard — found by auditing the commit
             // that turned these into switches, which changed the control and inherited the race.
             notificationPrefs: prev.notificationPrefs || { messages: true, kudos: true, comments: true, follows: true },
+            // unit / theme / strengthSex / bodyType have the identical optimistic shape and were
+            // ALSO unguarded — found by generalising the notificationPrefs race rather than
+            // treating it as a one-off. `theme` is the most visible of the lot: the whole app
+            // flips back to light after you have chosen dark. All four are server-preferred
+            // outside this window (`me?.x || …`), so a refresh arriving before the PATCH lands
+            // re-served the old value.
+            unit: prev.unit || "lbs",
+            theme: prev.theme || "light",
+            ...(prev.strengthSex ? { strengthSex: prev.strengthSex } : {}),
+            ...(prev.bodyType ? { bodyType: prev.bodyType } : {}),
           };
           return {
             // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back
@@ -18940,6 +18952,7 @@ function AppInner() {
             C={C}
             onToggleTheme={async (t) => {
               setStore(p => ({ ...p, theme: t }));
+              _lastSettingsEditAt = Date.now();
               const tok = tokenRef.current || loadSession()?.access_token;
               if (tok) {
                 try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }
@@ -19309,6 +19322,7 @@ function AppInner() {
             C={C}
             onToggleTheme={async (t) => {
               setStore(p => ({ ...p, theme: t }));
+              _lastSettingsEditAt = Date.now();
               const tok = tokenRef.current || loadSession()?.access_token;
               if (tok) {
                 try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ theme: t }) }, tok); }

@@ -140,15 +140,44 @@ for (const theme of ["dark", "light"]) {
   await page.evaluate(() => { const s = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => (x.getAttribute("aria-label") || "") === "Settings"); s && s.click(); });
   await page.waitForTimeout(1200);
   const readKudos = () => page.evaluate(() => { const k = [...document.querySelectorAll('[role="switch"]')].find(s => s.getAttribute("aria-label") === "Kudos"); return k && k.getAttribute("aria-checked"); });
+  // Read WHICH unit is selected, not the selected button's colour: this section also switches the
+  // THEME, which repaints the whole palette, so an absolute-colour comparison fails for a reason
+  // that has nothing to do with the unit. A relative reading is theme-independent.
+  const readUnit = () => page.evaluate(() => {
+    const btns = [...document.querySelectorAll("button")].filter(x => x.offsetParent && /^(LBS|KG)$/i.test((x.textContent||"").trim()));
+    const filled = btns.find(b => !/rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(b).backgroundColor));
+    return filled ? filled.textContent.trim().toUpperCase() : null;
+  });
+  const readTheme = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  // ALL THREE EDITS, THEN ONE REFRESH. The foreground refresh is throttled to once per 30s, so a
+  // second visibilitychange a few seconds after the first is a SILENT NO-OP — an earlier draft
+  // made the edits, refreshed, made more edits and refreshed again, and those later checks passed
+  // against a build with the guards deleted because no refresh ever ran. One refresh after all the
+  // edits tests every field and cannot be thrown by the throttle.
   check("[race] Kudos starts on, from the server", await readKudos() === "true");
   await page.evaluate(() => { const k = [...document.querySelectorAll('[role="switch"]')].find(s => s.getAttribute("aria-label") === "Kudos"); k && k.click(); });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(450);
   check("[race] Kudos reads off immediately after the tap", await readKudos() === "false");
+
+  const unitBefore = await readUnit();
+  await page.evaluate(() => { const b=[...document.querySelectorAll("button")].filter(x=>x.offsetParent).find(x=>/^KG$/i.test((x.textContent||"").trim())); b && b.click(); });
+  await page.waitForTimeout(450);
+  const unitPicked = await readUnit();
+  check("[race] tapping KG visibly selects it", unitPicked === "KG" && unitBefore !== "KG", `${unitBefore} -> ${unitPicked}`);
+
+  const themeBefore = await readTheme();
+  await page.evaluate(() => { const b=[...document.querySelectorAll("button")].filter(x=>x.offsetParent).find(x=>/^Light$/i.test((x.textContent||"").trim())); b && b.click(); });
+  await page.waitForTimeout(600);
+  const themePicked = await readTheme();
+  check("[race] switching to Light visibly changes the app", themePicked !== themeBefore, `${themeBefore} -> ${themePicked}`);
+
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await page.waitForTimeout(2500);
-  const after = await readKudos();
-  check("[race] Kudos STAYS off through a refresh serving the stale value", after === "false", `flipped back to ${after}`);
+  await page.waitForTimeout(2600);
+  check("[race] Kudos STAYS off through a refresh serving the stale value", await readKudos() === "false");
+  check("[race] the unit choice SURVIVES that refresh", await readUnit() === "KG");
+  check("[race] the theme choice SURVIVES that refresh", await readTheme() === themePicked);
   await page.close();
 }
 
