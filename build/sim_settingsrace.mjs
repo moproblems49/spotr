@@ -76,6 +76,40 @@ for (let i = 0; i < lines.length; i++) {
 }
 check("found optimistic profiles writes to audit", optimistic.size > 0, `${optimistic.size} field(s)`);
 
+// ── 1b. A MENTION IN THE GUARD IS NOT PROTECTION — IT HAS TO WIN ─────────────────────────────
+// The first version of this check asked only whether a field APPEARS in the `recent` branch, and
+// that is exactly how a broken fix shipped green: `bodyType`'s base key sat AFTER the guard's
+// spread in the same object literal, later keys win, so the stale server value still overrode the
+// edit. The guard was mentioned and inert.
+//
+// The FIRST attempt at this check was itself vacuous — it grabbed the store literal with a
+// `setStore(prev =>` regex that matched the first such call anywhere in the file (a completely
+// different component), found no spread in it, and passed trivially. Anchor on the guard itself,
+// which is unique, and bound the literal around it.
+const guardIdx = src.indexOf("const recent = sameUser");
+check("located loadUserData's settings guard", guardIdx > 0);
+const spreadAt = src.lastIndexOf("...(() => {", guardIdx);
+const litStart = src.lastIndexOf("setStore(", spreadAt);
+const litEnd = (() => { const k = src.indexOf("\n      }));", spreadAt); return k > 0 ? k : src.length; })();
+check("located the store literal around it", spreadAt > litStart && litStart > 0 && litEnd > spreadAt,
+  `litStart=${litStart} spreadAt=${spreadAt} litEnd=${litEnd}`);
+// ONLY the `if (recent) return { … };` block counts as "the guard claims this field" — slicing to
+// the end of the literal made every later base key look guarded by its own declaration, and the
+// check flagged three fields the guard has nothing to do with.
+const recentBody = (src.slice(guardIdx).match(/const recent = sameUser[\s\S]*?\n {10}\};/) || [""])[0];
+check("isolated the recent-branch block", recentBody.length > 0);
+const orderProblems = [];
+for (const m of src.slice(litStart, litEnd).matchAll(/\n {8}([a-zA-Z]+):/g)) {
+  const field = m[1];
+  const absPos = litStart + m.index;
+  if (absPos <= spreadAt) continue;                      // declared before the guard: guard wins
+  if (!new RegExp(`\\b${field}\\b\\s*:`).test(recentBody)) continue;  // guard doesn't claim it
+  orderProblems.push(`${field} (base key AFTER the guard spread)`);
+}
+check("no guarded field's base key sits AFTER the recent-edit spread (later keys win)",
+  orderProblems.length === 0,
+  orderProblems.length ? orderProblems.join("; ") + " — move the base key above the spread, or the guard is inert" : "");
+
 // ── 2. The `recent` branch tells us which fields are protected ───────────────────────────────
 const recentBlock = (src.match(/const recent = sameUser[\s\S]*?\n {10}\};/) || [])[0] || "";
 check("loadUserData still has the settings-edit `recent` guard", recentBlock.length > 0);

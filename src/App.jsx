@@ -1,4 +1,4 @@
-// v178091716962
+// v178091716963
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14230,8 +14230,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                             cancelLabel: "Keep",
                             destructive: true,
                             onConfirm: () => {
-                              const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
-                              setStore(p => ({ ...p, customExercises: next }));
+                              // Derive from the LIVE store inside the updater, not from the
+                              // render-time snapshot: the confirm sheet stretches the gap between
+                              // reading and writing from ~0 to however long the user takes, and a
+                              // foreground refresh landing in that gap would otherwise let a stale
+                              // list clobber a custom exercise added on another device — locally
+                              // and on the server, since the same array is PATCHed.
+                              let next = [];
+                              setStore(p => {
+                                next = (p.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
+                                return { ...p, customExercises: next };
+                              });
                               setCustomExerciseRegistry(next);
                               const tok = token || loadSession()?.access_token;
                               if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
@@ -14252,7 +14261,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       confirmAction({
                         title: `Clear all ${n} custom exercise${n === 1 ? "" : "s"}?`,
                         message: sessions > 0
-                          ? `${sessions} logged workout${sessions === 1 ? "" : "s"} use them. They will stay in your history, but their sets will stop counting toward your muscle map.`
+                          ? `${sessions} logged workout${sessions === 1 ? "" : "s"} ${sessions === 1 ? "uses" : "use"} them. ${sessions === 1 ? "It" : "They"} will stay in your history, but ${sessions === 1 ? "its" : "their"} sets will stop counting toward your muscle map.`
                           : "They will be removed from your exercise list. No logged workouts use them.",
                         confirmLabel: "Clear all",
                         cancelLabel: "Keep",
@@ -16252,6 +16261,14 @@ function AppInner() {
         // edit and made it un-retryable). weeklyTarget/isPublic have the identical "optimistic
         // setStore + immediate queueWrite, no debounce" shape as the other four fields here and
         // were found to have the exact same unprotected race in an audit of this fix itself.
+        // MUST STAY ABOVE THE `recent` SPREAD BELOW. Later keys win in an object literal, and
+        // this one used to sit AFTER it — so the settings-race guard added for bodyType was inert:
+        // the stale server value still overrode a just-made edit, which is precisely the race the
+        // guard was added to close. `unit`, `theme` and `strengthSex` were already above the
+        // spread and were genuinely fixed; only this one was ordered wrong. Found by a cold-context
+        // audit, and `sim_settingsrace` could not see it because it checked that the field is
+        // MENTIONED in the recent branch rather than that the mention actually takes effect.
+        bodyType: me?.body_type || (prev.currentUserId === currentUserId ? prev.bodyType : undefined) || undefined,
         ...(() => {
           const sameUser = prev.currentUserId === currentUserId;
           const recent = sameUser && (Date.now() - _lastSettingsEditAt < 20000);
@@ -16299,7 +16316,6 @@ function AppInner() {
           ...(Array.isArray(me?.dismissed_insights) ? me.dismissed_insights : []),
           ...(prev.currentUserId === currentUserId ? (prev.dismissedInsights || []) : []),
         ])),
-        bodyType: me?.body_type || (prev.currentUserId === currentUserId ? prev.bodyType : undefined) || undefined,
         age: me?.age != null ? me.age : (prev.currentUserId === currentUserId ? prev.age : undefined),
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
       }));

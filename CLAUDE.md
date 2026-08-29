@@ -3009,6 +3009,37 @@ other filter, so opening one would have made it the root and reported a confiden
   resolved anyway. A genuinely unmatchable name was needed to see it. Pick a fixture name that
   cannot collide when testing name RESOLUTION.
 
+## ★ The audit that found MY OWN fix inert (Aug 29, 2026) — order beats intent
+A cold-context audit of the settings-race generalisation found the guard was **inert for one of
+its four fields**. `bodyType`'s base key sat AFTER the `recent` spread in the same object literal,
+and **later keys win**, so the stale server value still overrode a just-made edit — the exact race
+the commit claimed to close, still live. `unit`/`theme`/`strengthSex` were all declared above the
+spread and were genuinely fixed; only this one was ordered wrong. **When a guard works by
+overriding a value, its POSITION is the guard.**
+**And `sim_settingsrace` shipped green on that build**, because it asked whether a field is
+MENTIONED in the recent branch, not whether the mention takes effect. It now asserts the effective
+order too. That check needed THREE attempts, each a different flavour of the same disease:
+(1) it grabbed the store literal with a `setStore(prev =>` regex that matched the FIRST such call
+anywhere in the file — a different component entirely — found no spread, and passed trivially;
+(2) scoped correctly but tested "the guard claims this field" against everything from the spread to
+the end of the literal, so three unrelated fields matched their own base keys and it flagged them;
+(3) anchored on `const recent = sameUser` (unique) and scoped the claim test to the `if (recent)
+return { … }` block alone. Red-proofed on the real defect: it names `bodyType`.
+Other findings from the same audit, all fixed: **`Back Extension (Machine)` carried
+`["Biceps","RearDelts","Forearms"]`** — byte-identical to `Assisted Pull-Up (Machine)`, a
+copy-paste from the row block, so every machine back-extension session minted phantom half-sets of
+three unrelated muscles (now `["Glutes","Hamstrings"]`, matching its two correctly-modelled
+siblings); the Clear-all confirm read **"1 logged workout use them"** at n=1; and the custom-exercise
+`onConfirm` derived its next list from the render-time `store`, which was harmless as a synchronous
+one-tap action and became a real window once a confirm sheet sat in the middle of it — it computes
+inside the `setStore` updater now.
+**Open product questions the audit raised and did NOT act on** (they are training-science calls,
+not bugs): **Traps is credited by 68 exercises**, the most in the app, including all three FRONT
+RAISE variants — pure isolation, the closest analog to the flies→Shoulders case Mo already ruled
+on. And **all 17 quad squat/leg-press variants credit both Hamstrings and Calves**, so a 4-movement
+quad day mints ~2 phantom hamstring sets. Same shape as the shoulder over-count; worth asking Mo
+before changing, since squat→hamstring credit is genuinely debated.
+
 ## ★★★ THE BUG CLASSES THAT REPEAT — and what now catches each (Aug 28-29, 2026)
 Mo asked the right question after a run of findings: *which of these could be somewhere else?*
 The answer, measured rather than guessed, is that TWO classes were never one-offs, and both are now
