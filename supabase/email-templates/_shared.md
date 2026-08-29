@@ -43,6 +43,15 @@ Without it the From line reads as a bare `hello@getseshd.app`, which is the sing
   what stops the email reading like a phish.
 - **Expiry is stated.** "This link expires in 1 hour" removes the main support question and tells
   an attacker's victim that a stale link is harmless.
+- **The button is `#4d7c0f`, NOT the app's `#65a30d` accent — do not "correct" it back.** White
+  on `#65a30d` measures **3.09:1**, and the button label is 16px bold, which is NOT WCAG "large
+  text" (that starts at 18.66px bold), so it needs the full 4.5:1. `#4d7c0f` is 4.99:1 and still
+  reads as the brand lime rather than olive. Same rule for the raw fallback link and the mailto,
+  which are accent-as-TEXT and use `#3f6212` (the app's `accentInk`, 7.08:1 on the white card).
+  This is the app's own documented `accent`-is-a-fill / `accentInk`-is-text split, applied here —
+  an email gets no theme toggle and no dark-mode token, so the light-theme values are the only
+  ones that ever render. The volt wordmark in the dark header band is fine and stays: volt on
+  near-black is the dark theme's own high-contrast pairing.
 - No tracking pixels, no remote images, no web fonts — the logo is CSS-drawn text. Remote assets
   are blocked by default in most clients and a broken image box looks worse than no image.
 
