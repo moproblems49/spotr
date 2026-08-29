@@ -1,4 +1,4 @@
-// v178091716972
+// v178091716974
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6119,8 +6119,10 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
   const _blocked = store.blockedUsers || [];
   const visibleComments = (post.comments || []).filter(c => !_blocked.includes(c.userId));
   // Detect a share code in the caption (IGNITE-XXXX program / WO-XXXX workout). Computed once so
-  // the slim code block can render in the post body (above the action bar) while the caption text
-  // renders separately below, with the code suffix stripped out.
+  // the code can render as an inline chip ON the caption line while the caption TEXT has the
+  // "Try my program: CODE" suffix stripped out of it — the code is shown as a control, not twice
+  // as prose. (It used to be a full-width panel above the action bar; see the declutter entry in
+  // CLAUDE.md for why that moved.)
   const _codeMatch = post.caption ? post.caption.match(/(IGNITE-[A-Z0-9]{4,8}|WO-[A-Z0-9]{4,8})/i) : null;
   const postCode = _codeMatch ? _codeMatch[0].toUpperCase() : null;
   const displayCaption = postCode
@@ -9663,8 +9665,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               onConfirm: discard,
             });
           }} style={{ fontSize:13, color:C.sub, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Discard</button>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{session.dayName}</div>
+          <div style={{ textAlign:"center", minWidth:0, flex:1 }}>
+            {/* THE NAME IS EDITABLE MID-SESSION (Mo). It used to be stamped once at start —
+                `day?.name || "Quick Workout"` — with no way to change it, so every Quick Start
+                shipped a post whose headline was a placeholder. It is a real input now, styled to
+                look like the text it replaces so the header does not grow a form.
+                `dayName` is also an IDENTITY key, not only a label: `finishWorkout` matches
+                "volume vs the last time this session was trained" on it, and it is the FALLBACK
+                for relinking a session to its program day (the primary link is `dayId`, which
+                renaming does not touch). So renaming a Quick Workout to "Leg Day" correctly stops
+                it matching future unnamed Quick Workouts — those are different workouts — while a
+                renamed program day still resolves by id.
+                Blank is not allowed to persist: an empty headline would be worse than a generic
+                one, so it falls back on blur. */}
+            <input
+              value={session.dayName}
+              onChange={e => setSession(prev => prev ? { ...prev, dayName: e.target.value } : prev)}
+              onBlur={e => { if (!e.target.value.trim()) setSession(prev => prev ? { ...prev, dayName: session.dayId ? "Workout" : "Quick Workout" } : prev); }}
+              aria-label="Workout name"
+              placeholder="Name this workout"
+              maxLength={40}
+              style={{
+                width:"100%", textAlign:"center", background:"none", border:"none", outline:"none",
+                fontSize:13, fontWeight:700, color:C.text, fontFamily:F, padding:0,
+                textOverflow:"ellipsis",
+              }}/>
             <div style={{ fontSize:28, fontWeight:800, color:C.text, fontFamily:MONO, lineHeight:1.1 }}>{fmtTime(elapsed)}</div>
           </div>
           <button className="seshd-hit-y" onClick={() => setShowFinish(true)} style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F }}>Finish</button>
@@ -13180,14 +13205,29 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       // Doomed here means: everything they created if they chose to destroy, otherwise only the
       // groups where they are the sole live member (those die in the cascade regardless, and
       // sweeping them here is the only chance to reach images posted by members who have since
-      // left — the creator's own are covered by the `group_posts?user_id=eq.me` pass above).
+      // left — the creator's own are covered by the `group_posts?user_id=eq.me` pass above), and
+      // it has to happen while the group ROW still exists, because that row is what authorizes it.
       try {
         const created = await sb.query(
           `groups?created_by=eq.${uid_}&select=id,member_ids`, {}, getTok());
         for (const g of (Array.isArray(created) ? created : [])) {
           const others = (Array.isArray(g.member_ids) ? g.member_ids : []).filter(m => m !== uid_);
+          // ★ ANY other member means "leave it alone", and this deliberately does NOT check whether
+          // those members still EXIST — even though the DB trigger does, so the two can disagree
+          // for a group whose only other member is a stale uuid (the trigger lets that group
+          // cascade; this skips it, so its images are never swept).
+          //
+          // That disagreement is the SAFE side of a very lopsided trade, and a version that
+          // "fixed" it by resolving liveness first was reverted for making the wrong one:
+          //   - skip when it should delete  -> an orphaned file. Detectable (the health sweep's
+          //     orphaned-member_ids query), recoverable, harms nobody's content.
+          //   - delete when it should skip  -> the group and EVERY member's posts are destroyed,
+          //     irreversibly, for people who did not ask for it.
+          // A liveness lookup that fails, times out, or simply returns an empty array is
+          // indistinguishable from "everyone else is dead", so it converts uncertainty straight
+          // into the destructive branch. Uncertainty must resolve toward preserving data.
           if (!deleteOwnedGroups && others.length > 0) continue;   // will transfer, leave it alone
-          // Read the image paths BEFORE the rows die — they live nowhere else.
+          // Read the image paths — they live nowhere else once the rows are gone.
           let paths = [];
           try {
             const gp = await sb.query(
@@ -13195,17 +13235,28 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             paths = (Array.isArray(gp) ? gp : []).map(r => r && r.image_url)
               .filter(u => typeof u === "string" && u && !/^https?:/i.test(u));
           } catch (e) { devError("group image lookup:", e); }
-          // Row first, object second, and only if the row actually died. If this DELETE fails the
-          // group simply transfers instead — data preserved rather than destroyed, which is the
-          // safe direction to fail in.
-          let rowGone = false;
-          try { await sb.query(`groups?id=eq.${g.id}`, { method: "DELETE" }, getTok()); rowGone = true; }
-          catch (e) { devError("group delete:", e); }
-          if (rowGone) {
-            for (const pth of paths) {
-              try { await deleteGroupImage(pth, getTok()); } catch (e) { devError("group image cleanup:", e); }
-            }
+          // ★ OBJECTS FIRST HERE, AND THAT IS NOT A CONTRADICTION OF THE ROW-FIRST RULE — it is
+          // the OTHER half of it, which CLAUDE.md already spells out: row-first exists so a FAILED
+          // row delete cannot leave a live post with a dead image, and applies where the row might
+          // survive. This group is going to die either way (the user chose it, or it has no live
+          // heir and the cascade takes it), so the only risk left is an unreachable file.
+          //
+          // And there is now a second, harder reason, measured rather than reasoned: the storage
+          // policy is `owner = auth.uid() OR auth.uid() = (select created_by from groups where
+          // id = <folder>)`. Once the group row is deleted that subquery returns NULL, the creator
+          // branch evaluates to NULL, and the caller can no longer delete ANY object they do not
+          // personally own — i.e. exactly the other-members' photos this pass exists to reach.
+          // Proven in a rolled-back probe: predicate `true` with the row alive, `null` after.
+          // `deleteGroupImage` is a bare fetch with no res.ok check, so that failure is silent.
+          for (const pth of paths) {
+            try { await deleteGroupImage(pth, getTok()); } catch (e) { devError("group image cleanup:", e); }
           }
+          // A 0-row DELETE is a silent success under RLS, so check the representation rather than
+          // the absence of a throw — the same rule this function already applies to `profiles`.
+          try {
+            const res = await sb.query(`groups?id=eq.${g.id}`, { method: "DELETE" }, getTok());
+            if (!(Array.isArray(res) && res.length === 1)) devError("group delete removed no row:", g.id);
+          } catch (e) { devError("group delete:", e); }
         }
       } catch (e) { devError("created-group handling:", e); }
 

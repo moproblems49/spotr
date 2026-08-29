@@ -60,7 +60,14 @@ const body = () => page.evaluate(() => document.body.innerText);
 // The exercise names live in ExerciseInput VALUES, not in innerText, so "is a workout running"
 // is read from the live header instead — the day name plus the running set counter, which only
 // the tracker renders.
-const inWorkout = async () => /\d+\/\d+ sets/.test(await body()) && /Push A/.test(await body());
+// The workout NAME is an <input> now (it became editable), and an input's value is not part of
+// textContent — so a plain innerText match cannot see it. Read the field's value, falling back to
+// the text for any surface that still renders it as static text.
+const workoutName = async () => page.evaluate(() => {
+  const f = document.querySelector('input[aria-label="Workout name"]');
+  return f ? f.value : (document.body.innerText || "");
+});
+const inWorkout = async () => /\d+\/\d+ sets/.test(await body()) && /Push A/.test(await workoutName());
 check("0. the live workout screen is up", await inWorkout(),
   (await body()).slice(0, 120).replace(/\n/g, " | "));
 

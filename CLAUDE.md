@@ -3091,6 +3091,66 @@ rotation through abduction is real, if debated. **Squat/leg-press → Hamstrings
 and deliberately LEFT** (Mo's call): genuinely contested in the literature, unlike the isolation
 cases.
 
+## ★ The doomed-group image sweep couldn't delete what it existed for, and my fix for that made it worse (Aug 29)
+Two rounds on the same twelve lines, and the second is the more useful lesson.
+**★ ROW-FIRST WAS THE WRONG RULE HERE, AND AUTHORIZATION IS WHY.** The client-side created-group
+pass deleted the `groups` row and THEN the `{groupId}/` objects, applying the house row-first rule.
+But the storage policy is `owner = auth.uid() OR auth.uid() = (select created_by from groups where
+id = <folder>)` — **once the row is deleted that subquery returns NULL**, the creator branch
+evaluates to NULL, and the caller can no longer delete any object they do not personally own. That
+is exactly the other-members' photos the pass was written to reach. Proven in a rolled-back probe:
+predicate `true` with the row alive, `null` after. And `deleteGroupImage` is a bare `fetch` with no
+`res.ok` check, so it failed **silently**; the battery could not see it either, because
+`pw_deleteaccount`'s stub fulfils every storage DELETE with 204 (the a-stub-that-accepts-anything
+class). Objects go FIRST for a group that is guaranteed to die — which is what CLAUDE.md already
+said, and what the edge-function version did before it moved client-side. **Row-first exists so a
+FAILED row delete cannot strand a LIVE post with a dead image; it does not apply where the row is
+certain to die.** Two rules, two cases; check which one you are in.
+**★★ AND THE "FIX" FOR THE ADJACENT FINDING TRADED A DETECTABLE PROBLEM FOR AN IRREVERSIBLE ONE.**
+The same audit noted the client's "sole member" test ignores whether the other members still EXIST,
+while the trigger requires a LIVE heir — so the two disagree for a group whose only other member is
+a stale uuid. True, and I "fixed" it by resolving liveness first. **That was worse, and the battery
+caught it**: a liveness lookup that fails, times out, or simply returns `[]` is indistinguishable
+from "everyone else is dead", so uncertainty routed straight into the destructive branch —
+`pw_deleteaccount` 5c went red with "a group was deleted on the hand-over path". Reverted. The
+asymmetry is the whole argument and is worth stating as a rule: **skip when you should delete costs
+an orphaned file — detectable by the sweep, recoverable, harms nobody's content; delete when you
+should skip destroys a group and every member's posts, irreversibly, for people who did not ask.
+Uncertainty must resolve toward preserving data.** A disagreement biased the safe way is not a bug
+to close.
+**Also fixed from that audit:** the transfer branch now drops OTHER stale ids too, not just the
+leaver (`array_agg` filtered on `exists profiles`, verified in a rolled-back probe), so
+"member_ids contains only live profiles" is an invariant rather than usually-true; the group card
+in `GroupDetail` still used the filled `PRTag` per exercise after the feed card moved to the gold
+trophy — two answers to "how does a per-exercise PR look", the N-copies-drift class in icon form,
+and that card has no header badge at all so it was pure repetition; the now-unused `PRTag` import
+went with it; and the doomed-group DELETE is checked by ROW COUNT rather than the absence of a
+throw. Verified clean by the same audit and worth not re-litigating: the trigger survived every
+probed hole (NULL member_ids, duplicate leaver, all-other-members-dead, claims restore byte-identical),
+the client IS authorized for both halves, and the nav `accentInk` choice was load-bearing —
+`accent` measures 2.88–2.99:1 composited over the light pill, under the 3:1 floor.
+
+## The live workout name is editable (Aug 29, 2026)
+Mo: "now when doing a quick workout we can change the name?" It was stamped once at start
+(`day?.name || "Quick Workout"`) with no way to change it, so every Quick Start shipped a post
+whose headline was a placeholder — which is what he had spotted on the feed card. It is an input in
+the live header now, styled as the text it replaces so the header does not grow a form.
+**`dayName` is an IDENTITY key, not only a label**, which is the thing to know before touching it:
+`finishWorkout` matches "volume vs the last time this session was trained" on it, and it is the
+FALLBACK for relinking a session to its program day (the primary link is `dayId`, untouched by a
+rename). So renaming a Quick Workout correctly stops it matching future unnamed Quick Workouts —
+those genuinely are different workouts — while a renamed program day still resolves by id. Blank
+cannot persist (an empty headline is worse than a generic one); it falls back on blur.
+**★ AN `<input>`'s VALUE IS NOT IN `textContent`, AND TWO SUITES DETECTED THE WORKOUT SCREEN BY
+FINDING THE NAME IN `innerText`.** `pw_workoutexit` and `pw_hideheader` both went red the moment
+the name became editable — the invariant they protect was still true, their reach was not. Same
+class as `pw_bbsheet` asserting `overflowY` on a panel that no longer owns the scroll: fix the
+reach, keep the invariant. Both read the field's value now, falling back to text. Sim:
+`pw_workoutrename`, which asserts the EFFECT — it types a name, finishes, and checks what actually
+reached the server and localStorage, not merely that the field accepted input. Red-proofed against
+static text, and made to FAIL CLEANLY rather than throw a TimeoutError on the first `.fill()`: a
+red-proof should say what is missing, not stack-trace.
+
 ## The feed card declutter (Aug 29, 2026) — from a screenshot, and the numbers were never wrong
 Mo: "I feel like we can do a lot better design wise", plus three specifics. **Every number on that
 card was already correct** — what was wrong was how LOUD each one was, which is a class no existing

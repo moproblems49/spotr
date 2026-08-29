@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { devError, dateFromKey, workingDone } from "../engine/core.js";
 import { postWorkoutPayload, sessionVolume } from "../engine/workout.js";
-import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, PRTag, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, NAV_CLEARANCE } from "../App.jsx";
+import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, NAV_CLEARANCE } from "../App.jsx";
 
 export default function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
   const [tab, setTab] = useState("feed");
@@ -303,7 +303,20 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
                               <div key={i}>
                                 <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
                                   <span style={{ fontSize:12, fontWeight:700, color:C.text }}>{ex.name}</span>
-                                  {ex.isPR && <PRTag C={C} size={8}/>}
+                                  {/* Same quiet marker as the feed card. This surface kept the
+                                      filled PRTag when the feed card moved to the gold trophy, so
+                                      "how a per-exercise PR looks" had two answers — the
+                                      N-copies-drift class, in icon form. It is also the ONLY PR
+                                      marker on this card (there is no header PRTag here), so a
+                                      loud chip per exercise was the repetition problem with none
+                                      of the compensating signal. */}
+                                  {ex.isPR && (
+                                    <span role="img" aria-label="Personal record" title="Personal record"
+                                      data-pr-marker="1"
+                                      style={{ display:"inline-flex", lineHeight:1, flexShrink:0 }}>
+                                      <Icon name="trophy" size={11} color={C.gold} strokeWidth={2.2}/>
+                                    </span>
+                                  )}
                                 </div>
                                 <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
                                   {(ex.sets||[]).map((s,j) => (

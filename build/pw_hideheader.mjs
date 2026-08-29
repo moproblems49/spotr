@@ -50,7 +50,12 @@ await page.goto(`http://127.0.0.1:${process.env.PORT || 8199}/`, { waitUntil: "d
 await page.waitForTimeout(3000);
 
 const body = await page.evaluate(() => document.body.innerText);
-check("0. the live workout screen is up", /Discard/.test(body) && /Push A/.test(body),
+// The workout name is an <input> now, so its value is not in innerText — read the field.
+const _name = await page.evaluate(() => {
+  const f = document.querySelector('input[aria-label="Workout name"]');
+  return f ? f.value : "";
+});
+check("0. the live workout screen is up", /Discard/.test(body) && /Push A/.test(_name || body),
   body.slice(0,120).replace(/\n/g," | "));
 
 function findScroller() {
