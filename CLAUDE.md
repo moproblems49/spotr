@@ -3099,8 +3099,17 @@ check could see.
   The loudest element in the card, repeated, which is how a signal stops being one — the same
   failure as the Body Battery sheet's six lime numbers and the day rainbow. ONE filled `PRTag` in
   the header now says "this session had a PR"; per-exercise PRs are a quiet gold trophy, which
-  still says WHICH lift. Same answer the Day Preview redesign reached (badge → gold + trophy
-  glyph). `aria-label="Personal record"` on the glyph — a bare emoji is silence to a screen reader.
+  still says WHICH lift. Same answer the Day Preview redesign reached (badge → gold + trophy).
+  **★ THE FIRST CUT USED A 🏆 EMOJI AND THAT WAS WRONG TWICE OVER.** Mo: "I don't like the trophy,
+  we need something more classy, fitting, premium." He was right on taste — an emoji is a
+  full-colour bitmap that renders differently on every platform and cannot take the theme's gold —
+  but the stronger argument is that **the app ALREADY HAS a PR marker**: `Icon name="trophy"` in
+  `C.gold`, used in three other places (exercise picker, program day row, PR tile). Inventing a
+  second visual vocabulary for the same fact is the duplicated-map problem in icon form. **Before
+  adding an icon, grep for the one this app already uses for that meaning.** The wrapper carries
+  the accessible name (`role="img" aria-label="Personal record"`) because `Icon` renders a bare
+  `<svg>`, and it carries `data-pr-marker` because an SVG contributes NO textContent — the guard's
+  original `/🏆/` text assertion would have silently gone false and read as "the marker vanished".
 - **The share code was a full-width bordered panel** — the visually heaviest element in the card
   carrying its least important information. **Measured on live data: 43 of Mo's 80 posts contain a
   code and NOBODY else's do**, so it was in practice a permanent advertisement across half of one

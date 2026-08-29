@@ -1,4 +1,4 @@
-// v178091716971
+// v178091716972
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6378,10 +6378,22 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                       // session. Repeating the filled lime chip per exercise made the card's
                       // loudest element appear three or four times, which is how a signal stops
                       // being one — the same failure the Body Battery sheet had with six lime
-                      // numbers. Gold is this app's existing PR/trophy colour. aria-label because
-                      // a bare glyph is silence to a screen reader.
-                      <span aria-label="Personal record" title="Personal record"
-                        style={{ fontSize:11, color:C.gold, lineHeight:1, flexShrink:0 }}>🏆</span>
+                      // numbers.
+                      //
+                      // The first cut of this used a 🏆 EMOJI, which was wrong twice over: an
+                      // emoji is a full-colour bitmap that renders differently on every platform
+                      // and cannot take the theme's gold, and — the stronger argument — this app
+                      // ALREADY has one PR marker, `Icon name="trophy"` in `C.gold`, used in three
+                      // other places (the exercise picker, the program day row, the PR tile). A
+                      // second visual vocabulary for the same fact is the duplicated-map problem
+                      // in icon form. Monoline, theme-coloured, and consistent with every other
+                      // icon in the app. The wrapper carries the accessible name, because Icon
+                      // renders a bare <svg> and a bare glyph is silence to a screen reader.
+                      <span role="img" aria-label="Personal record" title="Personal record"
+                        data-pr-marker="1"
+                        style={{ display:"inline-flex", lineHeight:1, flexShrink:0 }}>
+                        <Icon name="trophy" size={12} color={C.gold} strokeWidth={2.2}/>
+                      </span>
                     )}
                   </div>
                   {/* A LIFTER'S LEDGER, NOT A ROW OF CHIPS. Every set used to sit in its own

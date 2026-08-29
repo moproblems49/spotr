@@ -138,7 +138,10 @@ check("6. avg and peak sit together in one small block, not scattered across the
     const row = rows.length ? rows[rows.length - 1] : null;
     const filledPR = row ? [...row.querySelectorAll("span")].filter(x => x.textContent.trim() === "PR"
                        && getComputedStyle(x).backgroundColor !== "rgba(0, 0, 0, 0)").length : null;
-    const rowTrophy = row ? /🏆/.test(row.textContent || "") : false;
+    // Hook, not glyph: the marker is an <svg> now (the app's own monoline trophy in C.gold), and
+    // an SVG contributes no textContent — a text-based assertion would silently go false and read
+    // as "the PR marker vanished". data-pr-marker is the stable thing to assert on.
+    const rowTrophy = row ? !!row.querySelector('[data-pr-marker]') : false;
 
     // (c) The share-code control must not be a full-width panel any more.
     const imp = [...document.querySelectorAll("button")].find(x => /Import/.test(x.textContent||""));
