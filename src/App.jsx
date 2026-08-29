@@ -1,4 +1,4 @@
-// v178091716965
+// v178091716966
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13112,13 +13112,25 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
 
       let criticalFailed = false;
       let groupPostsDeleted = false;
+      // A DELETE that RLS filters down to zero rows returns 200 and raises NOTHING, so a catch
+      // cannot tell "deleted" from "silently blocked" — the documented "verify a blocked write by
+      // ROW COUNT, not by catching an exception" rule. `sb.query` already sends
+      // `Prefer: return=representation` on every request, so each DELETE hands back the rows it
+      // removed and the loop was simply discarding them. Only `profiles` is checked: exactly one
+      // row is guaranteed to exist, so 0 is unambiguously a failure. For the other twelve, zero
+      // rows is legitimate (a user with no kudos really does delete none) and asserting on it
+      // would invent failures.
+      let profilesDeleted = null;
       for (const [t, critical] of tables) {
+        const isProfiles = t.startsWith("profiles?");
         try {
-          await sb.query(t, { method: "DELETE" }, getTok());
+          const res = await sb.query(t, { method: "DELETE" }, getTok());
           if (t.startsWith("group_posts?")) groupPostsDeleted = true;
+          if (isProfiles) profilesDeleted = Array.isArray(res) && res.length === 1;
         }
-        catch (e) { if (critical) criticalFailed = true; }
+        catch (e) { if (critical) criticalFailed = true; if (isProfiles) profilesDeleted = false; }
       }
+      if (profilesDeleted === false) criticalFailed = true;
       // The rows are gone, so the objects they named can go too. Gated on that delete having
       // actually succeeded — `sb.query` throws on both a non-OK status and the 20s timeout, so a
       // failure really does land in the catch above and leave this false.
@@ -13132,12 +13144,12 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       try { localStorage.clear(); } catch {}
       // Also wipe the durable native store (localStorage.clear doesn't reach it).
       try { nativePrefs()?.clear?.().catch(() => {}); } catch {}
-      if (criticalFailed) {
-        // Personal data may remain server-side — don't falsely tell the user it's all gone.
-        setDeleting(false);
-        toast("Some data couldn't be removed. Sign out and contact support to finish.", "error");
-        return;
-      }
+      // NOTE: a failed table delete deliberately does NOT return here any more. It used to, and
+      // that was backwards: `profiles.id` cascades from `auth.users`, and an FK cascade bypasses
+      // RLS and every per-table transport failure the loop could have hit. So the edge function is
+      // strictly MORE capable of erasing this data than the loop that just failed — aborting left
+      // the user with their data present AND their login live, which is the worst of both. Run it
+      // regardless and decide the message from the combination below.
       // Delete the auth user itself — without this, re-signing up with the same
       // email reactivates the old account rather than starting fresh. This CANNOT go through
       // the public self-service `DELETE /auth/v1/user` endpoint — confirmed live (Aug 23, 2026)
@@ -13156,12 +13168,19 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         authDeleteOk = res.ok && body?.ok === true;
       } catch (e) { /* authDeleteOk stays false — reported below, not swallowed */ }
       if (!authDeleteOk) {
-        // Your DATA is gone (the loop above already succeeded), but the login itself still
-        // works — don't tell the user the account is deleted when it can still sign them in.
         setDeleting(false);
-        toast("Your data was removed, but the account login couldn't be fully closed — contact support to finish.", "error");
+        // Two genuinely different failures, and the old copy asserted the first one's happy half
+        // unconditionally — on a run where the loop had ALSO failed it told the user "your data
+        // was removed" when nothing had been. Say only what is true of each case.
+        toast(criticalFailed
+          ? "Couldn't finish deleting your account — contact support to complete it."
+          : "Your data was removed, but the account login couldn't be fully closed — contact support to finish.",
+          "error");
         return;
       }
+      // The edge function succeeded, so `auth.users` is gone and the profiles cascade took every
+      // content table with it — whether or not the explicit loop worked. That makes this a real
+      // success even after a `criticalFailed`, which is exactly why the abort above was removed.
       haptic("success");
       toast("Your account has been deleted", "success");
       setTimeout(() => onSignOut && onSignOut(), 600);

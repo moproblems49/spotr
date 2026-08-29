@@ -74,6 +74,59 @@ async function listUserObjects(url: string, key: string, bucket: string, userId:
   return out;
 }
 
+// ── Residue that no foreign key reaches ──────────────────────────────────────────────────────
+// Almost everything dies with the identity: profiles.id cascades from auth.users, and comments,
+// follows, kudos, messages, notifications, posts, programs, personal_records, workout_history,
+// group_posts, exercise_notes and reports.reporter_id all cascade from profiles. Four columns
+// have NO foreign key at all, so they survive the cascade untouched. Three of them are handled
+// here, and they MUST be handled here rather than in the client: `client_errors` and `feedback`
+// are INSERT-only under RLS (no SELECT, no UPDATE, no DELETE policy), so a client attempting to
+// clean them gets a silent 0-row no-op.
+//
+// The fourth, `code_redeem_failures.actor`, is DELIBERATELY LEFT. It is a short-lived abuse
+// ledger — each call opportunistically deletes expired rows, so it sits at zero between bursts —
+// and erasing a user's failures on request would let someone reset their own rate limit by
+// burning an account. Its IP-keyed rows are not findable by user id anyway. Do not "fix" this.
+async function scrubUnreferencedResidue(url: string, key: string, userId: string): Promise<string[]> {
+  const problems: string[] = [];
+  const h = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+
+  // Telemetry and feedback are ANONYMISED, not deleted: the value is the error text and the
+  // message, and unlinking the identity is what the erasure request actually requires.
+  for (const table of ["client_errors", "feedback"]) {
+    try {
+      const res = await fetch(`${url}/rest/v1/${table}?user_id=eq.${userId}`, {
+        method: "PATCH", headers: { ...h, Prefer: "return=minimal" },
+        body: JSON.stringify({ user_id: null }),
+      });
+      if (!res.ok) problems.push(`${table}:${res.status}`);
+    } catch { problems.push(`${table}:threw`); }
+  }
+
+  // groups.member_ids is a uuid[] with no FK, so a deleted user's id stays in every group they
+  // joined — inflating the visible member count and leaving a stale entry that keeps satisfying
+  // membership checks shaped like `auth.uid() = ANY(member_ids)` for an id that can no longer
+  // exist.
+  //
+  // This CANNOT be a plain PATCH with the service key, and that was measured, not guessed: the
+  // `enforce_group_creator_manages` BEFORE UPDATE trigger reads `auth.uid()`, which is NULL for a
+  // service-role call, so it sees a non-creator rewriting membership without removing exactly
+  // themselves and refuses — a live end-to-end test returned `groups/<id>:400`. The trigger is
+  // correct; the caller was. Its own rule already allows a member to remove exactly themselves,
+  // which is precisely what account deletion is, so `remove_user_from_all_groups` acts AS the
+  // departing member for one statement (a LOCAL `request.jwt.claims`) and satisfies the guard
+  // honestly instead of disabling it. EXECUTE is service_role-only — p_user is an arbitrary uuid,
+  // so an exposed grant would let anyone evict anyone from any group.
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/remove_user_from_all_groups`, {
+      method: "POST", headers: h, body: JSON.stringify({ p_user: userId }),
+    });
+    if (!res.ok) problems.push(`groups:${res.status}`);
+  } catch { problems.push("groups:threw"); }
+
+  return problems;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -121,6 +174,11 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Residue with no FK to cascade through. Best-effort and never fatal, same as storage: a
+  // leftover telemetry row must not keep a login alive on an account the user asked to delete.
+  const residueProblems = await scrubUnreferencedResidue(SUPABASE_URL, SERVICE_KEY, callerId)
+    .catch(() => ["residue:threw"]);
+
   // Delete via the ADMIN API — the only endpoint on this project that actually removes the auth
   // identity. Scoped to callerId, resolved above from the caller's own token, so this can only
   // ever delete the account making the request, never anyone else's.
@@ -133,9 +191,10 @@ Deno.serve(async (req: Request) => {
     // that's the goal state, not a failure.
     if (!del.ok && del.status !== 404) {
       const detail = await del.text().catch(() => "");
-      return json({ error: "delete_failed", status: del.status, detail, filesDeleted, fileErrors }, 502);
+      return json({ error: "delete_failed", status: del.status, detail, filesDeleted, fileErrors, residueProblems }, 502);
     }
-    return json({ ok: true, filesDeleted, ...(fileErrors.length ? { fileErrors } : {}) });
+    return json({ ok: true, filesDeleted, ...(fileErrors.length ? { fileErrors } : {}),
+      ...(residueProblems.length ? { residueProblems } : {}) });
   } catch {
     return json({ error: "server_error", filesDeleted, fileErrors }, 500);
   }

@@ -29,11 +29,12 @@ const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromi
 // Drive Settings -> Delete account -> type DELETE -> Delete forever.
 // `rowDeleteStatus` decides whether the group_posts DELETE succeeds, which is the whole variable
 // under test. Returns what the client did, so each section asserts on real traffic.
-async function runDeleteFlow(rowDeleteStatus) {
+async function runDeleteFlow(rowDeleteStatus, opts = {}) {
   const page = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
   page.setDefaultTimeout(6000);
   const storage = [];
   const rest = [];
+  const edgeCalls = [];
   const pageErrors = [];
   page.on("pageerror", e => pageErrors.push(e.message));
 
@@ -59,6 +60,14 @@ async function runDeleteFlow(rowDeleteStatus) {
         contentType:"application/json", body: JSON.stringify({ message: "denied" }) });
       return r.fulfill({ status: 204, body: "" });
     }
+    if (m === "DELETE" && /\/rest\/v1\/profiles/.test(u)) {
+      if (opts.profilesDelete === "fail")
+        return r.fulfill({ status:500, contentType:"application/json", body: JSON.stringify({ message:"boom" }) });
+      if (opts.profilesDelete === "silent")
+        // The exact shape of an RLS-filtered delete: 200 with an EMPTY representation array.
+        return J([]);
+      return J([{ id: ME }]);
+    }
     if (m === "DELETE") return r.fulfill({ status: 204, body: "" });
     // The lookup the client does before the loop. Modelled with the real column name so a client
     // that stopped selecting image_url would read undefined rather than a path.
@@ -70,8 +79,13 @@ async function runDeleteFlow(rowDeleteStatus) {
   });
   await page.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
     body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
-  await page.route("**/functions/v1/delete-account", r => r.fulfill({ status:200,
-    contentType:"application/json", body: JSON.stringify({ ok:true, filesDeleted:0 }) }));
+  await page.route("**/functions/v1/delete-account", r => {
+    edgeCalls.push(r.request().url());
+    if (opts.edgeFails) return r.fulfill({ status:500, contentType:"application/json",
+      body: JSON.stringify({ error: "server_error" }) });
+    return r.fulfill({ status:200, contentType:"application/json",
+      body: JSON.stringify({ ok:true, filesDeleted:0 }) });
+  });
   await page.route("**/storage/v1/object/**", r => {
     storage.push({ method: r.request().method(), url: r.request().url() });
     if (r.request().method() === "GET") return r.fulfill({ status:200, contentType:"image/png",
@@ -108,10 +122,18 @@ async function runDeleteFlow(rowDeleteStatus) {
     if (!b || b.disabled) return false;
     b.click(); return true;
   });
-  await page.waitForTimeout(2500);
+  // Toasts are transient, and the SUCCESS path calls onSignOut ~600ms later which replaces the
+  // screen — sampling innerText once at the end therefore misses the very message under test.
+  // Accumulate across the wait instead.
+  let seen = "";
+  for (let i = 0; i < 12; i++) {
+    seen += "\n" + await page.evaluate(() => document.body.innerText).catch(() => "");
+    await page.waitForTimeout(250);
+  }
+  page._seenText = seen;
 
   await page.close();
-  return { storage, rest, opened, typed, confirmed, pageErrors };
+  return { storage, rest, edgeCalls, opened, typed, confirmed, pageErrors, toastText: seen };
 }
 
 // ── 1. A FAILED group_posts DELETE MUST NOT DESTROY THE IMAGE ────────────────────────────────
@@ -142,6 +164,35 @@ async function runDeleteFlow(rowDeleteStatus) {
   check("2c. the image delete targets the group-images bucket, by bare path",
     r.storage.some(x => x.method === "DELETE" && /\/storage\/v1\/object\/group-images\//.test(x.url)));
   check("2d. no page errors during the flow", r.pageErrors.length === 0, r.pageErrors[0]);
+}
+
+// ── 3. A FAILED CRITICAL DELETE MUST STILL CALL THE EDGE FUNCTION ────────────────────────────
+// profiles.id cascades from auth.users, and an FK cascade bypasses RLS and any per-table
+// transport failure the loop hit — so the edge function is strictly MORE capable of erasing the
+// data than the loop that just failed. Aborting left the user with data present AND a live login.
+{
+  const r = await runDeleteFlow(200, { profilesDelete: "fail" });
+  check("3a. the flow ran to confirmation", r.opened && r.typed && r.confirmed);
+  check("3b. a failed critical delete STILL calls the delete-account edge function",
+    r.edgeCalls.length > 0,
+    "edge function never called — the login stays live and the cascade never runs");
+  check("3c. and the account is reported deleted, because the cascade did the work",
+    /account has been deleted/i.test(r.toastText),
+    r.toastText.slice(0, 160).replace(/\n/g, " | "));
+}
+
+// ── 4. A SILENTLY-BLOCKED profiles DELETE MUST NOT REPORT SUCCESS ────────────────────────────
+// An RLS-filtered DELETE returns 200 with an empty representation and raises nothing. If the
+// edge function ALSO fails, the old copy said "Your data was removed" — false on both halves.
+{
+  const r = await runDeleteFlow(200, { profilesDelete: "silent", edgeFails: true });
+  check("4a. the flow ran to confirmation", r.opened && r.typed && r.confirmed);
+  check("4b. a 0-row profiles delete + failed edge fn does NOT claim data was removed",
+    !/your data was removed/i.test(r.toastText),
+    r.toastText.slice(0, 200).replace(/\n/g, " | "));
+  check("4c. and it does not claim the account was deleted either",
+    !/account has been deleted/i.test(r.toastText),
+    r.toastText.slice(0, 200).replace(/\n/g, " | "));
 }
 
 await browser.close();

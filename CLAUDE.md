@@ -124,6 +124,9 @@ it found something real that nobody had reported: a mid-review demo corpus that 
 4. **Demo-corpus freshness** — see the pre-submission checklist item. Newest persona post should
    read "yesterday", and every persona needs workouts inside the 7-day muscle-map window.
 5. **Storage/table growth** — orphaned images, a table growing faster than the user count explains.
+   Also run the **orphaned-member_ids** check, which nothing else can see:
+   `select count(*) from groups g, unnest(g.member_ids) m where not exists (select 1 from profiles p where p.id = m)`
+   — must be 0. Non-zero means an account was deleted without `remove_user_from_all_groups` firing.
 Report findings even when everything is clean; "the error rate went from 1,650/day to single
 digits" is the point of running it again after a fix.
 **Sweep #3 (Aug 28, ~04:40 UTC), for the next run's baseline:** 950 of 953 daily Postgres errors
@@ -3087,6 +3090,74 @@ half-set. Lateral raises KEEP their Traps credit — upper-trap contribution to 
 rotation through abduction is real, if debated. **Squat/leg-press → Hamstrings & Calves was raised
 and deliberately LEFT** (Mo's call): genuinely contested in the literature, unlike the isolation
 cases.
+
+## ★ Account deletion, completed (Aug 29, 2026) — and MOST of the "gaps" were never gaps
+Mo asked for the account-deletion completeness work to be taken on. **The first thing it produced
+was a correction to the list that prompted it.** An earlier audit flagged `notifications`,
+`typing_status` and `reports` as left behind; all three CASCADE. `profiles.id` cascades from
+`auth.users`, and from `profiles` so do comments, exercise_notes, follows, group_posts, groups,
+kudos, messages, notifications, personal_records, posts, programs, reports.reporter_id and
+workout_history; blocked_users, typing_status and workout_codes cascade straight off `auth.users`.
+So the edge function's auth delete already erases nearly everything, and **the client's 13-entry
+table loop is largely redundant with its own last entry** (`profiles`). Measure the FKs before
+believing a list of orphans — three of that list's four items were wrong.
+**Exactly four user-referencing columns have no FK at all**, and the decisions were:
+  * **`groups.member_ids`** (uuid[]) — a real bug, now fixed. A dead uuid stayed in every group
+    forever, inflating the member count and satisfying `auth.uid() = ANY(member_ids)` checks for an
+    id that cannot exist.
+  * **`client_errors.user_id` / `feedback.user_id`** — ANONYMISED (`user_id = NULL`), not deleted:
+    the value is the stack trace and the message, and unlinking the identity is what erasure
+    actually requires. **Must be server-side** — both are INSERT-only under RLS (no SELECT/UPDATE/
+    DELETE policy), so a client attempt is a silent 0-row no-op.
+  * **`code_redeem_failures.actor`** — DELIBERATELY LEFT. Rows self-expire (opportunistic cleanup
+    on each call keeps the table at 0), and erasing a user's failures on request would let someone
+    reset their own rate limit by burning an account. Documented in-function so it is not "fixed".
+**★ A SERVICE-ROLE CALL HAS `auth.uid() = NULL`, AND A TRIGGER THAT READS IT WILL REFUSE YOU.**
+The member_ids fix first shipped as a plain PostgREST PATCH with the service key, and the live
+end-to-end test returned **`groups/<id>:400`**. `enforce_group_creator_manages` reads `auth.uid()`,
+which is NULL for a service-role call, so it saw a non-creator rewriting membership without
+removing exactly themselves — and correctly refused. **The trigger was right; the caller was
+wrong.** Its own rule already permits a member removing exactly themselves, which is precisely what
+account deletion is, so `remove_user_from_all_groups(uuid)` (SECURITY DEFINER) sets a LOCAL
+`request.jwt.claims` to act AS the departing member and satisfies the guard honestly rather than
+disabling it. **EXECUTE is service_role-only** and that is load-bearing — `p_user` is an arbitrary
+uuid, so an exposed grant would let any caller evict anyone from any group (verified by role:
+anon/authenticated false, service_role true). Same `set_config` technique as the tbar and demo-shift
+work; the new part is that it applies to your OWN server-side code, not just to migrations.
+**★ AND `criticalFailed` WAS ABORTING THE ONE STEP THAT COULD HAVE SAVED IT.** A failed table
+delete returned early and never called the edge function. That is backwards: an FK cascade bypasses
+RLS and every per-table transport failure the loop could hit, so the edge function is strictly MORE
+capable of erasing the data than the loop that just failed. Aborting left the user with their data
+present AND their login live — the worst of both. It runs regardless now, and the outcome is
+decided from the combination; the old copy also asserted "Your data was removed" unconditionally,
+which was false on exactly the run where the loop had failed too.
+**A 0-ROW DELETE IS A SILENT FAILURE, AND THE DETECTION WAS ALREADY BEING THROWN AWAY.** An
+RLS-filtered DELETE returns 200 and raises nothing. `sb.query` already sends
+`Prefer: return=representation` on EVERY request, so each DELETE hands back the rows it removed and
+the loop was discarding them. Only `profiles` is checked (exactly one row must exist, so 0 is
+unambiguous); for the other twelve, zero rows is legitimate and asserting on it would invent
+failures. Do not generalise the pattern to a table whose SELECT policy is narrower than its DELETE
+policy — representation is filtered by SELECT.
+**Verified END-TO-END against the deployed function, not just in the stub**: two disposable accounts
+created via SQL, signed in through `/auth/v1/token` and deleted through the real edge function via
+`net.http_post` (the sandbox cannot reach supabase.co directly). Run 1 caught the 400. Run 2, as a
+plain MEMBER of a group they did not create: `{"ok":true}` with no residueProblems, auth identity
+gone, profile gone, telemetry anonymised, **group survived**, members 3 → 2, stale id absent, and
+the real group byte-identical to its pre-test state. **A deployed function that has never been run
+is unverified** — the stub suite cannot see any of this, since it stubs the edge function out.
+**Sweep item to add (step 5):** `select count(*) from groups g, unnest(g.member_ids) m where not
+exists (select 1 from profiles p where p.id = m)` must be **0**. It is the standing detector for
+this whole class, and no Playwright suite can see it.
+**★ OPEN, AND IT IS MO'S CALL: `groups.created_by` CASCADES.** Deleting a group CREATOR's account
+deletes the group and, via `group_posts.group_id`, **every other member's posts in it**. That is
+data loss for other people, not a privacy requirement — privacy only demands the creator's own rows
+die. Blast radius TODAY is effectively zero (2 groups: one is Mo's own with 0 posts by others; the
+other belongs to a demo persona whose password is random and unrecoverable, so it can never run the
+flow). There is also a storage consequence: group images key on `{groupId}/`, so once those rows
+cascade away nothing knows the paths and they orphan permanently — the leak just closed, reopened
+by another route. Options are cascade-as-is / transfer ownership to the oldest member / soft-orphan
+with a nullable `created_by`. **Not changed unilaterally**: it is a product decision, and whichever
+is picked, the other-members' group-image orphan must be handled in the same change.
 
 ## ★ The audit that found MY OWN fix inert (Aug 29, 2026) — order beats intent
 A cold-context audit of the settings-race generalisation found the guard was **inert for one of
