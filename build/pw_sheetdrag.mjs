@@ -92,13 +92,19 @@ const structure = await page.evaluate(() => {
     if (oy === "auto" || oy === "scroll") { scrollingAncestor = el.tagName + "." + (el.className || "(no class)"); break; }
   }
   return { found:true, scrollingAncestor, touchAction: getComputedStyle(h).touchAction,
-           panelDisplay: getComputedStyle(panel).display };
+           panelDisplay: getComputedStyle(panel).display,
+           grabHeight: Math.round(h.getBoundingClientRect().height) };
 });
 check("handle exists on the reopened sheet", structure.found);
 check("handle is NOT inside a scrolling container (iOS would claim the gesture)",
   structure.scrollingAncestor === null,
   `nearest scrolling ancestor: ${structure.scrollingAncestor}`);
 check("handle still declares touch-action:none", structure.touchAction === "none", structure.touchAction);
+// Mo asked for a bigger swipe area — the bar is only 4px tall, so what matters is the GRAB ROW
+// around it. 44 is this app's own target size. Without this the padding could be trimmed back to
+// the original 20px by any later tidy-up and nothing would notice.
+check("the grab area is at least 44px tall, not just the bar",
+  structure.grabHeight >= 44, `grab row is ${structure.grabHeight}px`);
 
 // 5. The sheets that opted in must ACTUALLY have a handle — it was opt-in and only ONE of fifteen
 // sheets had ever passed the prop, which is why "it doesn't work on any other sheet" was correct.

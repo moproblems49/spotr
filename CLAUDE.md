@@ -3465,6 +3465,44 @@ was: delete the stub zip, rebuild from the repo root with absolute paths only, r
 trusting the build log. **Never chain `cd` in a publish step; and verify the zip you are about to
 ship, not the dist you think you built.**
 
+## ★★ THE INVISIBLE-OVERLAY BUG IS A CLASS, AND RAISING A Z-INDEX ONLY MOVES IT (Aug 30)
+Third time in one session. z55: a chat opened from a profile mounted UNDER the profile's z60
+portal. Fixed by going to z65 — and the Fable audit then found the same failure one layer up: a
+"dm" push tapped while the POST overlay (z70) is open mounts the chat beneath it, and ChatView
+still polls and PATCHes `read_at`, so unread DMs are consumed unseen. It also found the reverse on
+three paths the previous commit's own comment claimed were impossible ("nothing in ChatView opens
+a profile — verified"): true of ChatView, false of the POST overlay's `onUserClick`, the "follows"
+push, and the `/u/<id>` universal link, each of which opens a profile at z60 while a chat sits at
+z65 above it.
+**The root cause is that a z-index cannot express a navigation STACK.** The same two screens want
+opposite orders depending on where they were opened from — Message-from-profile wants chat above
+profile; a follow push wants profile above chat — so no fixed assignment is right for both.
+**`presentChat(uid)` and `presentProfile(uid)` close it by construction**: each dismisses anything
+that could paint over the thing being presented (`presentProfile` clears postView AND chatPeerId;
+`presentChat` clears postView, leaving the profile so Message-from-profile still stacks correctly).
+All eight entry points go through them — push routing ×2, the universal-link handler, the post
+overlay's author tap, MessagesScreen's `onOpenChat`, ProfileScreen's `onMessage`, the Activity
+avatar and the story viewer. **Use them for any NEW entry point; a raw `setChatPeerId`/
+`setProfileUserId` that opens (rather than closes) an overlay is how this returns a fourth time.**
+Guard: `pw_sharepost` §11 drives DM → shared post → tap author and asserts the profile is actually
+PAINTED (`elementFromPoint`, not `innerText` — an overlay does not remove the DOM beneath it).
+Red-proofed: restoring the raw setter reports "COVERED by DIV".
+**A source-level count of the raw setters was written first and thrown away** — it would have
+broken on any unrelated edit and reported a number instead of a symptom. Behaviour where it can be
+driven; this repo already has the rule that nothing in the battery should assert on source text.
+**Probe bug worth keeping**: the first version of §11 asked `elementFromPoint` and rejected the hit
+because the topmost node was the profile label's own parent BUTTON. "Covered" means the hit lands
+on a DIFFERENT branch — test both containment directions, or a visible element reads as hidden.
+
+## The sheet grab area is 44px, not the 20px the bar occupies (Mo, Aug 30)
+"Make where you have to swipe down a little bigger instead of it just the edge of the sheet." The
+handle's row was `padding:"10px 0 6px"` around a 4px bar — a **20px** target for a gesture that
+needs you to land on it AND move without leaving it. It is 44px now, the same number `.seshd-hit`
+uses everywhere else. **Real padding, not a `.seshd-hit` halo**: a halo would extend invisibly over
+the first row of the list below and swallow its taps, which is the documented hazard that
+`build/tap_audit.mjs` exists to catch. Growing the handle's own flex row pushes the content down
+instead, so nothing overlaps. `pw_sheetdrag` asserts `>= 44px` (red-proofs at exactly 20).
+
 ## ★★ MODALS BLENDED INTO THE PAGE, AND NO SCRIM OPACITY COULD HAVE FIXED IT (Aug 30)
 Mo, from a screenshot of the Close Friends picker: "the list kind of blends in, we have this
 problem in a lot of lists." He was right, and it was systemic — **24 hand-built modal backdrops
@@ -3490,6 +3528,16 @@ bottom sheets** keep `C.bg` and only get `overlayEdge` on their `borderTop`, bec
 fills enough of the screen to read as a new surface rather than a floating card and only its top
 edge faces the scrim. Repainting all twelve would be a broad visual change for a problem that lives
 on one hairline.
+**★ AND THE SWEEP MISSED SEVEN PANELS, INCLUDING THE MOST-SEEN MODAL IN THE APP.** The Fable audit
+found `ConfirmHost` (every destructive confirm), `SharePostHost` and `ReportHost` still on
+`C.border`, plus three bottom sheets in files the commit had already touched (AICoachModal, the
+New Group sheet in DiscoverScreen — 280 lines from the Close Friends modal it *did* convert — and
+GroupDetail's post menu). Worse, **Edit Profile got HALF the fix**: the surface was swapped and the
+edge was not, because the replacement pattern required a `boxShadow` immediately after the border
+and that one modal has none, so it silently matched nothing. All seven fixed; `grep -c
+'borderTop:\`1px solid \${C.border}\`'` is now 0 across every source file. **A bulk style
+replacement that requires two adjacent properties will skip the site that has only one — verify
+the count changed, do not assume the pattern matched.**
 **Scanner note worth keeping:** the inventory script flagged `BodyTrackingScreen.jsx:128` as a
 blending panel; it is a 22px "Remove photo" button with an `rgba` background, not a modal at all.
 A regex that finds `position:fixed` + an rgba background cannot tell a backdrop from a chip — read

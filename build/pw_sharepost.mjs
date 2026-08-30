@@ -373,6 +373,45 @@ if (onProfile) {
   }
 }
 
+// ── 11. An overlay must never mount UNDERNEATH one already on screen. The reachable case: from a
+//        DM, open the shared post (z70 over the chat's z65), then tap the poster's name. That used
+//        to clear postView but NOT chatPeerId, so the profile (z60) mounted under the chat — the
+//        user tapped a name, the post closed, the chat reappeared, and the profile was invisible
+//        until they closed the chat and landed somewhere they never chose. Every entry point goes
+//        through presentChat/presentProfile now, which dismiss whatever could paint over the
+//        thing being presented. ─────────────────────────────────────────────────────────────────
+await page.goto(`http://127.0.0.1:${process.env.PORT || 8199}/`, { waitUntil: "load", timeout: 20000 });
+await page.waitForTimeout(2600);
+const msgs11 = page.locator('[aria-label="Messages"]').first();
+if (await msgs11.count()) { await msgs11.click({ force: true }); await page.waitForTimeout(1100); }
+const pal11 = page.getByText("Pally", { exact: false }).first();
+if (await pal11.count()) { await pal11.click({ force: true }); await page.waitForTimeout(1400); }
+const card11 = page.locator('button[aria-label^="Open shared post"]').first();
+const haveCard11 = await card11.count() > 0;
+check("11a. a shared post is reachable from the chat", haveCard11);
+if (haveCard11) {
+  await card11.click({ force: true });
+  await page.waitForTimeout(1700);
+  check("11b. the post opened over the chat", /Leg day/.test(await text()));
+  const author11 = page.locator('[data-fullscreen-overlay]').getByText(/^lifter$/i).first();
+  if (await author11.count()) { await author11.click({ force: true }); await page.waitForTimeout(1900); }
+  // Ask what is PAINTED, not what innerText reports — an overlay does not remove the DOM beneath
+  // it, so a hidden profile still shows up in the text of the page.
+  const vis = await page.evaluate(() => {
+    const el = [...document.querySelectorAll("*")].find(n => n.children.length === 0 && /^Followers$/i.test((n.textContent||"").trim()));
+    if (!el) return "no-profile";
+    const r = el.getBoundingClientRect();
+    if (!r.width) return "profile-not-laid-out";
+    const top = document.elementFromPoint(r.x + r.width/2, r.y + r.height/2);
+    // The label sits INSIDE a button, so the topmost node at that point is legitimately its own
+    // ancestor. Visible means the hit lands anywhere on the same branch — either direction.
+    const sameBranch = top && (top === el || el.contains(top) || top.contains(el));
+    return sameBranch ? "visible" : "COVERED by " + (top ? top.tagName + "." + String(top.className).slice(0,24) : "?");
+  });
+  check("11c. tapping the author shows the profile, not an invisible one under the chat",
+    vis === "visible", String(vis));
+}
+
 await page.screenshot({ path: "build/shot_sharepost.png", fullPage: false });
 // ── 10. The merged post must SURVIVE a feed refresh, or every action on it dies again. The carry
 //        filter keeps only posts under 2 minutes old and a shared post never is, so the merge was

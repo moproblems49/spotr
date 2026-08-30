@@ -377,7 +377,7 @@ export default function AICoachModal({ open, C, onClose, onImport, store }) {
     // at 4-of-5 questions into "start over", which is exactly the kind of silent data loss the
     // old markup avoided. Cancel / ‹ Back still close it via the component's own onClose prop.
     <Sheet open={!!open} onClose={() => {}} z={250}
-      panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+      panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.overlayEdge}` }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
           {/* THE HEADER CONTROL MUST MATCH THE SCREEN THAT IS ACTUALLY SHOWING. The render below

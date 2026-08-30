@@ -1,4 +1,4 @@
-// v178091716983
+// v178091716984
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1965,7 +1965,7 @@ function ConfirmHost({ C }) {
   return createPortal((
     <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"seshd-cf-fade 0.15s ease" }}>
       <style>{`@keyframes seshd-cf-fade{from{opacity:0}to{opacity:1}}@keyframes seshd-cf-pop{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}`}</style>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}`, animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)", animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
         <div style={{ width:46, height:46, borderRadius:RADIUS.md, background:`${accent}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
           <Icon name={cf.icon} size={22} color={accent}/>
         </div>
@@ -2160,7 +2160,7 @@ function SharePostHost({ C, token, currentUserId, store, isGuest, onRequireAuth 
 
   return (
     <Sheet open={!!sp} onClose={close} z={4000} backdrop="rgba(0,0,0,0.7)" dragHandle
-      panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))", border:`1px solid ${C.border}`, borderBottom:"none", maxHeight:"72dvh" }}>
+      panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))", border:`1px solid ${C.overlayEdge}`, borderBottom:"none", maxHeight:"72dvh" }}>
       {sp && (
         <>
           <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:3, letterSpacing:-0.3 }}>Send to</div>
@@ -2316,7 +2316,7 @@ function ReportHost({ C, token, currentUserId }) {
   const accent = C.accent || "#65a30d";
   return (
     <Sheet open={!!rp} onClose={close} z={4000} backdrop="rgba(0,0,0,0.7)" dragHandle
-      panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", border:`1px solid ${C.border}`, borderBottom:"none" }}>
+      panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"20px 18px calc(24px + env(safe-area-inset-bottom))", border:`1px solid ${C.overlayEdge}`, borderBottom:"none" }}>
       {rp && (
         <>
           <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:4, letterSpacing:-0.3 }}>Report{rp.label ? ` ${rp.label}` : ""}</div>
@@ -8332,10 +8332,19 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                  ...(dragHandle ? { display:"flex", flexDirection:"column" } : null),
                  ...outerStyle }}>
         {dragHandle && (
+          // ★ THE GRAB AREA IS 44px, NOT THE 20px THE BAR OCCUPIES (Mo: "make where you have to
+          // swipe down a little bigger instead of it just the edge of the sheet"). 44 is this
+          // app's own target size — the same number `.seshd-hit` uses — and a drag needs it more
+          // than a tap does, because you have to land on it AND move without leaving it.
+          // Real padding rather than a `.seshd-hit` pseudo-element halo on purpose: a halo would
+          // extend INVISIBLY over the first row of the list below and swallow its taps, which is
+          // the documented hazard of that trick (`build/tap_audit.mjs` exists because of it).
+          // This grows the handle's own flex row instead, so the content below simply starts
+          // lower and nothing overlaps.
           <div {...handleProps} data-sheet-handle="1" aria-label="Drag down to close" role="button" tabIndex={-1}
-            style={{ padding:"10px 0 6px", cursor:"grab", touchAction:"none", display:"flex",
-                     justifyContent:"center", flex:"0 0 auto" }}>
-            <div style={{ width:36, height:4, borderRadius:2, background:"rgba(128,128,128,0.45)" }}/>
+            style={{ padding:"20px 0 20px", cursor:"grab", touchAction:"none", display:"flex",
+                     justifyContent:"center", alignItems:"center", flex:"0 0 auto" }}>
+            <div style={{ width:40, height:4, borderRadius:2, background:"rgba(128,128,128,0.45)" }}/>
           </div>
         )}
         {needsInner
@@ -14465,7 +14474,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           "bleeds" into the screen behind it / becomes scrollable past). */}
       {showEdit && createPortal((
         <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.border}` }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Edit Profile</div>
@@ -16048,6 +16057,19 @@ function AppInner() {
   // The "not visible" case is not an error path: it is the privacy model working. A link carries
   // no content, so a recipient who does not pass the poster's RLS simply sees nothing.
   const [postView, setPostView] = useState(null);
+  // ★ Z-INDEX CANNOT EXPRESS A NAVIGATION STACK, SO EACH ENTRY POINT CLEARS WHAT WOULD COVER IT.
+  // The overlays are nav 50 < profile 60 < chat 65 < post 70, which is right for the paths that
+  // motivated it (Message opens a chat over a profile; a shared post opens over a chat). But the
+  // SAME two screens want the opposite order when they arrive from somewhere else — a "dm" push
+  // tapped while a post is open, a follow push or a /u/ link tapped while a chat is open — and
+  // the loser then mounts INVISIBLY: nothing appears to happen, ChatView still polls and marks
+  // incoming DMs read, and backing out drops the user somewhere they never chose. That is the
+  // same defect twice already (chat under profile at z55, then chat under post at z65); raising
+  // a number just moves the hole up a layer.
+  // These two helpers close it by construction: whatever is being presented, anything that could
+  // paint over it is dismissed first. Use them instead of the raw setters for any NEW entry point.
+  const presentChat = useCallback((uid_) => { setPostView(null); setChatPeerId(uid_); }, []);
+  const presentProfile = useCallback((uid_) => { setPostView(null); setChatPeerId(null); setProfileUserId(uid_); }, []);
   // loadFeed runs outside this state's closure, so it reads the open post's id from a ref.
   const openPostIdRef = useRef(null);
   useEffect(() => { openPostIdRef.current = postView?.id || null; }, [postView?.id]);
@@ -16169,7 +16191,7 @@ function AppInner() {
           try {
             const u = new URL(url);
             const mU = u.pathname.match(/^\/u\/([\w-]+)/) || (u.hash || "").match(/^#\/u\/([\w-]+)/);
-            if (mU) { setProfileUserId(mU[1]); return; }
+            if (mU) { presentProfile(mU[1]); return; }
             // /p/ carries TWO things and they are told apart by SHAPE: a post id is a uuid, a
             // share code is IGNITE-… / WO-…. Post links ride the already-claimed /p/ path on
             // purpose — iOS caches the AASA at install time, so a NEW universal-link path would
@@ -16225,10 +16247,10 @@ function AppInner() {
             const data = action?.notification?.data || {};
             switch (data.type) {
               case "dm":
-                if (data.senderId) setChatPeerId(data.senderId);
+                if (data.senderId) presentChat(data.senderId);
                 break;
               case "follows":
-                if (data.followerId) setProfileUserId(data.followerId);
+                if (data.followerId) presentProfile(data.followerId);
                 break;
               case "kudos":
               case "comments":
@@ -19164,7 +19186,7 @@ function AppInner() {
                   onEditComment={handleEditComment}
                   onDeleteComment={handleDeleteComment}
                   onLikeComment={handleLikeComment}
-                  onUserClick={(uid_) => { setPostView(null); setProfileUserId(uid_); }}
+                  onUserClick={presentProfile}
                   onEdit={setEditingPost}
                   onDelete={(id_) => { setPostView(null); handleDelete(id_); }}
                 />
@@ -20184,7 +20206,7 @@ function AppInner() {
             ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => (
               <SwipeToDismissRow key={keyOfEvent(ev)} C={C} onDismiss={() => dismissActivity(keyOfEvent(ev))}>
               <div className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <Avatar user={ev.user} size={40} C={C} onClick={() => setProfileUserId(ev.user.id)}/>
+                <Avatar user={ev.user} size={40} C={C} onClick={() => presentProfile(ev.user.id)}/>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
                     <span style={{ fontWeight:600 }}>{ev.user.username} </span>
@@ -20221,7 +20243,7 @@ function AppInner() {
               <MessagesScreen store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
                 paused={!!chatPeerId}
                 onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
-                onOpenChat={(uid_) => setChatPeerId(uid_)}/>
+                onOpenChat={presentChat}/>
             </Suspense>
           </EdgeSwipeBack>
         </div>
@@ -20284,7 +20306,7 @@ function AppInner() {
             onOpenCoach={() => setShowCoach(true)}
             currentUserId={currentUserId}
             onBack={() => setProfileUserId(null)}
-            onMessage={isGuest ? undefined : (uid_) => { setChatPeerId(uid_); }}
+            onMessage={isGuest ? undefined : presentChat}
             displayUnit={unit}
             C={C}
             onToggleTheme={async (t) => {
@@ -20352,7 +20374,7 @@ function AppInner() {
             onPrev={() => setStoryIndex(i => Math.max(0, i - 1))}
             hasNext={storyIndex < allStoryEntries.length - 1}
             hasPrev={storyIndex > 0}
-            onViewProfile={() => { setStoryIndex(null); setProfileUserId(entry.user.id); }}
+            onViewProfile={() => { setStoryIndex(null); presentProfile(entry.user.id); }}
             onReact={(storyPost, emoji) => {
               // Reuse the kudos system: a story reaction registers as a kudos on the story
               // post, so the author sees the engagement in their activity feed.
