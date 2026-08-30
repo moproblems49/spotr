@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { devError, dateFromKey, workingDone } from "../engine/core.js";
 import { postWorkoutPayload, sessionVolume } from "../engine/workout.js";
-import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, NAV_CLEARANCE } from "../App.jsx";
+import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, SharedPostLink, NAV_CLEARANCE } from "../App.jsx";
 
 export default function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
   const [tab, setTab] = useState("feed");
@@ -273,7 +273,13 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
                           </div>
                         </div>
                       ) : (
-                        post.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.5, marginBottom:6 }}>{post.caption}</div>
+                        // A post shared into the group carries a /p/<uuid> link; SharedPostLink
+                        // turns it into a tappable row and returns the plain text otherwise, so
+                        // an ordinary caption is unaffected. Same component the chat uses — this
+                        // is the second surface, not a second copy.
+                        post.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.5, marginBottom:6 }}>
+                          <SharedPostLink text={post.caption} C={C}/>
+                        </div>
                       )}
                       {resolveImg(post) && (
                         <img src={resolveImg(post)} alt="" loading="lazy" decoding="async" style={{ width:"100%", borderRadius:12, marginBottom:8, maxHeight:320, objectFit:"cover" }}/>

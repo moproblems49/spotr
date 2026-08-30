@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   F, DISPLAY, Icon, Avatar, Spinner, PullToRefresh, haptic, toast, sb,
-  loadSession, saveSession, reportContent, postIdInText,
+  loadSession, saveSession, reportContent, SharedPostLink,
 } from "../App.jsx";
 
 // Run an authed REST query; if it fails (most often an expired access token — the documented
@@ -292,34 +292,14 @@ export function ChatView({ peerId, store, currentUserId, token, C, onBack, onRea
                   <div style={{ maxWidth:"78%", padding:"8px 12px", borderRadius:16, borderBottomRightRadius: mine ? 5 : 16, borderBottomLeftRadius: mine ? 16 : 5,
                     background: mine ? C.primary : (C.card || C.tabBg), color: mine ? C.onPrimary : C.text,
                     fontSize:14, lineHeight:1.45, whiteSpace:"pre-wrap", wordBreak:"break-word", opacity: m._tmp ? 0.6 : 1 }}>
-                    {(() => {
-                      // A shared post arrives as text carrying a /p/<uuid> link. Rendering the raw
-                      // URL would make the recipient copy it into a browser to use it, so the
-                      // bubble becomes a tappable row instead. The message stays plain text in the
-                      // DB — no column, no migration, and an older client still shows something
-                      // sensible.
-                      const sharedId = postIdInText(m.text);
-                      if (!sharedId) return m.text;
-                      const label = String(m.text || "").split("\n")[0].trim() || "A workout on Seshd";
-                      return (
-                        <button
-                          onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id: sharedId } }))}
-                          aria-label={`Open shared post: ${label}`}
-                          style={{ display:"flex", alignItems:"center", gap:9, background:"none", border:"none",
-                                   padding:0, margin:0, cursor:"pointer", fontFamily:F, textAlign:"left",
-                                   color: mine ? C.onPrimary : C.text, maxWidth:"100%" }}>
-                          <span style={{ width:32, height:32, borderRadius:9, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                                         background: mine ? "rgba(255,255,255,0.16)" : (C.bg || "transparent"),
-                                         border: mine ? "none" : `1px solid ${C.border}` }}>
-                            <Icon name="dumbbell" size={15} color={mine ? C.onPrimary : C.sub}/>
-                          </span>
-                          <span style={{ minWidth:0 }}>
-                            <span style={{ display:"block", fontSize:14, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>
-                            <span style={{ display:"block", fontSize:11, fontWeight:700, letterSpacing:0.3, opacity:0.72 }}>TAP TO VIEW</span>
-                          </span>
-                        </button>
-                      );
-                    })()}
+                    {/* A shared post arrives as text carrying a /p/<uuid> link. Rendering the raw
+                        URL would make the recipient copy it into a browser to use it, so the
+                        bubble becomes a tappable row instead. The message stays plain text in the
+                        DB — no column, no migration, and an older client still shows something
+                        sensible. */}
+                    <SharedPostLink text={m.text} C={C}
+                      ink={mine ? C.onPrimary : C.text}
+                      tile={mine ? "rgba(255,255,255,0.16)" : (C.bg || "transparent")}/>
                   </div>
                 </div>
                 {i === lastMineIdx && (

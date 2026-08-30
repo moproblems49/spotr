@@ -21,6 +21,7 @@ const PAL  = "22222222-2222-4222-8222-222222222222"; // I follow them
 const STR  = "33333333-3333-4333-8333-333333333333"; // follows me, I do NOT follow back
 const POST = "44444444-4444-4444-8444-444444444444";
 const AUTH = "55555555-5555-4555-8555-555555555555"; // the post's author
+const GRP  = "66666666-6666-4666-8666-666666666666"; // a group I'm in
 
 const POST_ROW = {
   id: POST, user_id: AUTH, type: "workout", caption: "Leg day", image_url: null,
@@ -36,14 +37,16 @@ let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
 page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 200)); });
 
-const sent = [];      // every messages POST body the client actually made
+const sent = [];       // every messages POST body the client actually made
+const groupSent = [];  // every group_posts POST body
 let postVisible = true; // flip to model "RLS says you can't see this"
 
 await page.addInitScript((ids) => {
-  const [me, pal, str, auth] = ids;
+  const [me, pal, str, auth, grp] = ids;
   localStorage.setItem("seshd_v1", JSON.stringify({
     currentUserId: me, theme: "dark", unit: "lbs", programs: [], history: {}, workoutDates: {},
     prEvents: [], bodyLog: [], prs: {}, posts: [], profile: { username: "momo", name: "Mo" },
+    groups: [{ id: grp, name: "Seshd Crew", member_ids: [me, pal], members: [me, pal] }],
     users: [
       { id: me,  username: "momo",  name: "Mo",     followers: [str], following: [pal, auth] },
       { id: pal, username: "pally", name: "Pally",  followers: [me],  following: [] },
@@ -54,7 +57,7 @@ await page.addInitScript((ids) => {
   localStorage.setItem("seshd_session", JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: me, email: "mo@example.com" } }));
   localStorage.setItem("seshd_onboarded", "1");
   localStorage.setItem("seshd_custom_merge_v1", "1");
-}, [ME, PAL, STR, AUTH]);
+}, [ME, PAL, STR, AUTH, GRP]);
 
 await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
   body: JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: ME, email: "mo@example.com" } }) }));
@@ -63,6 +66,15 @@ await page.route("**/rest/v1/**", async r => {
   const req = r.request();
   const u = req.url();
   const m = req.method();
+  if (/\/rest\/v1\/group_posts/.test(u) && m === "POST") {
+    const body = JSON.parse(req.postData() || "{}");
+    groupSent.push(body);
+    return r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify([{ ...body, id: "gp_" + groupSent.length, created_at: new Date().toISOString() }]) });
+  }
+  if (/\/rest\/v1\/groups\?/.test(u) && m === "GET") {
+    return r.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify([{ id: GRP, name: "Seshd Crew", created_by: ME, member_ids: [ME, PAL] }]) });
+  }
   if (/\/rest\/v1\/messages/.test(u) && m === "POST") {
     const body = JSON.parse(req.postData() || "{}");
     sent.push(body);
@@ -161,7 +173,41 @@ check("3e. it carries a /p/<postId> link, not the workout itself", linkRe.test(m
 check("3f. it does NOT embed the workout's contents", !/225|12000|Back Squat/.test(msg.text || ""), msg.text);
 
 t = await text();
-check("3g. the sheet closed and confirmed", !/Send to/.test(t) && /Sent to 1 person/i.test(t), t.slice(0, 240));
+check("3g. the sheet closed and confirmed", !/Send to/.test(t) && /\bSent\b/.test(t), t.slice(0, 240));
+
+// ── 3h-3k. Groups are offered and a group share writes a real group_posts row ────────────────
+await share.click({ force: true });
+await page.waitForTimeout(700);
+t = await text();
+check("3h. groups I'm in are offered alongside people", /Seshd Crew/.test(t), t.slice(0, 320));
+const grpRow = page.getByText("Seshd Crew", { exact: false }).first();
+if (await grpRow.count()) { await grpRow.click({ force: true }); await page.waitForTimeout(300); }
+const sendBtn2 = page.getByRole("button", { name: /^Send to \d+$/ }).first();
+const canSend2 = await sendBtn2.count() > 0;
+check("3i. picking a group arms Send", canSend2);
+if (canSend2) { await sendBtn2.click({ force: true }); await page.waitForTimeout(1200); }
+check("3j. exactly one group_posts row was written", groupSent.length === 1, JSON.stringify(groupSent));
+const gp = groupSent[0] || {};
+check("3k. it targets the group I picked, as a text post carrying the link",
+  gp.group_id === GRP && gp.type === "text" && linkRe.test(gp.caption || ""), JSON.stringify(gp));
+check("3l. the group post does NOT copy the workout", !gp.workout && !/225|12000|Back Squat/.test(gp.caption || ""), JSON.stringify(gp));
+// A group share must not also fire a DM — the two pickers are separate lists on purpose.
+check("3m. sharing to a group sent no extra DM", sent.length === 1, JSON.stringify(sent));
+
+// ── 3n. Copy link is available at the bottom, and copies the post's own URL ──────────────────
+await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+await share.click({ force: true });
+await page.waitForTimeout(700);
+const copyBtn = page.getByRole("button", { name: /Copy link/i }).first();
+check("3n. a Copy link row sits under the picker", await copyBtn.count() > 0);
+if (await copyBtn.count()) {
+  await copyBtn.click({ force: true });
+  await page.waitForTimeout(700);
+  const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+  check("3o. it copies the post's link, not the app's own address", linkRe.test(clip) && !/capacitor:/.test(clip), clip);
+  t = await text();
+  check("3p. it closes the sheet and confirms", !/Send to/.test(t) && /Link copied/i.test(t), t.slice(0, 200));
+}
 
 // ── 4. The recipient's chat renders it as a card, not a raw URL ──────────────
 const msgsBtn = page.locator('[aria-label="Messages"]').first();

@@ -3237,8 +3237,25 @@ about the interaction; the button was also **broken**, which is the stronger rea
   still has to pass the ORIGINAL poster's RLS; if they can't they see "This post isn't available"
   and nothing has leaked. No new policy, no new column, no new RLS. `pw_sharepost` 3f asserts the
   message body does NOT contain the workout's numbers, so if that ever changes the suite says so.
-- **Recipients are people you FOLLOW.** Groups were offered and deliberately not taken (Mo);
-  the OS share sheet is gone from that button entirely.
+- **Recipients are people you FOLLOW and groups you're in**, plus a **Copy link / Share via…** row
+  under the picker for sending outside the app (Mo asked for both in a follow-up). A group share
+  is a plain `type:"text"` group_post carrying the same link — never a copy of the card, for the
+  same reason the DM isn't one. It deliberately sets **no `client_id`**: that column dedups a
+  workout re-shared to a group, so borrowing it would both mean the wrong thing and make a second,
+  intentional share silently overwrite the first.
+- **`SharedPostLink` is the ONE renderer for "text that may carry a shared-post link".** The chat
+  bubble and the group feed both show shared posts; writing the markup twice would have been the
+  N-copies-drift class on day one. It takes `ink`/`tile` so each surface paints it correctly (a
+  chat bubble sits on `C.primary` when it's mine, a group post sits on a card) and returns the
+  plain text unchanged when there is no link, so an ordinary caption is untouched.
+- **A mixed recipient list has no good noun, so the toast dropped it.** "Sent to 1 chat" reads
+  badly for a person and "1 person" is wrong for a group — it is a bare **"Sent"** for the single
+  case and `Sent to N` for several. Caught by the suite's stale assertion, then by reading it
+  aloud, which is the standing rule for any two lines that form a sentence together.
+- **`Icon name="link"` was ADDED rather than borrowing `package`.** The house rule is to reuse the
+  glyph this app already uses for a meaning; there was none for copy/link, and a box icon labelled
+  "Copy link" is the duplicated-map problem in reverse — the right fix is a new case, not a
+  near-miss.
 - **A post link rides the already-claimed `/p/` path, and that was not a style choice.** iOS caches
   the AASA at INSTALL time, so a NEW universal-link path cannot reach a build already on a phone.
   `/p/` was claimed and routed to share CODES; a post id is a uuid and a code is `IGNITE-`/`WO-`,

@@ -1,4 +1,4 @@
-// v178091716976
+// v178091716977
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -966,6 +966,7 @@ export function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 
     case "timer": return <svg {...props}><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></svg>;
     case "users": return <svg {...props}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
     case "user": return <svg {...props}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+    case "link": return <svg {...props}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
     case "share": return <svg {...props}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>;
     case "check": return <svg {...props}><polyline points="20 6 9 17 4 12"/></svg>;
     case "x": return <svg {...props}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
@@ -1989,6 +1990,35 @@ const REPORT_REASONS = [
   { id:"violence",   label:"Violence or dangerous behavior" },
   { id:"other",      label:"Something else" },
 ];
+// A message or group-post body that may carry a shared-post link, rendered as a tappable row
+// instead of a raw URL. ONE definition: the chat bubble and the group feed both show shared posts
+// and would otherwise have been two copies of the same markup drifting apart — the same rule the
+// volume maths and the PR badge are under. `ink`/`tile` let a caller paint it for its own surface
+// (a chat bubble sits on C.primary when it's mine; a group post sits on a card).
+export function SharedPostLink({ text, C, ink, tile }) {
+  const id = postIdInText(text);
+  if (!id) return text;
+  const label = String(text || "").split("\n")[0].trim() || "A workout on Seshd";
+  const fg = ink || C.text;
+  return (
+    <button
+      onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } }))}
+      aria-label={`Open shared post: ${label}`}
+      style={{ display:"flex", alignItems:"center", gap:9, background:"none", border:"none",
+               padding:0, margin:0, cursor:"pointer", fontFamily:F, textAlign:"left",
+               color:fg, maxWidth:"100%" }}>
+      <span style={{ width:32, height:32, borderRadius:9, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+                     background: tile || "transparent", border: tile ? "none" : `1px solid ${C.border}` }}>
+        <Icon name="dumbbell" size={15} color={fg}/>
+      </span>
+      <span style={{ minWidth:0 }}>
+        <span style={{ display:"block", fontSize:14, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>
+        <span style={{ display:"block", fontSize:11, fontWeight:700, letterSpacing:0.3, opacity:0.72 }}>TAP TO VIEW</span>
+      </span>
+    </button>
+  );
+}
+
 // ★ SHARING A POST SENDS A LINK, NOT A COPY (Mo's call). The alternative — republishing
 // someone's workout card into a DM — walks straight past the three-layer privacy model: a
 // private account's training would land in front of whoever the sharer chose, none of whom the
@@ -2012,10 +2042,11 @@ export function postIdInText(text) {
 
 function SharePostHost({ C, token, currentUserId, store }) {
   const [sp, setSp] = useState(null);
-  const [picked, setPicked] = useState([]);
+  const [picked, setPicked] = useState([]);      // people
+  const [pickedGroups, setPickedGroups] = useState([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
-  _setSharePost = (v) => { setSp(v); setPicked([]); setQ(""); };
+  _setSharePost = (v) => { setSp(v); setPicked([]); setPickedGroups([]); setQ(""); };
   const close = () => { if (!busy) setSp(null); };
 
   const me = (store.users || []).find(u => u.id === currentUserId);
@@ -2023,33 +2054,73 @@ function SharePostHost({ C, token, currentUserId, store }) {
     .map(id => (store.users || []).find(u => u.id === id))
     .filter(Boolean)
     .filter(u => u.id !== currentUserId);
+  // Same membership test the finish-workout picker uses. `members` and `member_ids` are both in
+  // play because the local store and the server row spell it differently.
+  const groups = (store.groups || []).filter(g => (g.members || g.member_ids || []).includes(currentUserId));
   const needle = q.trim().toLowerCase();
   const shown = needle
     ? people.filter(u => (u.username || "").toLowerCase().includes(needle) || (u.name || "").toLowerCase().includes(needle))
     : people;
+  const shownGroups = needle ? groups.filter(g => (g.name || "").toLowerCase().includes(needle)) : groups;
 
   const toggle = (id) => setPicked(ps => ps.includes(id) ? ps.filter(x => x !== id) : [...ps, id]);
+  const toggleGroup = (id) => setPickedGroups(ps => ps.includes(id) ? ps.filter(x => x !== id) : [...ps, id]);
+  const total = picked.length + pickedGroups.length;
+
+  function shareText() {
+    const author = (store.users || []).find(u => u.id === sp.post.userId);
+    return `${author?.username ? `@${author.username}` : "A workout"} on Seshd\n${postShareUrl(sp.post.id)}`;
+  }
 
   async function send() {
-    if (busy || !sp || picked.length === 0) return;
+    if (busy || !sp || total === 0) return;
     setBusy(true);
-    const url = postShareUrl(sp.post.id);
-    const author = (store.users || []).find(u => u.id === sp.post.userId);
-    const text = `${author?.username ? `@${author.username}` : "A workout"} on Seshd\n${url}`;
+    const text = shareText();
     // One row per recipient, sent in parallel but REPORTED honestly: a partial failure must not
     // toast success (the app's standing rule against optimistic success toasts).
-    const results = await Promise.all(picked.map(async pid => {
+    const dms = picked.map(async pid => {
       try {
         const res = await sb.query("messages", { method:"POST", body: JSON.stringify({ sender_id: currentUserId, recipient_id: pid, text }) }, token);
         return Array.isArray(res) && res.length === 1;
       } catch (e) { devError("share post dm:", e); return false; }
-    }));
+    });
+    // A group share is a plain TEXT post carrying the same link — never a copy of the card, for
+    // the same reason the DM isn't one: a group has members the poster never approved.
+    // Deliberately NO `client_id`: that column dedups a workout re-shared to a group, and
+    // borrowing it here would both mean the wrong thing and make a second, intentional share
+    // silently overwrite the first.
+    const gps = pickedGroups.map(async gid => {
+      try {
+        const res = await sb.query("group_posts", { method:"POST", body: JSON.stringify({
+          group_id: gid, user_id: currentUserId, type: "text", caption: text, image_url: null, workout: null,
+        }) }, token);
+        return Array.isArray(res) && res.length === 1;
+      } catch (e) { devError("share post group:", e); return false; }
+    });
+    const results = await Promise.all([...dms, ...gps]);
     const ok = results.filter(Boolean).length;
     setBusy(false);
     setSp(null);
-    if (ok === picked.length) { toast(`Sent to ${ok} ${ok === 1 ? "person" : "people"}`, "success"); haptic("light"); }
-    else if (ok > 0) toast(`Sent to ${ok} of ${picked.length} — the rest didn't go through`, "error");
+    // Recipients are a MIX of people and groups, so any noun here is wrong for half of them
+    // ("Sent to 1 chat" for a person reads badly, "1 person" is wrong for a group). A bare
+    // "Sent" for the common single case, a count when there were several — read them aloud.
+    if (ok === total) { toast(ok === 1 ? "Sent" : `Sent to ${ok}`, "success"); haptic("light"); }
+    else if (ok > 0) toast(`Sent to ${ok} of ${total} — the rest didn't go through`, "error");
     else toast("Couldn't send — check connection", "error");
+  }
+
+  async function copyLink() {
+    const url = postShareUrl(sp.post.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied", "success"); haptic("light");
+    } catch (e) {
+      // Clipboard access can be refused outright (an insecure origin, a permission prompt the
+      // user dismissed). Saying "copied" when nothing was would be the optimistic-success bug.
+      devWarn("copy link:", e);
+      toast("Couldn't copy the link", "error");
+    }
+    setSp(null);
   }
 
   return (
@@ -2059,22 +2130,48 @@ function SharePostHost({ C, token, currentUserId, store }) {
         <>
           <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:3, letterSpacing:-0.3 }}>Send to</div>
           <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:14 }}>
-            They get a link to this post. Whether they can open it still depends on the poster's privacy.
+            They get a link — whether they can open it depends on the poster's privacy.
           </div>
-          {people.length === 0 ? (
+          {people.length === 0 && groups.length === 0 ? (
             <div style={{ padding:"26px 4px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.6 }}>
-              You're not following anyone yet. Follow people from Discover and they'll show up here.
+              You're not following anyone or in any groups yet. Find people and crews in Discover.
             </div>
           ) : (
             <>
-              {people.length > 8 && (
+              {people.length + groups.length > 8 && (
                 <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search"
                   aria-label="Search people"
                   style={{ width:"100%", boxSizing:"border-box", marginBottom:10, padding:"10px 12px", borderRadius:11,
                            background:C.bg, border:`1px solid ${C.border}`, color:C.text, fontFamily:F, fontSize:14 }}/>
               )}
               <div style={{ overflowY:"auto", maxHeight:"38dvh", margin:"0 -4px", padding:"0 4px" }}>
-                {shown.length === 0 && <div style={{ padding:"18px 4px", textAlign:"center", color:C.sub, fontSize:13 }}>No one matches "{q.trim()}"</div>}
+                {/* Groups first: there are few of them and they are the higher-intent target. */}
+                {shownGroups.length > 0 && <SectionLabel C={C}>GROUPS</SectionLabel>}
+                {shownGroups.map(g => {
+                  const on = pickedGroups.includes(g.id);
+                  const n = (g.members || g.member_ids || []).length;
+                  return (
+                    <button key={g.id} onClick={() => toggleGroup(g.id)} aria-pressed={on}
+                      style={{ width:"100%", display:"flex", alignItems:"center", gap:11, padding:"9px 6px",
+                               background:"none", border:"none", borderRadius:10, cursor:"pointer", fontFamily:F, textAlign:"left" }}>
+                      <span style={{ width:38, height:38, borderRadius:11, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+                                     background:C.bg, border:`1px solid ${C.border}` }}>
+                        <Icon name="users" size={17} color={C.sub}/>
+                      </span>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{g.name}</div>
+                        <div style={{ fontSize:12, color:C.sub }}>{n} member{n === 1 ? "" : "s"}</div>
+                      </div>
+                      <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0,
+                                     border:`2px solid ${on ? C.primary : C.border}`, background: on ? C.primary : "transparent",
+                                     display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        {on && <Icon name="check" size={12} color={C.onPrimary} strokeWidth={3}/>}
+                      </span>
+                    </button>
+                  );
+                })}
+                {shownGroups.length > 0 && shown.length > 0 && <SectionLabel C={C}>PEOPLE</SectionLabel>}
+                {shown.length === 0 && shownGroups.length === 0 && <div style={{ padding:"18px 4px", textAlign:"center", color:C.sub, fontSize:13 }}>Nothing matches "{q.trim()}"</div>}
                 {shown.map(u => {
                   const on = picked.includes(u.id);
                   return (
@@ -2097,15 +2194,34 @@ function SharePostHost({ C, token, currentUserId, store }) {
                   );
                 })}
               </div>
-              <button onClick={send} disabled={busy || picked.length === 0}
+              <button onClick={send} disabled={busy || total === 0}
                 style={{ width:"100%", marginTop:12, padding:"14px", borderRadius:12, border:"none",
-                         background: picked.length ? C.primary : C.divider, color: picked.length ? C.onPrimary : C.sub,
-                         fontSize:15, fontWeight:700, fontFamily:F, cursor: (busy || !picked.length) ? "default" : "pointer",
+                         background: total ? C.primary : C.divider, color: total ? C.onPrimary : C.sub,
+                         fontSize:15, fontWeight:700, fontFamily:F, cursor: (busy || !total) ? "default" : "pointer",
                          opacity: busy ? 0.6 : 1 }}>
-                {busy ? "Sending…" : picked.length ? `Send to ${picked.length}` : "Send"}
+                {busy ? "Sending…" : total ? `Send to ${total}` : "Send"}
               </button>
             </>
           )}
+          {/* The way out of the app, the way every other app puts it: a quiet row under the
+              picker. It stays available even when you follow nobody and are in no groups, which
+              is the state the empty message above describes — otherwise that state would offer
+              no way to share at all. */}
+          <div style={{ display:"flex", gap:8, marginTop:12, paddingTop:12, borderTop:`1px solid ${C.divider}` }}>
+            <button onClick={copyLink} disabled={busy} style={{
+              flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:7,
+              padding:"12px", borderRadius:12, background:C.bg, border:`1px solid ${C.border}`,
+              color:C.text, fontSize:14, fontWeight:600, fontFamily:F, cursor:busy?"default":"pointer" }}>
+              <Icon name="link" size={15} color={C.sub}/> Copy link
+            </button>
+            <button onClick={() => { shareLink({ title:"Seshd", text: shareText(), url: postShareUrl(sp.post.id) }, () => toast("Link copied", "success")); setSp(null); }}
+              disabled={busy} style={{
+              flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:7,
+              padding:"12px", borderRadius:12, background:C.bg, border:`1px solid ${C.border}`,
+              color:C.text, fontSize:14, fontWeight:600, fontFamily:F, cursor:busy?"default":"pointer" }}>
+              <Icon name="share" size={15} color={C.sub}/> Share via…
+            </button>
+          </div>
           <button onClick={close} disabled={busy} style={{ width:"100%", marginTop:8, background:"transparent", border:"none", color:C.sub, borderRadius:11, padding:"11px", fontSize:14, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:F }}>Cancel</button>
         </>
       )}
