@@ -81,8 +81,20 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     // Count the rows by their hook, not by finding the words in the page text — "Dark" appears in
     // plenty of other copy, and a text match would pass on a picker that rendered nothing.
     const ids = await page.evaluate(() => [...document.querySelectorAll("[data-theme-option]")].map(e => e.dataset.themeOption));
-    check("2e. opening it reveals every registered theme", ["light","arctic","dark","midnight","halloween"].every(x => ids.includes(x)), JSON.stringify(ids));
-    check("2f. and no more than the registry lists", ids.length === 5, JSON.stringify(ids));
+    const ALL = ["light","arctic","dark","midnight","spring","summer","fall","winter","halloween"];
+    check("2e. opening it reveals every registered theme", ALL.every(x => ids.includes(x)), JSON.stringify(ids));
+    check("2f. and no more than the registry lists", ids.length === ALL.length, JSON.stringify(ids));
+    check("2g. the occasion themes sit under their own heading", /SEASONAL/.test(await txt(page)));
+    // ★ A `//` COMMENT IN JSX CHILD POSITION IS TEXT, AND THE APP SHIPPED IT ON SCREEN. Wrapping
+    // each row in a <Fragment> moved a normal JS comment into children position, so the picker
+    // rendered four copies of "// data-theme-option is the selector contract…" to real users.
+    // Every other check here selects on the data attribute, so the whole suite stayed green.
+    const pickerText = await page.evaluate(() => {
+      const d = document.querySelector("[data-theme-disclosure]");
+      return d && d.parentElement ? d.parentElement.innerText : "";
+    });
+    check("2h. no source comment leaked into the picker as text",
+      !/\/\/|\/\*|data-theme-option/.test(pickerText), pickerText.slice(0, 160));
 
     // ── 3. Choosing one repaints AND persists. A local-only setStore is this app's dominant bug
     //      class, so assert the WRITE, not just the pixels. ──────────────────────────────────
@@ -110,9 +122,11 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     if (!el) return null;
     const cs = getComputedStyle(el);
     return { z: +cs.zIndex, pe: cs.pointerEvents, parent: el.parentElement.tagName,
-             svgs: el.querySelectorAll("svg").length, aria: el.getAttribute("aria-hidden") };
+             svgs: el.querySelectorAll("svg").length, aria: el.getAttribute("aria-hidden"),
+             kind: el.dataset.decor, kids: el.childElementCount };
   });
   check("4a. the Halloween theme renders a decor layer", !!d, String(d));
+  check("4a2. and it declares its own kind", d && d.kind === "halloween", String(d && d.kind));
   if (d) {
     check("4b. it is portaled to <body>, not left inside the swipe track", d.parent === "BODY", d.parent);
     check("4c. it cannot eat a tap", d.pe === "none", d.pe);
@@ -127,8 +141,21 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     });
     check("4g. a tap at the screen centre reaches the app, not the decoration", hit);
   }
-  // And a theme with no `decor` must render no layer at all.
   await page.close();
+  // Every seasonal theme brings its OWN ornaments. A shared kind, or a theme whose decor silently
+  // renders nothing, is exactly the "capability built, call site never wired" shape that let
+  // showGroupShare ship dead for six weeks.
+  for (const [theme, kind] of [["spring","petals"],["summer","summer"],["fall","leaves"],["winter","snow"]]) {
+    const { page: ps } = await boot(theme);
+    const got = await ps.evaluate(() => {
+      const el = document.querySelector(".seshd-decor");
+      return el ? { kind: el.dataset.decor, kids: el.childElementCount, pe: getComputedStyle(el).pointerEvents } : null;
+    });
+    check(`4i. ${theme} renders its own "${kind}" ornaments`,
+      got && got.kind === kind && got.kids >= 5 && got.pe === "none", JSON.stringify(got));
+    await ps.close();
+  }
+  // And a theme with no `decor` must render no layer at all.
   const { page: p2 } = await boot("dark");
   check("4h. an undecorated theme renders no decor layer",
     await p2.evaluate(() => !document.querySelector(".seshd-decor")));

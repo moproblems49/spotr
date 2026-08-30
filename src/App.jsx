@@ -1,4 +1,4 @@
-// v178091716987
+// v178091716988
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16,7 +16,7 @@
 //   body-log input validation (posNum), post-delete failure toast+revert, messages empty-state icon,
 //   numberpad steppers 44px tap target, exercise library browse-all capped (perf), dead helper removed
 // PATCHED v29 - BUILD 2026-06-08 - HRV/RHR recovery vs 60-day baseline drives readiness + Recovery% chip
-import { useState, useEffect, useRef, memo, useCallback, useMemo, Component, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, memo, useCallback, useMemo, Component, lazy, Suspense, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
@@ -996,6 +996,120 @@ const THEMES = {
     muted: "#8d7e9a",
     tabBg: "rgba(15,10,22,0.88)",
   },
+  // ★ THE FOUR SEASONS. Halloween proved a theme can be an OCCASION rather than a preference, so
+  // these follow the same shape: a palette plus a `decor` kind. Two lights and two darks on
+  // purpose — four light seasonals would all read as the same theme with the hue nudged, which is
+  // the "palette that encodes nothing" problem arriving from a new direction. Each one also gets
+  // the Arctic treatment on its NEUTRALS (see Arctic's note): the canvas, borders, dividers and
+  // dim text carry the season's hue, because that is the only lever a theme has for feeling
+  // colourful without touching what the accent MEANS.
+  // gold/green/red/orange are the vocabulary everywhere; the light seasonals reuse the light
+  // theme's values and the dark ones reuse dark's, each measured against its own canvas.
+  spring: {
+    isDark: false,
+    bg: "#f5f8f2",          // pale green-white, like new growth
+    surface: "#ffffff",
+    card: "#ffffff",
+    border: "#e2e9dc",
+    overlayEdge: "#e2e9dc",
+    divider: "#ecf1e7",
+    // Blossom pink rather than a spring GREEN: green is both the light theme's accent family and a
+    // semantic colour here, so a green accent would collide twice over. Nothing else in the set is
+    // pink, which is what makes this one recognisable at a glance.
+    accent: "#c2255c",
+    accentSoft: "rgba(194,37,92,0.10)",
+    accentInk: "#a61e4d",
+    accent2: "#a61e4d",
+    onAccent: "#ffffff",
+    primary: "#1f2a1b",
+    onPrimary: "#ffffff",
+    orange: "#c2490a",
+    green: "#047f59",
+    gold: "#976703",
+    red: "#da1c46",
+    text: "#1f2a1b",
+    textDim: "#3c4a36",
+    sub: "#67715f",
+    muted: "#68725f",
+    tabBg: "rgba(245,248,242,0.85)",
+  },
+  summer: {
+    isDark: false,
+    bg: "#fdf6ea",          // warm sand
+    surface: "#ffffff",
+    card: "#ffffff",
+    border: "#eee2cd",
+    overlayEdge: "#eee2cd",
+    divider: "#f5ecdd",
+    accent: "#0b7285",          // sea teal against the sand — the only teal in the set
+    accentSoft: "rgba(11,114,133,0.10)",
+    accentInk: "#095c6b",
+    accent2: "#095c6b",
+    onAccent: "#ffffff",
+    primary: "#2b2418",
+    onPrimary: "#ffffff",
+    orange: "#c2490a",
+    green: "#047f59",
+    gold: "#976703",
+    red: "#da1c46",
+    text: "#2b2418",
+    textDim: "#4a4031",
+    sub: "#756a56",
+    muted: "#776c58",
+    tabBg: "rgba(253,246,234,0.85)",
+  },
+  fall: {
+    isDark: true,
+    bg: "#14100c",          // espresso-black — BROWN neutrals are what keep this off Halloween,
+    surface: "#241d16",     // whose blacks are purple; the accents are neighbours by nature.
+    card: "#241d16",
+    border: "#453729",
+    overlayEdge: "#6f5b46",
+    divider: "#2f251b",
+    // Burnt sienna, not amber: an amber accent would land on top of `gold`, which is the PR colour,
+    // and that is exactly the GROUP_COLOR.Legs mistake (an accent baked into a semantic slot).
+    accent: "#e2673f",
+    accentSoft: "rgba(226,103,63,0.14)",
+    accentInk: "#ef8a63",       // lifted off the fill value so it clears 4.5:1 as TEXT on the tint
+    accent2: "#c8532e",
+    onAccent: "#1a0d06",
+    primary: "#f7f1e9",
+    onPrimary: "#14100c",
+    orange: "#fb923c",
+    green: "#34d399",
+    gold: "#fbbf24",
+    red: "#f87171",
+    text: "#f7f1e9",
+    textDim: "#dccbb8",
+    sub: "#ad9c8a",
+    muted: "#94836f",
+    tabBg: "rgba(20,16,12,0.88)",
+  },
+  winter: {
+    isDark: true,
+    bg: "#0d141d",          // slate-blue night, LIGHTER than Midnight's blue-black on purpose —
+    surface: "#1b2532",     // these two are the closest pair in the set and the neutrals separate
+    card: "#1b2532",        // them as much as the accents do.
+    border: "#33445a",
+    overlayEdge: "#5f7794",
+    divider: "#232f3f",
+    accent: "#8ed8f8",          // pale ice, against Midnight's saturated blue
+    accentSoft: "rgba(142,216,248,0.13)",
+    accentInk: "#8ed8f8",
+    accent2: "#63b8de",
+    onAccent: "#06131c",
+    primary: "#eef4fa",
+    onPrimary: "#0d141d",
+    orange: "#fb923c",
+    green: "#34d399",
+    gold: "#fbbf24",
+    red: "#f87171",
+    text: "#eef4fa",
+    textDim: "#c4d3e2",
+    sub: "#9aabbe",
+    muted: "#8395a9",
+    tabBg: "rgba(13,20,29,0.88)",
+  },
 
 };
 // ★ THEMES ARE PLURAL NOW, SO THE KEY IS DATA AND HAS TO BE VALIDATED. `THEMES[store.theme]` was
@@ -1012,9 +1126,16 @@ const THEME_META = [
   { id: "arctic",    label: "Arctic",    blurb: "Clean white and blue" },
   { id: "dark",      label: "Dark",      blurb: "Deep grey, volt accent" },
   { id: "midnight",  label: "Midnight",  blurb: "Cool blue — no lime" },
-  // `decor` is what makes a theme more than a palette: ThemeDecor reads it and renders that
-  // kind's ornaments. Absent means none, which is every theme but this one.
-  { id: "halloween", label: "Halloween", blurb: "Pumpkin, purple, cobwebs", decor: "halloween" },
+  // `decor` is what makes a theme more than a palette: ThemeDecor reads it and renders that kind's
+  // ornaments. `season` groups the occasion themes under their own heading in the picker — nine
+  // undifferentiated rows is a wall, and the split is real information (these are the ones that
+  // bring ornaments), not decoration on the list. The order matters: the picker starts the
+  // SEASONAL heading at the first row carrying the flag, so seasonals must stay contiguous.
+  { id: "spring",    label: "Spring",    blurb: "Blossom pink, falling petals", decor: "petals",  season: true },
+  { id: "summer",    label: "Summer",    blurb: "Warm sand and sea teal",       decor: "summer",  season: true },
+  { id: "fall",      label: "Fall",      blurb: "Espresso and burnt sienna",    decor: "leaves",  season: true },
+  { id: "winter",    label: "Winter",    blurb: "Slate night, drifting snow",   decor: "snow",    season: true },
+  { id: "halloween", label: "Halloween", blurb: "Pumpkin, purple, cobwebs",     decor: "halloween", season: true },
 ];
 function themeOf(key) {
   return THEMES[key] || THEMES[DEFAULT_THEME];
@@ -1100,21 +1221,110 @@ function Ghost({ left, size, dur, delay }) {
     </svg>
   );
 }
+// A FALLING ORNAMENT — snow, petals and leaves are the same mechanism with a different glyph, so
+// they are one component rather than three near-copies (the N-copies-drift rule, applied to decor).
+// THREE NESTED NODES, and the nesting is the point: a single element cannot run a vertical fall, a
+// horizontal sway and a spin at once, because they would all be writing `transform`. Outer falls,
+// middle sways, inner spins — three separate transforms that compose instead of clobbering.
+// Autumn is not one colour: three tones, picked per leaf, because seven identical brown glyphs
+// read as debris rather than leaves. Snow and petals are single-tone on purpose — real ones are.
+const LEAF_TONES = [[212, 110, 58], [186, 74, 40], [206, 148, 54]];
+const FALL_SHAPES = {
+  snow: (k) => (
+    <g stroke={`rgba(226,242,255,${k})`} strokeWidth="1.4" strokeLinecap="round" fill="none">
+      <path d="M8 1.5V14.5M2.4 4.7l11.2 6.6M13.6 4.7L2.4 11.3"/>
+      <path d="M8 4.2l-1.8-1.8M8 4.2l1.8-1.8M8 11.8l-1.8 1.8M8 11.8l1.8 1.8"/>
+    </g>
+  ),
+  // A teardrop, not an ellipse: the first cut drew a rounded pill and seven pink pills falling
+  // past the screen read as capsules, which is not the association anyone wants in a fitness app.
+  petals: (k) => (
+    <g transform="rotate(-28 8 8)">
+      <path d="M8 1.4c3.4 2.6 4.8 5.6 4 8.8-.7 2.8-2.4 4.4-4 4.4s-3.3-1.6-4-4.4c-.8-3.2.6-6.2 4-8.8z"
+        fill={`rgba(249,186,211,${k})`}/>
+      <path d="M8 13.6V4.6" stroke={`rgba(212,124,160,${k * 0.8})`} strokeWidth="0.7" fill="none"/>
+    </g>
+  ),
+  leaves: (k, tone) => {
+    const [r, g, b] = LEAF_TONES[tone % LEAF_TONES.length];
+    return (
+      <g>
+        {/* Lanceolate — pointed at BOTH ends, with a midrib and two side veins. The first cut was
+            a rounded blob with one diagonal stroke and rendered as an acorn. */}
+        <path d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z" fill={`rgba(${r},${g},${b},${k})`}/>
+        <g stroke={`rgba(70,34,12,${k * 0.8})`} strokeWidth="0.75" strokeLinecap="round" fill="none">
+          <path d="M8 2.6V13.4"/><path d="M8 6.4L5.4 8.6M8 6.4l2.6 2.2M8 9.6l-2.2 1.9M8 9.6l2.2 1.9"/>
+        </g>
+      </g>
+    );
+  },
+};
+function Faller({ shape, left, size, dur, delay, sway, spin, alpha, tone }) {
+  return (
+    // opacity:0 inline is the parked state, and it is load-bearing. A CSS animation applies NO
+    // style at all before it starts, so with a positive delay every not-yet-started flake sat
+    // fully opaque at top:0 — measured, and the first Winter screenshot was a tidy row of eleven
+    // snowflakes across the header. An animation outranks inline style once it runs, so this only
+    // ever governs the gap. The delay itself is NEGATIVE (see the bits memo): that starts each
+    // ornament partway through its own cycle, which distributes them down the screen instantly
+    // instead of after a minute of waiting.
+    <div aria-hidden="true" style={{ position:"absolute", top:0, left:`${left}%`, opacity:0,
+      animation:`seshd-fall ${dur}s ${delay}s linear infinite` }}>
+      <div style={{ animation:`seshd-sway ${sway}s ${delay}s ease-in-out infinite` }}>
+        <svg width={size} height={size} viewBox="0 0 16 16" style={{ display:"block",
+          animation: spin ? `seshd-spin ${spin}s linear infinite` : undefined }}>
+          {FALL_SHAPES[shape](alpha, tone)}
+        </svg>
+      </div>
+    </div>
+  );
+}
+// Summer gets a corner sun and a few rising motes instead of anything falling — nothing falls in
+// summer, and inventing a glyph to fill the slot is how a set of themes stops meaning anything.
+function Sun() {
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", top:-70, right:-70, width:230, height:230,
+      borderRadius:"50%", background:"radial-gradient(circle, rgba(255,196,84,0.42) 0%, rgba(255,196,84,0.16) 45%, rgba(255,196,84,0) 70%)",
+      animation:"seshd-breathe 9s ease-in-out infinite" }}/>
+  );
+}
+function Mote({ left, size, dur, delay }) {
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", bottom:-20, left:`${left}%`,
+      width:size, height:size, borderRadius:"50%", background:"rgba(240,168,44,0.55)",
+      boxShadow:"0 0 6px rgba(255,196,84,0.65)",
+      animation:`seshd-rise ${dur}s ${delay}s linear infinite` }}/>
+  );
+}
 function ThemeDecor({ kind }) {
+  // Randomised ONCE. Randomising per render makes every ornament teleport on each state change,
+  // which in this app is many times a second.
   const bits = useMemo(() => {
     const r = (a, b) => a + Math.random() * (b - a);
+    // Size and alpha are per-shape, not shared: a line-drawn snowflake reads at 9px and a FILLED
+    // leaf at the same size is a brown dot — measured on the first Fall screenshot, which is
+    // exactly what it looked like. Solid glyphs need both more area and more opacity.
+    const fallers = (n, { spin = false, min, max, aMin, aMax }) =>
+      Array.from({ length: n }, (_, i) => ({
+        left: r(-2, 98), size: r(min, max), dur: r(11, 22), delay: -r(0, 22),
+        sway: r(3.5, 7), spin: spin ? r(5, 11) : 0, alpha: r(aMin, aMax), tone: i,
+      }));
     return {
       // The spiders hang in the OUTER MARGINS and well BELOW the header. Measured on the tracker
       // screen: a 46-96px drop parks the body exactly on the Workout/Exercises/History tab row,
       // so two spiders sat on top of the labels. Cards have side padding; the header does not.
       spiders: [{ left: r(5, 12), drop: r(130, 200), delay: r(0, 2) },
                 { left: r(87, 94), drop: r(96, 160), delay: r(1, 3.5) }],
-      ghosts: [0, 1, 2].map(i => ({ left: r(6, 84), size: r(20, 34), dur: r(22, 34), delay: i * r(5, 9) })),
+      ghosts: [0, 1, 2].map(() => ({ left: r(6, 84), size: r(20, 34), dur: r(22, 34), delay: -r(0, 30) })),
+      snow: fallers(11, { min: 9, max: 17, aMin: 0.5, aMax: 0.9 }),
+      petals: fallers(8, { spin: true, min: 13, max: 21, aMin: 0.6, aMax: 0.95 }),
+      leaves: fallers(7, { spin: true, min: 15, max: 25, aMin: 0.75, aMax: 1 }),
+      motes: [0, 1, 2, 3, 4, 5, 6].map(() => ({ left: r(6, 92), size: r(4, 9), dur: r(16, 26), delay: -r(0, 24) })),
     };
   }, []);
-  if (kind !== "halloween") return null;
+  if (!kind) return null;
   return createPortal(
-    <div className="seshd-decor" aria-hidden="true"
+    <div className="seshd-decor" data-decor={kind} aria-hidden="true"
       style={{ position:"fixed", inset:0, zIndex:150, pointerEvents:"none", overflow:"hidden" }}>
       <style>{`
         @keyframes seshd-dangle { 0%,100% { transform: rotate(-3.5deg); } 50% { transform: rotate(3.5deg); } }
@@ -1124,12 +1334,36 @@ function ThemeDecor({ kind }) {
           80% { opacity:0.65; }
           100% { opacity:0; transform: translate3d(26px,-105vh,0); }
         }
+        @keyframes seshd-fall {
+          0% { opacity:0; transform: translate3d(0,-10vh,0); }
+          7% { opacity:1; }
+          93% { opacity:1; }
+          100% { opacity:0; transform: translate3d(0,108vh,0); }
+        }
+        @keyframes seshd-sway { 0%,100% { transform: translateX(-11px); } 50% { transform: translateX(11px); } }
+        @keyframes seshd-spin { to { transform: rotate(360deg); } }
+        @keyframes seshd-rise {
+          0% { opacity:0; transform: translate3d(0,0,0); }
+          15% { opacity:1; }
+          85% { opacity:0.7; }
+          100% { opacity:0; transform: translate3d(18px,-96vh,0); }
+        }
+        @keyframes seshd-breathe { 0%,100% { opacity:0.85; } 50% { opacity:1; } }
         @media (prefers-reduced-motion: reduce) { .seshd-decor * { animation: none !important; } }
       `}</style>
-      <Web/>
-      <Web flip/>
-      {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
-      {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}
+      {kind === "halloween" && <>
+        <Web/>
+        <Web flip/>
+        {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
+        {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}
+      </>}
+      {kind === "snow" && bits.snow.map((f, i) => <Faller key={i} shape="snow" {...f}/>)}
+      {kind === "petals" && bits.petals.map((f, i) => <Faller key={i} shape="petals" {...f}/>)}
+      {kind === "leaves" && bits.leaves.map((f, i) => <Faller key={i} shape="leaves" {...f}/>)}
+      {kind === "summer" && <>
+        <Sun/>
+        {bits.motes.map((m, i) => <Mote key={i} {...m}/>)}
+      </>}
     </div>, document.body);
 }
 
@@ -14945,15 +15179,30 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       Absent from the DOM is the only version a probe cannot cheat. */}
                   {themeOpen && (
                   <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:10 }}>
-                    {THEME_META.map(tm => {
+                    {THEME_META.map((tm, i) => {
                       const on = themeIdOf(store.theme) === tm.id;
                       const pal = THEMES[tm.id];
+                      // The occasion themes get their own heading. Nine rows in one undivided list
+                      // is a wall, and the split carries real information — these are the ones that
+                      // bring ornaments — rather than being a rule drawn for its own sake.
+                      const opensSeasonal = tm.season && !THEME_META[i - 1]?.season;
                       return (
-                        // data-theme-option is the selector contract for the suites. Matching on
-                        // the label text is what broke pw_switch when this became a list — the row
-                        // reads "LightWarm off-white canvas", so an exact /^Light$/ found nothing
-                        // and silently clicked nothing. A stable hook beats text every time.
-                        <button key={tm.id} onClick={() => onToggleTheme(tm.id)} aria-pressed={on}
+                        <Fragment key={tm.id}>
+                        {opensSeasonal && (
+                          <div style={{ fontSize:10, fontWeight:600, color:C.sub, letterSpacing:1,
+                                        margin:"8px 0 2px 2px" }}>SEASONAL</div>
+                        )}
+                        {/* ★ INSIDE A JSX CHILD LIST, `//` IS TEXT, NOT A COMMENT. These four lines
+                            were a normal JS comment while this returned a bare <button>; wrapping
+                            the row in a <Fragment> moved them into children position and the picker
+                            rendered the comment on screen, four times over, in the live app. Nothing
+                            in the battery could see it — every check here selects on
+                            data-theme-option, not on text. Found by looking at a screenshot.
+                            data-theme-option is that selector contract: matching on the label text
+                            is what broke pw_switch when this became a list, since the row reads
+                            "LightWarm off-white canvas" and an exact /^Light$/ found nothing and
+                            silently clicked nothing. A stable hook beats text every time. */}
+                        <button onClick={() => onToggleTheme(tm.id)} aria-pressed={on}
                           data-theme-option={tm.id}
                           style={{ display:"flex", alignItems:"center", gap:11, width:"100%", textAlign:"left",
                                    padding:"10px 11px", borderRadius:11, cursor:"pointer", fontFamily:F,
@@ -14973,6 +15222,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           </span>
                           {on && <Icon name="check" size={16} color={C.accentInk} strokeWidth={3}/>}
                         </button>
+                        </Fragment>
                       );
                     })}
                   </div>

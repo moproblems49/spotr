@@ -3589,6 +3589,65 @@ light themes; the strength ladder's `Advanced` is still the volt accent literall
 and the silhouette's `bodyCol` key on `isDark` rather than the palette, so they are neutral greys
 on Arctic/Halloween rather than tuned to them.
 
+## ★★ Themes phase 4: the four seasons, and a comment that shipped on screen (Aug 30)
+Mo, after Halloween: *"make a winter, summer, maybe a fall and spring themed too."* Nine themes
+now — Light / Arctic / Dark / Midnight, then a **SEASONAL** group of Spring / Summer / Fall /
+Winter / Halloween, each with its own `decor` kind.
+**Two lights and two darks on purpose.** Four light seasonals would all read as the same theme with
+the hue nudged, which is the "palette that encodes nothing" problem arriving from a new direction.
+Spring is blossom PINK, not spring green — green is both the light theme's accent family and a
+semantic colour, so a green accent would collide twice; nothing else in the set is pink, which is
+what makes it recognisable at a glance. Summer is sand + sea TEAL (the only teal). Fall's accent is
+burnt sienna and **not amber, because amber lands on `gold`, which is the PR colour** — that is
+precisely the `GROUP_COLOR.Legs` mistake (an accent baked into a semantic slot), avoided this time
+by checking first. Fall and Halloween are the closest pair on accent and are separated by their
+NEUTRALS: espresso-brown blacks versus purple blacks. Winter and Midnight are the closest pair on
+accent too — pale ice versus saturated blue — and Winter's neutrals are deliberately a LIGHTER
+slate so the two do not collapse into each other. All four measured before shipping; `sim_a11y`
+sweeps every registered theme automatically, so a palette that fails contrast cannot ship green.
+**★ A `//` COMMENT IN JSX CHILD POSITION IS TEXT, AND IT SHIPPED ON SCREEN.** Wrapping each picker
+row in a `<Fragment>` (needed for the SEASONAL heading) moved a normal JS comment from *before* the
+returned element into *children* position — so the live picker rendered four copies of
+"// data-theme-option is the selector contract…" as body copy. **The entire battery stayed green**,
+because every check in `pw_themes` selects on `data-theme-option` rather than on text. Found by
+looking at a screenshot. `pw_themes` 2h now asserts no `//`, `/*` or `data-theme-option` appears in
+the picker's rendered text (red-proofed by reinstating one). **When you wrap an element in a
+Fragment or a conditional, re-read every comment that was sitting above it.**
+**★ AND THE FIRST WINTER SCREENSHOT WAS ELEVEN SNOWFLAKES IN A TIDY ROW ACROSS THE HEADER.** A CSS
+animation applies NO style before it starts, so with a positive `animation-delay` every not-yet-
+started ornament sat at its un-animated resting position — `top:0`, full opacity — until its turn
+came. Two fixes, and both are worth knowing: an inline `opacity:0` governs the gap (an animation
+outranks inline style once it runs, so it only ever applies before), and the delays are **negative**,
+which starts each ornament partway through its own cycle and distributes them down the screen
+immediately instead of after a minute of waiting.
+**Per-shape sizing, because a glyph's readable size depends on how it is drawn.** Snow is
+line-drawn and reads fine at 9px; a FILLED leaf at 9px is a brown dot, which is exactly what the
+first Fall screenshot showed. Leaves are 15-25px at higher alpha in three tones (seven identical
+brown glyphs read as debris, not autumn), petals 13-21px. The petal path had to change too — the
+first cut was a rounded ellipse and seven pink pills falling past the screen is not an association
+this app wants; it is a teardrop now, and the leaf is lanceolate with a midrib rather than the blob
+that rendered as an acorn.
+**The mechanism is shared, not copied.** Snow, petals and leaves are ONE `Faller` with a different
+glyph — the N-copies-drift rule applied to decoration. It is **three nested nodes on purpose**: a
+single element cannot run a fall, a sway and a spin at once because all three write `transform`.
+Outer falls, middle sways, inner spins. Summer gets a corner sun and rising motes instead: nothing
+falls in summer, and inventing a glyph to fill the slot is how a set of themes stops meaning
+anything.
+**`impeccable detect` was re-run at Mo's request and is CLEAN** — the same 15 findings as before,
+nothing new from the decor layer (it is transform/opacity only, which is what the detector wants).
+Both `transition: height` hits are already-justified and should stay: one is a bar-chart column
+that animates once on mount (its own comment says why the transform rule does not apply), the other
+is the pull-to-refresh snap-back, which is `none` while the finger is down.
+Sims: `pw_themes` 2e-2h (nine rows, the SEASONAL heading, no leaked comment) and 4i (each seasonal
+theme renders its OWN kind with real ornaments and stays pointer-transparent — a theme whose decor
+silently renders nothing is the `showGroupShare` "capability built, call site never wired" shape).
+Red-proofed individually.
+**Still not done, same list as phase 3:** the other four `GROUP_COLOR` hues measure 1.8-2.8:1 on the
+light themes; the strength ladder's `Advanced` is the volt accent literally; `emptyMuscleCol` and
+the silhouette's `bodyCol` key on `isDark` rather than the palette, so they are neutral greys on
+every non-grey theme rather than tuned to it. Nine themes makes that last one more visible than it
+was with two.
+
 ## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
 Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
 every full-cover overlay (`position:fixed/absolute` + `inset:0` + a zIndex) found **33**, but only
