@@ -1,4 +1,4 @@
-// v178091716981
+// v178091716982
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20209,6 +20209,7 @@ function AppInner() {
             style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
             <Suspense fallback={null}>
               <MessagesScreen store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
+                paused={!!chatPeerId}
                 onBack={() => { setShowMessages(false); refreshMsgUnread(); }}
                 onOpenChat={(uid_) => setChatPeerId(uid_)}/>
             </Suspense>

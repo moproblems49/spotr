@@ -3056,9 +3056,14 @@ render tree or the store creates new bugs somewhere neither the fix nor its test
 - **`SharedPostLink` dropped the whole LINE containing the URL**, so prose typed on the same line
   as a pasted link still vanished — the same defect the previous commit "fixed", surviving in a
   different shape. It strips the URL token now.
-- Noted, not changed: MessagesScreen's 10s/300-row poll now runs for the whole time a chat is open
-  (it used to unmount), so the DM screen carries two polls. A behaviour change from the overlay
-  conversion, not a correctness bug.
+- **FIXED (Mo asked about it): MessagesScreen's 10s/300-row poll ran for the whole time a chat was
+  open.** The list used to UNMOUNT when a chat opened (the chat was an early return); as an overlay
+  it stays mounted underneath, so its poll ran alongside ChatView's own 3s one — ~6 extra fetches a
+  minute of a screen nobody can see. Not a correctness bug, which is exactly why it is worth
+  naming: it was a side effect of the overlay conversion rather than a decision. `paused={!!chatPeerId}`
+  gates the interval and `load()` fires on resume so the list is never stale coming back into view.
+  **When a screen stops unmounting, audit its timers** — every interval it owns just became
+  permanent.
 - **Probe lessons, four in one sitting:** section 9 failed because the fixture deliberately omits
   the author from `store.users`, so the feed card renders "?" and there was no name to tap — reach
   the profile through the post overlay, which is what resolves them. Section 10 reported "no kudos

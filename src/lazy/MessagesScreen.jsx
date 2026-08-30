@@ -47,7 +47,7 @@ function previewText(text) {
   return first ? `${first} · Shared a post` : "Shared a post";
 }
 
-export function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) {
+export function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat, paused = false }) {
   const [rows, setRows] = useState(() => (_msgListCache.uid === currentUserId ? _msgListCache.rows : null)); // null = loading
   const [search, setSearch] = useState("");        // conversation filter (shown once threads grow)
   const [composeOpen, setComposeOpen] = useState(false); // pencil → people picker
@@ -62,12 +62,19 @@ export function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenC
       if (aliveRef.current) setRows(Array.isArray(ms) ? ms : []);
     } catch (e) { if (aliveRef.current) setRows(r => (r === null ? [] : r)); }
   }, [currentUserId, token]);
+  // ★ DON'T POLL A LIST NOBODY CAN SEE. This screen used to UNMOUNT when a chat opened (the chat
+  // was an early return); now it stays mounted underneath, so its 10s/300-row poll was running
+  // for the whole conversation on top of ChatView's own 3s poll — roughly six extra fetches a
+  // minute, of a screen the user cannot see. Not a correctness bug, but it was a side effect of
+  // making the chat an overlay rather than a decision. `load()` fires on resume so the list is
+  // never stale when it comes back into view.
   useEffect(() => {
     aliveRef.current = true;
+    if (paused) return () => { aliveRef.current = false; };
     load();
     const t = setInterval(load, 10000);
     return () => { aliveRef.current = false; clearInterval(t); };
-  }, [load]);
+  }, [load, paused]);
 
   const convos = useMemo(() => {
     const blocked = store.blockedUsers || [];
