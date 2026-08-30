@@ -35,7 +35,7 @@
 // NEVER OTA a change that needs new native plugins/capabilities — that requires a real
 // TestFlight build (cap sync + archive on the Mac).
 
-const LATEST_VERSION = "2026-08-30i"; // null = no OTA update published
+const LATEST_VERSION = "2026-08-30j"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 
 export default async function handler(req, res) {

@@ -3465,6 +3465,54 @@ was: delete the stub zip, rebuild from the repo root with absolute paths only, r
 trusting the build log. **Never chain `cd` in a publish step; and verify the zip you are about to
 ship, not the dist you think you built.**
 
+## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
+Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
+every full-cover overlay (`position:fixed/absolute` + `inset:0` + a zIndex) found **33**, but only
+**five are navigation-level**: Activity and Messages at 40, the profile at 60, the chat at 65, the
+post view at 70. Everything at 200+ is a portaled modal or sheet that covers all of them and is
+opened from whatever is already on top, so it cannot produce this bug; and overlays with a small z
+INSIDE one of those (a `moreOpen` menu at 50 inside the z60 profile) are in their parent's own
+stacking context and are likewise fine. **The class only exists among those five.**
+The first pass fixed one direction — presenting something that lands UNDER an overlay already up.
+**The mirror case is presenting something BELOW them in the stack, and three live paths did it:**
+- a **kudos/comment push** called `setShowActivity(true)` — Activity is z40, so with a profile,
+  chat or post open it mounted invisibly;
+- a **streak push** called `setTab("tracker")`, changing the tab under whatever was covering it;
+- **`handleOpenCode`** switched to the tracker tab — reachable today by tapping the Import chip on
+  a post opened from a shared link, i.e. inside the z70 overlay, so the code sheet opened on a
+  screen the user could not see.
+The full contract is now four helpers, and the rule is which of them you reach for:
+`presentChat` (clears postView, KEEPS the profile so Message → Back returns to it),
+`presentProfile` (clears postView + chat), `dismissOverlays` (clears all three), and
+`presentActivity` (dismiss, then show). **Anything presenting a nav-level screen goes through
+these; anything presenting something below them calls `dismissOverlays()` first.** A raw
+`setChatPeerId`/`setProfileUserId`/`setShowActivity`/`setTab` that OPENS rather than closes is how
+this returns a fourth time.
+Guard: `pw_sharepost` §11 drives DM → shared post → tap author and asserts the profile is actually
+PAINTED (`elementFromPoint`; `innerText` reports covered DOM). Red-proofed.
+
+## One red→green ramp for the whole body map (Mo, Aug 30)
+"The colour for body map in Volume is different than readiness and strength, they should all match
+red to green (also makes theme easier I think?)." Correct on both counts. Readiness and Strength
+both went through `_readyColor` (red → gold → green, interpolated from the AA-safe theme tokens);
+**Volume was the only tab on `_heatColor`, a volt ramp with hardcoded per-theme RGB triples**. So
+the same widget spoke two colour languages depending on a tab, and a new theme would have had to
+hand-author two more triples for the odd one out — which is exactly the theming cost Mo intuited.
+Volume now uses `_readyColor` too and **`_heatColor` is deleted**; its last other caller (the
+per-muscle list's "4-9 growing" colour) moved to `C.green`, so the entire body map is now driven by
+theme tokens with no bespoke ramp anywhere.
+**The zero case is the detail that mattered**: `_heatColor` guarded `t <= 0` itself and
+`_readyColor` does not, so a straight swap would have painted an UNTRAINED muscle bright red.
+A muscle you simply have not trained is absence, not an alarm — that is the whole point of
+`emptyMuscleCol`, and the guard moved to the call site. Verified by reading the rendered `fill` of
+every `[data-muscle]` path on all three tabs in both themes: Volume shows reds/oranges with
+`#525460` for the zeros, Readiness greens, Strength the no-data grey.
+**Consequence worth knowing before someone reports it as a bug:** a mid-week map now reads REDDER
+than the old volt ramp did, because red means "not yet at target" rather than "faint". The scale is
+`t = sets/20`, so amber lands at 10 sets — the floor of the productive band — and green at 20,
+which matches the app's own guidance and the per-muscle list's bands. If that ever feels punishing,
+the knob is the curve, not the palette.
+
 ## ★★ THE INVISIBLE-OVERLAY BUG IS A CLASS, AND RAISING A Z-INDEX ONLY MOVES IT (Aug 30)
 Third time in one session. z55: a chat opened from a profile mounted UNDER the profile's z60
 portal. Fixed by going to z65 — and the Fable audit then found the same failure one layer up: a

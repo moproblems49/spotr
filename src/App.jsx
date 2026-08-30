@@ -1,4 +1,4 @@
-// v178091716984
+// v178091716985
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1125,7 +1125,6 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
   );
 }
 
-// Interpolate grey -> light accent -> deep accent by normalized intensity (0..1).
 // ZERO IS DATA, NOT ABSENCE — and it used to be painted the body's own colour. This branch returned
 // the exact `bodyCol` literal (#3f4049 / #cdd1d8), so a muscle that got ZERO sets this week rendered
 // at 1.00:1 against the silhouette behind it: byte-identical, separated only by a 0.5px seam. The
@@ -1134,11 +1133,11 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
 // uncoloured muscles blending in. An empty muscle now sits one step off the body so the SHAPE reads
 // as a region with nothing in it, while staying neutral and quiet enough that the volt-filled
 // muscles still own the map (1.37:1 dark / 1.33:1 light against the silhouette — visible, not loud;
-// the ramp's own lowest legend stop, _heatColor(0.12), is olive and stays clearly distinct from it).
-// Deliberately NOT tinted toward the volt ramp: a green-ish zero would imply some training happened.
+// the ramp's own lowest stop stays clearly distinct from it).
+// Deliberately NOT tinted toward the ramp: a coloured zero would imply some training happened.
 // ONE definition of "this muscle has nothing in it", because there were three and only one was
 // fixed. Mo: "the silhouette for Strength and when you click exercises is not the same as the
-// fixed one in Volume." Exactly right — Volume/Readiness went through _heatColor and got the
+// fixed one in Volume." Exactly right — Volume/Readiness went through the ramp and got the
 // one-step-off-the-body treatment, while Strength's "no standard" branch and the exercise-detail
 // map both still returned `bodyCol`, i.e. 1.00:1, so whole regions disappeared into the
 // silhouette on two of the four views. The old note here argued Strength's case is "absence of
@@ -1147,24 +1146,14 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
 // palette twins: one fix that didn't get copied to its siblings.
 const emptyMuscleCol = (C) => (C?.isDark ? "#525460" : "#b0b6c1");
 
-function _heatColor(t, C) {
-  if (t <= 0) return emptyMuscleCol(C);
-  // Volt ramp: faint grey-green → volt → deep olive (dark), or pale → lime → forest (light).
-  const stops = C?.isDark
-    ? [[60,70,45],[200,241,53],[120,150,30]]
-    : [[214,229,160],[101,163,13],[54,83,20]];
-  const seg = t < 0.5 ? 0 : 1; const lt = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
-  const a = stops[seg], b = stops[seg + 1];
-  const mix = a.map((v, i) => Math.round(v + (b[i] - v) * lt));
-  return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
-}
 
 // Readiness ramp: 0 = recovering (red), 0.5 = amber, 1 = ready (green). Was a fixed rgb() triple —
 // the exact pre-fix light-theme red/amber/green THEMES.light once shipped, measuring 3.45-3.76:1 /
 // 1.97-2.15:1 / 2.09-2.28:1 as TEXT on the light theme (this ramp colors the recovery-verdict text
 // and dot, not decoration) — invisible to sim_a11y because it never went through a theme token.
-// Same fix shape as _heatColor(t, C): take C and interpolate between the already-AA-safe
-// C.red/C.gold/C.green tokens per theme instead of one fixed triple.
+// Takes C and interpolates between the already-AA-safe C.red/C.gold/C.green tokens per theme
+// rather than one fixed triple — which is also why it is now the ONE ramp the body map uses:
+// a new theme defines red/gold/green and all three tabs follow, with no bespoke ramp to port.
 function _readyColor(t, C) {
   const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   const stops = C ? [hexToRgb(C.red), hexToRgb(C.gold), hexToRgb(C.green)] : [[239,68,68],[245,158,11],[34,197,94]];
@@ -1253,8 +1242,17 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
     // The old relative-to-max scale made everything look trained whenever ALL muscles
     // were undertrained — the map now only goes deep green when volume actually lands
     // in the productive range.
+    // ★ ONE RAMP FOR ALL THREE TABS (Mo: "colour for body map in Volume is different than
+    // readiness and strength, they should all match red to green"). Volume was the only tab on
+    // the volt ramp while Readiness and Strength both used `_readyColor`, so the same widget
+    // spoke two colour languages depending on a tab. It reads the same in all three now: red =
+    // needs attention, green = good — under-trained → in the productive band here, fatigued →
+    // ready there, weak → strong on Strength.
+    // A ZERO STAYS GREY, not red. The old volt ramp guarded t<=0 itself; `_readyColor` does not, and
+    // a muscle you simply have not trained is ABSENCE, not an alarm — that distinction is the
+    // whole point of emptyMuscleCol (see its own note).
     const t = Math.min(1, (region[key] || 0) / 20);
-    return _heatColor(t, C);
+    return t <= 0 ? emptyMuscleCol(C) : _readyColor(t, C);
   };
 
   const Fig = ({ view }) => {
@@ -1371,7 +1369,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             <div style={{ width:MAP_SIDE_W, flexShrink:0, display:"flex", justifyContent:"flex-start" }}>
               {mode === "volume" ? (
                 <ScaleStrip C={C} topLabel="20+/wk" bottomLabel="0"
-                  colors={[1, 0.82, 0.62, 0.37, 0.12].map(t => _heatColor(t, C))}/>
+                  colors={[1, 0.75, 0.5, 0.25, 0.12].map(t => _readyColor(t, C))}/>
               ) : mode === "strength" ? (
                 (strength.ready ? <ScaleStrip C={C} topLabel="Stronger" bottomLabel="Weaker"
                   colors={[1, 0.75, 0.5, 0.25, 0].map(t => _readyColor(t, C))}/> : null)
@@ -1391,7 +1389,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   // effective dose (muted), 4-9 = growing — most of the gains happen here
                   // (light ramp green), 10-20 = maximizing (accent + check), >20 = diminishing
                   // returns / recovery cost (amber). No red: high volume isn't "wrong".
-                  const col = sets > 20 ? C.gold : sets >= 10 ? C.accent : sets >= 4 ? _heatColor(0.45, C) : C.muted;
+                  const col = sets > 20 ? C.gold : sets >= 10 ? C.accent : sets >= 4 ? C.green : C.muted;
                   return (
                     <span key={mName} style={{ fontSize:11, fontWeight:600, color:C.sub, whiteSpace:"nowrap" }}>
                       {mName} <span style={{ fontFamily:MONO, fontWeight:800, color:col }}>{sets}{sets >= 10 && sets <= 20 ? "✓" : ""}</span>
@@ -16026,6 +16024,10 @@ function AppInner() {
     function handleOpenCode(e) {
       const code = e?.detail?.code;
       if (!code) return;
+      // Anything covering the tracker has to go first, or the tab changes under an overlay and
+      // the code sheet opens on a screen the user cannot see — reachable today by tapping the
+      // Import chip on a post opened from a shared link (that overlay is z70).
+      dismissOverlays();
       // If we're not on tracker tab, switch and re-dispatch after mount
       if (tab !== "tracker") {
         switchTab("tracker");
@@ -16068,8 +16070,18 @@ function AppInner() {
   // a number just moves the hole up a layer.
   // These two helpers close it by construction: whatever is being presented, anything that could
   // paint over it is dismissed first. Use them instead of the raw setters for any NEW entry point.
+  // `presentChat` deliberately keeps the profile: a chat opened with Message sits at z65 over the
+  // profile's z60, so Back returns you to the profile you came from.
   const presentChat = useCallback((uid_) => { setPostView(null); setChatPeerId(uid_); }, []);
   const presentProfile = useCallback((uid_) => { setPostView(null); setChatPeerId(null); setProfileUserId(uid_); }, []);
+  // ★ AND THE MIRROR CASE, WHICH THE FIRST PASS MISSED: anything that presents something BELOW
+  // these in the stack must dismiss them first, or it changes a screen the user cannot see.
+  // Activity is z40 and a tab is z0 — both under profile/chat/post — so a kudos or comment push
+  // tapped while any of those is open used to open Activity INVISIBLY, a streak push switched the
+  // tab underneath, and tapping Import on a shared post opened in an overlay sent you to a
+  // tracker tab you could not see. Same class as the invisible chat, from the other direction.
+  const dismissOverlays = useCallback(() => { setPostView(null); setChatPeerId(null); setProfileUserId(null); }, []);
+  const presentActivity = useCallback(() => { dismissOverlays(); setShowActivity(true); }, [dismissOverlays]);
   // loadFeed runs outside this state's closure, so it reads the open post's id from a ref.
   const openPostIdRef = useRef(null);
   useEffect(() => { openPostIdRef.current = postView?.id || null; }, [postView?.id]);
@@ -16256,9 +16268,10 @@ function AppInner() {
               case "comments":
                 // No single-post route exists; the Activity overlay lists these. Opening it
                 // marks them seen, clearing the badge.
-                setShowActivity(true);
+                presentActivity();
                 break;
               case "streak":
+                dismissOverlays();
                 setTab("tracker");
                 break;
               default:
