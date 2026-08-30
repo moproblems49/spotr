@@ -256,7 +256,16 @@ if (await palRow.count()) { await palRow.click({ force: true }); await page.wait
 t = await text();
 check("4a. the chat thread opened", /Pally/.test(t), t.slice(0, 200));
 check("4b. the shared post shows as a card, not a bare link", /TAP TO VIEW/.test(t), t.slice(0, 300));
-check("4c. the raw URL is not printed at the user", !/https?:\/\//.test(t), t.slice(0, 300));
+// Scoped to the CHAT, not the whole document: the Messages list is mounted behind an open chat
+// now (it used to be an early return), and `innerText` reports covered DOM. Judging this from the
+// body would be the documented overlay trap. The list's own preview is checked at 4d.
+const chatText = await page.evaluate(() => {
+  const el = [...document.querySelectorAll('[placeholder="Message…"],[placeholder="Message..."]')][0];
+  const root = el ? el.closest("div[style]")?.parentElement?.parentElement : null;
+  return (root || document.body).innerText.replace(/\s+/g, " ");
+});
+check("4c. the raw URL is not printed in the thread", !/https?:\/\//.test(chatText), chatText.slice(0, 300));
+check("4d. nor in the Messages list preview", !/https?:\/\/\S*\/p\//.test(t), t.slice(0, 300));
 
 // ── 5. Tapping it opens the post ─────────────────────────────────────────────
 const cardBtn = page.locator('button[aria-label^="Open shared post"]').first();

@@ -3290,6 +3290,44 @@ about the interaction; the button was also **broken**, which is the stronger rea
   graph from `follows` and replaces `store.users` wholesale, so seeding `following` into
   localStorage alone loses it on the first foreground — seed through the STUB.
 
+## ★★ A DM SWIPED BACK ONTO A BLACK SCREEN — AND index.css'S OWN COMMENT HAD NAMED IT (Aug 30)
+Mo, from the device: "When I'm in a DM swiping to go back shows a black screen not what's behind."
+`chatPeerId` was an EARLY RETURN from `AppInner`, so while a chat was open **nothing else was
+rendered**. `EdgeSwipeBack` translates its own node aside and the strip it uncovers was the bare
+`#0a0a0a` that `src/index.css` paints on the root. **That colour was chosen for this exact
+gesture** — index.css's comment says so in as many words ("the strip behind the chat screen during
+an iOS edge-swipe-back") — but painting the gap dark was a MITIGATION, never the fix, and
+black-instead-of-white is still a black screen. Reproduced in Chromium before touching anything:
+the chat had moved 200px and the vacated strip was empty.
+Identical defect and identical fix to the profile screen's, which `pw_swipeback` was written for
+after the same symptom — **the class survived because that suite only ever covered the profile.**
+The chat is now an overlay inside the shell (`position:absolute; inset:0; zIndex:55`), so the
+Messages list (or whatever you came from) stays mounted and slides in the way iOS does.
+**zIndex 55 is chosen, not arbitrary**: above the nav's 50, so a DM still covers it exactly as it
+always has — which is also why it needs no line in `switchTab`, that rule being for overlays the
+nav floats OVER — and below the profile/post overlays at 60, which must open on top of a chat.
+**This also fixes the host dead-zone at the root** rather than by the workaround one commit
+earlier: `renderGlobalHosts()` existed because the chat return had to re-mount ToastHost/
+ConfirmHost/ReportHost/SharePostHost by hand. The chat is no longer a separate return, so they are
+simply there. `renderGlobalHosts` is kept — **the other seven early returns (publicRoute,
+authLoading, recoveryNeeded, no-session, guest authPrompt, !dbReady, onboarding) still mount none
+of them**, so a toast fired from the auth or onboarding screens has nowhere to land. Pre-existing,
+not swept, and worth knowing before assuming a toast appears there.
+**★ THE FIX EXPOSED A BUG THAT HAD BEEN INVISIBLE TO EVERY CHECK BECAUSE OF THE BUG ITSELF.**
+With the Messages list finally mounted behind an open chat, `pw_sharepost` 4c ("no raw URL is
+printed at the user") went red — on the LIST's thread preview, which had always rendered a shared
+post's body verbatim: *"You: A workout on Seshd http://…/p/4444…"*. Nothing could see it, the
+suite included, because the list was unmounted whenever a chat was open. `previewText()` collapses
+it to "…· Shared a post". **A screen that is never rendered is never tested** — when an early
+return becomes an overlay, expect its neighbour's latent defects to surface at once.
+**Guard: `pw_chatswipe`** — drives a real edge-swipe out of a DM and asserts the Messages list is
+in the uncovered strip. **Its own first draft matched `/Pally|MESSAGES/` and PASSED on the broken
+build**: the chat header contains the peer's NAME, so the check was reading the very screen it was
+meant to see past. Anchored on the list's own `MESSAGES` heading now. **A marker both screens
+render cannot distinguish them** — and note 4c had to be SCOPED to the thread for the mirror-image
+reason, since `innerText` now reports the list behind it (the documented overlay trap, from the
+other direction).
+
 ## ★★ The audit of the share feature: SIX real defects, and the worst was the class I'd just "fixed" (Aug 30)
 A cold-context audit of the two share commits found six confirmed defects plus one vacuous check.
 The pattern worth keeping: **fixing one call site of a class is not fixing the class.**

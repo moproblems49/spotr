@@ -1,4 +1,4 @@
-// v178091716978
+// v178091716979
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -19038,15 +19038,19 @@ function AppInner() {
   // DM — the single place shared posts arrive — did exactly nothing. Caught by driving it, not by
   // reading it. A hoisted function rather than a `const` element so it can be called from a
   // return that sits above wherever it is defined.
-  // ★ THE HOSTS ARE GLOBAL IN NAME ONLY — THEY LIVE IN ONE RETURN, AND `chatPeerId` EARLY-RETURNS
-  // PAST IT. `toast`, `confirmAction`, `reportContent` and `sharePostTo` are module-level setters
-  // into components; when the component is unmounted the setter is a silent no-op. So inside a
-  // chat: the post overlay's Share did nothing, its Report did nothing, Delete never raised its
-  // confirm sheet so the post was never deleted, and Edit set AppInner state that rendered
-  // nothing here and then popped a modal unbidden on the way OUT of the conversation.
-  // PRE-EXISTING beyond this feature: ChatView's own "···" Report header button and its
-  // "Couldn't send" toast were in the same dead zone. Same class as renderPostOverlay itself —
-  // fixing that one call site was not fixing the class.
+  // ★ THE HOSTS ARE GLOBAL IN NAME ONLY: THEY LIVE IN ONE RETURN, AND EVERY EARLY RETURN ABOVE IT
+  // IS A DEAD ZONE. `toast`, `confirmAction`, `reportContent` and `sharePostTo` are module-level
+  // setters into components; when the component is unmounted the setter is a silent no-op.
+  // The chat used to be one of those early returns, and inside it the post overlay's Share did
+  // nothing, Report did nothing, Delete never raised its confirm sheet so the post was never
+  // deleted, and Edit popped a modal unbidden on the way OUT of the conversation — while
+  // ChatView's own "···" Report and its "Couldn't send" toast were dead for the same reason.
+  // The chat is an OVERLAY now (see the black-screen fix below), which resolves it at the root:
+  // it renders inside the main return and the hosts are simply there.
+  // STILL OPEN, pre-existing: the seven remaining early returns (publicRoute, authLoading,
+  // recoveryNeeded, no-session, guest authPrompt, !dbReady, onboarding) mount none of these, so a
+  // toast fired from the auth or onboarding screens has nowhere to land. Call this from any new
+  // early return that needs them.
   function renderGlobalHosts() {
     return (
       <>
@@ -19117,22 +19121,6 @@ function AppInner() {
           </EdgeSwipeBack>
         </div>
       ), document.body);
-  }
-
-  if (chatPeerId) {
-    return (
-      <>
-      {renderGlobalHosts()}
-      {renderPostOverlay()}
-      <EdgeSwipeBack onBack={() => { setChatPeerId(null); refreshMsgUnread(); }}
-        style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
-        <Suspense fallback={null}>
-          <ChatView peerId={chatPeerId} store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
-            onBack={() => { setChatPeerId(null); refreshMsgUnread(); }} onRead={refreshMsgUnread}/>
-        </Suspense>
-      </EdgeSwipeBack>
-      </>
-    );
   }
 
   // showMessages no longer early-returns: it renders as an overlay INSIDE the main shell
@@ -20187,6 +20175,30 @@ function AppInner() {
       )}
 
       {renderPostOverlay()}
+
+      {/* ★ A DM IS AN OVERLAY, NOT AN EARLY RETURN — Mo: "swiping to go back shows a black screen
+          not what's behind". It early-returned, so the ONLY thing rendered was the chat itself;
+          EdgeSwipeBack translates its own node aside and there was nothing underneath, just the
+          `#0a0a0a` that index.css paints on the root. That colour was chosen precisely so this
+          strip would not flash WebView WHITE — a mitigation for this exact gesture, recorded in
+          index.css's own comment — but it was never the fix, and black-instead-of-white is still
+          a black screen. As an overlay, whatever you came from (the Messages list, a profile, a
+          push-tapped tab) stays mounted and slides into view the way iOS does it. Exactly the
+          change Activity needed for the same symptom.
+          zIndex 55: ABOVE the nav's 50, so a DM still covers it as it always has (and no line in
+          switchTab is needed, since the nav cannot be tapped through it); BELOW the profile and
+          post overlays at 60, which must open on top of a chat. */}
+      {chatPeerId && (
+        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:55 }}>
+          <EdgeSwipeBack onBack={() => { setChatPeerId(null); refreshMsgUnread(); }}
+            style={{ background:C.bg, height:"100%", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
+            <Suspense fallback={null}>
+              <ChatView peerId={chatPeerId} store={store} currentUserId={currentUserId} token={tokenRef.current} C={C}
+                onBack={() => { setChatPeerId(null); refreshMsgUnread(); }} onRead={refreshMsgUnread}/>
+            </Suspense>
+          </EdgeSwipeBack>
+        </div>
+      )}
 
       {profileUserId && createPortal((
         // NOT an early return. When this screen early-returned, the rest of the app wasn't

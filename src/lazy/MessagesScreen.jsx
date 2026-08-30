@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   F, DISPLAY, Icon, Avatar, Spinner, PullToRefresh, haptic, toast, sb,
-  loadSession, saveSession, reportContent, SharedPostLink,
+  loadSession, saveSession, reportContent, SharedPostLink, postIdInText,
 } from "../App.jsx";
 
 // Run an authed REST query; if it fails (most often an expired access token — the documented
@@ -35,6 +35,17 @@ function fmtMsgTime(ts) {
 // Per-user thread-list cache — reopening Messages shows the list instantly while the fresh
 // fetch runs, instead of a spinner.
 let _msgListCache = { uid: null, rows: null };
+
+// A thread's one-line preview. A shared post's body carries a raw /p/<uuid> URL, and printing it
+// here gave the list rows like "You: A workout on Seshd http://…/p/4444…" — the chat bubble
+// renders that as a card, and the list had no equivalent. Caught only once the Messages list
+// stopped being unmounted behind an open chat, which is exactly why it sat there: nothing could
+// see it, including the suite that asserts no raw URL is shown.
+function previewText(text) {
+  if (!postIdInText(text)) return text;
+  const first = String(text || "").split("\n").map(l => l.trim()).filter(l => l && !/https?:\/\//i.test(l))[0];
+  return first ? `${first} · Shared a post` : "Shared a post";
+}
 
 export function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenChat }) {
   const [rows, setRows] = useState(() => (_msgListCache.uid === currentUserId ? _msgListCache.rows : null)); // null = loading
@@ -175,7 +186,7 @@ export function MessagesScreen({ store, currentUserId, token, C, onBack, onOpenC
                   <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{fmtMsgTime(c.last.created_at)}</div>
                 </div>
                 <div style={{ fontSize:13, color:c.unread ? C.text : C.sub, fontWeight:c.unread ? 600 : 400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginTop:2 }}>
-                  {c.last.sender_id === currentUserId ? "You: " : ""}{c.last.text}
+                  {c.last.sender_id === currentUserId ? "You: " : ""}{previewText(c.last.text)}
                 </div>
               </div>
               {c.unread > 0 && <span style={{ background:C.primary, color:C.onPrimary, borderRadius:10, minWidth:18, height:18, padding:"0 5px", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>{c.unread}</span>}
