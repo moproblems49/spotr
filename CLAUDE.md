@@ -3290,6 +3290,62 @@ about the interaction; the button was also **broken**, which is the stronger rea
   graph from `follows` and replaces `store.users` wholesale, so seeding `following` into
   localStorage alone loses it on the first foreground — seed through the STUB.
 
+## ★★ The audit of the share feature: SIX real defects, and the worst was the class I'd just "fixed" (Aug 30)
+A cold-context audit of the two share commits found six confirmed defects plus one vacuous check.
+The pattern worth keeping: **fixing one call site of a class is not fixing the class.**
+- **★★ `renderPostOverlay` WAS ADDED TO THE CHAT RETURN AND THE FOUR GLOBAL HOSTS WERE NOT.**
+  `toast`, `confirmAction`, `reportContent` and `sharePostTo` are module-level setters into
+  components that live in ONE return; `chatPeerId` early-returns past it, so all four were silent
+  no-ops inside a chat. On the post overlay opened from a DM — the one arrival path the feature
+  exists for — Share did nothing, Report did nothing, Delete never raised its confirm sheet so the
+  post was never deleted, and Edit set AppInner state that rendered nothing there and then popped
+  a modal unbidden on the way OUT of the conversation. **PRE-EXISTING beyond this feature**:
+  ChatView's own "···" Report button and its "Couldn't send" toast were in the same dead zone.
+  `renderGlobalHosts()` is now called by both returns. **None of the OTHER early returns
+  (publicRoute/authLoading/recoveryNeeded/no-session/guest/!dbReady/onboarding) mount the hosts
+  either** — pre-existing, deliberately not swept here, and worth knowing before assuming a toast
+  fires on the auth screen.
+- **★ EVERY ACTION ON THE POST VIEW WAS DEAD, BECAUSE `handleKudos`/`handleComment` OPEN WITH
+  `store.posts.find(...); if (!post) return`.** A post opened from a shared link is BY DEFINITION
+  one the client has never loaded — that is the premise of the feature, and its own author-lookup
+  comment says so. Tapping the flame ran its local pop animation and wrote nothing, anywhere, with
+  no error. Rendering `postView.post` (a detached snapshot) broke it from the other side too: the
+  optimistic `setStore` could never reach it. Fixed by MERGING the fetched post into `store.posts`
+  — the established pattern, not a new one (ProfileScreen already merges a foreign user's posts in,
+  deduped by id, for the same reason) — and rendering the live copy. `feedPosts` filters on
+  `following`, so this cannot smuggle a stranger's post into the feed.
+- **A THROWN FETCH IS NOT "YOU CAN'T SEE THIS".** The catch set the same `false` an empty result
+  produces, so a 20s timeout rendered "deleted, or the person keeps their account private" — a
+  false statement about someone else's settings — and the guard never refetched. Worse: open a
+  link signed out, get refused by RLS, then sign in, and you stay latched on the wrong answer for
+  the session with the URL already stripped. There is a third state (`"error"`) with a Try again.
+- **`SharedPostLink` DISCARDED EVERY LINE AFTER THE FIRST.** Correct for the two-line body the app
+  writes, wrong the moment Copy link shipped: paste a link, type "we should try this Friday", and
+  that sentence is stored in the message row and rendered nowhere. It now drops only the URL line.
+- **The blocked-user filter was not copied** from MessagesScreen's own people picker (the
+  one-guard-didn't-get-copied class, again). Not a leak — `messages` INSERT carries
+  `NOT is_blocked_between` — but it offered a recipient the app knows it cannot send to and
+  reported the refusal as a connection problem.
+- **Share was the only feed action without `requireAuth`.** Gated on the SEND half only; Copy link
+  and Share via… need no account and a public post's link is public.
+- **★ AND THE RED-PROOF CAUGHT MY OWN NEW CHECK BEING VACUOUS — TWICE OVER.** The kudos check
+  passed with the fix reverted, because the fixture's shared post was ALSO the feed's post, so
+  `store.posts.find` succeeded either way. Section 7 now opens a post the feed query never returns,
+  authored by someone not followed, which is the real shape. And check 2c ("I am not offered as a
+  recipient") could not fail because the fixture had no self-follow row — the app's own
+  `u.id !== currentUserId` guard could be deleted with it green. Both fixed; all three fixes
+  red-proofed SEPARATELY. Second scar in two days for the same trap: **restoring `src/App.jsx`
+  from a scratch copy does NOT rebuild `dist`**, and the first red-proof run measured the stale
+  bundle and reported the two results swapped.
+- **Verified clean by the same audit, worth not re-litigating**: the link-not-copy design holds —
+  the message body and the group row carry no workout jsonb, volume, sets or image, and `posts`
+  SELECT is owner-or-public-or-accepted-follower AND `NOT is_blocked_between`, so a group member
+  who does not pass the poster's RLS gets `[]`. `POST_ID_RE` is a fully anchored uuid and a share
+  code is `IGNITE-`/`WO-`, so neither shape can match the other. Contrast measured on the new UI:
+  "TAP TO VIEW" 6.78:1 light / 8.57:1 dark, the Copy link icon 4.86:1, the checked tick 15-17:1.
+  The UNCHECKED ring is 1.27:1 — but that is the app's existing convention for every selection
+  control, not something this feature introduced.
+
 ## ★★ THE "DELETE MY GROUPS" CHOICE SHIPPED INERT, AND A STALE uuid COULD BRICK DELETION (Aug 29)
 A cold-context audit of the group-ownership work found two CONFIRMED defects in it, both mine, and
 the second is the more serious thing this project has shipped in a while.

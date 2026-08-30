@@ -1,4 +1,4 @@
-// v178091716977
+// v178091716978
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1998,9 +1998,17 @@ const REPORT_REASONS = [
 export function SharedPostLink({ text, C, ink, tile }) {
   const id = postIdInText(text);
   if (!id) return text;
-  const label = String(text || "").split("\n")[0].trim() || "A workout on Seshd";
+  // ★ EVERY LINE THAT IS NOT THE LINK ITSELF STILL HAS TO BE SHOWN. The app's own body is two
+  // lines ("@user on Seshd" + the url), so taking line 0 as the label and dropping the rest was
+  // right for messages this app writes and WRONG the moment Copy link shipped: someone pastes a
+  // link and types "we should try this Friday" under it, and that sentence was stored in the
+  // message row and never rendered anywhere.
+  const lines = String(text || "").split("\n");
+  const rest = lines.filter(l => !/https?:\/\/\S*\/p\//i.test(l)).map(l => l.trim()).filter(Boolean);
+  const label = rest[0] || "A workout on Seshd";
+  const extra = rest.slice(1).join("\n");
   const fg = ink || C.text;
-  return (
+  const card = (
     <button
       onClick={() => window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } }))}
       aria-label={`Open shared post: ${label}`}
@@ -2017,6 +2025,8 @@ export function SharedPostLink({ text, C, ink, tile }) {
       </span>
     </button>
   );
+  if (!extra) return card;
+  return <>{card}<span style={{ display:"block", marginTop:6, whiteSpace:"pre-wrap" }}>{extra}</span></>;
 }
 
 // ★ SHARING A POST SENDS A LINK, NOT A COPY (Mo's call). The alternative — republishing
@@ -2040,7 +2050,7 @@ export function postIdInText(text) {
   return m ? m[1] : null;
 }
 
-function SharePostHost({ C, token, currentUserId, store }) {
+function SharePostHost({ C, token, currentUserId, store, isGuest, onRequireAuth }) {
   const [sp, setSp] = useState(null);
   const [picked, setPicked] = useState([]);      // people
   const [pickedGroups, setPickedGroups] = useState([]);
@@ -2050,10 +2060,18 @@ function SharePostHost({ C, token, currentUserId, store }) {
   const close = () => { if (!busy) setSp(null); };
 
   const me = (store.users || []).find(u => u.id === currentUserId);
+  // `blockedUsers` is the guard MessagesScreen's own people picker already applies and this one
+  // did not — the one-guard-didn't-get-copied class. It matters because `handleBlock` deletes the
+  // follow rows BEST-EFFORT: if that leg fails, the next loadUserData rebuilds `following` from
+  // the server with the blocked person back in it, so they would be hidden from Messages and
+  // offered here. The server refuses the write either way (`messages` INSERT carries
+  // `NOT is_blocked_between`), so this is not a leak — it is offering a recipient the app already
+  // knows it cannot send to, and reporting the refusal as a connection problem.
+  const blocked = store.blockedUsers || [];
   const people = ((me?.following) || [])
     .map(id => (store.users || []).find(u => u.id === id))
     .filter(Boolean)
-    .filter(u => u.id !== currentUserId);
+    .filter(u => u.id !== currentUserId && !blocked.includes(u.id));
   // Same membership test the finish-workout picker uses. `members` and `member_ids` are both in
   // play because the local store and the server row spell it differently.
   const groups = (store.groups || []).filter(g => (g.members || g.member_ids || []).includes(currentUserId));
@@ -2132,7 +2150,19 @@ function SharePostHost({ C, token, currentUserId, store }) {
           <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:14 }}>
             They get a link — whether they can open it depends on the poster's privacy.
           </div>
-          {people.length === 0 && groups.length === 0 ? (
+          {/* ★ SHARE WAS THE ONE FEED ACTION WITHOUT AN ACCOUNT GATE. Kudos, comment, follow, post,
+              story and messaging all go through requireAuth; this opened a picker that is empty
+              for a guest by construction and dead-ended them there. Gated on the SEND half only —
+              Copy link and Share via… below need no account and a public post's link is public,
+              so taking those away would be a regression on today's behaviour. */}
+          {isGuest ? (
+            <div style={{ padding:"22px 4px 6px", textAlign:"center" }}>
+              <div style={{ fontSize:13, color:C.sub, lineHeight:1.6, marginBottom:12 }}>Sign up to send posts to friends and groups.</div>
+              <button onClick={() => { setSp(null); onRequireAuth?.("Sign up to send posts to friends"); }}
+                style={{ padding:"11px 22px", borderRadius:12, border:"none", background:C.primary, color:C.onPrimary,
+                         fontSize:14, fontWeight:700, fontFamily:F, cursor:"pointer" }}>Sign up</button>
+            </div>
+          ) : people.length === 0 && groups.length === 0 ? (
             <div style={{ padding:"26px 4px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.6 }}>
               You're not following anyone or in any groups yet. Find people and crews in Discover.
             </div>
@@ -16023,7 +16053,7 @@ function AppInner() {
   // Fetch it. RLS decides visibility, so an empty result is the ANSWER (the poster is private and
   // I don't follow them), not a failure — those two render differently and must not be conflated.
   useEffect(() => {
-    if (!postView || postView.post !== null) return;
+    if (!postView || postView.post !== null) return;   // null = not fetched yet; "error" is retried by the button
     const id = postView.id;
     let cancelled = false;
     (async () => {
@@ -16032,9 +16062,27 @@ function AppInner() {
         const rows = await sb.query(`posts?id=eq.${id}&select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)`, {}, tok);
         if (cancelled) return;
         const row = Array.isArray(rows) ? rows[0] : null;
-        setPostView(v => (v && v.id === id) ? { ...v, post: row ? normalizePostRow(row, store.historyInteractions || {}) : false } : v);
+        const np = row ? normalizePostRow(row, store.historyInteractions || {}) : null;
+        setPostView(v => (v && v.id === id) ? { ...v, post: np || false } : v);
+        // ★ MERGE IT INTO `store.posts`, OR EVERY ACTION ON THIS SCREEN IS DEAD. `handleKudos`
+        // and `handleComment` both open with `store.posts.find(...); if (!post) return` — and a
+        // post opened from a shared link is BY DEFINITION one the client has never loaded, which
+        // is the whole premise of this feature. Tapping the flame ran its local pop animation and
+        // wrote nothing, anywhere, with no error. Rendering a detached snapshot had the same
+        // problem from the other side: the optimistic `setStore` could never reach it, so the
+        // count would not move even when the write did land.
+        // Merging a foreign post here is the established pattern, not a new one — ProfileScreen
+        // already fetches another user's posts and merges them in, deduped by id, for exactly the
+        // same reason (the feed only holds the newest page). `feedPosts` filters on `following`,
+        // so this cannot smuggle a stranger's post into the feed.
+        if (np) setStore(prev => (prev.posts || []).some(p2 => p2.id === np.id) ? prev : ({ ...prev, posts: [...(prev.posts || []), np] }));
       } catch (e) {
-        if (!cancelled) setPostView(v => (v && v.id === id) ? { ...v, post: false } : v);
+        // ★ NOT `false`. An empty result means RLS refused you — a real answer. A THROWN request
+        // means we do not know, and rendering "deleted, or the poster keeps their account
+        // private" for a 20s timeout is a false statement about someone else's settings. Worse,
+        // the guard below never refetches, so a signed-out reader who opens a link, is refused,
+        // and THEN signs in stays latched on the wrong answer for the session.
+        if (!cancelled) setPostView(v => (v && v.id === id) ? { ...v, post: "error" } : v);
         devWarn("post view fetch:", e);
       }
     })();
@@ -18990,6 +19038,28 @@ function AppInner() {
   // DM — the single place shared posts arrive — did exactly nothing. Caught by driving it, not by
   // reading it. A hoisted function rather than a `const` element so it can be called from a
   // return that sits above wherever it is defined.
+  // ★ THE HOSTS ARE GLOBAL IN NAME ONLY — THEY LIVE IN ONE RETURN, AND `chatPeerId` EARLY-RETURNS
+  // PAST IT. `toast`, `confirmAction`, `reportContent` and `sharePostTo` are module-level setters
+  // into components; when the component is unmounted the setter is a silent no-op. So inside a
+  // chat: the post overlay's Share did nothing, its Report did nothing, Delete never raised its
+  // confirm sheet so the post was never deleted, and Edit set AppInner state that rendered
+  // nothing here and then popped a modal unbidden on the way OUT of the conversation.
+  // PRE-EXISTING beyond this feature: ChatView's own "···" Report header button and its
+  // "Couldn't send" toast were in the same dead zone. Same class as renderPostOverlay itself —
+  // fixing that one call site was not fixing the class.
+  function renderGlobalHosts() {
+    return (
+      <>
+        <ToastHost/>
+        <ConfirmHost C={C}/>
+        <ReportHost C={C} token={token} currentUserId={currentUserId}/>
+        <SharePostHost C={C} token={token} currentUserId={currentUserId} store={store}
+          isGuest={isGuest} onRequireAuth={requireAuth}/>
+        {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
+      </>
+    );
+  }
+
   function renderPostOverlay() {
     if (!postView) return null;
     // Portaled and fixed at zIndex 60 for the same reasons the profile overlay is (see its
@@ -19007,6 +19077,15 @@ function AppInner() {
             </div>
             <div style={{ flex:1, overflowY:"auto", padding:"14px 0 calc(28px + env(safe-area-inset-bottom))" }}>
               {postView.post === null && <div style={{ padding:32 }}><Spinner C={C}/></div>}
+              {postView.post === "error" && (
+                <div style={{ padding:"48px 28px", textAlign:"center" }}>
+                  <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:7 }}>Couldn't load this post</div>
+                  <div style={{ fontSize:13, color:C.sub, lineHeight:1.6, marginBottom:16 }}>Check your connection and try again.</div>
+                  <button onClick={() => setPostView(v => v ? { ...v, post: null } : v)}
+                    style={{ padding:"11px 22px", borderRadius:12, border:`1px solid ${C.border}`, background:C.bg,
+                             color:C.text, fontSize:14, fontWeight:700, fontFamily:F, cursor:"pointer" }}>Try again</button>
+                </div>
+              )}
               {postView.post === false && (
                 <div style={{ padding:"48px 28px", textAlign:"center" }}>
                   <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:7 }}>This post isn't available</div>
@@ -19015,9 +19094,11 @@ function AppInner() {
                   </div>
                 </div>
               )}
-              {postView.post && (
+              {postView.post && postView.post !== "error" && (
                 <PostCard
-                  post={postView.post}
+                  // The LIVE copy when the store has it, so an optimistic kudos/comment shows up
+                  // here; `postView.post` is only the fallback for the frame before the merge.
+                  post={(store.posts || []).find(p => p.id === postView.id) || postView.post}
                   store={store}
                   currentUserId={currentUserId}
                   displayUnit={unit}
@@ -19041,6 +19122,7 @@ function AppInner() {
   if (chatPeerId) {
     return (
       <>
+      {renderGlobalHosts()}
       {renderPostOverlay()}
       <EdgeSwipeBack onBack={() => { setChatPeerId(null); refreshMsgUnread(); }}
         style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
@@ -19217,10 +19299,7 @@ function AppInner() {
       `}</style>
       <AICoachSheet open={showCoach} store={store} setStore={setStore} unit={unit} C={C} reviewStatus={reviewStatus} onClose={() => setShowCoach(false)}/>
       {showWrapped && <Suspense fallback={null}><WrappedModal store={store} C={C} range={typeof showWrapped === "object" ? showWrapped : null} onClose={() => setShowWrapped(false)} onPostToFeed={handleNewPost}/></Suspense>}
-      <ToastHost/>
-      <ConfirmHost C={C}/>
-      <ReportHost C={C} token={token} currentUserId={currentUserId}/>
-      <SharePostHost C={C} token={token} currentUserId={currentUserId} store={store}/>
+      {renderGlobalHosts()}
 
       {/* Exactly ONE of these three may reserve the status-bar area: the topmost one actually on
           screen. They each added env(safe-area-inset-top) independently, so any two at once —
@@ -20167,7 +20246,7 @@ function AppInner() {
         recentWorkouts={newPostRecentWorkouts}
         prs={store.prs || {}}
       />}
-      {editingPost && <EditPostModal C={C} post={editingPost} onSave={handleEditSave} onClose={() => setEditingPost(null)}/>}
+
       {storyIndex !== null && (() => {
         if (storyIndex === "self") {
           return (

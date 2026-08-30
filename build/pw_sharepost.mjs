@@ -22,6 +22,20 @@ const STR  = "33333333-3333-4333-8333-333333333333"; // follows me, I do NOT fol
 const POST = "44444444-4444-4444-8444-444444444444";
 const AUTH = "55555555-5555-4555-8555-555555555555"; // the post's author
 const GRP  = "66666666-6666-4666-8666-666666666666"; // a group I'm in
+const BLK  = "77777777-7777-4777-8777-777777777777"; // I follow them AND I have blocked them
+// ★ A post the FEED NEVER RETURNS. Section 7 has to open one of these or it proves nothing: the
+// bug is that handleKudos does `store.posts.find(...)`, and a post already loaded by the feed is
+// found with or without the fix. A shared link routinely points at a post the client has never
+// seen — someone you don't follow, or one that has fallen off the newest page.
+const POST2 = "88888888-8888-4888-8888-888888888888";
+const STRANGER = "99999999-9999-4999-8999-999999999999";
+
+const POST2_ROW = {
+  id: POST2, user_id: STRANGER, type: "workout", caption: "Pull day", image_url: null,
+  unit: "lbs", is_pr: false, client_id: null, created_at: new Date().toISOString(),
+  workout: { name: "Pull", duration: 3000, volume: 9000, exercises: [{ name: "Barbell Row", sets: [{ w: 135, r: 8 }] }] },
+  kudos: [], comments: [],
+};
 
 const POST_ROW = {
   id: POST, user_id: AUTH, type: "workout", caption: "Leg day", image_url: null,
@@ -39,17 +53,20 @@ page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0
 
 const sent = [];       // every messages POST body the client actually made
 const groupSent = [];  // every group_posts POST body
+const kudosSent = [];  // every kudos POST body
 let postVisible = true; // flip to model "RLS says you can't see this"
 
 await page.addInitScript((ids) => {
-  const [me, pal, str, auth, grp] = ids;
+  const [me, pal, str, auth, grp, blk] = ids;
   localStorage.setItem("seshd_v1", JSON.stringify({
     currentUserId: me, theme: "dark", unit: "lbs", programs: [], history: {}, workoutDates: {},
     prEvents: [], bodyLog: [], prs: {}, posts: [], profile: { username: "momo", name: "Mo" },
+    blockedUsers: [blk],
     groups: [{ id: grp, name: "Seshd Crew", member_ids: [me, pal], members: [me, pal] }],
     users: [
       { id: me,  username: "momo",  name: "Mo",     followers: [str], following: [pal, auth] },
       { id: pal, username: "pally", name: "Pally",  followers: [me],  following: [] },
+      { id: blk, username: "blocky", name: "Blocky", followers: [me],  following: [] },
       { id: str, username: "strang", name: "Strang", followers: [],   following: [me] },
       // AUTH is deliberately ABSENT: the post view must resolve them from public_profiles.
     ],
@@ -57,7 +74,7 @@ await page.addInitScript((ids) => {
   localStorage.setItem("seshd_session", JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: me, email: "mo@example.com" } }));
   localStorage.setItem("seshd_onboarded", "1");
   localStorage.setItem("seshd_custom_merge_v1", "1");
-}, [ME, PAL, STR, AUTH, GRP]);
+}, [ME, PAL, STR, AUTH, GRP, BLK]);
 
 await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
   body: JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: ME, email: "mo@example.com" } }) }));
@@ -66,6 +83,11 @@ await page.route("**/rest/v1/**", async r => {
   const req = r.request();
   const u = req.url();
   const m = req.method();
+  if (/\/rest\/v1\/kudos/.test(u) && m === "POST") {
+    const body = JSON.parse(req.postData() || "{}");
+    kudosSent.push(body);
+    return r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify([{ ...body, id: "k_" + kudosSent.length }]) });
+  }
   if (/\/rest\/v1\/group_posts/.test(u) && m === "POST") {
     const body = JSON.parse(req.postData() || "{}");
     groupSent.push(body);
@@ -87,24 +109,39 @@ await page.route("**/rest/v1/**", async r => {
       body: JSON.stringify(sent.map((s, i) => ({ ...s, id: "msg_" + (i + 1), created_at: new Date().toISOString(), read_at: null }))) });
   }
   if (/\/rest\/v1\/posts\?id=eq\./.test(u)) {
+    if (u.includes(POST2)) return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([POST2_ROW]) });
     return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(postVisible ? [POST_ROW] : []) });
   }
   if (/\/rest\/v1\/posts\?/.test(u)) {
     return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([POST_ROW]) });
+  }
+  if (/\/rest\/v1\/blocked_users\?/.test(u) && m === "GET") {
+    // loadUserData REPLACES store.blockedUsers from this table, so seeding it into localStorage
+    // alone is wiped on the first foreground — same trap as the social graph below.
+    return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ blocked_id: BLK }]) });
   }
   if (/\/rest\/v1\/follows\?/.test(u) && m === "GET") {
     // loadUserData REBUILDS following/followers from this table and replaces store.users
     // wholesale, so a fixture that only seeds localStorage loses its social graph on the first
     // foreground — the documented seed-through-the-stub rule.
     return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+      // A self-follow row exists ON PURPOSE: without it "I am not offered as a recipient" is
+      // satisfied by the fixture rather than by the app's own `u.id !== currentUserId` guard,
+      // which could then be deleted with the check still green.
+      { follower_id: ME,  following_id: ME,   status: "accepted" },
       { follower_id: ME,  following_id: PAL,  status: "accepted" },
       { follower_id: ME,  following_id: AUTH, status: "accepted" },
       { follower_id: STR, following_id: ME,   status: "accepted" },
+      { follower_id: ME,  following_id: BLK,  status: "accepted" },
     ]) });
   }
   if (/\/rest\/v1\/(profiles|public_profiles)\?/.test(u)) {
     // Answer by id — a stub that returns the same row for every lookup cannot tell a
     // resolved author from an unresolved one.
+    if (u.includes(`id=eq.${STRANGER}`)) {
+      return r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify([{ id: STRANGER, username: "stranger", name: "Stranger", bio: "", avatar_url: "", is_public: true }]) });
+    }
     if (u.includes(`id=eq.${AUTH}`)) {
       return r.fulfill({ status: 200, contentType: "application/json",
         body: JSON.stringify([{ id: AUTH, username: "lifter", name: "Lifter", bio: "", avatar_url: "", is_public: true }]) });
@@ -114,6 +151,7 @@ await page.route("**/rest/v1/**", async r => {
         { id: ME,  username: "momo",   name: "Mo",     bio: "", avatar_url: "", is_public: true },
         { id: PAL, username: "pally",  name: "Pally",  bio: "", avatar_url: "", is_public: true },
         { id: STR, username: "strang", name: "Strang", bio: "", avatar_url: "", is_public: true },
+        { id: BLK, username: "blocky", name: "Blocky", bio: "", avatar_url: "", is_public: true },
       ]) });
     }
     return r.fulfill({ status: 200, contentType: "application/json",
@@ -151,6 +189,7 @@ check("2a. someone I follow is listed", sheetOpen && /Pally/.test(t), t.slice(0,
 if (!sheetOpen) { fails++; console.log("FAIL 2b/2c. cannot judge the recipient list — the sheet never opened"); }
 else {
   check("2b. a follower I do NOT follow back is absent", !/Strang/.test(t), t.slice(0, 300));
+  check("2d. a person I follow but have BLOCKED is absent", !/Blocky/.test(t), t.slice(0, 300));
   check("2c. I am not offered as a recipient", !/@momo/.test(t), t.slice(0, 300));
 }
 
@@ -239,6 +278,47 @@ await page.waitForTimeout(1600);
 t = await text();
 check("6a. an invisible post says so plainly", /isn't available/i.test(t), t.slice(0, 300));
 check("6b. it explains why without blaming the reader", /private/i.test(t), t.slice(0, 300));
+
+// ── 7. The actions ON the post view work — they were dead, and this is the screen the whole
+//       feature exists to produce. handleKudos/handleComment open with a store.posts lookup, and
+//       a post opened from a shared link is by definition one the client never loaded. ──────────
+postVisible = true;
+await page.evaluate((id) => window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } })), POST2);
+await page.waitForTimeout(1800);
+t = await text();
+check("7a. a post the feed never loaded opens", /Pull day/.test(t), t.slice(0, 200));
+const flame = page.locator('[data-fullscreen-overlay] button[aria-label="Give kudos"]').first();
+const haveFlame = await flame.count() > 0;
+check("7b. the post view offers kudos", haveFlame);
+if (haveFlame) {
+  await flame.click({ force: true });
+  await page.waitForTimeout(1200);
+  check("7c. a kudos row actually reached the server", kudosSent.length === 1, JSON.stringify(kudosSent));
+  check("7d. it is for this post, from me", (kudosSent[0] || {}).post_id === POST2 && (kudosSent[0] || {}).user_id === ME, JSON.stringify(kudosSent));
+}
+
+// ── 8. Inside a CHAT, the overlay's own hosts exist. sharePostTo/reportContent/confirmAction are
+//       module-level setters into components that the chatPeerId early return unmounted, so every
+//       one of them was a silent no-op on the one screen shared posts arrive at. ────────────────
+await page.evaluate(() => { const b = document.querySelector('[data-fullscreen-overlay] button[aria-label="Back"]'); if (b) b.click(); });
+await page.waitForTimeout(500);
+const msgs2 = page.locator('[aria-label="Messages"]').first();
+if (await msgs2.count()) { await msgs2.click({ force: true }); await page.waitForTimeout(1000); }
+const pal2 = page.getByText("Pally", { exact: false }).first();
+if (await pal2.count()) { await pal2.click({ force: true }); await page.waitForTimeout(1400); }
+const card2 = page.locator('button[aria-label^="Open shared post"]').first();
+if (await card2.count()) { await card2.click({ force: true }); await page.waitForTimeout(1700); }
+t = await text();
+check("8a. the post opened from inside the chat", /Leg day/.test(t), t.slice(0, 220));
+const shareInOverlay = page.locator('[data-fullscreen-overlay] button[aria-label="Share"]').first();
+const haveShare2 = await shareInOverlay.count() > 0;
+check("8b. the overlay has its Share button here too", haveShare2);
+if (haveShare2) {
+  await shareInOverlay.click({ force: true });
+  await page.waitForTimeout(800);
+  t = await text();
+  check("8c. Share works inside a chat — the host is mounted on this return", /Send to/.test(t), t.slice(0, 240));
+}
 
 await page.screenshot({ path: "build/shot_sharepost.png", fullPage: false });
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
