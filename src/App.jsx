@@ -1,4 +1,4 @@
-// v178091716975
+// v178091716976
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1989,6 +1989,130 @@ const REPORT_REASONS = [
   { id:"violence",   label:"Violence or dangerous behavior" },
   { id:"other",      label:"Something else" },
 ];
+// ★ SHARING A POST SENDS A LINK, NOT A COPY (Mo's call). The alternative — republishing
+// someone's workout card into a DM — walks straight past the three-layer privacy model: a
+// private account's training would land in front of whoever the sharer chose, none of whom the
+// poster ever approved. A link carries no content, so the recipient still has to pass the
+// ORIGINAL poster's RLS to see anything; if they can't, they get "not available" and nothing has
+// leaked. That is why this needs no new policy and no new column.
+// Hosted like confirmAction/reportContent rather than lived inside PostCard, because PostCard
+// receives no token and both of its call sites would have had to grow one.
+let _setSharePost = null;
+export function sharePostTo(post) {
+  if (_setSharePost) _setSharePost({ post, key: Date.now() });
+}
+export function postShareUrl(postId) { return `${shareOrigin()}/p/${postId}`; }
+export const POST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Pull a shared post id out of a message body. Anchored on the /p/ path so an ordinary link
+// someone pastes into a chat can never be mistaken for one.
+export function postIdInText(text) {
+  const m = String(text || "").match(/https?:\/\/[^\s]*\/p\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  return m ? m[1] : null;
+}
+
+function SharePostHost({ C, token, currentUserId, store }) {
+  const [sp, setSp] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  _setSharePost = (v) => { setSp(v); setPicked([]); setQ(""); };
+  const close = () => { if (!busy) setSp(null); };
+
+  const me = (store.users || []).find(u => u.id === currentUserId);
+  const people = ((me?.following) || [])
+    .map(id => (store.users || []).find(u => u.id === id))
+    .filter(Boolean)
+    .filter(u => u.id !== currentUserId);
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? people.filter(u => (u.username || "").toLowerCase().includes(needle) || (u.name || "").toLowerCase().includes(needle))
+    : people;
+
+  const toggle = (id) => setPicked(ps => ps.includes(id) ? ps.filter(x => x !== id) : [...ps, id]);
+
+  async function send() {
+    if (busy || !sp || picked.length === 0) return;
+    setBusy(true);
+    const url = postShareUrl(sp.post.id);
+    const author = (store.users || []).find(u => u.id === sp.post.userId);
+    const text = `${author?.username ? `@${author.username}` : "A workout"} on Seshd\n${url}`;
+    // One row per recipient, sent in parallel but REPORTED honestly: a partial failure must not
+    // toast success (the app's standing rule against optimistic success toasts).
+    const results = await Promise.all(picked.map(async pid => {
+      try {
+        const res = await sb.query("messages", { method:"POST", body: JSON.stringify({ sender_id: currentUserId, recipient_id: pid, text }) }, token);
+        return Array.isArray(res) && res.length === 1;
+      } catch (e) { devError("share post dm:", e); return false; }
+    }));
+    const ok = results.filter(Boolean).length;
+    setBusy(false);
+    setSp(null);
+    if (ok === picked.length) { toast(`Sent to ${ok} ${ok === 1 ? "person" : "people"}`, "success"); haptic("light"); }
+    else if (ok > 0) toast(`Sent to ${ok} of ${picked.length} — the rest didn't go through`, "error");
+    else toast("Couldn't send — check connection", "error");
+  }
+
+  return (
+    <Sheet open={!!sp} onClose={close} z={4000} backdrop="rgba(0,0,0,0.7)" dragHandle
+      panelStyle={{ background:C.surface, borderRadius:"18px 18px 0 0", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))", border:`1px solid ${C.border}`, borderBottom:"none", maxHeight:"72dvh" }}>
+      {sp && (
+        <>
+          <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:3, letterSpacing:-0.3 }}>Send to</div>
+          <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:14 }}>
+            They get a link to this post. Whether they can open it still depends on the poster's privacy.
+          </div>
+          {people.length === 0 ? (
+            <div style={{ padding:"26px 4px", textAlign:"center", color:C.sub, fontSize:13, lineHeight:1.6 }}>
+              You're not following anyone yet. Follow people from Discover and they'll show up here.
+            </div>
+          ) : (
+            <>
+              {people.length > 8 && (
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search"
+                  aria-label="Search people"
+                  style={{ width:"100%", boxSizing:"border-box", marginBottom:10, padding:"10px 12px", borderRadius:11,
+                           background:C.bg, border:`1px solid ${C.border}`, color:C.text, fontFamily:F, fontSize:14 }}/>
+              )}
+              <div style={{ overflowY:"auto", maxHeight:"38dvh", margin:"0 -4px", padding:"0 4px" }}>
+                {shown.length === 0 && <div style={{ padding:"18px 4px", textAlign:"center", color:C.sub, fontSize:13 }}>No one matches "{q.trim()}"</div>}
+                {shown.map(u => {
+                  const on = picked.includes(u.id);
+                  return (
+                    <button key={u.id} onClick={() => toggle(u.id)} aria-pressed={on}
+                      style={{ width:"100%", display:"flex", alignItems:"center", gap:11, padding:"9px 6px",
+                               background:"none", border:"none", borderRadius:10, cursor:"pointer", fontFamily:F, textAlign:"left" }}>
+                      <Avatar user={u} size={38} C={C}/>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name || u.username}</div>
+                        <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>@{u.username}</div>
+                      </div>
+                      {/* The tick is the only state, so it must read as chosen/not-chosen without
+                          relying on colour alone — an empty ring vs a filled one. */}
+                      <span style={{ width:22, height:22, borderRadius:"50%", flexShrink:0,
+                                     border:`2px solid ${on ? C.primary : C.border}`, background: on ? C.primary : "transparent",
+                                     display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        {on && <Icon name="check" size={12} color={C.onPrimary} strokeWidth={3}/>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={send} disabled={busy || picked.length === 0}
+                style={{ width:"100%", marginTop:12, padding:"14px", borderRadius:12, border:"none",
+                         background: picked.length ? C.primary : C.divider, color: picked.length ? C.onPrimary : C.sub,
+                         fontSize:15, fontWeight:700, fontFamily:F, cursor: (busy || !picked.length) ? "default" : "pointer",
+                         opacity: busy ? 0.6 : 1 }}>
+                {busy ? "Sending…" : picked.length ? `Send to ${picked.length}` : "Send"}
+              </button>
+            </>
+          )}
+          <button onClick={close} disabled={busy} style={{ width:"100%", marginTop:8, background:"transparent", border:"none", color:C.sub, borderRadius:11, padding:"11px", fontSize:14, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:F }}>Cancel</button>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
 function ReportHost({ C, token, currentUserId }) {
   const [rp, setRp] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -2784,6 +2908,54 @@ const API_BASE = (() => {
   return Cap?.isNativePlatform?.() ? "https://spotr-drab.vercel.app" : "";
 })();
 export function aiEndpoint() { return API_BASE + "/api/ai"; }
+// ★ NEVER BUILD A SHARE LINK FROM `window.location` — INSIDE THE NATIVE SHELL IT IS NOT A URL
+// ANYONE ELSE CAN OPEN. There is no `server.url` in capacitor.config.json, so iOS loads the
+// bundle from its own scheme and `window.location.origin` is `capacitor://localhost`. Both share
+// buttons in the app were built that way, so every link they produced — a shared post, a shared
+// profile — went to a dead scheme the moment it left the phone. The web build is unaffected,
+// which is exactly why it survived: it is correct in every environment the battery can run in.
+// `API_BASE` already solved this for API calls; shares need the same answer with the web origin
+// as the fallback.
+// ★ ONE DEFINITION OF "A SERVER POST ROW BECOMES A CLIENT POST". `loadFeed` owned this inline,
+// and the moment a second reader needed it (opening a single post from a DM) it would have become
+// the eighth copy of the volume-maths story: two mappings of the same row that drift. Anything
+// that fetches from `posts` goes through here.
+export function normalizePostRow(p, persistedInteractions = {}) {
+  const persisted = persistedInteractions[p.id];
+  const dbKudos = (p.kudos || []).map(k => k.user_id);
+  const dbComments = (p.comments || []).map(c => ({
+    id: c.id, userId: c.user_id, text: c.text,
+    likes: c.likes || [],
+    createdAt: new Date(c.created_at).getTime()
+  }));
+  return {
+    id: p.id,
+    // The session this card was built from. Both post tables have carried `client_id` since
+    // the duplicate-post fix, but it was never mapped into the local post — so every place
+    // that needed "which post belongs to this workout?" fell back to guessing from the day
+    // name and a time window. See matchesSession().
+    clientId: p.client_id || null,
+    userId: p.user_id,
+    type: p.type,
+    caption: p.caption || "",
+    imageData: p.image_url,
+    location: p.location,
+    workout: p.workout,
+    run: p.run,
+    yoga: p.yoga,
+    achievement: p.achievement,
+    unit: p.unit || "lbs",
+    isPR: p.is_pr,
+    // Merge persisted kudos (covers both own-post RLS-blocked likes and other-post likes still in flight)
+    kudos: persisted ? Array.from(new Set([...dbKudos, ...(persisted.kudos||[])])) : dbKudos,
+    comments: persisted ? [...dbComments, ...(persisted.comments||[])] : dbComments,
+    createdAt: new Date(p.created_at).getTime(),
+  };
+}
+
+export function shareOrigin() {
+  return API_BASE || ((typeof window !== "undefined" && window.location?.origin) || "https://spotr-drab.vercel.app");
+}
 // /api/ai requires a signed-in Supabase session — the proxy verifies the token server-side
 // so the Anthropic key can't be farmed by strangers hitting the URL directly. Returns null
 // for guests; callers must degrade gracefully (table-program fallback / sign-in note).
@@ -6466,8 +6638,11 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         </button>
         <button
           onClick={() => {
-            const shareText = post.caption ? `${user?.username} on Seshd: ${post.caption}` : `Check out ${user?.username}'s workout on Seshd`;
-            shareLink({ title:"Seshd", text: shareText, url: window.location.href }, () => toast("Link copied", "success"));
+            // Share is IN-APP (Mo): pick people you follow, they get a DM with a link to this
+            // post. The OS share sheet used to live here and was sending
+            // `window.location.href`, which inside the native shell is `capacitor://localhost/`
+            // — a dead scheme the recipient could not open. See shareOrigin.
+            sharePostTo(post);
           }}
           aria-label="Share"
           style={{ background:"none", border:"none", cursor:"pointer", padding:"8px 10px", display:"flex", alignItems:"center", justifyContent:"center" }}
@@ -13893,7 +14068,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   haptic("warn");
                   return;
                 }
-                const link = `${window.location.origin}/u/${currentUserId}`;
+                const link = `${shareOrigin()}/u/${currentUserId}`;
                 shareLink({ title: "My Seshd profile", url: link }, () => toast("Profile link copied", "success"));
                 haptic("tap");
               }}
@@ -15705,6 +15880,78 @@ function AppInner() {
   }, [showNewPost, store.history]);
   const [newPostKind, setNewPostKind] = useState("photo");
   const [profileUserId, setProfileUserId] = useState(null);
+  // A post opened by id — from a shared link in a DM, or a /p/<uuid> deep link. `null` = closed,
+  // `{id, post:null}` = loading, `{id, post}` = loaded, `{id, post:false}` = not visible to me.
+  // The "not visible" case is not an error path: it is the privacy model working. A link carries
+  // no content, so a recipient who does not pass the poster's RLS simply sees nothing.
+  const [postView, setPostView] = useState(null);
+  // Open a post by id — a shared link tapped in a DM, or a /p/<uuid> deep link.
+  useEffect(() => {
+    const onOpenPost = (e) => {
+      const id = e?.detail?.id;
+      if (id) setPostView({ id: String(id), post: null });
+    };
+    window.addEventListener("seshd:open-post", onOpenPost);
+    // The WEB half of the same link. Native gets it through appUrlOpen; a browser simply boots at
+    // /p/<uuid> (vercel.json rewrites that to the SPA), so the path has to be read once at mount.
+    // Cleared from the URL afterwards so a refresh doesn't reopen a post the user closed.
+    try {
+      const seg = (window.location?.pathname || "").match(/^\/p\/([\w-]+)/);
+      if (seg && POST_ID_RE.test(seg[1])) {
+        setPostView({ id: seg[1], post: null });
+        window.history.replaceState(null, "", "/");
+      }
+    } catch (e) {}
+    return () => window.removeEventListener("seshd:open-post", onOpenPost);
+  }, []);
+  // Fetch it. RLS decides visibility, so an empty result is the ANSWER (the poster is private and
+  // I don't follow them), not a failure — those two render differently and must not be conflated.
+  useEffect(() => {
+    if (!postView || postView.post !== null) return;
+    const id = postView.id;
+    let cancelled = false;
+    (async () => {
+      const tok = tokenRef.current || loadSession()?.access_token;
+      try {
+        const rows = await sb.query(`posts?id=eq.${id}&select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)`, {}, tok);
+        if (cancelled) return;
+        const row = Array.isArray(rows) ? rows[0] : null;
+        setPostView(v => (v && v.id === id) ? { ...v, post: row ? normalizePostRow(row, store.historyInteractions || {}) : false } : v);
+      } catch (e) {
+        if (!cancelled) setPostView(v => (v && v.id === id) ? { ...v, post: false } : v);
+        devWarn("post view fetch:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postView?.id, postView?.post]);
+  // ★ THE AUTHOR LOOKUP IS ITS OWN EFFECT, AND IT HAS TO BE. It began as a continuation inside
+  // the fetch above — and the `setPostView` on the line before it changes that effect's OWN deps,
+  // so React ran the cleanup, `cancelled` flipped true, and the merge was skipped every single
+  // time. The post opened with no name and no avatar, silently. An effect that cancels itself on
+  // a state update it makes cannot do anything after that update.
+  // The poster is very likely someone we have never loaded — a friend of a friend, whose post
+  // arrived as a link in a DM.
+  useEffect(() => {
+    const uid_ = postView?.post?.userId;
+    if (!uid_ || (store.users || []).some(u => u.id === uid_)) return;
+    let cancelled = false;
+    (async () => {
+      const tok = tokenRef.current || loadSession()?.access_token;
+      try {
+        const ps = await sb.query(`public_profiles?id=eq.${uid_}&select=id,username,name,bio,avatar_url,is_public`, {}, tok);
+        const pr = Array.isArray(ps) ? ps[0] : null;
+        if (!pr || cancelled) return;
+        setStore(prev => (prev.users || []).some(u => u.id === pr.id) ? prev : ({
+          ...prev,
+          users: [...(prev.users || []), { id: pr.id, username: pr.username, name: pr.name, bio: pr.bio || "", avatar: pr.avatar_url || "", followers: [], following: [] }],
+        }));
+      } catch (e) { devWarn("post view profile:", e); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postView?.post?.userId]);
+
   const [editingPost, setEditingPost] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
   // Widget shared data: write streak + next-workout to native UserDefaults for WidgetKit.
@@ -15739,7 +15986,13 @@ function AppInner() {
             const u = new URL(url);
             const mU = u.pathname.match(/^\/u\/([\w-]+)/) || (u.hash || "").match(/^#\/u\/([\w-]+)/);
             if (mU) { setProfileUserId(mU[1]); return; }
-            const code = u.searchParams.get("code") || (u.pathname.match(/^\/p\/([\w-]+)/) || [])[1];
+            // /p/ carries TWO things and they are told apart by SHAPE: a post id is a uuid, a
+            // share code is IGNITE-… / WO-…. Post links ride the already-claimed /p/ path on
+            // purpose — iOS caches the AASA at install time, so a NEW universal-link path would
+            // not reach any build already on a phone.
+            const pSeg = (u.pathname.match(/^\/p\/([\w-]+)/) || [])[1];
+            if (pSeg && POST_ID_RE.test(pSeg)) { window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id: pSeg } })); return; }
+            const code = u.searchParams.get("code") || pSeg;
             if (code) window.dispatchEvent(new CustomEvent("seshd:open-code-internal", { detail: { code } }));
           } catch (e) {}
         }).then(h => { removeUrlListener = h; });
@@ -16718,38 +16971,7 @@ function AppInner() {
       // Read persisted own-post interactions (these survive page refresh via localStorage)
       const persistedInteractions = store.historyInteractions || {};
 
-      const appPosts = posts.map(p => {
-        const persisted = persistedInteractions[p.id];
-        const dbKudos = (p.kudos || []).map(k => k.user_id);
-        const dbComments = (p.comments || []).map(c => ({
-          id: c.id, userId: c.user_id, text: c.text,
-          likes: c.likes || [],
-          createdAt: new Date(c.created_at).getTime()
-        }));
-        return {
-          id: p.id,
-          // The session this card was built from. Both post tables have carried `client_id` since
-          // the duplicate-post fix, but it was never mapped into the local post — so every place
-          // that needed "which post belongs to this workout?" fell back to guessing from the day
-          // name and a time window. See matchesSession().
-          clientId: p.client_id || null,
-          userId: p.user_id,
-          type: p.type,
-          caption: p.caption || "",
-          imageData: p.image_url,
-          location: p.location,
-          workout: p.workout,
-          run: p.run,
-          yoga: p.yoga,
-          achievement: p.achievement,
-          unit: p.unit || "lbs",
-          isPR: p.is_pr,
-          // Merge persisted kudos (covers both own-post RLS-blocked likes and other-post likes still in flight)
-          kudos: persisted ? Array.from(new Set([...dbKudos, ...(persisted.kudos||[])])) : dbKudos,
-          comments: persisted ? [...dbComments, ...(persisted.comments||[])] : dbComments,
-          createdAt: new Date(p.created_at).getTime(),
-        };
-      });
+      const appPosts = posts.map(p => normalizePostRow(p, persistedInteractions));
 
       setStore(prev => {
         const incoming = appPosts;
@@ -18646,8 +18868,64 @@ function AppInner() {
     </Suspense>;
   }
 
+  // ★ RENDERED BY EVERY RETURN PATH THAT CAN BE ON SCREEN WHEN A POST OPENS — AND THE CHAT IS
+  // THE ONE THAT MATTERS. `chatPeerId` EARLY-RETURNS, rendering only the thread, so a post view
+  // living solely in the main return set its state and drew nothing: tapping a shared post in a
+  // DM — the single place shared posts arrive — did exactly nothing. Caught by driving it, not by
+  // reading it. A hoisted function rather than a `const` element so it can be called from a
+  // return that sits above wherever it is defined.
+  function renderPostOverlay() {
+    if (!postView) return null;
+    // Portaled and fixed at zIndex 60 for the same reasons the profile overlay is (see its
+    // comment): it must cover the app's own top bar, and PostCard contains fixed children of its
+    // own. Because it sits ABOVE the nav's zIndex 50 the nav is covered rather than tappable, so
+    // this needs no line in switchTab — that rule is for overlays the nav floats over.
+    return createPortal((
+        <div data-no-tab-swipe data-fullscreen-overlay="true" className="seshd-push-in" style={{ position:"fixed", inset:0, zIndex:60, maxWidth:480, margin:"0 auto" }}>
+          <EdgeSwipeBack onBack={() => setPostView(null)}
+            style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"calc(env(safe-area-inset-top) + 8px) 8px 8px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
+              <button onClick={() => setPostView(null)} aria-label="Back" className="seshd-hit"
+                style={{ fontSize:22, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"8px 12px" }}>‹</button>
+              <div style={{ fontSize:15, fontWeight:700, color:C.text }}>Post</div>
+            </div>
+            <div style={{ flex:1, overflowY:"auto", padding:"14px 0 calc(28px + env(safe-area-inset-bottom))" }}>
+              {postView.post === null && <div style={{ padding:32 }}><Spinner C={C}/></div>}
+              {postView.post === false && (
+                <div style={{ padding:"48px 28px", textAlign:"center" }}>
+                  <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:7 }}>This post isn't available</div>
+                  <div style={{ fontSize:13, color:C.sub, lineHeight:1.6 }}>
+                    It may have been deleted, or the person who posted it keeps their account private.
+                  </div>
+                </div>
+              )}
+              {postView.post && (
+                <PostCard
+                  post={postView.post}
+                  store={store}
+                  currentUserId={currentUserId}
+                  displayUnit={unit}
+                  C={C}
+                  onKudos={handleKudos}
+                  onComment={handleComment}
+                  onEditComment={handleEditComment}
+                  onDeleteComment={handleDeleteComment}
+                  onLikeComment={handleLikeComment}
+                  onUserClick={(uid_) => { setPostView(null); setProfileUserId(uid_); }}
+                  onEdit={setEditingPost}
+                  onDelete={(id_) => { setPostView(null); handleDelete(id_); }}
+                />
+              )}
+            </div>
+          </EdgeSwipeBack>
+        </div>
+      ), document.body);
+  }
+
   if (chatPeerId) {
     return (
+      <>
+      {renderPostOverlay()}
       <EdgeSwipeBack onBack={() => { setChatPeerId(null); refreshMsgUnread(); }}
         style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
         <Suspense fallback={null}>
@@ -18655,6 +18933,7 @@ function AppInner() {
             onBack={() => { setChatPeerId(null); refreshMsgUnread(); }} onRead={refreshMsgUnread}/>
         </Suspense>
       </EdgeSwipeBack>
+      </>
     );
   }
 
@@ -18825,6 +19104,7 @@ function AppInner() {
       <ToastHost/>
       <ConfirmHost C={C}/>
       <ReportHost C={C} token={token} currentUserId={currentUserId}/>
+      <SharePostHost C={C} token={token} currentUserId={currentUserId} store={store}/>
 
       {/* Exactly ONE of these three may reserve the status-bar area: the topmost one actually on
           screen. They each added env(safe-area-inset-top) independently, so any two at once —
@@ -19710,6 +19990,8 @@ function AppInner() {
           </EdgeSwipeBack>
         </div>
       )}
+
+      {renderPostOverlay()}
 
       {profileUserId && createPortal((
         // NOT an early return. When this screen early-returned, the rest of the app wasn't

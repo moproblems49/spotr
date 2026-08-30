@@ -3219,6 +3219,60 @@ build it was written to fail. It asserts ZERO filled chips plus a trophy in the 
 red-proof reports real numbers: **8.4375px** of misalignment and **1 filled chip, trophy absent**.
 A conditional check that skips now PRINTS `SKIP` — one that quietly never runs is worth nothing.
 
+## Share on a feed post sends it to people you follow (Aug 30, 2026)
+Mo: "When clicking on share under a feed post, that should share with friends or groups." He asked
+about the interaction; the button was also **broken**, which is the stronger reason it changed.
+- **★ NEVER BUILD A SHARE LINK FROM `window.location` — INSIDE THE NATIVE SHELL IT IS NOT A URL
+  ANYONE ELSE CAN OPEN.** There is no `server.url` in `capacitor.config.json`, so iOS loads the
+  bundle from its own scheme and `window.location.origin` is `capacitor://localhost`. **BOTH**
+  share buttons were built that way — the feed post sent `window.location.href`, the profile sent
+  `${window.location.origin}/u/<id>` — so every link either produced was a dead scheme the moment
+  it left the phone. The web build is correct, which is exactly why it survived: it is right in
+  every environment the battery can run in, and the red-proof of the new suite shows the old code
+  copying `capacitor://localhost/` to the clipboard. `shareOrigin()` is the one answer (it mirrors
+  `API_BASE`, which had already solved this for API calls); the profile link goes through it too.
+- **THE SHARE IS A LINK, NOT A COPY — and that is the whole privacy design.** Republishing someone
+  else's workout card into a DM would hand their training to people the poster never approved,
+  walking straight past the follow-approval model. A link carries no content, so the recipient
+  still has to pass the ORIGINAL poster's RLS; if they can't they see "This post isn't available"
+  and nothing has leaked. No new policy, no new column, no new RLS. `pw_sharepost` 3f asserts the
+  message body does NOT contain the workout's numbers, so if that ever changes the suite says so.
+- **Recipients are people you FOLLOW.** Groups were offered and deliberately not taken (Mo);
+  the OS share sheet is gone from that button entirely.
+- **A post link rides the already-claimed `/p/` path, and that was not a style choice.** iOS caches
+  the AASA at INSTALL time, so a NEW universal-link path cannot reach a build already on a phone.
+  `/p/` was claimed and routed to share CODES; a post id is a uuid and a code is `IGNITE-`/`WO-`,
+  so they are told apart by SHAPE (`POST_ID_RE`). The web half needed a `vercel.json` rewrite plus
+  a boot-time read of `location.pathname`, since `/p/*` had never actually been a web URL.
+- **`normalizePostRow` is now the ONE server-row-to-client-post mapping.** `loadFeed` owned it
+  inline; the single-post fetch would have been the second copy — the volume-maths story again.
+- **★ AN EFFECT THAT `setState`s ITS OWN DEPENDENCY CANCELS EVERYTHING AFTER THAT LINE.** The post
+  fetch set `postView.post` and then, in the same async continuation, looked up an author the
+  client had never loaded. Changing `post` changed the effect's deps, React ran the CLEANUP,
+  `cancelled` flipped true, and the merge was skipped **every single time** — every post opened
+  from a DM showed no name and no avatar, silently. Split into its own effect keyed on
+  `postView?.post?.userId`. Found by driving the screen; nothing about the code reads as wrong.
+- **★ AND THE ONE THAT MATTERED MOST: `chatPeerId` EARLY-RETURNS, SO AN OVERLAY IN THE MAIN RETURN
+  DOES NOT EXIST INSIDE A CHAT.** The post view set its state and rendered nothing, so tapping a
+  shared post in a DM — the single place shared posts arrive — did exactly nothing. The hooks were
+  fine (they sit above the early return, per the standing rule); it is the JSX that never ran.
+  `renderPostOverlay()` is a hoisted function called by BOTH return paths. **When adding an
+  overlay, check every `return` in `AppInner`, not just the last one** — and reach it the way a
+  user does, because a direct `window.dispatchEvent` from the top-level screen passes on the
+  broken build.
+- **★ A `useEffect` DEP ARRAY IS EVALUATED DURING RENDER, SO IT CANNOT SIT ABOVE ITS OWN
+  `useState`.** The first cut put the effects ~25 lines above `const [postView, setPostView]` and
+  the whole app hit the error boundary with `Cannot access 'postView' before initialization`. The
+  minified name (`ge`) said nothing; `npx vite build --minify false` gave the real one in one run.
+  Worth reaching for immediately on any TDZ error.
+- **Suite: `pw_sharepost`** (21 checks). It asserts the WRITE, not the toast — a local-only send is
+  this app's dominant bug class — and its two absence checks ("a follower I don't follow back is
+  absent") are gated on the sheet actually being open, because otherwise they pass on the very
+  build the suite exists to fail. Red-proofed at 13 failures, failing CLEANLY rather than
+  stack-tracing on the first missing locator. Fixture note: `loadUserData` rebuilds the social
+  graph from `follows` and replaces `store.users` wholesale, so seeding `following` into
+  localStorage alone loses it on the first foreground — seed through the STUB.
+
 ## ★★ THE "DELETE MY GROUPS" CHOICE SHIPPED INERT, AND A STALE uuid COULD BRICK DELETION (Aug 29)
 A cold-context audit of the group-ownership work found two CONFIRMED defects in it, both mine, and
 the second is the more serious thing this project has shipped in a while.

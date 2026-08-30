@@ -1,5 +1,12 @@
 {
   "rewrites": [
-    { "source": "/u/:id", "destination": "/api/profile-og?id=:id" }
+    {
+      "source": "/u/:id",
+      "destination": "/api/profile-og?id=:id"
+    },
+    {
+      "source": "/p/:id",
+      "destination": "/index.html"
+    }
   ]
 }
