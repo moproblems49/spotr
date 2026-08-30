@@ -3024,6 +3024,51 @@ other filter, so opening one would have made it the root and reported a confiden
   resolved anyway. A genuinely unmatchable name was needed to see it. Pick a fixture name that
   cannot collide when testing name RESOLUTION.
 
+## Sweep #5 (Aug 30, 2026) — the error rate is effectively ZERO, and the demo corpus had drifted again
+**Postgres errors: 9 in 24h, and all nine are MINE** — every one is a `POST /mcp` audit probe,
+role-sim or rolled-back test from the previous day's work. Zero user-generated errors. The
+`personal_records` 23505 story that opened at 1,650/day (→953→83→58) is closed for good.
+Auth logs clean: 52 `/token` calls, all 200, no failed-login or reset-email failures.
+`client_errors` silent for 14 days. `code_redeem_failures` sitting at 0 rows, so the opportunistic
+cleanup is working. Table sizes all proportionate to 8 profiles; nothing growing anomalously.
+Orphaned `member_ids`: **0**.
+**★ THE DEMO CORPUS HAD DRIFTED AGAIN, AND THE MAXIMUM SAFE SHIFT WAS SMALLER THAN IT LOOKED.**
+Newest persona post was 3-5 days old and each persona had only **2** workouts inside the 7-day
+muscle-map window — three days from an empty "Muscles Trained" on every persona. The newest
+persona row across all shifted tables was a KUDOS at `08-27 22:55Z`, not a post, so `+3 days`
+would have future-dated it and **+2 was the ceiling** — pick the offset from `max()` across every
+table you intend to shift, not from the one you happen to look at. After: newest persona post
+1-3 days old, every persona 3+ workouts in window, `seshdreview` 6. Backup:
+`demo_shift_backup_20260830` (244 rows).
+**★ AND THE VERIFICATION CAUGHT A NEW INSTANCE OF THE ORDERING TRAP, IN THE MIRROR DIRECTION.**
+The documented version is "a persona kudos on a RECENT REAL post goes FUTURE under the shift".
+This time it was the opposite: **Mo's OWN kudos on persona posts**. The post moved +2 days, his
+real kudos correctly did not, so five kudos ended up dated BEFORE the post they sit on. Fixed by
+the same rule — placement inside `[post.created_at, now())`, implemented as
+`post.created_at + least(3h, (now() - post.created_at)/2)` so it is strictly after the post and
+strictly before now by construction. Backup: `demo_shift_kudosfix_20260830`.
+**The generalisation: shifting one side of a relationship breaks its ordering with the side you
+correctly did not shift.** Verify DATABASE-WIDE, not persona-scoped — a persona-scoped check
+would have reported clean here, because both offending rows' owners were real users.
+**★ FIVE TRIGGER FUNCTIONS WERE CALLABLE AS RPCs AND SEVEN WERE NOT — the one-guard-didn't-get-
+copied class, in the database.** `enforce_group_creator_manages`, `enforce_group_post_author_edit`,
+`enforce_message_content_immutable`, `touch_personal_record_updated_at` and
+`transfer_groups_on_profile_delete` all had EXECUTE; the other seven had it revoked.
+**NOT exploitable — measured, not assumed**: Postgres refuses with "trigger functions can only be
+called as triggers". Revoked anyway as defence in depth, which cleared the advisor warning.
+**Two things worth keeping from doing it:** `REVOKE … FROM anon, authenticated` CHANGED NOTHING
+(the grant is to `PUBLIC`, which is why the other seven read false) — the statement succeeded and
+had no effect, so check the privilege afterward rather than trusting the revoke. And trigger
+FIRING does not consult EXECUTE: verified after the revoke by driving two forbidden group edits
+(both still refused) and a no-op PR update (date still preserved). **The first version of that
+probe reported "guard did not fire" and was wrong** — it set `member_ids` to a value that removes
+exactly the caller, which the guard deliberately ALLOWS. Read what the guard permits before
+concluding it is broken.
+**Still open, unchanged:** leaked-password protection (paid plan), `pg_net` in public, and the two
+duplicate `workout_codes` DELETE policies (documented as harmless, consolidate when that table is
+next touched — deliberately not touched here). The four SECURITY DEFINER warnings that remain
+(`profile_is_public`, both redeem RPCs, `group_image_member_check`) are all deliberate.
+
 ## ★ Sweep #4 (Aug 29, 2026) — the personal_records fix is CONFIRMED, and account deletion leaked files
 **The 1,650/day → 953 → 83 story ends here.** All 58 remaining `personal_records` 23505s landed in
 a SINGLE hour (Aug 28 14:00) with 11 hours of silence after — one device on a pre-fix bundle
