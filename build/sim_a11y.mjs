@@ -42,6 +42,20 @@ function extractTheme(label) {
   for (const m of block.matchAll(/(\w+):\s*"(#[0-9a-fA-F]{6})"/g)) t[m[1]] = m[2];
   return t;
 }
+// ★ SWEEP EVERY REGISTERED THEME, NOT THE TWO THIS FILE HAPPENS TO KNOW. Themes are plural now,
+// and a guard that enumerates a hardcoded pair silently stops covering the palette someone just
+// added — the same blindness that let src/lazy/ go unchecked for weeks (see CLAUDE.md). The list
+// is read from THEME_META in the source, so adding a theme automatically extends this check and
+// a theme that fails contrast cannot ship green.
+// Scope the id scan to THEME_META's own block — an unscoped `{id:…,label:…}` match picks up
+// report reasons, set types and tab names too (it found 24 "themes" on the first run and threw).
+const metaStart = src.indexOf("const THEME_META = [");
+if (metaStart === -1) throw new Error("THEME_META not found in src/App.jsx");
+const metaBlock = src.slice(metaStart, src.indexOf("\n];", metaStart));
+const themeIds = [...metaBlock.matchAll(/id:\s*"(\w+)"/g)].map(m => m[1]);
+check("THEME_META was found and lists at least the two original themes",
+  themeIds.includes("dark") && themeIds.includes("light"), JSON.stringify(themeIds));
+const THEME_SET = themeIds.map(id => [id, extractTheme(id)]);
 const dark = extractTheme("dark");
 const light = extractTheme("light");
 
@@ -49,7 +63,7 @@ const light = extractTheme("light");
 // /muted at minimum; gold/red/green/orange/accent are checked too since they're used as text for
 // badges (PR tags, deltas, admin labels).
 const TEXT_TOKENS = ["text", "textDim", "sub", "muted", "gold", "red", "green", "orange"];
-for (const [name, t] of [["dark", dark], ["light", light]]) {
+for (const [name, t] of THEME_SET) {
   for (const tok of TEXT_TOKENS) {
     if (!t[tok]) continue;
     const rBg = ratio(t[tok], t.bg), rSurf = ratio(t[tok], t.surface);

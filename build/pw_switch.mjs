@@ -167,7 +167,10 @@ for (const theme of ["dark", "light"]) {
   check("[race] tapping KG visibly selects it", unitPicked === "KG" && unitBefore !== "KG", `${unitBefore} -> ${unitPicked}`);
 
   const themeBefore = await readTheme();
-  await page.evaluate(() => { const b=[...document.querySelectorAll("button")].filter(x=>x.offsetParent).find(x=>/^Light$/i.test((x.textContent||"").trim())); b && b.click(); });
+  // Appearance is a LIST now, not two pills — the row's text is "LightWarm off-white canvas", so
+  // the old exact /^Light$/ match found nothing and clicked nothing while the check blamed the app.
+  // Select on the stable hook instead.
+  await page.evaluate(() => { const b=document.querySelector('[data-theme-option="light"]'); b && b.click(); });
   await page.waitForTimeout(600);
   const themePicked = await readTheme();
   check("[race] switching to Light visibly changes the app", themePicked !== themeBefore, `${themeBefore} -> ${themePicked}`);

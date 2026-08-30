@@ -3465,6 +3465,55 @@ was: delete the stub zip, rebuild from the repo root with absolute paths only, r
 trusting the build log. **Never chain `cd` in a publish step; and verify the zip you are about to
 ship, not the dist you think you built.**
 
+## ★★ THEMES ARE PLURAL — phases 1 and 2 (Aug 30)
+Mo, for people who don't like the lime. Two phases: make the system take N themes, then ship a
+third palette that is genuinely liveable rather than a novelty.
+**Phase 1 — the plumbing, and the crash nobody had to worry about before.** `THEMES[store.theme]`
+was safe while the only two values came from a two-option toggle. The moment a theme can be ADDED
+— or REMOVED in a later release while a phone still has it saved, or synced down from
+`profiles.theme` — an unknown key resolves to `undefined` and the very next `C.bg` throws at the
+top of the component: a boot crash on every launch, the PROGRAM_TEMPLATES shape. **`themeOf(key)`
+is now the only way to read a palette** and falls back to the default; `themeIdOf(key)` normalises
+the id so an unknown stored value cannot render a picker with nothing selected. `THEME_META` is
+the registry, and `isDark` is read off the palette itself so a theme cannot disagree with its own
+listing. Verified: `profiles.theme` is plain `text` with no CHECK constraint, so a new id persists
+(checked, not assumed — a constraint would have failed silently through `queueWrite`).
+**The picker is a LIST, not a segmented control.** Two pills fit on a line; four labels do not, and
+shrinking the text to fit is how a control becomes unreadable. Each row shows the theme's name, a
+one-line description and a swatch of ITS OWN bg/surface/accent — the point is previewing a palette
+you are not currently looking at. Rows carry `data-theme-option` because **matching on label text
+is exactly what broke `pw_switch`**: its `/^Light$/` found nothing once the row read
+"LightWarm off-white canvas", so it clicked nothing and the check blamed the app for not
+repainting. A stable hook beats text; both suites use it now.
+**Phase 2 — `midnight`.** A cool blue dark palette. The only thing that had to change is the
+ACCENT (volt is what is being objected to); everything else copies the dark theme's structure,
+which was already measured. **What a palette may NOT own: `red` / `green` / `gold`.** They are
+semantic — the body map's ramp interpolates them, PRs are gold, errors are red — so recolouring
+them would change what the app MEANS. A theme owns its accent, not the vocabulary. Every pair was
+measured before shipping: accent-as-fill with its ink 7.75:1, accent-as-text on its own tint
+5.70:1, overlayEdge 3.40:1 against this theme's scrim, and the tightest text token (`muted`)
+4.76:1 on surface.
+**`sim_a11y` now sweeps EVERY registered theme**, reading the ids out of `THEME_META` — so adding
+a palette automatically extends the check and one that fails contrast cannot ship green. (The id
+scan had to be scoped to THEME_META's own block: an unscoped `{id:…,label:…}` match also picked up
+report reasons, set types and tab names, and found 24 "themes" on the first run.)
+**★ AND THE NEW THEME IMMEDIATELY EXPOSED A HARDCODED LEAK, WHICH IS THE POINT OF HAVING ONE.**
+`GROUP_COLOR.Legs` was `#c8f135` — the dark theme's accent, baked in for every theme. Two bugs in
+one literal: it collided with the accent's reserved meaning on the theme it came from, and it
+painted a LIME bar on the palette whose entire purpose is that there is no lime. Found by
+rendering Midnight and looking, not by reading. Now violet `#8b5cf6`, the widest open hue gap and
+the only candidate measured to clear 3:1 on all three surfaces. These are CATEGORICAL colours
+(they encode muscle group, which is earned) so five distinct hues is right — what was wrong was
+one of them being the accent.
+**Known and deliberately NOT fixed, for the next theme pass:** the other four `GROUP_COLOR` hues
+are calibrated for dark and measure 1.8-2.8:1 on the light theme's white card (they are labelled
+bars, not colour-only, so this is polish); the strength-level ladder's `Advanced` is also the volt
+accent, but it sits in an ordered green→lime→orange→gold ramp where that position is defensible;
+and `emptyMuscleCol` / the silhouette's `bodyCol` are keyed on `isDark` rather than the palette, so
+they are neutral greys on a blue theme rather than tuned to it. Sim: `pw_themes` (unknown key does
+not crash — red-proofed to the error boundary; every registered theme has a row; picking one
+repaints AND writes to the server, since a local-only setStore is this app's dominant bug class).
+
 ## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
 Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
 every full-cover overlay (`position:fixed/absolute` + `inset:0` + a zIndex) found **33**, but only

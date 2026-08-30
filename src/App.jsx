@@ -1,4 +1,4 @@
-// v178091716985
+// v178091716986
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -886,8 +886,69 @@ const THEMES = {
     // see the note on `sub` above about the two tiers converging as a result.
     muted: "#73706b",
     tabBg: "rgba(246,245,243,0.85)",
-  }
+  },
+  // ★ MIDNIGHT — the palette for people who don't want lime. The brief was literally "for the
+  // people that don't like the colors", so the ONE thing that had to change is the accent: volt
+  // is the app's loudest signature and the thing being objected to. Everything else follows the
+  // dark theme's structure exactly (same elevation gaps, same contrast targets) because that
+  // structure was measured and works — this is a re-hue, not a redesign.
+  // What deliberately does NOT change: red / green / gold. They are SEMANTIC — the body map's
+  // red→green ramp interpolates them, PRs are gold, errors are red — so a theme that recoloured
+  // them would change what the app MEANS, not just how it looks. A palette may own its accent;
+  // it may not own the vocabulary.
+  // Blue is mid-light, so `onAccent` is dark ink exactly as volt's is, and `accentInk` can be the
+  // accent itself on a dark ground. Every pair here is swept by sim_a11y across all themes.
+  midnight: {
+    isDark: true,
+    bg: "#0a0c12",          // deep blue-black — same depth as dark's #0b0b0e, cooler
+    surface: "#171b26",     // raised cards/sheets
+    card: "#171b26",
+    border: "#2f3648",      // card edges on the page
+    overlayEdge: "#5a637a", // 3.40:1 against this theme's own scrim (see the dark theme's note)
+    divider: "#232a39",
+    accent: "#5fa8ff",          // the signature: a clear blue, readable as a FILL on dark
+    accentSoft: "rgba(95,168,255,0.12)",
+    accentInk: "#5fa8ff",       // accent as TEXT on the tint — dark ground, so the fill works
+    accent2: "#3d8ce0",
+    onAccent: "#08101c",        // ink ON the blue fill (blue is light — dark ink)
+    primary: "#f2f4f8",         // filled buttons stay neutral, same rule as the other themes
+    onPrimary: "#0a0c12",
+    orange: "#fb923c",
+    green: "#34d399",
+    gold: "#fbbf24",
+    red: "#f87171",
+    text: "#f2f4f8",
+    textDim: "#c3cadb",
+    sub: "#9aa3b8",
+    muted: "#7d879c",
+    tabBg: "rgba(12,15,22,0.88)",
+  },
+
 };
+// ★ THEMES ARE PLURAL NOW, SO THE KEY IS DATA AND HAS TO BE VALIDATED. `THEMES[store.theme]` was
+// safe while the only two values were written by a segmented control that could produce nothing
+// else; the moment a theme can be added — or REMOVED in a later release while a phone still has
+// it saved, or synced down from `profiles.theme` — an unknown key resolves to `undefined` and the
+// very next `C.bg` throws at the top of the component. That is the boot-crash shape this file
+// already has scars from (PROGRAM_TEMPLATES). `themeOf` is the only way to read a theme.
+// `isDark` is read off the theme itself rather than duplicated here, so a palette cannot disagree
+// with its own listing.
+const DEFAULT_THEME = "light";
+const THEME_META = [
+  { id: "light",    label: "Light",    blurb: "Warm off-white canvas" },
+  { id: "dark",     label: "Dark",     blurb: "Deep grey, volt accent" },
+  { id: "midnight", label: "Midnight", blurb: "Cool blue — no lime" },
+];
+function themeOf(key) {
+  return THEMES[key] || THEMES[DEFAULT_THEME];
+}
+// The id, normalised — for the places that need the KEY rather than the palette (persisting the
+// choice, comparing against a picker button). Keeps an unknown stored value from rendering a
+// picker with nothing selected.
+function themeIdOf(key) {
+  return THEMES[key] ? key : DEFAULT_THEME;
+}
+
 
 // THE ACCENT FOR A SURFACE THAT IS DARK IN BOTH THEMES. A few elements — the minimised rest bar is
 // the one that exists today — are a near-black slab whatever the theme, so their contents already
@@ -4318,7 +4379,18 @@ function MuscleBalance({ store, C, days = 30 }) {
     return { total, groups };
   }, [store.history, days]);
 
-  const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#c8f135", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
+  // ★ `Legs` WAS THE DARK THEME'S ACCENT, HARDCODED — two bugs in one literal. It collided with
+  // the accent's reserved meaning (PRs, progress, the muscle map) on the theme it was taken from,
+  // and it is baked in for EVERY theme, so it painted a lime bar on Midnight, the palette whose
+  // entire purpose is that there is no lime. Found by rendering the new theme, not by reading.
+  // Violet is the widest open hue gap between the other four and the only candidate measured to
+  // clear 3:1 on all three surfaces (4.00 dark / 4.23 light / 4.06 midnight).
+  // These are CATEGORICAL — they encode muscle group, which is earned colour — so five distinct
+  // hues is right; what was wrong was one of them being the accent.
+  // Known and NOT fixed here: the other four are calibrated for dark and measure 1.8-2.8:1 on the
+  // light theme's white card. They are labelled bars, not colour-only, so this is a polish item
+  // rather than a correctness one — but a future theme pass should re-measure all five.
+  const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#8b5cf6", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
 
   if (!data.total) {
     // A floating centered paragraph with no heading, sitting directly above the readiness card,
@@ -14649,16 +14721,45 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             <div style={{ overflowY:"auto", flex:1, padding:"14px", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch" }}>
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PREFERENCES</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
-                  <div style={{ fontSize:14, color:C.text }}>Appearance</div>
-                  <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
-                    {["light","dark"].map(th => (
-                      <button key={th} onClick={() => onToggleTheme(th)} style={{
-                        padding:"6px 14px", background:(store.theme||"light")===th?C.primary:"transparent",
-                        color:(store.theme||"light")===th?C.onPrimary:C.sub, border:"none", borderRadius:20,
-                        fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:F
-                      }}>{th==="light"?"Light":"Dark"}</button>
-                    ))}
+                {/* ★ A SEGMENTED CONTROL DOES NOT SCALE PAST TWO OPTIONS, so Appearance is a
+                    LIST now: each theme gets a row with its name, a one-line description and a
+                    live swatch of its own palette. Two pills fit on one line; four labels do not,
+                    and shrinking the text to make them fit is how a control becomes unreadable.
+                    A list also lets a theme say what it IS, which matters when the reason someone
+                    is here is "I don't like the colours" — see THEME_META. */}
+                <div style={{ padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ fontSize:14, color:C.text, marginBottom:10 }}>Appearance</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    {THEME_META.map(tm => {
+                      const on = themeIdOf(store.theme) === tm.id;
+                      const pal = THEMES[tm.id];
+                      return (
+                        // data-theme-option is the selector contract for the suites. Matching on
+                        // the label text is what broke pw_switch when this became a list — the row
+                        // reads "LightWarm off-white canvas", so an exact /^Light$/ found nothing
+                        // and silently clicked nothing. A stable hook beats text every time.
+                        <button key={tm.id} onClick={() => onToggleTheme(tm.id)} aria-pressed={on}
+                          data-theme-option={tm.id}
+                          style={{ display:"flex", alignItems:"center", gap:11, width:"100%", textAlign:"left",
+                                   padding:"10px 11px", borderRadius:11, cursor:"pointer", fontFamily:F,
+                                   background: on ? C.accentSoft : "transparent",
+                                   border:`1px solid ${on ? C.accentInk : C.border}` }}>
+                          {/* The swatch is the theme's OWN colours, not the current one's — the
+                              point is to preview a palette you are not looking at yet. */}
+                          <span style={{ display:"flex", flexShrink:0, borderRadius:7, overflow:"hidden",
+                                         border:`1px solid ${C.border}` }}>
+                            <span style={{ width:16, height:26, background:pal.bg }}/>
+                            <span style={{ width:16, height:26, background:pal.surface }}/>
+                            <span style={{ width:16, height:26, background:pal.accent }}/>
+                          </span>
+                          <span style={{ flex:1, minWidth:0 }}>
+                            <span style={{ display:"block", fontSize:14, fontWeight:700, color:C.text }}>{tm.label}</span>
+                            <span style={{ display:"block", fontSize:11, color:C.sub }}>{tm.blurb}</span>
+                          </span>
+                          {on && <Icon name="check" size={16} color={C.accentInk} strokeWidth={3}/>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
@@ -16317,7 +16418,7 @@ function AppInner() {
   // `C` isn't declared until later in this component, so referencing it here would TDZ-crash.)
   useEffect(() => {
     try {
-      const bg = THEMES[(store.theme || "light")].bg;
+      const bg = themeOf(store.theme).bg;
       let meta = document.querySelector('meta[name="theme-color"]');
       if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; document.head.appendChild(meta); }
       meta.content = bg;
@@ -18371,7 +18472,7 @@ function AppInner() {
     // Use the THEME background here, not a hardcoded #fff — this fixed body is what shows through
     // whenever a transform/drag momentarily exposes a strip (the iOS edge-swipe-back off the chat
     // screen was revealing this white band). The theme-color effect above repaints it on toggle.
-    const _shellBg = THEMES[(store.theme || "light")].bg;
+    const _shellBg = themeOf(store.theme).bg;
     body.style.cssText = `margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:${_shellBg};-webkit-tap-highlight-color:transparent;`;
     if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
 
@@ -18559,7 +18660,7 @@ function AppInner() {
   }, []);
 
   // C needs to be available for loading screens
-  const C = THEMES[(store.theme || "light")];
+  const C = themeOf(store.theme);
   const unit = store.unit || "lbs";
 
   // Native iOS status bar — match text tint to the theme, content BELOW it (overlay:false).
