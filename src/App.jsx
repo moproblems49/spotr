@@ -1,4 +1,4 @@
-// v178091716980
+// v178091716981
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2005,8 +2005,12 @@ export function SharedPostLink({ text, C, ink, tile }) {
   // right for messages this app writes and WRONG the moment Copy link shipped: someone pastes a
   // link and types "we should try this Friday" under it, and that sentence was stored in the
   // message row and never rendered anywhere.
-  const lines = String(text || "").split("\n");
-  const rest = lines.filter(l => !/https?:\/\/\S*\/p\//i.test(l)).map(l => l.trim()).filter(Boolean);
+  // Strip the URL TOKEN, not the line that holds it — dropping the whole line was the same
+  // defect in a different shape, and it bites whenever someone pastes a copied link and types
+  // after it without a newline.
+  const rest = String(text || "").split("\n")
+    .map(l => l.replace(/https?:\/\/\S*\/p\/\S*/ig, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
   const label = rest[0] || "A workout on Seshd";
   const extra = rest.slice(1).join("\n");
   const fg = ink || C.text;
@@ -16034,6 +16038,9 @@ function AppInner() {
   // The "not visible" case is not an error path: it is the privacy model working. A link carries
   // no content, so a recipient who does not pass the poster's RLS simply sees nothing.
   const [postView, setPostView] = useState(null);
+  // loadFeed runs outside this state's closure, so it reads the open post's id from a ref.
+  const openPostIdRef = useRef(null);
+  useEffect(() => { openPostIdRef.current = postView?.id || null; }, [postView?.id]);
   // Open a post by id — a shared link tapped in a DM, or a /p/<uuid> deep link.
   useEffect(() => {
     const onOpenPost = (e) => {
@@ -16836,8 +16843,13 @@ function AppInner() {
       // stored log is empty, and persisted to the server in that case.
       const reconstructedPrEvents = reconstructPrEvents(appHistory);
 
-      // Clear stale posts immediately so deleted ones don't flash
-      setStore(prev => ({ ...prev, posts: [] }));
+      // Clear stale posts immediately so deleted ones don't flash — EXCEPT the one the user is
+      // currently reading. ★ This wipe runs BEFORE loadFeed, so carrying the open post inside
+      // loadFeed's own filter (see there) was completely inert on this path: by the time it ran,
+      // prev.posts was already empty and there was nothing left to carry. Both sites have to
+      // agree, or the post opened from a shared link silently loses every action it offers on the
+      // next foreground refresh.
+      setStore(prev => ({ ...prev, posts: (prev.posts || []).filter(p => p.id === openPostIdRef.current) }));
 
       // Load posts (from people user follows + own)
       await loadFeed(tok, currentUserId, profiles || []);
@@ -17162,8 +17174,15 @@ function AppInner() {
         // just-posted-then-refreshed race. We deliberately do NOT carry arbitrary older posts,
         // so a post deleted on the server is correctly removed rather than zombie-resurrected.
         const now = Date.now();
+        // ★ AND THE POST CURRENTLY OPEN, WHATEVER ITS AGE. A post opened from a shared link is
+        // merged into store.posts precisely so handleKudos/handleComment can find it — and this
+        // filter would evict it on the very next refresh, because a shared post is essentially
+        // never under 2 minutes old. The overlay kept rendering from its snapshot, so it looked
+        // fine while every action on it went silently dead again: exactly the bug the merge was
+        // added to fix, reintroduced 30 seconds later by a foreground refresh.
+        const openId = openPostIdRef.current;
         const carried = (prev.posts || []).filter(o =>
-          !incomingIds.has(o.id) && o.createdAt && (now - o.createdAt) < 120000
+          !incomingIds.has(o.id) && (o.id === openId || (o.createdAt && (now - o.createdAt) < 120000))
         );
         const all = [...merged, ...carried];
         all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -18743,7 +18762,12 @@ function AppInner() {
     p.type === "story" && Date.now() - p.createdAt < 24 * 60 * 60 * 1000
   );
   const myStoryPost = recentStoryPosts.find(p => p.userId === currentUserId);
-  const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))].filter(id => id !== currentUserId);
+  // Filtered on `following` for the same reason `feedPosts` is. The ring used to be gated only by
+  // "is this person in store.users", which the social graph happened to make true only for people
+  // you follow — an accident, not a rule, and merging a shared post's author into store.users
+  // turned it into a stranger's story ring in your own feed. Gate it on the actual rule.
+  const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))]
+    .filter(id => id !== currentUserId && following.includes(id));
   const storyUsers = storyUserIds.map(id => store.users.find(u => u.id === id)).filter(Boolean);
   const weeklyStreak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
   const streak = weeklyStreak.count;
@@ -19044,7 +19068,7 @@ function AppInner() {
   // ★ THE HOSTS ARE GLOBAL IN NAME ONLY: THEY LIVE IN ONE RETURN, AND EVERY EARLY RETURN ABOVE IT
   // IS A DEAD ZONE. `toast`, `confirmAction`, `reportContent` and `sharePostTo` are module-level
   // setters into components; when the component is unmounted the setter is a silent no-op.
-  // The chat used to be one of those early returns, and inside it the post overlay's Share did
+  // The chat used to be one of those early returns (it is an overlay now), and inside it the post overlay's Share did
   // nothing, Report did nothing, Delete never raised its confirm sheet so the post was never
   // deleted, and Edit popped a modal unbidden on the way OUT of the conversation — while
   // ChatView's own "···" Report and its "Couldn't send" toast were dead for the same reason.
@@ -19081,7 +19105,7 @@ function AppInner() {
     // own. Because it sits ABOVE the nav's zIndex 50 the nav is covered rather than tappable, so
     // this needs no line in switchTab — that rule is for overlays the nav floats over.
     return createPortal((
-        <div data-no-tab-swipe data-fullscreen-overlay="true" className="seshd-push-in" style={{ position:"fixed", inset:0, zIndex:60, maxWidth:480, margin:"0 auto" }}>
+        <div data-no-tab-swipe data-fullscreen-overlay="true" className="seshd-push-in" style={{ position:"fixed", inset:0, zIndex:70, maxWidth:480, margin:"0 auto" }}>
           <EdgeSwipeBack onBack={() => setPostView(null)}
             style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
             <div style={{ display:"flex", alignItems:"center", gap:8, padding:"calc(env(safe-area-inset-top) + 8px) 8px 8px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
@@ -19103,9 +19127,17 @@ function AppInner() {
               {postView.post === false && (
                 <div style={{ padding:"48px 28px", textAlign:"center" }}>
                   <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:7 }}>This post isn't available</div>
-                  <div style={{ fontSize:13, color:C.sub, lineHeight:1.6 }}>
+                  <div style={{ fontSize:13, color:C.sub, lineHeight:1.6, marginBottom:16 }}>
                     It may have been deleted, or the person who posted it keeps their account private.
                   </div>
+                  {/* ★ THIS BRANCH NEEDS THE RETRY MORE THAN THE ERROR ONE DOES. An RLS refusal is
+                      an empty 200, not a throw, so a reader who opens a link while signed OUT
+                      lands here — and signing in afterwards left them latched on a false claim
+                      about someone else's privacy, with the URL already consumed by
+                      replaceState. The "error" state only ever covered thrown fetches. */}
+                  <button onClick={() => setPostView(v => v ? { ...v, post: null } : v)}
+                    style={{ padding:"11px 22px", borderRadius:12, border:`1px solid ${C.border}`, background:C.bg,
+                             color:C.text, fontSize:14, fontWeight:700, fontFamily:F, cursor:"pointer" }}>Try again</button>
                 </div>
               )}
               {postView.post && postView.post !== "error" && (
@@ -20195,11 +20227,19 @@ function AppInner() {
           a black screen. As an overlay, whatever you came from (the Messages list, a profile, a
           push-tapped tab) stays mounted and slides into view the way iOS does it. Exactly the
           change Activity needed for the same symptom.
-          zIndex 55: ABOVE the nav's 50, so a DM still covers it as it always has (and no line in
-          switchTab is needed, since the nav cannot be tapped through it); BELOW the profile and
-          post overlays at 60, which must open on top of a chat. */}
+          ★ THE STACK ORDER IS LOAD-BEARING AND THE FIRST CUT HAD IT BACKWARDS. z55 put the chat
+          BELOW the profile overlay (60) — but `onMessage` only sets `chatPeerId` and never clears
+          `profileUserId`, so tapping Message on a profile opened the chat UNDERNEATH it: nothing
+          visibly happened, while ChatView mounted, began polling, and PATCHed `read_at` on every
+          incoming message — consuming unread DMs the user never saw. Backing out of the profile
+          then dropped them into a conversation they never opened. A "dm" push tapped while a
+          profile was open did the same. The old early return hid this because it preempted the
+          profile entirely.
+          Order now: nav 50 < profile 60 < chat 65 < post 70. A chat opens over a profile
+          (Message), a shared post opens over a chat (tapped in a DM), and nothing in ChatView
+          opens a profile — verified — so there is no path needing the reverse. */}
       {chatPeerId && (
-        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:55 }}>
+        <div data-no-tab-swipe className="seshd-push-in" style={{ position:"absolute", inset:0, zIndex:65 }}>
           <EdgeSwipeBack onBack={() => { setChatPeerId(null); refreshMsgUnread(); }}
             style={{ background:C.bg, height:"100%", maxWidth:480, margin:"0 auto", fontFamily:F, display:"flex", flexDirection:"column", color:C.text }}>
             <Suspense fallback={null}>

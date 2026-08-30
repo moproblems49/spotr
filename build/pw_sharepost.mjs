@@ -32,7 +32,9 @@ const STRANGER = "99999999-9999-4999-8999-999999999999";
 
 const POST2_ROW = {
   id: POST2, user_id: STRANGER, type: "workout", caption: "Pull day", image_url: null,
-  unit: "lbs", is_pr: false, client_id: null, created_at: new Date().toISOString(),
+  // 10 minutes old ON PURPOSE: loadFeed carries only posts under 2 minutes old, so a "just now"
+  // fixture makes the eviction check vacuous — the post would survive for the wrong reason.
+  unit: "lbs", is_pr: false, client_id: null, created_at: new Date(Date.now() - 10*60*1000).toISOString(),
   workout: { name: "Pull", duration: 3000, volume: 9000, exercises: [{ name: "Barbell Row", sets: [{ w: 135, r: 8 }] }] },
   kudos: [], comments: [],
 };
@@ -54,6 +56,7 @@ page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0
 const sent = [];       // every messages POST body the client actually made
 const groupSent = [];  // every group_posts POST body
 const kudosSent = [];  // every kudos POST body
+const kudosWrites = []; // every kudos write, either direction
 let postVisible = true; // flip to model "RLS says you can't see this"
 
 await page.addInitScript((ids) => {
@@ -85,8 +88,12 @@ await page.route("**/rest/v1/**", async r => {
   const m = req.method();
   if (/\/rest\/v1\/kudos/.test(u) && m === "POST") {
     const body = JSON.parse(req.postData() || "{}");
-    kudosSent.push(body);
+    kudosSent.push(body); kudosWrites.push("POST");
     return r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify([{ ...body, id: "k_" + kudosSent.length }]) });
+  }
+  if (/\/rest\/v1\/kudos/.test(u) && m === "DELETE") {
+    kudosWrites.push("DELETE");
+    return r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
   }
   if (/\/rest\/v1\/group_posts/.test(u) && m === "POST") {
     const body = JSON.parse(req.postData() || "{}");
@@ -329,7 +336,71 @@ if (haveShare2) {
   check("8c. Share works inside a chat — the host is mounted on this return", /Send to/.test(t), t.slice(0, 240));
 }
 
+// ── 9. A chat opened from a PROFILE must be on top of it. The chat sat at z55 under the profile
+//       overlay's z60 and `onMessage` never closes the profile, so Message opened an INVISIBLE
+//       chat that still polled and PATCHed `read_at` on incoming DMs. Reload first: the earlier
+//       sections leave overlays open, and a probe that starts from accumulated state measures
+//       whatever it happens to land on. ────────────────────────────────────────────────────────
+await page.goto(`http://127.0.0.1:${process.env.PORT || 8199}/`, { waitUntil: "load", timeout: 20000 });
+await page.waitForTimeout(2600);
+await page.evaluate((id) => window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } })), POST);
+await page.waitForTimeout(1800);
+// Tapping the author in the overlay closes it and opens the profile (onUserClick). The card
+// renders the USERNAME, not the display name, so match that.
+const authorTap = page.locator('[data-fullscreen-overlay]').getByText(/^lifter$/i).first();
+if (await authorTap.count()) { await authorTap.click({ force: true }); await page.waitForTimeout(1900); }
+t = await text();
+const onProfile = /Followers/i.test(t) && /Following/i.test(t);
+check("9a. tapping a feed author opens their profile", onProfile, t.slice(0, 220));
+if (onProfile) {
+  const msgBtn = page.getByRole("button", { name: /^Message$/i }).first();
+  const haveMsg = await msgBtn.count() > 0;
+  check("9b. the profile offers Message", haveMsg);
+  if (haveMsg) {
+    await msgBtn.click({ force: true });
+    await page.waitForTimeout(1600);
+    // elementFromPoint, not innerText: the documented overlay trap means the chat's text is
+    // reported whether or not it is actually visible. Ask what is PAINTED at the composer.
+    const onTop = await page.evaluate(() => {
+      const el = document.querySelector('[placeholder="Message…"],[placeholder="Message..."]');
+      if (!el) return "no-composer";
+      const r = el.getBoundingClientRect();
+      if (!r.width) return "composer-not-laid-out";
+      const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return (el === top || el.contains(top)) ? "on-top" : "COVERED by " + (top ? top.tagName + "." + String(top.className).slice(0,30) : "?");
+    });
+    check("9c. the chat opens ON TOP of the profile, not beneath it", onTop === "on-top", String(onTop));
+  }
+}
+
 await page.screenshot({ path: "build/shot_sharepost.png", fullPage: false });
+// ── 10. The merged post must SURVIVE a feed refresh, or every action on it dies again. The carry
+//        filter keeps only posts under 2 minutes old and a shared post never is, so the merge was
+//        undone by the next foreground refresh while the overlay kept rendering from its snapshot
+//        — looking fine, writing nothing. POST2 is seeded 10 minutes old for exactly this. ─────
+await page.goto(`http://127.0.0.1:${process.env.PORT || 8199}/`, { waitUntil: "load", timeout: 20000 });
+await page.waitForTimeout(2600);
+await page.evaluate((id) => window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } })), POST2);
+await page.waitForTimeout(1800);
+t = await text();
+check("10a. the shared post opened", /Pull day/.test(t), t.slice(0, 200));
+// Isolate: does kudos work BEFORE any refresh? If this fails too, the merge never happened on
+// this path and the eviction is not the cause.
+kudosWrites.length = 0;
+const flamePre = page.locator('[data-fullscreen-overlay] button[aria-label="Give kudos"]').first();
+if (await flamePre.count()) { await flamePre.click({ force: true }); await page.waitForTimeout(1400); }
+// The foreground refresh is throttled to 30s, so a visibilitychange fired now is a no-op — wait
+// it out or this check passes for the wrong reason.
+await page.waitForTimeout(31000);
+kudosWrites.length = 0;
+await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+await page.waitForTimeout(3000);
+const flame2 = page.locator('[data-fullscreen-overlay] button[aria-label="Give kudos"]').first();
+const haveFlame2 = await flame2.count() > 0;
+check("10b. the post view is still up after the refresh", haveFlame2 && /Pull day/.test(await text()));
+if (haveFlame2) { await flame2.click({ force: true }); await page.waitForTimeout(1400); }
+check("10c. kudos still reaches the server after a feed refresh", kudosWrites.length === 1, JSON.stringify(kudosWrites));
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 await b.close();
 process.exit(fails === 0 ? 0 : 1);

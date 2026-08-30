@@ -3024,6 +3024,57 @@ other filter, so opening one would have made it the root and reported a confiden
   resolved anyway. A genuinely unmatchable name was needed to see it. Pick a fixture name that
   cannot collide when testing name RESOLUTION.
 
+## ★★ The Fable-5 audit: SEVEN findings, and the two worst were both caused by fixes made hours earlier (Aug 30)
+A cold-context Fable 5 audit of the four unaudited commits. The pattern: **a fix that changes the
+render tree or the store creates new bugs somewhere neither the fix nor its test was looking.**
+- **★★ THE CHAT OPENED UNDERNEATH THE PROFILE, AND SILENTLY ATE UNREAD DMs.** My own regression
+  from the chat-overlay change. The chat went in at zIndex 55; the profile overlay is portaled to
+  `document.body` at 60, and `onMessage` only does `setChatPeerId(uid)` — nothing clears
+  `profileUserId`. So tapping **Message** on a profile did nothing visible while ChatView mounted
+  BENEATH it, started its 3s poll and PATCHed `read_at` on every incoming message: unread DMs
+  consumed without ever being seen, and backing out of the profile dropped you into a conversation
+  you never opened. A "dm" push tapped over a profile did the same. The old early return hid it by
+  preempting the profile entirely. **Order is now nav 50 < profile 60 < chat 65 < post 70** —
+  verified that nothing in ChatView opens a profile, so no path needs the reverse.
+- **★★ `loadUserData` WIPES `store.posts` TO `[]` BEFORE CALLING `loadFeed`, WHICH MADE MY FIRST
+  FIX COMPLETELY INERT.** The merge that lets `handleKudos`/`handleComment` find a post opened from
+  a shared link is undone by the next foreground refresh: `loadFeed` carries only posts under 2
+  minutes old and a shared post never is. The overlay kept rendering from its snapshot, so it
+  LOOKED fine while every action on it went silently dead — the exact bug the merge was added to
+  fix, back 30 seconds later. **I patched `loadFeed`'s carry filter first and the check still went
+  red**, because by the time that filter runs `prev.posts` is already `[]`. Both sites now preserve
+  the open post. **When a fix does not take, find the code that runs BEFORE it, not a better
+  version of it.**
+- **An RLS refusal is an empty 200, not a throw**, so the `"error"` state and its Try-again never
+  covered the case its own comment described: open a `/p/` link signed out, get `[]`, sign in, and
+  you stay latched on "the person who posted it keeps their account private" with the URL already
+  consumed by `replaceState`. The `false` branch has a Try again now too.
+- **The story ring had no follow filter.** `recentStoryPosts` gates on type and 24h only; what kept
+  strangers out was incidental — they were absent from `store.users`. Merging a shared post's
+  author in made a public stranger's story ring appear in your feed. Pre-existing hole, new path
+  into it; now gated on `following`, the same rule `feedPosts` uses.
+- **`SharedPostLink` dropped the whole LINE containing the URL**, so prose typed on the same line
+  as a pasted link still vanished — the same defect the previous commit "fixed", surviving in a
+  different shape. It strips the URL token now.
+- Noted, not changed: MessagesScreen's 10s/300-row poll now runs for the whole time a chat is open
+  (it used to unmount), so the DM screen carries two polls. A behaviour change from the overlay
+  conversion, not a correctness bug.
+- **Probe lessons, four in one sitting:** section 9 failed because the fixture deliberately omits
+  the author from `store.users`, so the feed card renders "?" and there was no name to tap — reach
+  the profile through the post overlay, which is what resolves them. Section 10 reported "no kudos
+  write" when the click was actually an UN-kudos (a DELETE), because `historyInteractions` persists
+  across a reload and the stub only counted POSTs — count writes in both directions. Sections that
+  ran on state left over from earlier sections measured whatever they landed on; both now start
+  from a fresh `page.goto`. And `POST2` was seeded "just now", inside the 2-minute carry window,
+  which would have made the eviction check pass for the wrong reason — it is 10 minutes old on
+  purpose. **Every one of those made a real bug look like a passing test.**
+- **Clean and worth not re-litigating**: `9cd33a8` is defect-free; `fb4ef53`'s chip is sound on both
+  themes; no free identifiers or unpassed props; the chat overlay carries `data-no-tab-swipe` and
+  both the tab swipe and PullToRefresh honour it; ChatView has no `position:fixed` children so
+  EdgeSwipeBack's containing block is harmless; every sheet portals to body at z >= 300 so nothing
+  became unreachable above the chat; the merged post is not persisted (`saveStore` strips `posts`)
+  and the feed, profile counts, activity badge and pagination offset are all insulated from it.
+
 ## Sweep #5 (Aug 30, 2026) — the error rate is effectively ZERO, and the demo corpus had drifted again
 **Postgres errors: 9 in 24h, and all nine are MINE** — every one is a `POST /mcp` audit probe,
 role-sim or rolled-back test from the previous day's work. Zero user-generated errors. The
