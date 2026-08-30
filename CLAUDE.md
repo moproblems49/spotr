@@ -155,6 +155,23 @@ workout codes" + "own workout_codes") — harmless, consolidate whenever that ta
 The two backup tables show "RLS enabled, no policy" in advisors: that means clients can't read
 them at all, which is CORRECT for a backup — not a finding.
 
+## ★★★ MEASURE IT; DO NOT TRUST THE READING (Mo made this the standing rule, Aug 30)
+Three times in one session I told Mo something was fixed and the next audit found it was not, and
+every one had the same shape: **I concluded from reading the code instead of driving it.**
+- the chat-overlay host dead-zone — I fixed ONE call site of a class and reported the class fixed;
+- the shared-post merge — the fix was real and `loadUserData` wiped `store.posts` one line earlier,
+  so it was inert, and I only found that after patching the WRONG site and watching the check stay
+  red (**when a fix does not take, find the code that runs BEFORE it, not a better version of it**);
+- "hosts missing from the early returns" — I flagged a bug that instrumenting proved did not exist.
+The rule now: **a claim about behaviour is not finished until something ran.** Drive the screen,
+instrument the function, print the value, read the log — then say it. And the corollary that keeps
+biting: **a probe is code too, so it needs the same suspicion.** In this session alone the probes
+produced a single-sample toast check that could not tell "never shown" from "shown and gone", a
+kudos check that counted only POSTs when the tap was a DELETE, an absence check satisfied by a
+fixture omission, a fixture seeded inside the very window the test policed, and a selector that
+matched the screen it was meant to see past. Every one made a real bug look like a passing test.
+**Confirm a new check goes RED against the old code before believing it is green against the new.**
+
 ## Verification methodology (how we catch regressions)
 **Run the whole battery with one command: `node build/run_sims.mjs`** (49 sims, ~90s — count grows as
 sims get added; verify with the runner's own summary line rather than trusting a number in this
@@ -2648,6 +2665,27 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   for programs and workouts — a read-only "share my log" code would let a trainer view a client's
   history with no subscription, no new access class and no Apple cut. If trainers use it
   constantly, build the tier.
+
+**★ THE BRANDED AUTH EMAIL TEMPLATES AND THE "Seshd" SENDER NAME ARE INSTALLED (Mo, Aug 30) — and
+here is how to re-verify the mail stack without a browser.** Direct HTTPS to supabase.co is blocked
+from the sandbox, so drive the real auth endpoint through pg_net:
+```
+select net.http_post(
+  url := 'https://zwsoxvekobvtvsphesef.supabase.co/auth/v1/recover',
+  headers := jsonb_build_object('Content-Type','application/json','apikey','<anon key from the last bundle>'),
+  body := jsonb_build_object('email','<address>'));
+-- then: select status_code, content_type, left(content,300), error_msg from net._http_response where id = <id>;
+```
+**A 200 from `/recover` is NOT proof the mail sent** — the reset UI deliberately never surfaces
+errors, and GoTrue answers 200 before SMTP resolves. Three things together are the proof, and all
+three were checked on Aug 30: the auth log carries `user_recovery_requested` with `status 200` and
+an EMPTY `error`; **`auth.users.recovery_sent_at` advances** (it only moves once GoTrue has handed
+the message to SMTP); and the request `duration` is ~2.7s, i.e. a real SMTP round-trip rather than
+the near-instant return of a send that never left. What this CANNOT prove is the part that only
+exists in the delivered message — that the branded template rendered and the From name reads
+"Seshd". That needs a human looking at an inbox; ask.
+**Do not fire this at a real user's address casually**: it puts a live recovery token in their
+mailbox. Mo's own account is fine when he asks for it, and the link simply expires unused.
 
 Not yet done / launch-blockers: Apple Sign In is required by the App Store if any social login ships (`OAUTH_ENABLED = { apple:false, google:false }`; the Sign in with Apple capability is already ticked on the App ID). **Email confirmation is ON** (Mo flipped it July 30, before opening the beta). Leaked-password protection is a PAID Supabase feature and is deliberately deferred — it's the single best remaining defence for tester accounts, so re-raise it when he's on a paid plan. **DMARC IS ALREADY LIVE — this was listed as open for weeks and was not.** Verified by DNS query Aug 29 2026: `_dmarc.getseshd.app` TXT = `v=DMARC1; p=none;`. The whole Resend stack checks out — DKIM key at `resend._domainkey.getseshd.app`, SPF `v=spf1 include:amazonses.com ~all` on `send.getseshd.app`, bounce MX at `feedback-smtp.us-east-1.amazonses.com`. `p=none` is monitor-only; the optional upgrade is `p=quarantine`, which is LIKELY safe here because DKIM signs as the From domain, but that was inferred from the DNS layout, not read off a real message header — confirm before enforcing. **Deliberately NOT upgraded while App Review is pending**: enforcement can only ever cause mail to be delivered less, and reset emails reaching testers matters more right now. Check the record before re-adding this as a TODO — `node -e "require('dns').promises.resolveTxt('_dmarc.getseshd.app').then(console.log)"`. **Branded auth email templates are written and waiting in `supabase/email-templates/`** (confirm-signup / reset-password / change-email, plus `preview/*.png` and `_shared.md` with install steps) — they go in the Supabase dashboard, so no deploy; still Mo-side, along with setting the SMTP **Sender name to "Seshd"**. Native Live Activity rest timer + home-screen widgets are Mac-side (App Groups capability already ticked for them). Share-to-Instagram-Stories directly would need a native Capacitor plugin (Mac-side).
 
