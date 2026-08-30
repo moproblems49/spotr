@@ -1,4 +1,4 @@
-// v178091716982
+// v178091716983
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -805,6 +805,15 @@ const THEMES = {
     surface: "#1c1c22",     // raised cards/sheets — clearly lighter than bg
     card: "#1c1c22",
     border: "#33333d",      // brighter borders so card edges read clearly
+    // ★ A FLOATING PANEL'S EDGE IS NOT A CARD'S EDGE. `border` is calibrated for a card sitting ON
+    // the page; a modal sits over a SCRIM, and on this theme the scrim has nowhere to go — #0b0b0e
+    // darkened 60% is rgb(4,4,6), so the panel itself measures 1.21:1 against its own backdrop and
+    // NO scrim opacity fixes it (measured: even 100% black leaves it at 1.24:1, because the panel
+    // would have to become light grey to clear 3:1). The edge is the only lever. #5e5e6b is 3.21:1
+    // against the backdrop — over the 3:1 graphical floor — and 2.66:1 against the panel it edges.
+    // Light needs none of this: the scrim darkens the off-white canvas to rgb(98,98,97), where the
+    // ordinary border already measures 4.82:1, so light keeps its own value.
+    overlayEdge: "#5e5e6b", // edge of a modal/panel floating over a scrim (dark only)
     divider: "#26262d",     // hairline separators within surfaces
     accent: "#c8f135",          // volt — matches the app icon's green
     accentSoft: "rgba(200,241,53,0.12)",
@@ -840,6 +849,7 @@ const THEMES = {
     surface: "#ffffff",     // cards are pure white → they float above the canvas
     card: "#ffffff",
     border: "#e7e4df",      // warm hairline, visible against white cards
+    overlayEdge: "#e7e4df", // see the dark theme's note — light needs no boost (4.82:1 already)
     divider: "#eeece8",     // softer separator within cards
     accent: "#65a30d",          // volt's daylight form — lime-600, readable on white
     accentSoft: "rgba(101,163,13,0.11)",
@@ -1424,7 +1434,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                 );
               })()}
               <Sheet open={showBatteryDetail} onClose={() => setShowBatteryDetail(false)} z={3000} dragHandle
-                panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`,
+                panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.overlayEdge}`,
                   // boxSizing stays, but the trap it was guarding is gone: with `dragHandle` set,
                   // Sheet moves the padding and the scrolling to an inner element, so the padding
                   // is no longer added on top of this maxHeight. Kept because it costs nothing and
@@ -1713,7 +1723,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
       )}
       </div>
       <Sheet open={!!selectedRegion} onClose={() => setSelectedRegion(null)} z={3000} dragHandle
-        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`, padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.overlayEdge}`, padding:"20px 16px calc(env(safe-area-inset-bottom) + 20px)", fontFamily:F }}>
       {selectedRegion && (() => {
         const { key, region: regionName } = selectedRegion;
         const label = _regionLabel(key);
@@ -4877,7 +4887,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
       // one didn't get it, and C.bg is the SAME fill the screen behind it already uses (the live
       // workout's own outer div is background:C.bg too), so on the dark theme the sheet had no
       // visible edge at all — screenshotted as "blends in with the background."
-      panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", borderTop:`1px solid ${C.border}`,
+      panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", borderTop:`1px solid ${C.overlayEdge}`,
         boxShadow:"0 -8px 24px rgba(0,0,0,0.25)",
         height:"calc(100dvh - env(safe-area-inset-top) - 40px)",
         display:"flex", flexDirection:"column", fontFamily:F }}>
@@ -5038,7 +5048,7 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
       onTouchStart={(e) => e.stopPropagation()}
       style={{
         position:"fixed", left:0, right:0, bottom:0, maxWidth:480, margin:"0 auto",
-        background:C.surface, borderTop:`1px solid ${C.border}`,
+        background:C.surface, borderTop:`1px solid ${C.overlayEdge}`,
         padding:"4px 6px calc(8px + env(safe-area-inset-bottom))",
         zIndex:450, boxShadow:"0 -6px 20px rgba(0,0,0,0.12)",
         // 102% so the shadow clears the edge too, not just the panel.
@@ -5867,7 +5877,7 @@ function PlateCalcModal({ onClose, unit, C }) {
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
-      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+      <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, border:`1px solid ${C.overlayEdge}`, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Plate Calculator</div>
           <button onClick={onClose} aria-label="Close" style={{ width:28, height:28, borderRadius:"50%", background:C.divider, border:"none", cursor:"pointer", fontSize:14, color:C.text, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
@@ -9891,7 +9901,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
         <Sheet open={swapEx != null && !!session.exercises[swapEx]} onClose={() => setSwapEx(null)} z={480} dragHandle
           backdrop="rgba(0,0,0,0.55)"
-          panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, borderTop:`1px solid ${C.border}`, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
+          panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, borderTop:`1px solid ${C.overlayEdge}`, maxHeight:"80dvh", overflowY:"auto", padding:"18px 16px calc(18px + env(safe-area-inset-bottom))" }}>
         {swapEx != null && session.exercises[swapEx] && (() => {
           const cur = session.exercises[swapEx];
           const subs = suggestExerciseSubstitutes(cur.name, 10);
@@ -10706,7 +10716,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {showWorkoutSummary && workoutSummary && <Confetti duration={2.5}/>}
         <Sheet open={showWorkoutSummary && !!workoutSummary} onClose={() => {}} z={300} backdrop="rgba(0,0,0,0.85)"
-          panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+          panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.overlayEdge}` }}>
         {showWorkoutSummary && workoutSummary && (
           <>
               <div style={{ overflowY:"auto", flex:1, padding:"24px 18px 0" }}>
@@ -11274,7 +11284,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Finish modal */}
         <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200} dragHandle
-          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", borderTop:`1px solid ${C.border}` }}>
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", borderTop:`1px solid ${C.overlayEdge}` }}>
           {showFinish && (
             <>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
@@ -11302,7 +11312,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Group share picker (Save & send to groups path - skips feed) */}
         <Sheet open={showGroupShare} onClose={() => setShowGroupShare(false)} z={200} dragHandle
-          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto", borderTop:`1px solid ${C.border}` }}>
+          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto", borderTop:`1px solid ${C.overlayEdge}` }}>
         {showGroupShare && (() => {
           const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
           return (
@@ -12072,7 +12082,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       )}
 
       <Sheet open={showTemplates} onClose={() => { setShowTemplates(false); setPrefilledCode(null); }} z={200} dragHandle
-        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}` }}>
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.overlayEdge}` }}>
         {showTemplates && (
           <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
@@ -14455,7 +14465,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           "bleeds" into the screen behind it / becomes scrollable past). */}
       {showEdit && createPortal((
         <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.border}` }}>
+          <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
               <div style={{ fontSize:15, fontWeight:600, color:C.text }}>Edit Profile</div>
@@ -14500,7 +14510,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {coverDraft && createPortal((
         <div onTouchStart={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}
           style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <div style={{ width:"100%", maxWidth:440, background:C.bg, borderRadius:18, overflow:"hidden", fontFamily:F }}>
+          <div style={{ width:"100%", maxWidth:440, background:C.surface, border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)", borderRadius:18, overflow:"hidden", fontFamily:F }}>
             <div style={{ padding:"14px 16px 10px" }}>
               <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Position your cover</div>
               <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>Drag the photo up or down to choose what shows</div>
@@ -14544,7 +14554,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
 
       {/* Feedback modal — portaled for the same reason as above. */}
       <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000} dragHandle
-        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.border}`, padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
+        panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.overlayEdge}`, padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
         {showFeedback && (
           <>
             <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>Send feedback</div>
@@ -14621,7 +14631,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       <Sheet open={showSettings} onClose={() => setShowSettings(false)} z={3000} dragHandle
         backdropProps={{ onTouchMove: (e) => { if (e.target === e.currentTarget) e.preventDefault(); }, style:{ touchAction:"none" } }}
         panelProps={{ onTouchMove: (e) => e.stopPropagation() }}
-        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.border}`, touchAction:"auto" }}>
+        panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"85vh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.overlayEdge}`, touchAction:"auto" }}>
         {showSettings && (
           <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
@@ -15347,7 +15357,7 @@ function EditPostModal({ C, post, onSave, onClose }) {
   const [cap, setCap] = useState(post.caption || "");
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div style={{ background:C.bg, borderRadius:16, padding:20, width:"100%", maxWidth:400, border:`1px solid ${C.border}` }}>
+      <div style={{ background:C.surface, borderRadius:16, padding:20, width:"100%", maxWidth:400, border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
         <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:14 }}>Edit Post</div>
         <textarea value={cap} onChange={e => setCap(e.target.value)} rows={4}
           style={{ width:"100%", background:C.divider, border:"none", borderRadius:10, padding:"12px 14px", fontSize:14, color:C.text, resize:"none", outline:"none", boxSizing:"border-box", marginBottom:14, fontFamily:F }}/>
@@ -15649,7 +15659,7 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
   };
   return (
     <Sheet open={!!open} onClose={onClose} z={500}
-      panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, borderTop:`1px solid ${C.border}`, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+      panelStyle={{ background:C.bg, borderTopLeftRadius:20, borderTopRightRadius:20, borderTop:`1px solid ${C.overlayEdge}`, maxHeight:"85dvh", overflowY:"auto", padding:"20px 18px calc(20px + env(safe-area-inset-bottom))" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>Weekly Review</div>

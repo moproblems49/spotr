@@ -3465,6 +3465,43 @@ was: delete the stub zip, rebuild from the repo root with absolute paths only, r
 trusting the build log. **Never chain `cd` in a publish step; and verify the zip you are about to
 ship, not the dist you think you built.**
 
+## ★★ MODALS BLENDED INTO THE PAGE, AND NO SCRIM OPACITY COULD HAVE FIXED IT (Aug 30)
+Mo, from a screenshot of the Close Friends picker: "the list kind of blends in, we have this
+problem in a lot of lists." He was right, and it was systemic — **24 hand-built modal backdrops
+with no shared rule**: panels on `C.surface`, on `C.bg`, on hardcoded `#0A0A0A`, scrims anywhere
+from 0.45 to 0.95, border and shadow present or absent at random.
+**★ THE MEASUREMENT IS THE WHOLE STORY, AND IT RULES OUT THE INSTINCTIVE FIX.** The picker's panel
+was `background:C.bg` — the DEEPEST layer token — on a `rgba(0,0,0,0.6)` scrim, with no border and
+no shadow. Panel vs its own backdrop: **1.04:1**. And darkening the scrim cannot help, because on
+this theme the page is already near-black: `#0b0b0e` at 60% black is `rgb(4,4,6)`, and **even a
+100% opaque scrim leaves `C.surface` at 1.24:1** (swept 0.6→1.0). The panel would have to become
+light grey to clear the 3:1 graphical floor, which would wreck the dark theme. **So the EDGE is
+the only lever**, and `C.border` (#33333d) is calibrated for a card sitting ON the page — over a
+scrim it measures 1.64:1.
+New token **`C.overlayEdge`**: `#5e5e6b` on dark (**3.21:1** against the backdrop, 2.66:1 against
+the panel it edges), and simply `C.border` on light. **Light needed nothing** — a scrim over the
+warm off-white canvas lands at `rgb(98,98,97)`, where the panel already measured 5.60:1. That
+asymmetry is the point: the same modal is fine on one theme and invisible on the other, so
+**measure a surface pair on BOTH themes before concluding either way**.
+Applied as two shapes, deliberately not one: **six centred modals** (Close Friends, the group
+workout picker, PlateCalcModal, Edit Profile, EditPostModal, and one ProfileScreen modal that had
+neither border nor shadow) move to `C.surface` + a full `overlayEdge` perimeter + a shadow; **twelve
+bottom sheets** keep `C.bg` and only get `overlayEdge` on their `borderTop`, because a bottom sheet
+fills enough of the screen to read as a new surface rather than a floating card and only its top
+edge faces the scrim. Repainting all twelve would be a broad visual change for a problem that lives
+on one hairline.
+**Scanner note worth keeping:** the inventory script flagged `BodyTrackingScreen.jsx:128` as a
+blending panel; it is a 22px "Remove photo" button with an `rgba` background, not a modal at all.
+A regex that finds `position:fixed` + an rgba background cannot tell a backdrop from a chip — read
+every hit before acting on the count.
+**And the verification honestly labelled**: the navigation to this picker could not be driven in
+the harness (its All Friends/Close Friends toggle does not render in a fixture with no close
+friends, and two attempts to reach a substitute modal matched the trigger BUTTON rather than the
+modal — the documented "a marker both screens render cannot distinguish them" trap, twice). What
+was verified is the part that changed: the real tokens, the real scrim and the real panel geometry
+rendered before/after in both themes and looked at. The arithmetic above is exact; the on-device
+navigation is not covered by a suite.
+
 ## ★★ A DM SWIPED BACK ONTO A BLACK SCREEN — AND index.css'S OWN COMMENT HAD NAMED IT (Aug 30)
 Mo, from the device: "When I'm in a DM swiping to go back shows a black screen not what's behind."
 `chatPeerId` was an EARLY RETURN from `AppInner`, so while a chat was open **nothing else was

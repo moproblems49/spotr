@@ -397,7 +397,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
               transform-as-containing-block, which broke its full-screen sizing/centering. */}
           {showCloseFriendPicker && createPortal((
             <div onClick={() => setShowCloseFriendPicker(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-              <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.bg, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+              <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"80dvh", display:"flex", flexDirection:"column", overflow:"hidden", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
                   <div>
                     <div style={{ fontSize:15, fontWeight:800, color:C.text }}>Close Friends</div>
