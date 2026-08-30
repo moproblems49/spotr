@@ -3290,6 +3290,39 @@ about the interaction; the button was also **broken**, which is the stronger rea
   graph from `follows` and replaces `store.users` wholesale, so seeding `following` into
   localStorage alone loses it on the first foreground — seed through the STUB.
 
+## ★ The "hosts missing from the early returns" TODO was WRONG — measured, then closed (Aug 30)
+Mo: "Do the 'Still open, pre-existing'." I had written that the seven remaining `AppInner` early
+returns mount none of ToastHost/ConfirmHost/ReportHost/SharePostHost, "so a toast fired from the
+auth or onboarding screens has nowhere to land". **Instrumenting all four setters to record every
+call plus whether a host was mounted, and driving the screens, says otherwise:**
+- **The auth/signup screen and the guest auth-prompt fire NOTHING** — 0 calls of any kind.
+  `src/lazy/AuthScreen.jsx` and `Onboarding.jsx` do not import `toast` at all, and neither
+  `handleAuth` nor the onboarding `onComplete` calls it.
+- **Exactly ONE call fires with no host mounted**: `loadUserData`'s "Couldn't load your data —
+  check connection" during `!dbReady`. It is **QUEUED** — `toast()` pushes to `_toastQueue`
+  unconditionally and `ToastHost` seeds `useState(() => _toastQueue[0])` on mount — and was
+  verified VISIBLE on screen. That queue is precisely why it exists.
+**So there is no live bug, and mounting hosts on the loading screen would be machinery for
+nothing.** What was actually shipped is the small true thing: `confirmAction`, `reportContent` and
+`sharePostTo` have NO queue and drop on the floor, so they now `devWarn` instead of vanishing.
+**★ AND MY FIRST MEASUREMENT SAID THE OPPOSITE, BECAUSE A TOAST AUTO-DISMISSES.** One sample at
+the end of the load window reported the toast never visible; polling the whole window found it.
+**A single sample cannot tell "never shown" from "shown and gone"** — the same shape as every
+other probe bug in this file, and it would have justified a fix for a bug that does not exist.
+Also worth recording: the first run's auth-screen case never reached the sign-in FORM (it sat on
+the marketing/welcome screen) and reported a confident 0. Check the probe arrived before believing
+a zero — a screen you did not reach fires nothing by definition.
+**★ AND THE PUBLISH AFTER IT HIT THE DOCUMENTED `cd` TRAP, WHICH IS WHY THAT RULE IS LOAD-BEARING.**
+A chained `cd <scratch>/er6 && … && npm run build` left the shell in the scratch dir: the build
+failed there, the zip was made from a STALE `dist`, and the resulting bundle carried
+`stub.supabase.co` — the one failure mode that breaks sign-in for every user. The same chain had
+already deleted the previous zip and its `sed` on `api/app-update.js` silently missed (wrong cwd),
+so `LATEST_VERSION` briefly pointed at a bundle that no longer existed. Nothing was pushed. Recovery
+was: delete the stub zip, rebuild from the repo root with absolute paths only, re-verify
+`grep supabase.co` on `dist/`, re-zip, and re-verify by unzipping the FINAL artifact rather than
+trusting the build log. **Never chain `cd` in a publish step; and verify the zip you are about to
+ship, not the dist you think you built.**
+
 ## ★★ A DM SWIPED BACK ONTO A BLACK SCREEN — AND index.css'S OWN COMMENT HAD NAMED IT (Aug 30)
 Mo, from the device: "When I'm in a DM swiping to go back shows a black screen not what's behind."
 `chatPeerId` was an EARLY RETURN from `AppInner`, so while a chat was open **nothing else was

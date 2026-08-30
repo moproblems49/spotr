@@ -1,4 +1,4 @@
-// v178091716979
+// v178091716980
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1938,6 +1938,7 @@ let _setConfirm = null;
 // pauses the story while the sheet is up and must resume if the user backs out).
 export function confirmAction({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", destructive = false, icon = "warn", onConfirm, onCancel }) {
   if (_setConfirm) _setConfirm({ title, message, confirmLabel, cancelLabel, destructive, icon, onConfirm, onCancel, id: Date.now() });
+  else devWarn("confirmAction with no ConfirmHost mounted — dropped:", title);
 }
 function ConfirmHost({ C }) {
   const [cf, setCf] = useState(null);
@@ -1980,6 +1981,7 @@ function ConfirmHost({ C }) {
 // target = { type:'user'|'post'|'group_post'|'message', id, reportedUserId, label }
 let _setReport = null;
 export function reportContent(target) {
+  if (!_setReport) devWarn("reportContent with no ReportHost mounted — dropped:", target?.type);
   if (_setReport) _setReport({ ...target, id: target.id != null ? String(target.id) : null, key: Date.now() });
 }
 const REPORT_REASONS = [
@@ -2040,6 +2042,7 @@ export function SharedPostLink({ text, C, ink, tile }) {
 let _setSharePost = null;
 export function sharePostTo(post) {
   if (_setSharePost) _setSharePost({ post, key: Date.now() });
+  else devWarn("sharePostTo with no SharePostHost mounted — dropped");
 }
 export function postShareUrl(postId) { return `${shareOrigin()}/p/${postId}`; }
 export const POST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19047,10 +19050,17 @@ function AppInner() {
   // ChatView's own "···" Report and its "Couldn't send" toast were dead for the same reason.
   // The chat is an OVERLAY now (see the black-screen fix below), which resolves it at the root:
   // it renders inside the main return and the hosts are simply there.
-  // STILL OPEN, pre-existing: the seven remaining early returns (publicRoute, authLoading,
-  // recoveryNeeded, no-session, guest authPrompt, !dbReady, onboarding) mount none of these, so a
-  // toast fired from the auth or onboarding screens has nowhere to land. Call this from any new
-  // early return that needs them.
+  // The seven remaining early returns (publicRoute, authLoading, recoveryNeeded, no-session,
+  // guest authPrompt, !dbReady, onboarding) still mount none of these — and that was MEASURED
+  // rather than reasoned about, because the obvious conclusion was wrong. Instrumenting all four
+  // setters and driving those screens: the auth/signup screen and the guest prompt fire NOTHING,
+  // and the one call that does fire with no host mounted (`loadUserData`'s "Couldn't load your
+  // data" during !dbReady) is QUEUED by `toast` and displayed the moment ToastHost mounts —
+  // verified visible on screen. That queue is exactly why it was added. So there is no live bug
+  // here; do not "fix" it by mounting hosts on the loading screen.
+  // What IS worth knowing: `confirmAction`, `reportContent` and `sharePostTo` have NO queue and
+  // drop on the floor. Unreachable from those screens today, so they now devWarn instead of
+  // vanishing — call this function from any new early return that needs them.
   function renderGlobalHosts() {
     return (
       <>
