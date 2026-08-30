@@ -175,6 +175,26 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
       && got.z > 70 && got.z < 300 && got.parent === "BODY", JSON.stringify(got));
     await ps.close();
   }
+  // ── 4j. The SEASONAL MARK on the three landing CTAs. Separate mechanism from the decor layer
+  //     (it is part of a card, not a floating layer), so it needs its own check — and an <svg>
+  //     contributes no textContent, so this has to select on the data hook.
+  for (const [theme, mark] of [["halloween","pumpkin"],["winter","snowflake"],["spring","blossom"],["fall","leaf"]]) {
+    const { page: pm } = await boot(theme);
+    const marks = await pm.evaluate(() => [...document.querySelectorAll("[data-theme-mark]")]
+      .map(e => ({ kind: e.dataset.themeMark, pe: getComputedStyle(e).pointerEvents })));
+    check(`4j. ${theme} marks the Quick Start card with a "${mark}"`,
+      marks.length >= 1 && marks.every(m => m.kind === mark), JSON.stringify(marks));
+    check(`4j2. ${theme}'s mark cannot eat the tap on the primary action`,
+      marks.every(m => m.pe === "none"), JSON.stringify(marks));
+    await pm.close();
+  }
+  {
+    const { page: pd } = await boot("dark");
+    check("4k. a non-seasonal theme renders no mark",
+      await pd.evaluate(() => document.querySelectorAll("[data-theme-mark]").length === 0));
+    await pd.close();
+  }
+
   // And a theme with no `decor` must render no layer at all.
   const { page: p2 } = await boot("dark");
   check("4h. an undecorated theme renders no decor layer",

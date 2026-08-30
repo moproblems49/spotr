@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { cvt, dKey, dateFromKey, devWarn, uid } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
 import { EXERCISE_DB } from "../engine/exercises.js";
 import { calcWeeklyStreak } from "../engine/insights.js";
-import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow } from "../App.jsx";
+import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark } from "../App.jsx";
 
 // GROUP DETAIL — lazy-loaded (src/lazy/GroupDetail.jsx). Most sessions never open a group.
 const GroupDetail = lazy(() => import("./GroupDetail.jsx"));
@@ -215,7 +215,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                 stops meaning anything. Same language, quieter: a thinner ring (33 vs 55 alpha) and
                 a shallower lift, so side by side the hierarchy still reads. */}
             <button onClick={() => setSubTab("activity")} style={{
-              background:C.surface, color:C.text,
+              position:"relative", background:C.surface, color:C.text,
               border:`1px solid ${C.accent}33`, borderRadius:16, padding:"18px 16px",
               boxShadow:`0 0 0 1px ${C.accent}0d, 0 4px 14px -8px ${C.accent}4d`,
               cursor:"pointer", textAlign:"left", fontFamily:F,
@@ -230,9 +230,10 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                     UI-kit-card tell — show the real number once there's one to show. */}
                 <div style={{ fontSize:11, opacity:0.65, marginTop:3 }}>{following.length > 0 ? `${following.length} following` : "Weekly stats"}</div>
               </div>
+              <ThemeMark C={C} size={19} top={9} right={9}/>
             </button>
             <button onClick={() => setSubTab("groups")} style={{
-              background:C.surface, color:C.text,
+              position:"relative", background:C.surface, color:C.text,
               border:`1px solid ${C.accent}33`, borderRadius:16, padding:"18px 16px",
               boxShadow:`0 0 0 1px ${C.accent}0d, 0 4px 14px -8px ${C.accent}4d`,
               cursor:"pointer", textAlign:"left", fontFamily:F,
@@ -245,6 +246,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
                 <div style={{ fontSize:11, color:C.sub, marginTop:3 }}>{(store.groups?.length || 0) > 0 ? `${store.groups.length} joined` : "Private crews"}</div>
               </div>
+              <ThemeMark C={C} size={19} top={9} right={9}/>
             </button>
           </div>
 

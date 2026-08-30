@@ -1,4 +1,4 @@
-// v178091716989
+// v178091716990
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -797,7 +797,12 @@ const CUSTOM_EQUIPMENT = ["Barbell","Dumbbell","Machine","Cable","Bodyweight","K
 
 
 const THEMES = {
+  // Every palette carries its own `id`. `C` is passed down as a bare object, so without this a
+  // component holding C has no way to ask which theme it is in — and the seasonal MARKS below
+  // need exactly that, in screens that never see `store`. Not a colour, so the guards that parse
+  // hex values out of these blocks ignore it.
   dark: {
+    id: "dark",
     isDark: true,
     // Deep-grey elevation system (not pure black) — calmer, more premium, easier on the eyes.
     // Layer gap widened so cards visibly "float" above the background.
@@ -863,6 +868,7 @@ const THEMES = {
     tabBg: "rgba(11,11,14,0.85)",
   },
   light: {
+    id: "light",
     isDark: false,
     // Premium light: the canvas is a soft warm-neutral, NOT pure white, so true-white
     // cards visibly lift off the background (Things-3 / Linear approach). Borders are
@@ -925,6 +931,7 @@ const THEMES = {
   // Blue is mid-light, so `onAccent` is dark ink exactly as volt's is, and `accentInk` can be the
   // accent itself on a dark ground. Every pair here is swept by sim_a11y across all themes.
   midnight: {
+    id: "midnight",
     isDark: true,
     bg: "#0a0c12",          // deep blue-black — same depth as dark's #0b0b0e, cooler
     surface: "#171b26",     // raised cards/sheets
@@ -968,6 +975,7 @@ const THEMES = {
   // sub 4.84:1, muted 4.69:1, the four semantics 4.86-5.06:1 against bg, white-on-accent 5.28:1,
   // accentInk on its own tint 6.09:1.
   arctic: {
+    id: "arctic",
     isDark: false,
     bg: "#eef3fb",          // cool blue-white canvas — the hue lives HERE, not just in the accent
     surface: "#ffffff",     // cards stay pure white so they lift off the tinted canvas
@@ -1006,6 +1014,7 @@ const THEMES = {
   // Measured: text 17.6:1, muted 4.63:1 (the tightest), overlayEdge 3.14:1 against its own scrim,
   // ink-on-accent 8.20:1.
   halloween: {
+    id: "halloween",
     isDark: true,
     bg: "#0f0a16",          // purple-black, not grey-black — the hue is in the neutrals here too
     surface: "#1f1629",
@@ -1044,6 +1053,7 @@ const THEMES = {
   // gold/green/red/orange are the vocabulary everywhere; the light seasonals reuse the light
   // theme's values and the dark ones reuse dark's, each measured against its own canvas.
   spring: {
+    id: "spring",
     isDark: false,
     bg: "#f5f8f2",          // pale green-white, like new growth
     surface: "#ffffff",
@@ -1076,6 +1086,7 @@ const THEMES = {
     tabBg: "rgba(245,248,242,0.85)",
   },
   summer: {
+    id: "summer",
     isDark: false,
     bg: "#fdf6ea",          // warm sand
     surface: "#ffffff",
@@ -1105,6 +1116,7 @@ const THEMES = {
     tabBg: "rgba(253,246,234,0.85)",
   },
   fall: {
+    id: "fall",
     isDark: true,
     bg: "#14100c",          // espresso-black — BROWN neutrals are what keep this off Halloween,
     surface: "#241d16",     // whose blacks are purple; the accents are neighbours by nature.
@@ -1139,6 +1151,7 @@ const THEMES = {
     tabBg: "rgba(20,16,12,0.88)",
   },
   winter: {
+    id: "winter",
     isDark: true,
     bg: "#0d141d",          // slate-blue night, LIGHTER than Midnight's blue-black on purpose —
     surface: "#1b2532",     // these two are the closest pair in the set and the neutrals separate
@@ -1188,11 +1201,14 @@ const THEME_META = [
   // undifferentiated rows is a wall, and the split is real information (these are the ones that
   // bring ornaments), not decoration on the list. The order matters: the picker starts the
   // SEASONAL heading at the first row carrying the flag, so seasonals must stay contiguous.
-  { id: "spring",    label: "Spring",    blurb: "Blossom pink, falling petals", decor: "petals",  season: true },
-  { id: "summer",    label: "Summer",    blurb: "Warm sand and sea teal",       decor: "summer",  season: true },
-  { id: "fall",      label: "Fall",      blurb: "Espresso and burnt sienna",    decor: "leaves",  season: true },
-  { id: "winter",    label: "Winter",    blurb: "Slate night, drifting snow",   decor: "snow",    season: true },
-  { id: "halloween", label: "Halloween", blurb: "Pumpkin, purple, cobwebs",     decor: "halloween", season: true },
+  // `mark` is the small seasonal glyph that sits on the three landing CTAs (Quick Start, Friends
+  // Activity, Groups). Separate from `decor` on purpose: decor is the ambient layer over the whole
+  // app, a mark is a badge on specific UI, and a theme could reasonably want one without the other.
+  { id: "spring",    label: "Spring",    blurb: "Blossom pink, falling petals", decor: "petals",  mark: "blossom",   season: true },
+  { id: "summer",    label: "Summer",    blurb: "Warm sand and sea teal",       decor: "summer",  mark: "sun",       season: true },
+  { id: "fall",      label: "Fall",      blurb: "Espresso and burnt sienna",    decor: "leaves",  mark: "leaf",      season: true },
+  { id: "winter",    label: "Winter",    blurb: "Slate night, drifting snow",   decor: "snow",    mark: "snowflake", season: true },
+  { id: "halloween", label: "Halloween", blurb: "Pumpkin, purple, cobwebs",     decor: "halloween", mark: "pumpkin", season: true },
 ];
 function themeOf(key) {
   return THEMES[key] || THEMES[DEFAULT_THEME];
@@ -1287,12 +1303,29 @@ function Ghost({ left, size, dur, delay }) {
 // read as debris rather than leaves. Snow and petals are single-tone on purpose — real ones are.
 const LEAF_TONES = [[212, 110, 58], [186, 74, 40], [206, 148, 54]];
 const FALL_SHAPES = {
-  snow: (k) => (
-    <g stroke={`rgba(226,242,255,${k})`} strokeWidth="1.4" strokeLinecap="round" fill="none">
-      <path d="M8 1.5V14.5M2.4 4.7l11.2 6.6M13.6 4.7L2.4 11.3"/>
-      <path d="M8 4.2l-1.8-1.8M8 4.2l1.8-1.8M8 11.8l-1.8 1.8M8 11.8l1.8 1.8"/>
-    </g>
-  ),
+  // ★ A SIX-SPOKE ASTERISK IS NOT A SNOWFLAKE. The first cut was three crossed lines with four
+  // stubs and read as a `*` at any size — Mo's report was "the snow flakes don't look that great".
+  // A real dendrite is six arms each carrying a PAIR of side branches at a consistent angle, plus
+  // a small hexagonal core. Drawn once at 60deg and rotated, so all six arms are identical by
+  // construction rather than by six hand-written paths that can drift apart.
+  snow: (k) => {
+    const ink = `rgba(228,244,255,${k})`;
+    const arm = (
+      <g stroke={ink} strokeWidth="1.15" strokeLinecap="round" fill="none">
+        <path d="M8 7.4V0.9"/>
+        <path d="M8 3.1L6.1 1.5M8 3.1l1.9-1.6"/>
+        <path d="M8 5.4L6.6 4.2M8 5.4l1.4-1.2"/>
+      </g>
+    );
+    return (
+      <g>
+        {[0, 60, 120, 180, 240, 300].map(a => (
+          <g key={a} transform={`rotate(${a} 8 8)`}>{arm}</g>
+        ))}
+        <circle cx="8" cy="8" r="1.15" fill={ink}/>
+      </g>
+    );
+  },
   // A teardrop, not an ellipse: the first cut drew a rounded pill and seven pink pills falling
   // past the screen read as capsules, which is not the association anyone wants in a fitness app.
   petals: (k) => (
@@ -1353,6 +1386,214 @@ function Mote({ left, size, dur, delay }) {
       animation:`seshd-rise ${dur}s ${delay}s linear infinite` }}/>
   );
 }
+// ── The STATIC anchors. Every seasonal theme now has the three-part shape Halloween proved out:
+// something fixed at an edge (the cobwebs), something falling or drifting, and a third element
+// with its own motion. A theme with only one ornament type reads as an effect rather than a scene.
+function Icicles() {
+  // ★ UNIFORM TRIANGLES ARE SAW TEETH, NOT ICE. The first cut was 40 straight-sided triangles of
+  // near-equal width and read as a torn-paper edge across the top of the app. Real icicles are
+  // irregular: varied widths, varied drops, GAPS between clusters, and sides that taper with a
+  // slight curve rather than a straight bevel. All three are what makes the shape legible at 30px.
+  // The list is deterministic — a static ornament that reshuffles on every mount reads as a glitch.
+  const spikes = [
+    [11, 26], [7, 13], [9, 19], [0, 0], [13, 31], [8, 15], [6, 10], [10, 22], [0, 0], [0, 0],
+    [12, 28], [7, 12], [9, 17], [14, 34], [8, 14], [0, 0], [11, 24], [6, 11], [10, 20], [7, 15],
+    [0, 0], [13, 30], [9, 18], [7, 12], [11, 25], [0, 0], [8, 16], [12, 27], [6, 10], [9, 21],
+    [0, 0], [10, 23], [7, 13], [13, 32], [8, 15], [0, 0], [11, 26], [9, 17], [6, 11], [12, 29],
+    [7, 14], [0, 0], [10, 22], [8, 16], [13, 28], [9, 19], [0, 0], [11, 24], [7, 12], [10, 20],
+  ];
+  let x = 0;
+  return (
+    <svg width="100%" height="36" aria-hidden="true" style={{ position:"absolute", top:0, left:0, opacity:0.55 }}>
+      {spikes.map(([w, h], i) => {
+        if (!w) { x += 8; return null; }
+        const at = x; x += w;
+        const mid = at + w / 2;
+        return (
+          <path key={i} fill="rgba(208,236,255,0.62)"
+            d={`M${at} 0 L${at + w} 0 Q${mid + w * 0.14} ${h * 0.5} ${mid} ${h} Q${mid - w * 0.14} ${h * 0.5} ${at} 0 Z`}/>
+        );
+      })}
+    </svg>
+  );
+}
+function Twinkle({ left, top, size, delay }) {
+  // A four-point sparkle that fades in place — no travel, so it reads as light catching ice
+  // rather than as another thing falling.
+  return (
+    <svg width={size} height={size} viewBox="0 0 12 12" aria-hidden="true"
+      style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
+               animation:`seshd-twinkle 5.5s ${delay}s ease-in-out infinite` }}>
+      <path d="M6 0.6 L7.1 4.9 L11.4 6 L7.1 7.1 L6 11.4 L4.9 7.1 L0.6 6 L4.9 4.9 Z" fill="rgba(233,247,255,0.9)"/>
+    </svg>
+  );
+}
+function CornerBranch({ blossom }) {
+  // Spring and Fall share one branch and differ only in what hangs off it — the same
+  // one-mechanism-many-glyphs rule the Faller follows.
+  const bark = blossom ? "rgba(122,96,74,0.55)" : "rgba(104,78,56,0.7)";
+  return (
+    // Scaled down and pulled into the corner: at 188x128 flush to 0,0 the blossoms landed on the
+    // Workout/Exercises/History tab row, which is the same mistake the Halloween spiders made and
+    // the same fix. It sits in the top-bar band now, behind the wordmark rather than on the tabs.
+    <svg width="150" height="102" viewBox="0 0 188 128" aria-hidden="true"
+      style={{ position:"absolute", top:-6, left:-18, opacity:0.72 }}>
+      <g stroke={bark} fill="none" strokeLinecap="round">
+        <path d="M-6 6 C40 14 78 30 116 62" strokeWidth="4"/>
+        <path d="M34 12 C44 30 46 44 42 60" strokeWidth="2.2"/>
+        <path d="M72 27 C86 40 92 52 92 66" strokeWidth="2"/>
+        <path d="M96 47 C112 52 124 50 138 42" strokeWidth="1.8"/>
+      </g>
+      {blossom
+        ? [[36, 58], [44, 66], [90, 64], [96, 72], [136, 40], [70, 26], [116, 60]].map(([cx, cy], i) => (
+            <g key={i}>
+              {[0, 72, 144, 216, 288].map(a => (
+                <ellipse key={a} cx={cx} cy={cy - 4.6} rx="3.1" ry="4.6" fill="rgba(249,186,211,0.85)"
+                  transform={`rotate(${a} ${cx} ${cy})`}/>
+              ))}
+              <circle cx={cx} cy={cy} r="1.7" fill="rgba(255,232,168,0.95)"/>
+            </g>
+          ))
+        : [[40, 58], [92, 64], [138, 42], [116, 60]].map(([cx, cy], i) => (
+            <path key={i} transform={`translate(${cx - 8} ${cy - 8}) rotate(${i * 47} 8 8)`}
+              d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z"
+              fill={["rgba(212,110,58,0.9)", "rgba(186,74,40,0.9)", "rgba(206,148,54,0.9)"][i % 3]}/>
+          ))}
+    </svg>
+  );
+}
+function Butterfly({ left, top, dur, delay, tint }) {
+  // Spring's third element. It TRAVELS rather than falls, and its wings beat on their own timer,
+  // so it never reads as a petal that forgot to drop.
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
+      animation:`seshd-flutter ${dur}s ${delay}s ease-in-out infinite` }}>
+      <svg width="19" height="16" viewBox="0 0 19 16" style={{ animation:`seshd-wing 0.55s ease-in-out infinite` }}>
+        <ellipse cx="6" cy="6" rx="5.4" ry="4.2" fill={tint} transform="rotate(-24 6 6)"/>
+        <ellipse cx="13" cy="6" rx="5.4" ry="4.2" fill={tint} transform="rotate(24 13 6)"/>
+        <ellipse cx="6.6" cy="11" rx="3.4" ry="3" fill={tint} opacity="0.8" transform="rotate(-14 6.6 11)"/>
+        <ellipse cx="12.4" cy="11" rx="3.4" ry="3" fill={tint} opacity="0.8" transform="rotate(14 12.4 11)"/>
+        <rect x="9" y="3.6" width="1.3" height="9" rx="0.65" fill="rgba(90,60,72,0.75)"/>
+      </svg>
+    </div>
+  );
+}
+function Cloud({ top, size, dur, delay }) {
+  return (
+    <svg width={size} height={size * 0.44} viewBox="0 0 100 44" aria-hidden="true"
+      style={{ position:"absolute", top:`${top}%`, left:0, opacity:0,
+               animation:`seshd-sail ${dur}s ${delay}s linear infinite` }}>
+      <g fill="rgba(255,255,255,0.38)">
+        <ellipse cx="30" cy="28" rx="22" ry="14"/>
+        <ellipse cx="52" cy="22" rx="20" ry="18"/>
+        <ellipse cx="72" cy="29" rx="18" ry="13"/>
+        <rect x="12" y="28" width="70" height="13" rx="6.5"/>
+      </g>
+    </svg>
+  );
+}
+function SunRays() {
+  // Behind the sun, turning slowly. Conic-free (a rotating group of wedges) so it renders the same
+  // everywhere, and at this alpha it reads as glare rather than as a graphic.
+  return (
+    // Alpha matters more than shape here. The first cut was 0.30 fill under 0.5 layer opacity and
+    // rendered as twelve solid yellow wedges running down over the Quick Start card — a graphic,
+    // not glare. Effective alpha is ~0.05 now, which is what "the light is coming from over
+    // there" actually looks like.
+    <svg width="250" height="250" viewBox="0 0 300 300" aria-hidden="true"
+      style={{ position:"absolute", top:-92, right:-92, opacity:0.32,
+               animation:"seshd-turn 70s linear infinite", transformOrigin:"150px 150px" }}>
+      {Array.from({ length: 12 }, (_, i) => (
+        <path key={i} d="M150 150 L163 4 L137 4 Z" fill="rgba(255,206,110,0.16)"
+          transform={`rotate(${i * 30} 150 150)`}/>
+      ))}
+    </svg>
+  );
+}
+function GroundLeaf({ left, dur, delay, tone }) {
+  // Fall's third element: a leaf skittering along the BOTTOM edge, which is where wind actually
+  // moves them. Different axis and different height band from the fallers, so the two never
+  // read as one effect.
+  const tint = ["rgba(212,110,58,0.85)", "rgba(186,74,40,0.85)", "rgba(206,148,54,0.85)"][tone % 3];
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"
+      style={{ position:"absolute", bottom:"7%", left:`${left}%`, opacity:0,
+               animation:`seshd-skitter ${dur}s ${delay}s linear infinite` }}>
+      <path d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z" fill={tint}/>
+    </svg>
+  );
+}
+
+// ── SEASONAL MARKS ──────────────────────────────────────────────────────────────────────────
+// A small glyph in the corner of the three landing CTAs (Quick Start, Friends Activity, Groups).
+// Separate from the ambient decor layer and deliberately so: decor floats OVER the whole app and
+// belongs to nobody, a mark is part of a specific card. It reads the theme off `C.id` — which is
+// why every palette carries its own id — so a screen that never sees `store` can still render it.
+// Absolute, pointer-transparent, aria-hidden: this is ornament, and it must never intercept a tap
+// on the primary action of the whole tracker tab.
+const THEME_MARKS = {
+  pumpkin: (c) => (
+    <g>
+      <path d="M12 6.6c-1.1-1-2.6-1-3.7-.1C7.2 5.6 5.6 5.8 4.6 7c-1.3 1.6-1.3 4.6 0 6.6 1 1.5 2.5 1.8 3.7 1 1.1.7 2.5.7 3.6 0 1.2.8 2.7.5 3.7-1 1.3-2 1.3-5 0-6.6-1-1.2-2.6-1.4-3.6-.4z" fill={c}/>
+      <path d="M12 6.4V4.2c0-.9.7-1.6 1.6-1.6" stroke="rgba(126,180,88,0.95)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      <g stroke="rgba(0,0,0,0.22)" strokeWidth="0.9" fill="none" strokeLinecap="round">
+        <path d="M9.6 7.6c-.7 2.2-.7 4.6 0 6.7M14.4 7.6c.7 2.2.7 4.6 0 6.7"/>
+      </g>
+    </g>
+  ),
+  snowflake: (c) => (
+    <g stroke={c} strokeWidth="1.5" strokeLinecap="round" fill="none">
+      {[0, 60, 120].map(a => <path key={a} d="M12 3.4V20.6" transform={`rotate(${a} 12 12)`}/>)}
+      {[0, 60, 120, 180, 240, 300].map(a => (
+        <path key={a} d="M12 6.4L10 4.6M12 6.4l2-1.8" transform={`rotate(${a} 12 12)`}/>
+      ))}
+    </g>
+  ),
+  blossom: (c) => (
+    <g>
+      {[0, 72, 144, 216, 288].map(a => (
+        <ellipse key={a} cx="12" cy="7.4" rx="3.2" ry="4.8" fill={c} transform={`rotate(${a} 12 12)`}/>
+      ))}
+      <circle cx="12" cy="12" r="2" fill="rgba(255,224,140,0.95)"/>
+    </g>
+  ),
+  sun: (c) => (
+    <g>
+      <circle cx="12" cy="12" r="5" fill={c}/>
+      <g stroke={c} strokeWidth="1.6" strokeLinecap="round">
+        {[0, 45, 90, 135, 180, 225, 270, 315].map(a => (
+          <path key={a} d="M12 1.8V4.4" transform={`rotate(${a} 12 12)`}/>
+        ))}
+      </g>
+    </g>
+  ),
+  leaf: (c) => (
+    <g>
+      <path d="M12 2.6C18.2 8.4 19.2 15.9 12 22.4 4.8 15.9 5.8 8.4 12 2.6z" fill={c}/>
+      <g stroke="rgba(70,34,12,0.5)" strokeWidth="1" strokeLinecap="round" fill="none">
+        <path d="M12 5.2V20"/><path d="M12 10.4L8.6 13.4M12 10.4l3.4 3M12 14.8l-2.9 2.6M12 14.8l2.9 2.6"/>
+      </g>
+    </g>
+  ),
+};
+function themeMarkOf(C) {
+  const meta = THEME_META.find(t => t.id === (C && C.id));
+  return meta && meta.mark ? meta.mark : null;
+}
+export function ThemeMark({ C, size = 22, top = 10, right = 10 }) {
+  const kind = themeMarkOf(C);
+  if (!kind) return null;
+  return (
+    // data-theme-mark is the selector contract for pw_themes. An <svg> contributes no textContent,
+    // so a text-based check could not see this at all — the same reason the PR trophy needed
+    // data-pr-marker.
+    <span aria-hidden="true" data-theme-mark={kind}
+      style={{ position:"absolute", top, right, lineHeight:0, pointerEvents:"none", opacity:0.92 }}>
+      <svg width={size} height={size} viewBox="0 0 24 24">{THEME_MARKS[kind](C.accent)}</svg>
+    </span>
+  );
+}
+
 function ThemeDecor({ kind }) {
   // Randomised ONCE. Randomising per render makes every ornament teleport on each state change,
   // which in this app is many times a second.
@@ -1377,6 +1618,14 @@ function ThemeDecor({ kind }) {
       petals: fallers(8, { spin: true, min: 13, max: 21, aMin: 0.6, aMax: 0.95 }),
       leaves: fallers(7, { spin: true, min: 15, max: 25, aMin: 0.75, aMax: 1 }),
       motes: [0, 1, 2, 3, 4, 5, 6].map(() => ({ left: r(6, 92), size: r(4, 9), dur: r(16, 26), delay: -r(0, 24) })),
+      twinkles: [0, 1, 2, 3].map(() => ({ left: r(8, 88), top: r(14, 78), size: r(9, 15), delay: -r(0, 5.5) })),
+      butterflies: [0, 1].map(i => ({ left: r(10, 70), top: r(22, 62), dur: r(26, 38), delay: -r(0, 30),
+                                      tint: i ? "rgba(255,214,235,0.9)" : "rgba(249,186,211,0.92)" })),
+      // Pinned to the TOP BAND. At top: r(6,26) a cloud sailed across the middle of the screen and
+      // sat on the "Start your first program" heading at 72% white — decoration that makes copy
+      // unreadable is the one thing this layer must never do.
+      clouds: [0, 1].map(() => ({ top: r(1, 8), size: r(76, 118), dur: r(70, 105), delay: -r(0, 90) })),
+      groundLeaves: [0, 1, 2].map(i => ({ left: r(-6, 40), dur: r(14, 24), delay: -r(0, 20), tone: i })),
     };
   }, []);
   if (!kind) return null;
@@ -1411,6 +1660,34 @@ function ThemeDecor({ kind }) {
           100% { opacity:0; transform: translate3d(18px,-96vh,0); }
         }
         @keyframes seshd-breathe { 0%,100% { opacity:0.85; } 50% { opacity:1; } }
+        @keyframes seshd-twinkle {
+          0%, 70%, 100% { opacity:0; transform: scale(0.6); }
+          35% { opacity:0.95; transform: scale(1); }
+        }
+        @keyframes seshd-flutter {
+          0% { opacity:0; transform: translate3d(-12vw,0,0); }
+          10% { opacity:1; }
+          25% { transform: translate3d(12vw,-6vh,0); }
+          50% { transform: translate3d(42vw,4vh,0); }
+          75% { transform: translate3d(72vw,-5vh,0); }
+          90% { opacity:1; }
+          100% { opacity:0; transform: translate3d(104vw,2vh,0); }
+        }
+        @keyframes seshd-wing { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(0.55); } }
+        @keyframes seshd-sail {
+          0% { opacity:0; transform: translate3d(-40vw,0,0); }
+          12% { opacity:1; }
+          88% { opacity:1; }
+          100% { opacity:0; transform: translate3d(115vw,0,0); }
+        }
+        @keyframes seshd-turn { to { transform: rotate(360deg); } }
+        @keyframes seshd-skitter {
+          0% { opacity:0; transform: translate3d(0,0,0) rotate(0deg); }
+          8% { opacity:1; }
+          50% { transform: translate3d(46vw,-3vh,0) rotate(420deg); }
+          92% { opacity:1; }
+          100% { opacity:0; transform: translate3d(102vw,0,0) rotate(900deg); }
+        }
         @media (prefers-reduced-motion: reduce) { .seshd-decor * { animation: none !important; } }
       `}</style>
       {kind === "halloween" && <>
@@ -1419,11 +1696,25 @@ function ThemeDecor({ kind }) {
         {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
         {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}
       </>}
-      {kind === "snow" && bits.snow.map((f, i) => <Faller key={i} shape="snow" {...f}/>)}
-      {kind === "petals" && bits.petals.map((f, i) => <Faller key={i} shape="petals" {...f}/>)}
-      {kind === "leaves" && bits.leaves.map((f, i) => <Faller key={i} shape="leaves" {...f}/>)}
+      {kind === "snow" && <>
+        <Icicles/>
+        {bits.snow.map((x, i) => <Faller key={i} shape="snow" {...x}/>)}
+        {bits.twinkles.map((t, i) => <Twinkle key={i} {...t}/>)}
+      </>}
+      {kind === "petals" && <>
+        <CornerBranch blossom/>
+        {bits.petals.map((x, i) => <Faller key={i} shape="petals" {...x}/>)}
+        {bits.butterflies.map((bf, i) => <Butterfly key={i} {...bf}/>)}
+      </>}
+      {kind === "leaves" && <>
+        <CornerBranch/>
+        {bits.leaves.map((x, i) => <Faller key={i} shape="leaves" {...x}/>)}
+        {bits.groundLeaves.map((g, i) => <GroundLeaf key={i} {...g}/>)}
+      </>}
       {kind === "summer" && <>
+        <SunRays/>
         <Sun/>
+        {bits.clouds.map((c2, i) => <Cloud key={i} {...c2}/>)}
         {bits.motes.map((m, i) => <Mote key={i} {...m}/>)}
       </>}
     </div>, document.body);
@@ -11946,7 +12237,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               rendering glitch rather than emphasis. It now sits on the same surface as every other
               card and earns its prominence from the accent icon + chevron instead of raw contrast. */}
           <button onClick={() => startWorkout(null)} className="seshd-pressable" style={{
-            width:"100%", background:C.bg, color:C.text,
+            // position:relative so the seasonal mark can sit in the corner. It is the only reason.
+            position:"relative", width:"100%", background:C.bg, color:C.text,
             border:`1px solid ${C.accent}55`, borderRadius:16, padding:"18px",
             boxShadow:`0 0 0 1px ${C.accent}14, 0 6px 20px -8px ${C.accent}66`,
             marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", gap:14, fontFamily:F,
@@ -11959,6 +12251,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>Start an empty workout</div>
             </div>
             <Icon name="chevron-right" size={18} color={C.sub}/>
+            <ThemeMark C={C} size={20} top={8} right={8}/>
           </button>
 
           {/* Streak + 1RM share one compact row. The streak used to be a full-width slab and the
