@@ -60,15 +60,65 @@ const dark = extractTheme("dark");
 const light = extractTheme("light");
 
 // Tokens that are actually used as TEXT color on real (non-decorative) content — text/textDim/sub
-// /muted at minimum; gold/red/green/orange/accent are checked too since they're used as text for
-// badges (PR tags, deltas, admin labels).
-const TEXT_TOKENS = ["text", "textDim", "sub", "muted", "gold", "red", "green", "orange"];
+// /muted at minimum; gold/red/green/orange are checked too since they're used as text for badges
+// (PR tags, deltas, admin labels). `accentInk` is in the list because it IS the accent-as-text
+// token; bare `accent` is deliberately absent — it is a FILL and fails as text on the light theme
+// by design, which is the whole reason accentInk exists. (This comment used to claim accent was
+// swept and it never was; a guard whose stated coverage and real coverage disagree is how the
+// next blind spot survives.)
+const TEXT_TOKENS = ["text", "textDim", "sub", "muted", "gold", "red", "green", "orange", "accentInk"];
 for (const [name, t] of THEME_SET) {
   for (const tok of TEXT_TOKENS) {
     if (!t[tok]) continue;
     const rBg = ratio(t[tok], t.bg), rSurf = ratio(t[tok], t.surface);
     check(`${name}.${tok} (${t[tok]}) clears 4.5:1 against bg`, rBg >= 4.5, `${rBg.toFixed(2)}:1`);
     check(`${name}.${tok} (${t[tok]}) clears 4.5:1 against surface`, rSurf >= 4.5, `${rSurf.toFixed(2)}:1`);
+  }
+}
+
+// ── 1b. INK ON A FILL ───────────────────────────────────────────────────────────────────────
+// ★ THE CHECK THAT WOULD HAVE CAUGHT THE ACCENT-INK BUG. The sweep above asks whether a token
+// reads on the app's two BACKGROUNDS. It cannot see content painted on a coloured FILL, and that
+// is where a nine-theme palette set actually breaks: `C.isDark ? C.onAccent : C.text` used isDark
+// as a proxy for "is this theme's accent light?", which was true for two themes and false the
+// moment a LIGHT theme shipped a DARK accent — Arctic 3.08:1, Spring 2.64:1, Summer 2.75:1 on
+// real 11-46px text. Every pair below is an ink and the fill it is actually painted on, so a new
+// palette whose ink does not clear its own fill fails here rather than in someone's gym.
+const FILL_PAIRS = [
+  ["accentFillInk", "accent",  "content on the accent fill (avatar initials, the 1RM slab, how-to step badges)"],
+  ["onAccent",      "green",   "the done-tick on a green fill"],
+  ["onAccent",      "accent2", "the PR tag"],
+  ["onPrimary",     "primary", "filled primary buttons"],
+];
+for (const [name, t] of THEME_SET) {
+  for (const [ink, fill, what] of FILL_PAIRS) {
+    if (!t[ink] || !t[fill]) { check(`${name} declares both ${ink} and ${fill}`, false, `${ink}=${t[ink]} ${fill}=${t[fill]}`); continue; }
+    const r = ratio(t[ink], t[fill]);
+    check(`${name}.${ink} (${t[ink]}) clears 4.5:1 on ${fill} — ${what}`, r >= 4.5, `${r.toFixed(2)}:1`);
+  }
+}
+
+// ── 1c. THE REST-TIMER SLAB ─────────────────────────────────────────────────────────────────
+// The rest bar is near-black on EVERY theme, so its accent is a separate token from `accent`.
+// The two slab fills are PARSED out of App.jsx rather than copied here — a guard that hardcodes
+// its own copy of the value under test is testing its copy (the documented replica anti-pattern).
+// If that line ever changes shape this throws loudly instead of silently checking nothing.
+{
+  const m = src.match(/background:\s*C\.isDark\s*\?\s*"rgba\((\d+),\s*(\d+),\s*(\d+),[^"]*\)"\s*:\s*"rgba\((\d+),\s*(\d+),\s*(\d+),[^"]*\)"/);
+  if (!m) throw new Error("could not find the rest-bar slab fills in src/App.jsx — has that line changed?");
+  const slabs = [[+m[1], +m[2], +m[3]], [+m[4], +m[5], +m[6]]];
+  const lumOf = rgb => relLum(rgb);
+  const ratioRgb = (hex, rgb) => {
+    const L1 = relLum(hexToRgb(hex)), L2 = lumOf(rgb);
+    const [hi, lo] = L1 > L2 ? [L1, L2] : [L2, L1]; return (hi + 0.05) / (lo + 0.05);
+  };
+  for (const [name, t] of THEME_SET) {
+    check(`${name} declares accentSlab`, !!t.accentSlab, String(t.accentSlab));
+    if (!t.accentSlab) continue;
+    for (const slab of slabs) {
+      const r = ratioRgb(t.accentSlab, slab);
+      check(`${name}.accentSlab (${t.accentSlab}) clears 3:1 on the rest slab rgb(${slab})`, r >= 3, `${r.toFixed(2)}:1`);
+    }
   }
 }
 

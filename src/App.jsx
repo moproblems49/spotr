@@ -1,4 +1,4 @@
-// v178091716988
+// v178091716989
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -820,6 +820,28 @@ const THEMES = {
     accentInk: "#c8f135",       // accent used as TEXT on an accentSoft tint — see the light theme
     accent2: "#a8d426",
     onAccent: "#0d0d10",        // text/icons ON volt surfaces (volt is light — dark ink)
+    // ★ THE ACCENT FOR A SURFACE THAT IS NEAR-BLACK ON EVERY THEME. The rest timer's ring and its
+    // minimised bar sit on a fixed dark slab whatever the palette, so their accent cannot be
+    // `C.accent` (on a light theme that is chosen to read on WHITE and computes to a dark olive
+    // over the slab). The old answer was a module constant pinned to `THEMES.dark.accent` — which
+    // meant the rest timer, the thing you stare at through every rest period of every workout,
+    // kept a VOLT LIME ring on Midnight, the palette whose entire stated purpose is that there is
+    // no lime, and on Fall, Winter and Halloween too. Exactly the GROUP_COLOR.Legs shape: one
+    // theme's accent baked in as a literal for all of them. Each palette names its own now.
+    accentSlab: "#c8f135",   // 11.50:1 on the slab
+    // ★ INK FOR CONTENT SITTING ON THE ACCENT FILL. This is NOT `onAccent`, and the difference is
+    // the bug that made this token exist. `onAccent` is ink for a saturated SEMANTIC fill — the
+    // done-tick on C.green, the PR tag on C.accent2 — and it is correct on all nine themes there
+    // (5.0-10.1:1). The ACCENT fill asks a different question, because a theme's accent may be
+    // light (volt, pumpkin, ice) or dark (Arctic blue, blossom pink, sea teal), and no single
+    // token can answer both. The old answer was `C.accentFillInk`, which used
+    // isDark as a PROXY for "is the accent light?" — true while there were two themes, false the
+    // moment a LIGHT theme got a DARK accent. Measured on the shipped build: Arctic 3.08:1,
+    // Spring 2.64:1, Summer 2.75:1 for real text (avatar initials, the ONE REP MAX slab, the
+    // 11px how-to step badges), when each of those palettes already declared a white that scores
+    // above 5:1. sim_a11y now checks this pair for every theme, which is the check that would
+    // have caught it — a proxy for a colour property is not the property.
+    accentFillInk: "#0d0d10",   // 14.87:1 on this theme's own accent
     // PRIMARY ACTION SURFACE — deliberately NOT the accent. Volt was doing ten unrelated jobs
     // (every filled button, every icon tile, every avatar, chips, toggles, progress, PRs, the
     // muscle map), which is what made it read as decoration rather than meaning. Filled buttons
@@ -863,6 +885,10 @@ const THEMES = {
     accentInk: "#3f6212",
     accent2: "#4d7c0f",
     onAccent: "#ffffff",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#c8f135",   // 14.08:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#1c1b1a",   // 5.57:1 on this theme's own accent
     primary: "#1c1b1a",         // see the dark theme's note — inverted for the light canvas
     onPrimary: "#ffffff",
     // orange/green/red were 3.27:1 / 3.46:1 / 4.31:1 as text — all real content at 9-13px (error
@@ -911,6 +937,10 @@ const THEMES = {
     accentInk: "#5fa8ff",       // accent as TEXT on the tint — dark ground, so the fill works
     accent2: "#3d8ce0",
     onAccent: "#08101c",        // ink ON the blue fill (blue is light — dark ink)
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#5fa8ff",   // 7.46:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#08101c",   // 7.75:1 on this theme's own accent
     primary: "#f2f4f8",         // filled buttons stay neutral, same rule as the other themes
     onPrimary: "#0a0c12",
     orange: "#fb923c",
@@ -950,6 +980,10 @@ const THEMES = {
     accentInk: "#0a58a6",       // accent as TEXT — see the light theme's note on why these differ
     accent2: "#084c92",
     onAccent: "#ffffff",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#7cc0ff",   // 9.48:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#ffffff",   // 5.28:1 on this theme's own accent
     primary: "#12203a",         // filled buttons stay neutral — a blue-black, not the accent
     onPrimary: "#ffffff",
     orange: "#b8440a",
@@ -984,6 +1018,10 @@ const THEMES = {
     accentInk: "#ff8a3d",
     accent2: "#e0691f",
     onAccent: "#1a0b02",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#ff8a3d",   // 7.83:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#1a0b02",   // 8.20:1 on this theme's own accent
     primary: "#f7f1fa",
     onPrimary: "#12091a",
     orange: "#fb923c",
@@ -1021,6 +1059,10 @@ const THEMES = {
     accentInk: "#a61e4d",
     accent2: "#a61e4d",
     onAccent: "#ffffff",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#f7a8c4",   // 9.93:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#ffffff",   // 5.66:1 on this theme's own accent
     primary: "#1f2a1b",
     onPrimary: "#ffffff",
     orange: "#c2490a",
@@ -1046,6 +1088,10 @@ const THEMES = {
     accentInk: "#095c6b",
     accent2: "#095c6b",
     onAccent: "#ffffff",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#5ed4c8",   // 10.26:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#ffffff",   // 5.59:1 on this theme's own accent
     primary: "#2b2418",
     onPrimary: "#ffffff",
     orange: "#c2490a",
@@ -1071,8 +1117,15 @@ const THEMES = {
     accent: "#e2673f",
     accentSoft: "rgba(226,103,63,0.14)",
     accentInk: "#ef8a63",       // lifted off the fill value so it clears 4.5:1 as TEXT on the tint
-    accent2: "#c8532e",
+    // #c8532e put the PR tag's ink at 4.29:1 — caught by sim_a11y's new ink-on-a-fill sweep on
+    // its first run, by neither cold-context audit, and by nobody looking at the screen. Lifted
+    // just far enough to clear AA while staying a deeper sienna than `accent`.
+    accent2: "#cf5a33",
     onAccent: "#1a0d06",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#e2673f",   // 5.46:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#1a0d06",   // 5.66:1 on this theme's own accent
     primary: "#f7f1e9",
     onPrimary: "#14100c",
     orange: "#fb923c",
@@ -1098,6 +1151,10 @@ const THEMES = {
     accentInk: "#8ed8f8",
     accent2: "#63b8de",
     onAccent: "#06131c",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#8ed8f8",   // 11.66:1 on the slab
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#06131c",   // 11.92:1 on this theme's own accent
     primary: "#eef4fa",
     onPrimary: "#0d141d",
     orange: "#fb923c",
@@ -1272,7 +1329,7 @@ function Faller({ shape, left, size, dur, delay, sway, spin, alpha, tone }) {
       animation:`seshd-fall ${dur}s ${delay}s linear infinite` }}>
       <div style={{ animation:`seshd-sway ${sway}s ${delay}s ease-in-out infinite` }}>
         <svg width={size} height={size} viewBox="0 0 16 16" style={{ display:"block",
-          animation: spin ? `seshd-spin ${spin}s linear infinite` : undefined }}>
+          animation: spin ? `seshd-decor-spin ${spin}s linear infinite` : undefined }}>
           {FALL_SHAPES[shape](alpha, tone)}
         </svg>
       </div>
@@ -1341,7 +1398,12 @@ function ThemeDecor({ kind }) {
           100% { opacity:0; transform: translate3d(0,108vh,0); }
         }
         @keyframes seshd-sway { 0%,100% { transform: translateX(-11px); } 50% { transform: translateX(11px); } }
-        @keyframes seshd-spin { to { transform: rotate(360deg); } }
+        /* seshd-DECOR-spin, not seshd-spin: the global injected stylesheet already defines a
+           keyframe by that name and LoadingSpinner uses it. Two definitions of one name is the
+           N-copies-drift class in a keyframe — and worse than usual here, because this copy is
+           portaled to body and wins the cascade, so a later edit to either one would change the
+           loading spinner DEPENDING ON WHICH THEME IS ACTIVE. */
+        @keyframes seshd-decor-spin { to { transform: rotate(360deg); } }
         @keyframes seshd-rise {
           0% { opacity:0; transform: translate3d(0,0,0); }
           15% { opacity:1; }
@@ -1368,12 +1430,8 @@ function ThemeDecor({ kind }) {
 }
 
 
-// THE ACCENT FOR A SURFACE THAT IS DARK IN BOTH THEMES. A few elements — the minimised rest bar is
-// the one that exists today — are a near-black slab whatever the theme, so their contents already
-// use fixed light values instead of C.text. Their accent has to be pinned the same way: C.accent on
-// the light theme is #65a30d, chosen to be readable on WHITE, and over a dark slab it reads as an
-// olive border rather than an accent. Use this for anything painted on such a slab.
-const ACCENT_ON_SLAB = THEMES.dark.accent;
+// (Retired: C.accentSlab, a module constant pinned to the dark theme's accent. It is the
+// per-palette `accentSlab` token now — see the dark theme's note in THEMES.)
 
 export const F = "'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
 // Display face for headline moments only (wordmark, screen titles, Wrapped). Body text
@@ -4454,7 +4512,7 @@ export function Avatar({ user, size = 36, onClick, C, ring = false }) {
     // on this screen because it cannot resolve an INHERITED colour through an inline-styled tree.
     // The disc is a light lime in BOTH themes, so dark ink is right for both: 14.87:1 dark,
     // 5.57:1 light (which is what it already happened to get by inheriting there).
-    color: C.isDark ? C.onAccent : C.text,
+    color: C.accentFillInk,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -6302,10 +6360,10 @@ function OneRMModal({ onClose, unit, C }) {
                   same dark-theme value (0d0d10), so this only changes the light theme, to the same
                   dark ink Avatar() uses on an accent fill (5.57:1). */}
               <div style={{ background:C.accent, borderRadius:14, padding:"16px", textAlign:"center", marginBottom:16 }}>
-                <div style={{ fontSize:10, color: C.isDark ? C.onAccent : C.text, opacity:0.7, fontWeight:800, letterSpacing:2, marginBottom:4 }}>YOUR ONE REP MAX</div>
+                <div style={{ fontSize:10, color: C.accentFillInk, opacity:0.7, fontWeight:800, letterSpacing:2, marginBottom:4 }}>YOUR ONE REP MAX</div>
                 <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:6 }}>
-                  <div style={{ fontSize:46, fontWeight:800, color: C.isDark ? C.onAccent : C.text, fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
-                  <div style={{ fontSize:15, fontWeight:700, color: C.isDark ? C.onAccent : C.text, opacity:0.75 }}>{unit}</div>
+                  <div style={{ fontSize:46, fontWeight:800, color: C.accentFillInk, fontFamily:MONO, lineHeight:1 }}>{oneRM}</div>
+                  <div style={{ fontSize:15, fontWeight:700, color: C.accentFillInk, opacity:0.75 }}>{unit}</div>
                 </div>
               </div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
@@ -6805,10 +6863,10 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
             // accident more than design) and the name/bio were hardcoded white, which on the light
             // theme's accent fill measures 3.09:1 / 2.78:1. All three get the same accent-fill ink
             // idiom as the ONE REP MAX slab and Avatar().
-            <div style={{ width:"100%", height:"100%", background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center", color: C.isDark ? C.onAccent : C.text }}>
+            <div style={{ width:"100%", height:"100%", background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:40, textAlign:"center", color: C.accentFillInk }}>
               <div style={{ fontSize:60, marginBottom:16, fontWeight:900 }}>{user.avatar || ((user.name || user.username || "?").trim()[0] || "?").toUpperCase()}</div>
-              <div style={{ fontSize:24, fontWeight:700, color: C.isDark ? C.onAccent : C.text, marginBottom:8 }}>{user.name}</div>
-              <div style={{ fontSize:14, color: C.isDark ? `${C.onAccent}e6` : `${C.text}e6`, lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
+              <div style={{ fontSize:24, fontWeight:700, color: C.accentFillInk, marginBottom:8 }}>{user.name}</div>
+              <div style={{ fontSize:14, color: `${C.accentFillInk}e6`, lineHeight:1.4 }}>{user.bio || "Building strength, one rep at a time."}</div>
             </div>
           )}
           {post?.caption && (
@@ -10596,13 +10654,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", transform:"rotate(-90deg)" }}>
                   <defs>
                     <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor={rest.secs<=10 ? "#ef4444" : ACCENT_ON_SLAB} stopOpacity="0.35"/>
-                      <stop offset="100%" stopColor={rest.secs<=10 ? "#dc2626" : ACCENT_ON_SLAB} stopOpacity="0.1"/>
+                      <stop offset="0%" stopColor={rest.secs<=10 ? "#ef4444" : C.accentSlab} stopOpacity="0.35"/>
+                      <stop offset="100%" stopColor={rest.secs<=10 ? "#dc2626" : C.accentSlab} stopOpacity="0.1"/>
                     </linearGradient>
                   </defs>
                   <circle cx="130" cy="130" r="125" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="10"/>
                   <circle cx="130" cy="130" r="125" fill="none"
-                    stroke={rest.secs<=10 ? "#ef4444" : ACCENT_ON_SLAB}
+                    stroke={rest.secs<=10 ? "#ef4444" : C.accentSlab}
                     strokeWidth="10"
                     strokeDasharray={`${(rest.secs/rest.total)*2*Math.PI*125} ${2*Math.PI*125}`}
                     style={{ transition:"stroke-dasharray 1s linear, stroke 0.3s ease", strokeLinecap:"round", filter:`drop-shadow(0 0 18px ${rest.secs<=10 ? "rgba(239,68,68,0.35)" : "rgba(200,241,53,0.30)"})` }}
@@ -10712,15 +10770,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             // through and nothing behind the bar is discernible either way — it was a fixed blur
             // layer over the one list you scroll continuously for an hour, bought nothing.
             //
-            // ACCENT_ON_SLAB, not C.accent: the slab is dark in BOTH themes (that is why the text
+            // C.accentSlab, not C.accent: the slab is dark in BOTH themes (that is why the text
             // and buttons below are fixed light values), but the ring was left theme-dependent.
             // On the light theme C.accent is #65a30d — the daylight lime picked to be readable on
             // WHITE — and at 35% over a near-black slab it computes to about rgb(48,70,19), a dark
             // olive that reads as a plain border rather than an accent ring.
-            border:`1px solid ${rest.secs<=10 ? "#EF4444" : `${ACCENT_ON_SLAB}59`}`,
+            border:`1px solid ${rest.secs<=10 ? "#EF4444" : `${C.accentSlab}59`}`,
             boxShadow: rest.secs<=10
               ? "0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px rgba(239,68,68,0.25)"
-              : `0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px ${ACCENT_ON_SLAB}1f`,
+              : `0 10px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px ${C.accentSlab}1f`,
             display:"flex", alignItems:"center", gap:10,
           }}>
             {/* The slab is dark in BOTH themes, so these are fixed light values rather than C.text
@@ -13790,7 +13848,7 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
                 }}>
                   <div style={{
                     width:20, height:20, borderRadius:"50%", background:C.accent,
-                    color: C.isDark ? C.onAccent : C.text, fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1
+                    color: C.accentFillInk, fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1
                   }}>{i+1}</div>
                   <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{step}</div>
                 </div>
@@ -14623,7 +14681,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             {isMe && (
               <>
                 <input ref={avatarRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatar}/>
-                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color: C.isDark ? C.onAccent : C.text, cursor:"pointer" }}><Icon name="plus" size={12}/></div>
+                <div style={{ position:"absolute", bottom:-2, right:-2, background:C.accent, border:`2px solid ${C.bg}`, borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", color: C.accentFillInk, cursor:"pointer" }}><Icon name="plus" size={12}/></div>
               </>
             )}
           </div>
@@ -16072,7 +16130,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", marginBottom:28 }}>
           {p.avatar_url
             ? <img src={p.avatar_url} alt="" style={{ width:88, height:88, borderRadius:44, objectFit:"cover", marginBottom:14 }}/>
-            : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color: C.isDark ? C.onAccent : C.text, marginBottom:14 }}>{initial}</div>}
+            : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color: C.accentFillInk, marginBottom:14 }}>{initial}</div>}
           <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{p.name || p.username}</div>
           {p.username && <div style={{ fontSize:14, color:C.sub, marginTop:2 }}>@{p.username}</div>}
           {p.bio && <div style={{ fontSize:14, color:C.text, marginTop:12, maxWidth:300, lineHeight:1.5 }}>{p.bio}</div>}
@@ -19700,8 +19758,10 @@ function AppInner() {
   function renderGlobalHosts() {
     return (
       <>
-        {/* Rendered HERE rather than in the main return so a decorated theme survives the chat's
-            early return too — the same reason the four hosts live in this function. */}
+        {/* Rendered here for the same reason the four hosts are: one place, reachable from every
+            return that needs it. (This comment used to say it "survives the chat's early return";
+            that was true when the chat WAS a return and is now historical — the chat is an
+            overlay, and there is exactly one call site today.) */}
         <ThemeDecor kind={themeDecorOf(store.theme)}/>
         <ToastHost/>
         <ConfirmHost C={C}/>

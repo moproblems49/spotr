@@ -3648,6 +3648,66 @@ the silhouette's `bodyCol` key on `isDark` rather than the palette, so they are 
 every non-grey theme rather than tuned to it. Nine themes makes that last one more visible than it
 was with two.
 
+## ★★★ THE NINE-THEME AUDIT: `isDark` WAS A PROXY FOR A COLOUR PROPERTY, AND PROXIES BREAK (Aug 30)
+Two cold-context Fable audits of the three theme commits, split so they could not overlap (palettes
++ picker + guards / the decor layer). The decor half found **no confirmed user-facing defect** —
+it drove a 924-point `elementFromPoint` grid across three screens including a live workout, probed
+the live position of every falling ornament mid-flight, and built the full z-index inventory to
+check the 70 < 150 < 300 claim rather than taking the four numbers I quoted from memory. The
+palette half found the real one.
+**★★ `C.isDark ? C.onAccent : C.text` USED `isDark` AS A STAND-IN FOR "IS THIS THEME'S ACCENT
+LIGHT?", WHICH WAS TRUE FOR TWO THEMES AND FALSE THE MOMENT A LIGHT THEME SHIPPED A DARK ACCENT.**
+Nine sites, all real content on an accent fill: avatar initials everywhere (feed, comments,
+activity, the 88px profile disc), the ONE REP MAX hero slab, the story-viewer's no-photo fallback,
+the 11px how-to step badges, the avatar-edit "+". Measured on the shipped build and confirmed
+independently by rendering each theme and reading the computed colour: **Arctic 3.08:1, Spring
+2.64:1, Summer 2.75:1** — under the 4.5:1 text floor, and under even the 3:1 graphical floor on two
+of them, so the "+" badge and the avatar initials effectively vanished. Each of those palettes
+**already declared a white scoring above 5:1** and the idiom never looked at it.
+**The fix is a token, not a smarter conditional: `accentFillInk`, declared per palette.** It could
+NOT be solved by repurposing `onAccent`, and that was checked rather than assumed — `onAccent` is
+also the ink on `C.green` (the done-tick) and `C.accent2` (the PR tag) and is correct there on all
+nine themes (5.0-10.1:1); no single value clears both the light theme's mid-lime accent and its
+deep green. Two questions, two tokens. After: 5.28 / 5.66 / 5.59, with light, dark and fall
+byte-identical to before.
+**Why nothing caught it, and what does now.** `sim_a11y` swept tokens against `bg` and `surface`
+only — it has never been able to see content painted on a coloured FILL — and
+`sim_accentbutton`'s header **blesses this exact idiom as the fix** for an older bug. New
+`FILL_PAIRS` section in `sim_a11y`: every ink checked against the fill it is actually painted on
+(`accentFillInk`/`accent`, `onAccent`/`green`, `onAccent`/`accent2`, `onPrimary`/`primary`) for
+every registered theme. Red-proofed at exactly the 3.08:1 the audit measured.
+**★ AND THE NEW GUARD FOUND A TENTH DEFECT ON ITS FIRST RUN THAT NEITHER AUDIT REPORTED:** Fall's
+PR tag at **4.29:1** (`onAccent` on `accent2`). Lifted `accent2` #c8532e → #cf5a33. Second time a
+guard has paid for itself the moment it was widened (the SVG `font-size` sweep was the first).
+**★ `ACCENT_ON_SLAB = THEMES.dark.accent` PUT VOLT LIME ON THE REST TIMER OF EVERY THEME.** The
+GROUP_COLOR.Legs shape again — one theme's accent baked in as a module constant for all of them —
+on the element you stare at through every rest period of every workout, including Midnight, whose
+entire stated purpose is that there is no lime. Contrast was never the issue (the slab is
+near-black on every theme); brand coherence was. Retired in favour of a per-palette `accentSlab`.
+Its guard **parses the two slab fills out of App.jsx** rather than keeping its own copy — a guard
+that hardcodes the value under test is testing its copy — and throws loudly if that line changes
+shape.
+**Decor items from the other half, all fixed:** `@keyframes seshd-spin` was defined twice (the
+decor layer's copy and the global stylesheet's, which `LoadingSpinner` uses) — byte-identical
+today, but the decor copy is portaled to body and wins the cascade, so a later edit to either
+would have changed the loading spinner **depending on which theme was active**; renamed
+`seshd-decor-spin`. `pw_themes` 4g probed a single point (fine for the container losing
+`pointerEvents`, blind to one child flipped to `auto`) — it sweeps a grid now and asserts the
+property on every descendant. `4i`'s `kids >= 5` counted the `<style>` tag; it filters it out and
+applies the full portal/z/pointer contract to all four seasonal kinds, not just Halloween.
+**Verified clean and not to be re-litigated** (from the audits, independently measured): every
+other contrast pair on all nine themes including `overlayEdge` against 0.6 *and* 0.7 scrims; theme
+persistence through `_lastSettingsEditAt` with the base key correctly ordered ABOVE the recent
+spread (the `bodyType` bug is not repeated); an unknown theme key driven from both localStorage
+and the server row renders on the fallback with no error boundary; the decor layer does not remount
+when re-rendered, so ornaments never re-randomise mid-session; reduced motion yields clean absence
+rather than a parked row.
+**Known and deliberately left:** reduced-motion users get no seasonal ornaments at all (making them
+visible-but-static needs per-ornament static placement, since with the animation off every resting
+position collapses to the top of the screen — the exact ugly row the negative delays fixed).
+GROUP_COLOR's other four hues still measure 1.67-2.65:1 on the white card, now across four light
+themes rather than one. The strength ladder's `Advanced` is still literal volt on every dark theme.
+
 ## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
 Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
 every full-cover overlay (`position:fixed/absolute` + `inset:0` + a zIndex) found **33**, but only

@@ -123,7 +123,10 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     const cs = getComputedStyle(el);
     return { z: +cs.zIndex, pe: cs.pointerEvents, parent: el.parentElement.tagName,
              svgs: el.querySelectorAll("svg").length, aria: el.getAttribute("aria-hidden"),
-             kind: el.dataset.decor, kids: el.childElementCount };
+             kind: el.dataset.decor,
+             // NOT childElementCount: the layer's own <style> tag is a child, so that number
+             // reads one higher than the ornament count it looks like.
+             kids: [...el.children].filter(e => e.tagName !== "STYLE").length };
   });
   check("4a. the Halloween theme renders a decor layer", !!d, String(d));
   check("4a2. and it declares its own kind", d && d.kind === "halloween", String(d && d.kind));
@@ -135,11 +138,21 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     check("4f. it actually draws ornaments", d.svgs >= 5, String(d.svgs));
     // The point of pointerEvents:none is that a real tap lands on the app underneath. Probe the
     // centre of the screen, which the ghosts drift across.
+    // A single probe point only catches the container losing pointerEvents — a single CHILD
+    // flipped back to auto is invisible to it unless that child happens to cover the sample.
+    // Sweep a grid, and assert the property on every descendant as well as the outcome.
     const hit = await page.evaluate(() => {
-      const el = document.elementFromPoint(214, 400);
-      return el ? !el.closest(".seshd-decor") : false;
+      const pts = [];
+      for (let x = 20; x < 420; x += 50) for (let y = 60; y < 900; y += 60) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.closest(".seshd-decor")) pts.push([x, y]);
+      }
+      return pts;
     });
-    check("4g. a tap at the screen centre reaches the app, not the decoration", hit);
+    check("4g. no point on the screen taps the decoration instead of the app", hit.length === 0, JSON.stringify(hit.slice(0, 4)));
+    const autos = await page.evaluate(() => [...document.querySelectorAll(".seshd-decor *")]
+      .filter(e => getComputedStyle(e).pointerEvents !== "none").map(e => e.tagName).slice(0, 5));
+    check("4g2. every descendant of the layer is pointer-transparent too", autos.length === 0, JSON.stringify(autos));
   }
   await page.close();
   // Every seasonal theme brings its OWN ornaments. A shared kind, or a theme whose decor silently
@@ -149,10 +162,17 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     const { page: ps } = await boot(theme);
     const got = await ps.evaluate(() => {
       const el = document.querySelector(".seshd-decor");
-      return el ? { kind: el.dataset.decor, kids: el.childElementCount, pe: getComputedStyle(el).pointerEvents } : null;
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return { kind: el.dataset.decor,
+               kids: [...el.children].filter(x => x.tagName !== "STYLE").length,
+               pe: cs.pointerEvents, z: +cs.zIndex, parent: el.parentElement.tagName };
     });
-    check(`4i. ${theme} renders its own "${kind}" ornaments`,
-      got && got.kind === kind && got.kids >= 5 && got.pe === "none", JSON.stringify(got));
+    // Every seasonal kind gets the full contract, not just halloween — a per-kind conditional
+    // render bug in only one of them would otherwise pass 4b-4e, which only ever boot halloween.
+    check(`4i. ${theme} renders its own "${kind}" ornaments, portaled and pointer-transparent`,
+      got && got.kind === kind && got.kids >= 4 && got.pe === "none"
+      && got.z > 70 && got.z < 300 && got.parent === "BODY", JSON.stringify(got));
     await ps.close();
   }
   // And a theme with no `decor` must render no layer at all.
