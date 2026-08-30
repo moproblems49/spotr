@@ -169,7 +169,12 @@ for (const theme of ["dark", "light"]) {
   const themeBefore = await readTheme();
   // Appearance is a LIST now, not two pills — the row's text is "LightWarm off-white canvas", so
   // the old exact /^Light$/ match found nothing and clicked nothing while the check blamed the app.
-  // Select on the stable hook instead.
+  // Select on the stable hook instead. And the list is a DISCLOSURE that starts closed, so the
+  // rows do not exist until it is opened — assert that, or a silent no-op click reads as a pass.
+  await page.evaluate(() => { const d=document.querySelector("[data-theme-disclosure]"); d && d.click(); });
+  await page.waitForTimeout(400);
+  check("[race] opening Appearance reveals the theme rows",
+    await page.evaluate(() => !!document.querySelector('[data-theme-option="light"]')));
   await page.evaluate(() => { const b=document.querySelector('[data-theme-option="light"]'); b && b.click(); });
   await page.waitForTimeout(600);
   const themePicked = await readTheme();

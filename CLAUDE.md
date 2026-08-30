@@ -3514,6 +3514,81 @@ they are neutral greys on a blue theme rather than tuned to it. Sim: `pw_themes`
 not crash — red-proofed to the error boundary; every registered theme has a row; picking one
 repaints AND writes to the server, since a local-only setStore is this app's dominant bug class).
 
+## ★★ Themes phase 3: Arctic, Halloween, and a theme that brings ORNAMENTS (Aug 30)
+Mo, after living with Midnight: *"we don't really have much that's a different color"*, plus a
+white-and-blue theme like Strong's, a properly halloweeny Halloween, and a picker that opens and
+closes instead of sitting open.
+**★ "NOT MUCH IS A DIFFERENT COLOUR" IS AN ARCHITECTURAL FACT, NOT A FAULT IN ANY ONE PALETTE, AND
+THE ONLY LEVER A THEME HAS IS ITS NEUTRALS.** The accent is deliberately reserved for things you
+EARNED — PRs, progress, the muscle map, the streak (the whole point of the lime pass) — so on every
+theme the other ~95% of the app is neutral by construction, and `red`/`green`/`gold` are semantic
+and not a palette's to own. That leaves exactly one place a theme can add colour without changing
+what anything MEANS: **tint the canvas, the borders, the dividers and the dim text toward the
+accent's hue instead of leaving them grey.** Midnight does this faintly (`#0a0c12` is a blue-black
+rather than `#0b0b0e`); **Arctic** does it properly — cool blue-white canvas `#eef3fb`, blue-grey
+borders and dividers, `sub`/`muted` carrying the hue — and it is why it reads as a *blue app* while
+Midnight reads as a dark app with a blue accent. Nothing new had to be wired for that: same 23
+tokens, chosen differently. The alternative Mo might expect (a fully blue nav bar / chrome, like
+Strong) is a STRUCTURAL change — new tokens plus call sites across the shell — and was deliberately
+not taken with a submission pending; raise it as its own piece of work if he wants it.
+Arctic's four semantic colours are a hair darker than the light theme's because this canvas is
+deeper than the warm off-white one — same reasoning as light darkening them from dark's, and they
+still mean the same things. Measured: text 14.6:1, sub 4.84:1, muted 4.69:1, semantics 4.86-5.06:1
+against bg, white-on-accent 5.28:1, accentInk on its own tint 6.09:1.
+**★ HALLOWEEN IS THE FIRST THEME THAT IS MORE THAN A PALETTE, SO `THEME_META` GAINED A `decor`
+FIELD.** `ThemeDecor` reads it and renders cobwebs, dangling spiders and drifting ghosts. Five
+constraints hold it, and each is a documented trap in this file rather than a preference:
+`createPortal` to `document.body` (a `position:fixed` child inside the tab-swipe track resolves
+against the TRACK the moment it takes a transform — the rest-timer bug); `pointerEvents:"none"`
+plus `aria-hidden` (decoration must never eat a tap on a screen where the swipe already refuses to
+start over 61% of the surface); **zIndex 150** — above every navigation-level overlay (nav 50,
+profile 60, chat 65, post 70) so it is visible, below every sheet and modal (300+) so opening one
+puts the ornaments BEHIND it instead of over what you are reading; transform/opacity only with a
+`prefers-reduced-motion` escape (this layer is live on every screen, so an animated layout property
+would repaint the whole app forever); and the placements are randomised **once** in a `useMemo`
+with no deps — randomising per render makes the ghosts teleport on every state change, which in
+this app is many times a second.
+**★ AND THE PLACEMENT HAD TO BE MEASURED, BECAUSE MY READ OF THE FIRST SCREENSHOT WAS WRONG IN BOTH
+DIRECTIONS.** Looking at it I concluded the corner webs were overflowing halfway across the screen;
+`getBoundingClientRect` on the real layer said both are exactly 96×96 at the corners and always
+were — what I had "seen" was the left web, the right web and two spider threads read as one long
+line. The defect the same measurement DID find is the one I had not flagged: a 46-96px thread
+parks the spider body precisely on the Workout/Exercises/History tab row, so both spiders sat on
+top of the labels. Threads are 96-200px and the spiders hang in the outer 5-12% / 87-94% margins
+now, where cards have padding and the header does not. Web ink also dropped to 0.34 alpha so the
+wordmark wins; the spider keeps 0.5 because it is the punchline. **Screenshot, then measure the
+thing you think you saw — a rendered image is evidence, your reading of it is a claim.**
+Note `orange` and `accent` sit close together on Halloween: deliberate, not an oversight —
+`C.orange`'s only real job in this app is the kudos FLAME, and a pumpkin-orange flame on the
+Halloween theme reads correctly rather than colliding.
+**The Appearance picker is a DISCLOSURE and starts closed.** Five themes is five rows plus five
+swatches permanently at the top of Settings, pushing every other preference below the fold for a
+control most people touch once. The collapsed row still NAMES the theme you are on, so collapsing
+it does not hide the one fact the control exists to report, and one effect keyed on `showSettings`
+resets it on every close path (Done, backdrop, drag-to-dismiss) instead of three handlers that can
+drift. **The rows are CONDITIONALLY RENDERED, not `display:none`** — a hidden-but-present row is
+still clickable by `el.click()` in a suite, which would let every picker check pass against a build
+where the disclosure never opens. Absent from the DOM is the only version a probe cannot cheat, and
+`pw_themes` 2b asserts the closed state FIRST for exactly that reason.
+Sims: `pw_themes` grew section 4 (the decor layer is portaled to body, pointer-transparent,
+`70 < z < 300`, aria-hidden, draws ≥5 ornaments, a tap at the screen centre reaches the app, and an
+undecorated theme renders NO layer at all) and 2b-2f (starts collapsed, the row is a disclosure, it
+names the current theme, opening it reveals all five). `pw_switch`'s `[race]` section had to open
+the disclosure before it could click a theme — the documented "fix the reach, keep the invariant"
+repair, third time on this picker. **Red-proofed individually, and one attempt failed as a
+red-proof and had to be redone**: flipping `useState(false)` to `true` still passed, because the
+reset effect fires on mount and forces it closed again — the mutation was neutralised by unrelated
+correct code. Removing the `themeOpen &&` conditional entirely is what actually goes red. *A
+red-proof that stays green proves the MUTATION was wrong at least as often as it proves the check
+is worthless; find a mutation that reaches the behaviour before concluding either.*
+**Skills for design: there is nothing new to install** — `SuggestSkills` returned zero results, and
+`/impeccable` (already vendored in `.claude/skills/`) is the design pack. Its `npx impeccable
+detect` is the half that has earned its keep; its generic rules lose to this file.
+**Phase 4 candidates, NOT started:** the other four `GROUP_COLOR` hues measure 1.8-2.8:1 on the
+light themes; the strength ladder's `Advanced` is still the volt accent literally; `emptyMuscleCol`
+and the silhouette's `bodyCol` key on `isDark` rather than the palette, so they are neutral greys
+on Arctic/Halloween rather than tuned to them.
+
 ## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
 Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
 every full-cover overlay (`position:fixed/absolute` + `inset:0` + a zIndex) found **33**, but only

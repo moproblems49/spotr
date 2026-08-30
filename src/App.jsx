@@ -1,4 +1,4 @@
-// v178091716986
+// v178091716987
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -923,6 +923,79 @@ const THEMES = {
     muted: "#7d879c",
     tabBg: "rgba(12,15,22,0.88)",
   },
+  // ★ ARCTIC — the white-and-blue ask (Strong's look), and the answer to "the new theme doesn't
+  // really have much that's a different colour". That observation was right and it is ARCHITECTURAL,
+  // not a fault of any one palette: the accent is deliberately reserved for things you EARNED (PRs,
+  // progress, the muscle map, the streak), so on every theme most of the app is neutral by design.
+  // A palette therefore has exactly one lever for feeling more colourful, and it is the NEUTRALS —
+  // tint the canvas, the borders and the dim text toward the accent's hue instead of leaving them
+  // grey. Midnight does this faintly (#0a0c12 is a blue-black); Arctic does it properly: the canvas
+  // is a cool blue-white, every border and divider is blue-grey, and even `sub`/`muted` carry the
+  // hue. Nothing new had to be wired for that — it is the same 23 tokens, chosen differently.
+  // The semantic four are darkened a hair from the light theme's values because this canvas is
+  // slightly deeper than the warm off-white one; they still MEAN the same things, which is the
+  // rule (a theme may own its accent, never the vocabulary). Measured on this palette: text 14.6:1,
+  // sub 4.84:1, muted 4.69:1, the four semantics 4.86-5.06:1 against bg, white-on-accent 5.28:1,
+  // accentInk on its own tint 6.09:1.
+  arctic: {
+    isDark: false,
+    bg: "#eef3fb",          // cool blue-white canvas — the hue lives HERE, not just in the accent
+    surface: "#ffffff",     // cards stay pure white so they lift off the tinted canvas
+    card: "#ffffff",
+    border: "#d8e1ee",      // blue-grey hairline
+    overlayEdge: "#d8e1ee", // light needs no boost — 4.71:1 against this theme's own scrim
+    divider: "#e7edf6",
+    accent: "#0b6bcb",          // the signature blue, readable as a FILL with white ink (5.28:1)
+    accentSoft: "rgba(11,107,203,0.11)",
+    accentInk: "#0a58a6",       // accent as TEXT — see the light theme's note on why these differ
+    accent2: "#084c92",
+    onAccent: "#ffffff",
+    primary: "#12203a",         // filled buttons stay neutral — a blue-black, not the accent
+    onPrimary: "#ffffff",
+    orange: "#b8440a",
+    green: "#047653",
+    gold: "#8d6003",
+    red: "#cf1a42",
+    text: "#12203a",
+    textDim: "#33415c",
+    sub: "#5c6b85",
+    muted: "#5f6d86",
+    tabBg: "rgba(238,243,251,0.85)",
+  },
+  // ★ HALLOWEEN — a seasonal theme, and the first one that is more than a palette: it also turns on
+  // a DECOR LAYER (cobwebs, a dangling spider, drifting ghosts) via THEME_META's `decor` field. See
+  // <ThemeDecor> for why that layer is portaled, pointer-transparent and capped below the sheets.
+  // Note `orange` and `accent` land close together here, which is deliberate rather than an
+  // oversight: C.orange's only real job in this app is the kudos FLAME, and a flame being pumpkin
+  // orange on the Halloween theme reads correctly instead of colliding. gold/green/red keep the
+  // dark theme's values for the usual reason — they are the vocabulary, not the palette's to own.
+  // Measured: text 17.6:1, muted 4.63:1 (the tightest), overlayEdge 3.14:1 against its own scrim,
+  // ink-on-accent 8.20:1.
+  halloween: {
+    isDark: true,
+    bg: "#0f0a16",          // purple-black, not grey-black — the hue is in the neutrals here too
+    surface: "#1f1629",
+    card: "#1f1629",
+    border: "#3d2b4d",
+    overlayEdge: "#6d5480",
+    divider: "#2b1e39",
+    accent: "#ff8a3d",          // pumpkin
+    accentSoft: "rgba(255,138,61,0.13)",
+    accentInk: "#ff8a3d",
+    accent2: "#e0691f",
+    onAccent: "#1a0b02",
+    primary: "#f7f1fa",
+    onPrimary: "#12091a",
+    orange: "#fb923c",
+    green: "#34d399",
+    gold: "#fbbf24",
+    red: "#f87171",
+    text: "#f7f1fa",
+    textDim: "#d3c6dc",
+    sub: "#a294ae",
+    muted: "#8d7e9a",
+    tabBg: "rgba(15,10,22,0.88)",
+  },
 
 };
 // ★ THEMES ARE PLURAL NOW, SO THE KEY IS DATA AND HAS TO BE VALIDATED. `THEMES[store.theme]` was
@@ -935,9 +1008,13 @@ const THEMES = {
 // with its own listing.
 const DEFAULT_THEME = "light";
 const THEME_META = [
-  { id: "light",    label: "Light",    blurb: "Warm off-white canvas" },
-  { id: "dark",     label: "Dark",     blurb: "Deep grey, volt accent" },
-  { id: "midnight", label: "Midnight", blurb: "Cool blue — no lime" },
+  { id: "light",     label: "Light",     blurb: "Warm off-white canvas" },
+  { id: "arctic",    label: "Arctic",    blurb: "Clean white and blue" },
+  { id: "dark",      label: "Dark",      blurb: "Deep grey, volt accent" },
+  { id: "midnight",  label: "Midnight",  blurb: "Cool blue — no lime" },
+  // `decor` is what makes a theme more than a palette: ThemeDecor reads it and renders that
+  // kind's ornaments. Absent means none, which is every theme but this one.
+  { id: "halloween", label: "Halloween", blurb: "Pumpkin, purple, cobwebs", decor: "halloween" },
 ];
 function themeOf(key) {
   return THEMES[key] || THEMES[DEFAULT_THEME];
@@ -947,6 +1024,113 @@ function themeOf(key) {
 // picker with nothing selected.
 function themeIdOf(key) {
   return THEMES[key] ? key : DEFAULT_THEME;
+}
+
+// ★ A THEME CAN BRING ORNAMENTS, NOT JUST TOKENS — and the constraints are all about NOT breaking
+// the app it decorates. Halloween asked for cobwebs, spiders and ghosts, which is the first thing
+// a palette cannot express, so THEME_META gained a `decor` field and this is what reads it.
+// Five rules hold it together, each one a documented trap in this file:
+//   * createPortal to document.body — a `position:fixed` child rendered inside the tab-swipe track
+//     resolves against the TRACK once it takes a transform, which is how the rest timer once
+//     shipped as a clipped band stretched over three screen widths.
+//   * pointerEvents:"none" on the layer AND aria-hidden — decoration must never eat a tap, and the
+//     tab swipe already refuses to start over 61% of the workout screen without help.
+//   * zIndex 150: above every navigation-level overlay (nav 50, profile 60, chat 65, post 70) so
+//     the ornaments are actually visible, and below every sheet and modal (300+) so opening one
+//     puts the decoration behind it instead of over the thing you are reading.
+//   * transform/opacity only, and a prefers-reduced-motion escape. Nothing here animates a
+//     layout property; this layer is live on every screen, so a width/height animation would
+//     repaint the whole app forever.
+//   * the placements are randomised ONCE (useMemo with no deps). Randomising per render makes the
+//     ghosts teleport on every state change, which in this app is many times a second.
+// The palette is hardcoded pale lilac rather than theme tokens on purpose: this only ever renders
+// on a theme whose ground is known, and the strands need to sit BELOW the text contrast floor —
+// they are decoration, and decoration that competes with the copy is the bug.
+// The ornament kind for a theme key, or null. Goes through themeIdOf so an unknown stored theme
+// falls back to the default's answer (none) instead of throwing on a missing META row.
+function themeDecorOf(key) {
+  const id = themeIdOf(key);
+  return (THEME_META.find(t => t.id === id) || {}).decor || null;
+}
+// Two inks, because a web and a spider have different jobs. The web is ambience and must lose to
+// the wordmark it sits behind; the spider is the punchline and gets to be seen. Both are well
+// under the text-contrast floor on purpose — decoration that competes with the copy is the bug.
+const DECOR_INK = "rgba(240,232,248,0.34)";
+const DECOR_INK_SOLID = "rgba(240,232,248,0.5)";
+function Web({ flip }) {
+  // One corner web: three arcs + five radials struck from the corner itself.
+  return (
+    <svg width="96" height="96" viewBox="0 0 100 100" aria-hidden="true"
+      style={{ position:"absolute", top:0, [flip ? "right" : "left"]:0, opacity:0.55,
+               transform: flip ? "scaleX(-1)" : "none" }}>
+      <g fill="none" stroke={DECOR_INK} strokeWidth="1.1" strokeLinecap="round">
+        {[26, 52, 80].map(r => <path key={r} d={`M ${r} 0 Q ${r * 0.72} ${r * 0.72} 0 ${r}`}/>)}
+        {[0, 22, 45, 68, 90].map(a => {
+          const rad = (a * Math.PI) / 180;
+          return <line key={a} x1="0" y1="0" x2={Math.sin(rad) * 92} y2={Math.cos(rad) * 92}/>;
+        })}
+      </g>
+    </svg>
+  );
+}
+function Spider({ left, drop, delay }) {
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", top:0, left:`${left}%`,
+      animation:`seshd-dangle 6.5s ${delay}s ease-in-out infinite`, transformOrigin:"top center" }}>
+      <div style={{ width:1, height:drop, background:DECOR_INK, margin:"0 auto" }}/>
+      <svg width="26" height="20" viewBox="0 0 26 20" style={{ display:"block", marginTop:-1 }}>
+        <g fill="none" stroke={DECOR_INK_SOLID} strokeWidth="1.2" strokeLinecap="round">
+          <path d="M11 10 L4 6 M11 11 L3 11 M11 12 L4 16 M15 10 L22 6 M15 11 L23 11 M15 12 L22 16"/>
+        </g>
+        <ellipse cx="13" cy="11" rx="4.6" ry="5.2" fill={DECOR_INK_SOLID}/>
+        <circle cx="13" cy="5.4" r="2.6" fill={DECOR_INK_SOLID}/>
+      </svg>
+    </div>
+  );
+}
+function Ghost({ left, size, dur, delay }) {
+  return (
+    <svg width={size} height={size * 1.28} viewBox="0 0 25 32" aria-hidden="true"
+      style={{ position:"absolute", bottom:-40, left:`${left}%`, opacity:0,
+               animation:`seshd-drift ${dur}s ${delay}s linear infinite` }}>
+      <path d="M12.5 1C6.7 1 2 5.7 2 11.5V31l3.5-3 3.5 3 3.5-3 3.5 3 3.5-3 3.5 3V11.5C23 5.7 18.3 1 12.5 1z"
+        fill="rgba(240,232,248,0.42)"/>
+      <circle cx="9" cy="12" r="1.7" fill="#0f0a16"/>
+      <circle cx="16" cy="12" r="1.7" fill="#0f0a16"/>
+    </svg>
+  );
+}
+function ThemeDecor({ kind }) {
+  const bits = useMemo(() => {
+    const r = (a, b) => a + Math.random() * (b - a);
+    return {
+      // The spiders hang in the OUTER MARGINS and well BELOW the header. Measured on the tracker
+      // screen: a 46-96px drop parks the body exactly on the Workout/Exercises/History tab row,
+      // so two spiders sat on top of the labels. Cards have side padding; the header does not.
+      spiders: [{ left: r(5, 12), drop: r(130, 200), delay: r(0, 2) },
+                { left: r(87, 94), drop: r(96, 160), delay: r(1, 3.5) }],
+      ghosts: [0, 1, 2].map(i => ({ left: r(6, 84), size: r(20, 34), dur: r(22, 34), delay: i * r(5, 9) })),
+    };
+  }, []);
+  if (kind !== "halloween") return null;
+  return createPortal(
+    <div className="seshd-decor" aria-hidden="true"
+      style={{ position:"fixed", inset:0, zIndex:150, pointerEvents:"none", overflow:"hidden" }}>
+      <style>{`
+        @keyframes seshd-dangle { 0%,100% { transform: rotate(-3.5deg); } 50% { transform: rotate(3.5deg); } }
+        @keyframes seshd-drift {
+          0% { opacity:0; transform: translate3d(0,0,0); }
+          12% { opacity:0.85; }
+          80% { opacity:0.65; }
+          100% { opacity:0; transform: translate3d(26px,-105vh,0); }
+        }
+        @media (prefers-reduced-motion: reduce) { .seshd-decor * { animation: none !important; } }
+      `}</style>
+      <Web/>
+      <Web flip/>
+      {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
+      {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}
+    </div>, document.body);
 }
 
 
@@ -13952,6 +14136,13 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const following2 = store.users.find(u => u.id === userId)?.following?.length || 0;
   const [showEdit, setShowEdit] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // The Appearance list is a DISCLOSURE and starts closed: five themes is five rows plus five
+  // swatches sitting permanently at the top of Settings, which pushes every other preference
+  // below the fold for a control most people touch once. It resets on close rather than
+  // remembering, so Settings always opens looking the same — and one effect covers every close
+  // path (Done, the backdrop, the drag-to-dismiss) instead of three handlers that can drift.
+  const [themeOpen, setThemeOpen] = useState(false);
+  useEffect(() => { if (!showSettings) setThemeOpen(false); }, [showSettings]);
   const [showBody, setShowBody] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false); // overflow menu (Report / Block) for other users
   const [showDelete, setShowDelete] = useState(false);
@@ -14728,8 +14919,32 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     A list also lets a theme say what it IS, which matters when the reason someone
                     is here is "I don't like the colours" — see THEME_META. */}
                 <div style={{ padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
-                  <div style={{ fontSize:14, color:C.text, marginBottom:10 }}>Appearance</div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {/* The header row is the toggle. It names the theme you are ON so the collapsed
+                      state still answers "which one is this?" without opening anything, and the
+                      chevron is the app's existing chevron-right rotated rather than a new glyph
+                      (the house rule: reuse the icon this app already uses for a meaning). */}
+                  <button onClick={() => setThemeOpen(o => !o)} aria-expanded={themeOpen}
+                    data-theme-disclosure
+                    style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                             width:"100%", padding:0, background:"none", border:"none",
+                             cursor:"pointer", fontFamily:F, textAlign:"left" }}>
+                    <span style={{ fontSize:14, color:C.text }}>Appearance</span>
+                    <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ fontSize:13, color:C.sub }}>
+                        {(THEME_META.find(t => t.id === themeIdOf(store.theme)) || THEME_META[0]).label}
+                      </span>
+                      <span style={{ display:"flex", transform:`rotate(${themeOpen ? 90 : 0}deg)`,
+                                     transition:`transform 0.2s ${EASE_NAV}` }}>
+                        <Icon name="chevron-right" size={16} color={C.sub}/>
+                      </span>
+                    </span>
+                  </button>
+                  {/* CONDITIONAL RENDER, not display:none. A hidden-but-present row can still be
+                      clicked by `el.click()` in a suite, which would let the picker's checks pass
+                      against a build where the disclosure never opens — a test that cannot fail.
+                      Absent from the DOM is the only version a probe cannot cheat. */}
+                  {themeOpen && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:10 }}>
                     {THEME_META.map(tm => {
                       const on = themeIdOf(store.theme) === tm.id;
                       const pal = THEMES[tm.id];
@@ -14761,6 +14976,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                       );
                     })}
                   </div>
+                  )}
                 </div>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
                   <div style={{ fontSize:14, color:C.text }}>Weight Units</div>
@@ -19234,6 +19450,9 @@ function AppInner() {
   function renderGlobalHosts() {
     return (
       <>
+        {/* Rendered HERE rather than in the main return so a decorated theme survives the chat's
+            early return too — the same reason the four hosts live in this function. */}
+        <ThemeDecor kind={themeDecorOf(store.theme)}/>
         <ToastHost/>
         <ConfirmHost C={C}/>
         <ReportHost C={C} token={token} currentUserId={currentUserId}/>
