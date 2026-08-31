@@ -2567,6 +2567,28 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★★★ APP REVIEW CLEARED (Mo, Aug 31 2026)
+The long-standing blocker is gone. What that unblocks, and what it does NOT:
+- **The pre-submission checklist below is now history**, not a to-do. Keep it for the next
+  submission (a native change still needs a Mac day + a new review).
+- **The demo corpus re-dating treadmill loses its original justification.** It existed so a
+  reviewer opening the app saw a live feed; the reviewer is gone. It still needs a shift every
+  ~3-4 days or the personas' muscle maps empty out — so this is now a product decision (keep and
+  keep shifting / keep and let them go stale / wipe them), NOT maintenance to do by reflex. Ask
+  before shifting again. Wipe recipe if chosen: delete `auth.users` rows with `%@getseshd.app`
+  emails; profiles/posts/history cascade.
+- **DMARC `p=none` -> `p=quarantine` is unblocked** (it was deferred purely because enforcement can
+  only make mail deliver LESS, and reset emails reaching testers mattered more). Still needs the
+  one check CLAUDE.md already flags: the safety argument was INFERRED from the DNS layout, not read
+  off a real message header. Confirm `DKIM ... d=getseshd.app` and `dmarc=pass` in the raw headers
+  of a real Seshd email before enforcing.
+- **Leaked-password protection is unchanged** — still a paid-plan feature.
+- **The backup tables are NOT a size problem and never were.** Measured Aug 31: five tables
+  totalling ~120 kB against a 5.5 MB schema (`tbar_fix_backup_20260819` was already dropped, so the
+  earlier "six" was wrong). The only real cost is five advisor INFO notices. Drop them for
+  tidiness, not for space — and note the two `..._20260830` ones are insurance for a shift that may
+  still be re-run.
+
 **⚠️ PRE-APP-STORE-SUBMISSION CHECKLIST (do these the day Mo says "submit"):**
 (1) ~~Remove the tiny `d1 ·` boot-diagnostic line from the sign-in screen~~ — **DONE** (Aug 8,
 bundle `2026-07-31l`). `setBootDiag`/`setSaveDiag` still WRITE `seshd_boot_diag` / `seshd_kc_save`
