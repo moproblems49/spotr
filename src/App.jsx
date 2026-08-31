@@ -1,4 +1,4 @@
-// v178091716998
+// v178091716999
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1506,6 +1506,34 @@ const PALM_SCENE = (() => {
   out.push(["M0 210C22 184 56 174 95 174S168 184 190 210Z", SAND]);
   return out;
 })();
+// ★ SNOW ON THE NAV BAR, DRAWN INSIDE THE PILL RATHER THAN OVER IT. The pill already carries
+// `overflow:hidden` and `borderRadius:26`, so a band placed at its top edge is clipped to the
+// rounded corners for free and follows them exactly — no second copy of the nav's geometry, which
+// is the thing that would drift the moment the bar's padding, radius or safe-area inset changed.
+// It also inherits the pill's shrink transform, so the snow scales with the bar instead of
+// detaching from it. The drift's TOP is flush and its BOTTOM is scalloped, which is what snow
+// settled on a ledge looks like from below the rim.
+// preserveAspectRatio="none" on the band is deliberate: it stretches to any bar width, and
+// stretching a smooth wave horizontally is invisible. The icicles are separate fixed-size SVGs
+// for the opposite reason — a stretched icicle would read as a smear.
+function NavSnow() {
+  const SNOW = "rgba(238,247,255,0.92)";
+  return (
+    <span aria-hidden="true" style={{ position:"absolute", top:0, left:0, right:0, height:22,
+                                      pointerEvents:"none", lineHeight:0 }}>
+      <svg width="100%" height="20" viewBox="0 0 400 20" preserveAspectRatio="none"
+        style={{ display:"block" }}>
+        <path fill={SNOW} d="M0 0H400V7C380 13 366 5 348 8 330 11 316 4 296 8 276 12 262 5 244 8 226 11 210 4 190 8 170 12 156 5 138 8 120 11 106 4 86 8 66 12 52 5 34 8 22 10 12 6 0 8Z"/>
+      </svg>
+      {[16, 45, 76].map((left, i) => (
+        <svg key={i} width="7" height="13" viewBox="0 0 7 13"
+          style={{ position:"absolute", top:7, left:`${left}%`, display:"block" }}>
+          <path fill={SNOW} d={i === 1 ? "M0 0h7L3.5 13Z" : "M0 0h6L3 10Z"}/>
+        </svg>
+      ))}
+    </span>
+  );
+}
 function PalmCorner() {
   // ★ ITS OWN LAYER AT zIndex 45, NOT THE DECOR LAYER'S 150. The corner is where the floating nav
   // bar lives (measured: the pill spans x 14-414, y 868-918 on a 428x926 viewport). At 150 the
@@ -21250,6 +21278,7 @@ function AppInner() {
         opacity: navShrunk ? 0.88 : 1,
         transition: "transform 0.25s cubic-bezier(0.34,1.2,0.4,1), opacity 0.25s",
       }}>
+        {themeDecorOf(C.id) === "snow" && <NavSnow/>}
         {[
           {
             id: "feed", label: "Home",

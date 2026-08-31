@@ -3803,7 +3803,11 @@ the fix was the HUE, not more opacity.**
 **Summer lost its rising motes** (Mo: "don't need suns floating in the background") — a second sun
 is the one thing a screen with a corner sun does not need, and duplicating the theme's own anchor
 is the same mistake as repeating one mark on three buttons. Gliding SEAGULLS and a palm anchored in
-the BOTTOM-LEFT replace them, which also puts decor in the one corner Summer had nothing in.
+the BOTTOM-RIGHT replace them, which also puts decor in a corner Summer had nothing in. (It was
+drawn for the bottom-LEFT first and Mo moved it right; the layer is anchored on one side only, so
+the swap is two style keys — but the placement note below about which corner the NAV occupies is
+about the pill's whole width and is unchanged by the side.) It carries COCONUTS at each crown,
+added on Mo's ask after v3 was picked.
 **★★ THE PALM WAS EVENTUALLY DRAWN BY A COLD-CONTEXT AGENT, AND THE THREE THINGS IT FOUND ARE THE
 ONES MY FIVE ATTEMPTS NEVER REACHED.** Mo picked v3 of six; it iterated by rendering its own SVG,
 LOOKING at the screenshot, naming what was wrong, and redrawing — six rounds, each judged at target
@@ -3875,6 +3879,22 @@ every cloud's real `getBoundingClientRect().bottom` (30-34) against the tab row'
 looking at a screenshot. A safe-area inset only pushes the tabs further down, so the bound holds on
 device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
 corner is what keeps a bigger branch off the tab label.
+
+## Winter puts snow on the nav bar, and it is drawn INSIDE the pill (Mo, Aug 31)
+Mo: "For winter, maybe add a little snow on the nav bar?" `NavSnow` renders a settled snow band with
+three small icicles as the FIRST CHILD OF THE NAV PILL, gated on `themeDecorOf(C.id) === "snow"`, and
+that placement is the whole design decision. The pill already sets `overflow:"hidden"` and
+`borderRadius:26`, so drawing inside it clips the band to the pill's own rounded top edge for free
+and the snow inherits the pill's shrink transform, staying attached while the bar animates. The
+obvious alternative — an overlay positioned over the nav — would have had to re-derive the pill's
+geometry (its padding, its radius, `env(safe-area-inset-bottom)`), which is a copy of a layout that
+drifts the moment the bar changes. **When decoration has to sit on a specific element, put it in that
+element and let the existing clip do the work; do not restate its geometry from outside.**
+It is deliberately NOT part of `ThemeDecor`: that layer is portaled to `document.body` at zIndex 150
+and belongs to no particular element, while this belongs to exactly one. Same reason `ThemeMark`
+(the per-button seasonal glyphs) is its own mechanism rather than another ornament in the ambient
+layer. `aria-hidden`, `pointerEvents:"none"`, no animation — it is settled snow, and the nav is the
+most-tapped surface in the app.
 
 ## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
 Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
