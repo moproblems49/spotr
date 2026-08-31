@@ -89,6 +89,10 @@ const FILL_PAIRS = [
   ["onAccent",      "green",   "the done-tick on a green fill"],
   ["onAccent",      "accent2", "the PR tag"],
   ["onPrimary",     "primary", "filled primary buttons"],
+  // The streak badge was hardcoded white on orange-500 (2.80:1 on every theme). C.orange is dark
+  // on every light palette and light on every dark one, so C.onAccent is its exact complement —
+  // the same pairing the done-tick uses on C.green.
+  ["onAccent",      "orange",  "the streak badge on an orange fill"],
 ];
 for (const [name, t] of THEME_SET) {
   for (const [ink, fill, what] of FILL_PAIRS) {
@@ -119,6 +123,27 @@ for (const [name, t] of THEME_SET) {
       const r = ratioRgb(t.accentSlab, slab);
       check(`${name}.accentSlab (${t.accentSlab}) clears 3:1 on the rest slab rgb(${slab})`, r >= 3, `${r.toFixed(2)}:1`);
     }
+  }
+}
+
+// ── 1d. THE BODY SILHOUETTE'S DERIVED GREYS ─────────────────────────────────────────────────
+// A muscle trained ZERO times must read as a region with nothing in it, not vanish into the body —
+// that bug shipped once at 1.00:1. The two greys are now MIXED from each palette's own bg toward
+// its own text, so the fractions are PARSED out of App.jsx rather than copied here; a guard that
+// keeps its own copy of the formula is testing its copy.
+{
+  const m = src.match(/body:\s*_mixHex\(bg,\s*ink,\s*dark\s*\?\s*([\d.]+)\s*:\s*([\d.]+)\),\s*empty:\s*_mixHex\(bg,\s*ink,\s*dark\s*\?\s*([\d.]+)\s*:\s*([\d.]+)\)/);
+  if (!m) throw new Error("could not parse bodyGreys' mix fractions from src/App.jsx — has it changed?");
+  const [bD, bL, eD, eL] = m.slice(1, 5).map(Number);
+  const mix = (from, to, t) => {
+    const [a, b] = [hexToRgb(from), hexToRgb(to)];
+    return "#" + [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t).toString(16).padStart(2, "0")).join("");
+  };
+  for (const [name, t] of THEME_SET) {
+    const dark = /isDark:\s*true/.test(src.slice(src.indexOf(`  ${name}: {`), src.indexOf("\n  },", src.indexOf(`  ${name}: {`))));
+    const body = mix(t.bg, t.text, dark ? bD : bL), empty = mix(t.bg, t.text, dark ? eD : eL);
+    check(`${name}: the silhouette is visible against the canvas`, ratio(body, t.bg) >= 1.35, `${ratio(body, t.bg).toFixed(2)}:1`);
+    check(`${name}: an untrained muscle is a visible step off the silhouette`, ratio(empty, body) >= 1.2, `${ratio(empty, body).toFixed(2)}:1`);
   }
 }
 

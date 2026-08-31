@@ -507,7 +507,7 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
                           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{sess.dayName}</div>
                           <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>
                             {dateFromKey(sess.date).toLocaleDateString("en",{weekday:"short",month:"short",day:"numeric"})} · {fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"}
-                            {sess.hrSummary?.avg ? <span style={{ color:"#ef4444", fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}
+                            {sess.hrSummary?.avg ? <span style={{ color:C.red, fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}
                           </div>
                           <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
                             {(sess.exercises||[]).filter(e=>e.name).slice(0,3).map(e=>e.name).join(" · ")}

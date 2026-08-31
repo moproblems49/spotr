@@ -3708,6 +3708,77 @@ position collapses to the top of the screen — the exact ugly row the negative 
 GROUP_COLOR's other four hues still measure 1.67-2.65:1 on the white card, now across four light
 themes rather than one. The strength ladder's `Advanced` is still literal volt on every dark theme.
 
+## ★★ The cross-theme colour pass (Aug 31) — a Fable review, and the guard that keeps finding things
+Mo: "For all themes see if there's anything we can do better color wise", plus more decor per
+season, a pumpkin on the landing buttons, and "the snow flakes don't look that great".
+**★ `isDark` IS STILL THE DOMINANT COLOUR BUG, AND IT NOW HAS A THIRD SHAPE.** First it was a proxy
+for "is the accent light?" (the `accentFillInk` scar). Then a module constant pinned to one theme's
+accent (`ACCENT_ON_SLAB`, `GROUP_COLOR.Legs`). This pass found the rest of the family:
+  * **`#ef4444` as destructive TEXT at ~12 sites** — Sign Out, Delete account, Remove, Clear all,
+    the plate-calculator error, the "Remove exercise" row. Measured 3.38-3.76:1 on every light
+    theme and 4.11-4.42:1 on Winter/Fall, against a `C.red` that clears 4.96-6.30 on all nine.
+    The token existed the whole time; these sites never went through it.
+  * **`C.danger || "#ef4444"`** — **`C.danger` exists in NO theme**, so the fallback always won. A
+    dead token name is worse than a literal because it reads as intentional.
+  * **the fresh-post "Now" indicator at `#22c55e`: 2.28:1** on every light theme, the worst text
+    failure in the sweep.
+  * **the streak badge, white on a hardcoded orange-500: 2.80:1 on all nine.** `C.orange` is dark
+    on every light palette and light on every dark one, so `C.onAccent` is its exact complement —
+    the same pairing the done-tick already uses on `C.green`. Now in `sim_a11y`'s FILL_PAIRS.
+  * **the story ring, `linear-gradient(#d9ff4d,#a3e635,#4d7c0f)`** — the dark theme's accent family
+    baked in, so the feed's story rings were LIME on Midnight, whose blurb is literally "no lime".
+    `C.accent`→`C.accent2` now, which is near-identical on light and correct everywhere else.
+  * **`LEVEL_COLOR.Advanced` was BYTE-IDENTICAL to the dark accent**, so a ladder position rendered
+    in the colour this app reserves for things you earned. Lime-400 keeps the ramp, breaks the tie.
+  * **the cold-slate chip family** (`isDark?"#1e1e1e":"#F1F5F9"`, six sites) — a blue slate on the
+    WARM Light and Summer canvases, and 1.00-1.08:1 against Fall's espresso surface, where the chip
+    simply vanished. `C.divider` is that role on every palette.
+**★ `GROUP_COLOR` NEEDED A LIGHT SPLIT, WHICH `LEVEL_COLOR` HAS HAD ALL ALONG.** Measured on a white
+card: Core 1.67, Pull 1.92, Push 2.54, Cardio 2.65 — all under the 3:1 graphical floor, now facing
+FOUR light themes instead of one. The bars are labelled so nothing was unreadable, but a bar you
+cannot see encodes nothing. Split per theme; Legs clears on both and is shared.
+**★ THE BODY SILHOUETTE'S GREYS ARE DERIVED NOW, NOT KEYED ON `isDark`.** Two fixed literals left a
+neutral-grey body on Midnight's blue-black, Fall's espresso, Winter's slate and Halloween's purple —
+the largest shape on the profile screen, belonging to no theme. `bodyGreys(C)` mixes each palette's
+own `bg` toward its own `text` (0.24/0.33 dark, 0.18/0.29 light) and reproduces the exact
+relationships the literals encoded on all nine — **including themes that do not exist yet, which is
+the whole reason to derive rather than hand-author nine more pairs.** `sim_a11y` parses the two
+fractions OUT of App.jsx rather than keeping its own copy.
+**★ SPRING WAS THE WEAKEST THEME AND IT WAS MEASURABLE.** Its canvas had a channel spread of 6
+(light 3, arctic 13, summer 19), so "pale green-white, like new growth" rendered as the Light theme
+with a pink accent bolted on — exactly the failure the Arctic note names. Spread is 11 now and the
+borders and dividers carry it too. **The hue has to live in ALL the neutrals or it is a tinted
+background, not a themed app.**
+**Decor: every season got the three-part shape Halloween proved out** — something fixed at an edge,
+something falling, something with its own motion. Winter icicles + snow + twinkles, Spring a blossom
+branch + petals + butterflies, Fall a bare branch + leaves + leaves skittering along the bottom,
+Summer a turning sun + clouds + motes. **The snowflake was redrawn**: the first was three crossed
+lines with four stubs and read as an asterisk at any size; it is a six-arm dendrite now, drawn once
+and rotated so all six arms are identical by construction.
+**Four ornament placement bugs, all found by rendering and MEASURING rather than reading:** the
+icicles covered 192px of a 428px screen; the corner branch sat on the Workout/Exercises/History tab
+labels; the sun rays were twelve solid yellow wedges over the Quick Start card rather than glare;
+and a cloud sailed across the "Start your first program" heading at 72% white. **Decoration that
+makes copy unreadable is the one thing this layer must never do.**
+**Seasonal MARKS** (pumpkin/snowflake/blossom/sun/leaf) on Quick Start, Friends Activity and Groups
+— a separate mechanism from the ambient layer, because decor floats over the whole app and belongs
+to nobody while a mark is part of a specific card. It reads the theme off **`C.id`**, which is why
+every palette now carries its own id: the Discover tiles never see `store`. Mo tuned it twice from
+screenshots — inline beside the chevron rather than pinned to the corner, then much larger, tilted
+and well under half opacity. `MARK_TILT` is per kind: a leaf or blossom reads right at an angle, a
+tilted pumpkin looks like it fell over, and a sun or six-fold snowflake is radially symmetric so
+rotating either changes nothing but the bounding box.
+**★ AND THE SCAR OF THE SESSION: I READ A PER-FILE `PASS` AS THE OVERALL RESULT.** `node
+build/sim_undef.mjs | tail -2` printed "PASS src/engine/workout.js" and I took it for a clean run.
+The actual verdict line was two lines further down and said FAIL: threading the accent into
+`Confetti` had introduced a bare `C` in a component that never receives one — a live ReferenceError
+on every PR. It cost a full 43-failure battery run to surface. **`tail` on a guard's output is the
+same mistake as gating on a piped exit code; read the verdict line, not the last line.**
+**Still open, unchanged:** `MUSCLE_STRIPE_INK`'s five light values clear 3:1 on Arctic with almost
+no margin (3.03-3.17) — deepening Arctic's `bg` would put them under first. ConfirmHost's white on
+`#ef4444` (3.76:1) stays as its own comment documents. The muscle-icon tiles are baked base64 art
+and render the same purple figure on all nine themes.
+
 ## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
 Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
 every full-cover overlay (`position:fixed/absolute` + `inset:0` + a zIndex) found **33**, but only

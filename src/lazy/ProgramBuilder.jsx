@@ -139,7 +139,7 @@ export default function ProgramBuilder({ C, onCancel, onSave }) {
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10 }}>
                 <div>
                   <div style={{ fontSize:10, fontWeight:600, color:labelClr, letterSpacing:0.5, marginBottom:4 }}>SETS</div>
-                  <div style={{ display:"flex", alignItems:"center", gap:4, background: isDark?"#111":"#F1F5F9", borderRadius:8, padding:"6px 10px" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:4, background: C.divider, borderRadius:8, padding:"6px 10px" }}>
                     <button onClick={() => updateEx(ei,{sets:Math.max(1,progSetCount(ex)-1)})} style={{ background:"none", border:"none", color:C.text, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>−</button>
                     <span style={{ flex:1, textAlign:"center", fontSize:16, fontWeight:700, color:bodyClr, fontFamily:MONO }}>{progSetCount(ex)}</span>
                     <button onClick={() => updateEx(ei,{sets:progSetCount(ex)+1})} style={{ background:"none", border:"none", color:C.text, fontSize:18, cursor:"pointer", lineHeight:1, padding:0, fontWeight:700 }}>+</button>
@@ -148,12 +148,12 @@ export default function ProgramBuilder({ C, onCancel, onSave }) {
                 <div>
                   <div style={{ fontSize:10, fontWeight:600, color:labelClr, letterSpacing:0.5, marginBottom:4 }}>REPS</div>
                   <input value={ex.reps||""} onChange={e => updateEx(ei,{reps:e.target.value})} placeholder="8–12"
-                    style={{ width:"100%", background: isDark?"#111":"#F1F5F9", border:"none", borderRadius:8, padding:"8px 10px", fontSize:13, fontWeight:600, color:bodyClr, outline:"none", fontFamily:F, boxSizing:"border-box", textAlign:"center" }}/>
+                    style={{ width:"100%", background: C.divider, border:"none", borderRadius:8, padding:"8px 10px", fontSize:13, fontWeight:600, color:bodyClr, outline:"none", fontFamily:F, boxSizing:"border-box", textAlign:"center" }}/>
                 </div>
                 <div>
                   <div style={{ fontSize:10, fontWeight:600, color:labelClr, letterSpacing:0.5, marginBottom:4 }}>REST</div>
                   <select value={ex.rest||90} onChange={e => updateEx(ei,{rest:parseInt(e.target.value)})}
-                    style={{ width:"100%", background: isDark?"#111":"#F1F5F9", border:"none", borderRadius:8, padding:"8px 6px", fontSize:12, fontWeight:600, color:bodyClr, outline:"none", fontFamily:F, cursor:"pointer" }}>
+                    style={{ width:"100%", background: C.divider, border:"none", borderRadius:8, padding:"8px 6px", fontSize:12, fontWeight:600, color:bodyClr, outline:"none", fontFamily:F, cursor:"pointer" }}>
                     {REST_OPTIONS.map(o => <option key={o.s} value={o.s}>{o.label}</option>)}
                   </select>
                 </div>
@@ -168,9 +168,14 @@ export default function ProgramBuilder({ C, onCancel, onSave }) {
 
         {/* Add exercise */}
         <button onClick={() => setShowExercisePicker(true)} style={{
-          width:"100%", background:inputBg, border:`1.5px dashed ${isDark?C.accent+"55":"#BFDBFE"}`,
+          // ★ THE DOCUMENTED "BLUE DASHED BOX AROUND LIME TEXT" BUG, SURVIVING IN A SECOND COPY.
+          // CLAUDE.md records this exact pairing as fixed on the other "+ Add Exercise"; this one
+          // kept both halves — a hardcoded #BFDBFE border (a BLUE box on the pink Spring and teal
+          // Summer themes) and accent-as-TEXT, which measured 2.82:1 on the light theme's chip.
+          // accentInk is the accent-as-text token and is simply `accent` on every dark theme.
+          width:"100%", background:inputBg, border:`1.5px dashed ${C.accentInk}55`,
           borderRadius:16, padding:"14px", cursor:"pointer", fontFamily:F,
-          fontSize:14, fontWeight:700, color:C.accent, textAlign:"center",
+          fontSize:14, fontWeight:700, color:C.accentInk, textAlign:"center",
         }}>+ Add Exercise</button>
         <ExercisePickerSheet open={showExercisePicker} onClose={() => setShowExercisePicker(false)}
           onSelect={v => addExercise(v)} C={C}/>

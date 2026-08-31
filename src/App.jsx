@@ -1,4 +1,4 @@
-// v178091716990
+// v178091716993
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1055,12 +1055,18 @@ const THEMES = {
   spring: {
     id: "spring",
     isDark: false,
-    bg: "#f5f8f2",          // pale green-white, like new growth
+    // ★ A TINT NOBODY CAN SEE IS NOT A TINT. Measured against the other palettes, this canvas had
+    // a channel spread of 6 (light 3, arctic 13, summer 19) — so Spring rendered as the Light theme
+    // with a pink accent bolted on, which is exactly the failure the Arctic note names. The story
+    // is right (blossom on new growth); the green just had to become visible. Spread is 11 now, and
+    // the borders and dividers carry it too, because the hue has to live in ALL the neutrals or it
+    // reads as a tinted background rather than a themed app.
+    bg: "#f1f7ec",          // pale green-white, like new growth
     surface: "#ffffff",
     card: "#ffffff",
-    border: "#e2e9dc",
-    overlayEdge: "#e2e9dc",
-    divider: "#ecf1e7",
+    border: "#dbe6d2",
+    overlayEdge: "#dbe6d2",
+    divider: "#e8f0e0",
     // Blossom pink rather than a spring GREEN: green is both the light theme's accent family and a
     // semantic colour here, so a green accent would collide twice over. Nothing else in the set is
     // pink, which is what makes this one recognisable at a glance.
@@ -1580,15 +1586,31 @@ function themeMarkOf(C) {
   const meta = THEME_META.find(t => t.id === (C && C.id));
   return meta && meta.mark ? meta.mark : null;
 }
-export function ThemeMark({ C, size = 22, top = 10, right = 10 }) {
+// `inline` places the mark in the row's own flow instead of pinning it to the corner — on Quick
+// Start it sits just left of the chevron, which is where it reads as part of the row rather than
+// as a sticker on top of one. Two things are deliberate and were tuned by looking, not guessing:
+// it is LARGE (a small mark at low alpha just looks like a smudge, and this has to survive being
+// translucent), and the alpha is well under half — it is seasoning on the primary action of the
+// whole tracker tab, and at full strength it competed with the accent ring that card already uses
+// to say "start here".
+// MARK_TILT is per kind, not global: a leaf or a blossom that has drifted onto the card reads
+// right at an angle, while a tilted pumpkin looks like it fell over and a sun or a six-fold
+// snowflake is radially symmetric, so rotating either changes nothing but the bounding box.
+const MARK_TILT = { leaf: -28, blossom: -15, pumpkin: 0, sun: 0, snowflake: 0 };
+export function ThemeMark({ C, size = 26, top = 10, right = 10, inline = false, opacity = 0.6 }) {
   const kind = themeMarkOf(C);
   if (!kind) return null;
+  const tilt = MARK_TILT[kind] || 0;
   return (
     // data-theme-mark is the selector contract for pw_themes. An <svg> contributes no textContent,
     // so a text-based check could not see this at all — the same reason the PR trophy needed
     // data-pr-marker.
     <span aria-hidden="true" data-theme-mark={kind}
-      style={{ position:"absolute", top, right, lineHeight:0, pointerEvents:"none", opacity:0.92 }}>
+      style={inline
+        ? { display:"flex", flexShrink:0, marginRight:4, lineHeight:0, pointerEvents:"none", opacity,
+            transform: tilt ? `rotate(${tilt}deg)` : undefined }
+        : { position:"absolute", top, right, lineHeight:0, pointerEvents:"none", opacity,
+            transform: tilt ? `rotate(${tilt}deg)` : undefined }}>
       <svg width={size} height={size} viewBox="0 0 24 24">{THEME_MARKS[kind](C.accent)}</svg>
     </span>
   );
@@ -1893,7 +1915,7 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
     return <MuscleIcon muscle={primary} size={Math.round(size * 0.7)} name={name} C={C}/>;
   }
 
-  const bodyCol = C?.isDark ? "#3f4049" : "#cdd1d8";
+  const bodyCol = bodyGreys(C).body;
   const accentCol = C?.accent || "#c8f135";
   const lightCol = C?.isDark ? "#6d5bb0" : "#c9b3ee";
   const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
@@ -1972,7 +1994,29 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
 // data rather than a measured zero" — a true distinction that the reader cannot see and does not
 // care about, whose only visible effect is that the body loses its anatomy. Same class as the
 // palette twins: one fix that didn't get copied to its siblings.
-const emptyMuscleCol = (C) => (C?.isDark ? "#525460" : "#b0b6c1");
+// ★ THE BODY SILHOUETTE'S GREYS ARE DERIVED FROM THE PALETTE, NOT KEYED ON `isDark`. They were two
+// fixed literals (#3f4049 / #525460 dark, #cdd1d8 / #b0b6c1 light), which was fine while dark and
+// light were the only options and left a NEUTRAL GREY body sitting on Midnight's blue-black,
+// Fall's espresso, Winter's slate and Halloween's purple — the one large shape on the profile
+// screen, belonging to no theme. Mixing the palette's own `bg` toward its own `text` reproduces
+// the exact relationships the literals encoded (body ~2:1 against the canvas, empty ~2.8:1, and
+// empty a clear step off body) on every theme, including ones that do not exist yet — which is
+// the whole reason to derive rather than hand-author nine more pairs.
+// The two fractions differ by polarity because a dark canvas needs a bigger step to read.
+function _mixHex(from, to, t) {
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const [a, b] = [rgb(from), rgb(to)];
+  return "#" + [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t).toString(16).padStart(2, "0")).join("");
+}
+function bodyGreys(C) {
+  const bg = (C && C.bg) || "#0b0b0e", ink = (C && C.text) || "#f4f4f6";
+  const dark = !C || C.isDark;
+  return { body: _mixHex(bg, ink, dark ? 0.24 : 0.18), empty: _mixHex(bg, ink, dark ? 0.33 : 0.29) };
+}
+// A muscle you trained ZERO times is DATA, not absence — see the note below on why it must not be
+// the body colour. It is one step off the silhouette, still quiet enough that the filled muscles
+// own the map.
+const emptyMuscleCol = (C) => bodyGreys(C).empty;
 
 
 // Readiness ramp: 0 = recovering (red), 0.5 = amber, 1 = ready (green). Was a fixed rgb() triple —
@@ -2049,7 +2093,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
 
   const figW = 96, figH = Math.round(figW * 408 / 160);
   const VB = { front: "48 6 168 408", back: "26 6 160 408" }; // front widened: male hand reaches x=214.7, old 46+160=206 clipped the fingers
-  const bodyCol = C?.isDark ? "#3f4049" : "#cdd1d8";
+  const bodyCol = bodyGreys(C).body;
   const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
 
   const fillFor = (key) => {
@@ -3443,7 +3487,7 @@ function isBarbellExercise(name) {
 const MUSCLE_STRIPE_COLORS = {
   chest:"#EF4444", back:"#3B82F6", shoulders:"#D946EF", "rear delts":"#8B5CF6",
   biceps:"#F59E0B", triceps:"#F97316", quads:"#10B981", hamstrings:"#767A1E",
-  glutes:"#EC4899", calves:"#06B6D4", core:"#84CC16", traps:"#6366F1", "full body":"#2563EB",
+  glutes:"#EC4899", calves:"#06B6D4", core:"#84CC16", traps:"#6366F1", "full body":"#3574f0",
 };
 // The light-theme deepened variants. RE-TUNED against `C.bg` (#f6f5f3), not `C.surface` (#ffffff):
 // these were originally calibrated when the muscle colour appeared on a white CARD, and the Day
@@ -5157,7 +5201,14 @@ function MuscleBalance({ store, C, days = 30 }) {
   // Known and NOT fixed here: the other four are calibrated for dark and measure 1.8-2.8:1 on the
   // light theme's white card. They are labelled bars, not colour-only, so this is a polish item
   // rather than a correctness one — but a future theme pass should re-measure all five.
-  const GROUP_COLOR = { Push:"#60a5fa", Pull:"#34d399", Legs:"#8b5cf6", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted };
+  // ★ CATEGORICAL COLOUR STILL HAS TO CLEAR 3:1 ON THE SURFACE IT SITS ON, AND THE DARK SET
+  // NEVER DID ON WHITE. Measured on a white card: Core 1.67, Pull 1.92, Push 2.54, Cardio 2.65
+  // — all under the graphical floor, and now facing FOUR light themes instead of one. The bars
+  // are labelled so nothing was unreadable, but a bar you cannot see encodes nothing. Split per
+  // theme the way LEVEL_COLOR already is; Legs (#8b5cf6) clears on both and is shared.
+  const GROUP_COLOR = C.isDark
+    ? { Push:"#60a5fa", Pull:"#34d399", Legs:"#8b5cf6", Core:"#fbbf24", Cardio:"#f472b6", Other:C.muted }
+    : { Push:"#2563eb", Pull:"#059669", Legs:"#8b5cf6", Core:"#b45309", Cardio:"#db2777", Other:C.muted };
 
   if (!data.total) {
     // A floating centered paragraph with no heading, sitting directly above the readiness card,
@@ -6567,9 +6618,14 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
 // ═════════════════════════════════════════════════════════════════════════════
 // CONFETTI (for PR modal)
 // ═════════════════════════════════════════════════════════════════════════════
-function Confetti({ origin = "top", duration = 2 }) {
+// C is threaded in purely so the leader can be the theme's accent — Confetti had no reason to
+// know about the palette before, and a bare `C` here was a ReferenceError sim_undef caught.
+function Confetti({ origin = "top", duration = 2, C }) {
   // origin: "top" (PR modal full-screen) | "set" (centered around the checkmark)
-  const colors = ["#c8f135","#f97316","#eab308","#30d158","#a3e635","#ec4899","#3b82f6"];
+  // The first entry was volt, so PR confetti opened with lime on the six themes that have no
+  // lime. The rest is a deliberate spread of festive hues and is not the accent's job, so only
+  // the leader is tokenised.
+  const colors = [(C && C.accent) || "#c8f135", "#f97316", "#eab308", "#30d158", "#a3e635", "#ec4899", "#3b82f6"];
   const count = origin === "set" ? 24 : 36;
   const topPos = origin === "set" ? "45%" : "25%";
   return (
@@ -6753,7 +6809,7 @@ function PlateCalcModal({ onClose, unit, C }) {
             <div style={{ textAlign:"center", color:C.sub, fontSize:13, padding:"16px 0" }}>Enter more than bar weight ({BAR_WEIGHT} {unit})</div>
           )}
           {notAchievable && (
-            <div style={{ textAlign:"center", color:"#ef4444", fontSize:13, padding:"16px 0" }}>Not achievable with standard plates</div>
+            <div style={{ textAlign:"center", color:C.red, fontSize:13, padding:"16px 0" }}>Not achievable with standard plates</div>
           )}
 
           {achievable && result && (
@@ -7346,9 +7402,9 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
               const isFresh = secs >= 0 && secs < 60;
               if (isFresh) {
                 return (
-                  <span style={{ color:"#22c55e", fontWeight:700, display:"inline-flex", alignItems:"center", gap:4 }}>
+                  <span style={{ color:C.green, fontWeight:700, display:"inline-flex", alignItems:"center", gap:4 }}>
                     <span style={{
-                      width:6, height:6, borderRadius:"50%", background:"#22c55e",
+                      width:6, height:6, borderRadius:"50%", background:C.green,
                       animation:"seshd-fresh-pulse 1.2s ease-out infinite",
                     }}/>
                     just now
@@ -7913,7 +7969,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
           program name sit under the clock/battery. */}
       <div style={{ background:CARD, borderBottom:`1px solid ${BORD}`, padding:"calc(env(safe-area-inset-top) + 6px) 16px 10px", flexShrink:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <button onClick={onBack} aria-label="Back" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <button onClick={onBack} aria-label="Back" style={{ width:36, height:36, borderRadius:10, background:C.divider, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
           </button>
           <div style={{ flex:1, minWidth:0 }}>
@@ -8055,7 +8111,7 @@ function ProgramDetailView({ prog, store, unit, C, F, MONO, onBack, onSaveProgra
             </div>
           ) : (
             <button onClick={() => setConfirmDelDay(true)} aria-label="Delete day" style={{ background:"none", border:`1px solid ${BORD}`, borderRadius:8, padding:"8px 9px", color:"#EF4444", cursor:"pointer", fontFamily:F, display:"flex", alignItems:"center", flexShrink:0 }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           )
         )}
@@ -8416,7 +8472,7 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
           fontFamily:F, flexShrink:0,
         }}>{loading ? "..." : "Find"}</button>
       </div>
-      {error && <div style={{ fontSize:12, color:"#EF4444", marginTop:10 }}>{error}</div>}
+      {error && <div style={{ fontSize:12, color:C.red, marginTop:10 }}>{error}</div>}
       {preview && (
         <div style={{ marginTop:12, padding:"12px", background:C.divider, borderRadius:10 }}>
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
@@ -11251,9 +11307,9 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       if ((ex.sets||[]).some(s => s.done)) {
                         confirmAction({ title:"Remove exercise?", message:`This removes "${ex.name || "this exercise"}" and its logged sets from this workout.`, confirmLabel:"Remove", destructive:true, onConfirm:removeNow });
                       } else { removeNow(); }
-                    }} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:`1px solid #EF444455`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                      <span style={{ fontSize:12, fontWeight:600, color:"#EF4444" }}>Remove exercise</span>
+                    }} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:`1px solid ${C.red}55`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontFamily:F }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      <span style={{ fontSize:12, fontWeight:600, color:C.red }}>Remove exercise</span>
                     </button>
                   </div>
                 )}
@@ -11560,7 +11616,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             recentExercises={Object.values(store.history||{}).flatMap(Object.values).slice(0,20)}/>
         </div>
 
-        {showWorkoutSummary && workoutSummary && <Confetti duration={2.5}/>}
+        {showWorkoutSummary && workoutSummary && <Confetti duration={2.5} C={C}/>}
         <Sheet open={showWorkoutSummary && !!workoutSummary} onClose={() => {}} z={300} backdrop="rgba(0,0,0,0.85)"
           panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.overlayEdge}` }}>
         {showWorkoutSummary && workoutSummary && (
@@ -12046,7 +12102,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         )}
 
         {/* PR confetti burst — fires when a mid-workout PR is detected */}
-        {prBurst > 0 && <Confetti key={prBurst} origin="set"/>}
+        {prBurst > 0 && <Confetti key={prBurst} origin="set" C={C}/>}
 
         {/* Keyboard accessory bar — appears above the iOS keyboard when a set input is focused
             Lets user nudge weight or reps without dismissing the keyboard */}
@@ -12250,8 +12306,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               <div style={{ fontSize:15, fontWeight:700, letterSpacing:-0.3 }}>Quick Start</div>
               <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>Start an empty workout</div>
             </div>
+            <ThemeMark C={C} inline size={46} opacity={0.32}/>
             <Icon name="chevron-right" size={18} color={C.sub}/>
-            <ThemeMark C={C} size={20} top={8} right={8}/>
           </button>
 
           {/* Streak + 1RM share one compact row. The streak used to be a full-width slab and the
@@ -12859,7 +12915,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           ) : (
                             <button onClick={() => setConfirmDeleteId(sid)} style={{
                               background:"none", border:`1px solid ${C.border}`, borderRadius:8,
-                              color:"#EF4444", fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
+                              color:C.red, fontSize:12, padding:"4px 10px", cursor:"pointer", fontFamily:F, fontWeight:600
                             }}>Delete</button>
                           )}
                         </div>
@@ -13174,7 +13230,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
 
       {/* Top bar */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"calc(env(safe-area-inset-top) + 14px) 18px 14px", background:CARD, borderBottom:`1px solid ${BORD}`, flexShrink:0 }}>
-        <button onClick={onClose} aria-label="Back" className="seshd-hit" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <button onClick={onClose} aria-label="Back" className="seshd-hit" style={{ width:36, height:36, borderRadius:10, background:C.divider, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SUB} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
         </button>
         <div style={{ flex:1 }}>
@@ -13190,7 +13246,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
           // Open picker: share this day OR the whole program
           const prog = findOwningProgram();
           setShareModal({ stage: "picker", prog, day: editDay });
-        }} aria-label="Share" className="seshd-hit" style={{ width:36, height:36, borderRadius:10, background:isDark?"#1e1e1e":"#F1F5F9", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+        }} aria-label="Share" className="seshd-hit" style={{ width:36, height:36, borderRadius:10, background:C.divider, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
           <Icon name="share" size={16} color={TXT}/>
         </button>
         <button onClick={() => {
@@ -14177,7 +14233,7 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
                 borderBottom: i < cueData.mistakes.length - 1 ? `1px solid ${C.divider}` : "none",
                 alignItems:"flex-start"
               }}>
-                <div style={{ color:"#ef4444", fontSize:16, flexShrink:0, lineHeight:1.3 }}>✕</div>
+                <div style={{ color:C.red, fontSize:16, flexShrink:0, lineHeight:1.3 }}>✕</div>
                 <div style={{ fontSize:13, color:C.text, lineHeight:1.4 }}>{m}</div>
               </div>
             ))}
@@ -15054,7 +15110,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                         confirmLabel: "Block", destructive: true, icon: "warn",
                         onConfirm: () => { onBlock(userId); if (onBack) onBack(); },
                       }); }} style={{
-                        display:"block", width:"100%", textAlign:"left", padding:"12px 15px", background:"transparent", border:"none", borderTop:`1px solid ${C.divider}`, color:C.danger || "#ef4444", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F
+                        display:"block", width:"100%", textAlign:"left", padding:"12px 15px", background:"transparent", border:"none", borderTop:`1px solid ${C.divider}`, color:C.red, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F
                       }}>Block</button>
                     )}
                   </div>
@@ -15133,7 +15189,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             // darker, the badge below now needs light ink instead of the near-black it used against
             // the old light-theme fills).
             const LEVEL_COLOR = C.isDark
-              ? { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Proficient:"#7ed957", Advanced:"#c8f135", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" }
+              ? { Untrained:C.muted, Novice:"#60a5fa", Intermediate:"#34d399", Proficient:"#7ed957", Advanced:"#a3e635", Exceptional:"#fb923c", Elite:"#fbbf24", "World Class":"#f43f5e" }
               : { Untrained:C.muted, Novice:"#1d4ed8", Intermediate:"#047857", Proficient:"#4d7c0f", Advanced:"#3f6212", Exceptional:"#c2410c", Elite:"#92400e", "World Class":"#be123c" };
             const levelBadgeInk = C.isDark ? "#0a0a0a" : "#ffffff";
             const SexToggle = () => (
@@ -15429,7 +15485,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
           <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}` }}>
             <div style={{ width:46, height:46, borderRadius:RADIUS.md, background:"#ef444418", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
-              <Icon name="trash" size={22} color="#ef4444"/>
+              <Icon name="trash" size={22} color={C.red}/>
             </div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.3 }}>Delete your account?</div>
             <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:16 }}>
@@ -15563,8 +15619,13 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               point is to preview a palette you are not looking at yet. */}
                           <span style={{ display:"flex", flexShrink:0, borderRadius:7, overflow:"hidden",
                                          border:`1px solid ${C.border}` }}>
+                            {/* bg / BORDER / accent, not bg/surface/accent: Fall and Halloween have
+                                near-identical near-black bgs and surfaces, so at 16px the two
+                                swatches were indistinguishable and only the blurb separated them.
+                                Their borders (espresso #453729 vs purple #3d2b4d) are far more
+                                separated, and border is just as much "a colour this theme owns". */}
                             <span style={{ width:16, height:26, background:pal.bg }}/>
-                            <span style={{ width:16, height:26, background:pal.surface }}/>
+                            <span style={{ width:16, height:26, background:pal.border }}/>
                             <span style={{ width:16, height:26, background:pal.accent }}/>
                           </span>
                           <span style={{ flex:1, minWidth:0 }}>
@@ -15778,7 +15839,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               haptic("tap");
                             },
                           });
-                        }} style={{ flexShrink:0, background:"none", border:"none", color:"#ef4444", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Remove</button>
+                        }} style={{ flexShrink:0, background:"none", border:"none", color:C.red, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Remove</button>
                       </div>
                     ))}
                     <button onClick={() => {
@@ -15805,7 +15866,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           haptic("success");
                         },
                       });
-                    }} style={{ width:"100%", background:"none", border:"none", padding:"13px 14px", textAlign:"left", fontSize:13, color:"#ef4444", fontWeight:600, cursor:"pointer", fontFamily:F }}>Clear all custom exercises</button>
+                    }} style={{ width:"100%", background:"none", border:"none", padding:"13px 14px", textAlign:"left", fontSize:13, color:C.red, fontWeight:600, cursor:"pointer", fontFamily:F }}>Clear all custom exercises</button>
                   </div>
                 </>
               )}
@@ -15845,15 +15906,15 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   display:"flex", alignItems:"center", justifyContent:"space-between",
                   cursor:"pointer", fontFamily:F
                 }}>
-                  <div style={{ fontSize:14, color:"#ef4444", fontWeight:600 }}>Sign Out</div>
-                  <span style={{ fontSize:16, color:"#ef4444" }}>→</span>
+                  <div style={{ fontSize:14, color:C.red, fontWeight:600 }}>Sign Out</div>
+                  <span style={{ fontSize:16, color:C.red }}>→</span>
                 </button>
                 <button onClick={() => setShowDelete(true)} style={{
                   width:"100%", background:"none", border:"none", padding:"14px",
                   display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
                 }}>
-                  <div style={{ fontSize:14, color:"#ef4444", fontWeight:600 }}>Delete account</div>
-                  <Icon name="trash" size={15} color="#ef4444"/>
+                  <div style={{ fontSize:14, color:C.red, fontWeight:600 }}>Delete account</div>
+                  <Icon name="trash" size={15} color={C.red}/>
                 </button>
               </div>
             </div>
@@ -20552,7 +20613,7 @@ function AppInner() {
                   }}>
                     {/* Active story gets the same volt gradient ring as friends' stories;
                         no-story state keeps the plain divider circle + the "+" badge. */}
-                    <div style={{ padding: myStoryPost ? 2.5 : 0, borderRadius:"50%", background: myStoryPost ? "linear-gradient(135deg,#d9ff4d,#a3e635,#4d7c0f)" : "none" }}>
+                    <div style={{ padding: myStoryPost ? 2.5 : 0, borderRadius:"50%", background: myStoryPost ? `linear-gradient(135deg, ${C.accent}, ${C.accent2})` : "none" }}>
                     <div style={{ background: myStoryPost ? C.bg : "none", padding: myStoryPost ? 2 : 0, borderRadius:"50%" }}>
                     <div style={{
                       width: myStoryPost ? 54 : 60, height: myStoryPost ? 54 : 60, borderRadius:"50%", overflow:"hidden",
@@ -20576,7 +20637,7 @@ function AppInner() {
                 {/* Others' stories */}
                 {storyUsers.map((u, i) => (
                   <div key={u.id} onClick={() => setStoryIndex(i)} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, minWidth:60 }}>
-                    <div style={{ padding:2.5, borderRadius:"50%", background:"linear-gradient(135deg,#d9ff4d,#a3e635,#4d7c0f)", cursor:"pointer" }}>
+                    <div style={{ padding:2.5, borderRadius:"50%", background:`linear-gradient(135deg, ${C.accent}, ${C.accent2})`, cursor:"pointer" }}>
                       <div style={{ background:C.bg, padding:2, borderRadius:"50%" }}>
                         <Avatar user={u} size={54} C={C}/>
                       </div>

@@ -230,7 +230,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                     UI-kit-card tell — show the real number once there's one to show. */}
                 <div style={{ fontSize:11, opacity:0.65, marginTop:3 }}>{following.length > 0 ? `${following.length} following` : "Weekly stats"}</div>
               </div>
-              <ThemeMark C={C} size={19} top={9} right={9}/>
+              <ThemeMark C={C} size={34} top={6} right={7} opacity={0.36}/>
             </button>
             <button onClick={() => setSubTab("groups")} style={{
               position:"relative", background:C.surface, color:C.text,
@@ -246,7 +246,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
                 <div style={{ fontSize:11, color:C.sub, marginTop:3 }}>{(store.groups?.length || 0) > 0 ? `${store.groups.length} joined` : "Private crews"}</div>
               </div>
-              <ThemeMark C={C} size={19} top={9} right={9}/>
+              <ThemeMark C={C} size={34} top={6} right={7} opacity={0.36}/>
             </button>
           </div>
 
@@ -874,7 +874,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
                   <div style={{ fontSize:11, color:C.sub }}>@{u.username}</div>
                 </div>
                 {showStreakBadge && (
-                  <div style={{ background:"#f97316", borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:700, color:"#fff", display:"inline-flex", alignItems:"center", gap:4 }}><Icon name="flame" size={12} color="#fff"/> {stats.streak}</div>
+                  <div style={{ background:C.orange, borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:700, color:C.onAccent, display:"inline-flex", alignItems:"center", gap:4 }}><Icon name="flame" size={12} color="#fff"/> {stats.streak}</div>
                 )}
               </div>
               <div style={{ display:"flex", gap:0, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" }}>
