@@ -230,7 +230,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                     UI-kit-card tell — show the real number once there's one to show. */}
                 <div style={{ fontSize:11, opacity:0.65, marginTop:3 }}>{following.length > 0 ? `${following.length} following` : "Weekly stats"}</div>
               </div>
-              <ThemeMark C={C} slot="friends" size={44} top={4} right={6} opacity={0.34}/>
+              <ThemeMark C={C} slot="friends" size={62} top={10} right={12} opacity={0.34}/>
             </button>
             <button onClick={() => setSubTab("groups")} style={{
               position:"relative", background:C.surface, color:C.text,
@@ -246,7 +246,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
                 <div style={{ fontSize:11, color:C.sub, marginTop:3 }}>{(store.groups?.length || 0) > 0 ? `${store.groups.length} joined` : "Private crews"}</div>
               </div>
-              <ThemeMark C={C} slot="groups" size={44} top={4} right={6} opacity={0.34}/>
+              <ThemeMark C={C} slot="groups" size={62} top={10} right={12} opacity={0.34}/>
             </button>
           </div>
 

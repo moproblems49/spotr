@@ -3880,6 +3880,44 @@ looking at a screenshot. A safe-area inset only pushes the tabs further down, so
 device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
 corner is what keeps a bigger branch off the tab label.
 
+## Three device-screenshot fixes: the notch gap, mark size, and the palm that was still bad (Mo, Aug 31)
+**★ THE DEAD STRIP UNDER THE CLOCK WAS ONE PADDING VALUE, AND THE ONLY WAY TO KNOW THAT WAS TO
+READ WHAT ELSE RENDERS ABOVE THE TOP BAR — NOTHING DOES.** Mo circled the band between the status
+bar and the SESHD row. For a signed-in, online user the offline bar and the guest banner are both
+absent, so that entire strip is the top bar's own `padding-top`, which was
+`env(safe-area-inset-top) + 3px`. **The full inset is Apple's clearance for content ANYWHERE across
+the width, and it is over-cautious for THIS row**: the notch/island is horizontally CENTRED (the
+island spans roughly x 151-277 of a 428pt screen) while this row puts the logo hard left and the
+icons hard right. Measured against the tightest case — a Dynamic Island phone, inset 59, island
+bottom ~48 — the full inset leaves 11pt of clearance doing nothing. It is
+`max(calc(env(safe-area-inset-top) - 10px), 3px)` now: 13pt tighter on device (the old `+3` folded
+in), and **the 3px floor makes it byte-identical wherever the inset is small or zero**, so the web
+build did not move and the trim only ever spends headroom that exists. Verified in Chromium that
+the bar is still exactly 47px with env() = 0.
+**★ A ROTATED MARK PAINTS OUTSIDE ITS LAYOUT BOX, SO `top`/`right` ARE NOT THE MARGIN YOU THINK.**
+Bumping the Discover tiles' marks 44 -> 62px pushed the tilted ones (palm, acorn, butterfly,
+sprout) past the card: `MARK_TILT` is a paint-time `transform`, which does not affect layout, so a
+62px glyph at 18deg paints ~7px outside its box on each side. At `top:2 right:4` the palm hung 6px
+above the card's top edge and 3px past its right. Measured, not eyeballed — the probe reports each
+mark's overflow against `closest("button")` on all five seasonal themes, and every value must be
+negative. `top:10 right:12` clears it with the palm tightest at 2.9px / 4.9px.
+**★★ AND THE SMALL PALM REPRODUCED, EXACTLY, EVERY FAILURE THE BIG PALM'S SIX REDRAWS HAD ALREADY
+CATALOGUED.** Mo: "the palm tree there looks really bad." It was a STROKED line trunk (cannot
+taper, so it reads as a pole) plus ONE teardrop blade rotated evenly around a point (a pinwheel of
+agave leaves, not a crown) — the two named failures from the `PALM_SCENE` work, sitting in a glyph
+nobody re-read when that work landed. **The fix was to share the geometry, not to redraw by hand**:
+`frond`/`trunk`/`disc` are lifted out of the `PALM_SCENE` IIFE into `PALM_GEO`, and `PALM_MARK_PATHS`
+builds a 24-unit tree through the same generators, so it inherits the asymmetric sawteeth, the
+downward arch and the filled tapering trunk for free. **The one thing that does NOT carry across
+scale is the frond COUNT**: the scene's crowns are 206px wide and read fine with seven, and the
+same seven at 44-62px merge into a single blob with no silhouette left. Five longer, narrower
+blades keep the gaps that say palm. Settled by rendering three candidates at 62px, at 44px, at 3x
+and at the real 0.34 alpha and looking at them — the 3x view alone would have picked the wrong one,
+because the density that ruins the small size looks lush when it is big.
+**General rule from all three: when a redraw or a resize lands, re-read the OTHER places the same
+thing is drawn.** The palm mark and the scene were one tree at two sizes and only one of them got
+the lessons.
+
 ## Winter puts snow on the nav bar, and it is drawn INSIDE the pill (Mo, Aug 31)
 Mo: "For winter, maybe add a little snow on the nav bar?" `NavSnow` renders a settled snow band with
 three small icicles as the FIRST CHILD OF THE NAV PILL, gated on `themeDecorOf(C.id) === "snow"`, and

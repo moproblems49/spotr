@@ -1,4 +1,4 @@
-// v178091716999
+// v178091717000
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1428,8 +1428,12 @@ function Seagull({ top, size, dur, delay }) {
 //     blade bases meet at a point.
 // Geometry is generated once at module load so the sawteeth stay even as each blade tapers —
 // hand-authored path data drifts, generated teeth do not. Deterministic: no randomness.
-const PALM_SCENE = (() => {
-  const GREEN = "#6AAE43", DARK = "#5B9838", BROWN = "#A0703A", NUT = "#8A5A2E", SAND = "#E8D5A8";
+// PALM GEOMETRY, SHARED. The corner scene and the small Groups mark are the same tree at two
+// sizes, so they are the same three generators — the N-copies-drift rule applied to path maths.
+// The mark used to have its own hand-authored palm and it reproduced, exactly, every failure the
+// scene's six redraws catalogued: a STROKED trunk (cannot taper, so it reads as a pole), and one
+// teardrop blade rotated evenly around a point (a pinwheel of agave leaves, not a crown).
+const PALM_GEO = (() => {
   const frond = (cx, cy, angDeg, len, wmax, droopDeg, teeth = 8) => {
     const a = angDeg * Math.PI / 180;
     const droop = (Math.cos(a) >= 0 ? 1 : -1) * droopDeg * Math.PI / 180;
@@ -1481,7 +1485,12 @@ const PALM_SCENE = (() => {
   };
   const disc = (cx, cy, rx, ry) =>
     `M${cx - rx} ${cy}A${rx} ${ry} 0 1 0 ${cx + rx} ${cy}A${rx} ${ry} 0 1 0 ${cx - rx} ${cy}Z`;
+  return { frond, trunk, disc };
+})();
 
+const PALM_SCENE = (() => {
+  const { frond, trunk, disc } = PALM_GEO;
+  const GREEN = "#6AAE43", DARK = "#5B9838", BROWN = "#A0703A", NUT = "#8A5A2E", SAND = "#E8D5A8";
   const TALL = { c: [60, 60], len: 56, w: 12, wb: 13, wt: 5.5,
     spine: [[88, 196], [84, 150], [76, 100], [60, 62]],
     f: [[187, 0.88, 1, 46], [-155, 1.0, 0, 26], [-120, 0.9, 1, 22], [-85, 0.97, 0, 20],
@@ -1697,6 +1706,23 @@ function GroundLeaf({ left, dur, delay, tone }) {
 // repeating a mark three times makes it wallpaper. Each is drawn to FILL the 24-unit box, which
 // is the other half of why the first pumpkin read as small: at `size` 46 its art only occupied
 // ~60% of the box, so the pumpkin itself rendered at ~28px.
+// The Groups mark on Summer, in a 24-unit box. FIVE fronds, not seven: the scene's crowns are
+// 206px wide and can carry seven, but at 44-62px the same count merges into one blob and the
+// silhouette stops reading as a tree. Fewer, longer, narrower blades keep the gaps that say palm.
+// Built through PALM_GEO so it inherits the asymmetric sawteeth, the downward arch and the filled
+// tapering trunk rather than re-deriving them.
+const PALM_MARK_PATHS = (() => {
+  const { frond, trunk, disc } = PALM_GEO;
+  const cx = 11.0, cy = 8.2, len = 11.0, w = 2.2, teeth = 5;
+  const out = [
+    trunk([[16.2, 24.8], [15.6, 19.6], [13.6, 13.6], [cx, 8.6]], 3.0, 1.2),
+    disc(cx, cy + 0.4, 1.3, 1.04),
+  ];
+  for (const [a, k, dr] of [[188, 0.94, 42], [-138, 1.0, 26], [-88, 0.98, 20], [-38, 0.96, 24], [6, 0.92, 30]])
+    out.push(frond(cx, cy, a, len * k, w, dr, teeth));
+  return out;
+})();
+
 const THEME_MARKS = {
   pumpkin: (c) => (
     <g>
@@ -1800,15 +1826,7 @@ const THEME_MARKS = {
       <path d="M1.4 18.6c2.4-2.6 4.9-2.6 7.3 0s4.9 2.6 7.3 0 4.9-2.6 6.6 0"/>
     </g>
   ),
-  palm: (c) => (
-    <g>
-      <path d="M12 22.4C12 16 12.6 9.6 13.6 3.4" stroke={c} strokeWidth="1.7" strokeLinecap="round" fill="none"/>
-      {[[-56, 0.95], [-22, 1], [16, 1], [50, 0.9]].map(([a, o], i) => (
-        <path key={i} opacity={o} transform={`rotate(${a} 13.6 3.8)`}
-          d="M13.6 3.8C17.8 4.4 20.6 7 21.4 11.4 17.2 11 14.4 8.4 13.6 3.8z" fill={c}/>
-      ))}
-    </g>
-  ),
+  palm: (c) => <g>{PALM_MARK_PATHS.map((d, i) => <path key={i} d={d} fill={c}/>)}</g>,
   leaf: (c) => (
     <g>
       <path d="M12 1.2C19.4 8 20.6 16.6 12 23.2 3.4 16.6 4.6 8 12 1.2z" fill={c}/>
@@ -20686,16 +20704,26 @@ function AppInner() {
         boxShadow: C.isDark
           ? "inset 0 1px 0 rgba(255,255,255,0.08)"
           : "inset 0 1px 0 rgba(255,255,255,0.9)",
-        // TIGHT UNDER THE NOTCH. The safe-area inset is not negotiable — below it the logo sits
-        // under the clock — but everything we add to it is. This was inset+4 over 7, and the row
-        // itself was 45px because the icon BUTTONS (22px glyph + 11px padding each side) set the
-        // flex line height, not the 30px logo. So trimming the paddings alone bought almost
-        // nothing; see TOPBAR_ICON_BTN for how the buttons keep a full tap target while
-        // contributing less height. Net: 56px -> 45px of chrome above the content.
-        // The +3 is not slack — it is exactly the negative margin TOPBAR_ICON_BTN uses. Without it
-        // the buttons overflow their content box into the safe-area padding, which on device is
-        // the status bar, putting a live tap target under the clock.
-        padding: `${(isGuest || !online) ? "5px" : "calc(env(safe-area-inset-top) + 3px)"} calc(env(safe-area-inset-right) + 14px) 5px calc(env(safe-area-inset-left) + 14px)`,
+        // TIGHT UNDER THE NOTCH. Mo, from a device screenshot: the strip between the clock and the
+        // SESHD row is dead space. It is entirely this padding — nothing else renders above the
+        // top bar for a signed-in, online user — so the only lever is the inset itself.
+        // The full inset is Apple's clearance for content ANYWHERE across the width, and it is
+        // over-cautious for this row: the notch/island is horizontally CENTRED (the island spans
+        // roughly x 151-277 of a 428pt screen) and this row puts the logo hard left and the icons
+        // hard right. Measured against the tightest case, a Dynamic Island phone: inset 59, island
+        // bottom ~48, so the full inset leaves 11pt of clearance. Taking 10 of it puts the row's
+        // content box at ~52pt and the icon buttons' 3pt negative margin at ~49pt — still below
+        // the island, and horizontally clear of it regardless. The floor is 3px — the value that
+        // used to be added to the inset — so on a device with a small or no inset (the web build,
+        // where env() is 0) the bar is byte-identical to what it was, and the trim only ever
+        // spends headroom that actually exists.
+        // This was inset+4 over 7, then inset+3; the row itself was 45px because the icon BUTTONS
+        // (22px glyph + 11px padding each side) set the flex line height, not the 30px logo — see
+        // TOPBAR_ICON_BTN for how they keep a full tap target while contributing less height.
+        // The +3 that used to be here was not slack: it is exactly that negative margin, so the
+        // buttons could not overflow into the status bar. It is folded into the -10 now, which is
+        // why the arithmetic above counts the buttons separately from the content box.
+        padding: `${(isGuest || !online) ? "5px" : "max(calc(env(safe-area-inset-top) - 10px), 3px)"} calc(env(safe-area-inset-right) + 14px) 5px calc(env(safe-area-inset-left) + 14px)`,
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
         <SeshdLogo C={C}/>
