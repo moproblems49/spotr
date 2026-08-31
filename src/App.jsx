@@ -1,4 +1,4 @@
-// v178091716997
+// v178091716998
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1407,85 +1407,119 @@ function Seagull({ top, size, dur, delay }) {
     </svg>
   );
 }
-// ★ THE PALM, DRAW FIVE — and the last one worked because Mo sent a reference picture. Each
-// earlier attempt failed in a nameable way: (1) fronds rotated evenly through 360deg is a
-// PINWHEEL; (2) a blade that widens toward its tip is an AGAVE leaf; (3) a stroked trunk cannot
-// taper, so it reads as a pole; (4) a rachis with drawn pinnae reads as a FERN, because the thing
-// that makes a palm frond legible at this size is a SOLID silhouette with deep serrations, not a
-// skeleton with ribs. The reference settled it in one look — flat fills, jagged edges, two trees
-// of different heights, no outlines. **When three redraws in a row miss, ask for a picture rather
-// than iterating on adjectives.**
-// The serrations are generated rather than hand-drawn: walking the spine and alternating an outer
-// and an inner offset produces a saw-tooth edge that stays even as the blade tapers, which is
-// exactly what hand-authored path data drifts away from.
-const PALM_FROND = (() => {
-  const P0 = [0, 0], P1 = [32, -26], P2 = [80, -2];
-  const at = t => {
-    const u = 1 - t;
-    return [u * u * P0[0] + 2 * u * t * P1[0] + t * t * P2[0],
-            u * u * P0[1] + 2 * u * t * P1[1] + t * t * P2[1]];
+// ★ THE PALM — Mo picked v3 of six drawn by a cold-context agent, after five of my own attempts
+// missed. What ended it was a REFERENCE PICTURE, not another adjective: once there was an image to
+// copy the right answer was obvious in one look. **When two or three redraws in a row miss, stop
+// iterating on words and ask for an example.**
+// Each of my failed attempts was nameable, and the names generalise to any icon work here:
+//   (1) shapes rotated EVENLY through 360deg is a pinwheel, not a crown;
+//   (2) a blade that WIDENS toward its tip is an agave leaf, not a frond;
+//   (3) a stroked trunk cannot taper, so it reads as a pole — fill a wedge;
+//   (4) a rachis with drawn pinnae reads as a FERN; what makes a frond legible small is a SOLID
+//       silhouette with deep serrations, not a skeleton with ribs;
+//   (5) one tree reads as a sticker, two of different heights read as a place.
+// Three more the agent found that none of those cover, and they are the interesting ones:
+//   * the teeth must be ASYMMETRIC sawteeth — a long ramp out to each peak and a short sharp cut
+//     back on the tipward side — or the frond reads as holly/oak. That single change is what made
+//     it read as palm.
+//   * each frond's arch bends DOWNWARD whichever way it points; rotating one fixed arched shape
+//     around the crown is exactly what produces the pinwheel in (1).
+//   * a small dark hub disc under each crown closes the star-shaped hole where seven tapering
+//     blade bases meet at a point.
+// Geometry is generated once at module load so the sawteeth stay even as each blade tapers —
+// hand-authored path data drifts, generated teeth do not. Deterministic: no randomness.
+const PALM_SCENE = (() => {
+  const GREEN = "#6AAE43", DARK = "#5B9838", BROWN = "#A0703A", NUT = "#8A5A2E", SAND = "#E8D5A8";
+  const frond = (cx, cy, angDeg, len, wmax, droopDeg, teeth = 8) => {
+    const a = angDeg * Math.PI / 180;
+    const droop = (Math.cos(a) >= 0 ? 1 : -1) * droopDeg * Math.PI / 180;
+    const a2 = a + droop;
+    const P0 = [cx, cy];
+    const P1 = [cx + Math.cos(a) * len * 0.55, cy + Math.sin(a) * len * 0.55];
+    const P2 = [cx + Math.cos(a2) * len, cy + Math.sin(a2) * len];
+    const at = t => { const u = 1 - t; return [
+      u * u * P0[0] + 2 * u * t * P1[0] + t * t * P2[0],
+      u * u * P0[1] + 2 * u * t * P1[1] + t * t * P2[1]]; };
+    const tan = t => { const d = [
+      2 * (1 - t) * (P1[0] - P0[0]) + 2 * t * (P2[0] - P1[0]),
+      2 * (1 - t) * (P1[1] - P0[1]) + 2 * t * (P2[1] - P1[1])];
+      const m = Math.hypot(d[0], d[1]) || 1; return [d[0] / m, d[1] / m]; };
+    const w = t => wmax * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.6)), 0.75);
+    const t0 = 0.05, dt = (0.99 - t0) / teeth;
+    const pt = (t, sd, f) => {
+      const [x, y] = at(t); const [tx, ty] = tan(t);
+      return [x + (-ty * sd) * w(t) * f, y + (tx * sd) * w(t) * f];
+    };
+    const side = sd => {
+      const pts = [pt(t0, sd, 0.5)];
+      for (let i = 0; i < teeth; i++) {
+        pts.push(pt(t0 + (i + 0.62) * dt, sd, 1));      // peak
+        pts.push(pt(t0 + (i + 0.86) * dt, sd, 0.55));   // notch, cut sharply toward the tip
+      }
+      return pts;
+    };
+    const pts = [[cx, cy], ...side(1), at(1), ...side(-1).reverse()];
+    return "M" + pts.map((q, i) => (i ? "L" : "") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join("") + "Z";
   };
-  const nrm = t => {
-    const d = [2 * (1 - t) * (P1[0] - P0[0]) + 2 * t * (P2[0] - P1[0]),
-               2 * (1 - t) * (P1[1] - P0[1]) + 2 * t * (P2[1] - P1[1])];
-    const m = Math.hypot(d[0], d[1]) || 1;
-    return [[-d[1] / m, d[0] / m], [d[0] / m, d[1] / m]];
-  };
-  const STEPS = 11;                       // 5 teeth a side, plus the tip
-  const edge = (side, rev) => {
-    const pts = [];
-    for (let i = 0; i <= STEPS; i++) {
-      const t = (rev ? STEPS - i : i) / STEPS;
-      const [x, y] = at(t), [[nx, ny], [tx, ty]] = nrm(t);
-      // Width swells early and tapers to nothing at the tip; the deep points sit at ~30% of it,
-      // and every point is swept back toward the crown so the teeth rake instead of sticking out.
-      const w = 11.5 * Math.sin(Math.PI * Math.pow(t, 0.62));
-      const deep = (rev ? i : STEPS - i) % 2 === 0;
-      // 0.3 cut almost to the spine and rendered as a thistle; the reference's teeth are notches
-      // in a broad blade, not spikes hanging off a stem.
-      const r = deep ? w : w * 0.52;
-      pts.push(`${(x + nx * side * r - tx * r * 0.55).toFixed(1)} ${(y + ny * side * r - ty * r * 0.55).toFixed(1)}`);
+  const trunk = (spine, wBase, wTop) => {
+    const [P0, P1, P2, P3] = spine;
+    const at = t => { const u = 1 - t; return [
+      u*u*u*P0[0] + 3*u*u*t*P1[0] + 3*u*t*t*P2[0] + t*t*t*P3[0],
+      u*u*u*P0[1] + 3*u*u*t*P1[1] + 3*u*t*t*P2[1] + t*t*t*P3[1]]; };
+    const tan = t => { const u = 1 - t; const d = [
+      3*u*u*(P1[0]-P0[0]) + 6*u*t*(P2[0]-P1[0]) + 3*t*t*(P3[0]-P2[0]),
+      3*u*u*(P1[1]-P0[1]) + 6*u*t*(P2[1]-P1[1]) + 3*t*t*(P3[1]-P2[1])];
+      const m = Math.hypot(d[0], d[1]) || 1; return [d[0]/m, d[1]/m]; };
+    const L = [], R = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10, [x, y] = at(t), [tx, ty] = tan(t);
+      const w = (wBase + (wTop - wBase) * t) / 2;
+      L.push([x + ty * w, y - tx * w]); R.push([x - ty * w, y + tx * w]);
     }
-    return pts;
+    const pts = [...L, ...R.reverse()];
+    return "M" + pts.map((q, i) => (i ? "L" : "") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join("") + "Z";
   };
-  return `M0 0L${edge(1, false).join("L")}L${edge(-1, true).join("L")}Z`;
+  const disc = (cx, cy, rx, ry) =>
+    `M${cx - rx} ${cy}A${rx} ${ry} 0 1 0 ${cx + rx} ${cy}A${rx} ${ry} 0 1 0 ${cx - rx} ${cy}Z`;
+
+  const TALL = { c: [60, 60], len: 56, w: 12, wb: 13, wt: 5.5,
+    spine: [[88, 196], [84, 150], [76, 100], [60, 62]],
+    f: [[187, 0.88, 1, 46], [-155, 1.0, 0, 26], [-120, 0.9, 1, 22], [-85, 0.97, 0, 20],
+        [-52, 0.85, 1, 22], [-18, 1.02, 0, 24], [6, 0.9, 1, 52]],
+    nuts: [[55, 68, 3.4], [64.5, 69, 3.1], [59.5, 74, 2.9]] };
+  const SHORT = { c: [143, 120], len: 38, w: 9, wb: 10, wt: 4.5,
+    spine: [[112, 198], [120, 172], [133, 148], [143, 122]],
+    f: [[192, 0.8, 0, 44], [-158, 0.92, 1, 24], [-122, 0.98, 0, 22], [-88, 0.9, 1, 20],
+        [-50, 0.96, 0, 24], [-14, 0.98, 1, 26], [10, 0.82, 0, 50]],
+    nuts: [[139, 126, 2.6], [147, 127, 2.4]] };
+
+  const out = [];
+  for (const T of [TALL, SHORT]) out.push([trunk(T.spine, T.wb, T.wt), BROWN]);
+  for (const T of [TALL, SHORT]) {
+    const [cx, cy] = T.c;
+    out.push([disc(cx, cy + 1, T.w * 0.5, T.w * 0.42), DARK]);
+    for (const [a, k, d, dr] of T.f) out.push([frond(cx, cy, a, T.len * k, T.w, dr), d ? DARK : GREEN]);
+    // Coconuts after this crown's fronds so they are not buried — they hang at the crown.
+    for (const [nx, ny, r] of T.nuts) out.push([disc(nx, ny, r, r), NUT]);
+  }
+  // Sand LAST of all so both trunks vanish into it: no roots, no visible base.
+  out.push(["M0 210C22 184 56 174 95 174S168 184 190 210Z", SAND]);
+  return out;
 })();
-function PalmTree({ trunk, crown, fronds, scale }) {
-  return (
-    <g>
-      {/* Flat fills, no outlines — the reference is a silhouette illustration, and an outline at
-          this alpha turns every shape muddy. */}
-      <path d={trunk} fill="rgba(154,108,58,0.9)"/>
-      {fronds.map(([a, k], i) => (
-        <path key={i} opacity={0.82 + (i % 3) * 0.06} d={PALM_FROND} fill="rgba(88,152,68,0.92)"
-          transform={`rotate(${a} ${crown[0]} ${crown[1]}) translate(${crown[0]} ${crown[1]}) scale(${scale * k})`}/>
-      ))}
-    </g>
-  );
-}
 function PalmCorner() {
-  // TWO trees at different heights, as in the reference — one palm alone reads as a clip-art
-  // sticker, a tall one with a shorter companion reads as a place.
-  return (
-    // ★ NO VISIBLE BASE, AND THE VIEWPORT EDGE CANNOT BE WHAT HIDES IT. Running the trunks off the
-    // bottom did hide the roots — and drew them straight over the floating nav bar, because this
-    // whole layer sits at zIndex 150, above the nav's 50. The reference solves it the way real
-    // illustrations do: a SAND MOUND the trunks disappear into. That keeps the base hidden, keeps
-    // the tree clear of the nav, and costs one path.
-    <svg width="182" height="212" viewBox="0 0 175 215" aria-hidden="true"
-      style={{ position:"absolute", bottom:78, left:-14, opacity:0.5 }}>
-      <PalmTree
-        trunk="M96 215C97 180 104 148 132 106L140 111C118 152 110 182 110 215z"
-        crown={[136, 106]} scale={0.66}
-        fronds={[[-186, 0.92], [-150, 1.0], [-112, 0.88], [-74, 1.0], [-34, 0.9], [6, 0.8]]}/>
-      <PalmTree
-        trunk="M4 215C6 155 16 105 76 48L86 55C32 106 22 158 20 215z"
-        crown={[80, 48]} scale={1}
-        fronds={[[-196, 0.86], [-162, 1.0], [-128, 0.92], [-92, 1.0], [-56, 0.94], [-20, 0.86], [12, 0.76]]}/>
-      {/* Drawn LAST so it covers both trunks — this is the thing that hides the base. */}
-      <path d="M-10 215C14 196 44 186 80 186s66 10 92 29z" fill="rgba(224,196,150,0.95)"/>
-    </svg>
-  );
+  // ★ ITS OWN LAYER AT zIndex 45, NOT THE DECOR LAYER'S 150. The corner is where the floating nav
+  // bar lives (measured: the pill spans x 14-414, y 868-918 on a 428x926 viewport). At 150 the
+  // trunks drew straight over the Home button. At 45 the palm passes BEHIND the pill, so the
+  // occlusion that hides the base comes from real UI rather than from the viewport edge.
+  // pointerEvents/aria-hidden as always: it is decoration and must never take a tap.
+  return createPortal(
+    <div className="seshd-decor-back" aria-hidden="true"
+      style={{ position:"fixed", bottom:0, right:0, width:206, height:228, zIndex:45,
+               pointerEvents:"none", opacity:0.5 }}>
+      <svg viewBox="0 0 190 210" width="100%" height="100%">
+        {PALM_SCENE.map(([d, f], i) => <path key={i} d={d} fill={f}/>)}
+      </svg>
+    </div>, document.body);
 }
 
 // ── The STATIC anchors. Every seasonal theme has the three-part shape Halloween proved out:

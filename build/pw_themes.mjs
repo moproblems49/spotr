@@ -209,8 +209,39 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     } else { fails++; console.log(`FAIL 4j3. ${theme}: could not reach the Discover tab`); }
     await pm.close();
   }
+  // ── 4l. Summer's palm is the one ornament with its OWN layer, and its z is the whole point:
+  //     it must sit BELOW the floating nav (50) so the trunks pass behind the pill instead of
+  //     drawing over the Home button, which is what happens at the decor layer's 150.
+  {
+    const { page: ps } = await boot("summer");
+    const back = await ps.evaluate(() => {
+      const el = document.querySelector(".seshd-decor-back");
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return { z: +cs.zIndex, pe: cs.pointerEvents, parent: el.parentElement.tagName,
+               aria: el.getAttribute("aria-hidden"), paths: el.querySelectorAll("path").length,
+               autos: [...el.querySelectorAll("*")].filter(e => getComputedStyle(e).pointerEvents !== "none").length };
+    });
+    check("4l. summer renders the palm layer", !!back, String(back));
+    if (back) {
+      check("4l2. it is portaled to <body>", back.parent === "BODY", back.parent);
+      check("4l3. it sits BELOW the nav so the trunks pass behind the pill", back.z > 0 && back.z < 50, String(back.z));
+      check("4l4. it cannot eat a tap", back.pe === "none" && back.autos === 0, JSON.stringify(back));
+      check("4l5. it is hidden from screen readers", back.aria === "true", String(back.aria));
+      check("4l6. it actually draws the scene", back.paths >= 15, String(back.paths));
+      // The nav must still be the topmost thing where they overlap — the pill spans y 868-918.
+      const navOnTop = await ps.evaluate(() => {
+        const el = document.elementFromPoint(390, 892);
+        return el ? !el.closest(".seshd-decor-back") : false;
+      });
+      check("4l7. the nav bar is still on top where the palm overlaps it", navOnTop);
+    }
+    await ps.close();
+  }
   {
     const { page: pd } = await boot("dark");
+    check("4k2. a non-seasonal theme renders no palm layer",
+      await pd.evaluate(() => document.querySelectorAll(".seshd-decor-back").length === 0));
     check("4k. a non-seasonal theme renders no mark",
       await pd.evaluate(() => document.querySelectorAll("[data-theme-mark]").length === 0));
     await pd.close();

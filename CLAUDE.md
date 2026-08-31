@@ -3804,6 +3804,28 @@ the fix was the HUE, not more opacity.**
 is the one thing a screen with a corner sun does not need, and duplicating the theme's own anchor
 is the same mistake as repeating one mark on three buttons. Gliding SEAGULLS and a palm anchored in
 the BOTTOM-LEFT replace them, which also puts decor in the one corner Summer had nothing in.
+**★★ THE PALM WAS EVENTUALLY DRAWN BY A COLD-CONTEXT AGENT, AND THE THREE THINGS IT FOUND ARE THE
+ONES MY FIVE ATTEMPTS NEVER REACHED.** Mo picked v3 of six; it iterated by rendering its own SVG,
+LOOKING at the screenshot, naming what was wrong, and redrawing — six rounds, each judged at target
+size, at 3x, and at 50% opacity over the real canvas. The findings, in order of how much they
+mattered: (a) the serrations must be ASYMMETRIC sawteeth — a long ramp out to each peak and a short
+sharp cut back on the tipward side — because evenly alternating teeth read as holly or oak, and
+this single change is what made the fronds read as palm; (b) DRAW ORDER beat geometry at small
+size — all dark fronds first, all light fronds on top, because interleaving them chops every
+silhouette into fragments; (c) each frond's arch must bend DOWNWARD whichever way it points, since
+rotating one fixed arched shape around the crown is exactly what produces a pinwheel. Plus a small
+dark hub disc under each crown to close the star-shaped hole where seven tapering blade bases meet.
+**The general lesson about the agent, though, is about the LOOP, not the model**: it could see its
+own renders and judge them, which is the same thing that finally worked here manually — what it had
+that I did not was a fresh eye and the patience to redraw six times.
+**★ AND ITS PLACEMENT NEEDED A SEPARATE LAYER, NOT A SEPARATE POSITION.** Mo asked for the corner;
+the corner is where the floating nav bar lives (measured: the pill spans x 14-414, y 868-918 on a
+428x926 viewport). The decor layer is zIndex 150 and the nav is 50, so at the corner the trunks drew
+straight over the Home button. The palm gets its OWN portal at **zIndex 45** — below the nav, above
+nothing else — so it passes BEHIND the pill and the base is hidden by real UI rather than by the
+viewport edge. `pw_themes` 4l1-4l7 pins that: portaled to body, pointer-transparent (container AND
+every descendant), `0 < z < 50`, aria-hidden, and an `elementFromPoint` at the overlap proving the
+nav is still on top. Red-proofed by putting it back at 150.
 **★★ THE PALM TOOK FIVE DRAWS, AND WHAT ENDED IT WAS A REFERENCE PICTURE, NOT A BETTER ADJECTIVE.**
 Four rounds of "looks bad" → redraw → "still looks bad" burned a lot of cycles; Mo then sent a flat
 clip-art palm and the right answer was obvious in one look. **When two or three redraws in a row
