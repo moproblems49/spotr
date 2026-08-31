@@ -1,4 +1,4 @@
-// v178091716996
+// v178091716997
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1407,49 +1407,87 @@ function Seagull({ top, size, dur, delay }) {
     </svg>
   );
 }
-function PalmCorner() {
-  // ★ A ROTATION ANCHOR OUTSIDE THE VIEWBOX DRAWS NOTHING. The first cut put the crown at (22,8)
-  // and then offset the whole svg to top:-34 left:-30, which mapped the crown to (-8,-26) — off
-  // screen, so all five fronds rendered outside the box and the only thing visible was a sliver of
-  // trunk. Anchored in the BOTTOM-LEFT now, with the crown well inside the box and the trunk
-  // rising to it; `bottom` clears the floating nav bar.
-  // ★ SIX FRONDS ROTATED EVENLY AROUND A POINT IS A PINWHEEL, NOT A PALM. The first draw spread
-  // them through a full 360deg at equal spacing, which reads as a flower or a windmill. A real
-  // crown throws its fronds into the UPPER hemisphere and lets the outer ones droop past
-  // horizontal, at uneven angles and uneven lengths — so the angle list is asymmetric on purpose
-  // and no two neighbours are the same distance apart.
-  // The frond itself is drawn once pointing right from the crown, with a smooth upper edge and a
-  // notched lower one so it reads as pinnae rather than as a solid blade.
-  const crown = [58, 44];
-  // Angles are asymmetric AND the two outermost droop past horizontal, which is what separates a
-  // palm silhouette from a starburst. Scales vary so no two fronds end at the same radius.
-  const FRONDS = [
-    [-172, 0.9], [-146, 1.0], [-116, 0.84], [-80, 0.98], [-46, 0.92], [-14, 0.86], [16, 0.76],
-  ];
+// ★ THE PALM, DRAW FIVE — and the last one worked because Mo sent a reference picture. Each
+// earlier attempt failed in a nameable way: (1) fronds rotated evenly through 360deg is a
+// PINWHEEL; (2) a blade that widens toward its tip is an AGAVE leaf; (3) a stroked trunk cannot
+// taper, so it reads as a pole; (4) a rachis with drawn pinnae reads as a FERN, because the thing
+// that makes a palm frond legible at this size is a SOLID silhouette with deep serrations, not a
+// skeleton with ribs. The reference settled it in one look — flat fills, jagged edges, two trees
+// of different heights, no outlines. **When three redraws in a row miss, ask for a picture rather
+// than iterating on adjectives.**
+// The serrations are generated rather than hand-drawn: walking the spine and alternating an outer
+// and an inner offset produces a saw-tooth edge that stays even as the blade tapers, which is
+// exactly what hand-authored path data drifts away from.
+const PALM_FROND = (() => {
+  const P0 = [0, 0], P1 = [32, -26], P2 = [80, -2];
+  const at = t => {
+    const u = 1 - t;
+    return [u * u * P0[0] + 2 * u * t * P1[0] + t * t * P2[0],
+            u * u * P0[1] + 2 * u * t * P1[1] + t * t * P2[1]];
+  };
+  const nrm = t => {
+    const d = [2 * (1 - t) * (P1[0] - P0[0]) + 2 * t * (P2[0] - P1[0]),
+               2 * (1 - t) * (P1[1] - P0[1]) + 2 * t * (P2[1] - P1[1])];
+    const m = Math.hypot(d[0], d[1]) || 1;
+    return [[-d[1] / m, d[0] / m], [d[0] / m, d[1] / m]];
+  };
+  const STEPS = 11;                       // 5 teeth a side, plus the tip
+  const edge = (side, rev) => {
+    const pts = [];
+    for (let i = 0; i <= STEPS; i++) {
+      const t = (rev ? STEPS - i : i) / STEPS;
+      const [x, y] = at(t), [[nx, ny], [tx, ty]] = nrm(t);
+      // Width swells early and tapers to nothing at the tip; the deep points sit at ~30% of it,
+      // and every point is swept back toward the crown so the teeth rake instead of sticking out.
+      const w = 11.5 * Math.sin(Math.PI * Math.pow(t, 0.62));
+      const deep = (rev ? i : STEPS - i) % 2 === 0;
+      // 0.3 cut almost to the spine and rendered as a thistle; the reference's teeth are notches
+      // in a broad blade, not spikes hanging off a stem.
+      const r = deep ? w : w * 0.52;
+      pts.push(`${(x + nx * side * r - tx * r * 0.55).toFixed(1)} ${(y + ny * side * r - ty * r * 0.55).toFixed(1)}`);
+    }
+    return pts;
+  };
+  return `M0 0L${edge(1, false).join("L")}L${edge(-1, true).join("L")}Z`;
+})();
+function PalmTree({ trunk, crown, fronds, scale }) {
   return (
-    <svg width="116" height="138" viewBox="0 0 120 150" aria-hidden="true"
-      style={{ position:"absolute", bottom:58, left:2, opacity:0.4 }}>
-      {/* A filled wedge, not a stroke: a real trunk is thicker at the base, and a stroke cannot
-          taper. The slight S keeps it from reading as a pole. */}
-      <path d="M42 150C40 116 44 88 54 62L66 66C56 90 52 116 54 150z" fill="rgba(128,102,64,0.8)"/>
-      <g stroke="rgba(96,74,44,0.5)" strokeWidth="1.6" fill="none" strokeLinecap="round">
-        <path d="M44 132h9M45 118h9M47 104h9M49 90h9M52 76h9"/>
-      </g>
-      {/* A CRESCENT, not a fan. The first blade widened toward its tip, which is an agave leaf;
-          a palm frond is a long narrow arch that curves as it goes out. The teeth on the
-          underside are the pinnae — three is enough to read at this size. */}
-      {FRONDS.map(([a, k], i) => (
-        <path key={i} opacity={0.72 + (i % 3) * 0.09}
-          transform={`rotate(${a} ${crown[0]} ${crown[1]}) translate(${crown[0]} ${crown[1]}) scale(${k})`}
-          d="M0 0C22 -16 46 -18 62 -2 56 -3 50 -4 45 -3 47 0 48 2 48 5 45 1 41 -1 36 -2 37 1 38 3 38 6 34 2 30 0 25 -1 25 2 26 4 25 7 22 2 16 0 10 -1 6 -1 3 -1 0 0z"
-          fill="rgba(42,122,96,0.72)"/>
+    <g>
+      {/* Flat fills, no outlines — the reference is a silhouette illustration, and an outline at
+          this alpha turns every shape muddy. */}
+      <path d={trunk} fill="rgba(154,108,58,0.9)"/>
+      {fronds.map(([a, k], i) => (
+        <path key={i} opacity={0.82 + (i % 3) * 0.06} d={PALM_FROND} fill="rgba(88,152,68,0.92)"
+          transform={`rotate(${a} ${crown[0]} ${crown[1]}) translate(${crown[0]} ${crown[1]}) scale(${scale * k})`}/>
       ))}
-      <g fill="rgba(150,120,72,0.75)">
-        <circle cx="55" cy="50" r="3.2"/><circle cx="62" cy="52" r="2.8"/><circle cx="58" cy="56" r="2.4"/>
-      </g>
+    </g>
+  );
+}
+function PalmCorner() {
+  // TWO trees at different heights, as in the reference — one palm alone reads as a clip-art
+  // sticker, a tall one with a shorter companion reads as a place.
+  return (
+    // ★ NO VISIBLE BASE, AND THE VIEWPORT EDGE CANNOT BE WHAT HIDES IT. Running the trunks off the
+    // bottom did hide the roots — and drew them straight over the floating nav bar, because this
+    // whole layer sits at zIndex 150, above the nav's 50. The reference solves it the way real
+    // illustrations do: a SAND MOUND the trunks disappear into. That keeps the base hidden, keeps
+    // the tree clear of the nav, and costs one path.
+    <svg width="182" height="212" viewBox="0 0 175 215" aria-hidden="true"
+      style={{ position:"absolute", bottom:78, left:-14, opacity:0.5 }}>
+      <PalmTree
+        trunk="M96 215C97 180 104 148 132 106L140 111C118 152 110 182 110 215z"
+        crown={[136, 106]} scale={0.66}
+        fronds={[[-186, 0.92], [-150, 1.0], [-112, 0.88], [-74, 1.0], [-34, 0.9], [6, 0.8]]}/>
+      <PalmTree
+        trunk="M4 215C6 155 16 105 76 48L86 55C32 106 22 158 20 215z"
+        crown={[80, 48]} scale={1}
+        fronds={[[-196, 0.86], [-162, 1.0], [-128, 0.92], [-92, 1.0], [-56, 0.94], [-20, 0.86], [12, 0.76]]}/>
+      {/* Drawn LAST so it covers both trunks — this is the thing that hides the base. */}
+      <path d="M-10 215C14 196 44 186 80 186s66 10 92 29z" fill="rgba(224,196,150,0.95)"/>
     </svg>
   );
 }
+
 // ── The STATIC anchors. Every seasonal theme has the three-part shape Halloween proved out:
 // something fixed at an edge (the cobwebs), something falling or drifting, and a third element
 // with its own motion. A theme with only one ornament type reads as an effect rather than a scene.
