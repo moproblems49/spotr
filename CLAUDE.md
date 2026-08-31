@@ -121,8 +121,11 @@ it found something real that nobody had reported: a mid-review demo corpus that 
    it is called inside six RLS policies, which evaluate with the CALLER's privileges, so revoking
    it would break visibility rather than harden it.
 3. **Auth logs** for failed-login spikes or reset-email failures (`source='auth_logs'`).
-4. **Demo-corpus freshness** — see the pre-submission checklist item. Newest persona post should
-   read "yesterday", and every persona needs workouts inside the 7-day muscle-map window.
+4. **~~Demo-corpus freshness~~ — RETIRED Aug 31 2026, do not do this by reflex any more.** The
+   five content personas were deleted once App Review cleared, so there is no corpus to keep warm
+   and no every-few-days re-dating treadmill. `seshdreview` survives as the review login and its
+   own content ages too, but that only matters BEFORE A SUBMISSION — re-date it then, not on a
+   sweep. What to check here instead: nothing. Skip to 5.
 5. **Storage/table growth** — orphaned images, a table growing faster than the user count explains.
    Also run the **orphaned-member_ids** check, which nothing else can see:
    `select count(*) from groups g, unnest(g.member_ids) m where not exists (select 1 from profiles p where p.id = m)`
@@ -2566,6 +2569,32 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 **Gesture-perf refactor (merged to main):** every touch/drag gesture in the app — `SetRow` swipe, tab-swipe, the shared `PullToRefresh` component (History/Profile/Messages), the feed's own pull-to-refresh, `StoryViewer` drag, `InsightCards` swipe, and the profile cover-photo position drag — was re-pointed from per-frame `setState` (re-rendering the whole screen on every `touchmove`) to the ref-write pattern documented above, plus a fix for vertical-scroll bleed-through during the tab swipe. A code review of this refactor caught and fixed one real regression before merge: the cover-photo drag's mouse path could freeze `coverPosDraft` at the gesture's first frame if the cursor left the small drag area before mouseup (now uses `window`-level listeners — see the Conventions note above).
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
+
+## ★ The demo personas are GONE, and the group hand-over trigger got its first real workout (Aug 31)
+Mo's call once review cleared. Deleted: `maya@`, `jordan@`, `tess@`, `sam@`, `coachkai@` — five
+content personas, via `delete from auth.users where email like '%@getseshd.app' and email <>
+'appreview@getseshd.app'`. **`seshdreview` (appreview@) was deliberately KEPT and was never in the
+question Mo answered**: any future native change needs a new review, and that needs a demo login
+with a populated app. It still has 2 posts / 29 workouts / 21 PRs, so its own History, charts and
+muscle map still demo correctly.
+**Blast radius, measured BEFORE deleting rather than after** (this is the step worth copying):
+34 posts, 135 workout_history rows, 21 PRs, 10 group posts, 36 follows, 7 DMs, 10 kudos,
+2 comments, 1 group. Crucially **zero persona kudos or comments sat on Mo's posts**, so his own
+content lost nothing — his 21 kudos and 80 posts are untouched. Zero storage objects, because the
+persona avatars were always inline SVG data-URIs. Backup: `persona_wipe_backup_20260831`
+(266 rows, every affected row as jsonb, RLS on with no policy).
+**★ `trg_transfer_groups_on_profile_delete` handled a CHAIN correctly on its first real use.**
+"Seshd Crew" was created by coach_kai with 6 members, five of whom were being deleted in the same
+statement. The trigger fires per-row BEFORE DELETE, so it handed the group along the chain as each
+heir was itself deleted, and landed on `seshdreview` — the last live member. Verified after:
+**orphaned member_ids 0**, orphaned posts/workouts/group_posts/follows/kudos all 0. That is the
+invariant the Aug-29 work added to the sweep, and it held under the hardest input it will ever get.
+Mo is not a member of that group and never was, so it is now a one-member group owned by the review
+account; harmless, and useful if a future reviewer wants to see the groups feature.
+**Also dropped, same day:** `demo_shift_backup_20260828`, `sharecode_rotation_backup_20260828`,
+`orphan_image_backup_20260829` — all past the window they insured. The two `..._20260830` tables
+are kept as the rollback path for the last demo shift; they are now the only thing that shift is
+recoverable from, and the corpus they cover no longer exists, so they can go whenever.
 
 ## ★★★ APP REVIEW CLEARED (Mo, Aug 31 2026)
 The long-standing blocker is gone. What that unblocks, and what it does NOT:
