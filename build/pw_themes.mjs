@@ -178,14 +178,35 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   // ── 4j. The SEASONAL MARK on the three landing CTAs. Separate mechanism from the decor layer
   //     (it is part of a card, not a floating layer), so it needs its own check — and an <svg>
   //     contributes no textContent, so this has to select on the data hook.
-  for (const [theme, mark] of [["halloween","pumpkin"],["winter","snowflake"],["spring","blossom"],["fall","leaf"]]) {
+  // Each button gets its OWN glyph — one mark repeated three times is wallpaper, which is the
+  // thing this was changed away from, so assert the three are DISTINCT as well as correct.
+  const SLOTS = {
+    halloween: { start: "pumpkin", friends: "ghost",     groups: "spider" },
+    winter:    { start: "snowman", friends: "snowflake", groups: "fir" },
+    spring:    { start: "blossom", friends: "butterfly", groups: "sprout" },
+    fall:      { start: "leaf",    friends: "acorn",     groups: "tree" },
+    summer:    { start: "sun",     friends: "wave",      groups: "palm" },
+  };
+  for (const [theme, want] of Object.entries(SLOTS)) {
     const { page: pm } = await boot(theme);
-    const marks = await pm.evaluate(() => [...document.querySelectorAll("[data-theme-mark]")]
+    const readMarks = () => pm.evaluate(() => [...document.querySelectorAll("[data-theme-mark]")]
       .map(e => ({ kind: e.dataset.themeMark, pe: getComputedStyle(e).pointerEvents })));
-    check(`4j. ${theme} marks the Quick Start card with a "${mark}"`,
-      marks.length >= 1 && marks.every(m => m.kind === mark), JSON.stringify(marks));
+    const onTracker = await readMarks();
+    check(`4j. ${theme}: Quick Start is marked with a "${want.start}"`,
+      onTracker.length === 1 && onTracker[0].kind === want.start, JSON.stringify(onTracker));
     check(`4j2. ${theme}'s mark cannot eat the tap on the primary action`,
-      marks.every(m => m.pe === "none"), JSON.stringify(marks));
+      onTracker.every(m => m.pe === "none"), JSON.stringify(onTracker));
+    const disc = pm.locator('[aria-label="Discover"]').first();
+    if (await disc.count()) {
+      await disc.click({ force: true });
+      await pm.waitForTimeout(1200);
+      const onDiscover = (await readMarks()).map(m => m.kind);
+      check(`4j3. ${theme}: Friends Activity and Groups get their own glyphs`,
+        onDiscover.length === 2 && onDiscover.includes(want.friends) && onDiscover.includes(want.groups),
+        JSON.stringify(onDiscover));
+      check(`4j4. ${theme}: the three buttons do not share one glyph`,
+        new Set([want.start, ...onDiscover]).size === 3, JSON.stringify([want.start, ...onDiscover]));
+    } else { fails++; console.log(`FAIL 4j3. ${theme}: could not reach the Discover tab`); }
     await pm.close();
   }
   {

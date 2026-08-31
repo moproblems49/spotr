@@ -3779,6 +3779,55 @@ no margin (3.03-3.17) — deepening Arctic's `bg` would put them under first. Co
 `#ef4444` (3.76:1) stays as its own comment documents. The muscle-icon tiles are baked base64 art
 and render the same purple figure on all nine themes.
 
+## The seasonal marks became per-BUTTON, and Summer had been toned into invisibility (Aug 31)
+Mo, from a device screenshot: the pumpkin is too small ("closer to double"), give every button a
+different thing on every theme, Winter's Quick Start should be a snowman, Summer's decor can't be
+seen at all, and Fall/Spring's branch should be bigger.
+**★ A GLYPH THAT DOES NOT FILL ITS OWN VIEWBOX RENDERS SMALLER THAN THE `size` YOU SET, AND THAT IS
+HALF OF "TOO SMALL".** The pumpkin's art occupied ~60% of its 24-unit box, so at `size` 46 the
+pumpkin itself was ~28px. Every glyph is drawn edge-to-edge now, and Quick Start is at 62 — the
+two together are the real doubling. **Check what fraction of the box the art actually uses before
+reaching for a bigger `size`.**
+**`THEME_META.mark` became `marks: { start, friends, groups }`** — one glyph per BUTTON rather than
+one per theme. Three identical glyphs across Quick Start / Friends Activity / Groups is the
+"palette that encodes nothing" problem in icon form: repeating a mark three times makes it
+wallpaper. Fifteen glyphs now (pumpkin/ghost/spider, snowman/snowflake/fir, blossom/butterfly/
+sprout, sun/wave/palm, leaf/acorn/tree). `pw_themes` 4j-4j4 asserts each slot's glyph AND that the
+three are DISTINCT — a regression back to one shared glyph would otherwise pass every other check.
+**★ AND THE CORRECTION FOR "TOO LOUD" OVERSHOT INTO "INVISIBLE".** Summer's rays first shipped as
+twelve solid wedges over the Quick Start card; the fix took the effective alpha to ~0.05 and on a
+real phone Mo could not see Summer's decor at all. Both readings came from a screenshot; only the
+second was checked on a device. The middle: the sun is the anchor and carries real presence, the
+rays stay glare, and **the clouds went BLUE-white — a white cloud on the sand canvas is ~1.05:1, so
+the fix was the HUE, not more opacity.**
+**Summer lost its rising motes** (Mo: "don't need suns floating in the background") — a second sun
+is the one thing a screen with a corner sun does not need, and duplicating the theme's own anchor
+is the same mistake as repeating one mark on three buttons. Gliding SEAGULLS and a palm anchored in
+the BOTTOM-LEFT replace them, which also puts decor in the one corner Summer had nothing in.
+**★ A ROTATION ANCHOR OUTSIDE THE VIEWBOX DRAWS NOTHING.** The palm's first cut put the crown at
+(22,8) and then offset the svg to `top:-34 left:-30`, mapping the crown to (-8,-26) — so all five
+fronds rendered off-screen and the only visible thing was a sliver of trunk. When a rotated group
+vanishes, check where its rotation origin lands after the container's own offset.
+**★★ THE SCAR: A PYTHON SLICE FROM `function X(` TO `function Y(` SWALLOWS EVERYTHING BETWEEN, AND
+I DID IT TWICE IN ONE SESSION.** Deleting `Mote` by slicing to `function ThemeDecor(` also deleted
+the seven ornament components AND the entire seasonal-mark block sitting between them; the repair
+sliced the same way and deleted them again. Neither `sim_undef` nor the fast esbuild check caught
+the first one on its own — **`npm run build`'s MISSING_EXPORT is what actually said "ThemeMark is
+not exported"**, which is the documented "esbuild is not the real build" rule paying out again.
+Delete a component by matching its OWN text, never by slicing to the next function; and after any
+bulk removal, grep that every symbol you did not intend to touch still has a definition.
+**★ AND I READ A GUARD'S `tail -1` AS ITS VERDICT AGAIN**, one commit after writing that exact scar
+down. `sim_undef | tail -1` printed a per-file PASS while the real verdict two lines below said
+FAIL with seven unresolved identifiers. Grep for `'^(PASS|FAIL) all'`, or read the whole output.
+**★ AND A PERCENTAGE IS THE WRONG UNIT FOR "CLEAR OF THE HEADER".** The clouds kept landing on the
+Workout/Exercises/History labels however small the percentage looked, because the tab row sits at a
+fixed y (measured: 47-87 on a 428x926 viewport) while a percentage scales with the whole screen.
+`top` is PIXELS now and the band is bounded against that measured number — verified by reading
+every cloud's real `getBoundingClientRect().bottom` (30-34) against the tab row's top (47), not by
+looking at a screenshot. A safe-area inset only pushes the tabs further down, so the bound holds on
+device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
+corner is what keeps a bigger branch off the tab label.
+
 ## ★★★ THE INVISIBLE-OVERLAY CLASS, SWEPT EXHAUSTIVELY (Aug 30) — and the mirror case was the half nobody had looked at
 Mo: "go deep into the invisible-overlay bug to make sure it's all clear for good." Inventorying
 every full-cover overlay (`position:fixed/absolute` + `inset:0` + a zIndex) found **33**, but only
