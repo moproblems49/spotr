@@ -3880,6 +3880,33 @@ looking at a screenshot. A safe-area inset only pushes the tabs further down, so
 device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
 corner is what keeps a bigger branch off the tab label.
 
+## The top bar's icon cluster, and the halo variant that fits a tight row (Mo, Aug 31)
+Mo circled the right-hand icons: too spread out. Measured, the whitespace between two 22px glyphs
+was **28px — wider than the glyphs themselves** — because each button carried 11px of padding on
+every side AND the row added a 6px gap on top of that. Padding is 9 and the three icon buttons sit
+in their own **gap-0 group**, so the glyphs are 18px apart. The container keeps its 6px gap for the
+CHIPS (rest timer, streak), which are separate objects and have to keep reading that way — setting
+the container gap to 0 would have jammed those together too, which is why the icons needed a group
+of their own rather than a smaller shared gap.
+**★ `.seshd-hit`, NOT `.seshd-hit-y`, IS THE ONE THAT CANNOT BE USED HERE — the square halo is 44px
+WIDE.** Buttons sitting edge to edge means it reaches past its own button and eats the neighbour's
+edge, which is exactly what `build/tap_audit.mjs` exists to catch and what the `-y` variant's own
+comment in the stylesheet says it is for. Measured after: the `::after` computes to **44px tall x
+40px wide**, so the vertical target is a full 44pt and the horizontal is the button's own 40 — the
+deliberate 4pt trade for the tighter spacing. Hit-tested on a 9x9 grid over each button: 100% of
+every button's own area resolves to itself, zero steals.
+**Probe note, and it is the documented whitespace trap again:** counting the sites with
+`s.count('              style={TOPBAR_ICON_BTN}') + s.count('            style={TOPBAR_ICON_BTN}')`
+reported **4** for three buttons — the 12-space string is a SUBSTRING of the 14-space one, so both
+counts saw the same line. The replacement itself was correct (after the first pass that line no
+longer has spaces immediately before `style=`), but the number was wrong; `grep -c` on the result
+is what confirmed exactly 3.
+**And the wrong screenshot got fixed first.** Mo's "tighten those up" arrived attached to the
+exercise-detail screen and he later said he had posted the wrong image. The exercise-detail work
+was kept — it stands on its own (20% less scroll, a duplicated session list removed) — which is
+worth recording as the right call: **a fix aimed at the wrong target is still a fix if it is
+independently correct; the thing to do is say so and then do the real one, not to revert it.**
+
 ## The planted mark, and a screen that listed the same sessions twice (Mo, Aug 31)
 **★ "PLANTED" IS A TABLE, NOT A FLAG, BECAUSE ONLY SOME GLYPHS HAVE A BASE.** Mo drew it on the
 Groups card: the palm filling the right half, trunk running off the bottom-right corner. That

@@ -1,4 +1,4 @@
-// v178091717002
+// v178091717003
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5174,9 +5174,18 @@ export function Spinner({ C, size = 22 }) {
 // it is only 30. The negative vertical margin lets the button keep its full 44px HIT area while
 // contributing 38px to the flex line, so the touch target is untouched and the chrome shrinks.
 // Don't "simplify" this by cutting the padding: that shrinks the thing your thumb has to find.
+// Mo circled the right-hand icon cluster: too spread out. The whitespace between two 22px glyphs
+// was 28px — wider than the glyphs themselves — because each button carried 11px of padding on
+// every side and the row added a 6px gap on top. Padding is 9 and the three icon buttons sit in
+// their own gap-0 group now, so the glyphs are 18px apart instead of 28.
+// The buttons carry `.seshd-hit-y`, NOT `.seshd-hit`: the square halo is 44px WIDE and these sit
+// edge to edge, so it would reach past its own button and eat the neighbour's edge — the exact
+// hazard `build/tap_audit.mjs` exists to catch, and what the -y variant's own comment in the
+// stylesheet says it is for. The vertical-only halo keeps the full 44pt height; the width is the
+// button's own 40px, which is the deliberate trade for the tighter spacing.
 const TOPBAR_ICON_BTN = {
   position: "relative", background: "none", border: "none", cursor: "pointer",
-  padding: 11, margin: "-3px 0",
+  padding: 9, margin: "-3px 0",
   display: "flex", alignItems: "center", justifyContent: "center",
 };
 export function SeshdLogo({ C, big = false, size }) {
@@ -20801,7 +20810,10 @@ function AppInner() {
         <SeshdLogo C={C}/>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           <RestChip C={C} onTap={() => setTab("tracker")}/>
-          {(streak > 0 || weeklyStreak.thisWeek > 0) && <div style={{ marginRight:4 }}><StreakBadge streak={streak} status={weeklyStreak.status} thisWeek={weeklyStreak.thisWeek} target={weeklyStreak.target} size="sm"/></div>}
+          {(streak > 0 || weeklyStreak.thisWeek > 0) && <div><StreakBadge streak={streak} status={weeklyStreak.status} thisWeek={weeklyStreak.thisWeek} target={weeklyStreak.target} size="sm"/></div>}
+          {/* The icons are their own group at gap 0 — the container's gap belongs to the CHIPS,
+              which are separate objects and have to keep reading that way. */}
+          <div style={{ display:"flex", alignItems:"center", gap:0 }}>
           {tab === "feed" && (
             <button
               onClick={() => {
@@ -20809,7 +20821,7 @@ function AppInner() {
                 setNewPostKind("photo"); setShowNewPost(true);
               }}
               aria-label="New post"
-              style={TOPBAR_ICON_BTN}
+              className="seshd-hit-y" style={TOPBAR_ICON_BTN}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="4"/>
@@ -20824,7 +20836,7 @@ function AppInner() {
               setShowMessages(true);
             }}
             aria-label="Messages"
-            style={TOPBAR_ICON_BTN}
+            className="seshd-hit-y" style={TOPBAR_ICON_BTN}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
@@ -20839,7 +20851,7 @@ function AppInner() {
               setShowActivity(true);
             }}
             aria-label="Activity"
-            style={TOPBAR_ICON_BTN}
+            className="seshd-hit-y" style={TOPBAR_ICON_BTN}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill={notifCount > 0 ? C.red : "none"} stroke={notifCount > 0 ? C.red : C.text} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
@@ -20848,6 +20860,7 @@ function AppInner() {
               <span style={{ position:"absolute", top:2, right:2, background:C.red, color:"#fff", borderRadius:"50%", minWidth:16, height:16, padding:"0 4px", fontSize:10, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, border:`2px solid ${C.bg}` }}>{notifCount > 9 ? "9+" : notifCount}</span>
             )}
           </button>
+          </div>
         </div>
       </div>
       </>
