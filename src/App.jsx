@@ -1,4 +1,4 @@
-// v178091717000
+// v178091717001
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1543,20 +1543,32 @@ function NavSnow() {
     </span>
   );
 }
-function PalmCorner() {
-  // ★ ITS OWN LAYER AT zIndex 45, NOT THE DECOR LAYER'S 150. The corner is where the floating nav
-  // bar lives (measured: the pill spans x 14-414, y 868-918 on a 428x926 viewport). At 150 the
-  // trunks drew straight over the Home button. At 45 the palm passes BEHIND the pill, so the
-  // occlusion that hides the base comes from real UI rather than from the viewport edge.
-  // pointerEvents/aria-hidden as always: it is decoration and must never take a tap.
+// ★ THE SUB-NAV DECOR LAYER, zIndex 45 — NOT the decor layer's 150. Anything that touches the
+// BOTTOM edge has to sit below the floating nav pill (zIndex 50) or it draws straight over the
+// Home and Profile buttons; measured, the pill spans x 14-414, y 868-918 on a 428x926 viewport.
+// 150 is right for everything that floats OVER the app; this is its counterpart for ornaments
+// that are part of the GROUND, where the occlusion that hides their base should come from real
+// UI rather than from the viewport edge. Same class name as before, so pw_themes' existing
+// portal/z/pointer contract covers every user of it rather than just the palm.
+// pointerEvents/aria-hidden as always: it is decoration and must never take a tap.
+function DecorBack({ style, children }) {
   return createPortal(
     <div className="seshd-decor-back" aria-hidden="true"
-      style={{ position:"fixed", bottom:0, right:0, width:206, height:228, zIndex:45,
-               pointerEvents:"none", opacity:0.5 }}>
+      style={{ position:"fixed", zIndex:45, pointerEvents:"none", ...style }}>
+      {children}
+    </div>, document.body);
+}
+function PalmCorner() {
+  // Mo, from the device: lighter and about 20% smaller. Both are safe to change together because
+  // the SAND MOUND is inside the viewBox — it is what hides the trunk bases, so it scales with
+  // the tree and the "no roots, no visible base" property survives any size.
+  return (
+    <DecorBack style={{ bottom:0, right:0, width:165, height:182, opacity:0.36 }}>
       <svg viewBox="0 0 190 210" width="100%" height="100%">
         {PALM_SCENE.map(([d, f], i) => <path key={i} d={d} fill={f}/>)}
       </svg>
-    </div>, document.body);
+    </DecorBack>
+  );
 }
 
 // ── The STATIC anchors. Every seasonal theme has the three-part shape Halloween proved out:
@@ -1606,10 +1618,18 @@ function CornerBranch({ blossom }) {
   // one-mechanism-many-glyphs rule the Faller follows.
   const bark = blossom ? "rgba(122,96,74,0.55)" : "rgba(104,78,56,0.7)";
   return (
-    // Bigger was the ask; further INTO the corner is what keeps a bigger branch off the Workout
-    // tab label, which a straight size bump put it back on top of.
-    <svg width="192" height="131" viewBox="0 0 188 128" aria-hidden="true"
-      style={{ position:"absolute", top:-26, left:-32, opacity:0.75 }}>
+    // Bigger was the ask (twice); further INTO the corner is what keeps a bigger branch off the
+    // Workout tab label, which a straight size bump put it back on top of.
+    // The offset is NOT proportional to the size, and that is deliberate. Measured in Chromium
+    // (env() = 0, the worst case, since a real inset pushes the tab row DOWN and the decor layer
+    // is pinned to the viewport): the tab row starts at y 47 and this branch's ink used to end at
+    // 46.9 — tuned to the pixel. Scaling the offset by the same 1.2 would have put the leaves at
+    // ~57 and back on the labels. -41/-38 keeps the ink clear at the top of the row while still
+    // showing 20% more branch. Anchoring it to env(safe-area-inset-top) instead was tried on
+    // paper and is worse: it would drop the whole branch 59px on device, straight onto the SESHD
+    // wordmark, to buy clearance the fixed offset already has there.
+    <svg width="230" height="157" viewBox="0 0 188 128" aria-hidden="true"
+      style={{ position:"absolute", top:-41, left:-38, opacity:0.75 }}>
       <g stroke={bark} fill="none" strokeLinecap="round">
         <path d="M-6 6 C40 14 78 30 116 62" strokeWidth="4"/>
         <path d="M34 12 C44 30 46 44 42 60" strokeWidth="2.2"/>
@@ -1696,6 +1716,33 @@ function GroundLeaf({ left, dur, delay, tone }) {
       style={{ position:"absolute", bottom:"7%", left:`${left}%`, opacity:0,
                animation:`seshd-skitter ${dur}s ${delay}s linear infinite` }}>
       <path d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z" fill={tint}/>
+    </svg>
+  );
+}
+
+function GrassTuft({ left, size, delay, flip }) {
+  // Spring's bottom anchor, and the reason it exists is an asymmetry rather than a wish for more
+  // ornaments: every other seasonal theme already grounds itself at the BOTTOM edge — Fall skitters
+  // leaves along it, Summer plants the palm in it, Winter settles snow on the nav — and Spring's
+  // was bare, so its petals fell out of a branch into nothing. Grass is what petals land on.
+  // It reuses `seshd-dangle` rather than minting a tenth keyframe; the transform origin moves to
+  // the BASE so the blades bend from the ground instead of pivoting about their middle, which is
+  // the whole difference between grass in a breeze and a windscreen wiper.
+  // It renders inside DecorBack, not the main decor layer: the first cut was at zIndex 150 and
+  // the blades grew straight through the Home and Profile buttons — the exact failure that put
+  // the palm on its own layer, reproduced the moment a second ornament reached the bottom edge.
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true"
+      style={{ position:"absolute", bottom:"4%", left:`${left}%`, opacity:0.42,
+               transform: flip ? "scaleX(-1)" : undefined, transformOrigin:"50% 100%",
+               animation:`seshd-dangle 5.4s ${delay}s ease-in-out infinite` }}>
+      <g fill="none" stroke="rgba(126,170,96,0.95)" strokeLinecap="round">
+        <path d="M20 40C19 30 16 22 9 15" strokeWidth="3"/>
+        <path d="M20 40C20.5 31 22 24 28 17" strokeWidth="2.6"/>
+        <path d="M20 40C18.5 32 18 25 19 16" strokeWidth="2.2"/>
+        <path d="M20 40C21 33 24 28 33 24" strokeWidth="2"/>
+        <path d="M20 40C18 34 14 30 6 27" strokeWidth="1.8"/>
+      </g>
     </svg>
   );
 }
@@ -1923,6 +1970,11 @@ function ThemeDecor({ kind }) {
       // the clouds can afford to be the quiet element.
       clouds: [0, 1, 2].map(() => ({ top: r(0, 6), size: r(64, 88), dur: r(70, 105), delay: -r(0, 90) })),
       groundLeaves: [0, 1, 2].map(i => ({ left: r(-6, 40), dur: r(14, 24), delay: -r(0, 20), tone: i })),
+      // Pinned to the two OUTER thirds. The nav pill's middle is the search button and the tufts
+      // sit above it at zIndex 150, so leaving the centre clear keeps the busiest control clean.
+      grass: [{ left: r(-4, 12), size: r(44, 60), delay: -r(0, 4), flip: false },
+              { left: r(16, 26), size: r(30, 40), delay: -r(0, 4), flip: true },
+              { left: r(74, 88), size: r(38, 52), delay: -r(0, 4), flip: true }],
     };
   }, []);
   if (!kind) return null;
@@ -2002,13 +2054,17 @@ function ThemeDecor({ kind }) {
       </>}
       {kind === "petals" && <>
         <CornerBranch blossom/>
+        <DecorBack style={{ inset:0 }}>{bits.grass.map((g, i) => <GrassTuft key={i} {...g}/>)}</DecorBack>
         {bits.petals.map((x, i) => <Faller key={i} shape="petals" {...x}/>)}
         {bits.butterflies.map((bf, i) => <Butterfly key={i} {...bf}/>)}
       </>}
       {kind === "leaves" && <>
         <CornerBranch/>
         {bits.leaves.map((x, i) => <Faller key={i} shape="leaves" {...x}/>)}
-        {bits.groundLeaves.map((g, i) => <GroundLeaf key={i} {...g}/>)}
+        {/* Ground leaves move to the sub-nav layer for the same reason the grass did: at 150 a
+            skittering leaf crossed the nav pill and sat on the Home button. Everything that
+            touches the bottom edge belongs behind the nav, not over it. */}
+        <DecorBack style={{ inset:0 }}>{bits.groundLeaves.map((g, i) => <GroundLeaf key={i} {...g}/>)}</DecorBack>
       </>}
       {kind === "summer" && <>
         <SunRays/>

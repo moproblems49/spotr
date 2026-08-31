@@ -3880,6 +3880,46 @@ looking at a screenshot. A safe-area inset only pushes the tabs further down, so
 device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
 corner is what keeps a bigger branch off the tab label.
 
+## The sub-nav decor layer became a rule, not a one-off (Mo, Aug 31)
+Mo: lighter and ~20% smaller palm, ~20% bigger Fall/Spring branch, "do they need more decor?"
+- **The palm scales safely because the SAND MOUND is inside its viewBox.** It is what hides the
+  trunk bases, so it shrinks with the tree and the "no roots, no visible base" property survives
+  any size. 206x228 -> 165x182, opacity 0.5 -> 0.36.
+- **★ THE BRANCH'S OFFSET IS DELIBERATELY *NOT* PROPORTIONAL TO ITS SIZE.** Measured in Chromium
+  (env() = 0, which is the WORST case here — a real safe-area inset pushes the tab row down while
+  the decor layer stays pinned to the viewport): the Workout/Exercises/History row starts at y 47
+  and the branch's ink ended at 46.9, tuned to the pixel. Scaling the offset by the same 1.2 would
+  have put the leaves at ~57, back on the labels — the exact failure the previous size bump had
+  already been fixed for. 192x131 @ -26/-32 -> 230x157 @ **-41/-38**, which measures 46.3.
+  **Anchoring it to `env(safe-area-inset-top)` was considered and rejected**: it would drop the
+  whole branch 59px on device, straight onto the SESHD wordmark, to buy clearance the fixed offset
+  already has there. Spring's blossoms hang lower than Fall's leaves (cy 72 vs 64) so its ink ends
+  at 58.7 — into the row in Chromium, 47px clear of it on any real device.
+- **★★ ANYTHING THAT TOUCHES THE BOTTOM EDGE BELONGS BEHIND THE NAV, AND THAT IS NOW A LAYER
+  RATHER THAN A SPECIAL CASE.** `PalmCorner`'s zIndex-45 portal was written as a one-off; the
+  moment a second ornament reached the bottom edge it reproduced the identical bug — Spring's new
+  grass tufts grew straight through the Home and Profile buttons. `DecorBack` is that portal
+  generalised (same `.seshd-decor-back` class, so `pw_themes`' portal/z/pointer contract covers
+  every user of it instead of just the palm), and the sweep found a THIRD instance already
+  shipped: Fall's skittering ground leaves were crossing the pill at 150. Rule: **150 is for
+  ornaments that float OVER the app, 45 is for ornaments that are part of the GROUND** — and the
+  occlusion that hides their base should come from real UI, not the viewport edge. Verified by
+  `elementFromPoint` on all four nav buttons: every one hits its own button, none hits decor.
+- **"Do they need more decor?" — the honest answer was an ASYMMETRY, not a wish for more.** All
+  five seasonals already have Halloween's three-part shape. What Spring alone lacked was a BOTTOM
+  anchor: Fall skitters leaves along it, Summer plants the palm in it, Winter settles snow on the
+  nav, and Spring's petals fell out of a branch into nothing. Grass is what petals land on, so
+  Spring got `GrassTuft` and Fall got nothing — it was already complete. **Before adding decoration
+  because a theme "feels thin", name the thing it is missing that its siblings have.**
+  `GrassTuft` reuses `seshd-dangle` rather than minting a tenth keyframe, with
+  `transformOrigin:"50% 100%"` so the blades bend from the ground instead of pivoting about their
+  middle — the whole difference between grass in a breeze and a windscreen wiper.
+- **Probe bug worth keeping:** the measurement script found the corner branch as "the first `<svg>`
+  child of the decor layer with a negative `left`". `GroundLeaf`'s left is `r(-6, 40)`, so a leaf
+  mid-skitter matched first and the probe confidently reported a 21px svg at y 829 as the branch.
+  Select by the property that actually identifies the thing (`width > 150`), not by one it happens
+  to share with a sibling.
+
 ## Three device-screenshot fixes: the notch gap, mark size, and the palm that was still bad (Mo, Aug 31)
 **★ THE DEAD STRIP UNDER THE CLOCK WAS ONE PADDING VALUE, AND THE ONLY WAY TO KNOW THAT WAS TO
 READ WHAT ELSE RENDERS ABOVE THE TOP BAR — NOTHING DOES.** Mo circled the band between the status
