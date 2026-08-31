@@ -1,4 +1,4 @@
-// v178091717003
+// v178091717004
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1922,11 +1922,24 @@ const MARK_TILT = { leaf: -28, acorn: -14, palm: -18, blossom: -12, butterfly: -
 // far it leans. The lean rotates about the BASE, which is what moves the crown away from the
 // corner — the palm's own geometry only puts its crown 5 viewBox units left of its trunk, so
 // without it the tree would hug the right edge instead of reaching across the card.
-const MARK_PLANT = { palm: [0.675, 1.033, -25] };
-// How far inside the corner the base itself sits. X keeps the trunk clear of the rounded edge;
-// the negative Y pushes the base BELOW the container so the trunk is cropped by the corner rather
-// than stopping short of it — the container needs `overflow:hidden` for that crop to happen.
-const PLANT_INSET_X = 10, PLANT_INSET_Y = 6;
+// [baseX, baseY, lean, insetX]. insetX is per-kind because the glyphs are not built alike: the
+// palm's trunk is at 0.675 of its box so it can sit 10px from the corner and still show a whole
+// crown, while tree/fir/sprout are bottom-CENTRED — at 10px half their crown would hang off the
+// card. They stand further in, which is what a symmetric plant cropped at the bottom edge looks
+// like anyway. They also take no lean: a leaning palm is a palm, a leaning fir has fallen over.
+// The 5th number scales the caller's plantSize per kind, and it is not a taste knob: the palm
+// LEANS, so its crown swings down-left and a 140px box still fits a 115px-tall card. An upright
+// tree fills its box to the top edge, so the same 140 cropped the crown — measured, 13px of it.
+// Only a glyph that leans can be as tall as the palm.
+const MARK_PLANT = {
+  palm:   [0.675, 1.033, -25, 10, 1],
+  tree:   [0.5,   0.95,    0, 44, 0.72],
+  fir:    [0.5,   0.958,   0, 44, 0.72],
+  sprout: [0.5,   0.942,   0, 44, 0.72],
+};
+// The base is pushed this far BELOW the container so the stem is cropped by the edge rather than
+// stopping short of it — the container needs `overflow:hidden` for that crop to happen.
+const PLANT_INSET_Y = 6;
 // `plantSize` is separate from `size` because only the kinds in MARK_PLANT change placement: a
 // caller passing one size for both would blow every OTHER theme's sticker up to the planted
 // scale. Callers give the sticker size and, if they want it, the larger planted one.
@@ -1935,12 +1948,12 @@ export function ThemeMark({ C, slot = "start", size = 26, top = 10, right = 10, 
   if (!kind) return null;
   const planted = plant ? MARK_PLANT[kind] : null;
   if (planted) {
-    const [bx, by, lean] = planted;
-    const size_ = plantSize || size;
+    const [bx, by, lean, insetX, sizeK] = planted;
+    const size_ = Math.round((plantSize || size) * sizeK);
     return (
       <span aria-hidden="true" data-theme-mark={kind} data-theme-mark-plant="true"
         style={{ position:"absolute", lineHeight:0, pointerEvents:"none", opacity,
-                 right: -((1 - bx) * size_ - PLANT_INSET_X),
+                 right: -((1 - bx) * size_ - insetX),
                  bottom: -(PLANT_INSET_Y + (1 - by) * size_),
                  transform: lean ? `rotate(${lean}deg)` : undefined,
                  transformOrigin: `${bx * 100}% ${by * 100}%` }}>
@@ -12649,7 +12662,16 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   (store.customExercises || []).forEach(e => e.name && allEx.add(e.name));
 
   return (
-    <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:viewingProgram||showBuilder?0:NAV_CLEARANCE, position:"relative" }}>
+    // ★ EXACTLY ONE ELEMENT IN A SCROLL CHAIN MAY RESERVE THE NAV CLEARANCE — THE ONE THAT
+    // ACTUALLY SCROLLS. Same rule as "only ONE shell element may reserve the status bar", and it
+    // was being broken here. Workout and Exercises scroll in THIS container, so it pays the 86px.
+    // History does not: it wraps its list in `PullToRefresh`, whose own scroller is `flex:1` and
+    // already pays. So on History the clearance was charged TWICE — measured at a keyboard-shrunk
+    // 572px viewport, the list was clipped at y 486 with the nav pill's top at 506 and 172px of
+    // dead space below the last row, which is the sliced card and empty band Mo photographed.
+    // Zeroing it here lets the inner scroller run the full height, so content passes BEHIND the
+    // translucent pill (you can see it through the glass) instead of stopping short of it.
+    <div style={{ overflowY:viewingProgram||showBuilder?"hidden":"auto", flex:1, display:"flex", flexDirection:"column", paddingBottom:(viewingProgram||showBuilder||subTab==="history")?0:NAV_CLEARANCE, position:"relative" }}>
       {/* Sub-tabs — Instagram-style thin underline */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C.divider}`, background:C.bg, position:"sticky", top:0, zIndex:5 }}>
         {[["workout","Workout"],["exercises","Exercises"],["history","History"]].map(([t,l]) => (
@@ -18663,7 +18685,10 @@ function AppInner() {
       // Upload PRs
       for (const [exName, weightLbs] of Object.entries(store.prs || {})) {
         try {
-          await sb.query("personal_records", {
+          // NAME THE CONFLICT TARGET. Without `?on_conflict=`, PostgREST emits ON CONFLICT("id")
+          // — the primary key, which a fresh insert never hits — so merge-duplicates degrades to
+          // a plain INSERT and every row whose (user_id, exercise_name) already exists 23505s.
+          await sb.query("personal_records?on_conflict=user_id,exercise_name", {
             method: "POST",
             headers_extra: { "Prefer": "resolution=merge-duplicates" },
             body: JSON.stringify({ user_id: newUserId, exercise_name: exName, weight_lbs: weightLbs })
@@ -19563,7 +19588,10 @@ function AppInner() {
       if (workoutData.prs) {
         for (const [exName, weight] of Object.entries(workoutData.prs)) {
           try {
-            await sb.query("personal_records", {
+            // Same missing conflict target as the migration path above — and this one runs on
+            // EVERY finished workout over the whole PR map, which is what a logs sweep saw as
+            // 150 duplicate-key errors inside eight seconds.
+            await sb.query("personal_records?on_conflict=user_id,exercise_name", {
               method:"POST",
               headers_extra: { "Prefer": "resolution=merge-duplicates" },
               body: JSON.stringify({ user_id: currentUserId, exercise_name: exName, weight_lbs: weight })

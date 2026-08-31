@@ -3166,6 +3166,35 @@ duplicate `workout_codes` DELETE policies (documented as harmless, consolidate w
 next touched — deliberately not touched here). The four SECURITY DEFINER warnings that remain
 (`profile_is_public`, both redeem RPCs, `group_image_member_check`) are all deliberate.
 
+## ★★ Sweep #6 (Aug 31, 2026) — THE personal_records 23505 IS BACK, AND IT IS A MISSED CALL SITE
+**150 duplicate-key errors in one 8-second burst**, and this time it is NOT an old bundle
+finishing its run: Mo's workout row was written at `15:12:23.650` and the errors ran
+`15:12:23.808 → 15:12:31.659` — 158ms later, one POST per entry in his PR map, every one after
+the first failing. **The Aug-28 fix named the conflict target at six sites and there were EIGHT.**
+The two survivors both used a bare `sb.query("personal_records", …)` rather than
+`sb.queueWrite(\`personal_records?on_conflict=…\`, …)`, which is why a grep for the URL pattern
+missed them: `saveWorkout`'s PR loop (fires on **every finished workout**, over the whole map) and
+the guest→account migration's PR upload. Both now name the target.
+**The lesson is the one this file already records about consolidation, applied to a URL: grep for
+the CONCEPT, not the variant you already found.** `grep 'personal_records?on_conflict'` reports a
+tidy six and tells you nothing about the sites that spell the same write a different way. The
+check that would have caught it is `grep -n 'personal_records"'` — the bare-table form.
+**Everything else is clean.** Auth logs: 82 logins, all 200, zero errors or reset failures.
+`client_errors`: ONE row in 14 days, the known missing-push-entitlement message (a Mac-day item).
+`code_redeem_failures`: 0 rows, so the opportunistic cleanup is working. Orphaned `member_ids`:
+**0**. **Orphaned storage objects: 0** across all three buckets (26 objects, ~31MB) — the Aug-29
+account-deletion sweep is holding. Advisors: no new findings; every one is a documented deliberate
+choice (`public_profiles` SECURITY DEFINER, the two redeem RPCs, `profile_is_public`,
+`group_image_member_check`, `code_redeem_failures` RLS-with-no-policy) plus the two known-open ones
+(`pg_net` in public, leaked-password protection needing a paid plan).
+**Demo corpus: fresh enough, no shift needed.** Newest persona post 2-4 days old, every persona 3+
+workouts inside the 7-day muscle-map window (`seshdreview` 5). It will need one in ~3-4 days.
+**Housekeeping for Mo, not actioned unilaterally: SIX backup tables are now accumulating**
+(`demo_shift_backup_20260828`, `demo_shift_backup_20260830`, `demo_shift_kudosfix_20260830`,
+`orphan_image_backup_20260829`, `sharecode_rotation_backup_20260828`, `tbar_fix_backup_20260819`).
+Each was correct to create; several are past the window they were insurance for. Drop them when
+App Review clears.
+
 ## ★ Sweep #4 (Aug 29, 2026) — the personal_records fix is CONFIRMED, and account deletion leaked files
 **The 1,650/day → 953 → 83 story ends here.** All 58 remaining `personal_records` 23505s landed in
 a SINGLE hour (Aug 28 14:00) with 11 hours of silence after — one device on a pre-fix bundle
@@ -3879,6 +3908,37 @@ every cloud's real `getBoundingClientRect().bottom` (30-34) against the tab row'
 looking at a screenshot. A safe-area inset only pushes the tabs further down, so the bound holds on
 device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
 corner is what keeps a bigger branch off the tab label.
+
+## ★★ THE NAV CLEARANCE WAS CHARGED TWICE ON HISTORY (Mo, Aug 31)
+Mo: "See how you can't see around the nav bar at the bottom?" — a device screenshot of the History
+tab with the keyboard up, a session card sliced off mid-row and an empty band between it and the
+floating nav pill. **Exactly one element in a scroll chain may reserve the nav clearance: the one
+that actually scrolls.** Same rule as "only ONE shell element may reserve the status bar", and it
+was being broken here. The tracker tab's container is `flex:1 overflowY:auto paddingBottom:
+NAV_CLEARANCE`, which is right for Workout and Exercises — measured, Exercises really does scroll
+in it (scrollHeight 5027 vs client 883). **History does not**: it wraps its list in
+`PullToRefresh`, whose own scroller is `flex:1` and already pays the 86px. So the child inherited
+the parent's 86px shortfall AND added its own.
+Measured at a keyboard-shrunk 572px viewport: the list was clipped at y **486** with the nav pill's
+top at **506** and 172px of clearance for a 66px pill. After: the inner scroller runs 84 -> 572, so
+content passes BEHIND the translucent pill and is visible through the glass — which is what
+"seeing around the nav bar" means, and what the top bar's own deferred scroll-under TODO is aiming
+at. Exercises is byte-identical (43 -> 572, padding 86, still scrolling).
+**The tell was a scroller whose scrollHeight equals its clientHeight**: a container that pays for
+clearance and never scrolls is paying for nothing and shrinking whatever is inside it. Enumerate
+every `overflow-y:auto` ancestor with its rect and padding before assuming which one scrolls — the
+first probe here grabbed the OUTER one and reported a perfectly healthy 43 -> 926, because the
+History list had not loaded yet (`loadUserData` replaces history wholesale, so a localStorage-only
+fixture shows "No workouts logged yet" — seed through the STUB).
+**★ AND THE PLANTED MARK EXTENDED TO THE OTHER THEMES, WHICH IS WHERE THE TABLE PAID OFF.** Fall's
+tree, Winter's fir and Spring's sprout are all planted now; Halloween's spider stays a top-right
+sticker, because a spider is not planted and cropping one at the bottom edge reads as broken.
+Two per-kind numbers had to be added rather than shared, and both were found by measuring, not by
+eye: **insetX**, because the palm's trunk sits at 0.675 of its box and can stand 10px from the
+corner while the bottom-CENTRED plants would lose half a crown there (44px); and a **size scale**,
+because the palm LEANS so its crown swings down-left and a 140px box fits a 115px-tall card, while
+an upright tree fills its box to the top edge and the same 140 cropped 13px off the crown. Only a
+glyph that leans can be as tall as the palm.
 
 ## The top bar's icon cluster, and the halo variant that fits a tight row (Mo, Aug 31)
 Mo circled the right-hand icons: too spread out. Measured, the whitespace between two 22px glyphs
