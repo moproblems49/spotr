@@ -215,7 +215,9 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                 stops meaning anything. Same language, quieter: a thinner ring (33 vs 55 alpha) and
                 a shallower lift, so side by side the hierarchy still reads. */}
             <button onClick={() => setSubTab("activity")} style={{
-              position:"relative", background:C.surface, color:C.text,
+              // overflow:hidden is what crops a PLANTED mark at the rounded corner, so the trunk
+              // reads as running off the card instead of stopping short of the edge.
+              position:"relative", overflow:"hidden", background:C.surface, color:C.text,
               border:`1px solid ${C.accent}33`, borderRadius:16, padding:"18px 16px",
               boxShadow:`0 0 0 1px ${C.accent}0d, 0 4px 14px -8px ${C.accent}4d`,
               cursor:"pointer", textAlign:"left", fontFamily:F,
@@ -230,10 +232,12 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                     UI-kit-card tell — show the real number once there's one to show. */}
                 <div style={{ fontSize:11, opacity:0.65, marginTop:3 }}>{following.length > 0 ? `${following.length} following` : "Weekly stats"}</div>
               </div>
-              <ThemeMark C={C} slot="friends" size={62} top={10} right={12} opacity={0.34}/>
+              <ThemeMark C={C} slot="friends" size={62} top={10} right={12} opacity={0.34} plant plantSize={140}/>
             </button>
             <button onClick={() => setSubTab("groups")} style={{
-              position:"relative", background:C.surface, color:C.text,
+              // overflow:hidden is what crops a PLANTED mark at the rounded corner, so the trunk
+              // reads as running off the card instead of stopping short of the edge.
+              position:"relative", overflow:"hidden", background:C.surface, color:C.text,
               border:`1px solid ${C.accent}33`, borderRadius:16, padding:"18px 16px",
               boxShadow:`0 0 0 1px ${C.accent}0d, 0 4px 14px -8px ${C.accent}4d`,
               cursor:"pointer", textAlign:"left", fontFamily:F,
@@ -246,7 +250,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                 <div style={{ fontSize:14, fontWeight:700, letterSpacing:-0.3 }}>Groups</div>
                 <div style={{ fontSize:11, color:C.sub, marginTop:3 }}>{(store.groups?.length || 0) > 0 ? `${store.groups.length} joined` : "Private crews"}</div>
               </div>
-              <ThemeMark C={C} slot="groups" size={62} top={10} right={12} opacity={0.34}/>
+              <ThemeMark C={C} slot="groups" size={62} top={10} right={12} opacity={0.34} plant plantSize={140}/>
             </button>
           </div>
 

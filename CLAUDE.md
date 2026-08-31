@@ -3880,6 +3880,41 @@ looking at a screenshot. A safe-area inset only pushes the tabs further down, so
 device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
 corner is what keeps a bigger branch off the tab label.
 
+## The planted mark, and a screen that listed the same sessions twice (Mo, Aug 31)
+**★ "PLANTED" IS A TABLE, NOT A FLAG, BECAUSE ONLY SOME GLYPHS HAVE A BASE.** Mo drew it on the
+Groups card: the palm filling the right half, trunk running off the bottom-right corner. That
+placement only reads right for a glyph with a base — a cropped fir or tree reads as planted, a
+cropped snowflake or ghost reads as broken — so `MARK_PLANT` keys the behaviour by kind and a kind
+absent from it keeps the top-right sticker. Only `palm` is in it today; adding another is data.
+Three things it has to carry, and each was needed: **the glyph's own base point** as a fraction of
+its 24-unit box (the palm's trunk is at 0.675/1.033, not bottom-centre like tree/fir/sprout, so a
+generic bottom-right anchor would not put the trunk in the corner); **a lean, rotated about that
+base**, because the palm's crown sits only 5 viewBox units left of its trunk and without the
+rotation the tree hugs the right edge instead of reaching across the card; and **`plantSize`
+separate from `size`**, or one size for both would blow every other theme's sticker up to the
+planted scale. The container needs `overflow:hidden` — that crop at the rounded corner is what
+makes the trunk read as running off the card rather than stopping short of it.
+**★ AND THE EXERCISE DETAIL SCREEN LISTED THE SAME SESSIONS TWICE.** Mo, from a screenshot of it:
+"tighten those up." Spacing was the ask and spacing was tightened (band padding 28->14, tile
+padding 10/12->8/11, every list row 11/14->9/13, section gaps 10->7) — but the real find was a
+second **RECENT SESSIONS** block at the bottom rendering the same `historyData` the RECENT block
+near the top already showed, in the WEAKER form: "3 sets", which this file already records as
+telling a lifter nothing they want to know. The duplicate is gone and RECENT carries five, which
+is what the lower copy showed. **Measured before and after on the same fixture: 1631px -> 1309px
+of scroll, 20% shorter, with no information removed.** Same N-copies-drift class as the volume
+maths, in content rather than code — and the same tell, that the copies had already drifted into
+two different renderings of one fact.
+**Method note:** the before/after was measured by `cp`-ing the working file aside, writing
+`git show HEAD:src/App.jsx` over it, building, measuring, then `cp`-ing back — never
+`git checkout -- <path>`, which WRITES AND STAGES and has silently reverted main here before.
+`git status` checked after, as the standing rule requires.
+**Non-finding worth recording so it is not re-chased:** Mo's screenshot showed the FRONT/BACK
+labels and the Primary legend with no bodies above them, which looks exactly like the body-map
+chunk failing to load. It is not: `BodyMap` renders a `MuscleIcon` while `useBodyMapData` is
+pending and that fallback draws no FRONT/BACK labels at all, so their presence proves the data HAD
+loaded. He had simply scrolled the figures up under the sticky header — the labels and legend sit
+BELOW the figures, so they are what survives a small scroll.
+
 ## The sub-nav decor layer became a rule, not a one-off (Mo, Aug 31)
 Mo: lighter and ~20% smaller palm, ~20% bigger Fall/Spring branch, "do they need more decor?"
 - **The palm scales safely because the SAND MOUND is inside its viewBox.** It is what hides the

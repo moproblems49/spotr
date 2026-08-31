@@ -1,4 +1,4 @@
-// v178091717001
+// v178091717002
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1913,9 +1913,41 @@ function themeMarkOf(C, slot = "start") {
 // it fell over, and a sun or six-fold snowflake is radially symmetric so rotating either changes
 // nothing but the bounding box.
 const MARK_TILT = { leaf: -28, acorn: -14, palm: -18, blossom: -12, butterfly: -8, sprout: -6 };
-export function ThemeMark({ C, slot = "start", size = 26, top = 10, right = 10, inline = false, opacity = 0.6 }) {
+// PLANTED MODE. A caller that passes `plant` asks for the mark to grow OUT OF the container's
+// bottom-right corner instead of sitting in the top-right as a sticker — Mo drew it: crown filling
+// the right half of the Groups card, trunk running off the corner. That only reads right for a
+// glyph that HAS a base, so it is a table rather than a flag: a kind absent from it keeps the
+// sticker placement, and adding another planted glyph later is data, not a new branch.
+// [baseX, baseY, lean] are the glyph's own base point as a fraction of its 24-unit box, plus how
+// far it leans. The lean rotates about the BASE, which is what moves the crown away from the
+// corner — the palm's own geometry only puts its crown 5 viewBox units left of its trunk, so
+// without it the tree would hug the right edge instead of reaching across the card.
+const MARK_PLANT = { palm: [0.675, 1.033, -25] };
+// How far inside the corner the base itself sits. X keeps the trunk clear of the rounded edge;
+// the negative Y pushes the base BELOW the container so the trunk is cropped by the corner rather
+// than stopping short of it — the container needs `overflow:hidden` for that crop to happen.
+const PLANT_INSET_X = 10, PLANT_INSET_Y = 6;
+// `plantSize` is separate from `size` because only the kinds in MARK_PLANT change placement: a
+// caller passing one size for both would blow every OTHER theme's sticker up to the planted
+// scale. Callers give the sticker size and, if they want it, the larger planted one.
+export function ThemeMark({ C, slot = "start", size = 26, top = 10, right = 10, inline = false, opacity = 0.6, plant = false, plantSize }) {
   const kind = themeMarkOf(C, slot);
   if (!kind) return null;
+  const planted = plant ? MARK_PLANT[kind] : null;
+  if (planted) {
+    const [bx, by, lean] = planted;
+    const size_ = plantSize || size;
+    return (
+      <span aria-hidden="true" data-theme-mark={kind} data-theme-mark-plant="true"
+        style={{ position:"absolute", lineHeight:0, pointerEvents:"none", opacity,
+                 right: -((1 - bx) * size_ - PLANT_INSET_X),
+                 bottom: -(PLANT_INSET_Y + (1 - by) * size_),
+                 transform: lean ? `rotate(${lean}deg)` : undefined,
+                 transformOrigin: `${bx * 100}% ${by * 100}%` }}>
+        <svg width={size_} height={size_} viewBox="0 0 24 24">{THEME_MARKS[kind](C.accent)}</svg>
+      </span>
+    );
+  }
   const tilt = MARK_TILT[kind] || 0;
   return (
     // data-theme-mark is the selector contract for pw_themes. An <svg> contributes no textContent,
@@ -14389,8 +14421,11 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
       + `</svg>`;
     try { await shareSvgCard(svg, "seshd-progress.png", `My ${name} progress`, W, H); } catch (e) {}
   }
-  // Last 3 sessions for the mini-recent list (newest first)
-  const recentSessions = historyData.slice(-3).reverse();
+  // Last 5 sessions for the recent list (newest first). It was 3, with a SECOND "RECENT SESSIONS"
+  // list of 5 further down the same screen — the same data twice, and the lower copy was the
+  // weaker rendering of it ("3 sets", which this file already records as telling a lifter nothing
+  // they want to know). The duplicate is gone and this one carries all five.
+  const recentSessions = historyData.slice(-5).reverse();
 
   // Portaled to document.body: this is a full-screen overlay opened from inside tab content,
   // so without a portal it'd render nested under the tab-swipe track and inherit any transform
@@ -14424,7 +14459,7 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
         {/* Large muscle illustration — name + muscle already shown above in the back button row */}
         <div style={{
           display:"flex", alignItems:"center", justifyContent:"center",
-          padding:"28px 20px", background:C.surface,
+          padding:"14px 20px", background:C.surface,
           borderBottom:`1px solid ${C.divider}`,
         }}>
           <BodyMap muscle={exInfo.muscle} name={name} size={150} C={C} sex={store.bodyType === "female" ? "female" : "male"}/>
@@ -14432,8 +14467,8 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
 
         {/* Stats strip — 2x2 grid of key metrics */}
         {sessions > 0 && (
-          <div style={{ margin:"16px 16px 14px" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          <div style={{ margin:"12px 16px 10px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:7 }}>
               {[
                 ["Last session", lastSessionAgo],
                 ["Sessions", sessions],
@@ -14444,9 +14479,9 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
                   background:C.surface,
                   border:`1px solid ${C.border}`,
                   borderRadius:10,
-                  padding:"10px 12px",
+                  padding:"8px 11px",
                 }}>
-                  <div style={{ fontSize:10, color:C.sub, fontWeight:600, letterSpacing:0.6, marginBottom:3 }}>
+                  <div style={{ fontSize:10, color:C.sub, fontWeight:600, letterSpacing:0.6, marginBottom:2 }}>
                     {label.toUpperCase()}
                   </div>
                   <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.2 }}>
@@ -14460,8 +14495,8 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
 
         {/* Recent sessions — last 3 inline so user can scan what they did */}
         {recentSessions.length > 0 && (
-          <div style={{ margin:"0 16px 16px" }}>
-            <div style={{ fontSize:11, color:C.sub, fontWeight:600, letterSpacing:0.6, marginBottom:8, paddingLeft:2 }}>
+          <div style={{ margin:"0 16px 12px" }}>
+            <div style={{ fontSize:11, color:C.sub, fontWeight:600, letterSpacing:0.6, marginBottom:6, paddingLeft:2 }}>
               RECENT
             </div>
             <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", background:C.surface }}>
@@ -14471,7 +14506,7 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
                 return (
                   <div key={s.date} style={{
                     display:"flex", alignItems:"center", justifyContent:"space-between",
-                    padding:"11px 14px",
+                    padding:"9px 13px",
                     borderBottom: i < recentSessions.length - 1 ? `1px solid ${C.divider}` : "none",
                   }}>
                     <div style={{ minWidth:0, flex:1, paddingRight:10 }}>
@@ -14500,8 +14535,8 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
         )}
 
         {/* Chart */}
-        <div style={{ margin:"0 16px 20px", border:`1px solid ${C.border}`, borderRadius:12, padding:"14px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+        <div style={{ margin:"0 16px 16px", border:`1px solid ${C.border}`, borderRadius:12, padding:"12px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <div style={{ fontSize:13, fontWeight:600, color:C.text }}>Progress</div>
             <div style={{ display:"flex", background:C.divider, borderRadius:16, padding:2 }}>
               {[["weight","Max"],["e1rm","Est 1RM"],["volume","Volume"]].map(([m, label]) => (
@@ -14521,11 +14556,11 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
         {/* How To — numbered beginner walkthrough (only on exercises that have hand-written steps) */}
         {cueData.steps && cueData.steps.length > 0 && (
           <div style={{ margin:"0 16px 16px" }}>
-            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>HOW TO</div>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:7, letterSpacing:0.3 }}>HOW TO</div>
             <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
               {cueData.steps.map((step, i) => (
                 <div key={i} style={{
-                  display:"flex", gap:12, padding:"11px 14px",
+                  display:"flex", gap:12, padding:"9px 13px",
                   borderBottom: i < cueData.steps.length - 1 ? `1px solid ${C.divider}` : "none",
                   alignItems:"flex-start"
                 }}>
@@ -14542,11 +14577,11 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
 
         {/* Form tips — non-sequential cues, shown as a checklist so they don't look like more steps */}
         <div style={{ margin:"0 16px 16px" }}>
-          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>{cueData.steps ? "FORM TIPS" : "TIPS & HOW TO"}</div>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:7, letterSpacing:0.3 }}>{cueData.steps ? "FORM TIPS" : "TIPS & HOW TO"}</div>
           <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
             {cueData.cues.map((cue, i) => (
               <div key={i} style={{
-                display:"flex", gap:12, padding:"11px 14px",
+                display:"flex", gap:12, padding:"9px 13px",
                 borderBottom: i < cueData.cues.length - 1 ? `1px solid ${C.divider}` : "none",
                 alignItems:"flex-start"
               }}>
@@ -14559,11 +14594,11 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
 
         {/* Common Mistakes */}
         <div style={{ margin:"0 16px 16px" }}>
-          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>COMMON MISTAKES</div>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:7, letterSpacing:0.3 }}>COMMON MISTAKES</div>
           <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
             {cueData.mistakes.map((m, i) => (
               <div key={i} style={{
-                display:"flex", gap:12, padding:"11px 14px",
+                display:"flex", gap:12, padding:"9px 13px",
                 borderBottom: i < cueData.mistakes.length - 1 ? `1px solid ${C.divider}` : "none",
                 alignItems:"flex-start"
               }}>
@@ -14582,29 +14617,10 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
           </div>
         )}
 
-        {/* Previous sessions */}
-        {historyData.length > 0 && (
-          <div style={{ margin:"0 16px 32px" }}>
-            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10, letterSpacing:0.3 }}>RECENT SESSIONS</div>
-            <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-              {historyData.slice(-5).reverse().map((d, i) => (
-                <div key={i} style={{
-                  display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 14px",
-                  borderBottom: i < Math.min(5, historyData.length) - 1 ? `1px solid ${C.divider}` : "none"
-                }}>
-                  <div>
-                    <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{d.label}</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{d.sets} set{d.sets === 1 ? "" : "s"}</div>
-                  </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:C.accent, fontFamily:MONO }}>{d.weight} {unit}</div>
-                    <div style={{ fontSize:11, color:C.sub }}>vol {d.volume > 1000 ? `${(d.volume/1000).toFixed(1)}k` : Math.round(d.volume)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* The second "RECENT SESSIONS" list that used to sit here is GONE. It was the same
+            historyData the RECENT block near the top already renders, in a weaker form — "3 sets"
+            rather than the actual weight x reps — so the screen listed the same sessions twice.
+            RECENT carries five now, which is what this one showed. */}
       </div>
     </div>
   ), document.body);
