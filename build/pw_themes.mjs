@@ -206,6 +206,41 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
         JSON.stringify(onDiscover));
       check(`4j4. ${theme}: the three buttons do not share one glyph`,
         new Set([want.start, ...onDiscover]).size === 3, JSON.stringify([want.start, ...onDiscover]));
+      // ── 4m. PLANTED MARKS. A glyph with a base (palm/tree/fir/sprout) grows OUT OF the card's
+      //     bottom-right corner: its stem must be cropped by the card edge, its top must stay
+      //     inside, and the card must actually clip. A glyph without a base (halloween's spider)
+      //     must stay a top-right sticker. Nothing else in this file can see the difference —
+      //     4j3 only checks WHICH glyph renders, so the whole placement mode was unguarded.
+      const PLANTED = ["palm", "tree", "fir", "sprout"];
+      const geo = await pm.evaluate(() => [...document.querySelectorAll("[data-theme-mark]")].map(e => {
+        const card = e.closest("button").getBoundingClientRect();
+        // Measure the INK, not the element box. A planted glyph can be ROTATED about its base
+        // (the palm leans 25deg), and a rotated box includes empty corners — the summer palm's
+        // box overshoots the card top by 30px while every drawn frond is inside it. Each <path>
+        // inherits the ancestor transform, so its own client rect is already in screen space:
+        // the union of the paths is the real ink.
+        // Every drawn shape, not just <path>: winter's fir draws its trunk as a <rect> and the
+        // fall tree its crown as <circle>s, so a path-only union measured the wrong ink and
+        // reported the fir as not reaching the card edge when it does.
+        const ps = [...e.querySelectorAll("path,rect,circle,ellipse,polygon,line")]
+          .map(x => x.getBoundingClientRect()).filter(x => x.width || x.height);
+        const ink = { top: Math.min(...ps.map(x => x.top)), bottom: Math.max(...ps.map(x => x.bottom)) };
+        return { kind: e.dataset.themeMark, planted: e.dataset.themeMarkPlant === "true",
+                 belowCard: +(ink.bottom - card.bottom).toFixed(1),
+                 aboveCard: +(card.top - ink.top).toFixed(1),
+                 clips: getComputedStyle(e.closest("button")).overflow };
+      }));
+      const g = geo.find(m => m.kind === want.groups);
+      if (!g) { fails++; console.log(`FAIL 4m. ${theme}: no Groups mark to measure`); }
+      else if (PLANTED.includes(want.groups)) {
+        check(`4m. ${theme}: the "${want.groups}" is planted, not a sticker`, g.planted, JSON.stringify(g));
+        check(`4m2. ${theme}: its stem is cropped by the card's bottom edge`, g.belowCard > 2, JSON.stringify(g));
+        check(`4m3. ${theme}: its top stays inside the card`, g.aboveCard < 0, JSON.stringify(g));
+        check(`4m4. ${theme}: the card actually clips it`, g.clips === "hidden", JSON.stringify(g));
+      } else {
+        check(`4m5. ${theme}: a "${want.groups}" has no base, so it stays a sticker`,
+          !g.planted && g.belowCard < 0, JSON.stringify(g));
+      }
     } else { fails++; console.log(`FAIL 4j3. ${theme}: could not reach the Discover tab`); }
     await pm.close();
   }

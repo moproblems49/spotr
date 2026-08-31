@@ -3909,6 +3909,57 @@ looking at a screenshot. A safe-area inset only pushes the tabs further down, so
 device. The Spring/Fall branch got the same treatment: bigger was the ask, and further INTO the
 corner is what keeps a bigger branch off the tab label.
 
+## ★★ The audit of the corner-mark work: I shipped a regression on the App Review device (Aug 31)
+A cold-context Fable audit of the five corner-mark/top-bar commits. Four findings, one of them
+serious, and it is one I argued myself into.
+- **★★ THE TOP-BAR INSET TRIM ONLY MADE SENSE FOR A NOTCH OR AN ISLAND, AND I SPENT IT
+  UNCONDITIONALLY.** `max(calc(env(safe-area-inset-top) - 10px), 3px)` rests on the cutout being
+  horizontally CENTRED while the row puts the logo hard left and the icons hard right. On a device
+  whose inset comes from a classic FULL-WIDTH 20pt status bar — iPhone SE 2/3, and an iPad running
+  this app in iPhone compatibility mode (`TARGETED_DEVICE_FAMILY = 1`, and **an iPad Air is the
+  device App Review used**) — the clock is drawn hard LEFT and the battery hard RIGHT, exactly
+  where this row puts its content. Trimming 10 of a 20pt inset put the wordmark at y ~12 and live
+  tap area at y ~7, inside the band the system draws into.
+  **And the comment I wrote to justify it was false**: "on a device with a small inset the bar is
+  byte-identical" — a 3px FLOOR only protects an inset of 13 or less, and the regression band is
+  13 to ~44. The floor was doing nothing for the case that mattered.
+  Fixed by gating the trim on the inset being big enough to BE a cutout:
+  `max(calc(env(...) - 10px), min(calc(env(...) + 3px), 23px))`. **Verified by evaluating the real
+  CSS in a real engine at twelve inset values** rather than by arithmetic on paper: 0 -> 3,
+  10 -> 13, 20 -> 23 (identical to pre-trim), 33 -> 23, 47 -> 37, 59 -> 49. Notch and island keep
+  the full trim; everything below ~33 is back to the old behaviour.
+  **The general rule: a trim justified by one device's GEOMETRY must be gated on that geometry
+  being present.** `env(safe-area-inset-top)` is a distance, not a shape — it cannot tell you
+  whether the thing it clears is centred.
+- **A number tuned against another element's position has to be re-measured whenever that element
+  moves.** `CornerBranch` was tuned so its ink ends at y 46.3 against a tab row at 47 — then the
+  icon-padding change in a LATER commit of the same batch shrank the top bar and moved that row to
+  43, so the leaves overlapped by 3.3px. -41 -> -46.
+- A comment still claimed the spring grass sits at zIndex 150 one commit after it moved to 45.
+- **★ THE PLANTED MARK HAD NO GUARD, AND WRITING ONE FOUND A FIFTH DEFECT THE AUDIT MISSED.**
+  `pw_themes` 4m now asserts the placement MODE, not just which glyph renders: a kind in
+  `MARK_PLANT` must carry `data-theme-mark-plant`, have its stem cropped by the card's bottom
+  edge, keep its top INSIDE the card, and sit in a container that actually clips; a kind not in
+  the table must stay a sticker. On its first run it caught the summer palm's crown being **cut
+  flat by the card's top edge, 17.6px of it** — confirmed by a 4x screenshot before anything was
+  changed. A trunk cropped along its length reads as continuing past the card; a crown cut flat
+  reads as damage, which is the same distinction that keeps a spider from being planted at all.
+  Palm shrunk 15%. Red-proofed at 8 failures.
+  **Two probe bugs of my own, both caught before the result was trusted, and both about measuring
+  the wrong box.** First it used the element's `getBoundingClientRect()` — but a planted glyph can
+  be ROTATED about its base, and a rotated box includes empty corners, so the leaning palm looked
+  broken when it was not. Then it took the union of `<path>` rects only — missing winter's fir
+  trunk, which is a `<rect>`, and reporting the fir as not reaching the card edge when it does.
+  Measure the INK, and remember that "the ink" is every drawn shape, not the one element type you
+  happened to look at.
+- **★ AND THE RUN THAT WAS MEANT TO VERIFY ALL THIS REPORTED "ALL PASS" WITH ONE SUITE MISSING.**
+  `pgrep -f "http.server 8199" | xargs kill` in the SAME command line as `node build/run_sims.mjs`
+  matches ITSELF — the documented sibling trap, reached from a new direction: it took out a
+  battery child, the runner finished, and printed **`62 Playwright suites / ALL PASS`**. The
+  missing one was `pw_themes`, the only suite that had changed. Exit code 144 was the other tell.
+  **THE COUNT IS PART OF THE VERDICT** — `ALL PASS` over a silently smaller set is not a pass.
+  Compare the printed suite count against `ls build/pw_*.mjs | wc -l`.
+
 ## ★★ THE NAV CLEARANCE WAS CHARGED TWICE ON HISTORY (Mo, Aug 31)
 Mo: "See how you can't see around the nav bar at the bottom?" — a device screenshot of the History
 tab with the keyboard up, a session card sliced off mid-row and an empty band between it and the

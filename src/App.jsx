@@ -1,4 +1,4 @@
-// v178091717004
+// v178091717005
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1624,12 +1624,15 @@ function CornerBranch({ blossom }) {
     // (env() = 0, the worst case, since a real inset pushes the tab row DOWN and the decor layer
     // is pinned to the viewport): the tab row starts at y 47 and this branch's ink used to end at
     // 46.9 — tuned to the pixel. Scaling the offset by the same 1.2 would have put the leaves at
-    // ~57 and back on the labels. -41/-38 keeps the ink clear at the top of the row while still
+    // ~57 and back on the labels. -46/-38 keeps the ink clear at the top of the row while still
     // showing 20% more branch. Anchoring it to env(safe-area-inset-top) instead was tried on
     // paper and is worse: it would drop the whole branch 59px on device, straight onto the SESHD
     // wordmark, to buy clearance the fixed offset already has there.
+    // -46, not -41: the tab row moved UP to y 43 when the top bar's icon padding went 11 -> 9,
+    // and this offset had been tuned to the pixel against the old 47. A number tuned against
+    // another element's position has to be re-measured whenever that element moves.
     <svg width="230" height="157" viewBox="0 0 188 128" aria-hidden="true"
-      style={{ position:"absolute", top:-41, left:-38, opacity:0.75 }}>
+      style={{ position:"absolute", top:-46, left:-38, opacity:0.75 }}>
       <g stroke={bark} fill="none" strokeLinecap="round">
         <path d="M-6 6 C40 14 78 30 116 62" strokeWidth="4"/>
         <path d="M34 12 C44 30 46 44 42 60" strokeWidth="2.2"/>
@@ -1927,12 +1930,16 @@ const MARK_TILT = { leaf: -28, acorn: -14, palm: -18, blossom: -12, butterfly: -
 // crown, while tree/fir/sprout are bottom-CENTRED — at 10px half their crown would hang off the
 // card. They stand further in, which is what a symmetric plant cropped at the bottom edge looks
 // like anyway. They also take no lean: a leaning palm is a palm, a leaning fir has fallen over.
-// The 5th number scales the caller's plantSize per kind, and it is not a taste knob: the palm
-// LEANS, so its crown swings down-left and a 140px box still fits a 115px-tall card. An upright
-// tree fills its box to the top edge, so the same 140 cropped the crown — measured, 13px of it.
-// Only a glyph that leans can be as tall as the palm.
+// The 5th number scales the caller's plantSize per kind, and it is not a taste knob. An upright
+// tree fills its box to the top edge, so a 140px box on a 115px card cropped 13px off its crown.
+// The palm LEANS, which buys it some room — but not enough: at 1.0 a new guard measured 17.6px
+// of frond ink cut flat by the card's TOP edge, and a screenshot at 4x confirmed it. A trunk
+// cropped along its length reads as continuing past the card; a crown cut flat reads as damage,
+// which is the same distinction that keeps a spider from being planted at all.
+// Shrinking rather than lowering the palm was deliberate: pushing the base further down would
+// have kept the size but swung the crown's lower fronds across "Groups" / "Private crews".
 const MARK_PLANT = {
-  palm:   [0.675, 1.033, -25, 10, 1],
+  palm:   [0.675, 1.033, -25, 10, 0.85],
   tree:   [0.5,   0.95,    0, 44, 0.72],
   fir:    [0.5,   0.958,   0, 44, 0.72],
   sprout: [0.5,   0.942,   0, 44, 0.72],
@@ -2015,8 +2022,9 @@ function ThemeDecor({ kind }) {
       // the clouds can afford to be the quiet element.
       clouds: [0, 1, 2].map(() => ({ top: r(0, 6), size: r(64, 88), dur: r(70, 105), delay: -r(0, 90) })),
       groundLeaves: [0, 1, 2].map(i => ({ left: r(-6, 40), dur: r(14, 24), delay: -r(0, 20), tone: i })),
-      // Pinned to the two OUTER thirds. The nav pill's middle is the search button and the tufts
-      // sit above it at zIndex 150, so leaving the centre clear keeps the busiest control clean.
+      // Pinned to the two OUTER thirds. The tufts render inside DecorBack (zIndex 45, BELOW the
+      // nav), so they cannot cover a button — but the pill is translucent and its middle is the
+      // search control, so leaving the centre clear keeps the busiest one visually clean too.
       grass: [{ left: r(-4, 12), size: r(44, 60), delay: -r(0, 4), flip: false },
               { left: r(16, 26), size: r(30, 40), delay: -r(0, 4), flip: true },
               { left: r(74, 88), size: r(38, 52), delay: -r(0, 4), flip: true }],
@@ -20822,17 +20830,27 @@ function AppInner() {
         // hard right. Measured against the tightest case, a Dynamic Island phone: inset 59, island
         // bottom ~48, so the full inset leaves 11pt of clearance. Taking 10 of it puts the row's
         // content box at ~52pt and the icon buttons' 3pt negative margin at ~49pt — still below
-        // the island, and horizontally clear of it regardless. The floor is 3px — the value that
-        // used to be added to the inset — so on a device with a small or no inset (the web build,
-        // where env() is 0) the bar is byte-identical to what it was, and the trim only ever
-        // spends headroom that actually exists.
+        // the island, and horizontally clear of it regardless.
+        // ★ BUT THAT ARGUMENT ONLY HOLDS FOR A NOTCH OR AN ISLAND, AND THE FIRST CUT SPENT THE
+        // TRIM UNCONDITIONALLY — a cold-context audit caught it. On a device whose inset comes
+        // from a classic FULL-WIDTH 20pt status bar (iPhone SE 2/3, and an iPad running this app
+        // in iPhone compatibility mode — TARGETED_DEVICE_FAMILY is 1 here, and an iPad Air is what
+        // App Review used) there is no centred cutout to be clear of: the clock is drawn hard LEFT
+        // and the battery hard RIGHT, exactly where this row puts the logo and the icons. Trimming
+        // 10 of a 20pt inset put the wordmark at y ~12 and live tap area at y ~7, inside the 0-20
+        // band the system draws into. The claim that used to sit here — "on a device with a small
+        // inset the bar is byte-identical" — was simply false: a 3px FLOOR only protects an inset
+        // of 13 or less, and the whole regression band is 13 to ~44.
+        // The trim is gated on the inset being big enough to BE a cutout now: below ~33pt this
+        // evaluates to the old inset+3 and nothing moves, at 47 and 59 it still trims 10.
+        // (inset 0 -> 3, 20 -> 23, 47 -> 37, 59 -> 49.)
         // This was inset+4 over 7, then inset+3; the row itself was 45px because the icon BUTTONS
         // (22px glyph + 11px padding each side) set the flex line height, not the 30px logo — see
         // TOPBAR_ICON_BTN for how they keep a full tap target while contributing less height.
         // The +3 that used to be here was not slack: it is exactly that negative margin, so the
         // buttons could not overflow into the status bar. It is folded into the -10 now, which is
         // why the arithmetic above counts the buttons separately from the content box.
-        padding: `${(isGuest || !online) ? "5px" : "max(calc(env(safe-area-inset-top) - 10px), 3px)"} calc(env(safe-area-inset-right) + 14px) 5px calc(env(safe-area-inset-left) + 14px)`,
+        padding: `${(isGuest || !online) ? "5px" : "max(calc(env(safe-area-inset-top) - 10px), min(calc(env(safe-area-inset-top) + 3px), 23px))"} calc(env(safe-area-inset-right) + 14px) 5px calc(env(safe-area-inset-left) + 14px)`,
         display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0
       }}>
         <SeshdLogo C={C}/>
