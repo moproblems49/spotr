@@ -1,4 +1,4 @@
-// v178091716995
+// v178091716996
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1413,17 +1413,40 @@ function PalmCorner() {
   // screen, so all five fronds rendered outside the box and the only thing visible was a sliver of
   // trunk. Anchored in the BOTTOM-LEFT now, with the crown well inside the box and the trunk
   // rising to it; `bottom` clears the floating nav bar.
-  const crown = [60, 46];
+  // ★ SIX FRONDS ROTATED EVENLY AROUND A POINT IS A PINWHEEL, NOT A PALM. The first draw spread
+  // them through a full 360deg at equal spacing, which reads as a flower or a windmill. A real
+  // crown throws its fronds into the UPPER hemisphere and lets the outer ones droop past
+  // horizontal, at uneven angles and uneven lengths — so the angle list is asymmetric on purpose
+  // and no two neighbours are the same distance apart.
+  // The frond itself is drawn once pointing right from the crown, with a smooth upper edge and a
+  // notched lower one so it reads as pinnae rather than as a solid blade.
+  const crown = [58, 44];
+  // Angles are asymmetric AND the two outermost droop past horizontal, which is what separates a
+  // palm silhouette from a starburst. Scales vary so no two fronds end at the same radius.
+  const FRONDS = [
+    [-172, 0.9], [-146, 1.0], [-116, 0.84], [-80, 0.98], [-46, 0.92], [-14, 0.86], [16, 0.76],
+  ];
   return (
-    <svg width="164" height="186" viewBox="0 0 150 170" aria-hidden="true"
-      style={{ position:"absolute", bottom:96, left:-26, opacity:0.42 }}>
-      <path d="M40 170C40 130 46 88 58 50" stroke="rgba(122,96,58,0.75)" strokeWidth="7"
-        fill="none" strokeLinecap="round"/>
-      {[-78, -40, -4, 34, 72, 108].map((a, i) => (
-        <path key={i} opacity={i % 2 ? 0.85 : 1} transform={`rotate(${a} ${crown[0]} ${crown[1]})`}
-          d="M60 46C86 48 102 62 108 88 82 86 66 72 60 46z" fill="rgba(38,120,100,0.7)"/>
+    <svg width="116" height="138" viewBox="0 0 120 150" aria-hidden="true"
+      style={{ position:"absolute", bottom:58, left:2, opacity:0.4 }}>
+      {/* A filled wedge, not a stroke: a real trunk is thicker at the base, and a stroke cannot
+          taper. The slight S keeps it from reading as a pole. */}
+      <path d="M42 150C40 116 44 88 54 62L66 66C56 90 52 116 54 150z" fill="rgba(128,102,64,0.8)"/>
+      <g stroke="rgba(96,74,44,0.5)" strokeWidth="1.6" fill="none" strokeLinecap="round">
+        <path d="M44 132h9M45 118h9M47 104h9M49 90h9M52 76h9"/>
+      </g>
+      {/* A CRESCENT, not a fan. The first blade widened toward its tip, which is an agave leaf;
+          a palm frond is a long narrow arch that curves as it goes out. The teeth on the
+          underside are the pinnae — three is enough to read at this size. */}
+      {FRONDS.map(([a, k], i) => (
+        <path key={i} opacity={0.72 + (i % 3) * 0.09}
+          transform={`rotate(${a} ${crown[0]} ${crown[1]}) translate(${crown[0]} ${crown[1]}) scale(${k})`}
+          d="M0 0C22 -16 46 -18 62 -2 56 -3 50 -4 45 -3 47 0 48 2 48 5 45 1 41 -1 36 -2 37 1 38 3 38 6 34 2 30 0 25 -1 25 2 26 4 25 7 22 2 16 0 10 -1 6 -1 3 -1 0 0z"
+          fill="rgba(42,122,96,0.72)"/>
       ))}
-      <circle cx={crown[0]} cy={crown[1]} r="5" fill="rgba(122,96,58,0.75)"/>
+      <g fill="rgba(150,120,72,0.75)">
+        <circle cx="55" cy="50" r="3.2"/><circle cx="62" cy="52" r="2.8"/><circle cx="58" cy="56" r="2.4"/>
+      </g>
     </svg>
   );
 }

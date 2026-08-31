@@ -3804,6 +3804,14 @@ the fix was the HUE, not more opacity.**
 is the one thing a screen with a corner sun does not need, and duplicating the theme's own anchor
 is the same mistake as repeating one mark on three buttons. Gliding SEAGULLS and a palm anchored in
 the BOTTOM-LEFT replace them, which also puts decor in the one corner Summer had nothing in.
+**★ AND THE PALM TOOK THREE DRAWS, EACH WRONG IN A NAMEABLE WAY** (Mo: "the tree needs to look
+better... most importantly is the look"). (1) Fronds rotated EVENLY through a full 360deg is a
+pinwheel, not a crown — a real palm throws its fronds into the upper hemisphere at UNEVEN angles
+and lets the outer two droop past horizontal. (2) A blade that WIDENS toward its tip is an agave
+leaf; a frond is a long narrow crescent that arches as it goes out, with a few teeth on the
+underside for the pinnae. (3) A stroked trunk cannot taper, so it reads as a pole — it is a filled
+wedge with a slight S and segment rings now. Lowered and shrunk so the trunk runs down behind the
+nav instead of ending mid-screen, which is what made it look like it was floating.
 **★ A ROTATION ANCHOR OUTSIDE THE VIEWBOX DRAWS NOTHING.** The palm's first cut put the crown at
 (22,8) and then offset the svg to `top:-34 left:-30`, mapping the crown to (-8,-26) — so all five
 fronds rendered off-screen and the only visible thing was a sliver of trunk. When a rotated group
