@@ -1,4 +1,4 @@
-// v178091717007
+// v178091717008
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -194,7 +194,9 @@ const sb = (() => {
   }
 
   async function query(path, opts = {}, token = null) {
-    const { headers_extra, timeout, ...fetchOpts } = opts;
+    // `idempotent` is a queueWrite-only hint (see its comment) — stripped here so it is never
+    // spread into the fetch init alongside method/body.
+    const { headers_extra, timeout, idempotent, ...fetchOpts } = opts;
     const mergedHeaders = { ...authHeaders(token), ...(headers_extra || {}) };
     // Hard timeout so a stalled connection can never hang a screen forever (e.g. the Messages
     // list spinning indefinitely on a flaky network). AbortController alone isn't enough on
@@ -431,7 +433,14 @@ const sb = (() => {
     (typeof navigator !== "undefined" && navigator.onLine === false) || !!(e && e.transportFailure);
   async function queueWrite(path, opts = {}, token = null) {
     const method = (opts.method || "GET").toUpperCase();
-    const retryable = method === "PATCH" || method === "DELETE" || method === "PUT";
+    // A POST is excluded above because replaying one could double-insert. A POST whose URL names
+    // an `on_conflict` target is an UPSERT, so replaying it is exactly as safe as a PATCH — the
+    // second attempt merges into the row the first one made. Callers opt in with `idempotent:true`
+    // rather than this sniffing the URL, so the guarantee is stated by whoever knows it holds.
+    // Without this, every `queueWrite(... method:"POST" ...)` in the file silently degraded to a
+    // plain one-shot query() and lost the write while looking durable.
+    const retryable = method === "PATCH" || method === "DELETE" || method === "PUT"
+      || (method === "POST" && opts.idempotent === true);
     try {
       return await query(path, opts, token);
     } catch (e) {
@@ -18708,6 +18717,15 @@ function AppInner() {
       setIsGuest(false);
       return;
     }
+    // ★ EVERY PER-ROW FAILURE USED TO BE SWALLOWED, AND THE RUN THEN CLAIMED SUCCESS AND CLEARED
+    // THE FLAG. Each loop below caught its own error into devError and carried on, so a run where
+    // forty of fifty-five workouts 4xx'd finished by removing `seshd_guest`, toasting "Your
+    // progress is saved to your account", and never retrying. The data was not merely un-uploaded:
+    // loadUserData REPLACES `history` wholesale from the server on the next foreground, so the
+    // local copy of the sessions that failed was overwritten by the server's shorter list and the
+    // workouts were gone from the phone too. Count the failures, retry the irreplaceable half
+    // once, and never report a partial run as a whole one.
+    let failedRows = 0;
     try {
       // Upload programs
       for (const prog of (store.programs || [])) {
@@ -18718,7 +18736,7 @@ function AppInner() {
               id: prog.id, user_id: newUserId, name: prog.name, days: prog.days,
             })
           }, tok);
-        } catch (e) { devError("migrate program:", e); }
+        } catch (e) { failedRows++; devError("migrate program:", e); }
       }
       // Active program is a single FK on the profile row.
       if (store.activeProgramId) {
@@ -18739,7 +18757,7 @@ function AppInner() {
             headers_extra: { "Prefer": "resolution=merge-duplicates" },
             body: JSON.stringify({ user_id: newUserId, exercise_name: exName, weight_lbs: weightLbs })
           }, tok);
-        } catch (e) { devError("migrate PR:", e); }
+        } catch (e) { failedRows++; devError("migrate PR:", e); }
       }
       // Upload workout history.
       // MUST BE IDEMPOTENT. This used to be a bare POST with no id, so every run inserted a fresh
@@ -18751,6 +18769,7 @@ function AppInner() {
       // the workout count, Wrapped and Body Battery's training drain by ~3.7x.
       // Sending the session's own id and upserting on it makes a re-run a no-op.
       const migratedHistory = {};
+      const historyRetry = [];   // rows that failed their first attempt, retried once below
       for (const [date, daySessions] of Object.entries(store.history || {})) {
         migratedHistory[date] = { ...daySessions };
         for (const [sid, sess] of Object.entries(daySessions)) {
@@ -18762,27 +18781,44 @@ function AppInner() {
             delete migratedHistory[date][sid];
             migratedHistory[date][rowId] = sess;
           }
+          const row = {
+            id: rowId,
+            user_id: newUserId, day_name: sess.dayName,
+            exercises: sess.exercises, duration_secs: sess.duration || 0,
+            unit: sess.unit || "lbs", note: sess.note || "",
+            // workout_date defaults to CURRENT_DATE server-side if omitted — without this,
+            // every guest workout lands on the migration day instead of its real date.
+            workout_date: date,
+            // Noon LOCAL on the workout's own date, matching the fallback loadUserData uses
+            // when a row has no timestamp. `new Date(date)` parses as midnight UTC, which is
+            // the PREVIOUS evening anywhere west of Greenwich — it put every migrated workout
+            // an evening early and is what made these rows identifiable at all.
+            created_at: new Date(date + "T12:00:00").toISOString(),
+          };
           try {
             await sb.query("workout_history?on_conflict=id", {
               method: "POST",
               headers_extra: { "Prefer": "resolution=merge-duplicates" },
-              body: JSON.stringify({
-                id: rowId,
-                user_id: newUserId, day_name: sess.dayName,
-                exercises: sess.exercises, duration_secs: sess.duration || 0,
-                unit: sess.unit || "lbs", note: sess.note || "",
-                // workout_date defaults to CURRENT_DATE server-side if omitted — without this,
-                // every guest workout lands on the migration day instead of its real date.
-                workout_date: date,
-                // Noon LOCAL on the workout's own date, matching the fallback loadUserData uses
-                // when a row has no timestamp. `new Date(date)` parses as midnight UTC, which is
-                // the PREVIOUS evening anywhere west of Greenwich — it put every migrated workout
-                // an evening early and is what made these rows identifiable at all.
-                created_at: new Date(date + "T12:00:00").toISOString(),
-              })
+              body: JSON.stringify(row)
             }, tok);
-          } catch (e) { devError("migrate history:", e); }
+          } catch (e) { historyRetry.push(row); devError("migrate history:", e); }
         }
+      }
+      // One retry pass. The upsert is idempotent on `id`, so re-sending a row that actually
+      // landed is a no-op — and the dominant failure here is transient (a flaky first request on
+      // a just-created account, a token that refreshed mid-run), which one retry clears.
+      for (const row of historyRetry.splice(0)) {
+        try {
+          // queueWrite, not query: if the retry fails because the phone is OFFLINE the row lands
+          // in the durable queue and flushWriteQueue replays it on the next boot or reconnect, so
+          // a migration attempted on a bad connection finishes itself later instead of losing the
+          // workout. `idempotent` is safe to assert here — the URL names the conflict target.
+          await sb.queueWrite("workout_history?on_conflict=id", {
+            method: "POST", idempotent: true,
+            headers_extra: { "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify(row)
+          }, tok);
+        } catch (e) { failedRows++; devError("migrate history retry:", e); }
       }
       // Persist any re-keyed sessions so the ids the server now holds match the local ones.
       setStore(p => ({ ...p, history: { ...p.history, ...migratedHistory } }));
@@ -18798,7 +18834,16 @@ function AppInner() {
       setSession(authData);
       // Neutral wording: this path also runs when a guest signs IN to an account they already
       // have, where "Account created" is simply untrue.
-      toast("Your progress is saved to your account", "success");
+      // ★ AND IT MUST NOT SAY THIS WHEN IT ISN'T TRUE. `failedRows` counts rows the server
+      // REFUSED (a 4xx it actually answered) after the retry pass — an offline row is not counted
+      // because queueWrite has taken ownership of it and will replay it. Reporting a partial run
+      // as a whole one is what let a half-migrated account read as complete, and this is the last
+      // moment the user could still act on it: the guest copy is about to be replaced by the
+      // server's shorter list on the next foreground.
+      toast(failedRows > 0
+        ? `Signed in — but ${failedRows} item${failedRows === 1 ? "" : "s"} didn't transfer`
+        : "Your progress is saved to your account",
+        failedRows > 0 ? "error" : "success");
     } catch (e) {
       devError("guest migration error:", e);
       toast("Account created — some data didn't transfer", "error");
@@ -19494,8 +19539,20 @@ function AppInner() {
       // no active-program change.
       if (program._silent && program.id && store.programs.find(p => p.id === program.id)) {
         setStore(prev => ({ ...prev, programs: prev.programs.map(p => p.id === program.id ? { ...program, _silent: undefined } : p) }));
-        try { await sb.query(`programs?id=eq.${program.id}`, { method:"PATCH", body: JSON.stringify({ days: program.days }) }, tok); }
-        catch (e) { devError("silent program save error:", e); }
+        // ★ A BARE PATCH WITH A SWALLOWING CATCH IS A LOCAL-ONLY WRITE, WHICH loadUserData ERASES.
+        // This path carries real edits — a per-exercise rest tweak, a reordered day, an exercise
+        // added from the day-preview sheet — and it used to fire once and give up. Offline, an
+        // expired token, or an RLS refusal left the change on the phone only, so it rendered
+        // perfectly, survived a tab switch, and was gone on the next foreground when loadUserData
+        // replaced `programs` wholesale from the server. Silent about the FAILURE is correct here
+        // (the user asked for a rest tweak, not a save); silent about the RETRY is not. Same
+        // durable queue handleProgramEdited already uses, so flushWriteQueue (boot + reconnect)
+        // owns the retry and the edit survives being killed mid-request.
+        queueProgramWrite(program);
+        try {
+          await sb.query(`programs?id=eq.${program.id}`, { method:"PATCH", body: JSON.stringify({ name: program.name, days: program.days }) }, tok);
+          unqueueProgramWrite(program); // sent — the durable fallback copy is no longer needed
+        } catch (e) { devError("silent program save error:", e); /* left queued on purpose */ }
         return;
       }
       // Check if existing or new

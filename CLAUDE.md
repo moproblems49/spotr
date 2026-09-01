@@ -2570,6 +2570,53 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★★★ THE SILENT-FAILURE CLUSTER (Sep 1) — four writes that reported success they never earned
+Mo picked this off the audit list: "a 'saved!' message for something that didn't save is exactly
+how someone loses a program." Four sites shared ONE shape — an optimistic `setStore`, a server
+write whose failure was discarded (an empty `catch`, or a bare `fetch` whose `res.ok` was never
+read), and no way for the user to find out. That is the dominant bug class in this app wearing a
+new hat: `loadUserData` REPLACES 28 store keys wholesale on every boot and foreground, so a
+local-only change looks perfectly saved, survives a tab switch, and is gone on the next launch.
+- **★ THE GUEST MIGRATION TOLD PEOPLE THEIR WORKOUTS WERE SAVED WHILE DELETING THEM.** Every
+  per-row upload in `migrateGuestData` caught its own error into `devError` and carried on, so a
+  run where the `workout_history` POSTs were refused still cleared `seshd_guest` and toasted
+  **"Your progress is saved to your account."** The data was not merely un-uploaded: the next
+  foreground replaced `history` with the server's shorter list, so the refused sessions were gone
+  from the PHONE too. Now: a `failedRows` count, ONE retry pass (the upsert is idempotent on `id`,
+  so re-sending a row that landed is a no-op and the dominant failure here is transient), and a
+  toast that names the shortfall. **Keeping `seshd_guest` set to force a retry was considered and
+  is WRONG** — `isGuest` initialises from that flag, so the next launch would boot as a guest
+  despite holding a real session. The retry belongs in the durable write queue, not in the flag.
+- **★ `queueWrite` REFUSED EVERY POST, SO SEVEN CALL SITES THAT LOOKED DURABLE WERE ONE-SHOT.**
+  The exclusion is right in general (replaying a POST can double-insert) and wrong for a POST whose
+  URL names an `on_conflict` target — that is an UPSERT, exactly as safe to replay as a PATCH.
+  Callers now opt in with `idempotent: true` rather than the queue sniffing the URL, so the
+  guarantee is asserted by whoever knows it holds. Fixed at the mechanism, not special-cased.
+- **The `_silent` program save fired one PATCH and gave up**, so a rest tweak, a day reorder or an
+  exercise added from the day-preview sheet was lost outright when offline or on a dead token —
+  while `handleProgramEdited`, ten lines below it, already had the durable pattern. Same rule as
+  the duplicated-formula class: when two paths do the same job, the copy is where the bug lives.
+- **`createGroup` left a refused group in the list holding a LOCAL `uid()` id**, and that is worse
+  than one broken group: the unread-dot query splices those ids into an `in.()` on a uuid column,
+  so a single failed create 22P02'd the WHOLE query and killed the dot for every group. Rolls back
+  now — and `isServerId` stays, because it covers the in-flight window the rollback cannot.
+- **`updateGroupMembers` is refused by a real DB guard and could not tell.**
+  `enforce_group_creator_manages` only lets the CREATOR rewrite `member_ids`, and a bare `fetch`
+  RESOLVES on 4xx straight past an empty catch — so a non-creator adding someone saw them appear
+  and vanish on the next foreground. Reverts and names the reason.
+**Sim: `pw_silentfail`** (5 sections, 20 checks). Red-proofed at **7 failures** on the group/program
+half and **3** on the migration half, with the `[control]` section and every reachability check
+staying green — which is what distinguishes a real failure from a broken fixture.
+**★ AND ITS FIRST DRAFT PASSED VACUOUSLY IN TWO DIFFERENT WAYS, BOTH ALREADY IN THIS FILE.**
+Sections 3 and 4 seeded the group and the program into `localStorage` only, so `loadUserData`
+replaced both wholesale and the checks reported "the group is not on screen" and an empty write
+queue — blaming the app for a FIXTURE gap (seed through the STUB). Then the leave-confirm selector
+was `/^(Leave|Leave Group|Confirm)$/`, which matched the page's own "Leave Group" button underneath
+the sheet, so the confirm never fired, nothing happened, and **"a refused leave does NOT drop the
+member" passed because the flow never ran.** Both fixed, and section 3 now asserts a server write
+was ATTEMPTED before believing anything about the rollback. A check satisfied by the flow never
+running is worth nothing.
+
 ## ★★ THE OTA BUNDLE WAS 74% ART THE PHONE NEVER OPENS (Sep 1)
 Measured, not guessed: of a 1,898 kB bundle, **1,414 kB was image files nothing in the app loads.**
 `npm run build` copies `public/` into `dist/`, and the zip is made from `dist/`, so every PWA

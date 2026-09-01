@@ -535,6 +535,10 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
   // Create, before the insert returns — and `groups.id` is a uuid column, so splicing that into
   // `group_id=in.(…)` makes PostgREST reject the WHOLE query with 22P02. Measured: one temp id and
   // every group lost its dot until the next reload, because the catch below swallows the 400.
+  // STILL LOAD-BEARING even though createGroup now rolls the temp row back on failure: the id is
+  // real for the whole in-flight window between the optimistic insert and the server's reply, and
+  // this effect can fire in it. The rollback removes the PERMANENT case, this removes the transient
+  // one — don't delete either on the strength of the other.
   const isServerId = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
   const unreadIds = myGroups.map(g => g.id).filter(isServerId);
   const groupIds = unreadIds.join(",");
@@ -588,34 +592,63 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
     setStore(p => ({ ...p, groups: [...(p.groups || []), localGroup] }));
     setShowCreate(false); setNewName(""); setNewDesc("");
     if (token) {
+      // ★ A GROUP THAT NEVER REACHED THE SERVER MUST NOT SURVIVE IN THE LIST, AND THE OLD CODE
+      // KEPT IT. `res.ok` false, a non-array reply, or a thrown fetch all fell through the `if`
+      // into an empty catch, leaving the optimistic row sitting there with its LOCAL `uid()` id —
+      // a base36 string, not a uuid. That is not merely a group that does not work: the
+      // unread-dot query splices these ids into an `in.()` on a uuid column, and one bad id makes
+      // PostgREST reject the WHOLE query with 22P02, so a single failed create silently killed
+      // the unread dot for EVERY group the user is in. Roll the optimistic row back and say so.
+      let created = false;
       try {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/groups`, {
           method: "POST",
           headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Prefer": "return=representation" },
           body: JSON.stringify({ name: newName, description: newDesc, created_by: currentUserId, member_ids: [currentUserId], icon: "🏋️" })
         });
+        // A bare fetch RESOLVES on 4xx/5xx, so without this check a refusal ran the success path.
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => null);
           const dbGroup = Array.isArray(data) ? data[0] : data;
           if (dbGroup?.id) {
             // Replace temp id with real UUID from DB
             setStore(p => ({ ...p, groups: p.groups.map(g => g.id === tempId ? { ...g, id: dbGroup.id } : g) }));
+            created = true;
           }
         }
       } catch {}
+      if (!created) {
+        setStore(p => ({ ...p, groups: (p.groups || []).filter(g => g.id !== tempId) }));
+        toast("Couldn't create the group — check your connection and try again", "error");
+      }
     }
   }
 
   async function updateGroupMembers(groupId, newMembers) {
+    // ★ THIS WRITE IS REFUSED BY A REAL DATABASE GUARD AND THE OLD CODE COULD NOT TELL.
+    // `enforce_group_creator_manages` only lets the group's CREATOR rewrite member_ids (any other
+    // member may remove exactly themselves), so a non-creator adding somebody gets a 4xx — and a
+    // bare fetch RESOLVES on 4xx, straight past an empty catch. The member appeared in the list,
+    // stayed through a tab switch, and vanished on the next foreground when loadUserData replaced
+    // `groups` from the server. Revert the optimistic change and name what happened.
+    const prevGroup = (store.groups || []).find(gr => gr.id === groupId);
+    const prevMembers = prevGroup ? (prevGroup.members || prevGroup.member_ids || []) : null;
     setStore(p => ({ ...p, groups: p.groups.map(gr => gr.id !== groupId ? gr : { ...gr, members: newMembers, member_ids: newMembers }) }));
-    if (token) {
-      try {
-        await fetch(`${SUPABASE_URL}/rest/v1/groups?id=eq.${groupId}`, {
-          method: "PATCH",
-          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ member_ids: newMembers })
-        });
-      } catch {}
+    if (!token) return;
+    let ok = false;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/groups?id=eq.${groupId}`, {
+        method: "PATCH",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ member_ids: newMembers })
+      });
+      ok = res.ok;
+    } catch {}
+    if (!ok && prevMembers) {
+      setStore(p => ({ ...p, groups: p.groups.map(gr => gr.id !== groupId ? gr : { ...gr, members: prevMembers, member_ids: prevMembers }) }));
+      toast(prevGroup && prevGroup.createdBy && prevGroup.createdBy !== currentUserId
+        ? "Only the group's creator can change who's in it"
+        : "Couldn't update the group — check your connection and try again", "error");
     }
   }
 
