@@ -2448,7 +2448,7 @@ Assets live in the repo: `appstore-screenshots/captioned/` (upload-ready, lifter
 + `plain/` — both **1284×2778** (the 6.5" slot REJECTED 1290×2796; 1284×2778 is accepted in both
 slots); `appstore-submission.md` (App Review notes + TestFlight what-to-test, paste-ready);
 `public/support.html` + `terms.html` + `privacy.html` all live (a "404" was browser cache).
-**App Review demo accounts (live in prod DB):** `appreview@getseshd.app` / `SeshdDemo2026`
+**App Review demo accounts (live in prod DB):** `appreview@getseshd.app` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)
 (follows Coach Kai so the feed + Report/Block are testable) and buddy `coachkai@getseshd.app`
 (same pw, has one post) — created via SQL insert into auth.users (token columns need explicit
 empty strings, profile auto-created by `handle_new_user` trigger). Login VERIFIED by Mo.
@@ -2569,6 +2569,32 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 **Gesture-perf refactor (merged to main):** every touch/drag gesture in the app — `SetRow` swipe, tab-swipe, the shared `PullToRefresh` component (History/Profile/Messages), the feed's own pull-to-refresh, `StoryViewer` drag, `InsightCards` swipe, and the profile cover-photo position drag — was re-pointed from per-frame `setState` (re-rendering the whole screen on every `touchmove`) to the ref-write pattern documented above, plus a fix for vertical-scroll bleed-through during the tab swipe. A code review of this refactor caught and fixed one real regression before merge: the cover-photo drag's mouse path could freeze `coverPosDraft` at the gesture's first frame if the cursor left the small drag area before mouseup (now uses `window`-level listeners — see the Conventions note above).
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
+
+## ★★★ THE REPO IS PUBLIC, AND IT HELD A LIVE PASSWORD (Sep 1) — credential hygiene rules
+A three-way Fable 5.1 security audit found this and it is the most serious thing in the sweep.
+`moproblems49/spotr` is **`"visibility": "public"`** (checked via the GitHub API, not assumed), and
+`CLAUDE.md`, `appstore-submission.md`, `mac-day-guide.md` and `submission-day-guide.md` all carried
+the App Review demo login — email AND password — in plain text. The account is live: it has signed
+in, owns a group, has 2 public posts, and had **7 sessions open, none of which expire**. Anyone on
+the internet could read the password, sign in, post to the public feed, DM every user, change the
+password to lock Mo out before the next review, and spend the Anthropic key through `/api/ai`
+(which gates on "any valid token" and has no quota).
+**Scrubbed from the working tree the moment it was confirmed — but a scrub is NOT the fix.** Git
+history still contains it, and a public repo's history is trivially readable. **The fix is
+ROTATION**, which is Mo-side (Supabase dashboard). Until the password is rotated, treat that
+account as compromised.
+**Standing rules from here:**
+- **`CLAUDE.md` IS A PUBLIC DOCUMENT.** It is also the best attack guide this app will ever have —
+  it names every guard's blind spot, every deliberate SECURITY DEFINER, and the exact rate-limit
+  numbers. Nothing in it may be *actionable without an account*: no passwords, no tokens, no
+  service keys. Project refs and the anon key are fine (both are public by design).
+- **The same applies to `build/*.mjs` fixtures**, which carry real user UUIDs, and to the guides.
+- **A credential must live in exactly one place, and it is never the repo.** The review login
+  belongs in App Store Connect's review-notes field only.
+- `supabase/.temp/` is now gitignored and untracked (CLI scratch state — project ref and pooler
+  HOST, no credential in it, verified before untracking).
+**If the repo is made private later, this rule stays**: history is already public, and a private
+repo still gets cloned onto laptops.
 
 ## ★★ THE PERSISTENCE CLUSTER (Sep 1) — the reorder, and two EXEMPTIONS that were simply untrue
 Mo: "finish the remaining list." Three more "looked saved but wasn't" bugs, then a Fable 5
@@ -2931,7 +2957,7 @@ deliberately — invisible, free, and the only way to diagnose a boot that lands
 `pw_authdiag` asserts the readout stays gone (it seeds both keys so a survivor shows up loudly
 rather than rendering blank and passing).
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
-(demo login `appreview@getseshd.app` / `SeshdDemo2026` — verified working).
+(demo login `appreview@getseshd.app` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)).
 (3) **RE-DATE THE DEMO CORPUS.** The five personas' posts and workouts go stale on a clock, and a
 reviewer opening a feed whose newest post is three weeks old sees an abandoned app. Last shifted
 **Aug 28 (+6 days, mid-review)** — with the review pending, the reviewer's own demo account had

@@ -234,7 +234,7 @@ Go to **appstoreconnect.apple.com** → **My Apps** → **Seshd**.
 3. Scroll to **App Review Information**:
    - **Sign-in required**: checked
    - **User name**: `appreview@getseshd.app`
-   - **Password**: `SeshdDemo2026`
+   - **Password**: the demo password (in App Store Connect — not in this repo)
    - **Notes**: paste the review notes from `appstore-submission.md` in the project folder
 4. Everything else — description, keywords, screenshots, support URL, age rating, privacy — is
    already filled in from July. Scroll through and confirm nothing shows a red warning.

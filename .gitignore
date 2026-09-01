@@ -38,3 +38,6 @@ src/App.verify.jsx
 # Isolated worktrees background agents work in (e.g. a cold-context audit) — scratch checkouts
 # of the repo itself, never a deliverable to commit.
 .claude/worktrees/
+
+# Supabase CLI scratch state — project ref / pooler host, no secrets, but no reason to publish it.
+supabase/.temp/

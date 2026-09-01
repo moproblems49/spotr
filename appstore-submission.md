@@ -12,7 +12,7 @@ in chat: subtitle, description, keywords, promo text.)
 | Field | Value |
 |---|---|
 | **User name** | `appreview@getseshd.app` |
-| **Password** | `SeshdDemo2026` |
+| **Password** | _not stored in this repo — enter it directly in App Store Connect_ |
 
 > ⚠️ Before you submit: sign in to the app once with these credentials to confirm they work.
 > (The account was created directly in the database; if login ever fails, sign up fresh in the
@@ -33,7 +33,7 @@ Seshd is a gym workout tracker for lifters, from casual gym-goers to competitive
 
 3. HOW TO ACCESS IT
 No account needed for the core app: tap "Start Tracking" on the welcome screen for workout logging, history, the plate calculator, 1RM estimator, and program building in guest mode.
-For social/account features, sign in with the demo account (entered above): appreview@getseshd.app / SeshdDemo2026. It's fully populated: ~27 logged workouts, PRs, progress charts, training history. It follows other users (their posts appear in the Home feed) and is in a private group ("Seshd Crew").
+For social/account features, sign in with the demo account (credentials entered in the fields above). It's fully populated: ~27 logged workouts, PRs, progress charts, training history. It follows other users (their posts appear in the Home feed) and is in a private group ("Seshd Crew").
 
 4. EXTERNAL SERVICES
 - Supabase: Postgres DB, auth, storage, edge functions (entire backend).

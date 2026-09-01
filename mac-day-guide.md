@@ -234,7 +234,7 @@ is optional polish; if you want it, ask Claude that day and we'll walk through i
 
 ## Step 10 · The on-phone test list (cable build)
 
-Sign in as **`appreview@getseshd.app`** / **`SeshdDemo2026`** and accept the notification
+Sign in as **`appreview@getseshd.app`** / **the demo password (in App Store Connect — not in this repo)** and accept the notification
 permission popup when it appears.
 
 Then check these, in any order:
@@ -285,7 +285,7 @@ Then check these, in any order:
 3. **Now the push test.** Open TestFlight-Seshd, sign in as **appreview**, accept the
    notification popup. Then lock the phone.
 4. On the Mac in Safari, go to **spotr-drab.vercel.app** → sign in as
-   **`coachkai@getseshd.app`** / **`SeshdDemo2026`** → send a **DM** to the appreview account.
+   **`coachkai@getseshd.app`** / **the demo password (in App Store Connect — not in this repo)** → send a **DM** to the appreview account.
 5. **✅ Pass:** your locked iPhone lights up with a notification showing Coach Kai's name
    and message → the app icon shows a red badge → **tapping the notification opens that
    exact chat** → opening the app clears the badge.
