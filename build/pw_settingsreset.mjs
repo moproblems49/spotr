@@ -74,6 +74,50 @@ check("4. a missing profile row does not switch notifications back on", gone.msg
 // would be a pass on paper and a light-themed app on screen.
 check("5. the app is still PAINTED in the chosen theme", gone.bg && gone.bg === ok.bg, `${gone.bg} vs control ${ok.bg}`);
 
+// ── 6. PROGRESS PHOTOS. Same class, different key: every write PATCHes `body_log` with
+//    `photoData: null` (photos are large and live on-device by design), so the server copy is
+//    ALWAYS photo-less. Taking it wholesale deleted the photo on the next foreground, and the
+//    store-save effect then wrote the photo-less array back over the local one — gone permanently,
+//    not just until reload. The local copy is authoritative for the photo.
+{
+  const PHOTO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const page = await b.newPage({ viewport: { width: 428, height: 926 }, hasTouch: true, isMobile: true });
+  page.setDefaultTimeout(5000);
+  await page.addInitScript(([me, photo]) => {
+    localStorage.setItem("seshd_v1", JSON.stringify({
+      currentUserId: me, theme: "dark", unit: "lbs",
+      bodyLog: [{ id: "b1", date: "2026-08-01", weight: 180, measurements: {}, photoData: photo }],
+      programs: [], history: {}, workoutDates: {}, prEvents: [], prs: [], posts: [],
+      profile: { username: "momo", name: "Mo" },
+      users: [{ id: me, username: "momo", name: "Mo", followers: [], following: [] }],
+    }));
+    localStorage.setItem("seshd_session", JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: me, email: "m@e.com" } }));
+    localStorage.setItem("seshd_onboarded", "1");
+    localStorage.setItem("seshd_custom_merge_v1", "1");
+  }, [ME, PHOTO]);
+  await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
+    body: JSON.stringify({ access_token: "tok", refresh_token: "ref", user: { id: ME, email: "m@e.com" } }) }));
+  await page.route("**/rest/v1/**", r => {
+    const u = r.request().url();
+    if (/\/rest\/v1\/(profiles|public_profiles)\?/.test(u) && r.request().method() === "GET")
+      // Exactly what the server really holds: the same entry, with the photo stripped.
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{
+        id: ME, username: "momo", name: "Mo", unit: "lbs", is_public: true, seen_onboarding: true, theme: "dark",
+        body_log: [{ id: "b1", date: "2026-08-01", weight: 180, measurements: {}, photoData: null }] }]) });
+    r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.goto(`http://127.0.0.1:${process.env.PORT || 8199}/`, { waitUntil: "load", timeout: 20000 });
+  await page.waitForTimeout(2800);
+  const got = await page.evaluate(() => {
+    let st = {}; try { st = JSON.parse(localStorage.getItem("seshd_v1") || "{}"); } catch (e) {}
+    const e = (st.bodyLog || [])[0] || {};
+    return { entries: (st.bodyLog || []).length, weight: e.weight, hasPhoto: !!e.photoData };
+  });
+  check("6. the server's weight still wins", got.entries === 1 && got.weight === 180, JSON.stringify(got));
+  check("7. but the local progress photo SURVIVES the refresh", got.hasPhoto, JSON.stringify(got));
+  await page.close();
+}
+
 await b.close();
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails ? 1 : 0);

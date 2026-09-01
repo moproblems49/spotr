@@ -269,7 +269,13 @@ function getProgressInsight(store, unit, returnAll = false) {
         (sess.exercises || []).forEach(ex => {
           if (!ex.name) return;
           // Only count if there were real working sets
-          const worked = (ex.sets || []).some(s => s.type !== "warmup" && (s.done === true || parseFloat(s.reps) > 0));
+          // `s.done === undefined` is a LEGACY working set (rows written before the flag existed);
+          // `s.done === false` is a set the lifter deliberately did not tick. The old test accepted
+          // the second as long as reps had been typed, so three abandoned sessions with every set
+          // un-ticked produced "Chest trained 3x in 4 days — consider a rest day" for a muscle that
+          // was never trained. Every other done-check in the engine carries this distinction.
+          const worked = (ex.sets || []).some(s => s.type !== "warmup"
+            && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)));
           if (!worked) return;
           const m = (getMuscle(ex.name)) || "";
           if (m && m !== "Cardio" && m !== "Yoga") musclesThisSession.add(m);

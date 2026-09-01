@@ -2570,6 +2570,32 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★★ THE OTA BUNDLE WAS 74% ART THE PHONE NEVER OPENS (Sep 1)
+Measured, not guessed: of a 1,898 kB bundle, **1,414 kB was image files nothing in the app loads.**
+`npm run build` copies `public/` into `dist/`, and the zip is made from `dist/`, so every PWA
+manifest icon, the apple-touch-icon, the 752 kB App Store 1024 and the 192 kB OG image rode along
+to every phone on every update. The native shell loads exactly ONE image from `public/`:
+`icon-192.png`, which `SeshdLogo` renders and the notification payload names. Everything else there
+is browser and crawler furniture.
+The publish recipe now excludes them (`-x` list in `api/app-update.js`, with `bundles/*` folded in
+so the nested-zip trap is structural rather than a remembered step). **1,898 kB -> 485 kB.** The web
+deploy is untouched and still serves all of it.
+**★ THE RISK OF AN EXCLUDE LIST IS EXCLUDING SOMETHING THE APP NEEDS, WHICH 404s ON DEVICE WHERE
+NOTHING HERE WOULD SEE IT — so `build/ota_assets_check.mjs` asserts BOTH halves**: every asset the
+BUILT output references is present, the web-only art is absent, and there is no nested zip.
+Red-proofed both ways (the fat bundle fails the exclusion half; a bundle with `icon-192.png` deleted
+fails the safety half). It reads the BUILT output rather than the source because **rolldown emits
+string literals in BACKTICKS** — a grep for `"/icon-192.png"` with double quotes finds nothing and
+reports a clean bill for a bundle that is missing the file. That exact mistake was made twice in
+one session, once on this and once when checking whether a fix had reached a shipped bundle.
+**★ AND THE GUARD IMMEDIATELY CAUGHT A MISTAKE I MADE WHILE WRITING IT.** `og-image.png` and
+`favicon.svg` were both referenced by NOTHING, so I wired both into `index.html` — OG tags for link
+previews (real value now the app is public) and a `<link rel="icon">`. The boot test then showed
+**`404 /favicon.svg` on every launch**, because the link makes the app request a file the `-x` list
+excludes. A native WebView has no tab to draw a favicon in, so the link bought nothing and cost a
+request per launch. OG tags kept, favicon link reverted. **Wiring up an unreferenced asset and
+excluding it from the bundle are opposite decisions — make one or the other, not both.**
+
 ## ★ A MISSING PROFILE ROW WAS RESETTING FOUR SETTINGS TO THEIR DEFAULTS (Aug 31)
 Found as an aside by the theme audit, fixed on Mo's say-so. `loadUserData` rebuilt the settings
 block with `me?.x || <constant>`, so whenever the user's own `profiles` row came back ABSENT — an

@@ -77,7 +77,28 @@ check("a session logged TODAY moves the ratio (whatever the local hour)",
 // ── The bands ────────────────────────────────────────────────────────────────────────────────
 const flat = trainingLoadRatio(steady(5000, 5000));
 console.log("steady:", JSON.stringify(flat));
+// This tolerance stays LOOSE on purpose, and the reason is worth knowing before anyone tightens
+// it again: `steady` trains every OTHER day, and 7 is not a multiple of 2 — four sessions fall in
+// the acute week against fourteen in 28 days, so 1.14 is the CORRECT answer for this fixture, not
+// a bias. Tightening this to catch a window bug fails on arithmetic that was never wrong.
 check("training the same as always sits at ~1.0", flat && Math.abs(flat.ratio - 1) < 0.2, JSON.stringify(flat));
+
+// ── The window WIDTHS, which the alternating fixture above cannot see ─────────────────────────
+// BOTH bounds were inclusive of one day too many — `ageDays > 28` admitted 29 days into a window
+// divided by 28, and `ageDays <= 7` admitted 8 into one divided by 7 — so the ratio was biased
+// ~10% HIGH and every band boundary sat in the wrong place. A fixture that trains EVERY day tiles
+// both windows exactly, so a correct implementation must return precisely 1.00 and exactly 28
+// sessions; a one-day error in either window shows up immediately.
+{
+  const everyDay = {};
+  for (let d = 34; d >= 0; d--) everyDay[dk(d)] = { s: sess(5000) };
+  const r = trainingLoadRatio({ history: everyDay });
+  console.log("every-day steady state:", JSON.stringify(r));
+  check("identical training every day is exactly 1.00", r && r.ratio === 1, JSON.stringify(r));
+  check("the acute window is 7 days wide, not 8", r && r.acutePerDay === 5000, String(r?.acutePerDay));
+  check("the chronic window is 28 days wide, not 29", r && r.sessions28 === 28 && r.chronicPerDay === 5000,
+    `sessions=${r?.sessions28} perDay=${r?.chronicPerDay}`);
+}
 check("...and reads as the sweet spot", flat?.status === "optimal", flat?.status);
 
 const spike = trainingLoadRatio(steady(5000, 15000));

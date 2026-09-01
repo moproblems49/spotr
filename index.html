@@ -9,7 +9,21 @@
   <meta name="theme-color" content="#0a0a0a" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
-  <title>Seshd</title>
+  <title>Seshd — Gym Log &amp; Lift Tracker</title>
+  <meta name="description" content="Track every set, watch your lifts climb, and see which muscles you actually trained." />
+  <!-- Link previews. og-image.png was sitting in public/ referenced by NOTHING — 192 kB shipped
+       to every phone on every OTA update for a file nothing opened. Wired up rather than deleted
+       because a shared spotr-drab.vercel.app link with no preview card is a real cost now the app
+       is public; the OTA -x list in api/app-update.js keeps it off the phone either way.
+       favicon.svg is deliberately NOT linked: adding <link rel="icon"> made the app request a
+       file the -x list excludes, which a boot test caught as a 404 on every launch. A native
+       WebView has no tab to draw a favicon in, so the link buys nothing and costs a request. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Seshd — Gym Log &amp; Lift Tracker" />
+  <meta property="og:description" content="Track every set, watch your lifts climb, and see which muscles you actually trained." />
+  <meta property="og:image" content="https://spotr-drab.vercel.app/og-image.png" />
+  <meta property="og:url" content="https://spotr-drab.vercel.app/" />
+  <meta name="twitter:card" content="summary_large_image" />
 </head>
   <body>
     <div id="root"></div>

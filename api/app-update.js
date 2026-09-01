@@ -13,17 +13,30 @@
 // 2. Build the production web bundle with the REAL .env values:  npm run build
 //    Then confirm it is not a stub build, or sign-in breaks for everyone:
 //      grep -roh 'https://[a-z0-9]*\.supabase\.co' dist/assets/*.js   # must be zwsoxvekobvtvsphesef
-// 3. Zip the CONTENTS of dist/ so index.html sits at the ZIP ROOT. USE A SUBSHELL —
-//    the parentheses are load-bearing, not style:
-//      ( cd dist && zip -rq ../public/bundles/seshd-<NEW_VERSION>.zip . )
+// 3. Zip the CONTENTS of dist/ so index.html sits at the ZIP ROOT, EXCLUDING the web-only art.
+//    USE A SUBSHELL — the parentheses are load-bearing, not style:
+//      ( cd dist && zip -rq ../public/bundles/seshd-<NEW_VERSION>.zip . \
+//          -x 'bundles/*' 'icon-1024.png' 'icon-512.png' 'icon-maskable-512.png' \
+//             'apple-touch-icon.png' 'og-image.png' 'favicon.svg' )
 //    A bare `cd dist && zip … && cd ..` strands the shell in dist/ if ANY link of the chain
 //    fails, and in an agent session the cwd persists into the next command — which has already
 //    caused a later `rm -f .env.local` to run in the wrong directory and silently miss.
 //    A subshell cannot change the caller's cwd at all, success or failure.
-// 4. Verify the zip: index.html at the root, and NO nested zip inside it.
-//      unzip -l public/bundles/seshd-<NEW>.zip | grep -E '^ +[0-9]+.*\.zip$'   # must print nothing
-//    (Don't grep bare '\.zip$' — unzip's own "Archive:  …zip" header line matches it and reads
-//    as a false positive. Size is the faster tell: correct ~1.9MB, doubled ~3.8MB.)
+//    ★ WHY THE -x LIST: the native shell loads exactly ONE image from public/ — icon-192.png,
+//    which SeshdLogo renders and the notification payload names. Everything else there is web
+//    build furniture: the PWA manifest icons, the apple-touch-icon, the App Store 1024 and the
+//    OG image are read by browsers and crawlers, never by the app. Measured: they were 1,414 kB
+//    of a 1,898 kB bundle — 74% of every OTA download, for files the phone never opens. The web
+//    deploy still serves them all; only the zip is lean. Bundle after: ~485 kB.
+//    `bundles/*` is in the same list so the nested-zip trap in step 1 is structural rather than
+//    a step someone has to remember.
+// 4. Verify the zip — one command does the whole job:
+//      node build/ota_assets_check.mjs public/bundles/seshd-<NEW>.zip dist
+//    It asserts BOTH halves: every asset the built output actually references is present (so an
+//    over-eager -x cannot 404 something on device, where no test here would see it), the
+//    web-only art is absent, and there is no nested zip. It reads the BUILT output rather than
+//    the source, because rolldown emits string literals in BACKTICKS — a grep for "/icon-192.png"
+//    with double quotes finds nothing and reports a clean bill for a bundle missing the file.
 // 5. Set LATEST_VERSION below to "<NEW_VERSION>" (any new unique string, e.g. "2026-07-22a").
 // 6. DELETE .env.local — always, and check it is actually gone with an ABSOLUTE path.
 //    A stub-built bundle published later breaks sign-in for every user.
@@ -35,7 +48,7 @@
 // NEVER OTA a change that needs new native plugins/capabilities — that requires a real
 // TestFlight build (cap sync + archive on the Mac).
 
-const LATEST_VERSION = "2026-09-01m"; // null = no OTA update published
+const LATEST_VERSION = "2026-09-01n"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 
 export default async function handler(req, res) {

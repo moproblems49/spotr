@@ -702,15 +702,23 @@ function trainingLoadRatio(store, unit = "lbs") {
     const ts = new Date(dk + "T12:00:00").getTime();
     if (isNaN(ts)) continue;
     const ageDays = Math.round((todayNoon - ts) / dayMs);
-    if (ageDays < 0 || ageDays > 28) continue;      // future-dated rows and anything older
+    // ★ THE WINDOW BOUNDS ARE INCLUSIVE, SO THE LAST DAY MUST BE N-1, NOT N. `> 28` admitted
+    // TWENTY-NINE days (0..28) into a window divided by 28, and `<= 7` admitted EIGHT days
+    // (0..7) into one divided by 7 — so both halves were inflated and the ratio was biased
+    // HIGH by ~10%. Measured before the fix: identical training every day for five weeks read
+    // `ratio 1.10, acutePerDay 1143, chronicPerDay 1036, sessions28 29` where a true acute-to-
+    // chronic ratio is 1.00 by definition. That is not cosmetic — the bands are 0.8/1.3/1.5 and
+    // this number exists to change what someone does, so a true 1.19 read as 1.31 ("Ramping
+    // up") and a true ~1.37 read as >1.5 ("Spike — this is where injuries happen").
+    if (ageDays < 0 || ageDays > 27) continue;      // future-dated rows and anything older
     let dayHadVolume = false;
     for (const sess of Object.values(day || {})) {
       const v = cvt(sessionVolume(sess), sess.unit || "lbs", unit);
       if (v <= 0) continue;
       chronic += v; sessions28++; dayHadVolume = true;
-      if (ageDays <= 7) acute += v;
+      if (ageDays <= 6) acute += v;
     }
-    if (dayHadVolume) { daysInWindow.add(ageDays); if (ageDays > 7) olderDays.add(ageDays); }
+    if (dayHadVolume) { daysInWindow.add(ageDays); if (ageDays > 6) olderDays.add(ageDays); }
   }
   if (sessions28 < ACWR_MIN_SESSIONS || daysInWindow.size < ACWR_MIN_DAYS
       || olderDays.size < ACWR_MIN_OLDER_DAYS || chronic <= 0) return null;

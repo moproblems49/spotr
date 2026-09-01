@@ -1,4 +1,4 @@
-// v178091717006
+// v178091717007
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5567,7 +5567,9 @@ function MuscleBalance({ store, C, days = 30 }) {
         for (const ex of (sess.exercises || [])) {
           const done = (ex.sets || []).filter(s => s.type !== "warmup" && (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0))).length;
           if (!done) continue;
-          const muscle = resolveMuscle(ex.name) || "Other";
+          // getMuscle first — resolveMuscle cannot see custom exercises, so every user-created
+          // lift fell into "Other" on these bars while counting correctly everywhere else.
+          const muscle = ((typeof getMuscle === "function" && getMuscle(ex.name)) || resolveMuscle(ex.name)) || "Other";
           const group = GROUP[muscle] || "Other";
           groupSets[group] = (groupSets[group] || 0) + done;
           // Track which exercises (and set counts) make up each group — powers the drill-down.
@@ -10948,7 +10950,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const set = new Set();
         session.exercises.forEach(ex => {
           if (!ex.name || !ex.sets.some(s => s.done && s.type !== "warmup")) return;
-          const m = resolveMuscle(ex.name);
+          const m = (typeof getMuscle === "function" && getMuscle(ex.name)) || resolveMuscle(ex.name);
           if (m && m !== "Cardio" && m !== "Yoga") set.add(m);
         });
         return Array.from(set);
@@ -18359,7 +18361,27 @@ function AppInner() {
         // the handleSignOut fix that now wipes the local store on sign-out, but this guard is the
         // one that also closes the gap when a session ends WITHOUT an explicit sign-out (e.g. an
         // expired token), which handleSignOut can't see.
-        bodyLog: (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : (prev.currentUserId === currentUserId ? (prev.bodyLog || []) : []),
+        // ★ THE SERVER COPY NEVER CARRIES A PROGRESS PHOTO, SO TAKING IT WHOLESALE DELETED THEM.
+        // Every write path PATCHes `body_log` with `photoData: null` (photos are large base64
+        // blobs and the profiles row is not the place for them), so the server's copy is always
+        // photo-less BY DESIGN. Replacing the local array with it therefore dropped the photo on
+        // the next boot or foreground — and the store-save effect then persisted the photo-less
+        // array back over the local one, so it was gone permanently rather than until reload.
+        // The photos live ONLY on the device (saveStore keeps them; it strips them just in the
+        // quota-exceeded fallback), which is the intended design — so the server row is
+        // authoritative for weight/measurements and the LOCAL copy is authoritative for the
+        // photo. Re-attach by entry id, falling back to date for rows minted before ids.
+        bodyLog: (() => {
+          const srv = (Array.isArray(me?.body_log) && me.body_log.length) ? me.body_log : null;
+          const loc = (prev.currentUserId === currentUserId && Array.isArray(prev.bodyLog)) ? prev.bodyLog : [];
+          if (!srv) return loc;
+          const photoBy = new Map();
+          for (const e of loc) if (e && e.photoData) { if (e.id) photoBy.set(String(e.id), e.photoData); if (e.date) photoBy.set("d:" + e.date, e.photoData); }
+          if (!photoBy.size) return srv;
+          return srv.map(e => e && !e.photoData
+            ? { ...e, photoData: photoBy.get(String(e.id)) || photoBy.get("d:" + e.date) || null }
+            : e);
+        })(),
         // Dated PR-hit log: prefer the server copy, then any local copy; if both are empty, rebuild
         // it from history so Wrapped/recaps reflect real PRs instead of 0 (see reconstructPrEvents).
         prEvents: (() => {

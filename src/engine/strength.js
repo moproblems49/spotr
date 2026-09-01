@@ -724,7 +724,14 @@ function daysSinceMuscleTrained(store) {
           && (st.done === true || (st.done === undefined && parseFloat(st.reps) > 0)));
         if (!worked) continue;
         const muscles = new Set();
-        const p = resolveMuscle(ex.name); if (p) muscles.add(p);
+        // getMuscle, not resolveMuscle: `getMuscle` consults the custom-exercise registry and
+        // `resolveMuscle` does not, so a user-created exercise was INVISIBLE here while its two
+        // siblings in this same file (lines 38 and 96) resolved it fine. Measured: a custom "Back"
+        // exercise trained today gave weeklyMuscleVolume {Back: 4} and muscle readiness fatigue,
+        // while this returned {} — so the AI coach was told that muscle had never been trained,
+        // on the same store where the heatmap showed it trained today.
+        const p = (typeof getMuscle === "function" && getMuscle(ex.name)) || resolveMuscle(ex.name);
+        if (p) muscles.add(p);
         for (const sec of getExerciseSecondaries(ex.name)) muscles.add(_cleanMuscle(sec));
         for (const m of muscles) if (out[m] == null) out[m] = daysAgo;
       }
