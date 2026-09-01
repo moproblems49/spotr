@@ -2606,11 +2606,21 @@ The long-standing blocker is gone. What that unblocks, and what it does NOT:
   keep shifting / keep and let them go stale / wipe them), NOT maintenance to do by reflex. Ask
   before shifting again. Wipe recipe if chosen: delete `auth.users` rows with `%@getseshd.app`
   emails; profiles/posts/history cascade.
-- **DMARC `p=none` -> `p=quarantine` is unblocked** (it was deferred purely because enforcement can
-  only make mail deliver LESS, and reset emails reaching testers mattered more). Still needs the
-  one check CLAUDE.md already flags: the safety argument was INFERRED from the DNS layout, not read
-  off a real message header. Confirm `DKIM ... d=getseshd.app` and `dmarc=pass` in the raw headers
-  of a real Seshd email before enforcing.
+- **DMARC IS NOW `p=quarantine` — DONE Aug 31 2026, and the inferred safety argument was
+  CONFIRMED first.** Mo checked the raw headers of a real Seshd email and saw `dmarc=pass`, which
+  is the evidence this file kept asking for (the alignment had only ever been reasoned from the DNS
+  layout). Live record: `_dmarc.getseshd.app` = `v=DMARC1; p=quarantine;`. Deliberately NO `rua=`:
+  it needs a report-service address, the reports are raw XML, and publishing a personal address in
+  DNS gets it harvested — add one via dmarcian/Postmark's free tier if reporting is ever wanted.
+  `p=reject` is the remaining optional step; quarantine is most of the protection and, unlike
+  reject, a false positive lands in spam where a user can still find it, which matters because
+  password resets are the one mail that must arrive.
+- **`getseshd.app` NOW RECEIVES MAIL.** It had no MX at all, so anyone replying to a Seshd email
+  got a bounce. ImprovMX free forwarding (`mx1`/`mx2.improvmx.com`, priority 10/20, catch-all `*`
+  alias) forwards everything at the domain to Mo's Gmail. No root SPF was added and none is needed
+  — that is only required to SEND through ImprovMX; sending still goes through Resend on
+  `send.getseshd.app`, which is a separate branch and untouched by any of this. DNS is hosted at
+  **Vercel** (ns1/ns2.vercel-dns.com), not the registrar — that is where these records live.
 - **Leaked-password protection is unchanged** — still a paid-plan feature.
 - **The backup tables are NOT a size problem and never were.** Measured Aug 31: five tables
   totalling ~120 kB against a 5.5 MB schema (`tbar_fix_backup_20260819` was already dropped, so the
