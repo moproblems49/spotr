@@ -34,8 +34,13 @@ const snakeToCamel = (k) => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 // reason — this list is the place a future decision gets made deliberately rather than by default.
 const EXEMPT = {
   pr_events:           "derived from history and max-merged on load, not a control",
-  custom_exercises:    "list edits are additive and re-derived; no toggle to flip back",
-  body_log:            "append-only log, not a control",
+  // ★ custom_exercises AND body_log WERE EXEMPTED HERE ON REASONS THAT WERE NOT TRUE, and an
+  // exemption is only ever as good as its justification. "list edits are additive" stopped being
+  // true when Settings grew Remove and Clear-all, and loadUserData UNIONS local with server — so
+  // the exercise you just deleted comes back and can be written to the server again, i.e. the
+  // removal permanently fails. "append-only log" was never true: a body-log entry REPLACES the
+  // existing entry for the same date. Both are covered by the recent branch now and are no longer
+  // exempt, so deleting either from that branch fails this check.
   push_token:          "device bookkeeping, never rendered",
   seen_activity_count: "badge bookkeeping; has its own re-baseline logic",
   dismissed_insights:  "append-only set; a stale re-serve re-shows a card, not a wrong toggle",
@@ -128,7 +133,12 @@ check("every optimistically-written setting is covered by the recent-edit guard"
 // ── 4. …and the write itself must stamp the edit time, or the window never opens ─────────────
 // Without the stamp the recent branch is dead code for that field: the 20s window is measured
 // from `_lastSettingsEditAt`, so a field that never sets it is never "recent".
-const stampCount = (src.match(/_lastSettingsEditAt = Date\.now\(\)/g) || []).length;
+// Count BOTH spellings. Lazy modules cannot assign the module-level `let` (an ESM import binding
+// is read-only from the importing side), so body_log's write in BodyTrackingScreen goes through
+// the exported `markSettingsEdit()` helper — a stamp this check could not see before, which would
+// have made it under-count and eventually pass for the wrong reason.
+const stampCount = (src.match(/_lastSettingsEditAt = Date\.now\(\)/g) || []).length
+  + (src.match(/markSettingsEdit\(\)/g) || []).length - 1;   // -1: the helper's own definition
 const guardedCount = [...optimistic.keys()].filter(f => !EXEMPT[f]).length;
 check("enough writes stamp _lastSettingsEditAt to cover the guarded fields",
   stampCount >= guardedCount, `${stampCount} stamp(s) for ${guardedCount} guarded field(s)`);

@@ -1,4 +1,4 @@
-// v178091717010
+// v178091717011
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4408,7 +4408,7 @@ export function aiAuthHeaders() {
 }
 
 
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, muscleReadiness, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, muscleReadiness, markSettingsEdit, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
 
 
 export { exerciseProgressed, getExerciseTrend, loadIncrement, parseRepRange } from "./engine/workout.js";
@@ -8936,6 +8936,7 @@ function saveCustomExercise({ name, muscle, equipment }, store, setStore, curren
   const tok = token || (typeof loadSession === "function" && loadSession()?.access_token);
   if (tok && currentUserId) {
     try {
+      markSettingsEdit();
       sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(() => {});
     } catch (e) { /* offline / column missing — local copy still saved */ }
   }
@@ -9040,6 +9041,7 @@ function mergeExerciseNames(mapping, store, setStore, currentUserId, token) {
       try { sb.queueWrite(`programs?id=eq.${p.id}`, { method: "PATCH", body: JSON.stringify({ days: p.days }) }, tok).catch(() => {}); } catch (e) {}
     });
     if (hadCustom) {
+      markSettingsEdit();
       try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ custom_exercises: customExercises }) }, tok).catch(() => {}); } catch (e) {}
     }
   }
@@ -9904,6 +9906,11 @@ let _discoverSubTab = "discover";
 // level because the edits happen in ProfileScreen but the merge that must see them lives in
 // AppInner, a different component in the same file — same pattern as the sub-tab memory above.
 let _lastSettingsEditAt = 0;
+// Lazy-loaded modules cannot assign the `let` above: an ESM import binding is READ-ONLY from the
+// importing side even when the exporting module's own binding is mutable (reassigning one is a
+// SyntaxError — the same trap the _discoverSubTab getter/setter pair exists for). BodyTrackingScreen
+// writes `body_log`, which the recent-edit guard now covers, so it needs a real setter.
+function markSettingsEdit() { _lastSettingsEditAt = Date.now(); }
 // ESM import bindings are read-only from the importing side even when the source `let` is
 // mutable — DiscoverScreen (src/lazy/DiscoverScreen.jsx) needs to both read AND write this
 // module-level value (that's the whole point of it — see the note above), so it goes through
@@ -12995,7 +13002,23 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               const oldIndex = arr.findIndex(p => p.id === active.id);
               const newIndex = arr.findIndex(p => p.id === over.id);
               if (oldIndex < 0 || newIndex < 0) return;
-              setStore(prev => ({ ...prev, programs: arrayMove(prev.programs, oldIndex, newIndex) }));
+              // ★ A BARE setStore HERE WAS ERASED BY THE NEXT REFRESH. loadUserData replaces
+              // `programs` wholesale from a query ordered by `created_at.desc`, so the drag looked
+              // like it worked, survived a tab switch, and was gone on the next foreground — the
+              // dominant bug class in this app. The order now lives on the profile as an array of
+              // program ids: ONE atomic PATCH for a drag that moves every row between the two
+              // indices, and a PATCH is already retryable by the durable write queue.
+              let nextOrder = [];
+              setStore(prev => {
+                const nextPrograms = arrayMove(prev.programs, oldIndex, newIndex);
+                nextOrder = nextPrograms.map(p => p.id);
+                return { ...prev, programs: nextPrograms, programOrder: nextOrder };
+              });
+              markSettingsEdit();
+              const tok_ = token || (typeof loadSession === "function" && loadSession()?.access_token);
+              if (tok_ && currentUserId) {
+                try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify({ program_order: nextOrder }) }, tok_).catch(() => {}); } catch (e) {}
+              }
               haptic("complete");
             }}>
             <SortableContext items={(store.programs || []).map(p => p.id)} strategy={verticalListSortingStrategy}>
@@ -16247,6 +16270,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               });
                               setCustomExerciseRegistry(next);
                               const tok = token || loadSession()?.access_token;
+                              markSettingsEdit();
                               if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
                               haptic("tap");
                             },
@@ -16274,6 +16298,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                           setStore(p => ({ ...p, customExercises: [] }));
                           setCustomExerciseRegistry([]);
                           const tok = token || loadSession()?.access_token;
+                          markSettingsEdit();
                           if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: [] }) }, tok).catch(()=>{}); } catch(e){} }
                           haptic("success");
                         },
@@ -17763,6 +17788,7 @@ function AppInner() {
             const nextLog = Object.values(byDate).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
             const tok = tokenRef.current || loadSession()?.access_token;
             if (tok && currentUserId && !isGuest) {
+              markSettingsEdit();
               sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok).catch(() => {});
             }
             return { ...p, bodyLog: nextLog };
@@ -18194,9 +18220,27 @@ function AppInner() {
       const activeProgram = programs?.find(p => p.id === me?.active_program_id) || programs?.[0];
 
       // Convert DB programs to app format
-      const appPrograms = (programs || []).map(p => ({
-        id: p.id, name: p.name, days: p.days || [], shareCode: p.share_code || null
-      }));
+      const appPrograms = (() => {
+        const rows = (programs || []).map(p => ({
+          id: p.id, name: p.name, days: p.days || [], shareCode: p.share_code || null
+        }));
+        // ★ APPLY THE USER'S OWN ORDER. The query is `order=created_at.desc`, which is a sensible
+        // DEFAULT and is not what someone who has dragged their list wants to see. `program_order`
+        // is an array of ids on the profile; anything it does not mention keeps its query position
+        // AFTER the ordered ones, so a program created on another device since the last reorder
+        // shows up (newest first) instead of vanishing, and a deleted program's stale id simply
+        // finds no row and drops out. Deliberately tolerant in both directions: this is a display
+        // preference, and it must never be able to hide a program.
+        const order = Array.isArray(me?.program_order) ? me.program_order : [];
+        if (!order.length) return rows;
+        const byId = new Map(rows.map(r => [String(r.id), r]));
+        const ordered = [];
+        for (const id of order) {
+          const r = byId.get(String(id));
+          if (r) { ordered.push(r); byId.delete(String(id)); }
+        }
+        return [...ordered, ...rows.filter(r => byId.has(String(r.id)))];
+      })();
 
       // Convert PRs to app format { exerciseName: weightLbs }
       const appPrs = {};
@@ -18302,6 +18346,8 @@ function AppInner() {
         })),
         currentUserId,
         programs: appPrograms,
+        programOrder: Array.isArray(me?.program_order) ? me.program_order
+          : (prev.currentUserId === currentUserId ? (prev.programOrder || []) : []),
         activeProgramId: activeProgram?.id || null,
         // Merge with local PRs (max-wins) instead of blindly overwriting — a transient
         // failure in the per-exercise PR upsert during save would otherwise permanently
@@ -18465,6 +18511,24 @@ function AppInner() {
             theme: prev.theme || "light",
             ...(prev.strengthSex ? { strengthSex: prev.strengthSex } : {}),
             ...(prev.bodyType ? { bodyType: prev.bodyType } : {}),
+            // ★ AND THESE TWO WERE EXEMPTED FROM THE GUARD ON REASONS THAT ARE NOT TRUE.
+            // `sim_settingsrace` waved `custom_exercises` through as "list edits are additive"
+            // and `body_log` as "append-only" — an exemption is only as good as its justification,
+            // and both had since grown DESTRUCTIVE writes that nobody went back to re-check.
+            //   * customExercises has Remove and Clear-all, and the merge above UNIONS local with
+            //     server — so a refresh landing before the PATCH resurrects the exercise you just
+            //     deleted, and the next persist can write it back to the server, making the
+            //     removal permanently fail. Worse than a toggle flipping back: a destructive
+            //     action silently undoing itself.
+            //   * bodyLog REPLACES today's entry rather than appending (`filter(e => e.date !==
+            //     entry.date)`), so a re-weigh can be reverted to the earlier reading of the same
+            //     day, and the server copy is always photo-less by design.
+            // Inside the window the local copy is authoritative for both, which also means the
+            // bodyLog photo re-merge below cannot be reached with a half-written local array.
+            customExercises: prev.customExercises || [],
+            bodyLog: prev.bodyLog || [],
+            // A drag is an edit like any other, and this one reorders what you are looking at.
+            programOrder: prev.programOrder || [],
           };
           return {
             // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back

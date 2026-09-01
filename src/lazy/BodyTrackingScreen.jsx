@@ -1,7 +1,7 @@
 // Lazy-loaded: bodyweight, measurements, progress photos over time. Only rendered when
 // ProfileScreen's showBody flag is set (its "Body" button) — most sessions never open it.
 import { useState, useMemo } from "react";
-import { dKey, devError, uid } from "../engine/core.js";import { F, MONO, Icon, ExerciseVolumeChart, toast, haptic, posNum, loadSession, sb } from "../App.jsx";
+import { dKey, devError, uid } from "../engine/core.js";import { F, MONO, Icon, ExerciseVolumeChart, toast, haptic, posNum, loadSession, sb, markSettingsEdit } from "../App.jsx";
 
 const MEASURE_FIELDS = [
   { key:"chest", label:"Chest" },
@@ -69,6 +69,10 @@ export default function BodyTrackingScreen({ store, setStore, currentUserId, uni
       // Persist to the server so it survives re-login / new devices. Strip photoData (large).
       const tok = (typeof loadSession === "function" && loadSession()?.access_token);
       if (tok && currentUserId) {
+        // Stamp the edit so loadUserData's recent-edit guard trusts the LOCAL bodyLog for the
+        // next 20s. Without it that guard is dead code for this field, and a foreground refresh
+        // landing in the gap re-serves the server's older (and always photo-less) copy.
+        markSettingsEdit();
         sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok)
           .catch(e => devError("body_log save error:", e));
       }
