@@ -48,7 +48,7 @@ const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromi
 
 // `groupsRefused` decides whether the stub accepts writes to /groups; `programsRefused` likewise.
 const attempted = { groupPatch: 0, groupPost: 0 };
-async function makePage({ groupsRefused = true, programsRefused = true, withSession = false, groups = [] } = {}) {
+async function makePage({ groupsRefused = true, groupsOffline = false, programsRefused = true, withSession = false, groups = [] } = {}) {
   const page = await browser.newPage({ viewport: { width: 428, height: 926 }, hasTouch: true, isMobile: true });
   page.setDefaultTimeout(5000);
   page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
@@ -77,6 +77,8 @@ async function makePage({ groupsRefused = true, programsRefused = true, withSess
     const J = b => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(b) });
     if (/\/rest\/v1\/groups/.test(u) && (m === "POST" || m === "PATCH")) {
       if (m === "PATCH") attempted.groupPatch++; else attempted.groupPost++;
+      // A DROPPED CONNECTION IS NOT A REFUSAL, and the message must not claim it is.
+      if (m === "PATCH" && groupsOffline) return r.abort("failed");
       // 403 is what RLS / enforce_group_creator_manages actually answers. The point of the whole
       // suite is that the client never even LOOKED at this status.
       if (groupsRefused) return r.fulfill({ status: 403, contentType: "application/json",
@@ -218,7 +220,8 @@ async function openCreateSheet(page) {
       const members = g ? (g.members || g.member_ids || []) : [];
       check("3c. a refused leave does NOT drop the member locally", members.includes(ME),
         `members = ${JSON.stringify(members)}`);
-      check("3d. the user is told the change didn't stick", toastSeen.hit, toastSeen.text);
+      // A 403 IS the refusal, so this branch may name the creator rule.
+      check("3d. a refused change names the creator rule", /creator can change who's in it/i.test(toastSeen.text), toastSeen.text);
     }
   }
   await page.close();
@@ -331,6 +334,108 @@ async function openCreateSheet(page) {
     check("5d. a partial migration does NOT claim the progress was saved",
       toastSeen.hit && !/Your progress is saved/i.test(toastSeen.text), toastSeen.text);
     check("5e. and it says what didn't transfer", /didn't transfer/i.test(toastSeen.text), toastSeen.text);
+  }
+  await page.close();
+}
+
+// ── 6. A DROPPED CONNECTION MUST NOT BE REPORTED AS A PERMISSIONS REFUSAL ───────────────────
+// The first cut picked the message from `createdBy !== currentUserId`, which is wrong every time
+// it can appear: the DB guard PERMITS a non-creator's leave, and a non-creator cannot reach the
+// invite UI at all, so the role branch only ever fired on a dead connection — telling a member
+// they were not allowed to leave a group they are always allowed to leave.
+{
+  const page = await makePage({ groupsRefused: true, groupsOffline: true,
+    groups: [{ id: GID, name: "Seshd Crew", description: "", createdBy: PAL, members: [PAL, ME], member_ids: [PAL, ME] }] });
+  await page.locator('[aria-label="Discover"], [aria-label="discover"]').first().click({ force: true });
+  await page.waitForTimeout(500);
+  const gt = page.getByText(/^Groups$/).first();
+  if (await gt.count()) { await gt.click({ force: true }); await page.waitForTimeout(500); }
+  const card = page.getByText(/^Seshd Crew$/).first();
+  if (await card.count()) {
+    await card.click({ force: true });
+    await page.waitForTimeout(900);
+    const mt = page.getByRole("button", { name: /^Members$/ }).first();
+    if (await mt.count()) { await mt.click({ force: true }); await page.waitForTimeout(400); }
+    const leave = page.getByText(/Leave Group/i).first();
+    if (await leave.count()) {
+      await leave.click({ force: true });
+      await page.waitForTimeout(500);
+      const confirm = page.getByRole("button", { name: /^Leave$/ }).first();
+      const hasConfirm = await confirm.count() > 0;
+      check("6a. the leave confirmation sheet appears", hasConfirm);
+      if (hasConfirm) await confirm.click({ force: true });
+      const t = await waitForToast(page, /creator can change who's in it|Couldn't update the group/i);
+      check("6b. a DROPPED CONNECTION is reported as a connection problem, not a refusal",
+        /Couldn't update the group/i.test(t.text) && !/creator can change/i.test(t.text), t.text);
+    }
+  }
+  await page.close();
+}
+
+// ── 7. AN OFFLINE GUEST MIGRATION MUST QUEUE EVERY WORKOUT, NOT JUST THE LAST ONE ───────────
+// §5 refuses with a 403, which the durable queue correctly declines — so it is structurally BLIND
+// to the offline path, where queueWrite takes ownership. The queue deduped by `path + method`,
+// and every workout POSTs to the IDENTICAL `workout_history?on_conflict=id` (the row id is in the
+// BODY), so each queued row evicted its predecessor: measured, 55 rows in and ONE left, under a
+// "Your progress is saved to your account" toast because queueWrite resolves gracefully and
+// nothing was counted as failed.
+{
+  const N = 6;
+  const page = await browser.newPage({ viewport: { width: 428, height: 926 }, hasTouch: true, isMobile: true });
+  page.setDefaultTimeout(5000);
+  page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
+  await page.addInitScript(([me, n]) => {
+    const day = (d) => { const t = new Date(Date.now() - d * 864e5); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`; };
+    const history = {};
+    for (let i = 1; i <= n; i++) {
+      history[day(i)] = { [`aaaaaaaa-${String(1000 + i)}-4111-8111-111111111111`]: {
+        dayName: `Day ${i}`, unit: "lbs", duration: 1800,
+        exercises: [{ name: "Barbell Bench Press", sets: [{ weight: "135", reps: "8", done: true, type: "normal" }] }] } };
+    }
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme: "dark", unit: "lbs",
+      programs: [], prs: {}, prEvents: [], bodyLog: [], posts: [], groups: [], users: [], history, workoutDates: {} }));
+    localStorage.setItem("seshd_guest", "1");
+    localStorage.setItem("seshd_onboarded", "1");
+    localStorage.setItem("seshd_custom_merge_v1", "1");
+    localStorage.removeItem("seshd_session");
+    localStorage.removeItem("seshd_write_queue");
+  }, [ME, N]);
+  await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
+    body: JSON.stringify({ access_token: "t", refresh_token: "r", user: { id: ME, email: "n@e.com" } }) }));
+  await page.route("**/rest/v1/**", r => {
+    const req = r.request(), u = req.url(), m = req.method();
+    // ABORT, not 403 — a transport failure is what hands the row to the durable queue.
+    if (/\/rest\/v1\/workout_history/.test(u) && m === "POST") return r.abort("failed");
+    return r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "load", timeout: 20000 });
+  await page.waitForTimeout(2000);
+  const banner = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find(x => /save progress/i.test(x.textContent || ""));
+    if (b) { b.click(); return true; } return false;
+  });
+  check("7a. the guest banner's Save progress button is reachable", banner);
+  if (banner) {
+    await page.waitForTimeout(900);
+    await page.evaluate(() => {
+      const set = (el, v) => { const s = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set; s.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); };
+      for (const i of [...document.querySelectorAll("input")].filter(x => x.offsetParent)) {
+        const ph = (i.placeholder || "").toLowerCase();
+        if (i.type === "password") set(i, "testpass123");
+        else if (/email/.test(ph) || i.type === "email") set(i, "newuser@example.com");
+        else if (/user/.test(ph)) set(i, "momo");
+        else set(i, "New User");
+      }
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { const b = [...document.querySelectorAll("button")].filter(x => x.offsetParent)
+      .find(x => /^(create account|sign up|continue)$/i.test((x.textContent || "").trim())); b && b.click(); });
+    await page.waitForTimeout(6000);
+    const q = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem("seshd_write_queue") || "[]"); } catch { return []; } });
+    const hist = q.filter(i => /workout_history/.test(i.path) && i.method === "POST");
+    const ids = new Set(hist.map(i => { try { return JSON.parse(i.body).id; } catch { return null; } }));
+    check("7b. every offline workout is queued for retry, not just the last one",
+      ids.size === N, `queued ${ids.size} of ${N} — ${[...ids].join(", ")}`);
   }
   await page.close();
 }

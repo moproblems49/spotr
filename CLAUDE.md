@@ -2620,10 +2620,47 @@ believed and every fix red-proofed on its own. **Two did not survive that.**
   malformed weeks, zero misfiled days. Local date-component arithmetic normalises correctly and
   `dateKeyOf` reads local parts, so the pair is sound. The predicted March-2029 collision does not
   exist.
-**Sim: `sim_bbstale`** (15 checks). Red-proofed at **6 failures** with every control green — the
+**Sim: `sim_bbstale`** (22 checks). Red-proofed at **6 failures** with every control green — the
 gap measured 14 on the old code, exactly matching the independent probe. It compares the
 SECOND-to-last curve point on purpose: the last is pinned to the headline by construction, so
 measuring through it can only ever report agreement.
+**★★ AND THE COLD-CONTEXT AUDIT — RUN BEFORE PUBLISHING, WHICH IS THE WHOLE POINT OF THAT RULE —
+FOUND FOUR MORE, THREE OF THEM IN THE FIX ITSELF.** The bundle was held; none of these reached a
+phone. All four are now fixed and pinned by `sim_bbstale` section 4, which could see NONE of them
+before (it used `history: {}`, only `activityHourlyDate = YEST`, and only a today-07:00 wake).
+- **`damp` was not the headline's damp.** The curve damps activity by 0.6 when `sessions.length`,
+  but `sessions` spans up to three date keys filtered only by `endMs <= now`, while the headline's
+  `workoutDrain` counts ONLY sessions since wake. So a workout YESTERDAY EVENING — or one before
+  this morning's wake, or one outside the 24h window that is never drawn — made the curve damp
+  when the headline did not: measured 6 points high, all day, flattering. **The block FOUR LINES
+  ABOVE already had `sessions.filter(x => x.endMs >= wakeMs)` with a comment describing this exact
+  bug for the workout scale; `damp` never got it.** One-guard-didn't-get-copied, inside a single
+  function. Inherited on the fresh path, but the commit hoisted `damp` specifically to share it
+  and asserted it matched the headline — it did not.
+- **The new branch was gated on the DATE STAMP, the headline on the DATA.** `activityHourlyDate ===
+  today` is a PROXY for "the buckets are usable"; the headline's real test is
+  `activityRawSinceWake(...) != null`, which is also null when the buckets exist but are EMPTY —
+  and `readHourlyActivity` genuinely returns 24 all-zero buckets stamped TODAY when `gotAny` was
+  set by `prevEvening` alone. In that state the split was still 15 points. One `hourlyUsable`
+  predicate now serves both the per-hour branch and the fallback. **Proxies break — this is the
+  `isDark` lesson in a third costume.**
+- **The hour that STRADDLES MIDNIGHT was dropped whole.** The branch was gated on the hour's START
+  being today, which discarded its today-half too. Measured on a night-shift shape (trusted wake
+  yesterday 23:40, read 01:30): that segment fell **1** point instead of **7**, i.e. only awake
+  drain. Clamping `from` to today's midnight — exactly the window `elapsedH` measures — makes the
+  spread sum to the headline BY CONSTRUCTION rather than by hope.
+- **`muscleReadiness` never got the freshness gate**, so gating charge0 made ONE SHEET contradict
+  itself: the headline correctly fell back to the training-recency estimate while the driver tiles
+  beside it still printed a week-old HRV under the words "Today's pulse", and the muscle map stayed
+  coloured by the stale score. **A partial fix here is worse than no fix** — before, the screen was
+  wrong but consistent. `freshRecovery` MOVED TO `core.js` for this: `strength.js` must never import
+  `health.js` (the extractor asserts that layering) and core is the leaf both already import.
+**Probe lessons from chasing these, all mine:** comparing headline to the SECOND-to-last curve
+point is right at midday and meaningless pre-dawn, where the last two points can be 50 minutes
+apart and the tail spans a phase boundary — three separate "gaps" I measured that way were the
+curve's own slope, not a disagreement. What settled it was isolating ONE segment and diffing it
+against a bundle with only that fix reverted. **When a measurement disagrees with the arithmetic,
+suspect the measurement first.**
 **The lesson that repeats: 2 of 5 findings were wrong, and only measuring told them apart.** Same
 hit rate as the design-critique era, where two of the three findings worth acting on turned out to
 be false. An audit finding is a claim, not a result.
@@ -2648,8 +2685,38 @@ local-only change looks perfectly saved, survives a tab switch, and is gone on t
 - **★ `queueWrite` REFUSED EVERY POST, SO SEVEN CALL SITES THAT LOOKED DURABLE WERE ONE-SHOT.**
   The exclusion is right in general (replaying a POST can double-insert) and wrong for a POST whose
   URL names an `on_conflict` target — that is an UPSERT, exactly as safe to replay as a PATCH.
-  Callers now opt in with `idempotent: true` rather than the queue sniffing the URL, so the
-  guarantee is asserted by whoever knows it holds. Fixed at the mechanism, not special-cased.
+  Callers opt in with `idempotent: true` rather than the queue sniffing the URL, so the guarantee
+  is asserted by whoever knows it holds.
+  **CORRECTION, and the commit message overclaimed it: only ONE call site opted in** (the guest
+  migration's history retry). The six `personal_records?on_conflict=user_id,exercise_name` POSTs
+  still degrade to a one-shot `query()` offline, exactly as before — the mechanism is fixed, the
+  call sites are not. Do not convert them without reading the next bullet first.
+- **★★ AND WIDENING THAT MECHANISM SHIPPED A WORSE BUG THAN THE ONE IT FIXED — FOUND BY THE
+  COLD-CONTEXT AUDIT, AFTER IT WAS ALREADY LIVE.** The queue dedupes on `path + method`, which
+  identifies a ROW only for PATCH/DELETE/PUT: those carry a row selector in the URL
+  (`programs?id=eq.X`), so two rows are two paths. **A queued POST's path is the TABLE plus its
+  conflict target and is IDENTICAL for every row — the row id lives in the BODY** — so the moment
+  POSTs were allowed in, each one evicted its predecessor. Measured through the real UI: a guest
+  with 6 workouts signing up OFFLINE queued **1 of 6**; at 55 workouts, 54 are lost. And because
+  `queueWrite` resolves gracefully, `failedRows` stayed 0, so the honest toast never fired and the
+  user was told "Your progress is saved to your account" — **the exact bug the opt-in was added to
+  fix, reproduced by the mechanism that fixed it.** POSTs are never deduped now.
+  **Why the guard could not see it: `pw_silentfail` §5 refuses with a 403, which the durable queue
+  correctly DECLINES, so the whole offline path — the one where the queue actually takes ownership
+  — was untested.** A refusal and a dropped connection are different code paths in this app and a
+  guard that only drives one is blind to the other by construction. §7 drives the offline path now
+  and goes red at "queued 1 of 6".
+- **★ AND THE "ONLY THE CREATOR CAN CHANGE WHO'S IN IT" MESSAGE WAS WRONG EVERY TIME IT COULD
+  APPEAR.** It was selected by ROLE (`createdBy !== currentUserId`) rather than by what the server
+  answered. Two facts kill that: `enforce_group_creator_manages` explicitly PERMITS a non-creator's
+  leave (its own exception text is "members may only leave"), and a non-creator cannot reach the
+  invite UI at all — `GroupDetail` gates the whole block on `currentUserId === g.createdBy`. So the
+  only membership write a non-creator can produce is a leave, which the server allows, meaning the
+  role branch fired **only when the real cause was a dead connection** — telling a member they were
+  not allowed to leave a group they are always allowed to leave. It branches on `status === 403`
+  now. **The general rule: report the cause the SERVER gave, never the cause you inferred from who
+  the caller is** — and read the actual trigger definition rather than this file's summary of it,
+  which is how the wrong inference got made.
 - **The `_silent` program save fired one PATCH and gave up**, so a rest tweak, a day reorder or an
   exercise added from the day-preview sheet was lost outright when offline or on a dead token —
   while `handleProgramEdited`, ten lines below it, already had the durable pattern. Same rule as

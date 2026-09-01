@@ -73,6 +73,28 @@ function cvt(w, from, to) {
 // ═════════════════════════════════════════════════════════════════════════════
 // UTILITIES
 // ═════════════════════════════════════════════════════════════════════════════
+// ★ THE STORED RECOVERY SNAPSHOT NEVER EXPIRED, AND `capturedAt` — WRITTEN FOR EXACTLY THIS —
+// HAD ZERO READERS. `store.recovery` is only ever overwritten by a SUCCESSFUL HealthKit read
+// (`recovery: rec || p.recovery`), so a watch that dies, is left on the charger, or loses its
+// permission leaves last week's HRV, resting pulse and sleep sitting there being presented as
+// today's readiness — driving charge0, the muscle map's colour and the Body Battery headline,
+// with nothing on screen saying the data is old. The engine already has an honest answer for
+// "no signal at all" (charge0 estimated from training recency), and it could never be reached.
+// 36h, matching readRecoveryFrom's own read window: a snapshot older than the window it was
+// drawn from cannot correspond to any night a fresh read would find.
+// A snapshot with NO `capturedAt` is treated as fresh, deliberately — that is exactly today's
+// behaviour, so this cannot blank the number for anyone holding a pre-`capturedAt` snapshot, and
+// every snapshot written since carries the field. The guard tightens over time rather than
+// changing what anyone sees the moment it ships.
+const RECOVERY_MAX_AGE_MS = 36 * 36e5;
+function freshRecovery(store, now) {
+  const rec = store?.recovery;
+  if (!rec) return null;
+  const t = rec.capturedAt ? Date.parse(rec.capturedAt) : NaN;
+  if (Number.isFinite(t) && (now.getTime() - t) > RECOVERY_MAX_AGE_MS) return null;
+  return rec;
+}
+
 const uid = () => Math.random().toString(36).slice(2,10);
 
-export { IS_DEV, devWarn, devError, dateKeyOf, dateFromKey, workingDone, dKey, LBS_TO_KG, LBS_PER_KG, cvt, uid };
+export { IS_DEV, devWarn, devError, dateKeyOf, dateFromKey, workingDone, dKey, LBS_TO_KG, LBS_PER_KG, cvt, uid, RECOVERY_MAX_AGE_MS, freshRecovery };

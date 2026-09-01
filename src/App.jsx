@@ -1,4 +1,4 @@
-// v178091717009
+// v178091717010
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -21,8 +21,8 @@ import { createPortal } from "react-dom";
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { LBS_PER_KG, cvt, dKey, dateFromKey, dateKeyOf, devError, devWarn, uid, workingDone } from "./engine/core.js";
-import { recoveryTimeHours, recoveryVerdict, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom, freshRecovery } from "./engine/health.js";
+import { LBS_PER_KG, cvt, dKey, dateFromKey, dateKeyOf, devError, devWarn, freshRecovery, uid, workingDone } from "./engine/core.js";
+import { recoveryTimeHours, recoveryVerdict, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom } from "./engine/health.js";
 import { getExerciseSessions, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio } from "./engine/workout.js";
 import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
@@ -459,7 +459,19 @@ const sb = (() => {
             return null;
           } catch { /* fall through to replace if bodies aren't JSON */ }
         }
-        const filtered = q.filter(item => !(item.path === path && item.method === method));
+        // ★ THE DEDUPE KEY IS `path + method`, AND THAT IDENTIFIES A ROW ONLY FOR PATCH/DELETE/PUT.
+        // Those carry a row selector in the URL (`programs?id=eq.X`, `profiles?id=eq.Y`), so two
+        // different rows are two different paths and replacing by path is exactly right. A queued
+        // POST's path is the TABLE plus its conflict target and is IDENTICAL for every row — the
+        // row id lives in the BODY — so the moment the `idempotent` opt-in let POSTs into the
+        // queue, each one evicted its predecessor. Measured: 55 guest workouts queued while
+        // offline left ONE in the queue, and because queueWrite resolves gracefully the migration
+        // counted zero failures and toasted "Your progress is saved to your account" over 54 lost
+        // workouts — the exact bug the opt-in was added to fix, reproduced by the mechanism that
+        // fixed it. A POST is never deduped now; replaying an on_conflict upsert is a no-op, which
+        // is the whole reason it is allowed in here at all.
+        const filtered = method === "POST" ? q.slice()
+          : q.filter(item => !(item.path === path && item.method === method));
         filtered.push({ path, method, body: opts.body || null, headers_extra: opts.headers_extra || null, ts: Date.now() });
         writeQueue(filtered);
         return null; // resolve gracefully — the optimistic local update already happened
@@ -4396,7 +4408,7 @@ export function aiAuthHeaders() {
 }
 
 
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, muscleReadiness, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
 
 
 export { exerciseProgressed, getExerciseTrend, loadIncrement, parseRepRange } from "./engine/workout.js";

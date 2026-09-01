@@ -635,18 +635,27 @@ function GroupsScreen({ store, setStore, currentUserId, C, onBack, token }) {
     const prevMembers = prevGroup ? (prevGroup.members || prevGroup.member_ids || []) : null;
     setStore(p => ({ ...p, groups: p.groups.map(gr => gr.id !== groupId ? gr : { ...gr, members: newMembers, member_ids: newMembers }) }));
     if (!token) return;
-    let ok = false;
+    let ok = false, status = 0;
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/groups?id=eq.${groupId}`, {
         method: "PATCH",
         headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ member_ids: newMembers })
       });
-      ok = res.ok;
+      ok = res.ok; status = res.status;
     } catch {}
     if (!ok && prevMembers) {
       setStore(p => ({ ...p, groups: p.groups.map(gr => gr.id !== groupId ? gr : { ...gr, members: prevMembers, member_ids: prevMembers }) }));
-      toast(prevGroup && prevGroup.createdBy && prevGroup.createdBy !== currentUserId
+      // ★ BRANCH ON WHAT THE SERVER SAID, NOT ON WHO THE CALLER IS. The first cut picked this
+      // message from `createdBy !== currentUserId`, which is wrong every time it can appear:
+      // `enforce_group_creator_manages` explicitly PERMITS a non-creator's leave ("members may
+      // only leave"), and a non-creator cannot reach the invite UI at all (GroupDetail gates the
+      // whole block on `currentUserId === g.createdBy`). So the only membership write a
+      // non-creator can produce is a leave, which the server allows — meaning the role branch
+      // fired only when the real cause was a dead connection, telling a member they are not
+      // allowed to leave a group they are always allowed to leave. 403 is the refusal; anything
+      // else (including a thrown fetch, status 0) is a transport problem.
+      toast(status === 403
         ? "Only the group's creator can change who's in it"
         : "Couldn't update the group — check your connection and try again", "error");
     }

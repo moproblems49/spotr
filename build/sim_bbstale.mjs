@@ -31,9 +31,9 @@ const RealDate = Date;
 global.Date = class extends RealDate { constructor(...a) { if (!a.length) return new RealDate(D.getTime()); return new RealDate(...a); } static now() { return D.getTime(); } };
 
 const mod = await import("./app.mjs");
-const { computeBodyBattery, computeBodyBatteryTimeline, recoveryScoreFrom, freshRecovery } = mod;
+const { computeBodyBattery, computeBodyBatteryTimeline, recoveryScoreFrom, freshRecovery, muscleReadiness } = mod;
 check("0. the engine exports what this sim measures",
-  [computeBodyBattery, computeBodyBatteryTimeline, recoveryScoreFrom, freshRecovery].every(f => typeof f === "function"));
+  [computeBodyBattery, computeBodyBatteryTimeline, recoveryScoreFrom, freshRecovery, muscleReadiness].every(f => typeof f === "function"));
 
 const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const TODAY = keyOf(D), YEST = keyOf(new RealDate(D.getTime() - 864e5));
@@ -109,6 +109,49 @@ const legacy = withAge(24 * 30); delete legacy.recovery.capturedAt;
 const bbLegacy = computeBodyBattery(legacy);
 check("3e. a legacy snapshot with no capturedAt is still honoured", !!bbLegacy.hasRecovery,
   `charge0=${bbLegacy.charge0}`);
+
+// ── 4. THE AUDIT'S FOUR FINDINGS, EACH PINNED. The first cut of this file could see NONE of them:
+//    it used `history: {}` (blind to the damp bug), only `activityHourlyDate = YEST` (blind to the
+//    empty-buckets shape), only a today-07:00 wake (blind to the midnight straddle), and left
+//    muscleReadiness entirely untested.
+const sets20 = Array.from({ length: 20 }, () => ({ weight: "135", reps: "8", done: true, type: "normal" }));
+const sess = (finMs) => ({ dayName: "Push", finishedAt: finMs, duration: 3600,
+  exercises: [{ name: "Barbell Bench Press", sets: sets20 }] });
+const actStore = (extra) => ({ ...baseStore, activity: { steps: 14000, activeKcal: 540, date: TODAY },
+  activityHourly: {}, activityHourlyDate: YEST, ...extra });
+
+// 4a/4b — the curve's activity damp must be scoped to SINCE-WAKE sessions, exactly as the
+// headline's is. `sessions` spans up to three date keys, so a workout yesterday evening (or one
+// before this morning's wake, or one outside the 24h window that is never drawn) made the curve
+// damp when the headline did not — 6 points high, all day, flattering.
+const noHist  = gap(actStore({}));
+const yestEve = gap(actStore({ history: { [YEST]: { a: sess(new RealDate(2026, 6, 21, 19, 0).getTime()) } } }));
+const yestAm  = gap(actStore({ history: { [YEST]: { a: sess(new RealDate(2026, 6, 21, 8, 30).getTime()) } } }));
+check("4a. a workout YESTERDAY EVENING does not damp the curve the headline never damped",
+  Math.abs(yestEve.d - noHist.d) <= 1, `no-history gap=${noHist.d} yesterday-evening gap=${yestEve.d}`);
+check("4b. nor does one outside the 24h window that is never drawn",
+  Math.abs(yestAm.d - noHist.d) <= 1, `no-history gap=${noHist.d} yesterday-morning gap=${yestAm.d}`);
+
+// 4c — the branch must be gated on the DATA, not on the date stamp. readHourlyActivity really can
+// return 24 all-zero buckets stamped TODAY (when `gotAny` was set by prevEvening alone), and the
+// headline takes its whole-day fallback there while a stamp-based gate did not.
+const zeroBuckets = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [h, { steps: 0, kcal: 0 }]));
+const emptyToday = gap(actStore({ activityHourly: zeroBuckets, activityHourlyDate: TODAY }));
+check("4c. buckets that are PRESENT but EMPTY and stamped today do not split the two models",
+  Math.abs(emptyToday.d - noHist.d) <= 1, `no-history gap=${noHist.d} empty-buckets-today gap=${emptyToday.d}`);
+
+// 4d — muscleReadiness must share the 36h gate. Gating charge0 and leaving this ungated made ONE
+// SHEET contradict itself: the headline fell back to the honest estimate while the tiles beside it
+// still printed a week-old HRV under the words "Today's pulse".
+{
+  const staleRec = { hrv: 70, hrvBaseline: 50, restingHr: 48, rhrBaseline: 55, sleepHours: 9,
+    recoveryScore: 0.95, capturedAt: new RealDate(D.getTime() - 24 * 7 * 36e5).toISOString() };
+  const mrStale = muscleReadiness({ ...baseStore, recovery: staleRec, history: {} });
+  const freshRec = { ...staleRec, capturedAt: new RealDate(D.getTime() - 2 * 36e5).toISOString() };
+  const mrFresh = muscleReadiness({ ...baseStore, recovery: freshRec, history: {} });
+  check("4d. muscleReadiness ignores a week-old snapshot", !mrStale.rec, `rec=${JSON.stringify(mrStale.rec)}`);
+  check("4e. [control] and still uses a 2h-old one", !!mrFresh.rec, `rec=${JSON.stringify(mrFresh.rec)}`);
+}
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails ? 1 : 0);

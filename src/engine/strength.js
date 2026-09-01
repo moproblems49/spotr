@@ -7,7 +7,7 @@
 // The strength standards tables and their lookup ladder (weight-class interpolation, age factor,
 // level bands) are module-private: nothing outside this file should ever read them directly, the
 // score/level functions are the interface.
-import { dateKeyOf, dKey, LBS_PER_KG, cvt } from "./core.js";
+import { dateKeyOf, dKey, LBS_PER_KG, cvt, freshRecovery } from "./core.js";
 import { resolveMuscle, getMuscle, getExerciseSecondaries, _regionsFor, _cleanMuscle } from "./exercises.js";
 import { calc1RM } from "./workout.js";
 
@@ -134,7 +134,14 @@ function muscleReadiness(store) {
     } catch (e) { return 1; }
   })();
   let recMod = adaptiveRecovery;
-  const rec = store.recovery;
+  // ★ THE SAME 36h GATE THE BODY BATTERY USES. Gating charge0 and leaving this ungated made ONE
+  // SHEET internally inconsistent: the headline correctly fell back to the training-recency
+  // estimate while the driver tiles beside it still printed a week-old HRV and "Today's pulse 48
+  // bpm", and the muscle map stayed coloured by a stale recoveryScore. Previously the whole screen
+  // was wrong-but-consistent; a partial fix is worse than that, because the two halves now
+  // contradict each other. `freshRecovery` lives in core.js precisely so this module can reach it
+  // — strength.js must never import health.js, and the layering is asserted by the extractor.
+  const rec = freshRecovery(store, new Date());
   if (rec && typeof rec.recoveryScore === "number") {
     recMod *= (0.8 + 0.4 * rec.recoveryScore); // HRV recovery layered on the adaptive base
   } else if (rec && typeof rec.sleepHours === "number") {
