@@ -1,4 +1,4 @@
-// v178091717008
+// v178091717009
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -22,7 +22,7 @@ import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useS
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { LBS_PER_KG, cvt, dKey, dateFromKey, dateKeyOf, devError, devWarn, uid, workingDone } from "./engine/core.js";
-import { recoveryTimeHours, recoveryVerdict, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom } from "./engine/health.js";
+import { recoveryTimeHours, recoveryVerdict, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom, freshRecovery } from "./engine/health.js";
 import { getExerciseSessions, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio } from "./engine/workout.js";
 import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
@@ -4396,7 +4396,7 @@ export function aiAuthHeaders() {
 }
 
 
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
+export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
 
 
 export { exerciseProgressed, getExerciseTrend, loadIncrement, parseRepRange } from "./engine/workout.js";

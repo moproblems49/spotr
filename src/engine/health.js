@@ -296,6 +296,23 @@ function activityRawSinceWake(store, wakeMs, now) {
   return anyInWindow ? total : (anyToday ? 0 : null);
 }
 
+// ★ THE WHOLE-DAY FALLBACK IS ONE FORMULA AND THE CURVE DIDN'T HAVE IT AT ALL.
+// `activityRawSinceWake` returns null whenever the hour buckets are missing or not today's, and
+// the two models then went different ways: the HEADLINE fell back to the daily totals
+// (`store.activity`, which has its own `date` and can be fresh when the buckets are not — the two
+// come from SEPARATE HealthKit reads, and readHourlyActivity returns null on its own if every
+// dataType spelling fails), while the CURVE simply charged nothing. Measured on a 13k-step day
+// read at 18:00 with today's totals and yesterday's buckets: headline 69, curve 83 — a 14-point
+// gap that the endpoint pin then draws across a few pixels, which is the exact symptom rounds 4-7
+// of the health era kept closing. Same family as `trustedSleepWindow`: two callers judging the
+// same data must share the judgement, not just the data.
+// Deliberately NOT solved by removing the headline's fallback — that would throw away a real
+// measurement and read flatteringly, which is the direction this engine has been wrong in before.
+function wholeDayActivityRaw(act) {
+  if (!act) return 0;
+  return (act.steps ? act.steps / 1800 : 0) + (act.activeKcal ? act.activeKcal / 90 : 0);
+}
+
 const ACTIVITY_KNEE = 12, ACTIVITY_MAX = 30;
 
 const softCapActivity = (raw) => softCap(raw, ACTIVITY_KNEE, ACTIVITY_MAX);
@@ -314,10 +331,32 @@ const WORKOUT_KNEE = 24, WORKOUT_MAX = 44;
 
 const softCapWorkout = (raw) => softCap(raw, WORKOUT_KNEE, WORKOUT_MAX);
 
+// ★ THE STORED RECOVERY SNAPSHOT NEVER EXPIRED, AND `capturedAt` — WRITTEN FOR EXACTLY THIS —
+// HAD ZERO READERS. `store.recovery` is only ever overwritten by a SUCCESSFUL HealthKit read
+// (`recovery: rec || p.recovery`), so a watch that dies, is left on the charger, or loses its
+// permission leaves last week's HRV, resting pulse and sleep sitting there being presented as
+// today's readiness — driving charge0, the muscle map's colour and the Body Battery headline,
+// with nothing on screen saying the data is old. The engine already has an honest answer for
+// "no signal at all" (charge0 estimated from training recency), and it could never be reached.
+// 36h, matching readRecoveryFrom's own read window: a snapshot older than the window it was
+// drawn from cannot correspond to any night a fresh read would find.
+// A snapshot with NO `capturedAt` is treated as fresh, deliberately — that is exactly today's
+// behaviour, so this cannot blank the number for anyone holding a pre-`capturedAt` snapshot, and
+// every snapshot written since carries the field. The guard tightens over time rather than
+// changing what anyone sees the moment it ships.
+const RECOVERY_MAX_AGE_MS = 36 * 36e5;
+function freshRecovery(store, now) {
+  const rec = store?.recovery;
+  if (!rec) return null;
+  const t = rec.capturedAt ? Date.parse(rec.capturedAt) : NaN;
+  if (Number.isFinite(t) && (now.getTime() - t) > RECOVERY_MAX_AGE_MS) return null;
+  return rec;
+}
+
 function computeBodyBattery(store) {
   const now = new Date();
   const todayKey = dateKeyOf(now);
-  const rec = store.recovery;
+  const rec = freshRecovery(store, now);
   const hasRecovery = rec && typeof rec.recoveryScore === "number";
   let charge0;
   if (hasRecovery) {
@@ -452,8 +491,7 @@ function computeBodyBattery(store) {
     // PER HOUR when HealthKit gave us buckets, whole-day totals when it didn't. Same function the
     // curve uses, over the same hours, so the two cannot disagree by construction.
     const perHour = activityRawSinceWake(store, wakeMs, now);
-    activityDrain = perHour != null ? perHour
-      : (act.steps ? act.steps / 1800 : 0) + (act.activeKcal ? act.activeKcal / 90 : 0);
+    activityDrain = perHour != null ? perHour : wholeDayActivityRaw(act);
     if (workoutDrain > 0) activityDrain *= 0.6;
     activityDrain = Math.round(softCapActivity(activityDrain));
   }
@@ -615,8 +653,11 @@ function computeBodyBatteryTimeline(store) {
   const windowStartMs = now.getTime() - 24 * 36e5;
 
   // HealthKit sleep hours will replace the 7.5h estimate when connected.
-  const hasSleepData = !!(store.recovery?.sleepHours);
-  const sleepHours = hasSleepData ? Math.min(9, Math.max(5, store.recovery.sleepHours)) : 7.5;
+  // Same freshness gate as charge0 — otherwise the curve's recharge height is drawn from a sleep
+  // figure the headline has already refused to use.
+  const freshRec = freshRecovery(store, now);
+  const hasSleepData = !!(freshRec?.sleepHours);
+  const sleepHours = hasSleepData ? Math.min(9, Math.max(5, freshRec.sleepHours)) : 7.5;
   const rechargeTotal = Math.min(40, Math.max(15, Math.round(sleepHours * 4)));
   let sleepStartLevel = Math.max(10, Math.min(55, bb.charge0 - rechargeTotal));
   // PRE-DAWN, AWAKE, NO REAL SLEEP WINDOW: the terminal point of the backward walk IS the
@@ -687,6 +728,7 @@ function computeBodyBatteryTimeline(store) {
   const hourlyIsFresh = store.activityHourlyDate === keyOf(now);
   // Proportional scale that holds the curve's summed activity drain to whatever the headline
   // charges — see softCapActivity. One model, two walks.
+  const damp = sessions.length ? 0.6 : 1;
   const activityScale = (() => {
     // Scale the hourly drains so their sum is exactly what the headline charges. `total` is the
     // same figure computeBodyBattery derives from the same buckets over the same hours, so this
@@ -699,12 +741,36 @@ function computeBodyBatteryTimeline(store) {
     // exactly when the curve was walking real hours: measured on a night-shift fixture (session
     // at 01:00, activity every hour since midnight, read 06:30) the chart walked down to 17 under
     // a headline of 38 and the pin closed 21 points, where the old code closed 6.
-    const damp = sessions.length ? 0.6 : 1;
     const total = activityRawSinceWake(store, wakeTime.getTime(), now);
     if (total == null) return 1;
     if (!(total > 0)) return damp;
     return softCapActivity(total * damp) / total;
   })();
+  // ★ WHEN THE BUCKETS ARE UNUSABLE BUT THE DAILY TOTALS ARE TODAY'S, SPREAD THE HEADLINE'S OWN
+  // ACTIVITY DRAIN ACROSS TODAY'S ELAPSED WAKING HOURS. Without this the curve charged nothing
+  // at all in that state while the headline charged the whole day (see wholeDayActivityRaw).
+  // The SHAPE is a guess — with no buckets there is no way to know which hour the steps happened
+  // in — but the ENDPOINT is right, and a wrong endpoint is what the pin turns into a visible
+  // cliff. This is NOT the smear the headline's rest walk was fixed for: there, spreading the
+  // day's activity changed the REST-RECHARGE credit and so the total; here rest recharge is
+  // already gated off (`hourlyIsFresh` is false), so this only redistributes drain the headline
+  // has already decided on.
+  // It runs ONLY where the curve previously did nothing, so every fresh-bucket fixture in the
+  // battery is untouched by construction.
+  const staleDayDrainPerHour = (() => {
+    if (hourlyIsFresh) return 0;
+    const act = store.activity;
+    if (!act || act.date !== keyOf(now)) return 0;
+    const raw = wholeDayActivityRaw(act);
+    if (!(raw > 0)) return 0;
+    const totalDrain = softCapActivity(raw * damp);   // the same cap the headline applies
+    const dayStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const fromMs = Math.max(wakeTime.getTime(), dayStartMs);
+    const elapsedH = (now.getTime() - fromMs) / 36e5;
+    if (!(elapsedH > 0)) return 0;
+    return totalDrain / elapsedH;
+  })();
+
   const points = [];
   const clampLvl = (l) => Math.round(Math.max(5, Math.min(100, l)));
 
@@ -741,6 +807,13 @@ function computeBodyBatteryTimeline(store) {
       // on the chart than in the number — 8 points across a 4h session.
       const inWorkout = sessions.some(x => Math.min(x.endMs, hourEnd) > Math.max(x.startMs, hourStart));
       if (!inWorkout) drain -= restfulHourRecharge(store, hourStart, keyOf(now));
+    } else if (useActivity && staleDayDrainPerHour > 0 && keyOf(new Date(hourStart)) === keyOf(now)) {
+      // Stale/absent buckets, but today's daily totals are real — see staleDayDrainPerHour.
+      // Bounded to the hours actually walked since waking, so the spread sums to the headline's
+      // figure rather than over-charging hours the headline never counted.
+      const from = Math.max(hourStart, wakeTime.getTime());
+      const to = Math.min(hourEnd, now.getTime());
+      if (to > from) drain += staleDayDrainPerHour * ((to - from) / 36e5);
     }
     return drain;
   };
@@ -1191,10 +1264,29 @@ function recoveryScoreFrom(rec) {
   // So an unknown HRV is ceilinged at what a TYPICAL one would have produced. Not substituted —
   // substituting would also lift a genuinely bad day — just used as the upper bound, which is all
   // "we don't know" entitles you to.
+  // ★ AND THE SAME GUARD HAS TO COVER RESTING HR, WHICH IT DID NOT. The ceiling above was written
+  // for HRV and its sibling never got it — the "one guard that didn't get copied" shape, in the
+  // health maths. Measured on the shipped code, everything exactly at baseline: a COMPLETE read
+  // scored 0.80 and the same day with the resting-pulse read missing scored 0.82, so losing a
+  // signal again outranked measuring it. The bad direction is worse than the tidy one: a genuinely
+  // elevated resting pulse (66 against a 55 baseline — the classic "you're coming down with
+  // something" signal this engine reads temperature and respiratory rate for) scores 0.62, and the
+  // same day with that one reading missing scores 0.82. A failed sensor read turned a back-off day
+  // into a better-than-normal one.
+  // Accumulated into ONE ceiling rather than two sequential `Math.min`s so that a read missing BOTH
+  // heart signals is bounded by what both-typical would have scored, instead of by the looser of
+  // two independent bounds. The HRV-only case is arithmetically unchanged — this adds a term, it
+  // does not alter the existing one.
+  let ceilV = 0, ceilW = 0;
   if (rec.hrv == null || !rec.hrvBaseline) {
-    const typical = Math.max(0, Math.min(1, (1 - 0.78) / 0.30));   // HRV exactly at baseline
-    score = Math.min(score, (wtotal + typical * 0.5) / (wsum + 0.5));
+    ceilV += Math.max(0, Math.min(1, (1 - 0.78) / 0.30)) * 0.5;      // HRV exactly at baseline
+    ceilW += 0.5;
   }
+  if (rec.restingHr == null || !rec.rhrBaseline) {
+    ceilV += Math.max(0, Math.min(1, (1.075 - 1) / 0.10)) * 0.25;    // resting HR exactly at baseline
+    ceilW += 0.25;
+  }
+  if (ceilW > 0) score = Math.min(score, (wtotal + ceilV) / (wsum + ceilW));
   // ...and a thin read cannot reach the top band at all. Deliberately pinned just under
   // recoveryVerdict's "Ready to push" threshold rather than written as a literal, so the two can't
   // drift apart. A FLAT `Math.min(score, 0.75)` was the first cut and it flattened the scale: the
@@ -1455,4 +1547,4 @@ async function readRecoveryFrom(H, now) {
 }
 
 
-export { ACTIVITY_KNEE, ANCHOR_SLACK_H, AWAKE_STEPS_PER_H, HOUR_KNEE, MAX_ANCHOR_SPAN_H, MAX_SLEEP_SPAN_H, MIN_BASELINE_PERIODS, MIN_MAIN_SLEEP_H, NIGHT_SHIFT_MS, READY_TO_PUSH, REST_KCAL_PER_H, REST_RECHARGE_PER_H, REST_STEPS_PER_H, SLEEP_GAP_MIN, STALE_HRV_MS, WORKOUT_KNEE, activityRawSinceWake, earliestActiveHourToday, hrvReading, isOvernightSample, isSmallHours, medianOf, newestGroup, nightKeyOf, personalBaseline, pickSleepBlock, pinToLastNight, recoveryScoreFrom, recoveryTimeHours, recoveryVerdict, restfulHourRecharge, sessionDrain, sleepQualityMult, softCap, softCapActivity, softCapHour, softCapWorkout, stageMinutes, trustedSleepWindow, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom };
+export { RECOVERY_MAX_AGE_MS, freshRecovery, wholeDayActivityRaw, ACTIVITY_KNEE, ANCHOR_SLACK_H, AWAKE_STEPS_PER_H, HOUR_KNEE, MAX_ANCHOR_SPAN_H, MAX_SLEEP_SPAN_H, MIN_BASELINE_PERIODS, MIN_MAIN_SLEEP_H, NIGHT_SHIFT_MS, READY_TO_PUSH, REST_KCAL_PER_H, REST_RECHARGE_PER_H, REST_STEPS_PER_H, SLEEP_GAP_MIN, STALE_HRV_MS, WORKOUT_KNEE, activityRawSinceWake, earliestActiveHourToday, hrvReading, isOvernightSample, isSmallHours, medianOf, newestGroup, nightKeyOf, personalBaseline, pickSleepBlock, pinToLastNight, recoveryScoreFrom, recoveryTimeHours, recoveryVerdict, restfulHourRecharge, sessionDrain, sleepQualityMult, softCap, softCapActivity, softCapHour, softCapWorkout, stageMinutes, trustedSleepWindow, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom };

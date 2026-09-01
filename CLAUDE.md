@@ -2570,6 +2570,64 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★★ THE HEALTH ENGINE REOPENED FOR THREE GAPS (Sep 1) — and two of the five "findings" were false
+Mo asked for this cluster. The engine has been CLOSED since Aug 8 for good reason (rounds 5-6 of
+that era were fixing regressions from rounds 4-5), so every finding was MEASURED before it was
+believed and every fix red-proofed on its own. **Two did not survive that.**
+- **★ SPLIT ACTIVITY FRESHNESS SPLIT THE HEADLINE FROM THE CURVE BY 14 POINTS.** `store.activity`
+  (daily totals) and `store.activityHourly` (hour buckets) come from SEPARATE HealthKit reads with
+  SEPARATE date stamps, and `readHourlyActivity` returns null on its own if every dataType spelling
+  fails — so "totals are today's, buckets are yesterday's" is reachable. In that state
+  `activityRawSinceWake` returns null, the HEADLINE falls back to whole-day totals, and the CURVE
+  charged **nothing at all**. Measured on a 13k-step day read at 18:00: headline 69, curve 83,
+  which the endpoint pin then draws across a few pixels — the exact symptom rounds 4-7 kept
+  closing, via a path nobody had tested. Fixed with ONE shared `wholeDayActivityRaw` plus a curve
+  branch that spreads the headline's own figure across today's elapsed waking hours. Gap 14 -> 1,
+  and the both-fresh case is byte-identical. **The safety property is what made this reopenable:
+  the new branch runs ONLY where the curve previously did nothing, so every fresh-bucket fixture
+  in the battery is untouched by construction.** This is NOT the smear the headline's rest walk was
+  fixed for — there, spreading changed the rest-recharge credit and so the total; here rest
+  recharge is already gated off by the same staleness, so it only redistributes drain the headline
+  has already decided on.
+- **★ A MISSING RESTING-HR READING RAISED THE SCORE — the HRV ceiling's sibling never got it.**
+  The "unknown signal is ceilinged at what a typical one would have produced" guard was written for
+  HRV only. Measured: everything exactly at baseline, a COMPLETE read scored **0.80** and the same
+  day with RHR missing scored **0.82**. The bad direction is worse than the tidy one — a genuinely
+  elevated resting pulse (66 against a 55 baseline, the classic coming-down-with-something signal)
+  scores **0.62**, and the same day with that one reading missing scored **0.82**: a failed sensor
+  read turned a back-off day into a better-than-normal one. Both ceilings are now accumulated into
+  ONE bound so a read missing BOTH heart signals is held to what both-typical would have scored,
+  rather than to the looser of two independent bounds; the HRV-only case is arithmetically
+  unchanged. The floor is untouched — 0.62 is still 0.62. Textbook "one guard that didn't get
+  copied", this time in the health maths.
+- **★ `store.recovery` NEVER EXPIRED, AND `capturedAt` — WRITTEN FOR EXACTLY THIS — HAD ZERO
+  READERS.** It is only ever overwritten by a SUCCESSFUL read (`recovery: rec || p.recovery`), so a
+  watch that dies, sits on the charger or loses its permission leaves last week's HRV, pulse and
+  sleep driving charge0, the muscle map's colour and the headline, with nothing on screen saying
+  the data is old. The engine already had an honest answer for "no signal at all" (charge0
+  estimated from training recency) and it could never be reached. `freshRecovery(store, now)` gates
+  at **36h**, matching `readRecoveryFrom`'s own read window — a snapshot older than the window it
+  was drawn from cannot correspond to any night a fresh read would find. **A snapshot with NO
+  `capturedAt` is treated as FRESH on purpose**: that is exactly today's behaviour, so shipping the
+  guard cannot blank the number for anyone holding a pre-`capturedAt` snapshot, and it tightens as
+  new snapshots land rather than changing what anyone sees the day it ships. (`sim_bbmatch`'s
+  fixture has no `capturedAt`, which is what proves the backward-compatible path is live.)
+- **FALSE FINDING 1: `muscleReadiness` is NOT missing a unit conversion.** The one place it compares
+  a weight (`topW` against the lbs-held `store.prs`) converts correctly via `topLbs`; everything
+  else it accumulates is a SET COUNT, which is unitless. Nothing to fix.
+- **FALSE FINDING 2: `weekKeyFor` has NO DST collision.** Swept three years of days across nine
+  zones including four with MIDNIGHT DST transitions (Santiago, Havana, Asuncion, Beirut): zero
+  malformed weeks, zero misfiled days. Local date-component arithmetic normalises correctly and
+  `dateKeyOf` reads local parts, so the pair is sound. The predicted March-2029 collision does not
+  exist.
+**Sim: `sim_bbstale`** (15 checks). Red-proofed at **6 failures** with every control green — the
+gap measured 14 on the old code, exactly matching the independent probe. It compares the
+SECOND-to-last curve point on purpose: the last is pinned to the headline by construction, so
+measuring through it can only ever report agreement.
+**The lesson that repeats: 2 of 5 findings were wrong, and only measuring told them apart.** Same
+hit rate as the design-critique era, where two of the three findings worth acting on turned out to
+be false. An audit finding is a claim, not a result.
+
 ## ★★★ THE SILENT-FAILURE CLUSTER (Sep 1) — four writes that reported success they never earned
 Mo picked this off the audit list: "a 'saved!' message for something that didn't save is exactly
 how someone loses a program." Four sites shared ONE shape — an optimistic `setStore`, a server
