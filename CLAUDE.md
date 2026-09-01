@@ -2570,6 +2570,33 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★ A MISSING PROFILE ROW WAS RESETTING FOUR SETTINGS TO THEIR DEFAULTS (Aug 31)
+Found as an aside by the theme audit, fixed on Mo's say-so. `loadUserData` rebuilt the settings
+block with `me?.x || <constant>`, so whenever the user's own `profiles` row came back ABSENT — an
+empty response, a failed fetch, an RLS refusal — the constant won and the user's choice was thrown
+away. Not one field: **four**. `theme` is the visible one (the whole app flips back to light),
+`unit` is the dangerous one (every number on screen changes meaning without the user touching
+anything), `defaultRestTime` silently returns to 120s, and `notificationPrefs` re-enabled four
+toggles the user had turned OFF.
+**This is NOT the `_lastSettingsEditAt` race** that `pw_switch` `[race]` already covers — that
+guards a 20-second window right after an edit, while this fires whenever the row is missing,
+however old the edit. Same "one guard that didn't get copied" shape as the sign-out audit:
+`strengthSex` and `bodyType`, two blocks further down the SAME object literal, already carried the
+`prev.`-fallback and these four never got it. The `prev.currentUserId === currentUserId` check in
+the fix is load-bearing rather than decoration — it is what stops one account's settings leaking
+into the next one on a shared phone.
+`notificationPrefs` layers defaults -> local -> server so the server still wins per key when it
+HAS one; the other three are `me?.x || (sameUser ? prev.x : null) || <constant>`.
+Sim: **`pw_settingsreset`**, which answers the profiles GET with `[]` and asserts all four survive,
+plus a fifth check that the app is still PAINTED in the chosen theme — a store value that never
+reaches the paint would be a pass on paper and a light-themed app on screen. It carries a CONTROL
+case (row present, settings agree) so a broken fixture shows up as a red control rather than as a
+false pass. Red-proofed: control green, all five red on the old code, naming the exact values
+(theme=light, unit=lbs, rest=120, messages=true, painted rgb(246,245,243) vs midnight's rgb(10,12,18)).
+**`build/` IS GITIGNORED** — the 129 files in it are tracked only because they were `git add -f`'d.
+A new sim that is merely `git add`ed is invisible to git and vanishes on the next container
+recycle, which is exactly how the original battery was lost. Force-add every new one.
+
 ## ★ The demo personas are GONE, and the group hand-over trigger got its first real workout (Aug 31)
 Mo's call once review cleared. Deleted: `maya@`, `jordan@`, `tess@`, `sam@`, `coachkai@` — five
 content personas, via `delete from auth.users where email like '%@getseshd.app' and email <>
@@ -2891,6 +2918,21 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
    `api.push.apple.com` error = APNs key/entitlement pairing wrong.
 
 **Step 4 — TestFlight:** archive, upload, add Mo as internal tester.
+
+**★ NEXT MAC DAY — TOP OF THE LIST (added Aug 31, once App Review cleared):**
+**`Keyboard.resize: "none"` in `capacitor.config.json`, tested on device.** This is the real fix
+for the "feels laggy when I tap a field" class Mo reported himself: iOS defaults to `resize:native`,
+which physically SHRINKS the webview when the keyboard opens, so every centred layout recomputes and
+visibly drifts. The web-side pinning already shipped and takes most of it out, but a residual ~29px
+shift remains on any screen whose content still FITS the shrunken box, and no web change can remove
+that. It was deliberately NOT taken before submission for three good reasons that have all now
+expired: it is not OTA-able, it changes keyboard behaviour on every screen at once, and it cannot be
+verified by this repo's battery at all (neither jsdom nor headless Chromium has a software keyboard).
+Now that there is no deadline, it can be flipped and driven properly on a real device.
+**How to check it:** sign-up form, onboarding age step, Edit Profile, the password-reset screen, and
+any exercise-notes field — tap each input and watch whether the layout moves. The scroll containers
+added to the auth/onboarding/reset screens are the safety net if `none` leaves a field under the
+keyboard; if that happens on any screen, revert to the default rather than papering over it.
 
 **Deferred Mac-side (post-TestFlight):** (`@capacitor/keyboard` MOVED UP — it is step 2 of the
 submission Mac day above, since that build happens anyway.) Live Activity rest timer, home-screen widgets,

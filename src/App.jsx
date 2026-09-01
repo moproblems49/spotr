@@ -1,4 +1,4 @@
-// v178091717005
+// v178091717006
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18326,11 +18326,27 @@ function AppInner() {
         })(),
         history: appHistory,
         workoutDates: appWorkoutDates,
-        unit: me?.unit || "lbs",
-        theme: me?.theme || "light",
-        defaultRestTime: me?.default_rest_time || 120,
+        // ★ A MISSING PROFILE ROW MUST NOT RESET A SETTING TO ITS DEFAULT. These four were
+        // `me?.x || <constant>`, so whenever `me` came back undefined — an empty/filtered
+        // profiles response, a fetch that failed, an RLS refusal — the constant won and the
+        // user's own choice was thrown away. `theme` is the visible one (the whole app flips back
+        // to light), `unit` is the dangerous one (every number on screen changes meaning), and
+        // `notificationPrefs` silently re-enabled four toggles the user had turned off.
+        // This is NOT the `recent` race below: that guards a 20s window after an edit, whereas a
+        // missing row can arrive at any time. It is the same "one guard that didn't get copied"
+        // shape as the sign-out audit — `strengthSex` and `bodyType` two blocks down already had
+        // the prev-fallback and these four never got it.
+        // The `prev.currentUserId === currentUserId` check is load-bearing, not decoration: it is
+        // what stops one account's settings leaking into the next one on a shared phone.
+        unit: me?.unit || (prev.currentUserId === currentUserId ? prev.unit : null) || "lbs",
+        theme: me?.theme || (prev.currentUserId === currentUserId ? prev.theme : null) || "light",
+        defaultRestTime: me?.default_rest_time || (prev.currentUserId === currentUserId ? prev.defaultRestTime : null) || 120,
         seenOnboarding: me?.seen_onboarding === true,
-        notificationPrefs: { messages: true, kudos: true, comments: true, follows: true, ...(me?.notification_prefs || {}) },
+        // Defaults -> local -> server, so the server still wins per key when it has one, but a
+        // missing row leaves the user's own toggles alone instead of switching them all back on.
+        notificationPrefs: { messages: true, kudos: true, comments: true, follows: true,
+          ...((prev.currentUserId === currentUserId ? prev.notificationPrefs : null) || {}),
+          ...(me?.notification_prefs || {}) },
         // Body tracking + onboarding answers + strength sex persist server-side
         // (profiles.body_log / onboarding_answers / strength_sex) so they survive re-login and
         // new devices. Prefer the server copy, fall back to whatever's on-device — but ONLY when
