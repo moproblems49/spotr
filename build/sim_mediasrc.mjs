@@ -44,5 +44,61 @@ const refused = [
 ];
 for (const [u, why] of refused) check(`2. refuses ${why}`, safeMediaSrc(u) === null, JSON.stringify(u));
 
+// ── 3. EVERY <img> READING A SERVER VALUE MUST GO THROUGH THE GATE ──────────────────────────
+// The helper only helps at the sites that call it, and the first sweep MISSED one: GroupDetail's
+// `resolveImg` returned a legacy absolute `image_url` verbatim, so a group member could point their
+// own post's image at a remote pixel and collect the IP of everyone who opened that group's feed.
+// This is the N-copies class in URL form, so the guard is structural rather than a list of sites:
+// any `<img src={...}>` whose expression is not a literal, not a call to safeMediaSrc, and not a
+// named DEVICE-LOCAL source fails here. Adding a new image site therefore forces a decision.
+import { readFileSync } from "fs";
+import { join } from "path";
+const { jsxFiles, ROOT } = await import("./source_files.mjs");
+
+// Sources that can only ever be device-local: a FileReader/canvas data: URL or a bundled asset.
+// Each is named deliberately — this list is where a future "is this local?" decision gets made.
+const LOCAL_OK = new Set([
+  "rasterSrc",                    // muscle icon, base64 baked into the bundle
+  "img",                          // FileReader draft in the composer / group composer
+  "draftPhoto", "coverDraft",     // local upload drafts
+  "e.photoData",                  // body-log photo — device-only, never uploaded
+  "workoutSummary.photoDraft",    // finish-sheet draft
+]);
+
+const offenders = [];
+for (const rel of jsxFiles()) {
+  const text = readFileSync(join(ROOT, rel), "utf8");
+  for (const m of text.matchAll(/<img\b[^>]*?\ssrc=(\{[^}]*\}|"[^"]*")/g)) {
+    const raw = m[1];
+    if (raw.startsWith('"')) continue;                       // a bundled path like "/icon-192.png"
+    const expr = raw.slice(1, -1).trim();
+    if (expr.startsWith("safeMediaSrc(")) continue;
+    if (LOCAL_OK.has(expr)) continue;
+    // A bare identifier is fine if THIS file assigns it from the gate — Avatar computes
+    // `const imgSrc = safeMediaSrc(...)` once and uses it for both the guard and the src.
+    if (/^[A-Za-z_$][\w$]*$/.test(expr)
+        && new RegExp(`\\b${expr}\\s*=\\s*safeMediaSrc\\(`).test(text)) continue;
+    // A resolver call is fine if EVERY return in its definition goes through the gate. Checked
+    // rather than allowlisted, so a future branch that returns a raw URL (which is exactly the bug
+    // GroupDetail's legacy `image_url` fallback was) fails here.
+    const call = expr.match(/^([A-Za-z_$][\w$]*)\s*\(/);
+    if (call) {
+      const def = text.match(new RegExp(`const ${call[1]} = \\([^)]*\\) => \\{[\\s\\S]*?\\n  \\};`));
+      const body = def && def[0];
+      if (body) {
+        const returns = [...body.matchAll(/return ([^;]+);/g)].map(r => r[1].trim());
+        if (returns.length && returns.every(r => r === "null" || r.includes("safeMediaSrc("))) continue;
+      }
+    }
+    const line = text.slice(0, m.index).split("\n").length;
+    offenders.push(`${rel}:${line} src={${expr}}`);
+  }
+}
+check("3. every <img> either uses safeMediaSrc or names a device-local source",
+  offenders.length === 0,
+  offenders.length ? `${offenders.length} ungated: ${offenders.join("; ")} — wrap it in safeMediaSrc(), or add it to LOCAL_OK here with a reason` : "");
+// The scan must actually be looking at something — an empty file list would pass vacuously.
+check("3b. [control] the scan examined the real source files", jsxFiles().length >= 5, `${jsxFiles().length} file(s)`);
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails ? 1 : 0);

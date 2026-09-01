@@ -1,4 +1,4 @@
-// v178091717013
+// v178091717014
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4031,12 +4031,21 @@ function reportError(message, stack, source) {
     const key = String(message).slice(0, 120);
     if (_reportedErrors.has(key) || _reportedErrors.size >= 5) return;
     _reportedErrors.add(key);
-    const uid_ = (() => { try { return loadSession()?.user?.id || null; } catch { return null; } })();
+    // ★ SEND THE SESSION TOKEN, NOT THE ANON KEY. This posted `user_id` while authenticating as
+    // ANON, so the column was whatever the client claimed and the row's RLS check had nothing to
+    // compare it against — anyone with the (public) anon key could fabricate crash reports
+    // attributed to any real user, which is Mo's triage queue. With a real token the DB can now
+    // enforce `user_id = auth.uid()`. Signed out, the token is absent and `user_id` is null, which
+    // the policy also permits — an anonymous crash report is still worth having.
+    const sess_ = (() => { try { return loadSession(); } catch { return null; } })();
+    const uid_ = sess_?.user?.id || null;
+    const tok_ = sess_?.access_token || null;
     fetch(`${SUPABASE_URL}/rest/v1/client_errors`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${tok_ || SUPABASE_KEY}` },
       body: JSON.stringify({
-        user_id: uid_,
+        // Only claim an id when we are actually authenticating as that user; otherwise null.
+        user_id: tok_ ? uid_ : null,
         message: String(message).slice(0, 1000),
         stack: String(stack || "").slice(0, 4000),
         source: source || "unknown",
@@ -21290,7 +21299,7 @@ function AppInner() {
                       background: C.divider
                     }}>
                       {myStoryPost?.imageData
-                        ? <img src={myStoryPost.imageData} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                        ? <img src={safeMediaSrc(myStoryPost.imageData)} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
                         : <span style={{ fontSize:26, fontWeight:900 }}>{me?.avatar || ((me?.name || me?.username || "?").trim()[0] || "?").toUpperCase()}</span>
                       }
                     </div>

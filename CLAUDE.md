@@ -2570,6 +2570,57 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★★ SECURITY ROUND 2 (Sep 1) — the media-URL sweep found one the first pass missed
+Mo, on the tracking-pixel finding: "make sure that can happen anywhere else." So the second round
+led with a full sweep for remote resources loaded from a value another user controls.
+- **★ `resolveImg` IN GroupDetail RETURNED A LEGACY ABSOLUTE `image_url` VERBATIM.** The first pass
+  gated seven `<img>` sites in App.jsx and MISSED this one, because it is behind a resolver rather
+  than an inline expression. `group_posts.image_url` is a plain text column and its author may
+  PATCH it (the author-edit trigger permits exactly that), so a group member could point their own
+  post's image at `https://attacker/pixel.png` and collect the IP and user-agent of **every member
+  who opens that group's feed**. Every branch of the resolver goes through `safeMediaSrc` now.
+- **What the sweep RULED OUT, by looking rather than assuming:** no `backgroundImage` with a
+  dynamic value anywhere (the classic thing an `<img` grep misses); no `<video>`/`<source>`/
+  `<iframe>`/`<object>`/`<link>` in the whole app; all three `new Image()` sites load either a local
+  base64 data URL or a `URL.createObjectURL` blob of our OWN svg, never a remote URL; the share-card
+  SVG builders contain no `<image>`, no `xlink:href` and no avatar, so nothing in a rasterised card
+  can fetch; and `api/profile-og.js` embeds a STATIC `og-image.png`, not the user's avatar — which
+  matters because that card is unfurled by third parties.
+- **★ THE GUARD IS STRUCTURAL, NOT A LIST OF SITES.** `sim_mediasrc` section 3 walks every source
+  file and fails any `<img src={...}>` whose expression is not a literal, not a `safeMediaSrc(...)`
+  call, not a named DEVICE-LOCAL source, not a variable this file assigns from `safeMediaSrc`, and
+  not a resolver whose EVERY return goes through it. That last clause is what catches the
+  GroupDetail shape: a resolver with one leaking branch fails. Red-proofed both ways — restoring
+  the raw `return iu` fails it, and so does a brand-new ungated `<img>`.
+- **`client_errors` / `feedback` could be attributed to anyone.** The reporter POSTed a `user_id`
+  while authenticating as ANON, so the column was whatever the caller claimed and RLS had nothing
+  to compare it against — anyone with the public anon key could fabricate crash reports and
+  feedback against any real user, which is Mo's triage queue. The client sends the session token
+  now and the policy enforces `user_id IS NULL OR user_id = auth.uid()`, plus a size CHECK the
+  client's own truncation already satisfies. Verified with role-sims: a forged attribution is
+  refused, an anonymous null-id report still works, an oversize payload is refused, and an honest
+  report from the real user still works.
+- **★ THE pg_net REVOKE DID NOT TAKE, AND THE STATEMENT SAID IT DID.** `net.http_post`/`http_get`
+  carry `=X/supabase_admin` in their ACL — the grant is to **PUBLIC**, made by `supabase_admin`.
+  The MCP connection is `postgres`, and Postgres SILENTLY IGNORES a REVOKE for a grant the caller
+  did not make: the statement returned success and `has_function_privilege('anon', …)` was still
+  true afterwards. This is the scar already recorded in Sweep #5, hit again — **check the privilege
+  after the revoke, never trust the statement.** Status: NOT fixed, and not fixable from here; it
+  needs `supabase_admin` (Supabase support, or the dashboard's SQL editor if it runs as a
+  superuser). It stays latent rather than live because PostgREST exposes only `public,
+  graphql_public` and no public wrapper forwards a caller-controlled URL into it — so the thing to
+  watch is anyone adding `net` to the exposed schemas or writing such a wrapper.
+- **The privacy policy now names Anthropic** and says exactly what the coach sends (recent
+  workouts, PRs, bodyweight trend, per-muscle volume, and — only if Apple Health is connected — the
+  DERIVED recovery values), what it does not (name, email, username, photos, messages, post text),
+  and that it only runs when the feature is used. The HealthKit section carries the matching
+  exception. This was an App Review 5.1.1 exposure, not just tidiness: HealthKit-derived values
+  reached a third party while the policy listed no AI processor.
+**Deliberately NOT done this round:** `/api/ai` still accepts the client's `system` prompt verbatim
+(clamped to 6000 chars) rather than selecting it server-side from a mode enum. The cost risk it
+represented is now bounded by the per-user daily quota, and the change touches both coach call
+sites, so it is worth doing deliberately rather than tacked onto a security round.
+
 ## ★★ THE SECURITY ROUND (Sep 1) — three Fable 5.1 audits, and no live takeover hole
 Mo asked for a full security audit with a focus on account takeover. Three cold-context Fable 5.1
 agents ran on disjoint scopes (auth / database / client+future-risk), all read-only, RLS verified by

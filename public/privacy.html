@@ -32,6 +32,7 @@
 <ul>
   <li>HealthKit data is processed on your device and is <strong>not</strong> uploaded to our servers.</li>
   <li>HealthKit data is never used for advertising, marketing, or sold to third parties, and is never disclosed to data brokers.</li>
+  <li>The one exception to HealthKit data leaving your device is the AI coaching feature described below, and only when you use it: the <em>derived</em> recovery values (heart-rate variability, resting heart rate, sleep duration) are included in the summary sent to Anthropic so the coaching can account for how recovered you are. Raw HealthKit samples are never sent.</li>
   <li>You can revoke access at any time in the iOS Settings app under Privacy &amp; Security → Health, and the app will continue to work without it.</li>
 </ul>
 
@@ -46,7 +47,9 @@
 </ul>
 
 <h2>Data sharing</h2>
-<p>We share data only with the service providers required to run the app: Supabase (database, authentication, and storage) and Vercel (web hosting). These providers process data on our behalf and are not permitted to use it for their own purposes. We do not sell personal data and do not share it with advertisers.</p>
+<p>We share data only with the service providers required to run the app: Supabase (database, authentication, and storage), Vercel (web hosting), and Anthropic (AI features). These providers process data on our behalf and are not permitted to use it for their own purposes. We do not sell personal data and do not share it with advertisers.</p>
+
+<p><strong>AI features and Anthropic.</strong> Seshd&rsquo;s coaching features &mdash; the weekly review and AI-assisted program suggestions &mdash; send a summary of your training to Anthropic&rsquo;s Claude API to generate that text. What is sent: recent workouts (exercises, sets, reps, weights), personal records, your bodyweight trend, per-muscle training volume, and, <em>if you have connected Apple Health</em>, the recovery values derived from it (heart-rate variability, resting heart rate, and sleep duration). What is <em>not</em> sent: your name, email address, username, profile or progress photos, messages, or any post text. Anthropic processes this on our behalf to return the response and is not permitted to use it to train models. These features run only when you use them; if you never open the weekly review or the AI program builder, nothing is sent.</p>
 
 <h2>Data retention and deletion</h2>
 <p>Your data is retained while your account is active. You can request deletion of your account and all associated data at any time by contacting us at the email below, and we will complete the deletion within 30 days.</p>

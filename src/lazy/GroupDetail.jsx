@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { devError, dateFromKey, workingDone } from "../engine/core.js";
 import { postWorkoutPayload, sessionVolume } from "../engine/workout.js";
-import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, SharedPostLink, NAV_CLEARANCE } from "../App.jsx";
+import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, SharedPostLink, NAV_CLEARANCE, safeMediaSrc} from "../App.jsx";
 
 export default function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
   const [tab, setTab] = useState("feed");
@@ -41,12 +41,18 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
   // previews win while a fresh upload is in flight.
   const isStoredPath = (v) => typeof v === "string" && v.length > 0 && !/^(https?:|data:|blob:)/i.test(v);
   const resolveImg = (post) => {
-    if (post._localImage) return post._localImage;
+    // ★ EVERY BRANCH GOES THROUGH safeMediaSrc, INCLUDING THE LEGACY ONE. `group_posts.image_url`
+    // is a plain text column and its author can PATCH it (the author-edit trigger permits exactly
+    // that), so the `!isStoredPath(iu)` fallback — added for posts that predate the private bucket
+    // — handed an arbitrary URL straight to an `<img src>` rendered to every member of the group.
+    // That is a tracking pixel: load it and you collect the IP and user-agent of everyone who
+    // opens that group's feed. A signed storage URL still passes; anything off-host does not.
+    if (post._localImage) return safeMediaSrc(post._localImage);
     const iu = post.image_url;
     if (!iu) return null;
-    if (!isStoredPath(iu)) return iu;
+    if (!isStoredPath(iu)) return safeMediaSrc(iu);
     const e = signedImgs[iu];
-    return e && e.exp > Date.now() ? e.url : null;
+    return e && e.exp > Date.now() ? safeMediaSrc(e.url) : null;
   };
 
   // Sign any private group-image paths that appear in the feed, and re-sign the ones about to
