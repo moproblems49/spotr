@@ -142,8 +142,14 @@ it found something real that nobody had reported: a mid-review demo corpus that 
               and p.prosrc ~* 'net\.http_(post|get)' and p.pronargs > 0)        as public_wrappers_BAD;
    ```
    Red-proofed: creating a `public` function that forwards a `text` URL into `net.http_post` takes
-   the second number 0 -> 1 (probe rolled back, nothing left behind). If either goes true, the
-   grant stops being theoretical and needs escalating to Supabase that day.
+   the second number 0 -> 1 (probe rolled back, nothing left behind).
+   **AND CHECK THE GUARD IS STILL THERE** — the grant is now made INERT by a BEFORE INSERT trigger
+   on the queue (see the entry below). It is lost SILENTLY if that table is ever recreated (a pg_net
+   upgrade, or a drop/recreate of the extension), with pushes still working and the protection gone:
+   ```sql
+   select count(*) from pg_trigger
+    where tgrelid='net.http_request_queue'::regclass and tgname='aaa_pgnet_enqueue_guard';  -- must be 1
+   ```
 Report findings even when everything is clean; "the error rate went from 1,650/day to single
 digits" is the point of running it again after a fix.
 **Sweep #3 (Aug 28, ~04:40 UTC), for the next run's baseline:** 950 of 953 daily Postgres errors
@@ -2583,6 +2589,49 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 **Gesture-perf refactor (merged to main):** every touch/drag gesture in the app — `SetRow` swipe, tab-swipe, the shared `PullToRefresh` component (History/Profile/Messages), the feed's own pull-to-refresh, `StoryViewer` drag, `InsightCards` swipe, and the profile cover-photo position drag — was re-pointed from per-frame `setState` (re-rendering the whole screen on every `touchmove`) to the ref-write pattern documented above, plus a fix for vertical-scroll bleed-through during the tab swipe. A code review of this refactor caught and fixed one real regression before merge: the cover-photo drag's mouse path could freeze `coverPosDraft` at the gesture's first frame if the cursor left the small drag area before mouseup (now uses `window`-level listeners — see the Conventions note above).
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
+
+## ★★ THE UNREVOKABLE pg_net GRANT IS NOW INERT (Sep 1) — remove the EFFECT, not the permission
+Mo: "what can we do about the one thing you couldn't fix? Maybe try fable 5.1?" A Fable 5.1 agent
+scoped to "find a route I have missed" found a real one, and two facts that reframed the problem.
+**★ THE GRANT IS SUPABASE'S DELIBERATE CURRENT DEFAULT, NOT AN OLD LEFTOVER.** Their platform
+migration `20250220051611_pg_net_perms_fix.sql` runs `GRANT ALL ON FUNCTION net.http_get/http_post
+TO PUBLIC` on every project with pg_net installed — which is exactly the `=X/supabase_admin` ACL
+entry. So the support-ticket advice recorded earlier was based on a false premise: a ticket asks
+them to deviate from their own default, and a future platform migration could re-apply it. Correct
+the expectation before spending time on it.
+**Every route to REMOVE the grant is blocked, and all of it was measured:** `REVOKE … GRANTED BY
+supabase_admin` → `0A000 grantor must be current user`; `ALTER FUNCTION/SCHEMA … OWNER TO postgres`
+→ `42501 must be owner`; `ALTER EXTENSION pg_net UPDATE` → `42501 must be owner of extension`, and
+0.20.0 is newest with no update path anyway; `extrelocatable = false` so it cannot be moved; event
+triggers need superuser; RLS on `net.http_request_queue` → `must be owner of table`. `postgres` is a
+member of nine roles and none reach `supabase_admin`, which has zero members.
+**DROP + CREATE EXTENSION *does* work** (supautils lists pg_net in `privileged_extensions` and runs
+it as `supabase_admin`) **and is NOT a fix** — it re-runs the 0.20.0 script, which re-grants USAGE
+and ALL on the schema/tables to PUBLIC, and it drops the queue with any in-flight webhook. Do not.
+**★ SO THE FIX REMOVES THE EFFECT INSTEAD.** Every pg_net request — any role, via
+`http_post`/`http_get`/`http_delete` or by writing the table directly (PUBLIC has INSERT there too)
+— ends as a row in `net.http_request_queue`. `postgres` holds the TRIGGER privilege on that table
+because the 0.20.0 script granted ALL to PUBLIC, so a BEFORE INSERT trigger is a single choke point
+the grant cannot bypass. `supabase_functions.pgnet_enqueue_guard()` carries TWO rules covering
+different attackers: the ROLE rule stops anon/authenticated outright (a direct call and a SECURITY
+INVOKER wrapper both run as the caller), and the HOST rule stops pg_net being aimed off-project even
+by a postgres-owned SECURITY DEFINER wrapper — which the role rule alone would permit, and which is
+exactly the shape the tripwire watches, so it goes from monitored to impossible.
+**Verified against the LIVE guard, not just in a rollback:** anon `http_post` blocked, authenticated
+blocked, anon writing the queue directly blocked, `postgres` aiming off-host blocked, and a real
+`kudos` insert still enqueued `POST …/functions/v1/send-activity-push` (queue 0 -> 1). The negative
+control matters: with a deliberately wrong host allowlist the push path FAILED, which is proof the
+guard genuinely sits on it — a mistyped regex here breaks notifications for every user.
+**What it costs:** a future webhook to a NON-Supabase host (Stripe, Slack, Zapier) is refused until
+the regex is widened. It fails LOUDLY with a message naming the function to edit.
+**Reversible, but not the obvious way:** `postgres` cannot `DROP TRIGGER` or `DISABLE TRIGGER` on a
+table it does not own — it owns the FUNCTION, so `CREATE OR REPLACE … RETURN NEW` disables it and
+`DROP FUNCTION … CASCADE` removes it.
+**NOT COVERED, and worth being honest about:** PUBLIC also has SELECT on `net._http_response`, which
+stores webhook response bodies. Nothing from this role can put RLS on it. That half is still
+protected only by the `net` schema not being REST-exposed — one layer, where the request path now
+has two. If `net` were ever exposed, reading responses would become possible and the guard would not
+help; that is what sweep step 6's first condition is for.
 
 ## ★★ SECURITY ROUND 2 (Sep 1) — the media-URL sweep found one the first pass missed
 Mo, on the tracking-pixel finding: "make sure that can happen anywhere else." So the second round
