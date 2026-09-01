@@ -31,6 +31,7 @@ const ROWS = [prog(P3, "Third", "2026-03-03T10:00:00Z"), prog(P2, "Second", "202
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 
+let profileGets = 0;
 async function makePage({ profile = {}, onPatch = null } = {}) {
   const page = await browser.newPage({ viewport: { width: 428, height: 926 }, hasTouch: true, isMobile: true });
   page.setDefaultTimeout(5000);
@@ -58,6 +59,7 @@ async function makePage({ profile = {}, onPatch = null } = {}) {
     // SEED THROUGH THE STUB: loadUserData replaces programs / custom_exercises / body_log
     // wholesale, so a fixture that only writes localStorage is erased a second later.
     if (m === "GET" && /\/rest\/v1\/programs\?/.test(u)) return J(ROWS);
+    if (m === "GET" && /\/rest\/v1\/profiles\?/.test(u)) profileGets++;
     if (m === "GET" && /\/rest\/v1\/(profiles|public_profiles)\?/.test(u))
       return J([{ id: ME, username: "momo", name: "Mo", unit: "lbs", theme: "dark", is_public: true,
         seen_onboarding: true, ...profile }]);
@@ -99,9 +101,18 @@ async function programNames(page) {
 // ── 3. A DRAG MUST REACH THE SERVER ─────────────────────────────────────────────────────────
 {
   const patched = [];
-  const page = await makePage({ profile: {}, onPatch: b => { if (b && b.program_order) patched.push(b.program_order); } });
+  // The server must RETURN a stale order, or this section cannot see the bug at all: with no
+  // `program_order` on the profile the effective-order lookup falls back to the local copy and the
+  // list looks correct even on the broken code. A fixture that is accidentally right because of
+  // what it OMITS is a future misdiagnosis, not a passing test.
+  const page = await makePage({ profile: { program_order: [P3, P2, P1] },
+    onPatch: b => { if (b && b.program_order) patched.push(b.program_order); } });
   const before = await programNames(page);
   check("3a. the untouched list is the query's own order", before.join(",") === "Third,Second,First", JSON.stringify(before));
+  // Clear the 30s foreground-refresh throttle BEFORE dragging, so the refresh dispatched after it
+  // is real AND still inside the 20s edit window. Both clocks have to line up or the check is a
+  // no-op dressed as a pass.
+  await page.waitForTimeout(31000);
   const handles = page.locator('[aria-label="Drag to reorder program"]');
   const n = await handles.count();
   check("3b. the drag handles are present", n === 3, `found ${n}`);
@@ -123,6 +134,20 @@ async function programNames(page) {
     if (patched.length) check("3e. and the written order matches what is on screen",
       JSON.stringify(patched[patched.length - 1].map(id => ({ [P1]: "First", [P2]: "Second", [P3]: "Third" })[id])) === JSON.stringify(after),
       `${JSON.stringify(patched[patched.length - 1])} vs ${JSON.stringify(after)}`);
+    // ★ AND IT MUST SURVIVE THE REFRESH THAT LANDS BEFORE THE WRITE COMMITS. The stub keeps
+    // returning the OLD program_order, exactly as the server does in that window. Protecting
+    // `programOrder` in the recent-edit branch was NOT enough on its own: `programs` is what the
+    // list renders and it was ordered from the server's copy regardless, so the list reverted
+    // under the user. The 31s wait above cleared the 30s foreground-refresh throttle, so this
+    // dispatch genuinely fetches — and it lands well inside the 20s edit window.
+    const getsBefore = profileGets;
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await page.waitForTimeout(1800);
+    check("3f. [control] the refresh actually ran", profileGets > getsBefore,
+      `profiles GETs ${getsBefore} -> ${profileGets}`);
+    const afterRefresh = await programNames(page);
+    check("3g. a refresh inside the edit window does NOT revert the drag",
+      afterRefresh.join(",") === after.join(","), `${JSON.stringify(after)} -> ${JSON.stringify(afterRefresh)}`);
   }
   await page.close();
 }
@@ -164,8 +189,13 @@ async function programNames(page) {
     check("4b. the removal was written to the server", patched.length > 0, `custom_exercises PATCHes: ${patched.length}`);
     // Force the foreground refresh that used to undo it. The server still returns the OLD list,
     // exactly as it would in the window before the PATCH commits.
+    const gets4 = profileGets;
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1800);
+    // Without this control, 4c passes forever against any code the moment the throttle changes
+    // or the listener moves off `document` — the documented "a script that cannot fail" trap.
+    check("4c0. [control] the refresh actually ran", profileGets > gets4,
+      `profiles GETs ${gets4} -> ${profileGets}`);
     const back = await page.evaluate(() => { try { return (JSON.parse(localStorage.getItem("seshd_v1") || "{}").customExercises || []).some(e => e.name === "Zolgar Row"); } catch { return null; } });
     check("4c. a refresh landing before the write commits does NOT resurrect it", back === false, `present again: ${back}`);
   }

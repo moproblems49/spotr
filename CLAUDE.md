@@ -2570,6 +2570,77 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★★ THE PERSISTENCE CLUSTER (Sep 1) — the reorder, and two EXEMPTIONS that were simply untrue
+Mo: "finish the remaining list." Three more "looked saved but wasn't" bugs, then a Fable 5
+cold-context audit that found four defects — two of them in the fix, one of which could ERASE the
+thing it was meant to save. Nothing reached a phone until the audit had reported.
+- **★ REORDERING THE PROGRAM LIST was a bare `setStore`**, and the query behind it is
+  `order=created_at.desc`, so the drag was undone by the next foreground every time. The order now
+  lives on `profiles.program_order` (jsonb array of ids). **An array on the profile rather than a
+  `sort_order` column on `programs`, deliberately**: a drag moves every row between the two
+  indices, so a per-row column means N writes for one gesture, while this is ONE atomic PATCH that
+  the durable queue already retries. `orderProgramsBy` is the one definition and is tolerant in
+  BOTH directions — an unmentioned id keeps its query position AFTER the ordered ones (a program
+  created on another device still appears), a stale id finds no row, a duplicate is consumed once,
+  and ids compare as strings. This is a display preference and **must never be able to hide a
+  program**. Not added to `public_profiles` (which lists its columns explicitly).
+- **★ `custom_exercises` AND `body_log` WERE EXEMPT IN `sim_settingsrace` ON REASONS THAT WERE NOT
+  TRUE, AND AN EXEMPTION IS ONLY AS GOOD AS ITS JUSTIFICATION.** "list edits are additive" stopped
+  being true the day Settings grew Remove and Clear-all; "append-only log" was never true (an entry
+  REPLACES the existing one for its date). The custom-exercise one is the worse: `loadUserData`
+  UNIONS local with server, so a refresh landing before the PATCH **resurrects the exercise you
+  just deleted**, and the next persist writes it back — the removal permanently fails, which is
+  worse than a toggle flipping back. Both are in the recent branch now and both exemptions are
+  DELETED, so the guard enforces the fix instead of excusing it. **When a guard is green because of
+  an exemption, re-read the exemption's reason before trusting the green.**
+- **`markSettingsEdit()` exists because a lazy module cannot assign the module-level `let`** — an
+  ESM import binding is read-only from the importing side, the same trap the `_discoverSubTab`
+  getter/setter pair exists for.
+**★★ THE FABLE AUDIT THEN FOUND FOUR, AND TWO WERE MINE:**
+- **★ `nextOrder` WAS CAPTURED BY A SIDE EFFECT INSIDE A `setStore` UPDATER, AND REACT DOES NOT
+  ALWAYS RUN THAT UPDATER EAGERLY.** It only does so when the hook's fiber has no pending update —
+  and this store's fiber takes interval-driven ones (the message poll, the feed refresh, the health
+  sync). Measured against the repo's own React 19.2.5: with any prior update pending, the captured
+  value was `[]`, so the PATCH would send `program_order: []` and **erase the saved order**,
+  silently, because the local render is still correct and the loss only shows on a later
+  foreground. The handler already held `arr`/`oldIndex`/`newIndex`, so the fix was to compute the
+  new order OUTSIDE the updater. **The identical shape at the custom-exercise Remove is
+  PRE-EXISTING and worse — an empty capture there PATCHes `custom_exercises: []`, wiping every
+  custom exercise and stripping the muscle mapping from every past workout that used one** — fixed
+  in the same pass by deriving from `store.customExercises`.
+- **★ THE 20s GUARD PROTECTED A KEY NOTHING READS.** `programOrder` was in the recent branch and
+  correctly ordered, but `programs` is what the list RENDERS, it is assigned unconditionally, and
+  it was ordered from `me.program_order` alone — so a refresh inside the window re-served the stale
+  order and the list visibly reverted under the user. **The `bodyType` scar one level removed: the
+  field was mentioned in the guard and the mention did not govern what was drawn.** Ordering now
+  comes from the EFFECTIVE order (`recentEdit ? prev.programOrder : serverProgramOrder`).
+- **The automatic Apple Health weight import was stamping `markSettingsEdit()`**, and the stamp is
+  GLOBAL — for 20s it makes `loadUserData` trust the local copy of theme, unit, notificationPrefs,
+  customExercises, bodyLog and programOrder. So on any morning-with-a-new-weigh-in boot, a settings
+  change made on another device was ignored by exactly the load that should deliver it. Unstamped:
+  the import is idempotent and already durable, so it needs no window. **A stamp that means "the
+  user just changed a setting" must not be set by something the user did not do.**
+- **`sim_settingsrace` read `src/App.jsx` ONLY**, so the lazy screens' `profiles` writes were
+  outside its reach — deleting BodyTrackingScreen's stamp left the entire battery green. It sweeps
+  `jsxFiles()` now. Its stamp counter was also off by one in the vacuous-pass direction (the
+  helper's definition line matches both regexes).
+**Sim: `pw_reorderpersist`** (16 checks) + `sim_settingsrace` section 5. Red-proofed individually.
+**★ AND THREE OF ITS OWN CHECKS WERE VACUOUS BEFORE THEY WERE REAL, EACH A DOCUMENTED TRAP:**
+the first red-proof reverted `src/App.jsx` alone, which then **did not COMPILE** (BodyTrackingScreen
+imports `markSettingsEdit`), so the confident failures were a stale bundle rather than a red proof —
+**a red-proof build that fails is not a red proof; check the build succeeded**; the custom-exercise
+check passed on BOTH builds until it waited out the **30s foreground-refresh throttle**, since
+`visibilitychange` inside that window is a no-op (the `pw_switch` trap again, and note the 30s
+throttle and the 20s edit window must be lined up deliberately: wait the throttle out BEFORE the
+edit); and the revert check passed on the broken code because the fixture **omitted**
+`program_order` from the stubbed profile, so the effective-order lookup fell back to the local copy
+and hid the bug — *a fixture that is accidentally right because of what it omits is a future
+misdiagnosis*. Each now carries a `[control]` assertion that the refresh actually ran.
+**★ AND THE BATTERY CAUGHT WHAT A STANDALONE RUN COULD NOT: `jsxFiles()` RETURNS REPO-RELATIVE
+PATHS.** `sim_settingsrace` passed from the repo root and failed inside `run_sims` with
+`ENOENT src/lazy/AICoachModal.jsx`, because the runner uses its own cwd. Join onto `ROOT`; **a
+guard that only works from one working directory is a guard that will silently stop running.**
+
 ## ★★ THE HEALTH ENGINE REOPENED FOR THREE GAPS (Sep 1) — and two of the five "findings" were false
 Mo asked for this cluster. The engine has been CLOSED since Aug 8 for good reason (rounds 5-6 of
 that era were fixing regressions from rounds 4-5), so every finding was MEASURED before it was

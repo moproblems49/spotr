@@ -1,4 +1,4 @@
-// v178091717011
+// v178091717012
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -13008,12 +13008,19 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               // dominant bug class in this app. The order now lives on the profile as an array of
               // program ids: ONE atomic PATCH for a drag that moves every row between the two
               // indices, and a PATCH is already retryable by the durable write queue.
-              let nextOrder = [];
-              setStore(prev => {
-                const nextPrograms = arrayMove(prev.programs, oldIndex, newIndex);
-                nextOrder = nextPrograms.map(p => p.id);
-                return { ...prev, programs: nextPrograms, programOrder: nextOrder };
-              });
+              // ★ COMPUTE THE NEW ORDER OUTSIDE THE UPDATER. Assigning it INSIDE and reading it
+              // on the next line looks equivalent and is not: React only invokes an updater
+              // eagerly when the hook's fiber has no pending update, and this store's fiber takes
+              // interval-driven updates (the message poll, the feed refresh, the health sync). A
+              // mouseup landing while one of those is pending leaves the outer variable at its
+              // initial value, so the PATCH would send `program_order: []` and ERASE the saved
+              // order — silently, because the local render is still correct and the loss only
+              // shows on a later foreground. Measured against this repo's own React 19.2.5: with
+              // any prior update on that fiber, the captured value was []. `arr`, `oldIndex` and
+              // `newIndex` are already in hand, so the reorder needs no `prev` at all.
+              const nextPrograms = arrayMove(arr, oldIndex, newIndex);
+              const nextOrder = nextPrograms.map(p => p.id);
+              setStore(prev => ({ ...prev, programs: nextPrograms, programOrder: nextOrder }));
               markSettingsEdit();
               const tok_ = token || (typeof loadSession === "function" && loadSession()?.access_token);
               if (tok_ && currentUserId) {
@@ -16263,11 +16270,20 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                               // foreground refresh landing in that gap would otherwise let a stale
                               // list clobber a custom exercise added on another device — locally
                               // and on the server, since the same array is PATCHed.
-                              let next = [];
-                              setStore(p => {
-                                next = (p.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
-                                return { ...p, customExercises: next };
-                              });
+                              // ★ DERIVE `next` OUTSIDE THE UPDATER. Assigning it inside and
+                              // reading it below only works when React invokes the updater
+                              // EAGERLY, which it does not when the store's fiber already has a
+                              // pending update — and this fiber takes interval-driven ones (the
+                              // message poll, the feed refresh, the health sync). In that case
+                              // `next` stays `[]` and the PATCH sends `custom_exercises: []`,
+                              // wiping EVERY custom exercise instead of the one being removed,
+                              // and `setCustomExerciseRegistry([])` strips the muscle mapping
+                              // from every past workout that used any of them. The updater form
+                              // was chosen to read the freshest list; the recent-edit guard in
+                              // loadUserData now covers that window, and a stale-by-one-render
+                              // list is a far smaller problem than an empty one.
+                              const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
+                              setStore(p => ({ ...p, customExercises: next }));
                               setCustomExerciseRegistry(next);
                               const tok = token || loadSession()?.access_token;
                               markSettingsEdit();
@@ -16973,6 +16989,24 @@ function PublicProfileView({ userId, C, onOpenApp }) {
 // week (anchored to Sunday), only for signed-in users who trained in the last 7 days.
 // The result is stored (store.weeklyReview + coachLog for next week's memory) and the
 // sheet below renders the stored copy — reopening it never re-calls the API.
+// Order a program list by a stored array of ids. ONE definition, because loadUserData needs it
+// for the rendered `programs` and nothing else should be tempted to re-derive it.
+// Deliberately tolerant in BOTH directions, because this is a display preference and must never
+// be able to hide a program: an id the array does not mention keeps its query position AFTER the
+// ordered ones (so a program created on another device since the last reorder still appears,
+// newest-first), a stale id finds no row and drops out, and a duplicate id can only be consumed
+// once. Ids are compared as strings so a numeric row id and a string in the array still match.
+function orderProgramsBy(rows, order) {
+  if (!Array.isArray(order) || !order.length) return rows;
+  const byId = new Map(rows.map(r => [String(r.id), r]));
+  const ordered = [];
+  for (const id of order) {
+    const r = byId.get(String(id));
+    if (r) { ordered.push(r); byId.delete(String(id)); }
+  }
+  return [...ordered, ...rows.filter(r => byId.has(String(r.id)))];
+}
+
 function weekKeyFor(d = new Date()) {
   const sun = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay()); // most recent Sunday
   return dateKeyOf(sun);
@@ -17788,7 +17822,14 @@ function AppInner() {
             const nextLog = Object.values(byDate).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
             const tok = tokenRef.current || loadSession()?.access_token;
             if (tok && currentUserId && !isGuest) {
-              markSettingsEdit();
+              // DELIBERATELY NOT markSettingsEdit(): this is the AUTOMATIC Apple Health weight
+              // import, not a user edit, and the stamp is GLOBAL — it makes loadUserData trust the
+              // local copy of every guarded field (theme, unit, notificationPrefs, customExercises,
+              // bodyLog, programOrder) for 20s. Stamping here means that on any morning-with-a-new-
+              // weigh-in boot, a settings change made on another device is ignored by exactly the
+              // load that should deliver it. The import needs no stamp anyway: it is idempotent
+              // (delta check, manual entries always win, skip set) and the PATCH is already durable
+              // via queueWrite, so a locally-reverted copy simply re-imports on the next sync.
               sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ body_log: nextLog.map(b => ({ ...b, photoData: null })) }) }, tok).catch(() => {});
             }
             return { ...p, bodyLog: nextLog };
@@ -18220,27 +18261,9 @@ function AppInner() {
       const activeProgram = programs?.find(p => p.id === me?.active_program_id) || programs?.[0];
 
       // Convert DB programs to app format
-      const appPrograms = (() => {
-        const rows = (programs || []).map(p => ({
-          id: p.id, name: p.name, days: p.days || [], shareCode: p.share_code || null
-        }));
-        // ★ APPLY THE USER'S OWN ORDER. The query is `order=created_at.desc`, which is a sensible
-        // DEFAULT and is not what someone who has dragged their list wants to see. `program_order`
-        // is an array of ids on the profile; anything it does not mention keeps its query position
-        // AFTER the ordered ones, so a program created on another device since the last reorder
-        // shows up (newest first) instead of vanishing, and a deleted program's stale id simply
-        // finds no row and drops out. Deliberately tolerant in both directions: this is a display
-        // preference, and it must never be able to hide a program.
-        const order = Array.isArray(me?.program_order) ? me.program_order : [];
-        if (!order.length) return rows;
-        const byId = new Map(rows.map(r => [String(r.id), r]));
-        const ordered = [];
-        for (const id of order) {
-          const r = byId.get(String(id));
-          if (r) { ordered.push(r); byId.delete(String(id)); }
-        }
-        return [...ordered, ...rows.filter(r => byId.has(String(r.id)))];
-      })();
+      const appPrograms = (programs || []).map(p => ({
+        id: p.id, name: p.name, days: p.days || [], shareCode: p.share_code || null
+      }));
 
       // Convert PRs to app format { exerciseName: weightLbs }
       const appPrs = {};
@@ -18334,7 +18357,14 @@ function AppInner() {
       // Load posts (from people user follows + own)
       await loadFeed(tok, currentUserId, profiles || []);
 
-      setStore(prev => ({
+      setStore(prev => {
+      const sameUser_ = prev.currentUserId === currentUserId;
+      // Same test the `recent` branch below makes; hoisted because `programs` needs it too and an
+      // object literal cannot see a const declared inside its own spread.
+      const recentEdit = sameUser_ && (Date.now() - _lastSettingsEditAt < 20000);
+      const serverProgramOrder = Array.isArray(me?.program_order) ? me.program_order
+        : (sameUser_ ? (prev.programOrder || []) : []);
+      return ({
         ...prev,
         users: (profiles || []).map(p => ({
           id: p.id, username: p.username, name: p.name,
@@ -18345,9 +18375,15 @@ function AppInner() {
           followers: [], following: [] // loaded separately
         })),
         currentUserId,
-        programs: appPrograms,
-        programOrder: Array.isArray(me?.program_order) ? me.program_order
-          : (prev.currentUserId === currentUserId ? (prev.programOrder || []) : []),
+        // ★ ORDER FROM THE *EFFECTIVE* ORDER, NOT THE SERVER'S COPY. Putting `programOrder` in
+        // the recent-edit branch below protected a key that NOTHING READS: `programs` is what the
+        // list renders, it is assigned unconditionally, and it was ordered from `me.program_order`
+        // alone — so a refresh landing in the 20s after a drag re-served the stale order and the
+        // list visibly reverted under the user, which is the exact class that guard exists for.
+        // The `bodyType` scar one level removed: the field was mentioned in the guard and even
+        // correctly ordered, but the mention did not govern what was drawn.
+        programs: orderProgramsBy(appPrograms, recentEdit ? (prev.programOrder || []) : serverProgramOrder),
+        programOrder: recentEdit ? (prev.programOrder || []) : serverProgramOrder,
         activeProgramId: activeProgram?.id || null,
         // Merge with local PRs (max-wins) instead of blindly overwriting — a transient
         // failure in the per-exercise PR upsert during save would otherwise permanently
@@ -18554,7 +18590,8 @@ function AppInner() {
         ])),
         age: me?.age != null ? me.age : (prev.currentUserId === currentUserId ? prev.age : undefined),
         groups: (groupsData||[]).map(g => ({ id:g.id, name:g.name, description:g.description, icon:g.icon||'🏋️', createdBy:g.created_by, members:g.member_ids||[] })),
-      }));
+      });
+      });
       // Mark prefs as server-loaded so the save effect can start syncing local edits back — gated
       // on a SUCCESSFUL load so a failed fetch (which leaves the store at on-device/default values)
       // can never overwrite the server copy of notes/bar-types/close-friends with empties.

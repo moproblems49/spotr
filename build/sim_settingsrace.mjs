@@ -24,6 +24,20 @@ import { fileURLToPath } from "url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = readFileSync(join(ROOT, "src/App.jsx"), "utf8");
+// ★ THE LAZY SCREENS WRITE TO `profiles` TOO, AND THIS SIM COULD NOT SEE THEM.
+// It read src/App.jsx only, so BodyTrackingScreen's body_log write — one of the fields the recent
+// branch now covers — was outside its reach entirely: deleting that file's markSettingsEdit() call
+// left this check, pw_reorderpersist and sim_undef all green, i.e. the guard could be reverted
+// with the whole battery passing. Same "a guard that stopped covering the code" class the engine
+// split hit, and it goes through the one shared file list for the same reason.
+// jsxFiles() returns REPO-RELATIVE paths, so they must be joined onto ROOT rather than read as-is:
+// the battery runs sims from its own cwd, where a bare "src/lazy/AICoachModal.jsx" is ENOENT. It
+// passed standalone and failed inside `run_sims`, which is the only reason this was caught — a
+// guard that only works from one working directory is a guard that will silently stop running.
+const { jsxFiles } = await import("./source_files.mjs");
+const lazySources = jsxFiles()
+  .filter(f => !f.endsWith("App.jsx"))
+  .map(f => ({ file: f, text: readFileSync(join(ROOT, f), "utf8") }));
 let fails = 0;
 const check = (l, c, d) => { if (c) console.log(`PASS ${l}`); else { fails++; console.log(`FAIL ${l}${d ? " — " + d : ""}`); } };
 
@@ -137,11 +151,35 @@ check("every optimistically-written setting is covered by the recent-edit guard"
 // is read-only from the importing side), so body_log's write in BodyTrackingScreen goes through
 // the exported `markSettingsEdit()` helper — a stamp this check could not see before, which would
 // have made it under-count and eventually pass for the wrong reason.
+// -2, not -1: the helper's DEFINITION line contains both an assignment and the name followed by
+// `()`, so it matches BOTH regexes and was being counted twice. Off by one in the vacuous-pass
+// direction, which is the exact failure mode this check's own history warns about.
+// Note this sim reads src/App.jsx ONLY, so a stamp inside a lazy module is invisible to it —
+// pw_reorderpersist section 5 is what covers BodyTrackingScreen's.
 const stampCount = (src.match(/_lastSettingsEditAt = Date\.now\(\)/g) || []).length
-  + (src.match(/markSettingsEdit\(\)/g) || []).length - 1;   // -1: the helper's own definition
+  + (src.match(/markSettingsEdit\(\)/g) || []).length - 2;
 const guardedCount = [...optimistic.keys()].filter(f => !EXEMPT[f]).length;
 check("enough writes stamp _lastSettingsEditAt to cover the guarded fields",
   stampCount >= guardedCount, `${stampCount} stamp(s) for ${guardedCount} guarded field(s)`);
+
+// ── 5. A lazy screen that PATCHes a guarded field must stamp the edit too ────────────────────
+// Same rule as App.jsx's own writes; it just lives in a file this sim used to be blind to. A lazy
+// module cannot assign the module-level `let`, so the only correct spelling there is the exported
+// markSettingsEdit() helper.
+{
+  const GUARDED = new Set([...optimistic.keys()].filter(f => !EXEMPT[f])
+    .concat(["body_log", "custom_exercises", "program_order"]));
+  const missing = [];
+  for (const { file, text } of lazySources) {
+    if (!/profiles\?id=eq\./.test(text)) continue;
+    for (const field of GUARDED) {
+      if (!new RegExp(`\\b${field}\\s*:`).test(text)) continue;
+      if (!/markSettingsEdit\(\)/.test(text)) missing.push(`${file} writes ${field} without markSettingsEdit()`);
+    }
+  }
+  check("lazy screens that write a guarded profiles field also stamp the edit",
+    missing.length === 0, missing.join("; "));
+}
 
 console.log(`\naudited ${optimistic.size} optimistic profiles field(s); ${guardedCount} require the guard, ${Object.keys(EXEMPT).length} exempted by name`);
 console.log(fails ? `${fails} FAIL(S)` : "ALL PASS");
