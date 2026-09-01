@@ -2570,6 +2570,70 @@ generated share SVG, wrap the `Blob` constructor (and set `global.Blob`) — `si
 
 **Push notifications are now fully wired end-to-end on the code/server side** — client registers for APNs, saves the token, and routes a tapped notification to the right screen (DM → chat thread, follow → profile, kudos/comment → Activity tab, streak → Tracker tab). Server-side: all 4 DB webhooks (`messages`, `kudos`, `comments`, `follows` → `send-message-push`/`send-activity-push`) and the `streak-at-risk-push` weekly pg_cron job are configured and active, confirmed sending real 200s in the edge function logs. **The only remaining blocker is Mac/Xcode-side — see the Mac day checklist below (Mo runs it himself).**
 
+## ★★ THE SECURITY ROUND (Sep 1) — three Fable 5.1 audits, and no live takeover hole
+Mo asked for a full security audit with a focus on account takeover. Three cold-context Fable 5.1
+agents ran on disjoint scopes (auth / database / client+future-risk), all read-only, RLS verified by
+rolled-back role-sims **checked by ROW COUNT, not by catching an exception**.
+**The headline is that there is no live account-takeover hole.** The private-account model, block
+enforcement, follow approval, group permissions and storage isolation were all driven and all held.
+What follows is the set of conditions that turn ONE leaked token into permanent access, plus the
+things that only bite at scale. Fixed this round:
+- **★ A RECOVERY LINK PERSISTED A FULL SESSION BEFORE THE PASSWORD WAS SET.** `saveSession` ran
+  unconditionally in the `type=recovery` branch, and a recovery link opens in SAFARI (the AASA file
+  claims only `/u/*` and `/p/*`). Combined with sessions that never expire (below), starting a reset
+  on a borrowed computer and walking away left a permanent signed-in session for the next person.
+  The session is held in MEMORY now and persisted only after `updatePassword` returns. A reload
+  mid-recovery drops it and needs a fresh link — correct, since the link is single-use anyway.
+  Sim: `pw_recoverysession`, red-proofed (the pre-fix build stores the recovery token immediately).
+- **★ EVERY USERNAME LOGIN SHARED ONE THROTTLE BUCKET.** `username-auth` calls
+  `/auth/v1/token` from the edge runtime without forwarding the caller's IP, and GoTrue keys its
+  sign-in limit on client IP — so one person guessing passwords could 429 username login for
+  EVERYONE, and guessing had no per-caller cost. It forwards **`cf-connecting-ip`**, never the
+  caller's own `x-forwarded-for`: Cloudflare SETS the former and refuses a spoofed one at the edge,
+  while the latter is caller-controlled and would let an attacker mint a fresh bucket per request —
+  worse than no limit, because it looks like one. Deployed v3 and verified against the REAL endpoint
+  (a real username + wrong password still returns `400 invalid_credentials`, not a 500).
+- **★ `/api/ai` WAS AN UNMETERED CLAUDE PROXY FOR ANY ACCOUNT HOLDER.** "Any valid token" was the
+  only gate; one account could call it without limit at 2000 output tokens a time. `ai_quota_consume`
+  (SECURITY DEFINER, `authenticated`-only, keyed on `auth.uid()`) counts per UTC day, called with
+  the CALLER'S OWN token so no service-role key is needed in Vercel and nobody can inflate someone
+  else's count or reset their own. Measured in a rolled-back probe: limit 40 → 40 allowed, 5
+  refused, anon refused. **Fails OPEN on a transport error deliberately** — the coach breaking
+  because the counter blinked is worse than a few un-metered calls.
+- **★ A SERVER-SUPPLIED MEDIA URL IS ANOTHER USER'S INPUT.** `avatar_url`/`cover_url`/`image_url`
+  are plain text columns rendered as `<img src>` to everyone who sees that person; a direct PATCH
+  could point one at `https://attacker/pixel.png` and collect the IP + user-agent of every viewer
+  who scrolls past. `safeMediaSrc()` is the one gate (Supabase storage over https, `data:image/*`,
+  `blob:` — everything else falls back to the initial). Applied at all seven server-supplied sites.
+  Sim: `sim_mediasrc` (19 checks incl. suffix-attack hostnames and `data:image/svg+xml`).
+**Known and NOT fixed here — Mo-side, dashboard only:** sessions carry `not_after = NULL` (verified:
+9 live, one 58 days idle and still valid) — that needs Supabase's session timeout, a paid feature;
+captcha on signup/token/recover, which is the real fix for the shared **30/hour project-wide email
+budget** (anyone with a username list can starve every reset AND every signup, since confirmation is
+on); and "Secure password change", currently off, so a valid access token can set a new password
+with no re-auth.
+**Known and NOT fixed here — code, next round:** `client_errors` accepts anonymous inserts with a
+spoofable `user_id` and no size cap; `pg_net`'s functions are EXECUTE-able by `anon`/`authenticated`
+(a latent SSRF that is inert only because `net` is not REST-exposed — revoke it while it is free);
+`/api/ai` still takes the client's `system` prompt verbatim (clamped to 6000 chars) rather than
+selecting it server-side from a mode enum; and the privacy policy does not name Anthropic as a
+recipient, which matters because HealthKit-derived recovery values are in the coach payload.
+**★ THE RANKED FUTURE RISK, worth re-reading before adding anything:**
+1. **The OTA channel is the highest-value target and has the fewest controls** — a push to `main` is
+   code on every phone in minutes with no signature check and no App Review. Everything else is
+   bounded by one bad account; this is bounded only by GitHub/Vercel account security. Bundle
+   signing needs a Mac day; 2FA + branch protection do not.
+2. `CLAUDE.md` is public and is the best attack guide this app will ever have (see the entry below).
+3. **"Any valid token" is the only gate on server-side spend** and the next endpoint will inherit
+   the shape. One shared `withUser(req)` helper that verifies AND meters would make it structural.
+4. **Rendering a server-supplied URL** was done at seven independent sites with no shared validator
+   — the N-copies class in URL form. `safeMediaSrc` exists now; use it for video/second-photo too.
+5. `appUrlOpen` never checks the host — harmless while the only scheme is the AASA-bound universal
+   link, and a hole the moment a custom `seshd://` scheme is added (Sign in with Apple, a widget).
+6. **PostHog is one env var from being on and its defaults are unsafe here** — `autocapture` sends
+   the text of every tapped element (DM bubbles, captions, notes). Set `autocapture:false` in the
+   init object now so flipping the key later cannot regress privacy.
+
 ## ★★★ THE REPO IS PUBLIC, AND IT HELD A LIVE PASSWORD (Sep 1) — credential hygiene rules
 A three-way Fable 5.1 security audit found this and it is the most serious thing in the sweep.
 `moproblems49/spotr` is **`"visibility": "public"`** (checked via the GitHub API, not assumed), and

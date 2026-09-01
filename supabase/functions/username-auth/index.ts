@@ -100,10 +100,24 @@ Deno.serve(async (req: Request) => {
   if (!password || password.length > 200) return json(INVALID, 400);
   if (!email) return json(INVALID, 400);   // same shape as a wrong password, deliberately
 
+  // ★ FORWARD THE CALLER'S IP, OR EVERY USERNAME LOGIN IN THE APP SHARES ONE THROTTLE BUCKET.
+  // GoTrue keys its sign-in rate limit on the client IP and honours X-Forwarded-For. This function
+  // calls it from the edge runtime, so without this every username sign-in arrived from the SAME
+  // address: one person guessing passwords against any account would 429 username login for ALL
+  // users (a login outage), and there was no per-caller cost to guessing.
+  // `cf-connecting-ip` specifically, NOT the caller's own x-forwarded-for: Cloudflare SETS
+  // cf-connecting-ip and overwrites anything the client sends, and a spoofed one is refused at the
+  // edge — whereas x-forwarded-for is caller-controlled and would let an attacker mint a fresh
+  // bucket per request, which is worse than having no limit because it looks like one.
+  const callerIp = req.headers.get("cf-connecting-ip") || "";
   try {
     const t = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
-      headers: { apikey: ANON_KEY, "Content-Type": "application/json" },
+      headers: {
+        apikey: ANON_KEY,
+        "Content-Type": "application/json",
+        ...(callerIp ? { "X-Forwarded-For": callerIp } : {}),
+      },
       body: JSON.stringify({ email, password }),
     });
     const session = await t.json();

@@ -1,4 +1,4 @@
-// v178091717012
+// v178091717013
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5242,11 +5242,37 @@ export function SeshdLogo({ C, big = false, size }) {
 }
 
 
+// ★ A MEDIA URL THAT CAME FROM THE SERVER IS ANOTHER USER'S INPUT. `avatar_url`, `cover_url` and
+// `image_url` are plain text columns whose only legitimate writer is our own upload path — but a
+// direct PATCH can set them to anything, and every one of them is rendered as an `<img src>` to
+// whoever sees that person in a feed, a search result, a comment or a follower list. Point it at
+// `https://attacker/pixel.png` and you collect the IP and user-agent of everyone who scrolls past
+// you; point it at a multi-megabyte `data:` URI and every viewer downloads it inside the row.
+// ONE helper for all of it, because this is the N-copies class in URL form: there are already
+// several `<img>` sites reading a server value, and the next one (a second photo slot, video) will
+// be written from memory. Anything not recognised falls back to the initial/placeholder rather
+// than rendering — refusing is always safe here, since the only loss is a picture.
+// `data:` is allowed for images because legacy posts still carry one, and `blob:` because local
+// drafts use object URLs; neither can make a network request to a third party.
+export function safeMediaSrc(url) {
+  if (typeof url !== "string" || !url) return null;
+  if (url.startsWith("blob:")) return url;
+  if (/^data:image\/(png|jpe?g|webp|gif);/i.test(url)) return url;
+  try {
+    const u = new URL(url, typeof window !== "undefined" ? window.location.href : "https://x.invalid");
+    if (u.protocol !== "https:") return null;
+    const base = new URL(SUPABASE_URL);
+    if (u.host !== base.host) return null;
+    if (!u.pathname.startsWith("/storage/v1/object/")) return null;
+    return u.href;
+  } catch { return null; }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // AVATAR
 // ═════════════════════════════════════════════════════════════════════════════
 export function Avatar({ user, size = 36, onClick, C, ring = false }) {
-  const imgSrc = user?.avatarUrl || user?.profileImage;
+  const imgSrc = safeMediaSrc(user?.avatarUrl || user?.profileImage);
   const content = imgSrc
     ? <img src={imgSrc} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
     : (user?.avatar
@@ -7622,7 +7648,7 @@ function StoryViewer({ user, post, onClose, onNext, onPrev, hasNext, hasPrev, on
 
         <div style={{ width:"100%", aspectRatio:"9/16", maxHeight:"100%", borderRadius:12, overflow:"hidden", position:"relative", display:"flex", alignItems:"center", justifyContent:"center" }}>
           {post?.imageData ? (
-            <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+            <img src={safeMediaSrc(post.imageData)} alt="" loading="lazy" decoding="async" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
           ) : (
             // The story-viewer's no-photo fallback is a full-bleed accent panel. The giant initial
             // set no colour at all (inherited whatever the parent happened to be — invisible by
@@ -7946,9 +7972,9 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
         // so the card's header still lands on screen with the photo.
         post.type === "workout"
           ? <div style={{ margin:"0 14px 8px" }}>
-              <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:380, objectFit:"cover", display:"block", borderRadius:16, border:`1px solid ${C.border}` }}/>
+              <img src={safeMediaSrc(post.imageData)} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:380, objectFit:"cover", display:"block", borderRadius:16, border:`1px solid ${C.border}` }}/>
             </div>
-          : <img src={post.imageData} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
+          : <img src={safeMediaSrc(post.imageData)} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
       ) : (post.type === "photo" || post.type === "form_check") ? (
         <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}>{/* image placeholder — shows when a photo post's blob isn't cached (offline/cold-start); an image glyph reads as "photo", not a magnifying-glass "search" */}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
       ) : null}
@@ -15444,7 +15470,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           one-owner rule as the offline/guest banners. */}
       <div style={{ height: onBack ? "calc(132px + env(safe-area-inset-top))" : "132px", marginBottom:-28, background: C.isDark ? "#15151a" : "#e9e7e1", position:"relative", overflow:"hidden" }}>
         {user?.coverUrl
-          ? <img src={user.coverUrl} alt="" onClick={() => setShowCoverView(true)}
+          ? <img src={safeMediaSrc(user.coverUrl)} alt="" onClick={() => setShowCoverView(true)}
               style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:`50% ${user?.coverPos ?? 50}%`, cursor:"pointer" }}/>
           : <div style={{ position:"absolute", inset:0, background:"radial-gradient(circle at 82% -20%, rgba(255,255,255,0.22), transparent 60%)" }}/>}
         {/* Bottom scrim blends a cover PHOTO into the page; over the empty placeholder it just
@@ -15900,7 +15926,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {/* Full-screen cover viewer — portaled for the same reason as above. */}
       {showCoverView && user?.coverUrl && createPortal((
         <div onClick={() => setShowCoverView(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <img src={user.coverUrl} alt="" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }}/>
+          <img src={safeMediaSrc(user.coverUrl)} alt="" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }}/>
           <button onClick={() => setShowCoverView(false)} aria-label="Close" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 12px)", right:14, width:34, height:34, borderRadius:17, background:"rgba(255,255,255,0.12)", border:"none", color:"#fff", fontSize:17, cursor:"pointer", fontFamily:F }}>×</button>
         </div>
       ), document.body)}
@@ -16936,7 +16962,7 @@ function PublicProfileView({ userId, C, onOpenApp }) {
         {/* Header */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", marginBottom:28 }}>
           {p.avatar_url
-            ? <img src={p.avatar_url} alt="" style={{ width:88, height:88, borderRadius:44, objectFit:"cover", marginBottom:14 }}/>
+            ? <img src={safeMediaSrc(p.avatar_url)} alt="" style={{ width:88, height:88, borderRadius:44, objectFit:"cover", marginBottom:14 }}/>
             : <div style={{ width:88, height:88, borderRadius:44, background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:800, color: C.accentFillInk, marginBottom:14 }}>{initial}</div>}
           <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{p.name || p.username}</div>
           {p.username && <div style={{ fontSize:14, color:C.sub, marginTop:2 }}>@{p.username}</div>}
@@ -17254,6 +17280,8 @@ function AppInner() {
   const [session, setSession] = useState(loadSession);
   // True while a password-recovery session needs its new password set (email link landing).
   const [recoveryNeeded, setRecoveryNeeded] = useState(false);
+  // Held in memory only until the new password is set — see the recovery branch of AUTH_CALLBACK.
+  const [recoverySession, setRecoverySession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   // True while the initial user-data fetch (profiles/programs/PRs/history/groups/feed) is in flight.
   // Used to show skeleton loaders on screens that would otherwise flash empty states.
@@ -17949,9 +17977,17 @@ function AppInner() {
             });
             const user = await userRes.json();
             const sess = { access_token, refresh_token, expires_in: parseInt(expires_in||"3600"), user };
-            saveSession(sess);
+            // ★ A RECOVERY LINK MUST NOT PERSIST A SESSION UNTIL THE PASSWORD IS ACTUALLY SET.
+            // `saveSession` writes the Keychain / Preferences / localStorage copies, and a
+            // recovery link opens in SAFARI, not the app (the AASA file claims only /u/* and /p/*).
+            // So starting a reset on a shared or borrowed computer and then abandoning it left a
+            // full, never-expiring session sitting in that browser — anyone who opened the site
+            // afterwards was inside the account. Held in memory only here; `setSession` alone is
+            // enough for NewPasswordScreen to call /auth/v1/user, and the persist happens in
+            // onDone once updatePassword has succeeded.
+            if (!isRecovery) saveSession(sess);
             setSession(sess);
-            if (isRecovery) setRecoveryNeeded(true);
+            if (isRecovery) { setRecoverySession(sess); setRecoveryNeeded(true); }
             // (the fragment is already gone — stripped at module load, see AUTH_CALLBACK)
             // If user was a guest, migrate their data
             if (localStorage.getItem("seshd_guest") === "1") {
@@ -20311,7 +20347,12 @@ function AppInner() {
   // ── Password-recovery landing: force the new-password screen before anything else ──
   if (session && recoveryNeeded) {
     return <NewPasswordScreen C={C} token={session.access_token}
-      onDone={() => { setRecoveryNeeded(false); toast("Password updated — you're signed in", "success"); }}/>;
+      onDone={() => {
+        // The password is now set, so this browser is genuinely the account owner's — persist.
+        if (recoverySession) { saveSession(recoverySession); setRecoverySession(null); }
+        setRecoveryNeeded(false);
+        toast("Password updated — you're signed in", "success");
+      }}/>;
   }
 
   // Shared with the authLoading fallback above — same branded loading state, so a signed-out

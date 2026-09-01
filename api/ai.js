@@ -6,6 +6,9 @@
 const ALLOWED_ORIGINS = ["https://spotr-drab.vercel.app", "capacitor://localhost", "ionic://localhost"];
 const ALLOWED_MODELS = new Set(["claude-sonnet-4-6"]);
 const DEFAULT_MODEL = "claude-sonnet-4-6";
+// Per-user calls per UTC day. The app's own use is a handful (one Weekly Review, the odd program
+// generation), so this is generous for a real user and ruinous for a script.
+const AI_DAILY_LIMIT = 40;
 
 export default async function handler(req, res) {
   const origin = req.headers.origin || "";
@@ -34,6 +37,28 @@ export default async function handler(req, res) {
     if (!u.ok) return res.status(401).json({ error: "auth_invalid" });
     const user = await u.json();
     if (!user || !user.id) return res.status(401).json({ error: "auth_invalid" });
+
+    // ★ "ANY VALID TOKEN" WAS THE ONLY GATE, AND THAT BOUNDS NOTHING. One account could call this
+    // without limit, 2000 output tokens at a time, on the project's Anthropic bill — and with
+    // email confirmation on, an account costs one email address. The quota is counted by a
+    // SECURITY DEFINER RPC invoked with THE CALLER'S OWN TOKEN: it derives the row from
+    // auth.uid(), so a caller cannot inflate someone else's count or reset their own, and it
+    // needs no service-role key in this environment. Measured: at a limit of 40, calls 41+ raise.
+    // Failing OPEN on a transport error is deliberate — the coach going down because the counter
+    // was briefly unreachable is a worse outcome than a few un-metered calls.
+    try {
+      const q = await fetch(`${sbUrl}/rest/v1/rpc/ai_quota_consume`, {
+        method: "POST",
+        headers: { apikey: sbAnon, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_limit: AI_DAILY_LIMIT }),
+      });
+      if (q.status === 400 || q.status === 403) {
+        const e = await q.json().catch(() => ({}));
+        if (String(e.message || "").includes("ai_quota_exceeded")) {
+          return res.status(429).json({ error: "quota_exceeded", message: "You've hit today's AI limit. Try again tomorrow." });
+        }
+      }
+    } catch (e) { /* counter unreachable — fail open, see above */ }
   } catch (e) {
     return res.status(401).json({ error: "auth_invalid" });
   }
