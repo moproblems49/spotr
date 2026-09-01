@@ -130,6 +130,20 @@ it found something real that nobody had reported: a mid-review demo corpus that 
    Also run the **orphaned-member_ids** check, which nothing else can see:
    `select count(*) from groups g, unnest(g.member_ids) m where not exists (select 1 from profiles p where p.id = m)`
    — must be 0. Non-zero means an account was deleted without `remove_user_from_all_groups` firing.
+6. **The pg_net tripwire** — for the one finding that CANNOT be fixed from here (see Security
+   Round 2). `net.http_post`/`http_get` are EXECUTE-able by PUBLIC and the grant is unrevokable
+   without `supabase_admin`, so watch the two conditions that would turn it from latent into a live
+   unauthenticated SSRF instead. BOTH must stay false:
+   ```sql
+   select coalesce((select array_to_string(rolconfig,' ') from pg_roles where rolname='authenticator'),
+                   '(default: public, graphql_public)') ilike '%net%'            as net_is_rest_exposed_BAD,
+          (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname in ('public','graphql_public')
+              and p.prosrc ~* 'net\.http_(post|get)' and p.pronargs > 0)        as public_wrappers_BAD;
+   ```
+   Red-proofed: creating a `public` function that forwards a `text` URL into `net.http_post` takes
+   the second number 0 -> 1 (probe rolled back, nothing left behind). If either goes true, the
+   grant stops being theoretical and needs escalating to Supabase that day.
 Report findings even when everything is clean; "the error rate went from 1,650/day to single
 digits" is the point of running it again after a fix.
 **Sweep #3 (Aug 28, ~04:40 UTC), for the next run's baseline:** 950 of 953 daily Postgres errors
@@ -2606,10 +2620,18 @@ led with a full sweep for remote resources loaded from a value another user cont
   did not make: the statement returned success and `has_function_privilege('anon', …)` was still
   true afterwards. This is the scar already recorded in Sweep #5, hit again — **check the privilege
   after the revoke, never trust the statement.** Status: NOT fixed, and not fixable from here; it
-  needs `supabase_admin` (Supabase support, or the dashboard's SQL editor if it runs as a
-  superuser). It stays latent rather than live because PostgREST exposes only `public,
-  graphql_public` and no public wrapper forwards a caller-controlled URL into it — so the thing to
-  watch is anyone adding `net` to the exposed schemas or writing such a wrapper.
+  needs `supabase_admin`. **MEASURED, so nobody re-tries it:** the MCP connection is `postgres`,
+  `pg_has_role(current_user,'supabase_admin','MEMBER')` is FALSE and `rolsuper` is FALSE, so
+  `SET ROLE` cannot reach the owner. The `net` SCHEMA is owned by supabase_admin too and its
+  `anon=U/supabase_admin` USAGE grants were likewise made by it, so the schema-level route is shut
+  as well — there is no path from any tool holding these credentials, and **the dashboard SQL
+  editor connects as the same `postgres` role, so it will not work either** (an earlier note here
+  suggested trying it; that was wrong). A different model does not help: this is a privilege
+  limit, not a reasoning one. It is a Supabase-support request, or a platform default they may
+  have since changed.
+  **So it is MONITORED instead — see sweep step 6.** It stays latent rather than live because
+  PostgREST exposes only `public, graphql_public` and no public wrapper forwards a
+  caller-controlled URL into it; those two facts are exactly what the tripwire checks.
 - **The privacy policy now names Anthropic** and says exactly what the coach sends (recent
   workouts, PRs, bodyweight trend, per-muscle volume, and — only if Apple Health is connected — the
   DERIVED recovery values), what it does not (name, email, username, photos, messages, post text),
