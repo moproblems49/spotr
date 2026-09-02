@@ -3823,6 +3823,50 @@ broken fixture. The RLS half cannot be seen from a browser at all and is covered
 above; the suite guards the client half, where a regression would silently query a table that now
 returns `[]` and render an EMPTY list rather than an error — the failure nobody reports.
 
+## ★★ THE PUBLIC PROFILE NO LONGER PUBLISHES A CLOCK TIME (Sep 2) — the Strava-shaped fix
+Mo, on the inference audit: "having people find the arrival time is really creepy." He is right,
+and the fix is the two-half pattern `public_profiles` already established.
+**The leak was the pairing, not any one column.** `workout_history` was readable by
+`owner OR profile_is_public(user_id) OR accepted follower`, and it carries `created_at` (the exact
+finish INSTANT) alongside `duration_secs` — subtract and you have the arrival time of every session
+ever logged, available to a caller holding nothing but the public anon key. Measured on real
+non-migrated rows: **Friday finishes spread 1 minute, Tuesday 3 minutes**, derived arrival ~09:40.
+Neither column is sensitive alone, which is exactly why nothing flagged it.
+**Half 1 — the TABLE stops being public.** The SELECT policy is now `owner OR accepted follower`
+(the block check unchanged); `profile_is_public(user_id)` is gone from it. **Half 2 — a
+column-limited VIEW**, `public_workouts`: `id, user_id, day_name, exercises, unit, workout_date`,
+joined to `profiles` on `is_public = true` and carrying the same `is_blocked_between` check.
+Columns are listed EXPLICITLY for the reason `public_profiles`' own comment gives — a sensitive
+column added to `workout_history` later must not leak automatically. Deliberately absent:
+`created_at` (the leak), `duration_secs` (pairs with any timestamp to give arrival), `hr_summary`
+(health data), `note` (free text; see below).
+**Verified by ROW COUNT as four different callers, never by catching an exception:** signed-out
+reads of `workout_history` went **69 -> 0** while `public_workouts` still returns 69; the owner
+still reads 69; an **accepted follower still reads 69 WITH `created_at`**, which is what keeps
+Friends Activity (`DiscoverScreen`, the only cross-user reader that needs a timestamp) working; and
+a signed-in NON-follower now gets 0 from the table and 69 from the view.
+**Followers were deliberately NOT narrowed.** They are people you approved, and every social app
+shows friends exact times. The creepy case is the unauthenticated one.
+**A side effect worth knowing: this shrank two of the "latent" findings by itself.**
+`workout_history.note` and `hr_summary` are no longer reachable by a stranger at all — the column
+is on a table the public can no longer read AND is absent from the view — so a future edit that
+populates `note` now reaches accepted followers only, not the world.
+**What deliberately SURVIVES, measured rather than assumed:** a workout you SHARE still carries a
+public `posts.created_at`, set at share time. 56 of 69 sessions were shared, so the path is well
+used — but per-weekday spread on shared posts is **20-231 minutes** against the finish times' 1-3,
+because people share whenever they get round to it (one post landed at 00:17). So the acute leak —
+a +/-3-minute arrival time derived from data nobody chose to publish — is closed, while a rough
+window remains for posts the user explicitly published, which is the normal understood trade of
+pressing Share. Stripping timestamps from social posts would be a strange product change; not done.
+**Sim: `pw_publicprofile`** — drives the real `/u/` page and asserts it queries `public_workouts`
+and NOT `workout_history`, asks for no `created_at`/`duration_secs`/`hr_summary`, orders by
+`workout_date`, still renders the profile and the workout row with its date, and that **no `HH:MM`
+appears anywhere on the page**. Red-proofed at 5 failures against the pre-fix client, with the
+"profile still renders" control staying green — which is what separates a real failure from a
+broken fixture. The RLS half cannot be seen from a browser at all and is covered by the role-sims
+above; the suite guards the client half, where a regression would silently query a table that now
+returns `[]` and render an EMPTY list rather than an error — the failure nobody reports.
+
 ## ★★ THE PRIVACY-BY-INFERENCE AUDIT (Sep 2) — the leak is the SCHEDULE, and the OG card never worked
 Not "can a stranger break in" (the Sep 1 rounds settled that) but "what can a stranger DERIVE from
 what we publish on purpose". That is the class that has actually hurt fitness apps — Strava's 2018
@@ -3849,6 +3893,15 @@ equivalent axis here is TIME.
   table. **The fix is one word** (`profiles` -> `public_profiles`, whose own
   `is_public = true OR auth.uid() IS NOT NULL` filter returns only public rows to an anon key), but
   it INCREASES what is published, so it is a product decision, not a repair to make silently.
+  **★ DECIDED, Sep 2: LEAVE THE CARD GENERIC — DO NOT "FIX" THIS.** Mo's call once the trade was
+  put to him: the repair would start showing a person's real name and bio inside every
+  iMessage/WhatsApp/Twitter preview of a shared link, forwarded anywhere, with no way for them to
+  know. The dead fetch is DELETED rather than left in place (code that looks like it fetches and
+  silently cannot is the class this repo keeps getting bitten by, and it cost a Supabase
+  round-trip per unfurl); `api/profile-og.js` now carries the decision, the measurement and the
+  one-line path back. Note the human path is unaffected either way — the endpoint still redirects
+  into the SPA, which reads `public_profiles` itself and renders the real profile. This file is a
+  serverless function, NOT part of the web bundle, so changing it needs a push but no OTA republish.
 - **"PRIVATE" PROTECTS YOUR CONTENT, NOT YOUR SOCIAL GRAPH.** `follows_select_scoped` reveals an
   edge when EITHER end is public, so a private account's follows and followers are readable
   whenever their friends are public — and since public is the interesting setting, that is most of
