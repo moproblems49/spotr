@@ -1,4 +1,4 @@
-// v178091717014
+// v178091717015
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20068,6 +20068,11 @@ function AppInner() {
         },
         // Session replay would record the screen, including anything typed into a password field.
         disable_session_recording: true,
+        // Autocapture sends the TEXT of every tapped element as $el_text — which here means DM
+        // bubbles, post captions, exercise notes and workout names. It defaults to TRUE, so this
+        // has to be set explicitly; setting it now (while POSTHOG_KEY is empty and none of this
+        // runs) means switching analytics on later cannot silently regress privacy.
+        autocapture: false,
       });
     }
 
