@@ -1,4 +1,4 @@
-// v178091717015
+// v178091717016
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -16935,7 +16935,12 @@ function PublicProfileView({ userId, C, onOpenApp }) {
         if (!profile) { if (!cancelled) setState({ loading: false, profile: null, workouts: [], error: "not_found" }); return; }
         let workouts = [];
         try {
-          const wRes = await fetch(`${SUPABASE_URL}/rest/v1/workout_history?user_id=eq.${userId}&select=*&order=created_at.desc&limit=5`, { headers });
+          // public_workouts, NOT workout_history — the table is owner+accepted-follower only now.
+          // The view carries no timestamp finer than the DAY on purpose: created_at is the exact
+          // finish instant and, minus duration_secs, gives the arrival time of every session, so a
+          // handful of rows published a stranger-readable weekly absence window. Ordering is by
+          // workout_date for the same reason (created_at is not in the view to order by).
+          const wRes = await fetch(`${SUPABASE_URL}/rest/v1/public_workouts?user_id=eq.${userId}&select=id,day_name,exercises,workout_date&order=workout_date.desc&limit=5`, { headers });
           if (wRes.ok) workouts = await wRes.json();
         } catch {}
         if (!cancelled) setState({ loading: false, profile, workouts: Array.isArray(workouts) ? workouts : [], error: null });
@@ -16982,8 +16987,9 @@ function PublicProfileView({ userId, C, onOpenApp }) {
           <div style={{ marginBottom:28 }}>
             <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:1, marginBottom:10 }}>RECENT WORKOUTS</div>
             {state.workouts.map((w, i) => {
-              // workout_history columns: day_name, exercises (JSON), workout_date, created_at.
-              const dateStr = w.workout_date || w.created_at;
+              // public_workouts columns: id, user_id, day_name, exercises (JSON), unit, workout_date.
+              // No created_at fallback — that column is deliberately not in the view.
+              const dateStr = w.workout_date;
               let setCount = 0;
               // workingDone so "N sets" means the same thing here as everywhere else.
               try { (w.exercises || []).forEach(ex => { setCount += workingDone(ex.sets).length; }); } catch {}
