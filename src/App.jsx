@@ -1,4 +1,4 @@
-// v178091717016
+// v178091717017
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -12126,7 +12126,22 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   background: "#0A0A0A",
                   borderRadius: 24, padding: "32px 26px 26px",
                   marginBottom: 16, position: "relative", overflow: "hidden",
-                  aspectRatio: "4/5",
+                  // ★ NO aspect-ratio HERE, AND NOTHING RASTERISES THIS CARD.
+                  // It carried `aspectRatio:"4/5"` for the look. Measured: that forced a 451px box
+                  // around 621px of content, so `overflow:hidden` silently cut the last 170px —
+                  // which is the PER-EXERCISE PR LIST, on a card whose own headline is "NEW PR!".
+                  // The ratio was safe to drop because the id is vestigial: nothing reads
+                  // #workout-card, and the shared IMAGE is built separately by the SVG builders,
+                  // so the on-screen proportions are decorative only.
+                  // `flexShrink:0` is deliberate insurance rather than decoration: `overflow:hidden`
+                  // makes a box's flex `min-height` compute to 0 instead of auto, so under any flex
+                  // ancestor this card is free to collapse to nothing with its content clipped away
+                  // — which is exactly the shape of the iOS-only report this came from (a card
+                  // rendering at header height with everything below it gone). Chromium lays it out
+                  // as a block child and never showed it; there is no WebKit engine in this repo to
+                  // test in, so the fix is to make the height uncollapsible rather than to guess at
+                  // WebKit's behaviour.
+                  flexShrink: 0,
                   display: "flex", flexDirection: "column",
                   fontFamily: F,
                   color: "#fff",
