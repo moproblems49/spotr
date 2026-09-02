@@ -139,8 +139,16 @@ it found something real that nobody had reported: a mid-review demo corpus that 
                    '(default: public, graphql_public)') ilike '%net%'            as net_is_rest_exposed_BAD,
           (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
             where n.nspname in ('public','graphql_public')
-              and p.prosrc ~* 'net\.http_(post|get)' and p.pronargs > 0)        as public_wrappers_BAD;
+              and p.prosrc ~* 'net\.http_(post|get)' and p.pronargs > 0)        as public_wrappers_BAD,
+          (select count(*) from pg_trigger where tgrelid='net.http_request_queue'::regclass
+             and tgname='aaa_pgnet_enqueue_guard')                              as pgnet_guard_MUST_BE_1;
    ```
+   The third number is the enqueue guard that makes the unrevokable grant inert (only
+   `service_role`/`postgres` may enqueue; anyone else raises). It must be **1** — a guard that
+   silently stops existing is the exact disease this file is about. Also note `net._http_response`
+   (the stored RESPONSE BODIES of every outbound call) is SELECT-able by `anon`/`authenticated` and
+   is likewise unrevokable from here; the guard does not cover it, and the ONLY thing that keeps it
+   unreachable is the same `net_is_rest_exposed_BAD` staying false.
    Red-proofed: creating a `public` function that forwards a `text` URL into `net.http_post` takes
    the second number 0 -> 1 (probe rolled back, nothing left behind).
    **AND CHECK THE GUARD IS STILL THERE** — the grant is now made INERT by a BEFORE INSERT trigger
@@ -3749,6 +3757,46 @@ concluding it is broken.
 duplicate `workout_codes` DELETE policies (documented as harmless, consolidate when that table is
 next touched — deliberately not touched here). The four SECURITY DEFINER warnings that remain
 (`profile_is_public`, both redeem RPCs, `group_image_member_check`) are all deliberate.
+
+## ★ Sweep #7 (Sep 1, 2026) — the cleanest one yet, and the only errors are my own probes
+**Postgres errors: 31 in 24h, and every single one is `app = mgmt-api`** — my own audit probes,
+role-sims and rolled-back tests from the same day's security work. **Zero user-generated errors,
+and zero 23505** — the `personal_records` duplicate-key story (1,650/day → 953 → 83 → 58 → the
+missed call site) stays closed after the Sweep #6 fix. Auth logs quiet: 1 `/token` 400 (my own
+deliberate wrong-password test of `username-auth`), 1 `/token` 200, 1 `/recover` 200, 1 Login;
+no failed-login spike, no reset-email failures. `client_errors` newest row is **Aug 30**, the known
+missing-push-entitlement message (a Mac-day item) — nothing since, and 98 rows is a months-long
+cumulative total, not a burst. `code_redeem_failures` and `ai_usage` both at 0 rows, so both
+opportunistic cleanups are working. **Orphaned `member_ids`: 0. Orphaned storage objects: 0** across
+all three buckets (26 objects) — checked by resolving each object's own folder segment back to a
+live `profiles` / `groups` row, which is the check the Aug-29 account-deletion sweep added. Table
+sizes all proportionate to **3 profiles** (the persona wipe took it from 8): `posts` 3.1 MB / 88
+rows is the workout jsonb and is the largest thing in the database.
+**Advisors: nothing new, and every finding is already documented as deliberate** —
+`public_profiles` SECURITY DEFINER, the two redeem RPCs, `profile_is_public`,
+`group_image_member_check`, plus the two NEW-and-intentional ones from this week (`ai_usage` RLS
+with no policy, `ai_quota_consume` SECURITY DEFINER, `authenticated`-only). Known-open unchanged:
+pg_net in `public`, leaked-password protection (paid plan), and the two duplicate `workout_codes`
+DELETE policies. Performance advisors are all scale artifacts of a 3-user database (unused indexes,
+unindexed FKs on tiny tables, `auth_rls_initplan` on `typing_status`/`client_errors`/`feedback`/
+`reports`) — nothing to act on until there are real users.
+**Step 6, the pg_net tripwire, is now THREE numbers and all three are correct:**
+`net_is_rest_exposed_BAD` false, `public_wrappers_BAD` 0, and the new
+`select count(*) from pg_trigger where tgrelid='net.http_request_queue'::regclass and
+tgname='aaa_pgnet_enqueue_guard'` = **1**. Add that third one to the sweep permanently — the guard
+trigger is what makes the unrevokable grant inert, and a guard that silently stops existing is the
+disease this whole file is about.
+**★ AND THE ONE THING THE GUARD DOES NOT COVER, MEASURED THIS SWEEP: `net._http_response` IS
+SELECT-ABLE BY `anon` AND `authenticated`** (verified with `has_table_privilege`; `anon` also holds
+USAGE on the `net` schema). That table stores the RESPONSE BODY of every outbound call pg_net has
+made — which for this project means webhook and edge-function replies, i.e. exactly the traffic
+that carries service-role-authorised results. The enqueue guard stops a caller SENDING a request;
+it does nothing about READING what legitimate server-side calls brought back. Same unrevokable
+shape as the function grants (owned by `supabase_admin`, and `postgres` is not a member), so it is
+not closable from here either. **It is inert for the same single reason: `net` is not in
+PostgREST's exposed schema list**, so there is no HTTP route to that table — which is why
+`net_is_rest_exposed_BAD` going true is not a "tidy up soon" item but a same-day escalation. Rows
+are also short-lived (1 row present at sweep time, newest 20:10 the same evening).
 
 ## ★★ Sweep #6 (Aug 31, 2026) — THE personal_records 23505 IS BACK, AND IT IS A MISSED CALL SITE
 **150 duplicate-key errors in one 8-second burst**, and this time it is NOT an old bundle
