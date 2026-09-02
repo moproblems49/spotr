@@ -3779,6 +3779,50 @@ duplicate `workout_codes` DELETE policies (documented as harmless, consolidate w
 next touched — deliberately not touched here). The four SECURITY DEFINER warnings that remain
 (`profile_is_public`, both redeem RPCs, `group_image_member_check`) are all deliberate.
 
+## ★★ `aspect-ratio` + `overflow:hidden` ATE THE PR LIST OFF THE "NEW PR!" CARD (Sep 2)
+Mo, from a device screenshot of the finish sheet: "Found a bug." The share card was rendering at
+**1094 x 269 device px** where its own `aspectRatio:"4/5"` demands 1368 — five times too short,
+with everything below the SESHD/date/badges header gone.
+**The reported symptom did NOT reproduce, and chasing it found a DIFFERENT bug that did.** At Mo's
+exact viewport (402x874 @3, an iPhone 16 Pro) with a real 4-exercise session, the card lays out
+correctly in Chromium: 366x451, ratio 0.81, volume and session name visible. What the same probe
+showed instead was **`scrollHeight` 621 inside a `clientHeight` 451** — the ratio was forcing 621px
+of content into a 451px box and `overflow:hidden` was silently cutting the last **170px**. The cut
+section is the **per-exercise PERSONAL RECORDS list**, on a card whose own headline is "NEW PR!".
+Nothing looked broken; the card just ended early, which is why it shipped Aug 9 and sat.
+**The ratio was safe to delete because the id is vestigial: NOTHING reads `#workout-card`** (grep
+returns only the declaration). The image people actually share is built by the SVG builders, so the
+on-screen proportions were decorative. Height is content-driven now; 621px box, 0px clipped.
+**`flexShrink:0` went on with it, as insurance rather than decoration.** `overflow:hidden` makes a
+box's flex `min-height` compute to **0** instead of auto, so under any flex ancestor this card is
+free to collapse to header height with its content clipped away — which is exactly the shape of
+Mo's report. Chromium lays it out as a block child of the sheet's scroller and never showed it.
+**★ AND THE HONEST LIMIT: THERE IS NO WEBKIT ENGINE IN THIS REPO — ONLY CHROMIUM.** So an
+iOS-only layout difference cannot be reproduced here at all, the same blind spot as the
+`touch-action:pan-y` drag handle and the whole software-keyboard class, where a device recording
+outranks the entire battery. The fix makes the height UNCOLLAPSIBLE rather than guessing at what
+WebKit does with that box; whether it cures the device symptom is unconfirmed until Mo finishes a
+workout on `2026-09-02b` and looks. **Do not record this as fixed-on-device until he says so.**
+**★ PROBE LESSON, AND IT COST TWO WRONG DIAGNOSES: I READ THE SCREENSHOT INSTEAD OF MEASURING IT.**
+First I identified the wrong panel as the card entirely — because I assumed the image was ~919px
+wide when it is **1206x2622**, so every coordinate I reasoned from was scaled wrong and I "saw" the
+YOU BEAT LAST TIME card. Then, having found the right one by scanning a pixel column for the
+`#0A0A0A` fill, my "3.7% ink below the header" measurement was **nearly vacuous**: it sampled
+`top+180..bot` of a box only 269px tall, i.e. the bottom third of an already-squashed card, which is
+empty by construction. The two facts that actually held up were the box's measured w/h and the
+`scrollHeight` vs `clientHeight` gap. **Measure the image (a canvas + a pixel scan), and check the
+window you sampled is inside the thing you meant to sample.** This is the third instance of the
+documented "screenshot, then measure the thing you think you saw" rule.
+Sim: **`pw_finishcard`** — seeds FOUR exercises on purpose (a one-exercise session produces content
+short enough that the old ratio happened to fit, so a thin fixture cannot see this bug at all) and
+asserts `scrollHeight === clientHeight`, that no text node falls outside the box, `flex-shrink:0`,
+and `aspect-ratio:auto`. Red-proofed at 4 failures naming the exact cut text ("Barbell Row",
+"WEIGHT + EST. 1RM + VO", …) with the "card is on screen" control staying green.
+**★ One of its own checks was vacuous and is worth keeping as a warning:** "the PERSONAL RECORDS
+section renders" stayed **PASS** during the red proof, because the HEADING sits inside the box while
+its CONTENTS spill out of it. A presence check on a section title cannot see a section being
+clipped; the `scrollHeight` comparison is the only load-bearing assertion in the file.
+
 ## ★★ THE PUBLIC PROFILE NO LONGER PUBLISHES A CLOCK TIME (Sep 2) — the Strava-shaped fix
 Mo, on the inference audit: "having people find the arrival time is really creepy." He is right,
 and the fix is the two-half pattern `public_profiles` already established.
