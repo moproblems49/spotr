@@ -11,6 +11,16 @@
 // Reference extraction reads the BUILT output, not the source: rolldown emits string literals in
 // BACKTICKS, so a grep for "/icon-192.png" with double quotes finds nothing and reports a clean
 // bill for a bundle that is missing the file. That mistake has been made here twice.
+//
+// ★ IT ALSO ASSERTS `BUNDLE_SHA256` IN api/app-update.js MATCHES THIS ZIP, AND THAT HALF IS THE
+// MOST DANGEROUS THING IN THE PUBLISH RECIPE. The plugin DELETES a bundle whose hash disagrees
+// with the one the endpoint served, so a stale or hand-edited constant does not degrade to "no
+// verification" -- it bricks OTA for EVERY phone at once, silently, with the app still looking
+// perfectly healthy on screen and each device re-downloading and re-rejecting forever. Nothing
+// else in this repo can see that: the web build never calls the endpoint, and no sim or Playwright
+// suite downloads a bundle. This check is the only thing standing between a one-character typo and
+// every installed app being permanently stuck on an old version.
+import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -53,6 +63,23 @@ for (const r of [...htmlRefs].sort()) {
 }
 for (const w of WEB_ONLY) check(!inZip.has(w), `web-only "${w}" is excluded from the bundle`);
 check(![...inZip].some(n => n.endsWith(".zip")), "no nested .zip inside the bundle");
+
+// --- OTA integrity: the served checksum must be this zip's -------------------------------------
+// Read the constants out of the endpoint rather than keeping a copy here: a guard that hardcodes
+// the value under test is testing its copy, not the thing that ships.
+const endpointSrc = readFileSync("api/app-update.js", "utf8");
+const shaLine = endpointSrc.match(/const BUNDLE_SHA256 = "([0-9a-f]*)";/);
+const verLine = endpointSrc.match(/const LATEST_VERSION = "([^"]*)";/);
+check(!!shaLine, "api/app-update.js declares BUNDLE_SHA256 (shape unchanged)");
+check(!!verLine, "api/app-update.js declares LATEST_VERSION (shape unchanged)");
+if (shaLine && verLine) {
+  const actual = createHash("sha256").update(readFileSync(zip)).digest("hex");
+  check(shaLine[1].length === 64, `BUNDLE_SHA256 is a 64-char hex sha256 (got ${shaLine[1].length})`);
+  check(shaLine[1] === actual, `BUNDLE_SHA256 matches the zip (served ${shaLine[1].slice(0, 12)}... / real ${actual.slice(0, 12)}...)`);
+  // The version and the filename must agree too, or the endpoint hands out a URL for one bundle
+  // and the hash of another -- which fails in exactly the same all-phones way.
+  check(zip.endsWith(`seshd-${verLine[1]}.zip`), `LATEST_VERSION "${verLine[1]}" names the zip being checked (${zip})`);
+}
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails ? 1 : 0);

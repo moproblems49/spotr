@@ -51,7 +51,8 @@ git push
 app"). Pushing to git alone does NOTHING for his phone — the installed app only updates when a new
 bundle is published. So finish every change with the publish recipe in `api/app-update.js`:
 delete the old zip FIRST → build with the real `.env.local` → `( cd dist && zip -rq
-../public/bundles/seshd-<ver>.zip . )` → bump `LATEST_VERSION` → commit + push. **The parentheses
+../public/bundles/seshd-<ver>.zip . )` → bump `LATEST_VERSION` **AND `BUNDLE_SHA256`
+(they are ONE step — see below)** → `node build/ota_assets_check.mjs <zip> dist` → commit + push. **The parentheses
 are load-bearing.** A bare `cd dist && …` strands the shell in `dist/` if any link of the chain
 fails, and the Bash tool's cwd PERSISTS into the next command — that is how a later
 `rm -f .env.local` ran inside `dist/`, silently missed the real one at the repo root, and left a
@@ -68,6 +69,26 @@ but OTA downloads had roughly doubled. If you build before deleting, `rm -f dist
 before zipping. Check with `unzip -l <zip> | grep -E '^ +[0-9]+.*\.zip$'` — that must print nothing.
 (Don't grep bare `'\.zip$'`: unzip's own `Archive:  …zip` header line matches it and reads as a
 false positive. Size is the faster tell — a correct bundle is ~1.9MB, a doubled one ~3.8MB.)
+**★ THE OTA REPLY NOW CARRIES A `checksum`, AND A WRONG ONE BRICKS EVERY PHONE AT ONCE.**
+`api/app-update.js` serves `BUNDLE_SHA256`, the lowercase hex sha256 of the published zip. The
+plugin hashes what it downloaded and, when that field is non-empty, **DELETES the bundle and
+aborts** on any mismatch (`CapacitorUpdaterPlugin.swift:4383`, stat `checksum_fail`). Until
+2026-09-02 the endpoint sent nothing, which the plugin reads as "skip verification", so a bundle
+corrupted or swapped in transit installed happily. It needs NO Mac and NO public key: with no
+`publicKey` configured `decryptChecksum` returns the value unchanged (`CryptoCipher.swift:35`), so a
+plain sha256 is what it compares, and the JSON key is literally `checksum` (`InternalUtils.swift:258`,
+no CodingKeys remap). **Be clear what it is: an integrity check, not a signature** — it proves the
+bundle is the one this endpoint published, not that the publisher was authorised. Real signing needs
+a private key held outside the repo with its public half compiled into the binary (a Mac day), and
+it is the thing that would actually protect the OTA channel from a compromised GitHub account.
+**The hazard it introduces is the reason `ota_assets_check` is now mandatory rather than advisory**:
+a stale or hand-edited hash does not degrade to "no check", it makes every device download, reject,
+delete and retry forever while the app looks perfectly healthy. Nothing else in this repo can see
+that — the web build never calls the endpoint and no sim downloads a bundle. The guard reads both
+constants OUT of `api/app-update.js` (a guard that hardcodes the value under test is testing its
+copy) and asserts the hash matches the zip, is 64 hex chars, and that `LATEST_VERSION` names the
+same file. Red-proofed three ways: one wrong character, a truncated paste, and a version left
+un-bumped. Run it after editing those constants, never before.
 **Where the "real `.env.local`" comes from in a sandbox session:** it isn't in the repo (the values
 live in Vercel), so RECOVER IT FROM THE LAST PUBLISHED BUNDLE — that bundle was built with the real
 values, so they're sitting in its JS:

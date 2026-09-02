@@ -37,7 +37,10 @@
 //    web-only art is absent, and there is no nested zip. It reads the BUILT output rather than
 //    the source, because rolldown emits string literals in BACKTICKS — a grep for "/icon-192.png"
 //    with double quotes finds nothing and reports a clean bill for a bundle missing the file.
-// 5. Set LATEST_VERSION below to "<NEW_VERSION>" (any new unique string, e.g. "2026-07-22a").
+// 5. Set LATEST_VERSION below to "<NEW_VERSION>" (any new unique string, e.g. "2026-07-22a"),
+//    AND set BUNDLE_SHA256 to `sha256sum public/bundles/seshd-<NEW_VERSION>.zip | cut -d" " -f1`.
+//    These two are ONE step, not two: a version that names a zip whose hash is not beside it
+//    fails on every phone. Re-run step 4 AFTER editing both — the guard checks all three agree.
 // 6. DELETE .env.local — always, and check it is actually gone with an ABSOLUTE path.
 //    A stub-built bundle published later breaks sign-in for every user.
 // 7. Commit + push to main → Vercel deploys both this endpoint and the zip →
@@ -50,6 +53,23 @@
 
 const LATEST_VERSION = "2026-09-01t"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
+
+// ★ INTEGRITY: lowercase hex sha256 of the published .zip, exactly as `sha256sum` prints it.
+// The plugin computes the same hash over the downloaded file and, when this field is non-empty,
+// DELETES the bundle and aborts the update on any mismatch (CapacitorUpdaterPlugin.swift:4383,
+// `checksum_fail`). Sending "" — which is what this endpoint did until 2026-09-02 — silently
+// skips verification entirely, so a bundle corrupted or swapped in transit installed happily.
+// It needs no native change and no public key: with no `publicKey` configured, decryptChecksum()
+// returns the value unchanged (CryptoCipher.swift:35), so a plain sha256 is what it compares.
+// ★ THE HAZARD THIS INTRODUCES, AND WHY THE GUARD IS NOT OPTIONAL: a hash that does not match the
+// zip bricks OTA for EVERY phone, silently — each device downloads, rejects, deletes, and retries
+// forever while the app looks perfectly fine. `node build/ota_assets_check.mjs <zip> dist` asserts
+// this constant equals the zip on disk; run it before every push, and never hand-edit this line
+// without re-running it.
+// NOTE this is an integrity check, not a signature: it proves the bundle is the one this endpoint
+// published, NOT that the publisher was authorised. Real signing needs a private key held outside
+// the repo and its public half compiled into the native binary (a Mac day).
+const BUNDLE_SHA256 = "01eddf95cb944f6c19316cd43f85b3e3fe79e3b6567536e65b8a69b48ca02fbb";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -77,5 +97,8 @@ export default async function handler(req, res) {
   return res.status(200).json({
     version: LATEST_VERSION,
     url: `${BUNDLE_BASE}/seshd-${LATEST_VERSION}.zip`,
+    // Omit rather than send "" when unset — an empty string means "skip verification", and a
+    // typo'd constant should fail loudly at publish time (the guard), never degrade to no check.
+    ...(BUNDLE_SHA256 ? { checksum: BUNDLE_SHA256 } : {}),
   });
 }
