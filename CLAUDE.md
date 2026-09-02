@@ -3779,6 +3779,65 @@ duplicate `workout_codes` DELETE policies (documented as harmless, consolidate w
 next touched — deliberately not touched here). The four SECURITY DEFINER warnings that remain
 (`profile_is_public`, both redeem RPCs, `group_image_member_check`) are all deliberate.
 
+## ★★ THE PRIVACY-BY-INFERENCE AUDIT (Sep 2) — the leak is the SCHEDULE, and the OG card never worked
+Not "can a stranger break in" (the Sep 1 rounds settled that) but "what can a stranger DERIVE from
+what we publish on purpose". That is the class that has actually hurt fitness apps — Strava's 2018
+heatmap traced military bases with no account compromised anywhere. Seshd has no GPS, so the
+equivalent axis here is TIME.
+- **★ A PUBLIC ACCOUNT PUBLISHES ITS WEEKLY ABSENCE WINDOW, AND NOTHING IN THE UI SAYS SO.**
+  `workout_history` is `owner OR profile_is_public OR accepted follower`, and it carries
+  `created_at` (the finish instant) plus `duration_secs` — so subtracting one from the other gives
+  the arrival time of every session, for the whole history, to an UNAUTHENTICATED caller holding
+  only the public anon key. Measured on real non-migrated rows: **Friday finishes spread 1 minute
+  (10:39-10:42), Tuesday 3 minutes (10:35-10:40)**, derived arrival ~09:40 on weekday mornings.
+  Nobody ticking "public profile" is thinking "I am telling strangers when I am reliably not home".
+  **This is not a broken policy — it is the feature working exactly as designed**, which is what
+  makes it the Strava shape rather than a bug. Options if it is ever worth acting on, cheapest
+  first: publish `workout_date` (a DAY) rather than `created_at` (an instant) to non-followers;
+  or round the timestamp; or say plainly on the toggle what "public" publishes.
+- **★ THE `/u/` LINK-PREVIEW CARD HAS NEVER WORKED, AND IS PRIVACY-POSITIVE BY ACCIDENT.**
+  `api/profile-og.js` queries the BASE `profiles` table with the anon key. `profiles` is owner-only
+  under RLS and the endpoint holds no user JWT, so `auth.uid()` is NULL and the query returns **0
+  rows every time** — measured as `anon` with ALL THREE accounts public: base `profiles` -> 0,
+  `public_profiles` -> 3. Every profile link ever shared has unfurled as the generic "Seshd - Lift
+  heavy. Track everything." card. `PublicProfileView` in App.jsx does the SAME lookup against
+  `public_profiles` and works — one feature, two implementations, one of them reached for the wrong
+  table. **The fix is one word** (`profiles` -> `public_profiles`, whose own
+  `is_public = true OR auth.uid() IS NOT NULL` filter returns only public rows to an anon key), but
+  it INCREASES what is published, so it is a product decision, not a repair to make silently.
+- **"PRIVATE" PROTECTS YOUR CONTENT, NOT YOUR SOCIAL GRAPH.** `follows_select_scoped` reveals an
+  edge when EITHER end is public, so a private account's follows and followers are readable
+  whenever their friends are public — and since public is the interesting setting, that is most of
+  the graph. Same for a private account's COMMENTS on public posts (username + text, measured: 1
+  visible). Both match Instagram's model and are defensible; the thing not to do is let the UI
+  imply more than that. Pending requests ARE properly private — the policy's third clause requires
+  `status='accepted'`, so only the two parties see a pending row (settled from the policy text,
+  because the row COUNT was vacuous at 0 pending rows).
+- **`PublicProfileView`'s `limit=5` IS COSMETIC — RLS ALLOWS THE LOT.** The UI asks for 5 recent
+  workouts; a hand-written REST call with the same public key returned **69**. Never read a client
+  `limit` as a privacy control.
+- **Latent, not live:** `posts.location` is FREE TEXT the user types (there is no geolocation call
+  anywhere in the app) and is used by **0 of 88** posts — but it is published to strangers on a
+  public account, and "Gold's Gym" beside a 3-minute-wide Tuesday is a different fact from either
+  alone. And `workout_history.note` exists as a column while every write path sends `""` — verified
+  at all four finish call sites, the offline-queue replay, and the guest migration (whose `sess.note`
+  is itself always `""`), with **0 of 123 rows** carrying one. The column is a loaded gun pointing at
+  a public table; a future edit that populates it publishes free text with nothing to catch it.
+**VERIFIED CLEAN, so it is not re-litigated:** `public_profiles` is 14 columns with no email, push
+token, body log, age or workout notes; the base `profiles` table returns 0 rows to `anon` even with
+every account public; `messages` and `groups` return 0; and against a DELIBERATELY private account a
+signed-out viewer got 0 for findability, posts, workout_history, personal_records, comments-on-their
+-posts and kudos — i.e. the Aug-25 comments/kudos three-way fix genuinely holds. The OG endpoint
+HTML-escapes its output, strips the id to `[\w-]`, and embeds a STATIC image, so no avatar URL and
+no tracking pixel reaches a third-party unfurler.
+**★ AND THE PROBE LESSON, WHICH IS THE ONE THAT NEARLY PRODUCED A FALSE ALARM: THE FIRST ANON SWEEP
+REPORTED ALL 17 COMMENTS AND ALL 25 KUDOS READABLE SIGNED-OUT, WHICH READS EXACTLY LIKE THE AUG-25
+FIX HAVING REGRESSED.** It had not. **All three accounts in the database are `is_public = true`**, so
+there was no private data for the check to fail against — a fixture that cannot fail, arrived at
+through the DATA rather than through a bad selector. Only re-running it against an account
+deliberately flipped private settled it. Check what the fixture makes POSSIBLE before believing
+either a red or a green.
+
 ## ★ Sweep #7 (Sep 1, 2026) — the cleanest one yet, and the only errors are my own probes
 **Postgres errors: 31 in 24h, and every single one is `app = mgmt-api`** — my own audit probes,
 role-sims and rolled-back tests from the same day's security work. **Zero user-generated errors,
