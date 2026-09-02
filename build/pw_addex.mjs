@@ -48,6 +48,33 @@ await page.getByText("+ Add Exercise", { exact: true }).click();
 await page.waitForTimeout(500);
 check("the sheet opened", await page.getByText("Add Exercise", { exact: true }).isVisible());
 
+// ── The sheet must NOT force the keyboard open ───────────────────────────────────────────────
+// It had `autoFocus` on the search box. On device that opens the keyboard over the very list the
+// sheet exists to show, and it armed a second-order trap: the scroller spreads `useSwipeDismiss`,
+// which blurs on a >14px DOWNWARD drag, so the first scroll gesture dismissed the keyboard instead
+// of scrolling and the list read as stuck until the user closed the keyboard themselves.
+// Chromium has no software keyboard, so focus is the only observable half of this here — which is
+// fine, because focus is precisely what summons the keyboard on device.
+const focusInfo = await page.evaluate(() => {
+  const a = document.activeElement;
+  return { tag: a ? a.tagName : null, ph: a ? (a.getAttribute("placeholder") || "") : "" };
+});
+check("the search field is NOT auto-focused (no keyboard on open)",
+  !(focusInfo.tag === "INPUT" && /search exercises/i.test(focusInfo.ph)),
+  `activeElement=${focusInfo.tag} placeholder=${JSON.stringify(focusInfo.ph)}`);
+// ...and the browse list it exists to show is actually on screen and scrollable.
+const browse = await page.evaluate(() => {
+  const inp = [...document.querySelectorAll("input")].find(i => /search exercises/i.test(i.placeholder || ""));
+  if (!inp) return null;
+  const sheet = inp.closest("div[style*='flex']")?.parentElement || document.body;
+  const sc = [...sheet.querySelectorAll("div")].find(d => {
+    const cs = getComputedStyle(d); return cs.overflowY === "auto" && d.scrollHeight > d.clientHeight + 20;
+  });
+  return sc ? { h: Math.round(sc.getBoundingClientRect().height), scrollable: sc.scrollHeight - sc.clientHeight } : null;
+});
+check("the exercise list is present and has room to scroll", !!browse && browse.scrollable > 20,
+  JSON.stringify(browse));
+
 const box = page.getByPlaceholder("Search exercises...").last();
 await box.click();
 await box.pressSequentially("Bench Press", { delay: 50 });

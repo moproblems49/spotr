@@ -1,4 +1,4 @@
-// v178091717017
+// v178091717018
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6242,7 +6242,13 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
           }}>×</button>
         </div>
         <input
-          autoFocus value={q} onChange={e => setQ(e.target.value)}
+          // NO autoFocus. This sheet's primary mode is BROWSE — with no query it renders the whole
+          // library grouped by muscle, which is the thing you came to look at. Forcing the keyboard
+          // open covered that list AND armed a trap: the scroller spreads `useSwipeDismiss`, which
+          // blurs on a >14px DOWNWARD drag, so the first scroll gesture dismissed the keyboard
+          // instead of scrolling and the list read as stuck until you closed the keyboard yourself.
+          // Tapping the field still searches; nothing is lost by letting the user ask for it.
+          value={q} onChange={e => setQ(e.target.value)}
           // Enter commits the typed name directly, same as ExerciseInput's own field — without it
           // an exercise not already in the library (and not worth the full "create custom" flow's
           // muscle-group picker) has no way in at all.
@@ -12155,7 +12161,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   }}/>
 
                   {/* Top: Brand mark */}
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"auto", position:"relative", zIndex:1 }}>
+                  {/* marginBottom was "auto" — the partner of the aspectRatio removed above. An
+                      auto margin exists to absorb FREE SPACE in a fixed-height box; with the height
+                      now driven by content there is no free space, so it is dead weight at best.
+                      At worst it is an auto margin resolved against an indefinite height, which is
+                      exactly the kind of circular sizing engines disagree about — and the device
+                      symptom here is a card collapsed to header height. Fixed margin instead. */}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:0, position:"relative", zIndex:1 }}>
                     <div>
                       <div style={{
                         fontSize: 11, letterSpacing: 4, fontWeight: 700,
