@@ -1,4 +1,4 @@
-// v178091717023
+// v178091717024
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7154,53 +7154,6 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
 // ═════════════════════════════════════════════════════════════════════════════
 // C is threaded in purely so the leader can be the theme's accent — Confetti had no reason to
 // know about the palette before, and a bare `C` here was a ReferenceError sim_undef caught.
-// Reports the share card's real geometry from a device when — and only when — it is wrong.
-// Paired with the comment at its call site; remove both together.
-function ShareCardGeometryProbe() {
-  const firedRef = useRef(false);
-  useEffect(() => {
-    if (firedRef.current) return;
-    // POLL, don't single-shot. The first cut measured once at 900ms; if the sheet had not finished
-    // mounting the card by then, getElementById returned null, the probe returned early and never
-    // ran again — an instrument that silently declines to measure, which is the exact failure this
-    // whole episode is about. Retry until the card exists or we give up, then measure once.
-    let tries = 0;
-    const t = setInterval(() => {
-      try {
-        if (++tries > 12) { clearInterval(t); return; }   // ~5s, then stop
-        const card = document.getElementById("workout-card");
-        if (!card || firedRef.current) return;
-        clearInterval(t);
-        const r = card.getBoundingClientRect();
-        const healthy = r.height > 250 && card.scrollHeight <= card.clientHeight + 2;
-        if (healthy) return;                       // nothing to say
-        firedRef.current = true;
-        const chain = [];
-        let n = card, depth = 0;
-        while (n && depth < 7) {
-          const cs = getComputedStyle(n), b = n.getBoundingClientRect();
-          chain.push({
-            d: depth, tag: n.tagName, id: n.id || undefined,
-            w: Math.round(b.width), h: Math.round(b.height),
-            sh: n.scrollHeight, ch: n.clientHeight,
-            disp: cs.display, fd: cs.flexDirection, fs: cs.flexShrink, fb: cs.flexBasis,
-            mh: cs.minHeight, mxh: cs.maxHeight, ar: cs.aspectRatio, ov: cs.overflow,
-            pos: cs.position,
-          });
-          n = n.parentElement; depth++;
-        }
-        reportError(
-          `sharecard-geometry h=${Math.round(r.height)} w=${Math.round(r.width)} sh=${card.scrollHeight}`,
-          JSON.stringify(chain),
-          "sharecard-probe"
-        );
-      } catch { /* a diagnostic must never break the screen it is diagnosing */ }
-    }, 420);
-    return () => clearInterval(t);
-  }, []);
-  return null;
-}
-
 function Confetti({ origin = "top", duration = 2, C }) {
   // origin: "top" (PR modal full-screen) | "set" (centered around the checkmark)
   // The first entry was volt, so PR confetti opened with lime on the six themes that have no
@@ -12209,18 +12162,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         </div>
 
         {showWorkoutSummary && workoutSummary && <Confetti duration={2.5} C={C}/>}
-        {/* ★ DEVICE PROBE — the share card collapses on iOS and CANNOT be reproduced here.
-            Measured on device: 365x90 CSS px where the content is ~621 tall, i.e. the box is
-            exactly its padding + header and everything below is clipped away. Chromium holds it
-            at 621 under every viewport tried (874 down to 300, scroller squeezed to 24px), and
-            this repo has NO WebKit engine to test in — the same blind spot as the pan-y drag
-            handle and the software-keyboard class, where a device beat the whole battery.
-            So stop guessing at layout and read the real numbers off the phone: measure the card
-            and its ancestor chain after layout settles, and report ONLY when the geometry is
-            actually wrong. On a healthy device this never fires; reportError also dedupes by
-            message and caps at 5 per session, so it cannot spam. Geometry only — no user content.
-            DELETE THIS once the cause is known. */}
-        {showWorkoutSummary && workoutSummary && <ShareCardGeometryProbe/>}
         <Sheet open={showWorkoutSummary && !!workoutSummary} onClose={() => {}} z={300} backdrop="rgba(0,0,0,0.85)"
           panelStyle={{ background:C.bg, borderRadius:"16px 16px 0 0", maxHeight:"90dvh", display:"flex", flexDirection:"column", borderTop:`1px solid ${C.overlayEdge}` }}>
         {showWorkoutSummary && workoutSummary && (

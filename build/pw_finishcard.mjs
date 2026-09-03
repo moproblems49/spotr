@@ -82,8 +82,12 @@ if (M) {
   // min-height compute to 0, which is the shape of the iOS-only report this came from.
   check("the card cannot be flex-collapsed (flex-shrink:0)", M.flexShrink === "0", `flex-shrink:${M.flexShrink}`);
   check("its height is content-driven, not a fixed ratio", M.aspectRatio === "auto", `aspect-ratio:${M.aspectRatio}`);
-  // The PR list is the section the ratio was actually eating.
-  check("the per-exercise PR section renders inside the card", /PERSONAL RECORDS/i.test(M.text || ""),
+  // The PR list is the section the ratio was actually eating. NOTE THIS IS A PRESENCE CHECK ONLY
+  // AND IS DELIBERATELY NOT THE CLIPPING GUARD: the HEADING sits inside the box while its
+  // CONTENTS spill out, so this stayed PASS through the whole red proof. The two checks above
+  // (clipped === 0, and no text node outside the box) are the load-bearing ones — do not read a
+  // green here as evidence the section is whole.
+  check("the per-exercise PR section is present", /PERSONAL RECORDS/i.test(M.text || ""),
     (M.text || "").slice(0, 80).replace(/\n/g, " | "));
 
   // ── The footer must not eat the content area ────────────────────────────────────────────────

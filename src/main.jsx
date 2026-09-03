@@ -39,16 +39,31 @@ try { window.Capacitor?.Plugins?.Keyboard?.setAccessoryBarVisible?.({ isVisible:
 // frame the page re-laid out. `resize: "none"` removes the shrink, so there is real content behind
 // the glass again and the whole class of bug goes away.
 //
-// The cost of `none` is that nothing moves out of the keyboard's way any more. WebKit still
-// scrolls a focused field inside a scroller into view by itself, so ordinary inputs are fine; what
-// breaks is anything PINNED to the bottom, which cannot scroll — in this app that is the chat
-// composer. So we publish the keyboard's height as `--seshd-kb` and the composer pads by it,
-// riding up with the keyboard the way Instagram's DM composer does. The transition uses the
-// keyboard's OWN reported duration so the two move together instead of the app jumping after it.
+// ★★ `resize: "none"` IS HELD BACK — IT BURIED THREE FIELDS, AND THE PREMISE BELOW WAS WRONG.
+// The reasoning WAS: the only thing that cannot move out of the keyboard's way is something PINNED
+// to the bottom, i.e. the chat composer, so publish the height as `--seshd-kb` and let the composer
+// pad by it. MEASURED, and false. WebKit's focus-scroll only rescues a field with a SCROLLABLE
+// ancestor, and this app's overlays are `position:fixed` boxes sized to the LAYOUT viewport — which
+// `none` stops shrinking. So their content re-flows down into the keyboard's area with nothing to
+// scroll. Same field, same code, two modes (402x874 vs the 402x538 `native` produces, keyboard 336):
+//     Settings -> Send feedback textarea   bottom 463 -> 799   (261px under, NO scrollable ancestor)
+//     Edit Profile -> bio textarea         bottom 464 -> 596
+//     Edit Profile -> age "e.g. 28"        bottom 541 -> 673
+// The Edit Profile pair is the instructive one: at 538 the modal's content OVERFLOWED, so it had a
+// scroller and WebKit could lift them; at 874 it fits, so the scroller is gone and nothing can.
+// That sweep covered 4 screens out of ~72 inputs, so treat those three as a lower bound.
+// Going back to `none` therefore needs the containers to end at the keyboard line — a global
+// `height: calc(... - var(--seshd-kb, 0px))` on every full-screen fixed overlay and bottom sheet,
+// which reproduces `native`'s geometry in CSS without its native re-layout jump — plus a guard that
+// sweeps EVERY input at both viewports. `build/pw_kbinset.mjs` is that sweep. Until then the black
+// box stays, and its real fix is `Keyboard.autoBackdropColor: "dom"` (already in
+// capacitor.config.json, needs a Mac `cap sync`), not this.
+// The listeners below stay: publishing `--seshd-kb` costs nothing and is what the eventual fix
+// consumes. NOTHING reads it today — the composer's consumption was reverted with this, because
+// under `native` the webview shrinks AND the composer would pad, lifting it twice.
 try {
   const K = window.Capacitor?.Plugins?.Keyboard;
   if (K) {
-    K.setResizeMode?.({ mode: "none" })?.catch?.(() => {});
     const setKb = (px, ms) => {
       const el = document.documentElement;
       // Custom properties live in inline style, and AppInner's scroll-lock effect REPLACES

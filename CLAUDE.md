@@ -3821,6 +3821,63 @@ premise", with a falsifiable prediction (pixel-scan Chromium the same way; expec
 too). Running that prediction is what ended a four-round chase. Ask for the disproof, and then
 actually run it.
 
+## ★★★ `resize:"none"` BURIED THREE FIELDS, AND THE PREMISE THAT SHIPPED IT WAS WRONG (Sep 3)
+Caught by auditing my own unaudited commits, BEFORE the bundle was published — measured, not read.
+`26da516` set `Keyboard.resize:"none"` so the WKWebView stops shrinking under the keyboard, and
+reasoned that the only thing which then cannot get out of the way is something **PINNED to the
+bottom**, "in this app that is the chat composer" — so the composer padded by `--seshd-kb` and
+nothing else needed touching. **That premise is false**, and it is false for a reason worth keeping:
+**WebKit's focus-scroll can only rescue a field that has a SCROLLABLE ancestor.** This app's
+overlays are `position:fixed` boxes sized to the LAYOUT viewport, which `"none"` stops shrinking —
+so their content re-flows DOWN into the keyboard's area with nothing to scroll. Same field, same
+code, driven at 402x874 (`none`) against the 402x538 that `native` produces, keyboard 336:
+```
+  Settings -> Send feedback textarea   bottom 463 -> 799   (261px under, NO scrollable ancestor)
+  Edit Profile -> bio textarea         bottom 464 -> 596
+  Edit Profile -> age "e.g. 28"        bottom 541 -> 673
+```
+**The Edit Profile pair is the instructive half**: at 538 the modal's content OVERFLOWED, so it had
+a scroller and WebKit could lift those fields; at 874 the content FITS, the scroller is gone, and
+nothing can. *Making a container taller can REMOVE the very scrollbar that was rescuing its
+content* — the opposite of the intuition that more room is safer. And the feedback field is a
+`<Sheet>`, i.e. bottom-anchored: **every one of the eleven bottom sheets carrying a text input is
+in this class**, not just the composer. That sweep covered 4 screens out of ~72 inputs, so treat
+three as a LOWER BOUND.
+**REVERTED rather than patched, and the asymmetry is the argument**: `"none"`'s remaining benefit
+is small (the black box's real fix is `Keyboard.autoBackdropColor:"dom"`, already committed and
+waiting on a Mac `cap sync`; the layout drift was already handled by top-pinning), while its cost
+is fields you cannot see while typing into them. The `--seshd-kb` listeners STAY — publishing the
+height costs nothing and is what the eventual fix consumes — but **the composer's consumption was
+reverted with it**: under `native` the webview shrinks AND a consumer would pad, lifting it twice.
+Both or neither.
+**Going back to `"none"` needs the CONTAINERS to end at the keyboard line** — a global
+`height: calc(... - var(--seshd-kb, 0px))` on every full-screen fixed overlay and bottom sheet,
+which reproduces `native`'s geometry in CSS without its native re-layout jump — plus a sweep of
+EVERY input, not four screens.
+**Guard: `pw_kbinset`, and it is CONDITIONAL ON THE SOURCE because neither branch is vacuous.**
+With `"none"` present it drives the app at the full viewport and fails on any input whose bottom
+falls below the keyboard line inside a fixed container with nothing to scroll; with `"none"` absent
+it asserts NOTHING consumes `--seshd-kb` (the both-or-neither invariant). Red-proofed in both
+directions: reinstating `"none"` names all three fields with the exact numbers above while the
+exercise-picker control stays green, and reinstating the consumer names its file:line.
+**★ AND THE GUARD'S OWN FIRST RUN CARRIED TWO OF THIS FILE'S DOCUMENTED PROBE BUGS.** Its
+"did I reach this screen" marker was `"on your mind"` — which is a **placeholder ATTRIBUTE, never
+`innerText`**, so that scene could never be confirmed reached. It failed LOUDLY ("verdict unknown")
+instead of passing, which is the one design decision that saved it; a scene-reached check that
+reports PASS when it did not arrive is worth less than nothing. And the red-proof that reinstated
+the consumer **silently never ran**: its `count(...)==1` assert threw, because that exact `<div
+style={{ flex:1, ... minHeight:0 }}>` line exists TWICE in `MessagesScreen.jsx` (line 126 is the
+list, 294 is ChatView) — the same two-match trap that file has now sprung twice in one session.
+Target by index when the text is not unique, and **read the assert's output: a red-proof that
+throws is not a red-proof.**
+**★ AND THE CHECK THAT ALMOST LET IT SHIP: "is this already on his phone?"** `grep -c setResizeMode`
+over `dist/assets/*.js` returned 0 for the published zip — and 0 for the CONTROL too, because
+`src/main.jsx` builds into the **entry chunk (`index-*.js`)**, not `App-*.js`. The conclusion
+("not published, no rush") was right by luck off a grep that could not have found it anywhere.
+Grep the WHOLE `dist/`, and always run the control first: *a zero from a search that cannot find
+the thing is not evidence of absence.* (It genuinely was unpublished — `2026-09-03d` carries
+neither `setResizeMode` nor `seshd-kb` — so nothing reached a device.)
+
 ## ★★ THE "BLACK BOX AROUND THE KEYBOARD" IS iOS 26 GLASS OVER A SHRUNKEN WEBVIEW (Sep 3)
 Mo, twice: the keyboard "starts as light gray then after 1 sec it gets darker and has a black box
 around it". I chased this as a THEME problem for two bundles and both fixes were aimed at the wrong
