@@ -51,7 +51,7 @@
 // NEVER OTA a change that needs new native plugins/capabilities — that requires a real
 // TestFlight build (cap sync + archive on the Mac).
 
-const LATEST_VERSION = "2026-09-02d"; // null = no OTA update published
+const LATEST_VERSION = "2026-09-03a"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 
 // ★ INTEGRITY: lowercase hex sha256 of the published .zip, exactly as `sha256sum` prints it.
@@ -69,7 +69,7 @@ const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 // NOTE this is an integrity check, not a signature: it proves the bundle is the one this endpoint
 // published, NOT that the publisher was authorised. Real signing needs a private key held outside
 // the repo and its public half compiled into the native binary (a Mac day).
-const BUNDLE_SHA256 = "9a8b0b12c89caf3f13c33ba7d1730729dd4e8854587c6011ff6ecad435b11689";
+const BUNDLE_SHA256 = "f636abf1730bdf9d7da3dc8aced4d8911969669997f9872d6f78abbe81b60d82";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
