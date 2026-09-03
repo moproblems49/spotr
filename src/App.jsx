@@ -1,4 +1,4 @@
-// v178091717020
+// v178091717021
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17920,6 +17920,16 @@ function AppInner() {
       // screen during the edge-swipe-back) shows the theme bg instead of the WebView's white.
       document.documentElement.style.background = bg;
       document.body.style.background = bg;
+      // ★ AND DECLARE color-scheme, OR iOS GUESSES — AND CHANGES ITS MIND.
+      // The app never set `color-scheme` anywhere, so WebKit infers the software keyboard's
+      // appearance (and form-control/scrollbar rendering) from what the page looks like when the
+      // field is focused. That inference is unstable here for a specific reason: index.css
+      // hardcodes `background:#0a0a0a` on the root as the pre-React default, so on a LIGHT theme
+      // the document underneath is dark while the app paints cream — and the keyboard came up
+      // light one moment and dark the next. Mo reported exactly that, twice. Declaring it makes
+      // the answer explicit instead of inferred, and it belongs in THIS effect because this is
+      // already the one owner of "keep the chrome in step with the theme".
+      document.documentElement.style.colorScheme = themeOf(store.theme).isDark ? "dark" : "light";
     } catch (e) {}
   }, [store.theme]);
   const [showMessages, setShowMessages] = useState(false);
@@ -20102,11 +20112,25 @@ function AppInner() {
     const html = document.documentElement;
     const body = document.body;
     const root = document.getElementById("root");
-    html.style.cssText = "margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;";
     // Use the THEME background here, not a hardcoded #fff — this fixed body is what shows through
     // whenever a transform/drag momentarily exposes a strip (the iOS edge-swipe-back off the chat
     // screen was revealing this white band). The theme-color effect above repaints it on toggle.
     const _shellBg = themeOf(store.theme).bg;
+    const _shellScheme = themeOf(store.theme).isDark ? "dark" : "light";
+    // ★ cssText REPLACES the whole inline style, AND THIS EFFECT RUNS AFTER THE THEME EFFECT.
+    // Effects fire in declaration order and this one is ~2,200 lines below the theme effect, so
+    // every property that effect sets on <html> was being wiped here on mount. Two consequences,
+    // one of them documented elsewhere as working:
+    //   * `documentElement.style.background` — the fix for the strip exposed during an iOS
+    //     edge-swipe-back — has NEVER applied on first load. Only <body> survived, because this
+    //     line sets body's background itself.
+    //   * `color-scheme` was wiped too, so WebKit fell back to inferring the software keyboard's
+    //     appearance from the page, and index.css declares a DARK root while a light theme paints
+    //     cream. That is why the keyboard came up light one moment and dark the next.
+    // This effect has [] deps, so it is the LAST writer on mount and never runs again — which
+    // means a later theme change is correctly owned by the theme effect. Both must therefore set
+    // both properties; neither alone covers both paths.
+    html.style.cssText = `margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;background:${_shellBg};color-scheme:${_shellScheme};`;
     body.style.cssText = `margin:0;padding:0;height:100%;width:100%;overflow:hidden;overscroll-behavior:none;position:fixed;top:0;left:0;right:0;bottom:0;background:${_shellBg};-webkit-tap-highlight-color:transparent;`;
     if (root) root.style.cssText = "height:100%;width:100%;overflow:hidden;";
 

@@ -289,6 +289,50 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   await p2.close();
 }
 
+// ── 5. <html> must declare color-scheme AND the theme background ─────────────────────────────
+// Both are set by the "lock document scroll" effect via `style.cssText`, which REPLACES the whole
+// inline style — and that effect runs AFTER the theme effect, so anything the theme effect writes
+// to <html> is wiped on mount. That silently cost two things: the root background documented as
+// the fix for the strip exposed during an iOS edge-swipe-back never applied on first load, and
+// with no color-scheme WebKit inferred the software keyboard's appearance from the page, coming up
+// light one moment and dark the next (reported twice from a device). Chromium has no software
+// keyboard, so the declared property is the only observable half here — which is the right thing
+// to assert anyway, because the property IS what tells iOS what to draw.
+for (const t of ["light", "dark", "summer", "winter"]) {
+  const pg = await b.newPage({ viewport: { width: 402, height: 874 } });
+  await pg.addInitScript(th => {
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: "u1", theme: th, unit: "lbs",
+      programs: [], history: {}, prs: {}, posts: [], users: [] }));
+    localStorage.setItem("seshd_session", JSON.stringify({ access_token: "t", user: { id: "u1" } }));
+    localStorage.setItem("seshd_onboarded", "1");
+  }, t);
+  await pg.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json",
+    body: JSON.stringify({ access_token: "t", user: { id: "u1" } }) }));
+  await pg.route("**/rest/v1/**", r => {
+    const u = r.request().url();
+    if (/(public_)?profiles\?/.test(u)) return r.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify([{ id: "u1", username: "m", unit: "lbs", theme: t, seen_onboarding: true }]) });
+    return r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await pg.goto(`http://127.0.0.1:${process.env.PORT || 8199}/`, { waitUntil: "domcontentloaded" });
+  await pg.waitForTimeout(2200);
+  // Read the INLINE style, not the computed one. CSS propagates <body>'s background up to the
+  // canvas when <html> has none, so `getComputedStyle(documentElement).backgroundColor` reports a
+  // painted colour either way — the first draft of this check passed against the very build it was
+  // written to fail. The inline declaration is the thing that was actually missing.
+  const m = await pg.evaluate(() => ({
+    cs: getComputedStyle(document.documentElement).colorScheme,
+    inlineBg: document.documentElement.style.background || document.documentElement.style.backgroundColor,
+  }));
+  const wantDark = ["dark", "midnight", "winter", "halloween", "fall"].includes(t);
+  check(`5. [${t}] <html> declares color-scheme:${wantDark ? "dark" : "light"}`,
+    m.cs === (wantDark ? "dark" : "light"), `got ${m.cs}`);
+  // "not transparent" is the load-bearing half: a wiped cssText leaves it rgba(0,0,0,0).
+  check(`5. [${t}] <html> carries an INLINE background (edge-swipe-back strip)`,
+    !!m.inlineBg, `got ${JSON.stringify(m.inlineBg)}`);
+  await pg.close();
+}
+
 await b.close();
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails ? 1 : 0);

@@ -13,6 +13,12 @@ html, body {
      chat screen during the iOS edge-swipe-back) is the app background, not the WebView's white.
      Matches the native launch screen (#0a0a0a); JS repaints this to the exact theme bg on mount. */
   background: #0a0a0a;
+  /* Paired with the colorScheme line in App.jsx's theme effect. Before React mounts, this file is
+     the only thing describing the page, and it describes a DARK one — so say so explicitly rather
+     than letting WebKit infer it. React overwrites both on the first theme render; without this,
+     the pre-mount frame and the mounted app can disagree about the scheme, which is what made the
+     iOS keyboard come up light one moment and dark the next. */
+  color-scheme: dark;
 }
 /* Form controls don't inherit font by default. */
 input, textarea, button, select {
