@@ -3821,6 +3821,62 @@ premise", with a falsifiable prediction (pixel-scan Chromium the same way; expec
 too). Running that prediction is what ended a four-round chase. Ask for the disproof, and then
 actually run it.
 
+## ★★ THE "BLACK BOX AROUND THE KEYBOARD" IS iOS 26 GLASS OVER A SHRUNKEN WEBVIEW (Sep 3)
+Mo, twice: the keyboard "starts as light gray then after 1 sec it gets darker and has a black box
+around it". I chased this as a THEME problem for two bundles and both fixes were aimed at the wrong
+layer. A cold-context Fable agent found the real mechanism and it is native, not CSS.
+**The keys never change — only what is BEHIND them.** iOS 26's Liquid Glass keyboard is translucent
+and blurs whatever sits behind it. `@capacitor/keyboard` defaults to `resize: native`, and its
+`onKeyboardWillShow` schedules `_updateFrame` at `animationDuration + 0.2s`, which then SHRINKS the
+WKWebView instantly. `CAPBridgeViewController.loadView` sets `view = webView` — the controller has
+no view of its own — so the strip the webview vacates is the bare `UIWindow`, which paints BLACK.
+For the first ~0.45s the glass samples the cream page; after the shrink it samples black. Opaque key
+caps are unaffected, which is exactly the reported "light keys, black box".
+**MEASURED FRAME BY FRAME ON MO'S OWN RECORDING, and this is the falsifiable check to re-run:**
+at 30fps, the page's content bottom held at 1881 through t=1.03s, then jumped to 1616 at t=1.07s —
+the instant `_updateFrame` shrink — and the keyboard surround's luminance went 180 -> 157 **on that
+same frame**. Not before it, not a frame after. If the surround ever darkens while the page layout
+is untouched, this mechanism is wrong.
+**The fix is CONFIG AND NEEDS A MAC** (`npx cap sync ios`): `"Keyboard": { "autoBackdropColor":
+"dom" }` in `capacitor.config.json`. `"dom"` rather than a fixed colour because the plugin re-reads
+`getComputedStyle(document.body).backgroundColor` on every `keyboardWillShow`, and the scroll-lock
+effect already paints body from the active theme — so all nine themes and a live theme switch are
+covered by construction. Shipped in @capacitor/keyboard 8.0.4 (ionic-team/capacitor-plugins #2403,
+"On iOS 26 the new keyboard is transparent with rounded edges, which can render a black box
+underneath"); the lockfile has had 8.0.5 since Aug 18, so the binary already contains the code with
+the option off.
+**★ TWO THINGS I WROTE IN THIS FILE AND IN THE SOURCE WERE FACTUALLY FALSE — corrected in place:**
+* **WebKit does NOT derive the keyboard's appearance from CSS `color-scheme`.** Verified in WebKit
+  source: `WKContentViewInteraction.mm` never sets `keyboardAppearance`, and
+  `WKExtendedTextInputTraits` initialises it to Default and leaves it. So the `color-scheme` work in
+  bundle `2026-09-03a` was correct for form controls and scrollbars and ALWAYS INERT for the
+  keyboard. It could not have caused the flip and could not have cured it.
+* **`Keyboard.resize:"none"` IS OTA-able** — `setResizeMode` is a JS-callable native method
+  (`KeyboardPlugin.m:11`), contradicting the next-Mac-day note further down this file. Whether to
+  flip it is a different question and the answer is still no without a device pass: `none` leaves
+  bottom-anchored inputs (the chat composer) under the keyboard, and `body` leaves the 21 `100dvh`
+  layouts — AuthScreen, the screen App Review rejected — taller than the shrunk body and clipped by
+  `#root{overflow:hidden}`.
+**`Keyboard.setStyle` (bundle `03b`) is neither the cause nor the fix, and it STAYS.** Keep it
+theme-driven rather than `Default`: Default only matches when the OS appearance and the app theme
+agree, and is wrong when they do not (dark keys on Summer, light keys on Midnight). One honest
+unknown: on iOS >= 17.4 WebKit may hand UIKit a `WKExtendedTextInputTraits` that the plugin never
+swizzles, so `setStyle` may be INERT on iOS 26. Cheap device tell — if the phone is in Dark Mode and
+the keys are LIGHT on Summer, the swizzle works; if they are dark, it is inert.
+**★ "THE KEYBOARD SNAPS DOWN INSTEAD OF FOLLOWING YOUR FINGER" IS STRICTLY NATIVE, AND EVEN THEN
+PARTIAL HERE.** No JS/Capacitor API can read or drive the keyboard's frame in a WKWebView; `.blur()`
+only triggers the full hide animation, so the app's swipe-dismiss is instantaneous by construction.
+(The plugin adds to the snap: `onKeyboardWillHide` calls `setKeyboardHeight:0 delay:0.01`, restoring
+the full frame while the keyboard is still sliding out.) The native primitive is one line —
+`webView?.scrollView.keyboardDismissMode = .interactive` in a `CAPBridgeViewController` subclass —
+**and it would do nothing as this app is built**: Capacitor sets `scrollView.bounces = false` and the
+body is `position:fixed; overflow:hidden`, so the outer `WKScrollView` never pans. Every real scroll
+is a DOM `overflow:auto` container, which WebKit backs with private `WKChildScrollView` instances
+whose `keyboardDismissMode` is not exposed. Reaching those means swizzling a private WebKit class by
+name in a local plugin — feasible, untested, and during the drag the `resize:native` frame stays
+shrunk until WillHide, exposing the same window strip. Budget it as an EXPERIMENT on a Mac day, not
+as a fix, and do `autoBackdropColor` first since it colours that strip anyway.
+
 ## ★★ `aspect-ratio` + `overflow:hidden` ATE THE PR LIST OFF THE "NEW PR!" CARD (Sep 2)
 Mo, from a device screenshot of the finish sheet: "Found a bug." The share card was rendering at
 **1094 x 269 device px** where its own `aspectRatio:"4/5"` demands 1368 — five times too short,

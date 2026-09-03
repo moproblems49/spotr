@@ -6,6 +6,9 @@
     "CapacitorHttp": {
       "enabled": true
     },
+    "Keyboard": {
+      "autoBackdropColor": "dom"
+    },
     "CapacitorUpdater": {
       "autoUpdate": true,
       "updateUrl": "https://spotr-drab.vercel.app/api/app-update",

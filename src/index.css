@@ -15,9 +15,11 @@ html, body {
   background: #0a0a0a;
   /* Paired with the colorScheme line in App.jsx's theme effect. Before React mounts, this file is
      the only thing describing the page, and it describes a DARK one — so say so explicitly rather
-     than letting WebKit infer it. React overwrites both on the first theme render; without this,
-     the pre-mount frame and the mounted app can disagree about the scheme, which is what made the
-     iOS keyboard come up light one moment and dark the next. */
+     than letting the engine infer it. React overwrites both on the first theme render.
+     CORRECTION: an earlier version of this comment blamed the iOS keyboard's light/dark flip on
+     this property. That was wrong — WebKit never derives `keyboardAppearance` from `color-scheme`
+     (checked in WebKit source), so this declaration could not have caused or cured it. It is still
+     worth having for form controls and scrollbars; it is simply not a keyboard fix. */
   color-scheme: dark;
 }
 /* Form controls don't inherit font by default. */

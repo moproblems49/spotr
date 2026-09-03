@@ -18003,11 +18003,19 @@ function AppInner() {
       // already the one owner of "keep the chrome in step with the theme".
       const _dark = themeOf(store.theme).isDark;
       document.documentElement.style.colorScheme = _dark ? "dark" : "light";
-      // ★ AND TELL THE NATIVE KEYBOARD DIRECTLY — CSS `color-scheme` IS NOT ENOUGH IN A WKWEBVIEW.
-      // Declaring color-scheme was the right first move and it fixed the CSS side, but Mo reported
-      // the keyboard STILL flipping light/dark on the bundle that shipped it, so the WebView is
-      // clearly not deriving `UIKeyboardAppearance` from the page. @capacitor/keyboard exposes the
-      // real control; this is the authoritative setting and the CSS above is now the web fallback.
+      // ★ THE KEYBOARD'S APPEARANCE IS A NATIVE SETTING. CSS `color-scheme` HAS NOTHING TO DO
+      // WITH IT — and an earlier version of this comment claimed the opposite, which was wrong.
+      // Verified against WebKit source: `WKContentViewInteraction.mm` never sets
+      // `keyboardAppearance`, and `WKExtendedTextInputTraits` initialises it to
+      // UIKeyboardAppearanceDefault and leaves it there. So the `color-scheme` declaration above
+      // is correct for form controls and scrollbars and was ALWAYS inert for the keyboard.
+      // Worse, @capacitor/keyboard swizzles `keyboardAppearance` at load even with no config
+      // (Keyboard.m:167 -> changeKeyboardStyle:nil -> a constant Default), so before this line the
+      // keyboard simply followed the SYSTEM appearance whatever the app theme was. This is the
+      // only thing that can change it. Keep it theme-driven rather than "Default": Default is only
+      // equivalent when the OS and the app theme agree, and wrong when they do not (dark keys on
+      // Summer, light keys on Midnight).
+      // NOT related to the black box around the keyboard on iOS 26 — see capacitor.config.json.
       // Guarded the same way as every other native call in this file: optional-chained through
       // window.Capacitor so the web build and any installed build that predates the plugin being
       // synced natively both no-op instead of throwing.
