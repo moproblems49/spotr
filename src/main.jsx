@@ -39,47 +39,40 @@ try { window.Capacitor?.Plugins?.Keyboard?.setAccessoryBarVisible?.({ isVisible:
 // frame the page re-laid out. `resize: "none"` removes the shrink, so there is real content behind
 // the glass again and the whole class of bug goes away.
 //
-// ★★ `resize: "none"` IS HELD BACK — IT BURIED THREE FIELDS, AND THE PREMISE BELOW WAS WRONG.
-// The reasoning WAS: the only thing that cannot move out of the keyboard's way is something PINNED
-// to the bottom, i.e. the chat composer, so publish the height as `--seshd-kb` and let the composer
-// pad by it. MEASURED, and false. WebKit's focus-scroll only rescues a field with a SCROLLABLE
-// ancestor, and this app's overlays are `position:fixed` boxes sized to the LAYOUT viewport — which
-// `none` stops shrinking. So their content re-flows down into the keyboard's area with nothing to
-// scroll. Same field, same code, two modes (402x874 vs the 402x538 `native` produces, keyboard 336):
-//     Settings -> Send feedback textarea   bottom 463 -> 799   (261px under, NO scrollable ancestor)
-//     Edit Profile -> bio textarea         bottom 464 -> 596
-//     Edit Profile -> age "e.g. 28"        bottom 541 -> 673
-// The Edit Profile pair is the instructive one: at 538 the modal's content OVERFLOWED, so it had a
-// scroller and WebKit could lift them; at 874 it fits, so the scroller is gone and nothing can.
-// That sweep covered 4 screens out of ~72 inputs, so treat those three as a lower bound.
-// Going back to `none` therefore needs the containers to end at the keyboard line — a global
-// `height: calc(... - var(--seshd-kb, 0px))` on every full-screen fixed overlay and bottom sheet,
-// which reproduces `native`'s geometry in CSS without its native re-layout jump — plus a guard that
-// sweeps EVERY input at both viewports. `build/pw_kbinset.mjs` is that sweep. Until then the black
-// box stays, and its real fix is `Keyboard.autoBackdropColor: "dom"` (already in
-// capacitor.config.json, needs a Mac `cap sync`), not this.
-// The listeners below stay: publishing `--seshd-kb` costs nothing and is what the eventual fix
-// consumes. NOTHING reads it today — the composer's consumption was reverted with this, because
-// under `native` the webview shrinks AND the composer would pad, lifting it twice.
+// ★★★ `resize:"none"` IS OFF, AND THE REASON IS IN THE PLUGIN'S OWN SOURCE — NOT A JUDGEMENT CALL.
+// The Instagram pattern (stop the webview shrinking, publish the keyboard height, let the UI ride
+// up) is entirely OTA-able and was implemented in full: `KB_SAFE_INSET` moves every full-screen
+// fixed backdrop holding a text input up to the keyboard line. That handles overlays. It CANNOT
+// handle a field inside an ordinary SCROLLER, and the assumption that WebKit would handle those
+// itself is FALSE HERE:
+//   * `Keyboard.m:195-199` unconditionally does `removeObserver:self.webView` for
+//     UIKeyboardWillShow/WillHide/WillChangeFrame/DidChangeFrame. The webview is never told a
+//     keyboard exists.
+//   * Under `native` the plugin SHRINKS the frame, so a low field falls outside the shortened
+//     scroller and inner scroll-into-view lifts it. Under `none` the layout viewport still runs
+//     behind the keyboard, the field is already "in view", and nothing scrolls.
+// Measured consequence on the app's core flow: a live workout with 11 exercises has TWENTY inputs
+// (every "Add note..." and per-exercise rename) below the keyboard line with nothing able to lift
+// them, and Edit History has 13. That is far worse than the black box `none` was meant to cure.
+// Making `none` viable therefore needs a FOCUS SHIM — on focus, scroll the field's own scroller so
+// it clears the keyboard, and pad that scroller so the last item can still get there. That is a new
+// subsystem, it cannot be verified anywhere in this repo (no WebKit engine, no software keyboard),
+// and it should be built deliberately with a device in hand, not bolted on.
+//
+// EVERYTHING ELSE STAYS AND IS INERT BY CONSTRUCTION. `KB_SAFE_INSET` and the chat composer read
+// `var(--seshd-kb, 0px)`, so as long as this file never PUBLISHES the variable they all resolve to
+// 0 and behave exactly as they did before any of this work. That is the both-or-neither invariant
+// `build/pw_kbinset.mjs` enforces: it is not "no consumers", it is "the variable is not published
+// unless resize is none" — because under `native` the webview shrinks AND a consumer would inset,
+// lifting everything twice.
+// The black box around the keyboard is therefore still present, and its real fix is
+// `Keyboard.autoBackdropColor:"dom"` (already in capacitor.config.json, needs a Mac `cap sync`).
 try {
   const K = window.Capacitor?.Plugins?.Keyboard;
   if (K) {
-    K.setResizeMode?.({ mode: "none" })?.catch?.(() => {});
-    const setKb = (px, ms) => {
-      const el = document.documentElement;
-      // Custom properties live in inline style, and AppInner's scroll-lock effect REPLACES
-      // documentElement.style.cssText wholesale. MEASURED: it therefore wipes any value set here
-      // at boot — `--seshd-kb` reads as "" after mount, not "0px". That is harmless and is why
-      // every consumer must use the `var(--seshd-kb, 0px)` FALLBACK rather than relying on an
-      // initial value, and why no initial set is made here. It is safe for the live keyboard
-      // height because that effect has [] deps and runs once at mount, before any field can be
-      // focused — but if it ever gains deps and re-runs, it would blank a raised keyboard inset
-      // mid-gesture. Keep it [] or move this variable off documentElement.
-      el.style.setProperty("--seshd-kb-ms", (ms || 250) + "ms");
-      el.style.setProperty("--seshd-kb", px + "px");
-    };
-    K.addListener?.("keyboardWillShow", info => setKb(Math.round(info?.keyboardHeight || 0), info?.keyboardAnimationDuration ? Math.round(info.keyboardAnimationDuration * 1000) : 250));
-    K.addListener?.("keyboardWillHide", info => setKb(0, info?.keyboardAnimationDuration ? Math.round(info.keyboardAnimationDuration * 1000) : 250));
+    // Deliberately NOT calling setResizeMode: the default is `native`, which is what we want until
+    // the focus shim above exists. Do not re-enable one without the other.
+    void K;
   }
 } catch { /* web, or plugin not synced natively */ }
 

@@ -31,22 +31,16 @@ const main = readFileSync(join(ROOT, "src/main.jsx"), "utf8");
 const resizeNone = main.split("\n").some(l =>
   !l.trimStart().startsWith("//") && /setResizeMode/.test(l) && /["']none["']/.test(l));
 
-// Who reads the variable, ignoring comment lines (a comment naming it is documentation, not a consumer).
-const consumers = [];
-const walk = d => { for (const e of readdirSync(join(ROOT, d), { withFileTypes: true })) {
-  if (e.isDirectory()) walk(join(d, e.name));
-  else if (/\.(jsx?|css)$/.test(e.name)) {
-    const f = join(d, e.name); if (f.endsWith("src/main.jsx")) continue;
-    readFileSync(join(ROOT, f), "utf8").split("\n").forEach((l, i) => {
-      const t = l.trimStart();
-      if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) return;
-      if (/var\(\s*--seshd-kb/.test(l)) consumers.push(`${f}:${i + 1}`);
-    });
-  }
-} };
-walk("src");
+// ★ THE PAIRING INVARIANT IS ABOUT PUBLISHING, NOT CONSUMING. Every consumer reads
+// `var(--seshd-kb, 0px)`, so with the variable never published they all resolve to 0 and are inert
+// — which is exactly how the KB_SAFE_INSET plumbing can stay in the tree while resize is `native`.
+// What must never coexist is `native` (the webview shrinks itself) WITH a published height (the
+// consumers inset as well), because that lifts everything twice. So the thing to police is the
+// publisher in src/main.jsx, not the readers.
+const publishes = main.split("\n").some(l =>
+  !l.trimStart().startsWith("//") && /setProperty\(\s*["']--seshd-kb/.test(l));
 
-console.log(`pw_kbinset — resize:"none" ${resizeNone ? "PRESENT" : "absent"}, --seshd-kb consumers: ${consumers.length}`);
+console.log(`pw_kbinset — resize:"none" ${resizeNone ? "PRESENT" : "absent"}, --seshd-kb published: ${publishes}`);
 
 // ── STRUCTURAL: every full-screen fixed backdrop that CONTAINS a text input must carry the inset.
 // This is the half that actually scales. Driving screens can only ever cover the handful a fixture
@@ -59,29 +53,38 @@ const jsxFiles = () => {
   if (out.length < 2) throw new Error("src/lazy vanished — this guard would silently stop covering it");
   return out;
 };
-const gaps = [];
-for (const f of jsxFiles()) {
-  const L = readFileSync(join(ROOT, f), "utf8").split("\n");
-  L.forEach((l, i) => {
-    if (!(l.includes('position:"fixed"') && l.includes("inset:0"))) return;
-    const ind = l.length - l.trimStart().length, body = [];
-    for (let j = i + 1; j < Math.min(i + 220, L.length); j++) {
-      const s2 = L[j];
-      if (s2.trim() && (s2.length - s2.trimStart().length) <= ind && (s2.includes("</div>") || s2.trim() === ")")) { body.push(s2); break; }
-      body.push(s2);
-    }
-    if (/<input|<textarea/.test(body.join("\n"))) gaps.push(`${f}:${i + 1}`);
-  });
+// ★ A FLOOR PER FILE, NOT A SUBTREE PARSE. Deciding "does this backdrop contain an input" by
+// walking JSX was tried three ways and was wrong every time: the indentation walk stopped at the
+// element's own header, the brace walk hit the style object's closing braces, and widening it to
+// catch `Sheet` (whose input arrives via `{children}`) made it over-report five innocent sites.
+// A parse that is wrong in BOTH directions is worse than no parse — it hides real gaps behind
+// noise. So this asserts the thing it can decide with certainty: none of the backdrops already
+// converted may quietly lose the inset. It fails on a REVERT (the regression that matters) and
+// stays quiet when a site is legitimately added. Raise a number here deliberately when you convert
+// another backdrop; if you ADD a full-screen backdrop with a text input and resize:"none" is ever
+// re-enabled, the geometry scenes below are what will catch it.
+const FLOOR = {
+  "src/App.jsx": 11,
+  "src/lazy/BodyTrackingScreen.jsx": 1,
+  "src/lazy/EditHistoryModal.jsx": 1,
+  "src/lazy/GroupDetail.jsx": 1,
+  "src/lazy/Onboarding.jsx": 1,
+};
+const short = [];
+for (const [f, min] of Object.entries(FLOOR)) {
+  const n = (readFileSync(join(ROOT, f), "utf8").match(/\.\.\.KB_SAFE_INSET/g) || []).length;
+  if (n < min) short.push(`${f} has ${n}, expected >= ${min}`);
 }
-check("every fixed backdrop holding a text input uses KB_SAFE_INSET, not inset:0",
-  gaps.length === 0, gaps.join(", "));
+check("no converted backdrop has lost KB_SAFE_INSET", short.length === 0, short.join("; "));
 
 if (!resizeNone) {
-  check("no consumer of --seshd-kb while resize is native (both or neither)",
-    consumers.length === 0, consumers.join(", ") || "none");
+  check("the keyboard height is not published while resize is native (both or neither)",
+    !publishes, publishes ? "src/main.jsx publishes --seshd-kb with resize:none absent" : "not published");
   console.log(`\n${fails ? fails + " FAILING" : "ALL PASS"} — ${checks} checks (geometry sweep not applicable: resize is native, the webview shrinks itself)`);
   process.exit(fails ? 1 : 0);
 }
+check("the keyboard height IS published while resize is none", publishes,
+  "resize:none without a publisher leaves every inset at 0");
 
 // --- resize:"none" is live: the geometry sweep must pass. ---
 const ME = "11111111-1111-4111-8111-111111111111";
@@ -121,9 +124,15 @@ const buried = () => p.evaluate(LINE => {
       if (!scrollable && (s.overflowY === "auto" || s.overflowY === "scroll") && n.scrollHeight > n.clientHeight + 2) scrollable = true;
       n = n.parentElement; d++;
     }
-    // Under the keyboard AND unrescuable: a fixed box with nothing to scroll.
-    if (r.bottom > LINE && fixed && !scrollable)
-      out.push(`"${(el.placeholder || el.type || el.tagName).slice(0, 24)}" bottom=${Math.round(r.bottom)}`);
+    // ★ NO "a scrollable ancestor rescues it" EXEMPTION. That was the original assumption and it
+    // is false for THIS plugin: `Keyboard.m:195-199` removes WKWebView's own
+    // UIKeyboardWillShow/WillChangeFrame observers, so the webview never learns a keyboard exists.
+    // Under `native` the frame shrank and a low field fell outside its scroller, so inner
+    // scroll-into-view lifted it; under `none` the viewport still runs behind the keyboard, the
+    // field is already "in view", and nothing moves. Exempting scrollables hid 20 buried inputs in
+    // a single live workout. Anything under the line counts.
+    if (r.bottom > LINE)
+      out.push(`"${(el.placeholder || el.type || el.tagName).slice(0, 24)}" bottom=${Math.round(r.bottom)}${fixed ? " [fixed]" : ""}${scrollable ? " [in-scroller]" : ""}`);
   }
   return out;
 }, LINE);
@@ -133,12 +142,21 @@ const tap = async (sel, ms = 900) => { const l = p.locator(sel).first(); if (!aw
 const scene = async (name, reach, marker) => {
   await home(); await reach();
   const txt = await p.evaluate(() => document.body.innerText);
-  // A scene we never reached proves nothing — say so rather than passing vacuously.
   if (marker && !txt.includes(marker)) { check(`${name} reached`, false, `"${marker}" absent — fixture broke, verdict unknown`); return; }
   await raiseKeyboard();
   await p.waitForTimeout(180);
+  // ★ THE MARKER ALONE IS NOT ARRIVAL. Every marker used here ("Send feedback", "Edit profile",
+  // "Search exercises") is also the TEXT OF THE ROW OR BUTTON THAT OPENS the thing — rendered
+  // before the sheet/modal/picker exists. So a scene whose second tap silently missed still had
+  // its marker present, reported zero visible inputs, and PASSED with nothing under test. The real
+  // precondition is that the container actually opened, and the observable proof of that is a
+  // visible text input.
+  const seen = await p.evaluate(() => [...document.querySelectorAll("input,textarea")]
+    .filter(el => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+      return r.width > 8 && r.height > 8 && cs.display !== "none" && cs.visibility !== "hidden"; }).length);
+  if (seen === 0) { check(`${name} reached`, false, "no visible input — the container never opened, verdict unknown"); return; }
   const bad = await buried();
-  check(`${name}: no input buried under the keyboard`, bad.length === 0, bad.join("; "));
+  check(`${name}: no input buried under the keyboard (${seen} visible)`, bad.length === 0, bad.join("; "));
 };
 
 await scene("Settings > feedback", async () => {

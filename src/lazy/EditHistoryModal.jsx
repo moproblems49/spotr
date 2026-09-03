@@ -5,7 +5,7 @@
 import { useState, useMemo } from "react";
 import { cvt, devError, uid } from "../engine/core.js";import { historyMaxPRs, matchesSession, postWorkoutPayload } from "../engine/workout.js";
 import { EXERCISE_DB, _exNorm } from "../engine/exercises.js";
-import { F, MONO, sb, toast, haptic, CreateExercisePicker, confirmAction } from "../App.jsx";
+import { F, MONO, sb, toast, haptic, CreateExercisePicker, confirmAction , KB_SAFE_INSET} from "../App.jsx";
 
 export default function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setStore, onClose }) {
   const { date, sid, sess } = editing;
@@ -303,7 +303,7 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
 
   return (
     <div data-fullscreen-overlay="true" style={{
-      position:"fixed", inset:0, background:C.bg, zIndex:600,
+      position:"fixed", ...KB_SAFE_INSET, background:C.bg, zIndex:600,
       maxWidth:480, margin:"0 auto", display:"flex", flexDirection:"column",
     }}>
       <div style={{ padding:"calc(env(safe-area-inset-top) + 14px) 16px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.divider}` }}>

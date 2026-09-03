@@ -285,11 +285,13 @@ export function ChatView({ peerId, store, currentUserId, token, C, onBack, onRea
     setSending(false);
   }
 
-  // This column briefly padded by `--seshd-kb` (the keyboard's height) to keep the bottom-pinned
-  // composer above the keyboard under `Keyboard.resize:"none"`. That resize mode is HELD BACK —
-  // it buried three fields on other screens, measured; see the block in src/main.jsx. Under the
-  // default `native` mode the webview itself shrinks, so the composer already rides up, and
-  // padding by the height as well would lift it TWICE. Restore both together or neither.
+  // This column pads by `--seshd-kb`, the keyboard's height, so the bottom-pinned composer rides
+  // up with the keyboard instead of sitting behind it. It is INERT TODAY and deliberately so:
+  // src/main.jsx does not publish that variable while `Keyboard.resize` is the default `native`
+  // (the webview shrinks itself, so padding as well would lift the composer twice), and the
+  // `var(--seshd-kb, 0px)` fallback therefore resolves to 0. It comes alive the moment resize
+  // becomes "none" — see the block in src/main.jsx for why that is currently off and what has to
+  // be built first. Both together or neither; `build/pw_kbinset.mjs` enforces the pairing.
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0,
       paddingBottom:"var(--seshd-kb, 0px)",

@@ -3821,7 +3821,80 @@ premise", with a falsifiable prediction (pixel-scan Chromium the same way; expec
 too). Running that prediction is what ended a four-round chase. Ask for the disproof, and then
 actually run it.
 
+## ★★★ `resize:"none"` IS OFF AGAIN, AND THIS TIME THE PLUGIN'S SOURCE SETTLES IT (Sep 3)
+A cold-context audit of the finished work found the premise underneath BOTH attempts was wrong, and
+the evidence is mechanical rather than a judgement call. **`@capacitor/keyboard`'s `Keyboard.m:195-199`
+unconditionally does `removeObserver:self.webView` for UIKeyboardWillShow / WillHide /
+WillChangeFrame / DidChangeFrame** — the webview is never told a keyboard exists. Under `native`
+that does not matter, because the plugin SHRINKS the frame, so a low field falls outside the
+shortened scroller and inner scroll-into-view lifts it. Under `none` the layout viewport still runs
+behind the keyboard, the field is already "in view", and **nothing scrolls it — scrollable ancestor
+or not.** The entry below records "WebKit's focus-scroll can only rescue a field that has a
+SCROLLABLE ancestor" as measured fact. It was inference, it was wrong, and it was load-bearing:
+`pw_kbinset` EXEMPTED every input with a scrollable ancestor on the strength of it.
+**What that exemption was hiding, measured:** a live workout with 11 exercises has **TWENTY** inputs
+below the keyboard line (every "Add note..." and per-exercise rename field from the third exercise
+down), and **EditHistoryModal has 13** — none of them in a fixed overlay, so `KB_SAFE_INSET` cannot
+reach any of them. That is the app's core flow, and far worse than the black box `none` was meant
+to cure. So `none` is off, and re-enabling it needs a **focus shim** first: on focus, scroll the
+field's own scroller until it clears the keyboard, and pad that scroller so the last item can still
+get there. New subsystem, unverifiable in this repo (no WebKit engine, no software keyboard) —
+build it with a device in hand.
+**EVERYTHING ELSE STAYS AND IS INERT BY CONSTRUCTION**, which is the useful shape to copy: every
+consumer reads `var(--seshd-kb, 0px)`, so while `src/main.jsx` never PUBLISHES the variable they all
+resolve to 0 and behave exactly as before. **The pairing invariant is therefore about PUBLISHING,
+not consuming** — `native` (webview shrinks) plus a published height (consumers inset too) lifts
+everything twice. `pw_kbinset` polices the publisher.
+**★ THE GUARD'S STRUCTURAL HALF WAS REWRITTEN THREE TIMES AND WAS WRONG EVERY TIME, SO IT WAS
+REPLACED BY SOMETHING IT CAN DECIDE.** Asking "does this backdrop's subtree contain an input" by
+walking JSX failed as an indentation walk (stopped at the element's own header — EditHistoryModal's
+13 fields were never read, and it shipped unconverted while the check printed PASS), failed as a
+brace walk (a split style object means the match lands INSIDE `style={{ … }}`, so the walk hits its
+closing braces immediately), and when widened to catch `Sheet` — whose input arrives via
+`{children}`, making the ONE site that covers every sheet in the app invisible — it over-reported
+five innocent backdrops. **A parse wrong in both directions is worse than no parse: it hides real
+gaps behind noise.** It now asserts a per-file FLOOR of `KB_SAFE_INSET` occurrences, which fails on
+the regression that matters (a revert) and stays quiet on a legitimate addition. Red-proofed on all
+three cases that previously slipped through.
+**★ AND EVERY "SCENE REACHED" MARKER WAS SATISFIED BEFORE THE THING UNDER TEST EXISTED.**
+"Send feedback" is the Settings ROW, "Edit profile" the profile BUTTON, "Search exercises" the
+workout's ghost button — all rendered before the sheet/modal/picker opens. A scene whose second tap
+missed still found its marker, reported zero inputs and PASSED. The precondition is now a VISIBLE
+INPUT, which is the observable proof the container actually opened.
+**★ AND A SECOND AUDIT FOUND THE BUG INSIDE MY OWN FIX: TWO `transition:` KEYS IN ONE OBJECT
+LITERAL.** `Sheet`'s backdrop declared `transition: bottom …` and, two lines later in the SAME
+literal, `transition: opacity …`. The later key silently wins, so the bottom transition was dead
+from the moment it was written — every sheet would have SNAPPED 336px to the keyboard line while
+the keyboard glided in behind it, which is exactly the jump its own comment claimed to remove.
+A duplicate key in an object literal is not a syntax error, and nothing in this toolchain reports
+one; the tell was that the computed `transitionProperty` on the live backdrop read `opacity`.
+Merged into one declaration listing both properties. **Grep a style object for a repeated key
+whenever you add a property to one you did not write.**
+**★ AND THE `min()` CAP WAS NOT THE EQUIVALENCE IT CLAIMED.** `maxHeight: min(<caller>, 100%)`
+resolves `100%` against the SHORTENED backdrop, so a sheet asking for `85dvh` clamps to the whole
+keyboard-line height and its top edge lands at y=0 — the drag handle and the Settings "Done" row
+under the clock. Under `native` the same sheets topped out around y=81 on a notched phone, because
+the shrunken viewport still began below the safe-area inset. The cap subtracts
+`env(safe-area-inset-top)` now. Measured cases: Settings (`85vh`) and the exercise picker
+(`calc(100dvh - env(top) - 40px)`) both landed at -1..538 before the fix.
+**What the focus-shim work must ALSO handle, all measured by that audit:** the hand-built modals
+got no cap at all, so Edit Profile sits at 3..536 and any content growth (a validation line, Dynamic
+Type) overflows an `alignItems:center` backdrop and clips the TOP, taking Cancel/Save with it —
+same latent shape in GroupDetail's picker and NewPostModal; and an unconverted SCROLLER whose bottom
+edge is the physical bottom has a max-scroll that leaves its last row at y=874, so its final ~336px
+of content is unreachable by any amount of scrolling (EditHistoryModal's last input measured 842 vs
+a 538 line; ProgramDetailView's last note 646 vs 310 under native — exactly 336 apart).
+**Corrections to the entry below, from the same audit:** `keyboardAnimationDuration` DOES NOT EXIST
+— `Keyboard.m:259-262` sends `{keyboardHeight}` only and `keyboardWillHide` sends `nil` — so any
+claim that a transition "follows the keyboard's own reported duration" is false; it is always the
+250ms fallback. There are **18** `<Sheet` call sites, not 19. And under `none`,
+`env(safe-area-inset-bottom)` stays ~34pt while the keyboard covers the home indicator, so every
+`calc(env(safe-area-inset-bottom) + N)` bottom pad leaves a ~34px dead band — another thing the
+focus shim work has to account for.
+
 ## ★★★ THE INSTAGRAM KEYBOARD PATTERN, DONE PROPERLY — AND IT NEEDS NO MAC (Sep 3)
+**(Superseded by the entry above: the pattern really is OTA-able, but it needs a focus shim this
+does not have, so `resize:"none"` is off. Kept for the measurements and the KB_SAFE_INSET design.)**
 **Mo's correction, and he was right: "I thought that we didn't need the Mac to do what Instagram
 does with keyboard."** The pattern — tell iOS not to shrink the webview, publish the keyboard's
 height, let the UI ride up with it — is **entirely OTA-able**: `setResizeMode` is a JS-callable

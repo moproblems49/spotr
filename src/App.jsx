@@ -1,4 +1,4 @@
-// v178091717025
+// v178091717026
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9768,9 +9768,15 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                // backdrop here reproduces exactly the geometry `resize:"native"` produced, in CSS,
                // without the native re-layout jump. `--seshd-kb` is 0 (via the var fallback) on web
                // and whenever the keyboard is down, so this is inert the rest of the time.
-               transition:`bottom var(--seshd-kb-ms, 250ms) ${EASE_NAV}`,
                alignItems:"flex-end", justifyContent:"center",
-               opacity: shown ? 1 : 0, transition:`opacity ${SHEET_MS}ms ${ease}`,
+               // ★ ONE `transition` KEY. These were two separate `transition:` entries in this same
+               // object literal — the later one silently won, so the `bottom` transition was dead
+               // from the moment it was written and every sheet would have SNAPPED to the keyboard
+               // line while the keyboard glided in behind it: exactly the jump the comment above
+               // claims to remove. A duplicate key in an object literal is not a syntax error and
+               // nothing in this toolchain reports one.
+               opacity: shown ? 1 : 0,
+               transition:`opacity ${SHEET_MS}ms ${ease}, bottom var(--seshd-kb-ms, 250ms) ${EASE_NAV}`,
                // Taps during the exit would land on a panel already on its way out.
                pointerEvents: shown ? "auto" : "none",
                ...(backdropProps.style || {}) }}>
@@ -9787,7 +9793,13 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                  // `align-items:flex-end`, it overflows upward and loses its HEADER off the top of
                  // the screen (the documented tall-sheet clipping bug). min() keeps whichever is
                  // smaller, so nothing changes while the keyboard is down.
-                 maxHeight: outerStyle.maxHeight ? `min(${outerStyle.maxHeight}, 100%)` : "100%" }}>
+                 // ★ THE CAP MUST LEAVE THE STATUS BAR ALONE. `100%` is the SHORTENED backdrop, so a
+                 // sheet asking for 85dvh clamps to the full keyboard-line height and its top edge
+                 // lands at y=0 — the drag handle and the Done row end up under the clock. Under
+                 // `native` those same sheets topped out around y=81 on a notched phone, because the
+                 // shrunken viewport still started below the inset. Subtracting it here is what
+                 // makes this actually equivalent rather than merely shorter.
+                 maxHeight: `min(${outerStyle.maxHeight || "100%"}, calc(100% - env(safe-area-inset-top) - 10px))` }}>
         {dragHandle && (
           // ★ THE GRAB AREA IS 44px, NOT THE 20px THE BAR OCCUPIES (Mo: "make where you have to
           // swipe down a little bigger instead of it just the edge of the sheet"). 44 is this
@@ -13221,7 +13233,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const prog = store.programs?.find(p => p.id === viewingProgram);
         if (!prog) { setViewingProgram(null); return null; }
         return (
-          <div data-fullscreen-overlay="true" style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden", maxWidth:480, margin:"0 auto" }}>
+          <div data-fullscreen-overlay="true" style={{ position:"fixed", ...KB_SAFE_INSET, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden", maxWidth:480, margin:"0 auto" }}>
           <ProgramDetailView
             prog={prog}
             store={store}
@@ -13246,7 +13258,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
       {/* Custom Program Builder */}
       {subTab === "workout" && showBuilder && (
-        <div data-fullscreen-overlay="true" style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div data-fullscreen-overlay="true" style={{ position:"fixed", ...KB_SAFE_INSET, background:C.bg, zIndex:999, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         <Suspense fallback={null}>
         <ProgramBuilder
           C={C}
