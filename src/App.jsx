@@ -4071,6 +4071,66 @@ function reportError(message, stack, source) {
     }).catch(() => {});
   } catch (e) { /* never let the reporter itself throw */ }
 }
+// ★ SWIPE-DOWN DISMISSES THE KEYBOARD ANYWHERE, NOT JUST ON FOUR CONTAINERS.
+// `useSwipeDismiss` is per-container and only arms when the finger STARTS on the element holding
+// it. In the exercise picker that is the results list — so a drag begun on the search field, the
+// category chips or the sheet header did nothing, and with the keyboard up the list is a small
+// target. Mo reported it as "sometimes works, sometimes doesn't", which is exactly that geometry.
+// Everywhere else (chat, profile edit, exercise notes, sign-in) there was no gesture at all.
+//
+// Module-level and document-wide on purpose: AppInner has seven early returns (auth, onboarding,
+// recovery, the public profile page), and those screens have real inputs too — an effect inside
+// AppInner would not cover them. Same one-time-hook shape as the error handlers below.
+//
+// THE SAFETY PROPERTY THAT MAKES THIS SAFE TO PUT ON `document`: it arms ONLY while a text input
+// is focused. With no keyboard up it does not record a start point at all, so it cannot interfere
+// with the tab swipe, pull-to-refresh, SetRow's swipe-to-delete, dnd-kit reordering or anything
+// else. Wiring the old per-container hook onto an ancestor of SetRow DID disturb that gesture once
+// (see useSwipeDismiss's own comment), which is why the `[data-no-tab-swipe]` bail is kept here
+// too, and why the listeners are passive and never call preventDefault/stopPropagation — this only
+// ever ADDS a blur on top of whatever the page was already doing.
+if (typeof window !== "undefined" && !window.__seshdKbdSwipeHooked) {
+  window.__seshdKbdSwipeHooked = true;
+  let kbStartY = null, kbFired = false;
+  const focusedTextInput = () => {
+    const el = document.activeElement;
+    return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") ? el : null;
+  };
+  document.addEventListener("touchstart", e => {
+    kbStartY = null; kbFired = false;
+    if (!focusedTextInput()) return;                                  // no keyboard → stay inert
+    // NO `[data-no-tab-swipe]` BAIL HERE, DELIBERATELY — and my first cut had one, copied from
+    // useSwipeDismiss along with a comment claiming it meant "SetRow owns its own gesture". It does
+    // not: that attribute marks anything that must not start the HORIZONTAL tab swipe — the
+    // category chip rows, the chat and profile overlays, the pushed screens. Bailing on it disabled
+    // keyboard dismiss in most of the places this was added to cover, and the probe caught it (a
+    // swipe begun on the picker's category chips did nothing while the other three origins worked).
+    // Three properties make the bail unnecessary rather than merely inconvenient:
+    //   1. This arms ONLY while a real INPUT/TEXTAREA is focused. A set row's weight/reps fields
+    //      are DIVs on purpose (the iOS autofill pill), so nothing is focused during a
+    //      swipe-to-delete and this listener is inert there by construction.
+    //   2. It fires only on DOWNWARD movement past 14px; swipe-to-delete and the tab swipe are
+    //      horizontal, where dy stays near zero.
+    //   3. It is passive and never calls preventDefault/stopPropagation, so it cannot take a
+    //      gesture away from anyone — it only ever adds a blur.
+    kbStartY = e.touches?.[0]?.clientY ?? null;
+  }, { passive: true, capture: true });
+  document.addEventListener("touchmove", e => {
+    if (kbStartY == null || kbFired) return;
+    const y = e.touches?.[0]?.clientY;
+    if (y == null) return;
+    // Same 14px downward threshold the per-container hook used, so the feel is unchanged.
+    if (y - kbStartY > 14) { kbFired = true; blurIfTextInput(); }
+    // ★ CAPTURE PHASE, NOT BUBBLE. Several containers call `e.stopPropagation()` in their own
+    // touchmove to keep the tab swipe out — the exercise picker's category chip row is one, and it
+    // is precisely where the probe showed the dismiss failing while the other three origins worked.
+    // React's synthetic stopPropagation stops the NATIVE event too, so a bubble-phase listener on
+    // document never sees those touches. Capture runs top-down before any of them, so this cannot
+    // be silenced by a subtree. It is still passive and still never cancels anything, so listening
+    // earlier costs those containers nothing.
+  }, { passive: true, capture: true });
+}
+
 if (typeof window !== "undefined" && !window.__seshdErrHooked) {
   window.__seshdErrHooked = true;
   window.addEventListener("error", e => reportError(e.message, e.error?.stack, "window.onerror"));
@@ -5998,7 +6058,6 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [creating, setCreating] = useState(false);
   const ref = useRef(null);
-  const swipeDismiss = useSwipeDismiss(blurIfTextInput);
   // Creation is offered only where the caller wired in store access (e.g. the live workout).
   const canCreate = !!(store && setStore);
 
@@ -6121,7 +6180,7 @@ const ExerciseInput = memo(function ExerciseInput({ value, onChange, onSelect, c
             ))}
           </div>
 
-          <div {...swipeDismiss} style={{ maxHeight: 240, overflowY: "auto" }}>
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
             {q.length === 0 && selectedCategory === "All" && recent.length > 0 && (
               <div style={{ padding:"8px 16px 4px", fontSize:11, fontWeight:700, color:C.sub, letterSpacing:1 }}>RECENT</div>
             )}
@@ -6186,7 +6245,6 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
   const [category, setCategory] = useState("All");
   const [creating, setCreating] = useState(false);
   const canCreate = !!(store && setStore);
-  const swipeDismiss = useSwipeDismiss(blurIfTextInput);
 
   // Fresh state on every open, not on unmount — Sheet keeps rendering the last children while
   // it animates closed, so resetting only on `open` (not e.g. a cleanup fn) avoids clearing the
@@ -6288,7 +6346,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
           ))}
         </div>
       </div>
-      <div {...swipeDismiss} style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
+      <div style={{ flex:1, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch",
         paddingBottom:"calc(env(safe-area-inset-bottom) + 12px)" }}>
         {browsingAll && recent.length > 0 && (
           <>
@@ -10060,7 +10118,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // replacing the name on exercises[showExercisePicker] (a blank Quick-Start row) instead of
   // appending. 0 is a valid row index, so callers must check `!== false`, never truthiness.
   const [showExercisePicker, setShowExercisePicker] = useState(false);
-  const swipeDismissKeyboard = useSwipeDismiss(blurIfTextInput);
 
   // Tell the shell whether a workout is in progress. Mid-set you don't need the logo, the DM and
   // activity icons, or four nav tabs — that chrome was eating ~15% of the screen on the one screen
@@ -11684,7 +11741,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 
         {/* Exercises */}
 
-        <div onScroll={onExerciseScroll} {...swipeDismissKeyboard} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+        <div onScroll={onExerciseScroll} style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
           {session.exercises.map((ex, ei) => {
             const exInfo = getExEntry(ex.name);
             const rowKey = ex.id || ei;
