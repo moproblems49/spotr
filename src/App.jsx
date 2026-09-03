@@ -1,4 +1,4 @@
-// v178091717019
+// v178091717020
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4022,10 +4022,22 @@ function stripProgramPlug(caption) {
     .trim();
 }
 
-const APP_BUILD = "2026-06-11";
 // Crash/error reporter — writes to the client_errors table (insert-only RLS).
 // Throttled to 5 unique errors per session so a render loop can't flood the table.
 const _reportedErrors = new Set();
+// ★ EVERY DEVICE REPORT MUST SAY WHICH BUNDLE PRODUCED IT.
+// Cost of not having this, measured: a report came in with the app misbehaving, and working out
+// whether the user was on the bundle that contained the fix took a video, a bundle grep and an
+// inference chain — when the answer is one string the device already knows. The OTA plugin is the
+// only thing that knows the running bundle id (the web build has none), so read it once at boot
+// and cache it; reportError is called from error handlers and must stay synchronous.
+let _bundleId = "unknown";
+try {
+  const _p = typeof window !== "undefined" && window.Capacitor?.Plugins?.CapacitorUpdater;
+  if (_p) _p.current().then(r => { _bundleId = r?.bundle?.version || "built-in"; }).catch(() => { _bundleId = "built-in"; });
+  else _bundleId = "web";
+} catch { /* never let telemetry setup break boot */ }
+
 function reportError(message, stack, source) {
   try {
     const key = String(message).slice(0, 120);
@@ -4049,7 +4061,11 @@ function reportError(message, stack, source) {
         message: String(message).slice(0, 1000),
         stack: String(stack || "").slice(0, 4000),
         source: source || "unknown",
-        app_version: APP_BUILD,
+        // The RUNNING OTA bundle, not a constant. This was `APP_BUILD`, a hardcoded "2026-06-11"
+        // that had not been touched since June — so every crash report and every piece of user
+        // feedback for three months claimed a version that was already stale when it was written,
+        // which is worse than an empty column because it reads as an answer. See _bundleId above.
+        app_version: _bundleId,
         ua: (typeof navigator !== "undefined" ? navigator.userAgent : "").slice(0, 300),
       }),
     }).catch(() => {});
@@ -7086,12 +7102,17 @@ function ShareCardGeometryProbe() {
   const firedRef = useRef(false);
   useEffect(() => {
     if (firedRef.current) return;
-    // Two rAFs + a beat: the sheet animates in and the card runs seshd-scale-enter, so measuring
-    // on the first frame would report a transitional box and blame the wrong thing.
-    const t = setTimeout(() => {
+    // POLL, don't single-shot. The first cut measured once at 900ms; if the sheet had not finished
+    // mounting the card by then, getElementById returned null, the probe returned early and never
+    // ran again — an instrument that silently declines to measure, which is the exact failure this
+    // whole episode is about. Retry until the card exists or we give up, then measure once.
+    let tries = 0;
+    const t = setInterval(() => {
       try {
+        if (++tries > 12) { clearInterval(t); return; }   // ~5s, then stop
         const card = document.getElementById("workout-card");
         if (!card || firedRef.current) return;
+        clearInterval(t);
         const r = card.getBoundingClientRect();
         const healthy = r.height > 250 && card.scrollHeight <= card.clientHeight + 2;
         if (healthy) return;                       // nothing to say
@@ -7116,8 +7137,8 @@ function ShareCardGeometryProbe() {
           "sharecard-probe"
         );
       } catch { /* a diagnostic must never break the screen it is diagnosing */ }
-    }, 900);
-    return () => clearTimeout(t);
+    }, 420);
+    return () => clearInterval(t);
   }, []);
   return null;
 }
@@ -15320,7 +15341,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       await fetch(`${SUPABASE_URL}/rest/v1/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${token || loadSession()?.access_token || SUPABASE_KEY}` },
-        body: JSON.stringify({ user_id: (loadSession()?.user?.id === currentUserId ? currentUserId : null), text: text.slice(0, 4000), app_version: APP_BUILD }),
+        body: JSON.stringify({ user_id: (loadSession()?.user?.id === currentUserId ? currentUserId : null), text: text.slice(0, 4000), app_version: _bundleId }),
       });
       toast("Thanks — got it", "success");
       setFeedbackText(""); setShowFeedback(false);
