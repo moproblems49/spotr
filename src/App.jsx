@@ -12604,7 +12604,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   I spent four rounds treating it as a WebKit layout collapse because I compared a
                   DOM height in Chromium against screenshot INK on the device — apples to oranges.
                   Measure the same quantity in both engines before concluding "engine-specific". */}
-              <div style={{ padding:"12px 18px calc(env(safe-area-inset-bottom) + 24px)", display:"flex", flexDirection:"column", gap:8 }}>
+              <div style={{ padding:"12px 18px calc(env(safe-area-inset-bottom) + 10px)", display:"flex", flexDirection:"column", gap:8 }}>
                 {(() => {
                   const selectedGroups = workoutSummary.shareToGroups || [];
                   const hasGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0;
