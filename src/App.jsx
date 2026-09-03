@@ -12231,39 +12231,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ fontSize:21, fontWeight:800, color:C.text, letterSpacing:-0.3, lineHeight:1.2, fontFamily:F }}>{workoutSummary.hype}</div>
                   </div>
                 )}
-                {/* WHAT YOU BEAT — the evidence under the celebration. The hype line is a mood; a
-                    lifter wants the receipt, and "session volume vs last time" isn't it: nobody
-                    trains for tonnage, they train the lift. Each row is one exercise's top set
-                    against the last time it was trained. Only real wins appear — a session where
-                    nothing improved shows nothing rather than a padded list. */}
-                {(() => {
-                  const wins = (workoutSummary.wins || []).filter(w => w.kind !== "first").slice(0, 4);
-                  if (!wins.length) return null;
-                  return (
-                    <div className="seshd-content-fade" style={{ margin:"0 2px 18px", background:C.surface, border:`1px solid ${C.accent}44`, borderRadius:16, overflow:"hidden" }}>
-                      <div style={{ padding:"11px 14px 8px", fontSize:10, fontWeight:800, letterSpacing:1.6, color:C.sub }}>
-                        YOU BEAT LAST TIME
-                      </div>
-                      {wins.map((w, i) => (
-                        <div key={w.name} style={{
-                          display:"flex", alignItems:"center", gap:10, padding:"9px 14px",
-                          borderTop:`1px solid ${C.divider}`,
-                        }}>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{w.name}</div>
-                            <div style={{ fontSize:11, color:C.sub, fontFamily:MONO, marginTop:1 }}>{w.w ? `${w.w}${unit} × ${w.r}` : `${w.r} reps`}</div>
-                          </div>
-                          <div style={{
-                            flexShrink:0, fontSize:12, fontWeight:800, fontFamily:MONO,
-                            color:C.accentInk, background:C.accentSoft, borderRadius:8, padding:"5px 10px",
-                          }}>
-                            {w.kind === "weight" ? `+${w.by}${unit}` : `+${w.by} rep${w.by === 1 ? "" : "s"}`}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
                 {/* Shareable card — magazine-quality art piece */}
                 <div id="workout-card" className="seshd-scale-enter" style={{
                   background: "#0A0A0A",
@@ -12423,28 +12390,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     </div>
                   )}
 
-                  {/* PROGRESSION callout — when user beat their suggested targets */}
-                  {workoutSummary.progressions > 0 && (
-                    <div style={{
-                      position:"relative", zIndex:1,
-                      marginTop:16, padding:"12px 14px",
-                      background:"rgba(255,255,255,0.06)",
-                      borderRadius:12,
-                      border:"1px solid rgba(255,255,255,0.08)",
-                      display:"flex", alignItems:"center", justifyContent:"space-between",
-                    }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <Icon name="trending-up" size={16} color="#fff" strokeWidth={2.4}/>
-                        <div>
-                          <div style={{ fontSize:10, letterSpacing:1.5, fontWeight:700, color:"rgba(255,255,255,0.55)" }}>PROGRESSION</div>
-                          <div style={{ fontSize:12, color:"#fff", fontWeight:600, marginTop:1 }}>Beat last session</div>
-                        </div>
-                      </div>
-                      <div style={{ fontFamily:MONO, fontSize:18, fontWeight:700, color:"#fff" }}>
-                        +{workoutSummary.progressions}
-                      </div>
-                    </div>
-                  )}
+                  {/* The "PROGRESSION — Beat last session +N" callout was REMOVED (Sep 3) when the
+                      itemised BEAT LAST TIME list moved into this card. It was a COUNT of exactly
+                      what that list now names one lift at a time, so the card said the same thing
+                      twice — and the list was moved in here precisely to stop the screen repeating
+                      itself. `workoutSummary.progressions` is still computed and still feeds the
+                      hype line's wording; only this tile is gone.
+                      VS LAST <DAY> above stays: session VOLUME against the last time this day was
+                      trained is a different fact from per-lift progress, and the wins list exists
+                      because tonnage is not what people train for. */}
 
                   {/* PR callout */}
                   {workoutSummary.prs?.length > 0 && (
@@ -12472,6 +12426,52 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       ))}
                     </div>
                   )}
+
+                  {/* WHAT YOU BEAT — moved INSIDE the card (Mo, Sep 3). It used to sit above the
+                      card and measured ~260 CSS px including its gap, against a visible sheet area
+                      of ~580 — 45% of everything on screen, spent before the card even started.
+                      It is not redundant with PERSONAL RECORDS above it: that is all-time bests,
+                      this is progress against the LAST session, so a lift can improve here without
+                      being a record. But they answer the same question ("what went well today") and
+                      belong in one place rather than two. Note Mo's point that "+2 reps is still a
+                      record" is correct and already handled — e1RM is computed from weight AND
+                      reps, so more reps at the same weight raises it and registers as an Est. 1RM
+                      PR in the block above whenever it beats the all-time best.
+                      Styled from the card's own palette (translucent white on #0A0A0A), NOT the
+                      sheet's C.surface/C.accent tokens it used outside — the card is fixed-dark on
+                      every theme, so theme tokens would have been unreadable here. */}
+                  {(() => {
+                    const wins = (workoutSummary.wins || []).filter(w => w.kind !== "first").slice(0, 4);
+                    if (!wins.length) return null;
+                    return (
+                      <div style={{
+                        position:"relative", zIndex:1,
+                        marginTop:14, padding:"14px 16px",
+                        background:"rgba(255,255,255,0.06)", borderRadius:12,
+                        border:"1px solid rgba(255,255,255,0.08)",
+                      }}>
+                        <div style={{ fontSize:10, letterSpacing:1.8, fontWeight:700, color:"rgba(255,255,255,0.55)", marginBottom:7 }}>
+                          BEAT LAST TIME
+                        </div>
+                        {wins.map((w, i) => (
+                          <div key={w.name} style={{
+                            display:"flex", justifyContent:"space-between", alignItems:"baseline",
+                            gap:10, marginTop: i > 0 ? 5 : 0,
+                          }}>
+                            <div style={{ minWidth:0, flex:1 }}>
+                              <span style={{ fontSize:13, color:"#fff", fontWeight:500 }}>{w.name}</span>
+                              <div style={{ fontSize:10, fontFamily:MONO, color:"rgba(255,255,255,0.4)", marginTop:1 }}>
+                                {w.w ? `${w.w}${unit} × ${w.r}` : `${w.r} reps`}
+                              </div>
+                            </div>
+                            <span style={{ flexShrink:0, fontFamily:MONO, fontSize:14, color:"#fff", fontWeight:700, letterSpacing:-0.3 }}>
+                              {w.kind === "weight" ? `+${w.by}${unit}` : `+${w.by} rep${w.by === 1 ? "" : "s"}`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Offer to save mid-workout changes back to the program */}
