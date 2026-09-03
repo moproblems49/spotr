@@ -3429,20 +3429,37 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
 
 **Step 4 — TestFlight:** archive, upload, add Mo as internal tester.
 
-**★ NEXT MAC DAY — TOP OF THE LIST (added Aug 31, once App Review cleared):**
-**`Keyboard.resize: "none"` in `capacitor.config.json`, tested on device.** This is the real fix
-for the "feels laggy when I tap a field" class Mo reported himself: iOS defaults to `resize:native`,
-which physically SHRINKS the webview when the keyboard opens, so every centred layout recomputes and
-visibly drifts. The web-side pinning already shipped and takes most of it out, but a residual ~29px
-shift remains on any screen whose content still FITS the shrunken box, and no web change can remove
-that. It was deliberately NOT taken before submission for three good reasons that have all now
-expired: it is not OTA-able, it changes keyboard behaviour on every screen at once, and it cannot be
-verified by this repo's battery at all (neither jsdom nor headless Chromium has a software keyboard).
-Now that there is no deadline, it can be flipped and driven properly on a real device.
-**How to check it:** sign-up form, onboarding age step, Edit Profile, the password-reset screen, and
-any exercise-notes field — tap each input and watch whether the layout moves. The scroll containers
-added to the auth/onboarding/reset screens are the safety net if `none` leaves a field under the
-keyboard; if that happens on any screen, revert to the default rather than papering over it.
+**★ NEXT MAC DAY — TOP OF THE LIST (rewritten Sep 3; the Aug 31 version of this item was wrong).**
+The old entry said `Keyboard.resize:"none"` is a Mac-day item and "not OTA-able". **Both halves are
+false**: `setResizeMode` is a JS-callable plugin method (`KeyboardPlugin.m:11`), and it was tried
+OTA twice on Sep 3. See the two `resize:"none"` entries above for what happened. What actually
+belongs on a Mac day is ONE line, and it is not that:
+
+**1. `Keyboard.autoBackdropColor: "dom"` — ALREADY COMMITTED in `capacitor.config.json`, needs only
+`npx cap sync ios` + a build.** This is the whole Mac-side keyboard task. It fixes ONE thing: the
+BLACK BOX around the keyboard (iOS 26's translucent keyboard sampling the bare `UIWindow` that the
+shrinking webview exposes). It is config-only, read natively at startup, so it cannot ship OTA.
+Verify on device by opening any text field on both a light and a dark theme.
+**It does NOT make the keyboard behave like Instagram's** — it colours the strip, nothing else.
+The app still shrinks when the keyboard opens, and the keyboard still snaps rather than tracking.
+
+**2. What "like Instagram" actually needs, and it is mostly NOT a Mac job.** Two separate pieces:
+  * **The app riding up smoothly with the keyboard** = `resize:"none"` + `KB_SAFE_INSET` (both
+    already in the tree, the first switched off) **+ a FOCUS SHIM that does not exist yet**: on
+    focus, scroll the field's own scroller until it clears the keyboard, and pad that scroller so
+    its last row can still get there. All three are OTA — no Mac. The blocker is verification, not
+    packaging: this repo has no WebKit engine and no software keyboard, so it can only be judged on
+    a device. Do it WITH the phone in hand and check the screens the audit measured as worst — a
+    live workout's per-exercise notes, Edit History, ProgramDetailView's notes.
+  * **Dragging the keyboard down with your finger** = genuinely native, genuinely hard, and NOT a
+    line of config. `scrollView.keyboardDismissMode = .interactive` on a `CAPBridgeViewController`
+    subclass does nothing here, because Capacitor sets `bounces = false` and body is
+    `position:fixed; overflow:hidden`, so the outer `WKScrollView` never pans; every real scroll is
+    a DOM container backed by a PRIVATE `WKChildScrollView` whose `keyboardDismissMode` is not
+    exposed. Reaching it means swizzling a private WebKit class by name. Budget it as an EXPERIMENT,
+    not a fix, and do `autoBackdropColor` first since it colours the exposed strip anyway.
+**So the honest sequence is: (1) is a Mac day and gets rid of the black box; (2a) is an OTA change
+gated on device testing and is what makes it FEEL like Instagram; (2b) may never be worth it.**
 
 **Deferred Mac-side (post-TestFlight):** (`@capacitor/keyboard` MOVED UP — it is step 2 of the
 submission Mac day above, since that build happens anyway.) Live Activity rest timer, home-screen widgets,
