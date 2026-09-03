@@ -209,7 +209,21 @@ async function summaryVsSaved(blankName) {
   const pending = await page.evaluate(() => localStorage.getItem("seshd_pending_workouts"));
   console.log("guest finish →", t.slice(0, 160), "| pending:", pending);
   check("a guest finish shows no 'couldn't reach server' error", !/couldn't reach server/i.test(t), t.slice(0, 200));
-    check("...and the finish is reported as a success", /Workout saved/i.test(t), t.slice(0, 200));
+    // The INVARIANT is "the finish is reported to the user as a success"; the "Workout saved"
+    // TOAST was merely one expression of it, and it was deliberately removed — it fired on top of
+    // the summary sheet that opens in the same tick, and the 160px of footer padding added to keep
+    // it clear of the buttons was what squeezed the share card and left dead space at the bottom
+    // of the sheet. So assert the report itself: the summary sheet, which is a STRONGER signal
+    // than a 2.8s toast because it shows the saved workout and does not disappear.
+    // Verified for this exact fixture (guest, all /rest/v1 aborted): the sheet opens, #workout-card
+    // is present, and both Share to Feed and Don't share render — so nothing was lost here.
+    const sheetShown = await page.evaluate(() => ({
+      card: !!document.getElementById("workout-card"),
+      share: /Share to Feed/i.test(document.body.innerText),
+    }));
+    check("...and the finish is reported as a success (the summary sheet opens)",
+      sheetShown.card && sheetShown.share,
+      `card=${sheetShown.card} shareBtn=${sheetShown.share} | ${t.slice(0, 160)}`);
   check("...and queues nothing for a retry that can never happen",
     !pending || JSON.parse(pending).length === 0, String(pending));
   await page.close();
