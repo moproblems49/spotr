@@ -1,4 +1,4 @@
-// v178091717022
+// v178091717023
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17944,7 +17944,19 @@ function AppInner() {
       // light one moment and dark the next. Mo reported exactly that, twice. Declaring it makes
       // the answer explicit instead of inferred, and it belongs in THIS effect because this is
       // already the one owner of "keep the chrome in step with the theme".
-      document.documentElement.style.colorScheme = themeOf(store.theme).isDark ? "dark" : "light";
+      const _dark = themeOf(store.theme).isDark;
+      document.documentElement.style.colorScheme = _dark ? "dark" : "light";
+      // ★ AND TELL THE NATIVE KEYBOARD DIRECTLY — CSS `color-scheme` IS NOT ENOUGH IN A WKWEBVIEW.
+      // Declaring color-scheme was the right first move and it fixed the CSS side, but Mo reported
+      // the keyboard STILL flipping light/dark on the bundle that shipped it, so the WebView is
+      // clearly not deriving `UIKeyboardAppearance` from the page. @capacitor/keyboard exposes the
+      // real control; this is the authoritative setting and the CSS above is now the web fallback.
+      // Guarded the same way as every other native call in this file: optional-chained through
+      // window.Capacitor so the web build and any installed build that predates the plugin being
+      // synced natively both no-op instead of throwing.
+      try {
+        window.Capacitor?.Plugins?.Keyboard?.setStyle?.({ style: _dark ? "DARK" : "LIGHT" })?.catch?.(() => {});
+      } catch { /* web, or plugin not synced */ }
     } catch (e) {}
   }, [store.theme]);
   const [showMessages, setShowMessages] = useState(false);
