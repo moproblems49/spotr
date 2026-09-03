@@ -64,6 +64,7 @@ try { window.Capacitor?.Plugins?.Keyboard?.setAccessoryBarVisible?.({ isVisible:
 try {
   const K = window.Capacitor?.Plugins?.Keyboard;
   if (K) {
+    K.setResizeMode?.({ mode: "none" })?.catch?.(() => {});
     const setKb = (px, ms) => {
       const el = document.documentElement;
       // Custom properties live in inline style, and AppInner's scroll-lock effect REPLACES

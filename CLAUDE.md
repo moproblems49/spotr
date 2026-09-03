@@ -3821,7 +3821,51 @@ premise", with a falsifiable prediction (pixel-scan Chromium the same way; expec
 too). Running that prediction is what ended a four-round chase. Ask for the disproof, and then
 actually run it.
 
+## ★★★ THE INSTAGRAM KEYBOARD PATTERN, DONE PROPERLY — AND IT NEEDS NO MAC (Sep 3)
+**Mo's correction, and he was right: "I thought that we didn't need the Mac to do what Instagram
+does with keyboard."** The pattern — tell iOS not to shrink the webview, publish the keyboard's
+height, let the UI ride up with it — is **entirely OTA-able**: `setResizeMode` is a JS-callable
+plugin method, the listeners are JS, the layout is CSS in the bundle. The ONLY Mac-side item is the
+*fallback* `Keyboard.autoBackdropColor:"dom"`, which kills the black box while KEEPING the old
+shrink behaviour. The first attempt was reverted below because it was INCOMPLETE, not because it
+needed native work, and the revert note wrongly pointed at a Mac day. Finished OTA the same day.
+**`KB_SAFE_INSET` is the whole fix, and it is one constant**: `{ top:0, left:0, right:0,
+bottom:"var(--seshd-kb, 0px)" }`, used INSTEAD of `inset:0` on every full-screen fixed backdrop
+that contains a text input (12 sites: `Sheet`'s own backdrop, which covers all 19 sheets at once,
+plus 8 hand-built modals in App.jsx and 3 in `src/lazy/`). **It is not a new layout** — under the
+old `resize:"native"` those backdrops were already living in the shrunken 402x538 viewport with the
+same centring, so ending at the keyboard line reproduces the geometry they have always shipped
+with, in CSS, without the native re-layout jump that reads as lag. That equivalence is what makes
+the change safe to apply mechanically; the trap it avoids is inventing a *new* geometry (my first
+cut added `overflowY:auto` to a centred backdrop, which is the documented top-clipping combination).
+One more thing `Sheet` needed and the hand-built modals did not: several callers ask for
+`maxHeight:90dvh`, and **`dvh` does NOT shrink when the keyboard opens under `none`** — so a tall
+sheet would overflow the shortened backdrop and, because it is `align-items:flex-end`, overflow
+UPWARD and lose its header off the top. The panel's cap is `min(<caller's>, 100%)`, which changes
+nothing while the keyboard is down.
+**★ THE GUARD IS STRUCTURAL, BECAUSE DRIVING SCREENS CANNOT SCALE HERE.** The first sweep found 3
+buried fields across 4 screens; a static scan then found **TEN more backdrops** in the same class
+that no fixture reached. So `pw_kbinset` asserts the SHAPE — every fixed backdrop whose subtree
+holds an `<input>`/`<textarea>` must use `KB_SAFE_INSET` — alongside the driven geometry checks.
+Red-proofed by reverting one site: it names the exact `file:line`.
+**★ AND THE GUARD COULD NOT SEE ITS OWN SUBJECT UNTIL IT RAISED THE KEYBOARD.** `--seshd-kb` is
+published by the native plugin's `keyboardWillShow`, which does not exist in Chromium — so the
+`var(--seshd-kb, 0px)` fallback won, every container kept full height, and the suite measured the
+page as if no keyboard were open. It could never have gone green however correct the fix, and its
+red meant nothing. It sets the variable itself now, exactly as the plugin does. *A guard for a
+native-event-driven layout must simulate the event, or it is measuring the wrong document.*
+**★ AND A BUILD THAT FAILS IS NOT A MEASUREMENT.** Two rounds were spent concluding "the Edit
+Profile inset does not work" while `npm run build` had been failing the whole time and the guard
+was driving a STALE `dist`. The cause was the documented JSX trap — `createPortal((` takes ONE
+expression, so a `{/* comment */}` plus the element is two siblings and a syntax error — and it was
+invisible because the build output was piped through `grep -E "error|built in"`, which printed a
+line containing "errors" that read like normal output. **Check the build SUCCEEDED before believing
+anything the guard says**, and confirm the change is in the bundle: `grep -o` and count, never
+`grep -c`, which counts LINES and returns 1 for any minified chunk no matter how many hits.
+
 ## ★★★ `resize:"none"` BURIED THREE FIELDS, AND THE PREMISE THAT SHIPPED IT WAS WRONG (Sep 3)
+**(Superseded by the entry above — the fields are fixed and `none` is back on. Kept because the
+measurement is the reason the fix has the shape it does.)**
 Caught by auditing my own unaudited commits, BEFORE the bundle was published — measured, not read.
 `26da516` set `Keyboard.resize:"none"` so the WKWebView stops shrinking under the keyboard, and
 reasoned that the only thing which then cannot get out of the way is something **PINNED to the
@@ -3843,7 +3887,8 @@ content* — the opposite of the intuition that more room is safer. And the feed
 `<Sheet>`, i.e. bottom-anchored: **every one of the eleven bottom sheets carrying a text input is
 in this class**, not just the composer. That sweep covered 4 screens out of ~72 inputs, so treat
 three as a LOWER BOUND.
-**REVERTED rather than patched, and the asymmetry is the argument**: `"none"`'s remaining benefit
+**REVERTED FOR A FEW HOURS rather than patched, and the asymmetry was the argument at the time**
+(it is now fixed properly instead — see above): `"none"`'s remaining benefit
 is small (the black box's real fix is `Keyboard.autoBackdropColor:"dom"`, already committed and
 waiting on a Mac `cap sync`; the layout drift was already handled by top-pinning), while its cost
 is fields you cannot see while typing into them. The `--seshd-kb` listeners STAY — publishing the

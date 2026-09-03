@@ -8,7 +8,7 @@
 // and the "Browse templates" sheet — see the ReferenceError history on PROGRAM_TEMPLATES in
 // App.jsx right above its definition before touching either.
 import { useState, useRef } from "react";
-import { Icon, SeshdLogo, Avatar, PROGRAM_TEMPLATES, recommendTemplateId, F } from "../App.jsx";
+import { Icon, SeshdLogo, Avatar, PROGRAM_TEMPLATES, recommendTemplateId, F, KB_SAFE_INSET } from "../App.jsx";
 
 export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   const [step, setStep] = useState(0);
@@ -93,7 +93,7 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   const [typing, setTyping] = useState(false);
 
   return (
-    <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
+    <div style={{ position:"fixed", ...KB_SAFE_INSET, background:C.bg, zIndex:600, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", fontFamily:F }}>
       {/* Back button — available after the first screen */}
       {step > 0 && !inClosing && (
         <button onClick={back} aria-label="Back" style={{ position:"absolute", top:"calc(env(safe-area-inset-top) + 16px)", left:18, background:"none", border:"none", fontSize:24, color:C.sub, cursor:"pointer", fontFamily:F, zIndex:2, padding:12 }}>‹</button>

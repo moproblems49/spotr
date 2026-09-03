@@ -291,7 +291,9 @@ export function ChatView({ peerId, store, currentUserId, token, C, onBack, onRea
   // default `native` mode the webview itself shrinks, so the composer already rides up, and
   // padding by the height as well would lift it TWICE. Restore both together or neither.
   return (
-    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+    <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0,
+      paddingBottom:"var(--seshd-kb, 0px)",
+      transition:"padding-bottom var(--seshd-kb-ms, 250ms) cubic-bezier(0.32, 0.72, 0, 1)" }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"calc(env(safe-area-inset-top) + 10px) 14px 10px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onBack} aria-label="Back" style={{ fontSize:20, color:C.text, background:"none", border:"none", cursor:"pointer", padding:"12px 14px 12px 6px" }}>‹</button>
         <Avatar user={peer || { name:"?" }} size={32} C={C}/>

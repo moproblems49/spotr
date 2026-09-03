@@ -1,7 +1,7 @@
 // Lazy-loaded: bodyweight, measurements, progress photos over time. Only rendered when
 // ProfileScreen's showBody flag is set (its "Body" button) — most sessions never open it.
 import { useState, useMemo } from "react";
-import { dKey, devError, uid } from "../engine/core.js";import { F, MONO, Icon, ExerciseVolumeChart, toast, haptic, posNum, loadSession, sb, markSettingsEdit } from "../App.jsx";
+import { dKey, devError, uid } from "../engine/core.js";import { F, MONO, Icon, ExerciseVolumeChart, toast, haptic, posNum, loadSession, sb, markSettingsEdit, KB_SAFE_INSET } from "../App.jsx";
 
 const MEASURE_FIELDS = [
   { key:"chest", label:"Chest" },
@@ -98,7 +98,7 @@ export default function BodyTrackingScreen({ store, setStore, currentUserId, uni
   const metricLabel = metric === "weight" ? `Weight (${unit})` : (MEASURE_FIELDS.find(m => m.key === metric)?.label || metric) + (metric === "bodyFat" ? "" : ` (${lenUnit})`);
 
   return (
-    <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
+    <div style={{ position:"fixed", ...KB_SAFE_INSET, background:C.bg, zIndex:500, display:"flex", flexDirection:"column", maxWidth:480, margin:"0 auto", paddingTop:"env(safe-area-inset-top)" }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onClose} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"11px 14px 11px 2px", fontFamily:F }}>‹</button>
         <div style={{ flex:1, fontSize:16, fontWeight:700, color:C.text }}>Body</div>

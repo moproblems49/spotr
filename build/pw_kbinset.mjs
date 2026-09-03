@@ -48,6 +48,34 @@ walk("src");
 
 console.log(`pw_kbinset — resize:"none" ${resizeNone ? "PRESENT" : "absent"}, --seshd-kb consumers: ${consumers.length}`);
 
+// ── STRUCTURAL: every full-screen fixed backdrop that CONTAINS a text input must carry the inset.
+// This is the half that actually scales. Driving screens can only ever cover the handful a fixture
+// can reach — the first sweep found 3 buried fields in 4 screens and a static scan then found TEN
+// more backdrops in the same class. Enforcing the shape means a NEW modal with an input cannot
+// quietly ship without it, which is the way this regression would come back.
+const jsxFiles = () => {
+  const out = ["src/App.jsx"];
+  for (const f of readdirSync(join(ROOT, "src/lazy"))) if (f.endsWith(".jsx")) out.push("src/lazy/" + f);
+  if (out.length < 2) throw new Error("src/lazy vanished — this guard would silently stop covering it");
+  return out;
+};
+const gaps = [];
+for (const f of jsxFiles()) {
+  const L = readFileSync(join(ROOT, f), "utf8").split("\n");
+  L.forEach((l, i) => {
+    if (!(l.includes('position:"fixed"') && l.includes("inset:0"))) return;
+    const ind = l.length - l.trimStart().length, body = [];
+    for (let j = i + 1; j < Math.min(i + 220, L.length); j++) {
+      const s2 = L[j];
+      if (s2.trim() && (s2.length - s2.trimStart().length) <= ind && (s2.includes("</div>") || s2.trim() === ")")) { body.push(s2); break; }
+      body.push(s2);
+    }
+    if (/<input|<textarea/.test(body.join("\n"))) gaps.push(`${f}:${i + 1}`);
+  });
+}
+check("every fixed backdrop holding a text input uses KB_SAFE_INSET, not inset:0",
+  gaps.length === 0, gaps.join(", "));
+
 if (!resizeNone) {
   check("no consumer of --seshd-kb while resize is native (both or neither)",
     consumers.length === 0, consumers.join(", ") || "none");
@@ -67,6 +95,17 @@ await p.addInitScript(me => {
 }, ME);
 await p.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "t", user: { id: ME } }) }));
 await p.route("**/rest/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+
+// ★ RAISE THE KEYBOARD BEFORE MEASURING. `--seshd-kb` is published by the native plugin's
+// keyboardWillShow, which does not exist in Chromium — so without this the variable is unset, the
+// `var(--seshd-kb, 0px)` fallback wins, every container keeps its full height and the guard
+// measures the geometry as if no keyboard were open. It could then never go green however correct
+// the fix, and its red would be meaningless. Setting the variable is exactly what the plugin does.
+const raiseKeyboard = () => p.evaluate(KB => {
+  const el = document.documentElement;
+  el.style.setProperty("--seshd-kb-ms", "0ms");     // skip the transition; measure the resting state
+  el.style.setProperty("--seshd-kb", KB + "px");
+}, KB);
 
 const buried = () => p.evaluate(LINE => {
   const out = [];
@@ -96,6 +135,8 @@ const scene = async (name, reach, marker) => {
   const txt = await p.evaluate(() => document.body.innerText);
   // A scene we never reached proves nothing — say so rather than passing vacuously.
   if (marker && !txt.includes(marker)) { check(`${name} reached`, false, `"${marker}" absent — fixture broke, verdict unknown`); return; }
+  await raiseKeyboard();
+  await p.waitForTimeout(180);
   const bad = await buried();
   check(`${name}: no input buried under the keyboard`, bad.length === 0, bad.join("; "));
 };

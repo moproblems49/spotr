@@ -1,4 +1,4 @@
-// v178091717024
+// v178091717025
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7212,7 +7212,7 @@ function OneRMModal({ onClose, unit, C }) {
   const rows = oneRM ? PCT_REPS.map(([p, r]) => ({ p, r, w: Math.round(oneRM * p / 100) })) : [];
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
+    <div onClick={onClose} style={{ position:"fixed", ...KB_SAFE_INSET, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
       {/* C.surface + a border, not C.bg: on the dark theme this card was the same colour as the
           screen behind it and had no edge at all — the same blending the followers sheet had. */}
       <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
@@ -7303,7 +7303,7 @@ function PlateCalcModal({ onClose, unit, C }) {
   const notAchievable = target && parseFloat(target) > BAR_WEIGHT && result === null;
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
+    <div onClick={onClose} style={{ position:"fixed", ...KB_SAFE_INSET, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 16px" }}>
       <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, border:`1px solid ${C.overlayEdge}`, borderRadius:20, width:"100%", maxWidth:400, maxHeight:"85vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 18px 12px", borderBottom:`1px solid ${C.divider}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Plate Calculator</div>
@@ -9636,6 +9636,19 @@ const EASE_EXIT = "cubic-bezier(0.4, 0, 1, 1)";
 //
 // Enter decelerates, exit accelerates — the same pair as everything else that moves.
 const SHEET_MS = 240;
+// ★ THE KEYBOARD-SAFE INSET. Use this instead of `inset:0` on any full-screen fixed backdrop that
+// CONTAINS A TEXT INPUT. Under `Keyboard.resize:"none"` (src/main.jsx) the webview no longer
+// shrinks when the keyboard opens, so a backdrop pinned to `inset:0` keeps its full height and any
+// field in its lower half ends up behind the keyboard with nothing able to scroll it into view —
+// measured at 261px under on Settings > Send feedback.
+// This is not a new layout: under the old `resize:"native"` these same backdrops were already
+// living in the shrunken (402x538) viewport with the same centring, so ending at the keyboard line
+// reproduces the geometry they have always shipped with. `--seshd-kb` is 0 via the var fallback on
+// web and whenever the keyboard is down, so it is inert the rest of the time.
+// A backdrop with NO input does not need it: it either scrolls (so WebKit lifts the field itself)
+// or has nothing to lift. `build/pw_kbinset.mjs` enumerates the ones that do and fails on a gap.
+export const KB_SAFE_INSET = { top:0, left:0, right:0, bottom:"var(--seshd-kb, 0px)" };
+
 export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,0,0.6)",
                  portal = true, panelStyle, backdropProps = {}, panelProps = {}, dragHandle = false }) {
   const [render, setRender] = useState(open);
@@ -9747,7 +9760,15 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
   const needsInner = dragHandle && Object.keys(innerStyle).length > 0;
   const node = (
     <div {...backdropProps} onClick={onClose} ref={backRef}
-      style={{ position:"fixed", inset:0, background:backdrop, zIndex:z, display:"flex",
+      style={{ position:"fixed", ...KB_SAFE_INSET, background:backdrop, zIndex:z, display:"flex",
+               // ★ THE SHEET ENDS AT THE KEYBOARD LINE. With `Keyboard.resize:"none"` the webview
+               // stops shrinking, so a bottom-anchored sheet would sit at the PHYSICAL bottom with
+               // its lower part — and any input in it — behind the keyboard. Measured that way:
+               // Settings > Send feedback's textarea went from bottom 463 to 799. Ending the
+               // backdrop here reproduces exactly the geometry `resize:"native"` produced, in CSS,
+               // without the native re-layout jump. `--seshd-kb` is 0 (via the var fallback) on web
+               // and whenever the keyboard is down, so this is inert the rest of the time.
+               transition:`bottom var(--seshd-kb-ms, 250ms) ${EASE_NAV}`,
                alignItems:"flex-end", justifyContent:"center",
                opacity: shown ? 1 : 0, transition:`opacity ${SHEET_MS}ms ${ease}`,
                // Taps during the exit would land on a panel already on its way out.
@@ -9759,7 +9780,14 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                  transition:`transform ${SHEET_MS}ms ${ease}`, willChange:"transform",
                  // Defaults FIRST so a caller that declares its own layout still wins.
                  ...(dragHandle ? { display:"flex", flexDirection:"column" } : null),
-                 ...outerStyle }}>
+                 ...outerStyle,
+                 // ★ CLAMP THE CALLER'S OWN CAP AGAINST THE SHRUNKEN BACKDROP. Several sheets ask
+                 // for `maxHeight:90dvh`, and `dvh` does NOT shrink when the keyboard opens under
+                 // resize:"none" — so a tall sheet would overflow the backdrop and, because this is
+                 // `align-items:flex-end`, it overflows upward and loses its HEADER off the top of
+                 // the screen (the documented tall-sheet clipping bug). min() keeps whichever is
+                 // smaller, so nothing changes while the keyboard is down.
+                 maxHeight: outerStyle.maxHeight ? `min(${outerStyle.maxHeight}, 100%)` : "100%" }}>
         {dragHandle && (
           // ★ THE GRAB AREA IS 44px, NOT THE 20px THE BAR OCCUPIES (Mo: "make where you have to
           // swipe down a little bigger instead of it just the edge of the sheet"). 44 is this
@@ -11533,7 +11561,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
             block), which rendered the timer clipped INSIDE the scrolling list instead of over the
             viewport — same reason the NumberPad and Edit Profile modal portal out. */}
         {rest && !rest.minimized && createPortal(
-          <div onClick={() => setRest(p => p ? ({ ...p, minimized: true }) : p)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={() => setRest(p => p ? ({ ...p, minimized: true }) : p)} style={{ position:"fixed", ...KB_SAFE_INSET, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
             <div style={{ position:"absolute", inset:0, background:`radial-gradient(circle at center, ${rest.secs<=10 ? "rgba(239,68,68,0.12)" : "rgba(200,241,53,0.10)"} 0%, transparent 70%)`, pointerEvents:"none" }}/>
             <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:380, borderRadius:RADIUS.xl, padding:24, background: C.isDark ? "rgba(38,38,46,0.97)" : "rgba(20,20,24,0.97)", boxShadow:"0 32px 100px rgba(0,0,0,0.45)", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
               <div style={{ position:"absolute", top:16, right:16 }}>
@@ -13826,7 +13854,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
   // filled button; the only colour left on the screen means something.
 
   return (
-    <div data-fullscreen-overlay="true" style={{ position:"fixed", inset:0, zIndex:200, maxWidth:480, margin:"0 auto" }}>
+    <div data-fullscreen-overlay="true" style={{ position:"fixed", ...KB_SAFE_INSET, zIndex:200, maxWidth:480, margin:"0 auto" }}>
     {/* EdgeSwipeBack: this overlay was the one pushed screen WITHOUT the edge-swipe exit — chat,
         Messages and Activity all have it, and here the only way out was a 36px button in the
         hardest one-handed reach on the phone (a dual-assessment critique flagged both halves of
@@ -15966,8 +15994,15 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {/* Edit Profile modal — portaled to escape the tab-swipe track's transform ancestor
           (otherwise it becomes the containing block for this fixed overlay and the sheet
           "bleeds" into the screen behind it / becomes scrollable past). */}
+      {/* The backdrop below ends at the keyboard line, for the reason documented on Sheet's own
+          backdrop: under `Keyboard.resize:"none"` the webview no longer shrinks, and this modal is
+          centred, so its lower fields (bio, age) sat behind the keyboard with no scrollable
+          ancestor able to lift them — measured at bottom 596 and 673 against a keyboard line of
+          538. Re-centring into the remaining space is what `resize:"native"` did for free.
+          This comment sits OUTSIDE the createPortal call on purpose: `createPortal((` takes ONE
+          expression, so a JSX comment plus the element is two siblings and a syntax error. */}
       {showEdit && createPortal((
-        <div onClick={() => setShowEdit(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+        <div onClick={() => setShowEdit(false)} style={{ position:"fixed", ...KB_SAFE_INSET, transition:`bottom var(--seshd-kb-ms, 250ms) ${EASE_NAV}`, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
           <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>
@@ -16074,7 +16109,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
 
       {/* Delete account — typed confirmation (App Store standard for destructive actions) */}
       {showDelete && createPortal((
-        <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+        <div onClick={() => !deleting && setShowDelete(false)} style={{ position:"fixed", ...KB_SAFE_INSET, background:"rgba(0,0,0,0.7)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
           <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.border}` }}>
             <div style={{ width:46, height:46, borderRadius:RADIUS.md, background:"#ef444418", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
               <Icon name="trash" size={22} color={C.red}/>
@@ -16765,7 +16800,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
     // `C.surface` is the raised-card token and is deliberately much lighter (#1c1c22), which is
     // what every other sheet in the app uses. A hairline plus a deeper, blurred scrim finish the
     // separation, and the blur is what makes it read as a layer rather than a flat overlay.
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+    <div onClick={onClose} style={{ position:"fixed", ...KB_SAFE_INSET, background:"rgba(0,0,0,0.72)", backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, width:"100%", maxWidth:440, maxHeight:"88dvh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 24px 70px -12px rgba(0,0,0,0.65)" }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px" }}>
@@ -16945,7 +16980,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
 function EditPostModal({ C, post, onSave, onClose }) {
   const [cap, setCap] = useState(post.caption || "");
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+    <div style={{ position:"fixed", ...KB_SAFE_INSET, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div style={{ background:C.surface, borderRadius:16, padding:20, width:"100%", maxWidth:400, border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
         <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:14 }}>Edit Post</div>
         <textarea value={cap} onChange={e => setCap(e.target.value)} rows={4}
