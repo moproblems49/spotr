@@ -1,4 +1,4 @@
-// v178091717021
+// v178091717022
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11287,7 +11287,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         } catch {}
         toast("Saved on this device — couldn't reach server. Will retry.", "error");
       } else {
-        toast(share ? "Workout posted" : "Workout saved", "success");
+        // Only the SHARE case toasts. `setShowWorkoutSummary(true)` fires unconditionally just
+        // above, so on the plain-save path this toast always landed on top of the summary sheet —
+        // restating what the sheet is already showing, and forcing the 160px footer reservation
+        // that squeezed the share card. "Workout posted" survives because the sheet does not say
+        // it: sharing is a separate outcome the user asked for and deserves confirming.
+        if (share) toast("Workout posted", "success");
         // Finish & share → actually create the feed post (this was missing — sharing
         // only built shareData but never posted it).
         if (share && onShareWorkout) {
@@ -12528,11 +12533,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })()}
               </div>
-              {/* Bottom padding cleared to 160px, not the usual 32: the "Workout saved"/"Workout
-                  posted" toast fires the instant this sheet opens and floats fixed at bottom:90
-                  (ToastHost), so a short bottom pad left it sitting right on top of "Don't share"
-                  and "Undo finish & edit" below it — 110px cleared the first but not the second. */}
-              <div style={{ padding:"12px 18px 160px", display:"flex", flexDirection:"column", gap:8 }}>
+              {/* ★ THIS PAD WAS 160px, AND IT WAS THE "SQUISHED CARD" BUG — reported as two separate
+                  symptoms that turned out to be one cause. It bought clearance for the "Workout
+                  saved" toast (ToastHost, fixed at bottom:90) which fires as this sheet opens; the
+                  toast is gone now (see finishWorkout — the sheet IS the confirmation), so the
+                  reservation has nothing left to buy.
+                  What it cost, measured: the panel is `max-height:90dvh` with this footer static and
+                  the scroller `flex:1`, so the footer's height comes straight out of the scroller.
+                  128px of extra pad moved the scroll fold from BELOW the share card to THROUGH its
+                  stats row — "TIME/SETS labels render, values cut" — while leaving a visible band of
+                  empty sheet under the last button. Both of Mo's complaints, one padding value.
+                  NOT an iOS bug: Chromium showed 283px of dead space where the device showed 177.
+                  I spent four rounds treating it as a WebKit layout collapse because I compared a
+                  DOM height in Chromium against screenshot INK on the device — apples to oranges.
+                  Measure the same quantity in both engines before concluding "engine-specific". */}
+              <div style={{ padding:"12px 18px calc(env(safe-area-inset-bottom) + 24px)", display:"flex", flexDirection:"column", gap:8 }}>
                 {(() => {
                   const selectedGroups = workoutSummary.shareToGroups || [];
                   const hasGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0;

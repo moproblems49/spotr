@@ -3779,6 +3779,48 @@ duplicate `workout_codes` DELETE policies (documented as harmless, consolidate w
 next touched — deliberately not touched here). The four SECURITY DEFINER warnings that remain
 (`profile_is_public`, both redeem RPCs, `group_image_member_check`) are all deliberate.
 
+## ★★★ A PADDING VALUE ATE THE SHARE CARD, AND I SPENT FOUR ROUNDS CALLING IT A WEBKIT BUG (Sep 3)
+Mo, over several days: "found a bug" (a screenshot of the finish sheet), then "still the same", then
+finally the sentence that cracked it — **"It's all squished, look how much space there is at the
+bottom, it didn't use to be like that."** Two symptoms, one cause, and the cause was one number.
+**`0fbc993` (Aug 24) raised the finish sheet's footer padding from 32px to 160px** so the "Workout
+saved" toast (`ToastHost`, fixed at `bottom:90`, painting over the z=300 sheet) would stop covering
+"Don't share" / "Undo finish & edit". The panel is `max-height:90dvh` with a **static footer** and a
+**`flex:1` scroller**, so every pixel the footer reserves comes straight out of the scroller. The
+extra 128px moved the scroll fold from BELOW the share card to THROUGH its stats row — "TIME/SETS
+labels render, values cut" — and left a visible band of empty sheet under the last button.
+**★ IT WAS NEVER AN iOS BUG, AND THE WAY I CONVINCED MYSELF IT WAS IS THE LESSON.** I compared a
+**DOM height in Chromium** (`getBoundingClientRect` → 519) against **screenshot INK on the device**
+(→ 337) and concluded WebKit was collapsing the card. Measured the SAME way in both, Chromium
+showed **283px of dead space against the device's 177** — my own machine had it WORSE the whole
+time. Four rounds of fixes (removing `aspectRatio`, adding `flexShrink:0`, removing a
+`marginBottom:auto`, shipping a device probe) were aimed at a layout collapse that does not exist.
+**Measure the same QUANTITY in both engines before concluding "engine-specific".**
+**★ AND THE PROBE WAS RIGHT WHILE I WAS WRONG.** `ShareCardGeometryProbe` reports only when the
+card's own geometry is bad (`height <= 250 || scrollHeight > clientHeight+2`). It never fired,
+because **the card was always healthy** — it is the space it is GIVEN that was wrong, one level up.
+A silent instrument that disagrees with your theory is evidence about the theory. I read its silence
+as "he hasn't got the bundle yet" twice before taking it seriously.
+**The non-determinism was the other tell I missed**: three device screenshots gave three different
+card heights (90, 148, 337). A real layout collapse is deterministic; a scroll FOLD moves with
+whatever sits above it (the hype line, 0-4 "YOU BEAT LAST TIME" rows).
+**The fix removes the reservation rather than tuning it**: footer back to
+`calc(env(safe-area-inset-bottom) + 24px)`, and the redundant toast deleted —
+`setShowWorkoutSummary(true)` fires unconditionally immediately BEFORE it, so "Workout saved"
+always landed on top of a sheet already showing the saved workout. `"Workout posted"` survives:
+sharing is an outcome the sheet does not state. Measured: scroller **444 -> 580**, visible card
+**331 -> 467**, dead space **283 -> 147**.
+**Guard: `pw_finishcard`** now asserts the footer's `padding-bottom` is < 60px and that the scroller
+keeps > 65% of the panel (56% broken / 74% fixed — a threshold between the two, not pinned to
+today's content). Red-proofed at 2 failures naming both numbers. **Nothing else in the battery could
+ever have seen this**, because every assertion about the card itself passes on every version of the
+bug — the defect is in the sheet's space allocation, so that is what the guard measures.
+**Process note worth keeping: the cold-context agent earned its keep by CONTRADICTING me.** It was
+given the full measured picture and came back "your hypothesis is wrong, and so is the iOS-only
+premise", with a falsifiable prediction (pixel-scan Chromium the same way; expect dead space there
+too). Running that prediction is what ended a four-round chase. Ask for the disproof, and then
+actually run it.
+
 ## ★★ `aspect-ratio` + `overflow:hidden` ATE THE PR LIST OFF THE "NEW PR!" CARD (Sep 2)
 Mo, from a device screenshot of the finish sheet: "Found a bug." The share card was rendering at
 **1094 x 269 device px** where its own `aspectRatio:"4/5"` demands 1368 — five times too short,

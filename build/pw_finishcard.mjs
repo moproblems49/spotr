@@ -85,6 +85,39 @@ if (M) {
   // The PR list is the section the ratio was actually eating.
   check("the per-exercise PR section renders inside the card", /PERSONAL RECORDS/i.test(M.text || ""),
     (M.text || "").slice(0, 80).replace(/\n/g, " | "));
+
+  // ── The footer must not eat the content area ────────────────────────────────────────────────
+  // The panel is `max-height:90dvh` with a STATIC footer and a `flex:1` scroller, so every pixel
+  // the footer reserves comes straight out of the scroller. A 160px bottom pad (added to clear a
+  // toast that fired over this sheet) took 128px from the scroller, which moved the scroll fold
+  // from below the share card to THROUGH its stats row and left a visible band of empty sheet
+  // under the last button. That reads as "the card is squished and there's dead space at the
+  // bottom" — two symptoms, one padding value — and NOTHING else in the battery could see it:
+  // the card's own scrollHeight/clientHeight are equal the whole time, because the card is fine.
+  // It is the space it is given that is wrong.
+  const L = await page.evaluate(() => {
+    const card = document.getElementById("workout-card");
+    const sc = card && card.parentElement;
+    const panel = sc && sc.parentElement;
+    const footer = sc && sc.nextElementSibling;
+    if (!sc || !panel || !footer) return null;
+    return {
+      panelH: Math.round(panel.getBoundingClientRect().height),
+      scrollerH: Math.round(sc.getBoundingClientRect().height),
+      footerH: Math.round(footer.getBoundingClientRect().height),
+      footerPadBottom: parseFloat(getComputedStyle(footer).paddingBottom) || 0,
+    };
+  });
+  check("the finish sheet's footer/scroller split is measurable", !!L, "structure changed");
+  if (L) {
+    check("the footer reserves no absurd bottom padding", L.footerPadBottom < 60,
+      `padding-bottom is ${L.footerPadBottom}px — every pixel here is taken from the scroller`);
+    // 56% was the broken split; 74% is the fixed one. 65% sits between them and is not a tuned
+    // number pinned to today's content — it fails only if the footer grows dramatically again.
+    check("the scrolling area keeps the majority of the sheet",
+      L.scrollerH / L.panelH > 0.65,
+      `scroller ${L.scrollerH} of panel ${L.panelH} = ${Math.round(100 * L.scrollerH / L.panelH)}%`);
+  }
 }
 
 await browser.close();
