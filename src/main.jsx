@@ -39,42 +39,95 @@ try { window.Capacitor?.Plugins?.Keyboard?.setAccessoryBarVisible?.({ isVisible:
 // frame the page re-laid out. `resize: "none"` removes the shrink, so there is real content behind
 // the glass again and the whole class of bug goes away.
 //
-// ★★★ `resize:"none"` IS OFF, AND THE REASON IS IN THE PLUGIN'S OWN SOURCE — NOT A JUDGEMENT CALL.
-// The Instagram pattern (stop the webview shrinking, publish the keyboard height, let the UI ride
-// up) is entirely OTA-able and was implemented in full: `KB_SAFE_INSET` moves every full-screen
-// fixed backdrop holding a text input up to the keyboard line. That handles overlays. It CANNOT
-// handle a field inside an ordinary SCROLLER, and the assumption that WebKit would handle those
-// itself is FALSE HERE:
-//   * `Keyboard.m:195-199` unconditionally does `removeObserver:self.webView` for
-//     UIKeyboardWillShow/WillHide/WillChangeFrame/DidChangeFrame. The webview is never told a
-//     keyboard exists.
-//   * Under `native` the plugin SHRINKS the frame, so a low field falls outside the shortened
-//     scroller and inner scroll-into-view lifts it. Under `none` the layout viewport still runs
-//     behind the keyboard, the field is already "in view", and nothing scrolls.
-// Measured consequence on the app's core flow: a live workout with 11 exercises has TWENTY inputs
-// (every "Add note..." and per-exercise rename) below the keyboard line with nothing able to lift
-// them, and Edit History has 13. That is far worse than the black box `none` was meant to cure.
-// Making `none` viable therefore needs a FOCUS SHIM — on focus, scroll the field's own scroller so
-// it clears the keyboard, and pad that scroller so the last item can still get there. That is a new
-// subsystem, it cannot be verified anywhere in this repo (no WebKit engine, no software keyboard),
-// and it should be built deliberately with a device in hand, not bolted on.
-//
-// EVERYTHING ELSE STAYS AND IS INERT BY CONSTRUCTION. `KB_SAFE_INSET` and the chat composer read
-// `var(--seshd-kb, 0px)`, so as long as this file never PUBLISHES the variable they all resolve to
-// 0 and behave exactly as they did before any of this work. That is the both-or-neither invariant
-// `build/pw_kbinset.mjs` enforces: it is not "no consumers", it is "the variable is not published
-// unless resize is none" — because under `native` the webview shrinks AND a consumer would inset,
-// lifting everything twice.
-// The black box around the keyboard is therefore still present, and its real fix is
-// `Keyboard.autoBackdropColor:"dom"` (already in capacitor.config.json, needs a Mac `cap sync`).
+// ★★★ THE KEYBOARD RIDES UP WITH THE APP INSTEAD OF SQUASHING IT — AND THE FOCUS SHIM IS THE
+// PIECE iOS WILL NOT DO FOR US. `resize:"none"` stops the WKWebView shrinking when the keyboard
+// opens, which is what removes the layout jump AND the black box (the shrink is what exposes the
+// bare UIWindow behind the translucent iOS 26 keyboard). Its cost is that nothing moves out of the
+// keyboard's way by itself, and the reason is mechanical rather than a guess:
+// `@capacitor/keyboard`'s `Keyboard.m:195-199` unconditionally does `removeObserver:self.webView`
+// for UIKeyboardWillShow/WillHide/WillChangeFrame, so the webview is never told a keyboard exists.
+// Under `native` that is invisible — the plugin shrinks the frame, a low field falls outside its
+// scroller, and inner scroll-into-view lifts it. Under `none` the layout viewport still runs behind
+// the keyboard, the field is already "in view", and nothing scrolls.
+// TWO mechanisms cover the two shapes, and BOTH are needed — an earlier attempt shipped only the
+// first and buried 20 fields in a single workout:
+//   * a field in a FIXED overlay  -> `KB_SAFE_INSET` (src/App.jsx) ends the overlay at the
+//     keyboard line, so the field comes up with it. Nothing to scroll there.
+//   * a field in a SCROLLER       -> this shim scrolls it clear, and pads the scroller so even its
+//     LAST row can get there (without the pad, max-scroll leaves the last row at the physical
+//     bottom and no amount of scrolling exposes it).
+const KB_MARGIN = 14;                       // breathing room between the field and the keys
+const _padded = new Map();                  // scroller -> its original inline padding-bottom
+// ★ THE CSS VARIABLE IS THE SINGLE SOURCE OF TRUTH, NOT A JS COPY. The first cut kept the height
+// in a module `let` that only the native listener set — so the shim could not run anywhere without
+// a real device, and the guard (which simulates the keyboard exactly as the plugin does, by setting
+// `--seshd-kb`) measured a shim that was inert by construction and reported 10 buried fields. One
+// source means simulating the keyboard drives the real code path.
+const _kbHeight = () =>
+  parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--seshd-kb")) || 0;
+
+const _scrollerOf = (el) => {
+  let n = el.parentElement;
+  while (n && n !== document.body) {
+    const cs = getComputedStyle(n);
+    if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && n.scrollHeight > n.clientHeight + 2) return n;
+    n = n.parentElement;
+  }
+  return null;                              // no scroller: a fixed overlay, KB_SAFE_INSET owns it
+};
+
+const _releasePads = () => {
+  for (const [el, orig] of _padded) el.style.paddingBottom = orig;
+  _padded.clear();
+};
+
+const _liftFocused = () => {
+  const kb = _kbHeight();
+  if (!kb) return;
+  const el = document.activeElement;
+  if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
+  const line = window.innerHeight - kb;
+  const over = el.getBoundingClientRect().bottom + KB_MARGIN - line;
+  if (over <= 0) return;                    // already clear
+  const sc = _scrollerOf(el);
+  if (!sc) return;
+  if (!_padded.has(sc)) {
+    // Remember the INLINE value so it is restored exactly; the computed one is what we add to.
+    _padded.set(sc, sc.style.paddingBottom || "");
+    const base = parseFloat(getComputedStyle(sc).paddingBottom) || 0;
+    sc.style.paddingBottom = (base + kb) + "px";
+  }
+  sc.scrollTop += over;                     // reads layout after the pad, so the last row can reach
+};
+
 try {
   const K = window.Capacitor?.Plugins?.Keyboard;
   if (K) {
-    // Deliberately NOT calling setResizeMode: the default is `native`, which is what we want until
-    // the focus shim above exists. Do not re-enable one without the other.
-    void K;
+    K.setResizeMode?.({ mode: "none" })?.catch?.(() => {});
+    const setKb = (px) => {
+      // NOTE: the plugin sends ONLY `{keyboardHeight}` (Keyboard.m:259-262) — there is no
+      // `keyboardAnimationDuration`, so the transition is the 250ms fallback, not the keyboard's
+      // own. Do not describe it as following the keyboard.
+      document.documentElement.style.setProperty("--seshd-kb", px + "px");
+    };
+    K.addListener?.("keyboardWillShow", info => {
+      setKb(Math.round(info?.keyboardHeight || 0));
+      // A frame, so the KB_SAFE_INSET containers have re-laid-out before anything is measured.
+      requestAnimationFrame(() => requestAnimationFrame(_liftFocused));
+    });
+    K.addListener?.("keyboardWillHide", () => { _releasePads(); setKb(0); });
   }
 } catch { /* web, or plugin not synced natively */ }
+
+// Registered UNCONDITIONALLY, not inside the `if (K)` above: moving between fields with the
+// keyboard already up fires no `keyboardWillShow`, and keeping this outside the Capacitor check is
+// also what makes the shim reachable in a browser. It is inert wherever `--seshd-kb` is unset,
+// which is every web session and every build where resize is `native`.
+if (typeof document !== "undefined") {
+  document.addEventListener("focusin", () => {
+    if (_kbHeight()) requestAnimationFrame(_liftFocused);
+  }, { passive: true, capture: true });
+}
 
 // Native boot hydration MUST complete before React mounts: it pulls durable data from iOS
 // Preferences into localStorage, installs the write-through mirror, and loads the auth session

@@ -3838,7 +3838,45 @@ premise", with a falsifiable prediction (pixel-scan Chromium the same way; expec
 too). Running that prediction is what ended a four-round chase. Ask for the disproof, and then
 actually run it.
 
-## ★★★ `resize:"none"` IS OFF AGAIN, AND THIS TIME THE PLUGIN'S SOURCE SETTLES IT (Sep 3)
+## ★★★ THE FOCUS SHIM — `resize:"none"` IS BACK ON, WITH THE PIECE iOS WITHHOLDS (Sep 4)
+Mo: "I'm ready for 2 whenever." Built with him on the phone rather than shipped blind, because
+nothing in this repo has a software keyboard and that is exactly how the two earlier attempts got
+through green.
+**TWO mechanisms, and both are required — the earlier attempt shipped only the first:**
+  * a field in a **FIXED overlay** -> `KB_SAFE_INSET` ends the overlay at the keyboard line.
+  * a field in a **SCROLLER** -> the shim in `src/main.jsx` scrolls it clear on focus, AND pads
+    that scroller by the keyboard height first, because without the pad max-scroll leaves the last
+    row at the physical bottom and no amount of scrolling can expose it.
+**★ THE SHIM MUST READ THE CSS VARIABLE, NOT A JS COPY OF IT.** The first cut kept the height in a
+module `let` that only the native `keyboardWillShow` listener set — so the shim could not run
+anywhere without a device, and `pw_kbinset` (which simulates the keyboard exactly as the plugin
+does, by setting `--seshd-kb`) measured a mechanism that was inert BY CONSTRUCTION and reported 10
+buried fields as if the app were broken. `_kbHeight()` reads the variable, so simulating the
+keyboard drives the real code path. **Its `focusin` listener is registered UNCONDITIONALLY**, not
+inside the `if (K)` Capacitor check: moving between fields with the keyboard already up fires no
+`keyboardWillShow`, and keeping it outside is also what makes the shim reachable in a browser. It
+is inert wherever `--seshd-kb` is unset, which is every web session.
+**Guard: `pw_kbinset` FOCUSES each field before measuring it.** Measuring an unfocused field tests
+the layout nobody types into — it would report a field that is fine in practice, or miss a shim
+that silently does nothing. Focusing is what a finger does, so the assertion is the real question:
+"after I tap this field, can I still see it?" The live-workout scene is the shim's red-proof
+(10 buried with the shim disabled, 0 with it) and deliberately seeds TEN exercises, because a
+two-exercise fixture fits above the keyboard and cannot see this bug at all.
+**★ AND ONE SCENE IS VACUOUS FOR THE SHIM, WHICH IS WORTH SAYING RATHER THAN COUNTING IT.**
+The Edit History scene PASSES with the shim disabled: that modal is a fixed overlay, so
+`KB_SAFE_INSET` already ends it at the keyboard line and its inner scroller fits above. It is a
+real check of the inset and NOT of the shim. The audit's 13 buried fields there were measured when
+that modal was still unconverted.
+**Fixture traps hit while writing it, both already in this file:** the live workout's marker was
+"Push Day", which is the workout NAME and now lives in an `<input>` — `innerText` never contains it,
+so the scene could not confirm arrival (use "Discard"). And the live-workout seed persists for the
+page, so a resumed workout hid History and the Edit History scene could never arrive; init scripts
+run in order, so a later one clearing `seshd_active_session` wins.
+**Still not covered and worth knowing:** `env(safe-area-inset-bottom)` stays ~34pt under `none`
+while the keyboard covers the home indicator, so every `calc(env(safe-area-inset-bottom) + N)`
+bottom pad leaves a ~34px dead band above the keys. Cosmetic; measure it on device before chasing.
+
+## ★★★ `resize:"none"` WAS OFF FOR A DAY — THE PLUGIN'S SOURCE IS WHY (Sep 3)
 A cold-context audit of the finished work found the premise underneath BOTH attempts was wrong, and
 the evidence is mechanical rather than a judgement call. **`@capacitor/keyboard`'s `Keyboard.m:195-199`
 unconditionally does `removeObserver:self.webView` for UIKeyboardWillShow / WillHide /

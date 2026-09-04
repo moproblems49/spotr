@@ -97,7 +97,23 @@ await p.addInitScript(me => {
   localStorage.setItem("seshd_onboarded", "1");
 }, ME);
 await p.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "t", user: { id: ME } }) }));
-await p.route("**/rest/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+// A FAT history row on purpose: EditHistoryModal renders a weight+reps pair per set, so a
+// two-set session fits above the keyboard and cannot see this bug at all. The audit measured 13
+// buried fields on a 6-exercise session.
+const DK = new Date().toISOString().slice(0, 10);
+const HIST_ROW = {
+  id: "cccccccc-1111-4111-8111-111111111111", user_id: ME, day_name: "Pull Day", duration_secs: 3600,
+  unit: "lbs", note: null, workout_date: DK, created_at: new Date().toISOString(),
+  exercises: ["Barbell Row","Lat Pulldown","Seated Cable Row","Face Pull","Barbell Curl","Hammer Curl"]
+    .map(name => ({ name, sets: [{ weight: 135, reps: 8, done: true, type: "normal" },
+                                 { weight: 135, reps: 8, done: true, type: "normal" }] })),
+};
+await p.route("**/rest/v1/**", r => {
+  const u = r.request().url();
+  let body = "[]";
+  if (r.request().method() === "GET" && /\/rest\/v1\/workout_history\?/.test(u)) body = JSON.stringify([HIST_ROW]);
+  r.fulfill({ status: 200, contentType: "application/json", body });
+});
 
 // ★ RAISE THE KEYBOARD BEFORE MEASURING. `--seshd-kb` is published by the native plugin's
 // keyboardWillShow, which does not exist in Chromium — so without this the variable is unset, the
@@ -110,32 +126,32 @@ const raiseKeyboard = () => p.evaluate(KB => {
   el.style.setProperty("--seshd-kb", KB + "px");
 }, KB);
 
-const buried = () => p.evaluate(LINE => {
-  const out = [];
-  for (const el of document.querySelectorAll("input,textarea")) {
-    const r = el.getBoundingClientRect();
-    if (r.width < 8 || r.height < 8) continue;
-    const cs = getComputedStyle(el);
-    if (cs.display === "none" || cs.visibility === "hidden" || +cs.opacity === 0) continue;
-    let n = el.parentElement, fixed = false, scrollable = false, d = 0;
-    while (n && n !== document.documentElement && d < 30) {
-      const s = getComputedStyle(n);
-      if (!fixed && s.position === "fixed") fixed = true;
-      if (!scrollable && (s.overflowY === "auto" || s.overflowY === "scroll") && n.scrollHeight > n.clientHeight + 2) scrollable = true;
-      n = n.parentElement; d++;
-    }
-    // ★ NO "a scrollable ancestor rescues it" EXEMPTION. That was the original assumption and it
-    // is false for THIS plugin: `Keyboard.m:195-199` removes WKWebView's own
-    // UIKeyboardWillShow/WillChangeFrame observers, so the webview never learns a keyboard exists.
-    // Under `native` the frame shrank and a low field fell outside its scroller, so inner
-    // scroll-into-view lifted it; under `none` the viewport still runs behind the keyboard, the
-    // field is already "in view", and nothing moves. Exempting scrollables hid 20 buried inputs in
-    // a single live workout. Anything under the line counts.
-    if (r.bottom > LINE)
-      out.push(`"${(el.placeholder || el.type || el.tagName).slice(0, 24)}" bottom=${Math.round(r.bottom)}${fixed ? " [fixed]" : ""}${scrollable ? " [in-scroller]" : ""}`);
+// ★ FOCUS EACH FIELD BEFORE MEASURING IT. The app now lifts a focused field itself (the focus
+// shim in src/main.jsx), because iOS will not — measuring an UNFOCUSED field tests the layout
+// nobody types into and would report a buried field that is fine in practice, or miss a shim that
+// silently does nothing. Focusing is also what a finger does, so this is the real question:
+// "after I tap this field, can I see it?"
+const buried = async (LINE) => {
+  const bad = [];
+  const n = await p.evaluate(() => document.querySelectorAll("input,textarea").length);
+  for (let i = 0; i < n; i++) {
+    const r = await p.evaluate(async ({ i, LINE }) => {
+      const el = document.querySelectorAll("input,textarea")[i];
+      if (!el) return null;
+      const box = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      if (box.width < 8 || box.height < 8 || cs.display === "none" || cs.visibility === "hidden" || +cs.opacity === 0) return null;
+      el.focus();
+      // The shim runs on focusin via rAF; give it two frames plus a beat to settle.
+      await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 40))));
+      const after = el.getBoundingClientRect();
+      return after.bottom > LINE
+        ? `"${(el.placeholder || el.type || el.tagName).slice(0, 24)}" bottom=${Math.round(after.bottom)} (was ${Math.round(box.bottom)})`
+        : null;
+    }, { i, LINE });
+    if (r) bad.push(r);
   }
-  return out;
-}, LINE);
+  return bad;
+};
 
 const home = async () => { await p.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" }); await p.waitForTimeout(1900); };
 const tap = async (sel, ms = 900) => { const l = p.locator(sel).first(); if (!await l.count()) return false; await l.click({ force: true }).catch(() => {}); await p.waitForTimeout(ms); return true; };
@@ -155,7 +171,7 @@ const scene = async (name, reach, marker) => {
     .filter(el => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
       return r.width > 8 && r.height > 8 && cs.display !== "none" && cs.visibility !== "hidden"; }).length);
   if (seen === 0) { check(`${name} reached`, false, "no visible input — the container never opened, verdict unknown"); return; }
-  const bad = await buried();
+  const bad = await buried(LINE);
   check(`${name}: no input buried under the keyboard (${seen} visible)`, bad.length === 0, bad.join("; "));
 };
 
@@ -175,6 +191,52 @@ await scene("Profile > Edit profile", async () => {
 await scene("Workout > exercise picker", async () => {
   await tap("text=/Quick Start/i", 1200); await tap("text=/add exercise/i", 1100);
 }, "Search exercises");
+
+// ★ THE SCROLLER SCENES — the ones KB_SAFE_INSET cannot help and the shim exists for.
+// A live workout is the app's core typing surface: every exercise carries an "Add note..." field
+// and a rename field, and an audit measured TWENTY of them below the keyboard line with nothing
+// able to lift them. A thin fixture cannot see this — with two exercises everything fits above the
+// keyboard — so seed enough to push fields well down the page.
+const seedWorkout = async () => {
+  const sess = {
+    dayName: "Push Day", startedAt: Date.now() - 1800000, unit: "lbs",
+    exercises: ["Barbell Bench Press","Incline Dumbbell Press","Cable Fly","Overhead Press",
+                "Lateral Raise","Triceps Pushdown","Skullcrusher","Dips","Push-Up","Chest Press (Machine)"]
+      .map((name, i) => ({ id: "e" + i, name, sets: [{ id: "s" + i, weight: "100", reps: "8", done: false, type: "normal" }] })),
+  };
+  await p.addInitScript(s => {
+    localStorage.setItem("seshd_active_session", JSON.stringify(s));
+    localStorage.setItem("seshd_wstart", String(Date.now() - 1800000));
+  }, sess);
+};
+await seedWorkout();
+await scene("Live workout > exercise notes", async () => {
+  // The workout resumes on boot; scroll the list so the lower exercises' fields are on screen.
+  await p.evaluate(() => { let best = null;
+    for (const el of document.querySelectorAll("*")) { const cs = getComputedStyle(el);
+      if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 40 && (!best || el.clientHeight > best.clientHeight)) best = el; }
+    if (best) best.scrollTop = best.scrollHeight; });
+  await p.waitForTimeout(500);
+}, "Discard");
+
+// The live-workout seed above persists for the page, and a resumed workout hides History. Init
+// scripts run in order, so a later one clearing the key wins — otherwise this scene can never
+// arrive and would report a fixture failure that looks like an app bug.
+await p.addInitScript(() => { localStorage.removeItem("seshd_active_session"); localStorage.removeItem("seshd_wstart"); });
+await scene("Edit History > set fields", async () => {
+  await tap('button[aria-label="Workout"]', 900);
+  const hist = p.getByText("History", { exact: true }).locator("visible=true").first();
+  if (await hist.count()) { await hist.click({ force: true }).catch(() => {}); await p.waitForTimeout(1200); }
+  const dots = p.getByText("···", { exact: true }).locator("visible=true").first();
+  if (await dots.count()) { await dots.click({ force: true }).catch(() => {}); await p.waitForTimeout(600); }
+  const edit = p.getByText("Edit", { exact: false }).locator("visible=true").first();
+  if (await edit.count()) { await edit.click({ force: true }).catch(() => {}); await p.waitForTimeout(1000); }
+  await p.evaluate(() => { let best = null;
+    for (const el of document.querySelectorAll("*")) { const cs = getComputedStyle(el);
+      if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 40 && (!best || el.clientHeight > best.clientHeight)) best = el; }
+    if (best) best.scrollTop = best.scrollHeight; });
+  await p.waitForTimeout(400);
+}, "Pull Day");
 
 await b.close();
 console.log(`\n${fails ? fails + " FAILING" : "ALL PASS"} — ${checks} checks`);
