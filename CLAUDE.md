@@ -4366,6 +4366,22 @@ app sets for itself would test nothing. Red-proofed by hiding the row.
 **Note HealthKit is NOT affected and that was checked rather than assumed**: Mo has real Body
 Battery readings and 2 accounts carry a `body_log`, so that permission survived on the same shell.
 It is specifically push.
+**★★ PUSH IS DEVICE-CONFIRMED END TO END (Sep 4, Mo: "Just got 4").** All four notification types
+were fired from `seshdreview` to `mhaggag` ~10s apart and ALL FOUR ARRIVED on the phone: DM
+(`send-message-push`), kudos, comment and follow (`send-activity-push`). `net._http_response`
+recorded 200 for every one, including an explicit `{"apns":200}` — so the whole chain is proven:
+row -> DB webhook -> edge function -> APNs -> lock screen. That also rules out the documented
+environment trap (a build registering against sandbox while the key is production-only, which sends
+cleanly and delivers nothing). The fifth type, the weekly streak reminder, rides the same
+`send-activity-push` path as the three that landed.
+**How to re-run it** (all four triggers verified enabled: `send_message_push_trigger`,
+`send_kudos_push_trigger`, `send_comment_push_trigger`, `send_follow_push_trigger`): insert one row
+per table from a second account, `pg_sleep(10)` between them so they are distinguishable, then read
+`net._http_response`. **The follow is the one to be careful with** — the row usually already exists,
+so firing it means DELETE + re-INSERT; capture `status` first and restore it after, or the test
+silently rewrites a real relationship. Clean up the DM/kudos/comment afterwards and LEAVE the
+follow, which the test did not create. Verified after: 0 leftover rows, follow back to exactly 1
+row at `accepted`.
 **The release decision this fed, resolved:** Mo read `app 1.0 (15)` off the new Settings line; the
 shell postdates the entitlements and holds a valid APNs token, so the approved build is fine to
 release. The native-build readout stays valuable regardless — it is what turned "we cannot tell"
