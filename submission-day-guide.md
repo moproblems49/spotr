@@ -222,17 +222,12 @@ could never deliver or test.
      and tell me.
 6. While you're in there, also start a workout and confirm the weight/reps keypad still opens
    normally. It should be unchanged — those fields deliberately don't use the system keyboard.
-7. **The black-box check (added Sep 3).** This build is also the first one carrying
-   `Keyboard.autoBackdropColor` (already in `capacitor.config.json`, so there is nothing to type —
-   step 2's `npx cap sync ios` picks it up). Tap into a text box and watch the area *around* the
-   keyboard for a couple of seconds.
-   - **✅ Right:** the strip around and under the keys matches the app's background the whole time.
-   - **❌ Wrong:** it starts light grey and then a black box appears around the keyboard after
-     about a second. If you see that, tell me — it means the setting didn't reach the build.
-   Do this on a **light theme and a dark one**, since the whole point is that it follows the app.
-   **What this does NOT change:** the app will still shift when the keyboard opens, and the
-   keyboard will still snap shut rather than following your finger. Those are separate pieces of
-   work and neither is fixed by this build — see CLAUDE.md's Mac-day entry for the split.
+7. ~~**The black-box check (added Sep 3).**~~ **RETIRED Sep 4 — nothing to check here any more.**
+   The black box was caused by the app being squashed when the keyboard opened, which exposed a
+   bare black strip behind the translucent iOS keyboard. Bundle `2026-09-04a` stopped the app
+   squashing at all, so the strip cannot appear; Mo confirmed it gone on his phone the same day.
+   That fix shipped over the air, so it is already on every phone and does not need this build.
+   Nothing keyboard-related remains for a Mac day.
 
 ---
 

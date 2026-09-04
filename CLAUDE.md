@@ -3435,13 +3435,12 @@ false**: `setResizeMode` is a JS-callable plugin method (`KeyboardPlugin.m:11`),
 OTA twice on Sep 3. See the two `resize:"none"` entries above for what happened. What actually
 belongs on a Mac day is ONE line, and it is not that:
 
-**1. `Keyboard.autoBackdropColor: "dom"` — ALREADY COMMITTED in `capacitor.config.json`, needs only
-`npx cap sync ios` + a build.** This is the whole Mac-side keyboard task. It fixes ONE thing: the
-BLACK BOX around the keyboard (iOS 26's translucent keyboard sampling the bare `UIWindow` that the
-shrinking webview exposes). It is config-only, read natively at startup, so it cannot ship OTA.
-Verify on device by opening any text field on both a light and a dark theme.
-**It does NOT make the keyboard behave like Instagram's** — it colours the strip, nothing else.
-The app still shrinks when the keyboard opens, and the keyboard still snaps rather than tracking.
+**1. ~~`Keyboard.autoBackdropColor: "dom"`~~ — NO LONGER NEEDED (Sep 4). It was the fix for the
+black box while KEEPING the webview shrink; `resize:"none"` removed the shrink, so the box cannot
+occur and Mo confirmed it gone on device in `2026-09-04a`. The key stays in
+`capacitor.config.json` as insurance — it is free and would matter again if `none` were ever
+reverted — but do NOT schedule a Mac day for it. **There is now no outstanding Mac-side keyboard
+work at all.**
 
 **2. What "like Instagram" actually needs, and it is mostly NOT a Mac job.** Two separate pieces:
   * **The app riding up smoothly with the keyboard** = `resize:"none"` + `KB_SAFE_INSET` (both
@@ -3458,8 +3457,9 @@ The app still shrinks when the keyboard opens, and the keyboard still snaps rath
     a DOM container backed by a PRIVATE `WKChildScrollView` whose `keyboardDismissMode` is not
     exposed. Reaching it means swizzling a private WebKit class by name. Budget it as an EXPERIMENT,
     not a fix, and do `autoBackdropColor` first since it colours the exposed strip anyway.
-**So the honest sequence is: (1) is a Mac day and gets rid of the black box; (2a) is an OTA change
-gated on device testing and is what makes it FEEL like Instagram; (2b) may never be worth it.**
+**Sequence as it actually played out: (2a) shipped OTA on Sep 4, device-confirmed, and it removed
+the black box as a side effect — so (1) never had to happen. (2b) remains an experiment nobody has
+asked for since.**
 
 **Deferred Mac-side (post-TestFlight):** (`@capacitor/keyboard` MOVED UP — it is step 2 of the
 submission Mac day above, since that build happens anyway.) Live Activity rest timer, home-screen widgets,
@@ -3838,7 +3838,18 @@ premise", with a falsifiable prediction (pixel-scan Chromium the same way; expec
 too). Running that prediction is what ended a four-round chase. Ask for the disproof, and then
 actually run it.
 
-## ★★★ THE FOCUS SHIM — `resize:"none"` IS BACK ON, WITH THE PIECE iOS WITHHOLDS (Sep 4)
+## ★★★ THE FOCUS SHIM — `resize:"none"` IS BACK ON AND DEVICE-CONFIRMED (Sep 4)
+**CONFIRMED ON DEVICE by Mo, bundle `2026-09-04a`: "Keyboard looks good and no background, I think
+everything seems fine."** That is the verdict that counts for this whole class — the battery passed
+on all three attempts, including the two that were badly wrong, so device confirmation is the only
+thing that ever settled it.
+**★ AND IT MAKES THE MAC-DAY KEYBOARD ITEM REDUNDANT.** The black box was iOS 26's translucent
+keyboard sampling the bare `UIWindow` that the SHRINKING webview exposed. With `resize:"none"` the
+webview never shrinks, so there is no vacated strip to sample and the box cannot occur —
+`Keyboard.autoBackdropColor:"dom"` was the fix for the box while KEEPING the shrink, and there is
+no longer a shrink to keep. It stays committed in `capacitor.config.json` as insurance (it costs
+nothing and would matter again if `none` were ever reverted), but it is no longer a reason to do a
+Mac day, and the top of the Mac-day list was rewritten accordingly.
 Mo: "I'm ready for 2 whenever." Built with him on the phone rather than shipped blind, because
 nothing in this repo has a software keyboard and that is exactly how the two earlier attempts got
 through green.
