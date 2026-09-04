@@ -2049,6 +2049,15 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   duplicated-formula rule in this file, applied to event handlers); and **for anything involving the
   software keyboard, a device recording outranks the entire test suite** — the battery cannot
   reproduce a keyboard at all.
+  **★ QUANTIFIED, Sep 3-4: `Keyboard.resize:"none"` was shipped THREE TIMES and the full battery
+  passed on all three, including the two that were badly wrong** — the version that buried the
+  Send-feedback and Edit-Profile fields, and the version that buried TWENTY inputs in a live
+  workout. Green is not evidence here; it is the absence of a keyboard. What actually caught each
+  failure, in order: a cold-context audit reading the plugin's own Objective-C source, and Mo's
+  phone. **A guard for a native-event-driven layout must SIMULATE the event** (set `--seshd-kb`
+  exactly as the plugin does) **and must drive the real code path** — the first focus shim read a
+  JS variable only the native listener set, so it was inert by construction and its guard measured
+  a mechanism that could never run. One source of truth, simulated the same way the OS supplies it.
 - **NO BACKTICKS IN THE INJECTED STYLESHEET'S COMMENTS.** The whole thing is one template literal,
   so a backtick in a CSS comment terminates it and the build dies with a syntax error pointing at
   the next word. This has broken the build twice, both times while writing a comment ABOUT the
@@ -4317,6 +4326,37 @@ there was no private data for the check to fail against — a fixture that canno
 through the DATA rather than through a bad selector. Only re-running it against an account
 deliberately flipped private settled it. Check what the fixture makes POSSIBLE before believing
 either a red or a green.
+
+## ★ Sweep #8 (Sep 4, 2026) — two Postgres errors in 24h, and both are mine
+**Postgres: 169 LOG, 2 ERROR, and both ERRORs are `app = mgmt-api`** — my own MCP probes from the
+previous day (42703, undefined column). **Zero user-generated errors**, the third clean sweep in a
+row. Auth: 53 `/token` calls, all 200, no failures, no reset-email errors.
+**Tripwire (step 6) all three correct:** `net_is_rest_exposed_BAD` false, `public_wrappers_BAD` 0,
+`pgnet_guard_MUST_BE_1` = **1**. Orphaned `member_ids`: **0**. Orphaned storage objects: **0**
+across all three buckets (26 objects) — checked by resolving each object's own folder segment back
+to a live `profiles` / `groups` row. `code_redeem_failures` 0 rows, so the opportunistic cleanup
+still works. Table sizes proportionate to 3 profiles; `posts` at 3.1 MB / 88 rows is the workout
+jsonb and is still the largest thing in the database.
+**Advisors: nothing new that is not deliberate.** `public_workouts` now appears as a SECURITY
+DEFINER view — that is the Sep 2 privacy fix and is intentional, same as `public_profiles`.
+Everything else is the standing documented set (the two redeem RPCs, `profile_is_public`,
+`ai_quota_consume`, `group_image_member_check`, `ai_usage` + `code_redeem_failures` RLS-with-no-
+policy, pg_net in public, leaked-password protection needing a paid plan).
+**★ `client_errors` IS THE INTERESTING PART, AND IT CONFIRMED A FIX RATHER THAN FINDING A BUG.**
+102 rows cumulative, newest 2026-09-04 01:10. **Every recent row is the same known one** — the
+missing push entitlement (`capacitorDidRegisterForRemoteNotifications not called`), which needs a
+native rebuild and is unrelated to anything shipped OTA. **No new error class from the keyboard
+work**, on a day that shipped four bundles touching every overlay in the app.
+And the incidental verification: `app_version` now reads **`2026-09-04a`** / `2026-09-03a` where
+every row before Sep 2 read `2026-06-11` — the hardcoded constant that had been stale since June.
+The live `_bundleId` read is therefore confirmed working ON DEVICE, which nothing in the battery
+could show.
+**Housekeeping for Mo, not actioned unilaterally: the three surviving backup tables can now go.**
+`demo_shift_backup_20260830` and `demo_shift_kudosfix_20260830` insure a demo-persona corpus that
+was DELETED on Aug 31, so they can no longer be restored to anything meaningful;
+`persona_wipe_backup_20260831` (240 kB, 266 rows) is the wipe's own rollback and is the only one
+with a live purpose, and even that is a month stale. Total ~380 kB against a 5.5 MB schema — drop
+them for tidiness and to clear three advisor notices, not for space.
 
 ## ★ Sweep #7 (Sep 1, 2026) — the cleanest one yet, and the only errors are my own probes
 **Postgres errors: 31 in 24h, and every single one is `app = mgmt-api`** — my own audit probes,
