@@ -1,4 +1,4 @@
-// v178091717027
+// v178091717028
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4076,7 +4076,11 @@ function reportError(message, stack, source) {
 // it. In the exercise picker that is the results list — so a drag begun on the search field, the
 // category chips or the sheet header did nothing, and with the keyboard up the list is a small
 // target. Mo reported it as "sometimes works, sometimes doesn't", which is exactly that geometry.
-// Everywhere else (chat, profile edit, exercise notes, sign-in) there was no gesture at all.
+// Everywhere else (chat, profile edit, exercise notes) there was no gesture at all. NOT sign-in:
+// AuthScreen has had its own `useSwipeDismiss` since 985dea3, and an earlier version of this
+// comment claimed otherwise. That hook is now deleted as redundant — this listener covers it,
+// and two mechanisms firing the same idempotent blur is how the next reader concludes one of
+// them is load-bearing when it is not.
 //
 // Module-level and document-wide on purpose: AppInner has seven early returns (auth, onboarding,
 // recovery, the public profile page), and those screens have real inputs too — an effect inside
@@ -9776,7 +9780,7 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                // claims to remove. A duplicate key in an object literal is not a syntax error and
                // nothing in this toolchain reports one.
                opacity: shown ? 1 : 0,
-               transition:`opacity ${SHEET_MS}ms ${ease}, bottom var(--seshd-kb-ms, 250ms) ${EASE_NAV}`,
+               transition:`opacity ${SHEET_MS}ms ${ease}, bottom 250ms ${EASE_NAV}`,
                // Taps during the exit would land on a panel already on its way out.
                pointerEvents: shown ? "auto" : "none",
                ...(backdropProps.style || {}) }}>
@@ -16014,7 +16018,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           This comment sits OUTSIDE the createPortal call on purpose: `createPortal((` takes ONE
           expression, so a JSX comment plus the element is two siblings and a syntax error. */}
       {showEdit && createPortal((
-        <div onClick={() => setShowEdit(false)} style={{ position:"fixed", ...KB_SAFE_INSET, transition:`bottom var(--seshd-kb-ms, 250ms) ${EASE_NAV}`, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+        <div onClick={() => setShowEdit(false)} style={{ position:"fixed", ...KB_SAFE_INSET, transition:`bottom 250ms ${EASE_NAV}`, background:"rgba(0,0,0,0.6)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
           <div onClick={e => e.stopPropagation()} className="seshd-scale-enter" style={{ background:C.surface, borderRadius:20, width:"100%", maxWidth:420, maxHeight:"85dvh", display:"flex", flexDirection:"column", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom:`1px solid ${C.divider}` }}>
               <button onClick={() => setShowEdit(false)} style={{ fontSize:14, color:C.text, background:"none", border:"none", cursor:"pointer", fontFamily:F }}>Cancel</button>

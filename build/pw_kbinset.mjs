@@ -238,6 +238,42 @@ await scene("Edit History > set fields", async () => {
   await p.waitForTimeout(400);
 }, "Pull Day");
 
+// ── The global swipe-to-dismiss must reach a screen BEHIND an early return ──────────────────
+// AuthScreen used to carry its own `useSwipeDismiss(blurIfTextInput)`. It was deleted as redundant
+// once the document-level handler shipped — but AppInner early-returns for the auth screen, so
+// "the global one covers it" is an assumption worth pinning rather than trusting. If this goes
+// red, that hook has to come back.
+// The signed-in seed is an init script, so it re-runs on every navigation and `localStorage.clear()`
+// alone is undone immediately. Init scripts run in ORDER, so a later one that clears the session
+// wins — the same ordering the Edit History scene relies on.
+await p.addInitScript(() => {
+  localStorage.removeItem("seshd_session");
+  localStorage.removeItem("seshd_onboarded");
+  localStorage.removeItem("seshd_v1");
+});
+await p.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+await p.waitForTimeout(2200);
+for (const t of [/sign in/i, /log in/i, /get started/i, /continue/i]) {
+  const l = p.getByText(t).locator("visible=true").first();
+  if (await l.count()) { await l.click({ force: true }).catch(() => {}); await p.waitForTimeout(900); }
+  if (await p.locator('input[type="email"], input[type="password"]').count()) break;
+}
+if (!(await p.locator("input").count())) {
+  check("auth screen reached", false, "no input — fixture broke, verdict unknown");
+} else {
+  await p.locator("input").first().focus();
+  const before = await p.evaluate(() => document.activeElement?.tagName);
+  await p.evaluate(() => {
+    const t = (x, y) => new Touch({ identifier: 1, target: document.body, clientX: x, clientY: y });
+    document.body.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [t(200, 300)], targetTouches: [t(200, 300)], changedTouches: [t(200, 300)] }));
+    document.body.dispatchEvent(new TouchEvent("touchmove", { bubbles: true, cancelable: true, touches: [t(200, 340)], targetTouches: [t(200, 340)], changedTouches: [t(200, 340)] }));
+  });
+  await p.waitForTimeout(200);
+  const after = await p.evaluate(() => document.activeElement?.tagName);
+  check("swipe-down dismisses the keyboard on the auth screen (an early return)",
+    before === "INPUT" && after !== "INPUT", `focus went ${before} -> ${after}`);
+}
+
 await b.close();
 console.log(`\n${fails ? fails + " FAILING" : "ALL PASS"} — ${checks} checks`);
 process.exit(fails ? 1 : 0);

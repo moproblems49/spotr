@@ -4327,6 +4327,37 @@ through the DATA rather than through a bad selector. Only re-running it against 
 deliberately flipped private settled it. Check what the fixture makes POSSIBLE before believing
 either a red or a green.
 
+## The post-keyboard cleanup (Sep 4) — three leftovers, and the one that had been wrong for a week
+Mo: "clean them, can do a code clean up if you think its right." The three backup tables are
+DROPPED (`demo_shift_backup_20260830`, `demo_shift_kudosfix_20260830`,
+`persona_wipe_backup_20260831`) — verified first that **0 personas remain**, so two of them insured
+rows that no longer exist and the third was the wipe's own rollback for a corpus nobody wants back.
+No backup tables remain in `public`, and three advisor INFO notices went with them.
+Code side, all three were real rather than tidying:
+- **`--seshd-kb-ms` was READ in three places and PUBLISHED nowhere.** The duration was dropped from
+  `setKb` once the plugin source showed `keyboardWillShow` sends only `{keyboardHeight}` — so the
+  variable could only ever resolve to its own 250ms fallback while reading as if it were dynamic.
+  Replaced with a literal `250ms` plus the reason. **A variable that cannot vary is worse than a
+  constant: it invites the next reader to go looking for what sets it.**
+- **`AuthScreen` still carried `useSwipeDismiss(blurIfTextInput)`** — the fourth call site the
+  document-level replacement never removed. Not a fight (both fire the same idempotent blur, both
+  passive, same 14px threshold), so it was dead weight rather than a bug; but it is exactly the
+  shape that makes a future reader think the global handler does not reach that screen.
+- **And the comment in App.jsx claiming sign-in "had no gesture at all" was FALSE** — AuthScreen has
+  had one since `985dea3`. It was written during the same change that removed the other three
+  hooks, so the claim and the survivor shipped together.
+**★ THE REMOVAL'S JUSTIFICATION IS NOW PINNED, BECAUSE IT RESTS ON A NON-OBVIOUS FACT.** `AppInner`
+early-returns for the auth screen, so "the global handler covers it" is an assumption about a
+document-level listener reaching a screen rendered from a different return. `pw_kbinset` drives a
+real downward TouchEvent on the sign-in form and asserts focus leaves the input; red-proofed by
+neutering the handler's threshold (`focus went INPUT -> INPUT`). If that ever goes red, the deleted
+hook has to come back rather than the check being relaxed.
+**Fixture note, the same ordering trap twice in one suite:** the signed-in seed is an
+`addInitScript`, so it re-runs on every navigation and a `localStorage.clear()` is undone
+immediately. Init scripts run in ORDER, so reaching a signed-OUT screen needs a LATER init script
+that removes the session keys — the same mechanism the Edit History scene uses to clear the live
+workout.
+
 ## ★ Sweep #8 (Sep 4, 2026) — two Postgres errors in 24h, and both are mine
 **Postgres: 169 LOG, 2 ERROR, and both ERRORs are `app = mgmt-api`** — my own MCP probes from the
 previous day (42703, undefined column). **Zero user-generated errors**, the third clean sweep in a

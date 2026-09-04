@@ -3,7 +3,7 @@
 // iOS Keychain — so it was dead weight in the eager bundle for the overwhelming majority of opens.
 import { useState, useRef } from "react";
 import { devWarn } from "../engine/core.js";
-import { F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, SUPABASE_URL, SUPABASE_KEY, useSwipeDismiss, blurIfTextInput } from "../App.jsx";
+import { F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, SUPABASE_URL, SUPABASE_KEY } from "../App.jsx";
 
 export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null, theme = "light" }) {
   const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup" | "reset"
@@ -38,7 +38,6 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   // no way to reach them. Mo hit this live. Same fix as the rest of the app: make the container
   // scrollable and wire the same swipe-down-to-dismiss-keyboard gesture WorkoutTracker's exercise
   // scroller already uses, rather than inventing a second mechanism.
-  const swipeDismissKeyboard = useSwipeDismiss(blurIfTextInput);
 
   // Forgot-password: always report success — never reveal whether an account exists.
   async function handleReset() {
@@ -358,7 +357,6 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           scroll gesture itself is never silently claimed by anything else on this container. */}
       <div
         ref={formRef}
-        {...swipeDismissKeyboard}
         // focusin/focusout (React's onFocus/onBlur, which bubble) rather than per-input handlers:
         // one pair here covers every field in every mode, including ones added later.
         onFocus={e => { if (e.target?.tagName === "INPUT") setTyping(true); }}
