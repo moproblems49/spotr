@@ -1,4 +1,4 @@
-// v178091717029
+// v178091717030
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17953,8 +17953,18 @@ function AppInner() {
               default:
                 break;
             }
+            // ★ A SYNCHRONOUS try/catch CANNOT CATCH A REJECTED PROMISE, AND THIS ONE REJECTS
+            // ROUTINELY. `removeAllDeliveredNotifications` rejects with "event
+            // capacitorDidRegisterForRemoteNotifications not called" whenever the plugin's
+            // `appDelegateRegistrationCalled` is still false (PushNotificationsPlugin.swift:143)
+            // — which is a RACE on foreground, not a failure: the badge-clear can run before APNs
+            // registration completes. The bare try/catch let that rejection escape to
+            // `unhandledrejection`, so it was reported as a crash on every launch and became 30 of
+            // the newest rows in `client_errors`. It read exactly like a missing push entitlement
+            // and nearly cost a Mac day; the account has a real 64-char APNs token, so
+            // registration was working the whole time. Await the rejection, not just the throw.
             // Clear the app icon badge after the user engages with a notification.
-            try { PN.removeAllDeliveredNotifications?.(); } catch (e) {}
+            try { PN.removeAllDeliveredNotifications?.()?.catch?.(() => {}); } catch (e) {}   // see note below
           } catch (e) {}
         });
         if (cancelled) { try { aListener?.remove?.(); } catch (e) {} }
@@ -17971,7 +17981,7 @@ function AppInner() {
           const sl = await AppPlug.addListener("appStateChange", (st) => {
             if (st?.isActive) {
               try { Badge?.clear?.(); } catch (e) {}
-              try { PN.removeAllDeliveredNotifications?.(); } catch (e) {}
+              try { PN.removeAllDeliveredNotifications?.()?.catch?.(() => {}); } catch (e) {}   // see note below
             }
           });
           if (cancelled) { try { sl?.remove?.(); } catch (e) {} }

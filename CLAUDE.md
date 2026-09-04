@@ -4334,15 +4334,30 @@ day and carries all the web code, and never the NATIVE SHELL, which changes only
 is what decides whether push notifications, HealthKit and universal links work at all. `client_errors`
 had the same blind spot — `app_version` carried the bundle alone, so a native-shell failure was
 unattributable to a build.
-**The live symptom that needed it:** `capacitorDidRegisterForRemoteNotifications not called` is
-firing on Mo's phone today (30 occurrences, newest on bundle `2026-09-04a`). Push registration is
-therefore failing, which silences DMs, kudos, comments, follows and streak reminders. **The CODE is
-correct** — verified: `AppDelegate.swift:53-58` has both APNs forwarding methods, `Info.plist` has
-`UIBackgroundModes: remote-notification`, `App.entitlements` exists with `aps-environment` +
-healthkit + associated-domains and is referenced by BOTH build configs, and
-`@capacitor/push-notifications` is in package.json. So the failure means the INSTALLED SHELL
-predates `877b9fe` (the Aug 25 commit that added the entitlements file), and nothing in the app
-could confirm that.
+**★★ AND THE SYMPTOM THAT PROMPTED IT WAS MISDIAGNOSED BY ME, TWICE OVER — PUSH WAS NEVER BROKEN.**
+`capacitorDidRegisterForRemoteNotifications not called` fires 30 times in `client_errors` and I
+read it as a failed push registration, recommended holding the release, and wrote that here as
+fact. **Both wrong, and the plugin's own source says so.** That string is emitted by
+`getDeliveredNotifications` / `removeDeliveredNotifications`
+(`PushNotificationsPlugin.swift:126,143`), NOT by `register()` — it means the plugin's
+`appDelegateRegistrationCalled` was still false at the moment one of those was called, which on the
+foreground badge-clear path is a **RACE**, not a failure. The decisive measurement: `mhaggag` holds
+a real **64-character APNs token**, so registration has been working the whole time, on the very
+build that produced the errors (native **1.0 (15)** — newer than the repo's `CURRENT_PROJECT_VERSION
+= 13`, because Xcode auto-increments on archive, so the installed shell postdates the Aug-25
+entitlements commit and carries them).
+**The real bug is one line and is OTA-fixable: A SYNCHRONOUS `try/catch` CANNOT CATCH A REJECTED
+PROMISE.** Both call sites were `try { PN.removeAllDeliveredNotifications?.(); } catch (e) {}` — the
+catch only ever covered a synchronous throw, so the rejection escaped to `unhandledrejection` and
+was reported as a crash on every launch. `?.catch?.(() => {})` added at both. Proven by driving both
+shapes: bare try/catch -> 1 unhandled rejection, with `.catch()` -> 0.
+**The lesson is the one this file keeps repeating and I keep paying for: READ WHAT EMITS AN ERROR
+BEFORE BELIEVING WHAT IT SAYS.** The message named registration; the code that raises it has nothing
+to do with registration. Same shape as the keyboard week — the answer was in the plugin's Swift
+source both times, and both times I reasoned from the symptom instead of opening it.
+**So no Mac day is required to release**, and HealthKit was never in question either (real Body
+Battery readings, 2 accounts with a `body_log`).
+
 `@capacitor/app` was already a dependency and `getInfo()` was never called. It is read at boot into
 `_nativeBuild` now, rendered under the bundle id in Settings ("app 1.0 (9)"), and stamped on every
 device report as `<bundle> / native <version> (<build>)`. Sim: `pw_nativebuild`, which stubs
@@ -4351,10 +4366,10 @@ app sets for itself would test nothing. Red-proofed by hiding the row.
 **Note HealthKit is NOT affected and that was checked rather than assumed**: Mo has real Body
 Battery readings and 2 accounts carry a `body_log`, so that permission survived on the same shell.
 It is specifically push.
-**The release decision this feeds:** the approved build is worth releasing to friends only if its
-shell carries the push entitlement. Read the number off Settings on the installed build — if it
-predates the Mac-day build, push is dead for every friend who installs it, and OTA cannot fix it
-because the permission is compiled in.
+**The release decision this fed, resolved:** Mo read `app 1.0 (15)` off the new Settings line; the
+shell postdates the entitlements and holds a valid APNs token, so the approved build is fine to
+release. The native-build readout stays valuable regardless — it is what turned "we cannot tell"
+into a number in one relaunch, and every device report now carries it.
 
 ## The post-keyboard cleanup (Sep 4) — three leftovers, and the one that had been wrong for a week
 Mo: "clean them, can do a code clean up if you think its right." The three backup tables are
