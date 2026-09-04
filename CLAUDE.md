@@ -4327,6 +4327,35 @@ through the DATA rather than through a bad selector. Only re-running it against 
 deliberately flipped private settled it. Check what the fixture makes POSSIBLE before believing
 either a red or a green.
 
+## ★★ THE APP COULD NOT SAY WHICH NATIVE BUILD IT WAS (Sep 4) — and that blocked a release call
+Mo asked whether to release the already-approved app to friends. The answer turns on ONE fact and
+the app could not report it: **Settings showed only the OTA bundle**, which changes several times a
+day and carries all the web code, and never the NATIVE SHELL, which changes only on a Mac day and
+is what decides whether push notifications, HealthKit and universal links work at all. `client_errors`
+had the same blind spot — `app_version` carried the bundle alone, so a native-shell failure was
+unattributable to a build.
+**The live symptom that needed it:** `capacitorDidRegisterForRemoteNotifications not called` is
+firing on Mo's phone today (30 occurrences, newest on bundle `2026-09-04a`). Push registration is
+therefore failing, which silences DMs, kudos, comments, follows and streak reminders. **The CODE is
+correct** — verified: `AppDelegate.swift:53-58` has both APNs forwarding methods, `Info.plist` has
+`UIBackgroundModes: remote-notification`, `App.entitlements` exists with `aps-environment` +
+healthkit + associated-domains and is referenced by BOTH build configs, and
+`@capacitor/push-notifications` is in package.json. So the failure means the INSTALLED SHELL
+predates `877b9fe` (the Aug 25 commit that added the entitlements file), and nothing in the app
+could confirm that.
+`@capacitor/app` was already a dependency and `getInfo()` was never called. It is read at boot into
+`_nativeBuild` now, rendered under the bundle id in Settings ("app 1.0 (9)"), and stamped on every
+device report as `<bundle> / native <version> (<build>)`. Sim: `pw_nativebuild`, which stubs
+`App.getInfo` the way a device supplies it so the REAL boot path runs — a guard reading a value the
+app sets for itself would test nothing. Red-proofed by hiding the row.
+**Note HealthKit is NOT affected and that was checked rather than assumed**: Mo has real Body
+Battery readings and 2 accounts carry a `body_log`, so that permission survived on the same shell.
+It is specifically push.
+**The release decision this feeds:** the approved build is worth releasing to friends only if its
+shell carries the push entitlement. Read the number off Settings on the installed build — if it
+predates the Mac-day build, push is dead for every friend who installs it, and OTA cannot fix it
+because the permission is compiled in.
+
 ## The post-keyboard cleanup (Sep 4) — three leftovers, and the one that had been wrong for a week
 Mo: "clean them, can do a code clean up if you think its right." The three backup tables are
 DROPPED (`demo_shift_backup_20260830`, `demo_shift_kudosfix_20260830`,

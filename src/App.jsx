@@ -1,4 +1,4 @@
-// v178091717028
+// v178091717029
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4032,10 +4032,23 @@ const _reportedErrors = new Set();
 // only thing that knows the running bundle id (the web build has none), so read it once at boot
 // and cache it; reportError is called from error handlers and must stay synchronous.
 let _bundleId = "unknown";
+// ★ THE NATIVE BUILD, SEPARATELY FROM THE OTA BUNDLE — THEY ANSWER DIFFERENT QUESTIONS.
+// `_bundleId` is the over-the-air bundle, which changes several times a day and carries all the
+// web code. `_nativeBuild` is the SHELL the App Store installed, which changes only on a Mac day
+// and is what decides whether push notifications, HealthKit and universal links work at all.
+// Settings showed only the first, so "which native build is on this phone" was unanswerable from
+// the app — and that is exactly the question that stalled the release decision on Sep 4, because a
+// shell built before the entitlements landed cannot register for push no matter how current the
+// bundle is. Crash reports had the same blind spot: a native-shell failure was unattributable.
+let _nativeBuild = "";
+export function nativeBuildLabel() { return _nativeBuild; }
 try {
   const _p = typeof window !== "undefined" && window.Capacitor?.Plugins?.CapacitorUpdater;
   if (_p) _p.current().then(r => { _bundleId = r?.bundle?.version || "built-in"; }).catch(() => { _bundleId = "built-in"; });
   else _bundleId = "web";
+  const _a = typeof window !== "undefined" && window.Capacitor?.Plugins?.App;
+  // getInfo resolves only on a real device; on web it is absent and this stays "".
+  if (_a?.getInfo) _a.getInfo().then(i => { if (i?.version) _nativeBuild = `${i.version} (${i.build})`; }).catch(() => {});
 } catch { /* never let telemetry setup break boot */ }
 
 function reportError(message, stack, source) {
@@ -4065,7 +4078,7 @@ function reportError(message, stack, source) {
         // that had not been touched since June — so every crash report and every piece of user
         // feedback for three months claimed a version that was already stale when it was written,
         // which is worse than an empty column because it reads as an answer. See _bundleId above.
-        app_version: _bundleId,
+        app_version: _nativeBuild ? `${_bundleId} / native ${_nativeBuild}` : _bundleId,
         ua: (typeof navigator !== "undefined" ? navigator.userAgent : "").slice(0, 300),
       }),
     }).catch(() => {});
@@ -9912,6 +9925,10 @@ function AppVersionRow({ C }) {
         <div style={{ fontSize:14, color:C.text }}>App version</div>
         {note && <div style={{ fontSize:11, color:C.sub, marginTop:3, lineHeight:1.35 }}>{note}</div>}
         {!note && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>Tap to check for updates</div>}
+        {/* The native shell, which only a new App Store build changes — see nativeBuildLabel(). */}
+        {nativeBuildLabel() && (
+          <div style={{ fontSize:11, color:C.muted, marginTop:2, fontFamily:MONO }}>app {nativeBuildLabel()}</div>
+        )}
       </div>
       <div style={{ fontFamily:MONO, fontSize:11, color:C.sub, flexShrink:0 }}>{checking ? "checking…" : shown}</div>
     </button>
