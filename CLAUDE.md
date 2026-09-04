@@ -4418,6 +4418,37 @@ immediately. Init scripts run in ORDER, so reaching a signed-OUT screen needs a 
 that removes the session keys — the same mechanism the Edit History scene uses to clear the live
 workout.
 
+## The new-person walkthrough (Sep 4) — guest mode is sound, and one real piece of friction
+Mo: "pretend to be a new person and go through the app, see if anything needs to be changed,
+everything works even without registering." Driven end to end at 402x874 with NO session and an
+empty store — the emptiness IS the fixture — checking every screen for junk values
+(`NaN`/`undefined`/`[object Object]`/`▲ 0%`) and listening for page errors.
+**CLEAN, and worth not re-litigating:** welcome -> **"Start Tracking"** (the guest entry point; there
+is no "continue as guest" wording) -> guest banner reading "Guest mode / Data saved on this device
+only / Save progress" -> Workout, Exercises, History, Discover and Profile all render real,
+specific empty-state copy -> Quick Start -> Add Exercise (full library, categories) -> log 135x8
+through the NumberPad -> tick done -> Finish -> "Finish workout?" confirm -> summary, and
+**`seshd_v1.history` gains the session**, so a guest's workout genuinely persists locally. Zero page
+errors, zero junk values on any screen. The plate maths ("PER SIDE (45 lbs bar) 1x45"), e1RM 171 and
+the 1,080 lbs volume were all correct on the way through.
+**★ THE ONE FINDING: AFTER TICKING A SET THE REST TIMER OPENS FULL-SCREEN AND COVERS `Finish`.**
+Hit-tested, not eyeballed: with the timer up, `elementFromPoint` at the centre of the Finish button
+returns the timer overlay, `blocked: true`. Tapping its **Minimize** control clears it
+(`blocked: false`) and Finish then works normally. So it is friction, not breakage — but the shape
+is bad for a first-timer: you tick your last set, the screen is taken over by a 2:00 countdown, and
+the button you are looking for is behind it. Not raised as a bug by Mo in months of use, because he
+knows to minimise it. **Product decision, deliberately NOT changed unilaterally** — when the timer
+takes the screen affects every workout, not just the first.
+**★ AND FOUR OF MY OWN PROBE BUGS, EVERY ONE ALREADY IN THIS FILE:** the guest entry point is
+"Start Tracking" and I searched for "continue as guest", so the first run reported the whole app
+broken; the NumberPad's close key is `aria-label="Hide keypad"`, not a "Done" text button, and my
+`if (count())` guard let that step SKIP SILENTLY rather than fail; returning to the Workout tab from
+Profile lands on the remembered sub-tab (History), which read as "no Quick Start"; and worst,
+**"is `Discard` still in `innerText`?" cannot tell a finished workout from an unfinished one**,
+because an overlay does not remove the DOM beneath it — the confirm sheet was open at z=200 the
+whole time and I reported Finish as broken three times before asking what was actually PAINTED.
+A guard that greps `innerText` for a word the covered screen also contains is worth nothing.
+
 ## ★ Sweep #8 (Sep 4, 2026) — two Postgres errors in 24h, and both are mine
 **Postgres: 169 LOG, 2 ERROR, and both ERRORs are `app = mgmt-api`** — my own MCP probes from the
 previous day (42703, undefined column). **Zero user-generated errors**, the third clean sweep in a
