@@ -1,4 +1,4 @@
-// v178091717030
+// v178091717031
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3726,7 +3726,7 @@ function generateShareCode(prefix = "IGNITE") {
   for (let i = 0; i < 8; i++) suffix += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
   return `${prefix}-${suffix}`;
 }
-function normalizeShareCode(input) {
+export function normalizeShareCode(input) {
   if (!input) return "";
   return String(input).toUpperCase().replace(/[^A-Z0-9-]/g, "").trim();
 }
@@ -8838,7 +8838,7 @@ const LAST_ACTIVITY_KEY = "seshd_wlast_activity";
 // Retries only on 23505 (unique violation), which at 31^8 with a few thousand live codes is a
 // ~1e-8 event — the loop is a formality, not a hot path. Any other error propagates, so a genuine
 // failure still surfaces as "Couldn't generate share code" rather than being retried five times.
-async function mintShareCode(prefix, write) {
+export async function mintShareCode(prefix, write) {
   let lastErr = null;
   for (let i = 0; i < 5; i++) {
     const code = generateShareCode(prefix);
@@ -8880,7 +8880,22 @@ function CodeRedeemRow({ C, store, setStore, currentUserId, onClose, token, init
       // code itself is the bearer credential — RLS can't see the query filter, only the row, so
       // a blanket "anyone can read" policy would let any authenticated user bulk-list every
       // shared code instead of just the one they were given.
-      if (c.startsWith("WO-")) {
+      // A COACH- code is not a preview-then-import: redeeming IS the action, and the RPC claims
+      // the link atomically in its own WHERE clause. So there is no `preview` stage to accept —
+      // by the time this returns, the grant either exists or the code was never valid.
+      // Deliberately NOT added to PostCard's caption detector regex: a program code in a caption
+      // is a feature, whereas auto-offering "import" on a coach code pasted into a public post
+      // would invite someone to hand their training log to a stranger who scrolled past.
+      if (c.startsWith("COACH-")) {
+        const rows = await sb.rpc("redeem_coach_code", { p_code: c }, token);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          setError("Code not found");
+        } else {
+          const a = rows[0];
+          toast(`You can now see @${a.username}'s training`, "success");
+          onClose && onClose();
+        }
+      } else if (c.startsWith("WO-")) {
         const rows = await sb.rpc("redeem_workout_code", { p_code: c }, token);
         if (!Array.isArray(rows) || rows.length === 0) {
           setError("Code not found");
@@ -9255,6 +9270,7 @@ export function CreateExercisePicker({ name, C, store, setStore, currentUserId, 
 // EDIT HISTORY MODAL — lazy-loaded (src/lazy/EditHistoryModal.jsx). Opened only from a
 // History row's edit action.
 const EditHistoryModal = lazy(() => import("./lazy/EditHistoryModal.jsx"));
+const CoachScreen = lazy(() => import("./lazy/CoachScreen.jsx"));
 
 // Swipeable stack of progress-insight cards (Robinhood-style): swipe a card away to
 // dismiss it and reveal the next. No close button. Tracks finger; snaps back if the
@@ -15405,6 +15421,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const coverDragRef = useRef(null);
   const coverImgRef = useRef(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showCoaching, setShowCoaching] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSending, setFeedbackSending] = useState(false);
   async function submitFeedback() {
@@ -16124,6 +16141,15 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       ), document.body)}
 
       {/* Feedback modal — portaled for the same reason as above. */}
+      {/* Gated on the flag rather than rendered-and-hidden: a lazy component mounted
+          unconditionally fetches its chunk on every mount of the parent, which defeats the whole
+          point of splitting it out (the documented AICoachModal trap). */}
+      {showCoaching && (
+        <Suspense fallback={null}>
+          <CoachScreen C={C} currentUserId={currentUserId} token={token} unit={displayUnit}
+            onBack={() => setShowCoaching(false)}/>
+        </Suspense>
+      )}
       <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000} dragHandle
         panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.overlayEdge}`, padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
         {showFeedback && (
@@ -16563,6 +16589,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 }}>
                   <div style={{ fontSize:14, color:C.text }}>Export workouts <span style={{ fontSize:11, color:C.sub }}>(CSV / spreadsheet)</span></div>
                   <Icon name="share" size={15} color={C.sub}/>
+                </button>
+                <button onClick={() => { setShowSettings(false); setShowCoaching(true); }} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Coaching</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Let a coach see your training, or view an athlete's</div>
+                  </div>
+                  <span style={{ fontSize:14, color:C.sub, flexShrink:0 }}>›</span>
                 </button>
                 <button onClick={() => { setShowSettings(false); setShowFeedback(true); }} style={{
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
@@ -17431,7 +17468,7 @@ const ChatView = lazy(() => import("./lazy/MessagesScreen.jsx").then(m => ({ def
 // house gesture pattern (see CLAUDE.md): exactly one setState on the first frame past the
 // threshold (kills the CSS transition), every later frame writes the transform straight to
 // the node ref, and the end handler reads the live ref values — not state — to decide.
-function EdgeSwipeBack({ onBack, children, style }) {
+export function EdgeSwipeBack({ onBack, children, style }) {
   const nodeRef = useRef(null);
   const g = useRef({ armed:false, active:false, x0:0, y0:0, dx:0, lastX:0, lastT:0, vx:0 }).current;
   const [dragging, setDragging] = useState(false);

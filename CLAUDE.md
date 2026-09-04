@@ -4327,6 +4327,62 @@ through the DATA rather than through a bad selector. Only re-running it against 
 deliberately flipped private settled it. Check what the fixture makes POSSIBLE before believing
 either a red or a green.
 
+## ★★ COACH LINKS (Sep 4) — the cheap demand test for the trainer tier, and it is NOT a follow
+Mo asked to brainstorm revenue before releasing. The parked trainer-tier note already said the
+viewing half is nearly free and that a read-only "share my log" code is the way to test demand
+without a subscription, an Apple cut or a new access class. Built.
+**A COACH LINK is a revocable, read-only grant over ONE athlete's training log.** Deliberately not
+a follow: a follow is social, reads as mutual, and grants the feed and profile, while a coaching
+relationship needs none of that and needs the one thing a follow cannot give — the athlete revoking
+alone, instantly, without it being a social act. **Scope is exactly two tables**, `workout_history`
+and `personal_records`. Not posts, not messages, not the body log, not the private profile columns.
+The value of a narrow grant is that handing the code to the wrong person is survivable; if it ever
+grows a third table, re-run the role-sim.
+**★ AND MY FIRST RLS DRAFT LET A COACH GRANT THEMSELVES ANY ATHLETE'S LOG.** The coach's UPDATE
+policy checked `coach_id = auth.uid()` in both USING and WITH CHECK — which the coach still
+satisfies after rewriting `athlete_id` to any uuid they like. **An RLS `WITH CHECK` constrains the
+ROW, not which COLUMNS moved**, so a policy cannot express immutability; a trigger can.
+`trg_coach_link_immutable` pins every column except `revoked_at`, and the redeem RPC (SECURITY
+DEFINER) bypasses it through a `set_config(..., is_local => true)` flag scoped to that one
+statement. Caught by writing the escalation probe before believing the policy — it is the check
+that returned `BLOCKED`.
+**★ AND THE `profile_is_public` SCAR FIRED TWICE IN ONE SITTING, WHICH IS THE THIRD AND FOURTH
+TIMES IT IS RECORDED HERE. An RLS policy calls its helpers with the CALLER'S privileges**, so
+revoking EXECUTE on `is_active_coach_of` does not harden the policy — it breaks every read of the
+table with `42501 permission denied for function`. It needs a grant for **every role that reads the
+table, `anon` included**: without it a signed-out read of `workout_history` went from "0 rows" to a
+hard error, which is a louder and worse failure than the one being prevented. What makes the grant
+safe is the SHAPE — the function takes only the athlete and reads the coach from `auth.uid()`, so a
+caller can only ask "am I coaching X?", a fact they could establish by attempting the read anyway.
+The two-argument form I wrote first would have let any signed-in user enumerate who coaches whom.
+**Verified by ROW COUNT as five callers, in a transaction that restored everything** (checked
+after: follows back to 2, `is_public` back to true, zero test rows): no link -> 0; unredeemed link
+-> 0 and the outstanding code is not enumerable by the coach; redeemed -> 73 workouts and 61 PRs;
+scope -> 0 third-party DMs and 0 base-profile rows; revoked -> 0 immediately; anon -> 0; unrelated
+signed-in user -> 0. **Both masks had to be removed first or the whole thing is vacuous** — every
+account in this database is `is_public = true` (which alone grants the PRs) and every pair already
+follows (which alone grants the log). The first run reported two false failures for exactly that
+reason, and a third because `set local role anon` was issued while the coach's JWT claims were
+still set, so `auth.uid()` kept returning the coach.
+**Sim: `pw_coachlink`** (15 checks) — the DB half is role-sim territory that no browser can see, so
+this guards the CLIENT half, where the failure is quiet: a mint that never reaches the server, a
+revoke that only updates local state, or a screen rendering an empty list because the query names a
+table that no longer exists. It asserts the WRITE, not the toast.
+**★ AND THREE OF ITS OWN CHECKS WERE WRONG BEFORE THEY WERE RIGHT, ALL DOCUMENTED CLASSES:**
+`force: true` **skips scrolling into view**, so the mint button — at the bottom of a scrollable
+column — was clicked at a coordinate outside the viewport and something else received the event:
+no error, no request, and the check read as "minting does not work" when the app was fine (scroll
+first, then click normally). Two checks passed with ZERO writes ("never a DELETE", "the code left
+the screen" — both satisfied by nothing having happened) and are now gated on a code actually
+having been minted. And the confirm check failed for a REAL bug it found: `confirmAction` takes
+`confirmLabel`, and I passed `confirmText`, which is silently ignored — so both destructive sheets
+fell back to a generic "Confirm" instead of "Remove"/"Delete code".
+**And the stale-bundle trap again:** the guard reported the screen crashing with `ReferenceError:
+unit is not defined` after I had already fixed it in source — `npm run build` had not been re-run,
+so it was measuring the old chunk. `sim_undef` had caught the real thing first, but only when read
+by EXIT CODE: three greps for its verdict matched per-file PASS lines instead, which is the
+`tail -1` scar for the third time in this file. **Read the exit code.**
+
 ## ★★ THE APP COULD NOT SAY WHICH NATIVE BUILD IT WAS (Sep 4) — and that blocked a release call
 Mo asked whether to release the already-approved app to friends. The answer turns on ONE fact and
 the app could not report it: **Settings showed only the OTA bundle**, which changes several times a
