@@ -137,12 +137,16 @@ async function run(groupsOnly) {
     });
     await page.waitForTimeout(500);
     await page.evaluate(() => {
-      const b = [...document.querySelectorAll("button")].find(x => /group/i.test((x.textContent||"").trim()) && !/share to feed/i.test((x.textContent||"").trim()));
+      // MATCH THE HOOK, NOT THE LABEL. The two share buttons became a side-by-side pair, and
+      // their text now depends on whether the user is in a group ("Feed" vs "Share to Feed") —
+      // so the old /share to feed/ selector silently stopped matching and this suite blamed the
+      // app. `data-share-target` is the contract; restyle around it.
+      const b = document.querySelector('[data-share-target="groups"]');
       b && b.click();
     });
   } else {
     await page.evaluate(() => {
-      const b = [...document.querySelectorAll("button")].find(x => /share to feed/i.test((x.textContent||"").trim()));
+      const b = document.querySelector('[data-share-target="feed"]');
       b && b.click();
     });
   }

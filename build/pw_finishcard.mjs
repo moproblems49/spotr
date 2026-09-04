@@ -34,8 +34,11 @@ page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0
 
 await page.addInitScript(([me, sess]) => {
   localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
-    programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [], groups: [],
+    programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [], groups: [{ id:"g1", name:"Seshd Crew", member_ids:[me], members:[me] }],
     profile: { username:"momo", name:"Mo" }, users: [{ id: me, username:"momo", name:"Mo", followers:[], following:[] }] }));
+  // A GROUP IS PART OF THE FIXTURE, NOT DECORATION. The share row is two-up only when there is a
+  // second destination to sit beside; with no groups the slot holds a full sentence of hint copy
+  // and stays full width. A groupless fixture therefore cannot see the two-up layout at all.
   localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
   localStorage.setItem("seshd_onboarded", "1");
   localStorage.setItem("seshd_custom_merge_v1", "1");
@@ -50,6 +53,12 @@ await page.route("**/rest/v1/**", r => {
   if (r.request().method() !== "GET") return J([{}]);
   if (/\/rest\/v1\/(public_)?profiles\?/.test(u))
     return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true }]);
+  // THE GROUP HAS TO COME FROM THE STUB, NOT localStorage. `loadUserData` replaces `groups`
+  // wholesale from the server on boot, so a group seeded only into `seshd_v1` is gone by the time
+  // the sheet renders -- which showed up here as "Share to Feed" (the no-groups, full-width
+  // layout) and read as a broken app rather than a thin fixture.
+  if (/\/rest\/v1\/groups\?/.test(u))
+    return J([{ id:"g1", name:"Seshd Crew", member_ids:[ME], created_by: ME }]);
   return J([]);
 });
 await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
@@ -57,6 +66,36 @@ await page.waitForTimeout(2600);
 
 await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish$/i.test((x.textContent||"").trim())); b && b.click(); });
 await page.waitForTimeout(700);
+// ── The finish CONFIRM is a centred dialog, and it offers exactly two answers ────────────────
+// It was a bottom sheet with a third button ("Save & send to groups") that reached the same
+// outcome as the summary's own "Groups only" — a second call site for one destination, and the
+// only thing keeping the `showGroupShare` picker alive. Anchored at the bottom it also left a
+// band of empty sheet under "Keep going". Both are asserted here because a revert to either
+// shape is silent: every other check in this file passes on the bottom-sheet version.
+const D = await page.evaluate(() => {
+  const t = [...document.querySelectorAll("div")].find(d => /^Finish workout\?$/.test((d.textContent||"").trim()));
+  const panel = t && t.parentElement, back = panel && panel.parentElement;
+  if (!panel || !back) return null;
+  const pr = panel.getBoundingClientRect(), br = back.getBoundingClientRect();
+  return {
+    align: getComputedStyle(back).alignItems,
+    // Gap above vs below the card. A bottom sheet has ~0 below; a centred dialog has both.
+    above: Math.round(pr.top - br.top), below: Math.round(br.bottom - pr.bottom),
+    inset: Math.round(pr.left - br.left),
+    labels: [...panel.querySelectorAll("button")].map(b => (b.textContent||"").trim()),
+  };
+});
+check("the finish confirm renders", !!D, "no 'Finish workout?' dialog");
+if (D) {
+  check("it is centred, not anchored to the bottom edge",
+    D.align === "center" && D.below > 40 && Math.abs(D.above - D.below) < 40,
+    `align:${D.align} above:${D.above} below:${D.below}`);
+  check("the card is inset from the screen edges", D.inset >= 14, `left inset ${D.inset}px`);
+  check("it offers exactly two answers", D.labels.length === 2, D.labels.join(" | "));
+  check("the redundant groups shortcut is gone",
+    !D.labels.some(l => /send to groups/i.test(l)), D.labels.join(" | "));
+}
+
 await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish workout$/i.test((x.textContent||"").trim())); b && b.click(); });
 await page.waitForTimeout(2600);
 
@@ -110,6 +149,14 @@ if (M) {
       scrollerH: Math.round(sc.getBoundingClientRect().height),
       footerH: Math.round(footer.getBoundingClientRect().height),
       footerPadBottom: parseFloat(getComputedStyle(footer).paddingBottom) || 0,
+      // Every button in the footer, with the row it sits on. Two buttons whose vertical centres
+      // are within 6px are on the same row — cheaper and more honest than reading the DOM shape,
+      // which a restyle is free to change.
+      btns: [...footer.querySelectorAll("button")].map(b => {
+        const r = b.getBoundingClientRect();
+        return { t: (b.textContent||"").trim(), mid: Math.round(r.top + r.height / 2), w: Math.round(r.width) };
+      }),
+      footerW: Math.round(footer.getBoundingClientRect().width),
     };
   });
   check("the finish sheet's footer/scroller split is measurable", !!L, "structure changed");
@@ -121,6 +168,30 @@ if (M) {
     check("the scrolling area keeps the majority of the sheet",
       L.scrollerH / L.panelH > 0.65,
       `scroller ${L.scrollerH} of panel ${L.panelH} = ${Math.round(100 * L.scrollerH / L.panelH)}%`);
+
+    // ── Two rows, not four ───────────────────────────────────────────────────────────────────
+    // Four full-width stacked exits is what produced the 199px footer. The pairing is also the
+    // hierarchy: row one is the two share DESTINATIONS, row two the two ways to leave without
+    // sharing. Assert by measured geometry so a restyle that keeps the shape stays green.
+    const rows = [...new Set(L.btns.map(b => b.mid))].sort((a, b) => a - b)
+      .reduce((acc, m) => (acc.some(x => Math.abs(x - m) <= 6) ? acc : [...acc, m]), []);
+    const rowOf = b => rows.findIndex(m => Math.abs(m - b.mid) <= 6);
+    const feed = L.btns.find(b => /feed/i.test(b.t));
+    const groups = L.btns.find(b => /groups only/i.test(b.t));
+    const dont = L.btns.find(b => /don't share/i.test(b.t));
+    const undo = L.btns.find(b => /undo finish/i.test(b.t));
+    check("all four footer actions are present",
+      !!(feed && groups && dont && undo), L.btns.map(b => b.t).join(" | "));
+    if (feed && groups && dont && undo) {
+      check("the two share destinations share one row", rowOf(feed) === rowOf(groups),
+        `feed mid ${feed.mid}, groups mid ${groups.mid}`);
+      check("each takes about half the footer width",
+        Math.abs(feed.w - groups.w) < 40 && feed.w < L.footerW * 0.62,
+        `feed ${feed.w}px, groups ${groups.w}px, footer ${L.footerW}px`);
+      check("the two non-share exits share one row", rowOf(dont) === rowOf(undo),
+        `don't-share mid ${dont.mid}, undo mid ${undo.mid}`);
+      check("the footer is two rows, not four", rows.length === 2, `${rows.length} rows`);
+    }
   }
 }
 

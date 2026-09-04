@@ -1,20 +1,20 @@
 // "SAVE THIS WORKOUT AND SEND IT ONLY TO GROUPS, SKIP THE FEED" MUST ACTUALLY WORK.
 //
-// There are TWO implementations of this idea in the file and only one is reachable:
+// There is now exactly ONE route to it, and that is the point of this suite.
 //
-//   * The post-finish SUMMARY has group checkboxes plus a "Groups Only" button. This is the live
-//     path and what this suite pins.
-//   * `showGroupShare` — a pre-finish picker reached from the Finish modal — has a complete sheet,
-//     a complete `finishWorkout(false, {groupIds, groupOnly:true})` fast path, and even a "Back"
-//     button returning to the Finish modal. But `setShowGroupShare(true)` HAS NEVER EXISTED in any
-//     commit: the state, the handler and the sheet all landed in 02ab7f3 (2026-07-05) without a
-//     trigger. It has been dead for its entire life.
+//   * The post-finish SUMMARY has group checkboxes plus a "Groups only" button. This is it.
+//   * `showGroupShare` — a pre-finish picker reached from the Finish modal's "Save & send to
+//     groups" — was a SECOND implementation of the same outcome. It landed in 02ab7f3
+//     (2026-07-05) with no trigger at all and sat dead for six weeks; a trigger was added, and
+//     then Mo removed the button on Sep 4 as redundant ("we get asked to 'save & send to groups',
+//     which feels redundant"). The picker, its state, the `groupShare` parameter and its
+//     finishWorkout fast path were deleted WITH it — leaving them would have recreated the exact
+//     dead-UI shape this file was written about.
 //
-// The distinction matters because the dead path is the one that SKIPS the summary, and the live
-// path is the one that goes through it — so "does groups-only work" cannot be answered by reading
-// the finishWorkout signature. It has to be driven.
+// So this suite pins two things: the live path works, and the second route has not grown back.
+// Two call sites for one destination is how they drift; the first pair already did.
 //
-// What must hold: picking a group and pressing "Groups Only" posts with groupOnly:true and a
+// What must hold: picking a group and pressing "Groups only" posts with groupOnly:true and a
 // non-empty groupIds, and does NOT create a feed post.
 import { chromium } from "playwright-core";
 
@@ -83,9 +83,10 @@ check("Finish modal opens", await page.evaluate(() => /Finish workout\?/i.test(d
 await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish workout$/i.test((x.textContent||"").trim())); b && b.click(); });
 await page.waitForTimeout(2600);
 const sumTxt = await page.evaluate(() => document.body.innerText);
-check("the post-finish summary appears", /Share to Feed|Groups Only|Don't share/i.test(sumTxt),
+check("the post-finish summary appears", /Share to Feed|Feed|Don't share/i.test(sumTxt),
   sumTxt.slice(0, 120).replace(/\n/g, " | "));
-check("the summary offers a Groups Only control", /Groups Only/i.test(sumTxt),
+check("the summary offers a groups-only control",
+  await page.evaluate(() => !!document.querySelector('[data-share-target="groups"]')),
   sumTxt.slice(0, 120).replace(/\n/g, " | "));
 
 // Selecting a group is a PREREQUISITE — the button toasts an error with none picked.
@@ -99,15 +100,17 @@ await page.waitForTimeout(500);
 console.log(`  group row: ${picked}`);
 check("the group checkbox row is present and selectable", picked === "clicked", picked);
 
+// MATCH THE HOOK, NOT THE LABEL — the two share buttons are a side-by-side pair now and their
+// text depends on whether the user is in a group. `data-share-target` is the contract.
 const label = await page.evaluate(() => {
-  const b = [...document.querySelectorAll("button")].find(x => /groups only/i.test((x.textContent||"").trim()));
+  const b = document.querySelector('[data-share-target="groups"]');
   return b ? (b.textContent || "").trim() : null;
 });
 console.log(`  Groups Only button now reads: ${JSON.stringify(label)}`);
 check("selecting a group is reflected on the button", label && /\(1\)/.test(label), String(label));
 
 wrote.posts.length = 0; wrote.group_posts.length = 0;
-await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /groups only/i.test((x.textContent||"").trim())); b && b.click(); });
+await page.evaluate(() => { const b = document.querySelector('[data-share-target="groups"]'); b && b.click(); });
 await page.waitForTimeout(2200);
 
 console.log(`  writes -> group_posts: ${wrote.group_posts.length}, posts(feed): ${wrote.posts.length}, workout_history: ${wrote.workout_history.length}`);
@@ -121,15 +124,16 @@ check("NO feed post was created", wrote.posts.flat().filter(Boolean).length === 
 check("the workout was still saved to history", wrote.workout_history.length > 0,
   JSON.stringify(wrote.workout_history).slice(0, 150));
 
-// ── The ONE-TAP path: Finish -> "Save & send to groups" -> pick -> Send, skipping the summary ──
-// This is the path that was dead for its whole life. It must reach the same outcome as the
-// summary's "Groups Only" (group post, no feed post, workout still saved) WITHOUT showing the
-// summary at all — that skip is the entire reason it exists.
+// ── There must be no SECOND route to groups-only ─────────────────────────────────────────────
+// The Finish confirm used to carry "Save & send to groups", which opened its own picker and
+// reached the same outcome one screen earlier. Asserting its absence is not tidiness: while it
+// existed, "does groups-only work" could not be answered without driving both, and the two
+// implementations had already drifted (one skipped the summary, one did not). This is the
+// duplicated-formula rule applied to a user journey.
 {
   const p2 = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
   p2.setDefaultTimeout(5000);
   p2.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
-  const w2 = { posts: [], group_posts: [], workout_history: [] };
   await p2.addInitScript(([me, gid, sess]) => {
     localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
       programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [],
@@ -144,17 +148,14 @@ check("the workout was still saved to history", wrote.workout_history.length > 0
   await p2.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
     body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
   await p2.route("**/rest/v1/**", r => {
-    const req = r.request(), u = req.url(), m = req.method();
+    const u = r.request().url();
     const J = b => r.fulfill({ status:200, contentType:"application/json", body: JSON.stringify(b) });
-    if (m === "POST" || m === "PATCH") {
-      let body = null; try { body = JSON.parse(req.postData() || "null"); } catch {}
-      if (/\/rest\/v1\/group_posts/.test(u)) w2.group_posts.push(body);
-      else if (/\/rest\/v1\/posts/.test(u)) w2.posts.push(body);
-      else if (/\/rest\/v1\/workout_history/.test(u)) w2.workout_history.push(body);
-      return J([Array.isArray(body) ? body[0] : (body || {})]);
-    }
+    if (r.request().method() !== "GET") return J([{}]);
     if (/\/rest\/v1\/(public_)?profiles\?/.test(u))
       return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true }]);
+    // The group has to come from the STUB — loadUserData replaces `groups` wholesale on boot, so a
+    // group seeded only into localStorage is gone before the confirm renders, and the confirm would
+    // then be groupless for a reason that has nothing to do with what is being asserted.
     if (/\/rest\/v1\/groups\?/.test(u)) return J([{ id: GID, name:"Seshd Crew", member_ids:[ME], created_by: ME }]);
     return J([]);
   });
@@ -163,53 +164,20 @@ check("the workout was still saved to history", wrote.workout_history.length > 0
 
   await p2.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish$/i.test((x.textContent||"").trim())); b && b.click(); });
   await p2.waitForTimeout(700);
-  const hasBtn = await p2.evaluate(() => [...document.querySelectorAll("button")].some(x => /save & send to groups/i.test((x.textContent||"").trim())));
-  check("[one-tap] the Finish modal offers 'Save & send to groups'", hasBtn,
-    (await p2.evaluate(() => document.body.innerText)).slice(0,120).replace(/\n/g," | "));
-
-  await p2.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /save & send to groups/i.test((x.textContent||"").trim())); b && b.click(); });
-  await p2.waitForTimeout(800);
-  const pickerTxt = await p2.evaluate(() => document.body.innerText);
-  check("[one-tap] it opens the group picker", /Send to groups/i.test(pickerTxt), pickerTxt.slice(0,120).replace(/\n/g," | "));
-
-  const pick2 = await p2.evaluate(() => {
-    const el = [...document.querySelectorAll("*")].find(e => !e.children.length && /Seshd Crew/.test(e.textContent || ""));
-    if (!el) return "no row";
-    let n = el; while (n && n !== document.body) { if (getComputedStyle(n).cursor === "pointer") { n.click(); return "clicked"; } n = n.parentElement; }
-    return "no clickable ancestor";
+  const D = await p2.evaluate(() => {
+    const t = [...document.querySelectorAll("div")].find(d => /^Finish workout\?$/.test((d.textContent||"").trim()));
+    const panel = t && t.parentElement;
+    return panel ? [...panel.querySelectorAll("button")].map(b => (b.textContent||"").trim()) : null;
   });
-  await p2.waitForTimeout(400);
-  check("[one-tap] a group can be selected", pick2 === "clicked", pick2);
-
-  await p2.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^send to \d+ group/i.test((x.textContent||"").trim())); b && b.click(); });
-  await p2.waitForTimeout(2600);
-
-  console.log(`  [one-tap] group_posts: ${w2.group_posts.length}, posts(feed): ${w2.posts.length}, workout_history: ${w2.workout_history.length}`);
-  const gp2 = w2.group_posts.flat().filter(Boolean);
-  check("[one-tap] a group post was written", gp2.length > 0, JSON.stringify(w2.group_posts).slice(0,200));
-  check("[one-tap] it targets the selected group", gp2.some(p => p && p.group_id === GID), JSON.stringify(gp2[0]||{}).slice(0,200));
-  check("[one-tap] NO feed post was created", w2.posts.flat().filter(Boolean).length === 0, JSON.stringify(w2.posts).slice(0,200));
-  check("[one-tap] the workout was still saved to history", w2.workout_history.length > 0, JSON.stringify(w2.workout_history).slice(0,150));
-  // THE SUMMARY MUST BE SKIPPED *AND* THE WORKOUT MUST BE OVER.
-  // The absence test alone passed against a severe bug: the fast path ended in a bare `return`
-  // that never cleared the session, so the app sat on the LIVE WORKOUT SCREEN — timer reset to
-  // 00:00, sets still ticked, no tab bar — which contains neither "Share to Feed" nor
-  // "Don't share" and therefore satisfied "the summary is skipped" perfectly. Absence tests
-  // cannot tell "moved on correctly" from "stuck somewhere else"; assert the destination.
-  const afterTxt = await p2.evaluate(() => document.body.innerText);
-  check("[one-tap] the summary screen is skipped", !/Share to Feed|Don't share/i.test(afterTxt),
-    afterTxt.slice(0,120).replace(/\n/g," | "));
-  const ended = await p2.evaluate(() => ({
-    live: !!document.querySelector('[data-no-tab-swipe]')
-       || [...document.querySelectorAll("button")].some(b => /^finish$/i.test((b.textContent||"").trim())),
-    nav: !!document.querySelector('[aria-label="Home"]'),
-    session: !!localStorage.getItem("seshd_active_session"),
-    txt: document.body.innerText.slice(0,110).replace(/\n/g," | "),
-  }));
-  console.log(`  [one-tap] after send: live-workout=${ended.live} nav=${ended.nav} storedSession=${ended.session}`);
-  check("[one-tap] the live workout screen is gone", !ended.live, ended.txt);
-  check("[one-tap] the bottom nav is back", ended.nav, ended.txt);
-  check("[one-tap] the stored session was cleared", !ended.session, ended.txt);
+  // The control: the confirm has to be OPEN, with a group in the store, or "the button is absent"
+  // is satisfied by nothing having happened — the vacuous-pass shape this file already documents.
+  check("[one-route] the finish confirm is open with a group in the store", !!D && D.length > 0,
+    (await p2.evaluate(() => document.body.innerText)).slice(0,120).replace(/\n/g," | "));
+  if (D) {
+    check("[one-route] the confirm offers no second groups route", !D.some(l => /group/i.test(l)),
+      D.join(" | "));
+    check("[one-route] it is just finish-or-keep-going", D.length === 2, D.join(" | "));
+  }
   await p2.close();
 }
 

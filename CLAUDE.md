@@ -4327,6 +4327,76 @@ through the DATA rather than through a bad selector. Only re-running it against 
 deliberately flipped private settled it. Check what the fixture makes POSSIBLE before believing
 either a red or a green.
 
+## ★★ THE FINISH FLOW: FOUR STACKED EXITS BECAME TWO PAIRED ROWS, AND A DIALOG STOPPED BEING A SHEET (Sep 4)
+Mo, from two device screenshots: the share sheet "still feels off... maybe 'share to feed' and
+'groups only' should be next to each other. Also lots of empty space at the bottom." And of the
+confirm before it: "we get asked to 'save & send to groups' which feels redundant, so maybe remove
+that one and make that pop up in the middle of the screen instead of the bottom."
+- **★ THE EMPTY SPACE WAS A HIERARCHY PROBLEM WEARING A PADDING PROBLEM'S CLOTHES.** The footer was
+  four full-width stacked exits — Share to Feed / Groups Only / Don't share / Undo finish & edit —
+  **199px** of static footer under a `flex:1` scroller, so every one of those pixels came out of the
+  share card, and the two quiet text links floated over the safe-area band with nothing under them.
+  Pairing them says what they ARE: row one is the two share DESTINATIONS (a choice, so side by side,
+  with fill-vs-outline carrying which is primary), row two is the two ways to leave without sharing
+  (both quiet text, separated by a dot). Measured **199px → 111px**, scroller **588 → 676**.
+  This is the SECOND time this footer has been the answer to "the card looks squished AND there's
+  dead space" — the first was the 160px toast reservation. The footer is static and the scroller is
+  `flex:1`; that arithmetic is the whole file.
+- **The label shortens only when there is a sibling.** With groups, the buttons read "Feed" /
+  "Groups only" — as a pair they read as two destinations, and "Share to Feed +2" does not fit half
+  a screen. With NO groups the slot holds a full sentence of hint copy, which cannot be squeezed to
+  half width, so Share to Feed keeps its full width and its full label and the hint stays a
+  full-width row below. **Side-by-side is conditional on there being something to sit beside.**
+- **The bottom pad went `env(...) + 10` → `max(env(...), 14px)`.** The last row is a low-stakes text
+  link; it needs to clear the home indicator, not sit 10px above it.
+- **★ `<Sheet>` GAINED A `center` VARIANT RATHER THAN THE CONFIRM BEING HAND-ROLLED.** A modal
+  question interrupts you; a bottom sheet is a surface you came to. Anchored at the bottom edge the
+  confirm left a band of empty sheet under "Keep going" — which is what Mo saw. Only the anchor and
+  the entrance differ (a sheet slides up from off-screen; a dialog has no edge to come from, so it
+  settles with scale+fade), and everything else — mount delay, backdrop fade, unmount timer, portal,
+  the `min()` maxHeight clamp — is shared, per the every-sheet-goes-through-Sheet rule.
+  **The documented `alignItems:center` top-clipping trap is real here and is held off by that
+  maxHeight clamp**, which every panel already gets; a centred caller whose content could exceed it
+  needs its own scroller, not a taller cap.
+- **★ AND THE CENTRED DIALOG SHIPPED FULL-WIDTH FIRST, BECAUSE THERE IS NO GLOBAL `box-sizing`
+  RESET.** `width:calc(100% - 44px)` measured **400px on a 402px viewport** — the declared 358 plus
+  40px of padding plus 2px of border — so the "centred card" was edge to edge and only the corner
+  radius said otherwise. I would not have caught it by reading; the screenshot looked *slightly*
+  wrong and `getBoundingClientRect` said exactly how. `src/App.css` held this repo's only
+  `box-sizing:border-box` and was deleted as dead, which is how the whole class survives. `boxSizing`
+  is scoped to the centred branch DELIBERATELY: adding it to the bottom-sheet branch would narrow
+  every sheet in the app by its own horizontal padding and reflow content laid out against today's
+  width. (Bottom sheets are consequently ~4px over-viewport today. Pre-existing, cosmetic, left.)
+- **★ REMOVING THE BUTTON MEANT REMOVING THE FEATURE, OR RECREATING THE `showGroupShare` DISEASE.**
+  "Save & send to groups" was the ONLY caller of `setShowGroupShare(true)` — the picker whose entire
+  six-week life as dead UI is the reason `sim_deadui` exists. Deleting the button alone would have
+  left a complete picker sheet, a `finishWorkout` fast path and two state hooks that nothing can
+  reach, i.e. the exact shape, reintroduced by the fix for the redundancy. So the picker sheet, both
+  state vars, the `groupShare` parameter and both of its now-provably-false branches went with it.
+  **And `sim_undef` caught the survivor** — a `setShowGroupShare(false)` inside `finishWorkout`,
+  which `npm run build` compiled clean and which would have thrown a ReferenceError on **every
+  finish**. Deleting anything is a survivor-reference hunt; the grep is the cheap version and the
+  sim is the one that actually found it.
+- **Guard: `pw_finishcard`** grew nine checks — the confirm is centred (gap above ≈ gap below, both
+  non-zero), inset from the edges, offers exactly two answers and none of them says "send to
+  groups"; the footer's four actions resolve to exactly TWO measured rows, with the share pair
+  sharing a row at roughly half width each. Geometry rather than DOM shape, so a restyle that keeps
+  the layout stays green. Red-proofed at **8 failures** against the pre-change build with every
+  control check — the confirm renders, the card is on screen, all four actions present, the clipping
+  assertions — staying green.
+- **★ THE TWO SHARE BUTTONS CARRY `data-share-target="feed" | "groups"`, AND THAT IS A CONTRACT.**
+  Their LABELS are now conditional — "Feed" beside a sibling, "Share to Feed" when alone — so the
+  text a suite matches on depends on whether the fixture's user is in a group. `pw_pumppic` and
+  `pw_grouponly` both selected on `/share to feed/i`, both silently stopped matching, and both
+  reported the APP broken (no photo uploaded, no group post written) when nothing was wrong with
+  it. Same shape as the theme picker's `data-theme-option`, and the same fix: a stable hook beats
+  text. Restyle and relabel around these; do not go back to matching the words.
+  **Its fixture needed a group, and seeding one into `localStorage` was not enough**: `loadUserData`
+  replaces `groups` wholesale from the server, so the sheet rendered the no-groups layout and the
+  suite reported the app broken rather than the fixture thin. Seed through the STUB. A groupless
+  fixture cannot see the two-up row at all — the same shape as every other one-shape fixture in this
+  file.
+
 ## ★★ COACH LINKS (Sep 4) — the cheap demand test for the trainer tier, and it is NOT a follow
 Mo asked to brainstorm revenue before releasing. The parked trainer-tier note already said the
 viewing half is nearly free and that a read-only "share my log" code is the way to test demand

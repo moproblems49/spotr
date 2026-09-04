@@ -1,4 +1,4 @@
-// v178091717031
+// v178091717032
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9683,7 +9683,8 @@ const SHEET_MS = 240;
 export const KB_SAFE_INSET = { top:0, left:0, right:0, bottom:"var(--seshd-kb, 0px)" };
 
 export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,0,0.6)",
-                 portal = true, panelStyle, backdropProps = {}, panelProps = {}, dragHandle = false }) {
+                 portal = true, panelStyle, backdropProps = {}, panelProps = {}, dragHandle = false,
+                 center = false }) {
   const [render, setRender] = useState(open);
   const [shown, setShown] = useState(false);
   const last = useRef(children);
@@ -9801,7 +9802,17 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                // backdrop here reproduces exactly the geometry `resize:"native"` produced, in CSS,
                // without the native re-layout jump. `--seshd-kb` is 0 (via the var fallback) on web
                // and whenever the keyboard is down, so this is inert the rest of the time.
-               alignItems:"flex-end", justifyContent:"center",
+               // ★ `center` MAKES THIS A DIALOG, NOT A SHEET, AND THE DIFFERENCE IS THE QUESTION
+               // BEING ASKED. A bottom sheet is a surface you came to; a modal question ("Finish
+               // workout?") interrupts you, and parking it at the bottom edge left a band of empty
+               // sheet under the last button that read as unfinished (Mo, from the device). The
+               // machinery is shared on purpose — mount delay, backdrop fade, unmount timer, portal
+               // — per the every-sheet-goes-through-Sheet rule; only the anchor and the entrance
+               // differ. NOTE the documented trap: `alignItems:center` CLIPS THE TOP of an
+               // over-tall child. What keeps that unreachable is the maxHeight clamp below, which
+               // every panel gets; a centred caller whose content could exceed it needs its own
+               // scroller, not a taller cap.
+               alignItems: center ? "center" : "flex-end", justifyContent:"center",
                // ★ ONE `transition` KEY. These were two separate `transition:` entries in this same
                // object literal — the later one silently won, so the `bottom` transition was dead
                // from the moment it was written and every sheet would have SNAPPED to the keyboard
@@ -9814,9 +9825,27 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                pointerEvents: shown ? "auto" : "none",
                ...(backdropProps.style || {}) }}>
       <div {...panelProps} onClick={e => e.stopPropagation()} ref={panelRef}
-        style={{ width:"100%", maxWidth:480, margin:"0 auto",
-                 transform: shown ? "translateY(0)" : "translateY(101%)",
-                 transition:`transform ${SHEET_MS}ms ${ease}`, willChange:"transform",
+        style={{ ...(center
+                   // boxSizing is load-bearing and NOT decoration: this app has no global
+                   // `box-sizing:border-box` reset (src/App.css, which held the only one, was
+                   // deleted as dead), so under the browser default a declared 358px plus 20px
+                   // of side padding renders 400px — measured, on a 402px viewport, i.e. the
+                   // "centred dialog" was edge-to-edge and only the corner radius said otherwise.
+                   // Deliberately scoped to this branch: adding it to the bottom-sheet branch
+                   // would narrow every one of the app's sheets by their own horizontal padding
+                   // and reflow content that has been laid out against the current width.
+                   ? { width:"calc(100% - 44px)", maxWidth:390, margin:"0 auto", boxSizing:"border-box" }
+                   : { width:"100%", maxWidth:480, margin:"0 auto" }),
+                 // A sheet slides up from off-screen; a dialog has no edge to come from, so it
+                 // settles in place. Both use EASE_NAV in and EASE_EXIT out, same as everything else.
+                 transform: center
+                   ? (shown ? "scale(1)" : "scale(0.94)")
+                   : (shown ? "translateY(0)" : "translateY(101%)"),
+                 ...(center ? { opacity: shown ? 1 : 0 } : null),
+                 transition: center
+                   ? `transform ${SHEET_MS}ms ${ease}, opacity ${SHEET_MS}ms ${ease}`
+                   : `transform ${SHEET_MS}ms ${ease}`,
+                 willChange:"transform",
                  // Defaults FIRST so a caller that declares its own layout still wins.
                  ...(dragHandle ? { display:"flex", flexDirection:"column" } : null),
                  ...outerStyle,
@@ -10315,8 +10344,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // Cancel the follower on unmount — finishing a workout tears this component down, and a frame
   // callback still holding refs to a dead node would keep painting into nothing.
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
-  const [showGroupShare, setShowGroupShare] = useState(false); // group picker after finish-and-share-to-groups
-  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [show1RM, setShow1RM] = useState(false);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [subTab, _setSubTab] = useState(() => _trackerSubTab);
@@ -10890,7 +10917,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // next workout's share.
   const summaryPhotoRef = useRef(null);
 
-  async function finishWorkout(share, groupShare = null) {
+  // ★ THE `groupShare` PARAMETER IS GONE, ALONG WITH ITS FAST PATH. Its only caller was the
+  // "Save & send to groups" button on the finish confirm plus the `showGroupShare` picker behind
+  // it — a second route to the outcome the summary sheet's "Groups Only" already reaches, one
+  // screen later and with the card visible first (Mo: "feels redundant"). Deleting the button
+  // without deleting the path would have recreated the exact `showGroupShare` disease this file
+  // documents: a complete capability with no call site, indistinguishable from working code.
+  async function finishWorkout(share) {
     if (!session || finishing) return;
     // A row that once had a name and got cleared back to blank (hadName:true, name:"" — e.g.
     // mid-retype of a typo) still shows its full set table, so real logged sets can sit there —
@@ -10905,7 +10938,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
     }
     setFinishing(true);
     setShowFinish(false);
-    setShowGroupShare(false);
 
     try {
       const dk = dKey();
@@ -11249,35 +11281,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         } catch (e) {}
       };
 
-      // If user picked "Save & send to groups", post to groups. Normally we skip the summary
-      // for this fast path — BUT if the session changed the program's structure, we still need
-      // to show the summary so the "Update program?" prompt appears (it lives on the summary).
-      if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && !programChange) {
-        onShareWorkout({ ...withHr(shareData), groupIds: groupShare.groupIds, groupOnly: true });
-        const gSave = await onSaveWorkout({ clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs });
-        if (gSave && gSave.ok === false) {
-          try {
-            const pending = JSON.parse(localStorage.getItem("seshd_pending_workouts") || "[]");
-            pending.push({ dk, sid, savedAt: Date.now(), data: { clientId: sid, workoutDate: dk, dayName: session.dayName, exercises: session.exercises.filter(ex => ex.name && ex.sets.some(s => s.done)).map(ex => ({ name: ex.name, sets: ex.sets.filter(s => s.done).map(s => ({ weight: s.weight, reps: s.reps, done: true, type: s.type, ...(s.rpe != null ? { rpe: s.rpe } : {}) })) })), duration: recordedDuration, unit, note: "", prs: newPRs } });
-            localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
-          } catch {}
-          toast("Saved on this device — couldn't reach server. Will retry.", "error");
-        } else {
-          toast(`Sent to ${groupShare.groupIds.length} group${groupShare.groupIds.length===1?"":"s"}`, "success");
-        }
-        // THIS PATH MUST END THE WORKOUT ITSELF. The session is deliberately left mounted above so
-        // the summary can render over it, and every `setSession(null)` in this component lives on
-        // the summary's own buttons — which this path skips by design. Without these two lines the
-        // app returns to the live workout screen: timer reset to 00:00, every set still ticked, no
-        // tab bar (the `if (session)` branch renders none), and the only visible exit reading
-        // "Cancel" on a workout that is already saved. It had never run in production before the
-        // Finish-modal entry point was added, so nothing had ever exercised it.
-        writeHealthAndHr();
-        haptic("success");
-        track("workout_logged", { sets: totalSets, exercises: session.exercises.filter(e => e.name).length, prs: newPRsList.length, duration: recordedDuration });
-        setSession(null);   // the [session] effect removes SESSION_KEY when this lands
-        return;
-      }
 
       // Show summary
       // Capture undo info so user can roll back if they finished by accident
@@ -11384,11 +11387,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         // only built shareData but never posted it).
         if (share && onShareWorkout) {
           onShareWorkout({ ...withHr(shareData), groupOnly: false });
-        }
-        // If this was a group-share that fell through to the summary (because a program change
-        // needed confirming), still post to the selected groups so they aren't skipped.
-        if (groupShare && groupShare.groupIds && groupShare.groupIds.length > 0 && onShareWorkout) {
-          onShareWorkout({ ...withHr(shareData), groupIds: groupShare.groupIds, groupOnly: true });
         }
       }
 
@@ -12622,12 +12620,31 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   I spent four rounds treating it as a WebKit layout collapse because I compared a
                   DOM height in Chromium against screenshot INK on the device — apples to oranges.
                   Measure the same quantity in both engines before concluding "engine-specific". */}
-              <div style={{ padding:"12px 18px calc(env(safe-area-inset-bottom) + 10px)", display:"flex", flexDirection:"column", gap:8 }}>
+              {/* ★ THE TAIL IS TWO ROWS, NOT FOUR, AND THAT WAS A SPACE PROBLEM WITH A HIERARCHY
+                  CAUSE. Four full-width stacked exits (Share to Feed / Groups Only / Don't share /
+                  Undo finish & edit) put 199px of footer under a scroller that was already cutting
+                  the share card mid-stats-row, and left the two quiet text links floating over the
+                  safe-area band — which is what Mo reported as "lots of empty space at the bottom".
+                  Pairing them says what they are: row one is the two SHARE destinations (a choice,
+                  so they sit side by side and the fill/outline treatment carries which is primary),
+                  row two is the two ways to leave without sharing. Measured 199px -> 118px, and
+                  every reclaimed pixel goes to the scroller because the footer is static and the
+                  scroller is `flex:1`.
+                  The bottom pad is `max(env(...), 14px)` rather than `env(...) + 10`: the last row
+                  is a low-stakes text link, so it only needs to clear the home indicator, not sit
+                  10px above it. */}
+              <div style={{ padding:"10px 18px max(env(safe-area-inset-bottom), 14px)", display:"flex", flexDirection:"column", gap:8 }}>
                 {(() => {
                   const selectedGroups = workoutSummary.shareToGroups || [];
-                  const hasGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length > 0;
-                  const groupLabel = selectedGroups.length > 0 ? ` + ${selectedGroups.length} group${selectedGroups.length>1?"s":""}` : "";
+                  const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
+                  const hasGroups = myGroups.length > 0;
+                  // Side by side ONLY when there is a second button to sit beside. With no groups
+                  // the slot holds a full sentence of explanatory copy, which cannot survive being
+                  // squeezed to half a screen — so Share to Feed keeps the full width and the hint
+                  // stays a full-width row under it.
+                  const groupLabel = selectedGroups.length > 0 ? ` +${selectedGroups.length}` : "";
                   return (
+                  <div style={{ display:"flex", gap:8 }}>
                     <button onClick={() => {
                       // Append the active program's share code to the caption so the feed post
                       // shows an "Import" chip (PostCard detects IGNITE-/WO- codes in the caption).
@@ -12653,35 +12670,33 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       // summary card, and any link has nowhere public to point yet. In-app feed +
                       // groups is the real sharing path; external/public pages are a post-wrap item.)
                       setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
-                    }} style={{ width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-                      Share to Feed{groupLabel}
+                    }} data-share-target="feed" style={{ flex:1, minWidth:0, background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"15px 10px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:7 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                      <span style={{ whiteSpace:"nowrap" }}>{hasGroups ? "Feed" : "Share to Feed"}{groupLabel}</span>
                     </button>
+                    {hasGroups && (
+                      <button onClick={() => {
+                        if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
+                        if (workoutSummary.shareData) onShareWorkout({ ...withHr(workoutSummary.shareData), caption: (workoutSummary.captionDraft || "").trim(), groupIds: selectedGroups, feedOnly: false, groupOnly: true, imageData: workoutSummary.photoDraft || null });
+                        setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
+                      }} data-share-target="groups" style={{ flex:1, minWidth:0, background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"13.5px 10px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:7 }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span style={{ whiteSpace:"nowrap" }}>Groups only{selectedGroups.length > 0 ? ` (${selectedGroups.length})` : ""}</span>
+                      </button>
+                    )}
+                  </div>
                   );
                 })()}
-                {(() => {
-                  const myGroups = (store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId));
-                  const selectedGroups = workoutSummary.shareToGroups || [];
-                  if (myGroups.length === 0) {
-                    return (
-                      <div style={{ width:"100%", background:"transparent", color:C.muted, border:`1.5px dashed ${C.border}`, borderRadius:14, padding:"13px", fontSize:12, fontFamily:F, letterSpacing:-0.1, textAlign:"center" }}>
-                        Join a group from Discover → Groups to share workouts privately
-                      </div>
-                    );
-                  }
-                  // Secondary option: share to groups only (no feed post)
-                  return (
-                    <button onClick={() => {
-                      if (!selectedGroups.length) { toast("Select at least one group above", "error"); return; }
-                      if (workoutSummary.shareData) onShareWorkout({ ...withHr(workoutSummary.shareData), caption: (workoutSummary.captionDraft || "").trim(), groupIds: selectedGroups, feedOnly: false, groupOnly: true, imageData: workoutSummary.photoDraft || null });
-                      setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);
-                    }} style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                      Groups Only{selectedGroups.length > 0 ? ` (${selectedGroups.length})` : ""}
-                    </button>
-                  );
-                })()}
-                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
+                {(store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length === 0 && (
+                  <div style={{ width:"100%", background:"transparent", color:C.muted, border:`1.5px dashed ${C.border}`, borderRadius:14, padding:"11px", fontSize:12, fontFamily:F, letterSpacing:-0.1, textAlign:"center" }}>
+                    Join a group from Discover → Groups to share workouts privately
+                  </div>
+                )}
+                {/* The two ways to leave without sharing, on ONE row. Both are quiet text links and
+                    neither is a destination, so stacking them was two whispers over a void. */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:workoutSummary.undo ? 14 : 0 }}>
+                <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null); }} style={{ background:"none", color:C.sub, border:"none", padding:"9px 4px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
+                {workoutSummary.undo && <div style={{ width:3, height:3, borderRadius:"50%", background:C.divider, flexShrink:0 }}/>}
                 {workoutSummary.undo && (
                   <button onClick={async () => {
                     const u = workoutSummary.undo;
@@ -12725,10 +12740,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                       }
                     } catch (e) { /* not fatal */ }
                     toast("Workout reopened — make your edits", "success");
-                  }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"6px 10px", fontSize:12, cursor:"pointer", fontFamily:F, marginTop:-4 }}>
+                  }} style={{ background:"none", color:C.sub, border:"none", padding:"9px 4px", fontSize:13, cursor:"pointer", fontFamily:F }}>
                     Undo finish & edit
                   </button>
                 )}
+                </div>
               </div>
           </>
         )}
@@ -12837,81 +12853,21 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           );
         })()}
 
-        {/* Finish modal */}
-        <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200} dragHandle
-          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", borderTop:`1px solid ${C.overlayEdge}` }}>
+        {/* Finish modal — a CENTRED dialog, not a bottom sheet. It asks a question rather than
+            presenting a surface, and anchored at the bottom edge it left a band of empty sheet
+            under "Keep going" that Mo reported from the device as feeling unfinished. */}
+        <Sheet open={showFinish} onClose={() => setShowFinish(false)} z={200} center
+          panelStyle={{ background:C.bg, borderRadius:20, padding:"24px 20px 18px", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 24px 60px rgba(0,0,0,0.45)" }}>
           {showFinish && (
             <>
               <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Finish workout?</div>
               <div style={{ fontSize:13, color:C.sub, marginBottom:22, fontFamily:MONO }}>{done}/{total} sets · {fmtTime(elapsed)}</div>
               <button onClick={() => finishWorkout(false)} disabled={finishing} style={{ width:"100%", background:finishing?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>{finishing ? "Saving…" : "Finish workout"}</button>
-              {/* THE ENTRY POINT THE GROUP PICKER NEVER HAD. Everything behind this button —
-                  `showGroupShare`, the picker sheet, and finishWorkout's groupOnly fast path —
-                  landed together in 02ab7f3 (2026-07-05) and `setShowGroupShare(true)` was never
-                  written in any commit, so the whole path sat dead for its entire life. The
-                  post-finish summary's "Groups Only" reaches the same outcome; this is the ONE-TAP
-                  version that skips the summary entirely. Gated on actually being in a group,
-                  because with none the picker is an empty sheet with a disabled button. */}
-              {(store.groups||[]).some(g => (g.members||g.member_ids||[]).includes(currentUserId)) && (
-                <button onClick={() => { setShowFinish(false); setSelectedGroupIds([]); setShowGroupShare(true); }}
-                  disabled={finishing}
-                  style={{ width:"100%", background:"transparent", color:C.text, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"15px", fontSize:14, fontWeight:700, cursor:finishing?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                  Save &amp; send to groups
-                </button>
-              )}
               <button onClick={() => setShowFinish(false)} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Keep going</button>
             </>
           )}
         </Sheet>
 
-        {/* Group share picker (Save & send to groups path - skips feed) */}
-        <Sheet open={showGroupShare} onClose={() => setShowGroupShare(false)} z={200} dragHandle
-          panelStyle={{ background:C.bg, borderRadius:"20px 20px 0 0", padding:"22px 20px 36px", maxHeight:"80dvh", overflowY:"auto", borderTop:`1px solid ${C.overlayEdge}` }}>
-        {showGroupShare && (() => {
-          const myGroups = (store.groups||[]).filter(g => (g.members||g.member_ids||[]).includes(currentUserId));
-          return (
-            <>
-                <div style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:-0.5 }}>Send to groups</div>
-                <div style={{ fontSize:13, color:C.sub, marginBottom:18 }}>Workout will only be visible in selected groups, not the feed.</div>
-
-                <div style={{ marginBottom:18 }}>
-                  {myGroups.map(g => {
-                    const checked = selectedGroupIds.includes(g.id);
-                    return (
-                      <div key={g.id} onClick={() => setSelectedGroupIds(prev => checked ? prev.filter(id => id !== g.id) : [...prev, g.id])} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:12, background:C.surface, border:`1px solid ${checked?C.text:C.border}`, marginBottom:8, cursor:"pointer", transition:"border-color 0.15s" }}>
-                        <div style={{ width:36, height:36, borderRadius:11, background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{g.name}</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{(g.members||g.member_ids||[]).length} member{(g.members||g.member_ids||[]).length===1?"":"s"}</div>
-                        </div>
-                        <div style={{ width:22, height:22, borderRadius:7, border:`2px solid ${checked?C.text:C.border}`, background:checked?C.text:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                          {checked && <Icon name="check" size={12} color={C.bg} strokeWidth={3}/>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <button onClick={async () => {
-                  if (selectedGroupIds.length === 0) { toast("Pick at least one group", "error"); return; }
-                  setShowGroupShare(false);
-                  try {
-                    await finishWorkout(false, { groupIds: selectedGroupIds, groupOnly: true });
-                  } catch (e) {
-                    devError("Group share finish failed:", e);
-                    toast("Couldn't save to groups — your workout is saved locally", "error");
-                  }
-                }} disabled={finishing || selectedGroupIds.length === 0} style={{ width:"100%", background:(finishing||selectedGroupIds.length===0)?C.sub:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700, cursor:(finishing||selectedGroupIds.length===0)?"not-allowed":"pointer", marginBottom:8, fontFamily:F, letterSpacing:-0.2 }}>
-                  {finishing ? "Saving…" : `Send to ${selectedGroupIds.length || "0"} group${selectedGroupIds.length===1?"":"s"}`}
-                </button>
-                <button onClick={() => { setShowGroupShare(false); setShowFinish(true); }} style={{ width:"100%", background:"none", color:C.sub, border:"none", padding:"10px", fontSize:13, cursor:"pointer", fontFamily:F }}>Back</button>
-            </>
-          );
-        })()}
-        </Sheet>
       </div>
     );
   }
