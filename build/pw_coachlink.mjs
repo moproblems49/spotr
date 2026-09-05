@@ -73,10 +73,31 @@ if (await row.count()) { await row.click({ force: true }).catch(() => {}); await
 
 const txt = () => p.evaluate(() => document.body.innerText);
 let t = await txt();
-// Arrival must be proven by something only THIS screen renders — the Settings row says
-// "Coaching" too, so matching that word alone would pass without the screen ever opening.
-const arrived = /WHO CAN SEE MY TRAINING/i.test(t);
-check("the Coaching screen opened", arrived, arrived ? "" : "heading absent — fixture broke, verdict unknown");
+// ★ TEXT IS NOT ARRIVAL, AND THIS CHECK LEARNED IT THE HARD WAY. It used to be
+// `/WHO CAN SEE MY TRAINING/.test(document.body.innerText)` — reasoned, correctly, to be
+// stronger than matching "Coaching" (which the Settings ROW also says). It was still wrong, and
+// it stayed GREEN through a build where tapping Coaching did visibly nothing: the panel WAS in
+// the DOM, so its heading WAS in innerText, but `EdgeSwipeBack`'s `willChange:transform` had
+// made it the containing block for the panel's `position:fixed`, and the whole screen laid out
+// at y=1469 with height 0 — far below the viewport, painting nothing. `innerText` reports DOM
+// that is off-screen exactly as happily as it reports DOM that is covered.
+// So arrival is a HIT TEST now: the panel must be the thing actually painted at real points on
+// the screen. Five points, not one, because a partially-mispositioned panel can still cover the
+// middle.
+const paint = await p.evaluate(() => {
+  const panel = [...document.querySelectorAll("div")]
+    .find(d => { const s = getComputedStyle(d); return s.position === "fixed" && +s.zIndex >= 60 && d.offsetHeight > 200; });
+  if (!panel) return { ok:false, why:"no full-height fixed panel on screen" };
+  const r = panel.getBoundingClientRect();
+  const pts = [[Math.round(innerWidth/2), 120], [Math.round(innerWidth/2), Math.round(innerHeight/2)],
+               [Math.round(innerWidth/2), innerHeight - 120], [30, 60]];
+  const miss = pts.filter(([x,y]) => { const e = document.elementFromPoint(x,y); return !(e && (e === panel || panel.contains(e))); });
+  return { ok: miss.length === 0 && r.top < 4 && r.height > innerHeight * 0.8,
+           why: `rect y=${Math.round(r.top)} h=${Math.round(r.height)}, ${miss.length} of ${pts.length} points not the panel` };
+});
+const arrived = /WHO CAN SEE MY TRAINING/i.test(t) && paint.ok;
+check("the Coaching screen opened AND is painted on screen", arrived,
+  paint.ok ? "heading absent — fixture broke, verdict unknown" : paint.why);
 
 if (arrived) {
   check("it explains the scope in plain words",

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   F, MONO, RADIUS, Icon, Avatar, sb, toast, confirmAction, SectionLabel,
   EdgeSwipeBack, mintShareCode, KB_SAFE_INSET,
@@ -65,10 +66,28 @@ function AthleteLog({ C, athlete, token, onBack, unit }) {
   }, [athlete.athlete_id, token]);
 
   return (
-    <EdgeSwipeBack onBack={onBack}>
+    // ★ THE PANEL'S POSITIONING BELONGS ON THE EdgeSwipeBack WRAPPER, AND THE WHOLE THING HAS TO
+    // BE PORTALED — this screen shipped doing neither, and the symptom was that tapping Coaching
+    // in Settings closed Settings and appeared to do nothing at all.
+    // Two documented traps stacked on top of each other:
+    //   1. `EdgeSwipeBack` sets `willChange:"transform"` on its wrapper, which makes it a
+    //      CONTAINING BLOCK for `position:fixed` descendants. The panel was fixed INSIDE it, so
+    //      it resolved against that wrapper instead of the viewport. Measured: z-index 61, width
+    //      402 (correct), at y=1469 with height 0 — laid out against an in-flow, zero-height
+    //      wrapper sitting inside ProfileScreen's scrolled content, i.e. far below the screen.
+    //   2. ProfileScreen renders inside the tab-swipe track, and the standing rule is that any
+    //      `position:fixed` overlay in that track must `createPortal` to `document.body`, because
+    //      the track's own transform is a second containing block.
+    // Every other EdgeSwipeBack caller in the app passes its layout through the wrapper's `style`
+    // and sits inside an already-positioned parent; this one passed no style at all. Matching the
+    // convention fixes both traps at once.
+    createPortal(
+    <EdgeSwipeBack onBack={onBack} style={{
+      position: "fixed", ...KB_SAFE_INSET, background: C.bg, zIndex: 62,
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
       <div data-no-tab-swipe data-fullscreen-overlay="true" style={{
-        position: "fixed", ...KB_SAFE_INSET, background: C.bg, zIndex: 62,
-        display: "flex", flexDirection: "column", overflow: "hidden",
+        flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden",
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
@@ -136,7 +155,7 @@ function AthleteLog({ C, athlete, token, onBack, unit }) {
           })}
         </div>
       </div>
-    </EdgeSwipeBack>
+    </EdgeSwipeBack>, document.body)
   );
 }
 
@@ -226,10 +245,28 @@ export default function CoachScreen({ C, currentUserId, token, unit, onBack }) {
   const active = (myCoaches || []).filter(r => r.redeemed_at);
 
   return (
-    <EdgeSwipeBack onBack={onBack}>
+    // ★ THE PANEL'S POSITIONING BELONGS ON THE EdgeSwipeBack WRAPPER, AND THE WHOLE THING HAS TO
+    // BE PORTALED — this screen shipped doing neither, and the symptom was that tapping Coaching
+    // in Settings closed Settings and appeared to do nothing at all.
+    // Two documented traps stacked on top of each other:
+    //   1. `EdgeSwipeBack` sets `willChange:"transform"` on its wrapper, which makes it a
+    //      CONTAINING BLOCK for `position:fixed` descendants. The panel was fixed INSIDE it, so
+    //      it resolved against that wrapper instead of the viewport. Measured: z-index 61, width
+    //      402 (correct), at y=1469 with height 0 — laid out against an in-flow, zero-height
+    //      wrapper sitting inside ProfileScreen's scrolled content, i.e. far below the screen.
+    //   2. ProfileScreen renders inside the tab-swipe track, and the standing rule is that any
+    //      `position:fixed` overlay in that track must `createPortal` to `document.body`, because
+    //      the track's own transform is a second containing block.
+    // Every other EdgeSwipeBack caller in the app passes its layout through the wrapper's `style`
+    // and sits inside an already-positioned parent; this one passed no style at all. Matching the
+    // convention fixes both traps at once.
+    createPortal(
+    <EdgeSwipeBack onBack={onBack} style={{
+      position: "fixed", ...KB_SAFE_INSET, background: C.bg, zIndex: 61,
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
       <div data-no-tab-swipe data-fullscreen-overlay="true" style={{
-        position: "fixed", ...KB_SAFE_INSET, background: C.bg, zIndex: 61,
-        display: "flex", flexDirection: "column", overflow: "hidden",
+        flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden",
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
@@ -341,6 +378,6 @@ export default function CoachScreen({ C, currentUserId, token, unit, onBack }) {
 
         </div>
       </div>
-    </EdgeSwipeBack>
+    </EdgeSwipeBack>, document.body)
   );
 }

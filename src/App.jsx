@@ -1,4 +1,4 @@
-// v178091717033
+// v178091717035
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3231,19 +3231,22 @@ export function confirmAction({ title, message, confirmLabel = "Confirm", cancel
 function ConfirmHost({ C }) {
   const [cf, setCf] = useState(null);
   _setConfirm = setCf;
-  useEffect(() => {
-    if (!cf) return;
-    const onKey = (e) => { if (e.key === "Escape") { setCf(null); try { cf.onCancel && cf.onCancel(); } catch (e2) {} } };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [cf?.id]);
+  const cfPanelRef = useRef(null);
+  // Escape came free here already; what did NOT was focus. Measured before this: focus stayed on
+  // BODY and Tab walked straight out onto the screen behind — on the app's DESTRUCTIVE dialogs,
+  // where the two things worth containing are literally "Delete" and "Cancel".
+  const cancelRef = useRef(null);
+  cancelRef.current = () => { setCf(null); try { cf && cf.onCancel && cf.onCancel(); } catch (e) {} };
+  const onEsc = useCallback(() => { cancelRef.current && cancelRef.current(); }, []);
+  useDialogA11y(!!cf, cfPanelRef, onEsc);
   if (!cf) return null;
   const accent = cf.destructive ? "#ef4444" : (C.accent || "#65a30d");
   const close = () => { setCf(null); try { cf.onCancel && cf.onCancel(); } catch (e) {} };
   return createPortal((
     <div onClick={close} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:4000, display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"seshd-cf-fade 0.15s ease" }}>
       <style>{`@keyframes seshd-cf-fade{from{opacity:0}to{opacity:1}}@keyframes seshd-cf-pop{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}`}</style>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)", animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
+      <div onClick={e => e.stopPropagation()} ref={cfPanelRef} role="dialog" aria-modal="true" tabIndex={-1}
+        style={{ background:C.surface, borderRadius:18, padding:22, maxWidth:360, width:"100%", boxSizing:"border-box", border:`1px solid ${C.overlayEdge}`, boxShadow:"0 20px 60px rgba(0,0,0,0.45)", animation:"seshd-cf-pop 0.18s cubic-bezier(0.2,0.8,0.2,1)" }}>
         <div style={{ width:46, height:46, borderRadius:RADIUS.md, background:`${accent}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14 }}>
           <Icon name={cf.icon} size={22} color={accent}/>
         </div>
@@ -9697,6 +9700,45 @@ const SHEET_MS = 240;
 // or has nothing to lift. `build/pw_kbinset.mjs` enumerates the ones that do and fails on a gap.
 export const KB_SAFE_INSET = { top:0, left:0, right:0, bottom:"var(--seshd-kb, 0px)" };
 
+// ★ ONE DIALOG-BEHAVIOUR DEFINITION, TWO CALLERS. A centred dialog owes more than geometry:
+// something has to announce it as modal, put focus inside it, close on Escape, and stop Tab
+// walking onto the screen behind — which on the finish confirm reached DISCARD, three tabs in,
+// on a live workout. `Sheet`'s `center` variant needed all of that, and `ConfirmHost` (every
+// destructive confirm in the app: Delete account, Sign out, Discard, Remove exercise) needed the
+// same and had only Escape. Writing it twice is the duplicated-formula class in behaviour form,
+// so it is a hook both call.
+// ConfirmHost is deliberately NOT rebuilt on top of `Sheet` — it is a working, portaled, z=4000
+// dialog with its own icon-tile layout and correct button contrast, and restructuring the surface
+// every destructive confirmation in the app renders on would risk far more than the tidiness is
+// worth. Sharing the behaviour is the part that actually matters.
+function useDialogA11y(active, panelRef, onClose) {
+  // Keyed on the OPEN transition only, so a re-render while the dialog is up cannot re-steal
+  // focus from whatever the user has tabbed to (the documented `[!!shareModal]` trick).
+  useEffect(() => {
+    if (!active) return;
+    const t = setTimeout(() => { try { panelRef.current && panelRef.current.focus(); } catch (e) {} }, SHEET_MS);
+    return () => clearTimeout(t);
+  }, [active]);
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose && onClose(); return; }
+      if (e.key !== "Tab") return;
+      const p = panelRef.current;
+      if (!p) return;
+      const f = [...p.querySelectorAll('button, [href], input, select, textarea, [tabindex]')]
+        .filter(el => !el.hasAttribute("disabled") && el.tabIndex !== -1 && el.offsetParent !== null);
+      if (!f.length) { e.preventDefault(); return; }
+      const first = f[0], last = f[f.length - 1], a = document.activeElement;
+      if (!p.contains(a)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+      if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, onClose]);
+}
+
 export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,0,0.6)",
                  portal = true, panelStyle, backdropProps = {}, panelProps = {}, dragHandle = false,
                  center = false }) {
@@ -9789,36 +9831,7 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
     const t = setTimeout(() => setRender(false), SHEET_MS);
     return () => clearTimeout(t);
   }, [open]);
-  // Keyed on the OPEN transition only, so a re-render while the dialog is up cannot re-steal
-  // focus from whatever the user has tabbed to (the documented `[!!shareModal]` trick).
-  useEffect(() => {
-    if (!center || !open) return;
-    const t = setTimeout(() => { try { firstFocusRef.current && firstFocusRef.current.focus(); } catch (e) {} }, SHEET_MS);
-    return () => clearTimeout(t);
-  }, [center, open]);
-  useEffect(() => {
-    if (!center || !open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") { onClose && onClose(); return; }
-      // SEEDING FOCUS IS NOT CONTAINING IT. With `role=dialog` and focus placed on the panel,
-      // measured Tabs still went: Finish workout (inside), Keep going (inside), then OUT to the
-      // workout screen behind — Messages, Activity, and Discard, which destroys the session.
-      // `aria-modal` tells assistive tech the rest is inert; it does not stop the Tab ring, and
-      // this app was once rejected on an iPad, where a keyboard is ordinary. So the ring wraps.
-      if (e.key !== "Tab") return;
-      const p = panelRef.current;
-      if (!p) return;
-      const f = [...p.querySelectorAll('button, [href], input, select, textarea, [tabindex]')]
-        .filter(el => !el.hasAttribute("disabled") && el.tabIndex !== -1 && el.offsetParent !== null);
-      if (!f.length) { e.preventDefault(); return; }
-      const first = f[0], last = f[f.length - 1], a = document.activeElement;
-      if (!p.contains(a)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
-      if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [center, open, onClose]);
+  useDialogA11y(!!center && !!open, panelRef, onClose);
   if (!render) return null;
   const ease = shown ? EASE_NAV : EASE_EXIT;
   // ★ THE HANDLE MUST NOT SIT INSIDE THE SCROLLING REGION. On iOS a touch that begins inside a
@@ -10984,7 +10997,17 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
   // screen later and with the card visible first (Mo: "feels redundant"). Deleting the button
   // without deleting the path would have recreated the exact `showGroupShare` disease this file
   // documents: a complete capability with no call site, indistinguishable from working code.
-  async function finishWorkout(share) {
+  // ★ THE `share` PARAMETER IS GONE FOR THE REASON `groupShare` WENT: nothing can pass it TRUE.
+  // There is one call site, `finishWorkout(false)`, and `git log -S "finishWorkout(true)"` returns
+  // NOTHING in any commit — so the "finish AND share in one step" path this function still carried
+  // has never once run. What it kept alive: a `"Workout posted"` toast, a second `onShareWorkout`
+  // call that would have posted to the feed without the caption, the program share code or the
+  // photo the summary sheet collects, and a `share` field on `workoutSummary` that nothing read.
+  // Sharing happens from the summary sheet, which is the only place the user can actually choose
+  // a destination. Leaving unreachable code that looks like a working feature is exactly the
+  // `showGroupShare` disease — a complete capability with no call site, indistinguishable from
+  // live code to the next reader.
+  async function finishWorkout() {
     if (!session || finishing) return;
     // A row that once had a name and got cleared back to blank (hadName:true, name:"" — e.g.
     // mid-retype of a typo) still shows its full set table, so real logged sets can sit there —
@@ -11372,7 +11395,6 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         // once, off the session and the store as they are at finish — not in render, where the
         // store has already absorbed this workout.
         wins: sessionWins(session, store, sid, unit),
-        share,
         shareData,
         undo: {
           dk, sid,
@@ -11437,19 +11459,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           localStorage.setItem("seshd_pending_workouts", JSON.stringify(pending));
         } catch {}
         toast("Saved on this device — couldn't reach server. Will retry.", "error");
-      } else {
-        // Only the SHARE case toasts. `setShowWorkoutSummary(true)` fires unconditionally just
-        // above, so on the plain-save path this toast always landed on top of the summary sheet —
-        // restating what the sheet is already showing, and forcing the 160px footer reservation
-        // that squeezed the share card. "Workout posted" survives because the sheet does not say
-        // it: sharing is a separate outcome the user asked for and deserves confirming.
-        if (share) toast("Workout posted", "success");
-        // Finish & share → actually create the feed post (this was missing — sharing
-        // only built shareData but never posted it).
-        if (share && onShareWorkout) {
-          onShareWorkout({ ...withHr(shareData), groupOnly: false });
-        }
       }
+      // (No success toast on this path. `setShowWorkoutSummary(true)` fires unconditionally just
+      // above, so one would land on top of a sheet already showing the saved workout — which is
+      // what forced the 160px footer reservation that squeezed the share card. The sheet IS the
+      // confirmation. "Workout posted" still fires, from the share handlers on the sheet itself.)
 
     } finally {
       setFinishing(false);
