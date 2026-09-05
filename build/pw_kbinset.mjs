@@ -141,11 +141,35 @@ const buried = async (LINE) => {
       const box = el.getBoundingClientRect(), cs = getComputedStyle(el);
       if (box.width < 8 || box.height < 8 || cs.display === "none" || cs.visibility === "hidden" || +cs.opacity === 0) return null;
       el.focus();
-      // The shim runs on focusin via rAF; give it two frames plus a beat to settle.
-      await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 40))));
+      // ★ POLL FOR A RESTING LAYOUT; DO NOT GUESS A DURATION. This was a fixed
+      // `rAF, rAF, setTimeout(40)` (~72ms) and it made this suite fail about one run in five,
+      // always by a hair — "bottom=538" and "bottom=539" against a LINE of 538. The cause is not
+      // the shim, which is correct: the shim's own `scrollTop +=` is a SCROLL, and the live
+      // workout's header is driven by scroll through a rate-limited rAF follower that takes up to
+      // MIN_TRAVEL_MS (340ms) to arrive. The header is a flex sibling ABOVE the scroller, so while
+      // it is still travelling the scroller's clientHeight is still changing and everything inside
+      // it is still sliding. Measured: the scroller walked 708 -> 831 across the first six fields,
+      // and a field's bottom moved as much as 114px AFTER the old 72ms sample. The settled value
+      // is right every time (524, comfortably clear) — the old wait was simply reading a number
+      // mid-flight, and whether that number landed at 537 or 539 was luck.
+      // Two frames first, because the shim itself lifts on the frame after focusin and concluding
+      // "stable" before it has run would measure the unlifted field. Then wait for four
+      // consecutive frames that do not move it.
+      await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+      let lastB = NaN, stable = 0, frames = 0;
+      for (; frames < 90 && stable < 4; frames++) {
+        await new Promise(res => requestAnimationFrame(res));
+        const bb = el.getBoundingClientRect().bottom;
+        stable = Math.abs(bb - lastB) < 0.5 ? stable + 1 : 0;
+        lastB = bb;
+      }
       const after = el.getBoundingClientRect();
+      const name = `"${(el.placeholder || el.type || el.tagName).slice(0, 24)}"`;
+      // A layout that never comes to rest is its own finding — say so rather than reporting a
+      // verdict read off a moving target.
+      if (stable < 4) return `${name} never settled (${frames} frames, bottom=${Math.round(after.bottom)})`;
       return after.bottom > LINE
-        ? `"${(el.placeholder || el.type || el.tagName).slice(0, 24)}" bottom=${Math.round(after.bottom)} (was ${Math.round(box.bottom)})`
+        ? `${name} bottom=${Math.round(after.bottom)} (was ${Math.round(box.bottom)})`
         : null;
     }, { i, LINE });
     if (r) bad.push(r);

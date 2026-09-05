@@ -3921,6 +3921,36 @@ run in order, so a later one clearing `seshd_active_session` wins.
 **Still not covered and worth knowing:** `env(safe-area-inset-bottom)` stays ~34pt under `none`
 while the keyboard covers the home indicator, so every `calc(env(safe-area-inset-bottom) + N)`
 bottom pad leaves a ~34px dead band above the keys. Cosmetic; measure it on device before chasing.
+**★★ AND THE SUITE'S OWN FLAKE WAS ITS FIXED SETTLE, NOT THE SHIM — THE APP WAS RIGHT ALL ALONG
+(Sep 5).** `pw_kbinset` failed about ONE RUN IN FIVE, always by a hair: `bottom=538` and
+`bottom=539` against a LINE of **538**. A one-pixel miss is not a scroll that failed, and that is
+the tell worth reading sooner than it was. `buried()` focused a field and waited a FIXED
+`rAF, rAF, setTimeout(40)` (~72ms) before measuring — but **the shim's own `sc.scrollTop += over`
+IS A SCROLL**, and the live workout's header is scroll-driven through a rate-limited rAF follower
+that takes up to **MIN_TRAVEL_MS (340ms)** to arrive. That header is a flex sibling ABOVE the
+scroller, so while it travels the scroller's `clientHeight` is still changing and everything inside
+it is still sliding. Measured: the scroller walked **708 -> 831** across the first six fields, and a
+field's bottom moved as much as **114px AFTER** the old sample. The guard was reading a number
+mid-flight; whether it landed on 537 or 539 was luck.
+**The settled position is 524 on every field, every run** (4 runs x 21 fields, each re-measured
+600ms later, `max_late` exactly 524) — comfortably clear of the line. **So there was never an app
+bug here**, which is also why the earlier clamping hypothesis was disproven and why measuring ONE
+field in isolation showed a healthy 511-515: in isolation the header is not animating. The
+sequence, not the field, was the variable.
+**Fix: poll for a resting layout instead of guessing a duration.** Two frames first — the shim
+lifts on the frame after `focusin`, so concluding "stable" before it runs would measure the
+UNLIFTED field — then wait for four consecutive frames that move the field less than 0.5px, capped
+at 90. Verified to agree with the fully-settled 600ms reading on **21/21 fields across three runs**;
+the worst field needs 33 frames and most exit in four, so it is no slower in practice. **A layout
+that never comes to rest is reported as its own finding** rather than a verdict read off a moving
+target. Red-proofed with the shim disabled: **10 buried fields named, every control check green**,
+so the settle loop did not neuter the check. 10 consecutive green runs after, against ~1-in-5 red
+before.
+**★ THE GENERAL RULE: A FIXED `setTimeout` AFTER AN INTERACTION IS A GUESS ABOUT AN ANIMATION YOU
+DO NOT OWN, AND THIS APP HAS SEVERAL THAT OUTLAST THE USUAL GUESS** — the workout header's follower
+at 340ms, `SHEET_MS`, the rest-timer bar. Poll for stability. And the corollary that would have
+saved a session here: **when a guard fails by ONE PIXEL, suspect the measurement's TIMING before
+the mechanism it is measuring.**
 
 ## ★★★ `resize:"none"` WAS OFF FOR A DAY — THE PLUGIN'S SOURCE IS WHY (Sep 3)
 A cold-context audit of the finished work found the premise underneath BOTH attempts was wrong, and
