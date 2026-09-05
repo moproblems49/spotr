@@ -2768,10 +2768,27 @@ things that only bite at scale. Fixed this round:
   Sim: `sim_mediasrc` (19 checks incl. suffix-attack hostnames and `data:image/svg+xml`).
 **Known and NOT fixed here — Mo-side, dashboard only:** sessions carry `not_after = NULL` (verified:
 9 live, one 58 days idle and still valid) — that needs Supabase's session timeout, a paid feature;
-captcha on signup/token/recover, which is the real fix for the shared **30/hour project-wide email
-budget** (anyone with a username list can starve every reset AND every signup, since confirmation is
-on); and "Secure password change", currently off, so a valid access token can set a new password
-with no re-auth.
+and captcha on signup/token/recover, which is the real fix for the shared **30/hour project-wide
+email budget** (anyone with a username list can starve every reset AND every signup, since
+confirmation is on) — but see the captcha entry below before treating that as a dashboard task.
+**★ "Secure password change" IS ON (Mo, Sep 5 2026), AND IT LIVES INSIDE THE EMAIL PROVIDER PANEL**
+— Authentication → Sign In / Providers → click **Email**, not the Settings page, which is where an
+earlier version of this file sent Mo and where he could not find it. Safe here because Seshd has NO
+in-app change-password screen: `sb.updatePassword` has exactly ONE caller, `NewPasswordScreen`, on
+the emailed-recovery path, whose session is seconds old and therefore inside the 24h "recently
+logged in" window. **Its sibling toggle "Require current password when updating" is deliberately
+OFF**: nothing in this app ever collects a current password, so it can protect nothing the first
+one does not, and the docs do not say whether it exempts the RECOVERY flow — where by definition
+there IS no current password to supply. Zero upside against an unverified way to permanently break
+the one email that must work.
+**★ AND CAPTCHA IS A BUILD, NOT A TOGGLE — ENABLING IT TODAY LOCKS EVERY USER OUT.** GoTrue starts
+REJECTING any `/auth/v1/signup`, `/auth/v1/token` or `/auth/v1/recover` that carries no
+`captcha_token`, and this app sends none anywhere (`grep -ri captcha src/ supabase/functions/ api/`
+→ zero hits). Five call sites would need one, and the awkward two are in `username-auth`, which
+calls `/token` and `/recover` from the EDGE — a browser widget cannot mint a token there, so the
+client would have to forward one through the function. It needs an hCaptcha/Turnstile account plus
+a widget on AuthScreen; budget it as real work. This was described as "two toggles, ~3 minutes" in
+a chat message and that was wrong.
 **Known and NOT fixed here — code, next round:** `client_errors` accepts anonymous inserts with a
 spoofable `user_id` and no size cap; `pg_net`'s functions are EXECUTE-able by `anon`/`authenticated`
 (a latent SSRF that is inert only because `net` is not REST-exposed — revoke it while it is free);
@@ -2782,7 +2799,15 @@ recipient, which matters because HealthKit-derived recovery values are in the co
 1. **The OTA channel is the highest-value target and has the fewest controls** — a push to `main` is
    code on every phone in minutes with no signature check and no App Review. Everything else is
    bounded by one bad account; this is bounded only by GitHub/Vercel account security. Bundle
-   signing needs a Mac day; 2FA + branch protection do not.
+   signing needs a Mac day; 2FA + branch protection do not. **DONE Sep 5 2026: GitHub 2FA, secret
+   scanning, and a `main` ruleset (Restrict deletions + Block force pushes) with enforcement
+   Active.** "Require a pull request before merging" was deliberately UNTICKED — on a one-person
+   repo it stops nothing (an attacker holding the account opens and merges their own PR) while
+   sitting directly on the path every OTA bundle takes to every phone. **Two traps worth keeping:**
+   a RULESET does not appear in the REST branch list's legacy `protected` field, which still reads
+   `false` — that field only reports classic branch protection, so it cannot confirm or deny a
+   ruleset; and a ruleset created but left on enforcement status **"Evaluate"** logs and blocks
+   NOTHING while looking configured on screen. Bundle SIGNING is still the open half.
 2. `CLAUDE.md` is public and is the best attack guide this app will ever have (see the entry below).
 3. **"Any valid token" is the only gate on server-side spend** and the next endpoint will inherit
    the shape. One shared `withUser(req)` helper that verifies AND meters would make it structural.
@@ -2805,8 +2830,9 @@ password to lock Mo out before the next review, and spend the Anthropic key thro
 (which gates on "any valid token" and has no quota).
 **Scrubbed from the working tree the moment it was confirmed — but a scrub is NOT the fix.** Git
 history still contains it, and a public repo's history is trivially readable. **The fix is
-ROTATION**, which is Mo-side (Supabase dashboard). Until the password is rotated, treat that
-account as compromised.
+ROTATION**, which is Mo-side (Supabase dashboard). **DONE Sep 5 2026** — the exposed password is
+dead, and the live credential now exists only in App Store Connect's review-notes field, per the
+standing rule below.
 **Standing rules from here:**
 - **`CLAUDE.md` IS A PUBLIC DOCUMENT.** It is also the best attack guide this app will ever have —
   it names every guard's blind spot, every deliberate SECURITY DEFINER, and the exact rate-limit
