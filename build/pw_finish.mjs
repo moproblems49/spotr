@@ -216,10 +216,14 @@ async function summaryVsSaved(blankName) {
     // of the sheet. So assert the report itself: the summary sheet, which is a STRONGER signal
     // than a 2.8s toast because it shows the saved workout and does not disappear.
     // Verified for this exact fixture (guest, all /rest/v1 aborted): the sheet opens, #workout-card
-    // is present, and both Share to Feed and Don't share render — so nothing was lost here.
+    // is present, and both the share control and Don't share render — so nothing was lost here.
+    // MATCH THE HOOK, NOT THE LABEL: that button reads "Share to Feed" alone and "Feed" beside a
+    // sibling, so the text depends on whether the fixture's user is in a group. This one seeds
+    // none, which is the only reason a text match still worked — and exactly how it would stop
+    // working silently the day the fixture gains one.
     const sheetShown = await page.evaluate(() => ({
       card: !!document.getElementById("workout-card"),
-      share: /Share to Feed/i.test(document.body.innerText),
+      share: !!document.querySelector('[data-share-target="feed"]'),
     }));
     check("...and the finish is reported as a success (the summary sheet opens)",
       sheetShown.card && sheetShown.share,

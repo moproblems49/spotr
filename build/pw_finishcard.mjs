@@ -39,6 +39,10 @@ await page.addInitScript(([me, sess]) => {
   // A GROUP IS PART OF THE FIXTURE, NOT DECORATION. The share row is two-up only when there is a
   // second destination to sit beside; with no groups the slot holds a full sentence of hint copy
   // and stays full width. A groupless fixture therefore cannot see the two-up layout at all.
+  // NOTE the seed below is INERT — `loadUserData` replaces `groups` wholesale from the server, so
+  // the two-up layout comes ENTIRELY from the `/rest/v1/groups` stub further down. Measured:
+  // emptying this array changes nothing; removing the stub route fails four checks. It is kept
+  // only so the pre-load render is not briefly groupless.
   localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
   localStorage.setItem("seshd_onboarded", "1");
   localStorage.setItem("seshd_custom_merge_v1", "1");
@@ -74,8 +78,16 @@ await page.waitForTimeout(700);
 // shape is silent: every other check in this file passes on the bottom-sheet version.
 const D = await page.evaluate(() => {
   const t = [...document.querySelectorAll("div")].find(d => /^Finish workout\?$/.test((d.textContent||"").trim()));
-  const panel = t && t.parentElement, back = panel && panel.parentElement;
-  if (!panel || !back) return null;
+  const panel = t && t.parentElement;
+  // WALK UP TO THE REAL BACKDROP RATHER THAN ASSUMING IT IS THE PANEL'S PARENT. `Sheet`
+  // interposes an inner wrapper when a caller passes `dragHandle`, so `parentElement` is the
+  // backdrop today only because this one does not. That is not a false PASS — neither
+  // "flex-end" nor "normal" equals "center" — but it would fail a correctly-centred dialog
+  // while printing an alignItems value that describes nothing, which is a misdiagnosis waiting
+  // for whoever adds a drag handle here. The backdrop is the fixed, full-viewport ancestor.
+  let back = panel && panel.parentElement;
+  while (back && back !== document.body && getComputedStyle(back).position !== "fixed") back = back.parentElement;
+  if (!panel || !back || back === document.body) return null;
   const pr = panel.getBoundingClientRect(), br = back.getBoundingClientRect();
   return {
     align: getComputedStyle(back).alignItems,
@@ -185,8 +197,16 @@ if (M) {
     if (feed && groups && dont && undo) {
       check("the two share destinations share one row", rowOf(feed) === rowOf(groups),
         `feed mid ${feed.mid}, groups mid ${groups.mid}`);
+      // AN EQUALITY BOUND PLUS AN UPPER BOUND IS NOT "HALF EACH". The first version was
+      // `|feed - groups| < 40 && feed < footer*0.62`, which two 80px buttons floating in the
+      // middle of a 402px footer satisfy perfectly — proven by setting both to `flex:0 0 80px`
+      // and watching it pass. The pair has to FILL the row, so the lower bound is the load-
+      // bearing half: each button is at least 40% of the footer, and together they cover at
+      // least 85% of it (the rest is the 18px side padding and the 8px gap).
       check("each takes about half the footer width",
-        Math.abs(feed.w - groups.w) < 40 && feed.w < L.footerW * 0.62,
+        Math.abs(feed.w - groups.w) < 40 && feed.w < L.footerW * 0.62
+          && feed.w > L.footerW * 0.40 && groups.w > L.footerW * 0.40
+          && (feed.w + groups.w) > L.footerW * 0.85,
         `feed ${feed.w}px, groups ${groups.w}px, footer ${L.footerW}px`);
       check("the two non-share exits share one row", rowOf(dont) === rowOf(undo),
         `don't-share mid ${dont.mid}, undo mid ${undo.mid}`);

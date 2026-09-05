@@ -280,44 +280,15 @@ async function sheetCase(page, name, open, close, marker) {
   await page.close();
 }
 
-// ── 6. Group share: reached via "Save & send to groups" — the Finish sheet's flow ──────────────
-{
-  const page = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  page.setDefaultTimeout(4000);
-  page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
-  let _n = 0; const uid = () => `u${++_n}`;
-  const S = n => Array.from({ length: n }, () => ({ id: uid(), weight: "135", reps: "8", done: true, type: "normal" }));
-  const SESSION = { dayName: "Push A", unit: "lbs", exercises: [
-    { id: uid(), name: "Barbell Bench Press", reps: "5-8", sets: S(3) },
-  ] };
-  await page.addInitScript(([me, s]) => {
-    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
-      programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [],
-      groups: [{ id:"g1", name:"Lift Crew", members:[me], member_ids:[me] }],
-      profile: { username:"momo", name:"Mo" }, users: [] }));
-    localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
-    localStorage.setItem("seshd_onboarded", "1");
-    localStorage.setItem("seshd_custom_merge_v1", "1");
-    localStorage.setItem("seshd_active_session", JSON.stringify(s));
-    localStorage.setItem("seshd_wstart", String(Date.now() - 6e5));
-  }, [ME, SESSION]);
-  await page.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json",
-    body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
-  await page.route("**/rest/v1/**", r => r.fulfill({ status:200, contentType:"application/json", body:"[]" }));
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2400);
-  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish$/i.test((x.textContent||"").trim())); b && b.click(); });
-  await page.waitForTimeout(700);
-  // NOTE: `setShowGroupShare(true)` is called NOWHERE in App.jsx — this sheet is unreachable
-  // from any UI path (confirmed by grep across the whole file). It predates this migration; the
-  // "Groups Only" button inside the workout-summary sheet posts directly via onShareWorkout and
-  // never touches showGroupShare. Can't runtime-verify a screen with no entry point, so this is
-  // recorded as a finding rather than driven through the UI. The migration itself was verified
-  // structurally (div-depth counted precisely, matches the Settings/Templates pattern) and it
-  // compiles clean.
-  console.log("  Group share picker: UNREACHABLE from any UI path (setShowGroupShare(true) is never called) — not a regression from this migration, pre-existing dead code. Structural-only verification.");
-  await page.close();
-}
+// ── 6. (RETIRED) The group-share picker sheet ────────────────────────────────────────────────
+// This section drove nothing and asserted nothing — it seeded a workout, opened the Finish
+// sheet, and printed a console note saying the picker was unreachable because
+// `setShowGroupShare(true)` was never called anywhere. That was true for the picker's whole
+// life. The sheet, its state and its finishWorkout fast path were DELETED in 0f9c533, so the
+// note now describes code that does not exist, and a section that cannot fail does not belong
+// in the battery. `pw_grouponly`'s `[one-route]` checks are what police this now: they assert
+// the finish confirm offers no second route to groups-only.
+
 
 await browser.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

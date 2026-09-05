@@ -83,7 +83,10 @@ check("Finish modal opens", await page.evaluate(() => /Finish workout\?/i.test(d
 await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish workout$/i.test((x.textContent||"").trim())); b && b.click(); });
 await page.waitForTimeout(2600);
 const sumTxt = await page.evaluate(() => document.body.innerText);
-check("the post-finish summary appears", /Share to Feed|Feed|Don't share/i.test(sumTxt),
+// NOT `|Feed|` — that is a substring of the alternative beside it, so it adds nothing here, and
+// it matches the HOME TAB's own "Your feed is empty" (measured). A marker that another screen
+// also renders cannot say which screen you are on; `Groups only` is the tight alternative.
+check("the post-finish summary appears", /Share to Feed|Groups only|Don't share/i.test(sumTxt),
   sumTxt.slice(0, 120).replace(/\n/g, " | "));
 check("the summary offers a groups-only control",
   await page.evaluate(() => !!document.querySelector('[data-share-target="groups"]')),
@@ -123,6 +126,28 @@ check("NO feed post was created", wrote.posts.flat().filter(Boolean).length === 
   JSON.stringify(wrote.posts).slice(0, 200));
 check("the workout was still saved to history", wrote.workout_history.length > 0,
   JSON.stringify(wrote.workout_history).slice(0, 150));
+
+// ★ A WRITE IS NOT A DESTINATION. Every check above is satisfied by a share that posts correctly
+// and then leaves the user sitting on the summary with the session still live — and the history
+// row is written at FINISH, before the share, so even "the workout was saved" cannot see it.
+// The deleted `[one-tap]` half carried exactly these three assertions, with a comment explaining
+// that an absence test cannot tell "moved on correctly" from "stuck somewhere else". They only
+// ever covered the deleted path, so nothing regressed — but the live path had never had them,
+// and it is the only path now. Red-proofed by deleting the handler's own
+// `setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null);` — every other check
+// in this file stays green — the three that survive all go red, naming the live workout screen
+// with its timer reset to 00:00, which is the exact symptom CLAUDE.md records for this shape.
+// A FOURTH was written and removed: "the bottom nav is back" CANNOT fail here, because the nav
+// is visible during a workout now (a deliberate fix), so it is green on both builds.
+const ended = await page.evaluate(() => ({
+  summary: /Don't share|Undo finish/i.test(document.body.innerText),
+  live: [...document.querySelectorAll("button")].some(b => /^finish$/i.test((b.textContent||"").trim())),
+  session: !!localStorage.getItem("seshd_active_session"),
+  txt: document.body.innerText.slice(0,110).replace(/\n/g," | "),
+}));
+check("the summary sheet closed after sharing", !ended.summary, ended.txt);
+check("the live workout screen is gone", !ended.live, ended.txt);
+check("the stored session was cleared", !ended.session, ended.txt);
 
 // ── There must be no SECOND route to groups-only ─────────────────────────────────────────────
 // The Finish confirm used to carry "Save & send to groups", which opened its own picker and
@@ -169,9 +194,21 @@ check("the workout was still saved to history", wrote.workout_history.length > 0
     const panel = t && t.parentElement;
     return panel ? [...panel.querySelectorAll("button")].map(b => (b.textContent||"").trim()) : null;
   });
-  // The control: the confirm has to be OPEN, with a group in the store, or "the button is absent"
-  // is satisfied by nothing having happened — the vacuous-pass shape this file already documents.
-  check("[one-route] the finish confirm is open with a group in the store", !!D && D.length > 0,
+  // ★ THE CONTROL HAS TO PROVE THE GROUP REACHED THE APP, AND `D.length > 0` DOES NOT.
+  // The deleted button was gated on the user being in a group, so a GROUPLESS fixture renders
+  // exactly two buttons on the OLD code too — measured: with the group removed from both the
+  // seed and the stub, all three checks below PASS against the build that still ships
+  // "Save & send to groups". A non-zero button count is true of any confirm and says nothing.
+  // So the control is the summary's own groups control, which renders ONLY when the store holds
+  // a group the user is in — the same gate the deleted button used. It is asserted AFTER the
+  // labels are captured, so a store that never got its group fails here rather than quietly
+  // making the absence checks meaningless.
+  check("[one-route] the finish confirm is open", !!D && D.length > 0,
+    (await p2.evaluate(() => document.body.innerText)).slice(0,120).replace(/\n/g," | "));
+  await p2.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^finish workout$/i.test((x.textContent||"").trim())); b && b.click(); });
+  await p2.waitForTimeout(2600);
+  check("[one-route] the store really held a group (control)",
+    await p2.evaluate(() => !!document.querySelector('[data-share-target="groups"]')),
     (await p2.evaluate(() => document.body.innerText)).slice(0,120).replace(/\n/g," | "));
   if (D) {
     check("[one-route] the confirm offers no second groups route", !D.some(l => /group/i.test(l)),

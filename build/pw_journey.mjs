@@ -232,14 +232,18 @@ if (inWorkout) {
     `workout_history rows: ${db.workout_history.length}`);
 
   const summary = await body();
-  if (/Share to Feed/i.test(summary)) {
-    await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /share to feed/i.test((x.textContent||"").trim())); b && b.click(); });
+  // MATCH THE HOOK, NOT THE LABEL. This button reads "Share to Feed" when it is alone and "Feed"
+  // when a Groups-only sibling sits beside it, so a text match is a bet on the fixture never
+  // gaining a group. `data-share-target` is the contract.
+  const shareBtn = await page.$('[data-share-target="feed"]');
+  if (shareBtn) {
+    await page.evaluate(() => { const b = document.querySelector('[data-share-target="feed"]'); b && b.click(); });
     await page.waitForTimeout(2500);
     check("8. sharing created a post on the SERVER", db.posts.length > 0, `posts: ${db.posts.length}`);
   } else {
     // NOT a silent skip. A regression that removes or renames the Share control would otherwise
     // convert a checked leg into a console note and the suite would still report ALL PASS.
-    check("8. the summary offers a Share to Feed control", false,
+    check("8. the summary offers a share-to-feed control", false,
       summary.slice(0, 140).replace(/\n/g, " | "));
   }
 }
