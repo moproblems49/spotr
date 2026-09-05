@@ -1,4 +1,4 @@
-// v178091717032
+// v178091717033
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3642,13 +3642,28 @@ function ToastHost() {
       backdropFilter:"blur(24px) saturate(1.6)", WebkitBackdropFilter:"blur(24px) saturate(1.6)",
       border:"1px solid rgba(255,255,255,0.22)",
       fontSize:13, fontWeight:600, zIndex:999, whiteSpace:"nowrap",
+      // ★ A TOAST MUST NEVER SWALLOW A TAP. It is `position:fixed; bottom:90; zIndex:999`, which
+      // puts it OVER every sheet in the app (z 300) — so for its 2.8s life it made whatever sits
+      // in that band untappable, with nothing on screen to say why. That went from latent to live
+      // when the finish sheet's footer was paired into two rows and moved up into the band:
+      // measured at 402x874, the primary Share button was 57% covered with its centre DEAD (a
+      // real `page.mouse.click` at its centre closed nothing and POSTed nothing while the toast
+      // was up, and worked at the same coordinate 2.2s later). Three toasts fire over that sheet
+      // — the offline "Saved on this device", "Program updated" on an ordinary successful finish
+      // that changed the program, and "Select at least one group above", which lands ON the
+      // button that raised it. The commit that moved the footer argued the toast was "gone"; only
+      // the redundant "Workout saved" one was.
+      // The container is informational, so it takes no pointer events at all; only the optional
+      // ACTION button opts back in. This fixes the class for every sheet, not just this one.
+      pointerEvents:"none",
       boxShadow:"0 10px 30px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.25)", fontFamily:F,
       animation:"fadeInUp 0.2s ease", display:"flex", alignItems:"center", gap:14
     }}>
       {t.msg}
       {t.action && (
         <button onClick={() => { try { t.action.onAction && t.action.onAction(); } catch (e) {} _dismissToast(); }}
-          style={{ background:"rgba(255,255,255,0.18)", border:"none", color:"#fff", borderRadius:12, padding:"5px 12px", fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:F, letterSpacing:0.2 }}>
+          style={{ background:"rgba(255,255,255,0.18)", border:"none", color:"#fff", borderRadius:12, padding:"5px 12px", fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:F, letterSpacing:0.2,
+                   pointerEvents:"auto" }}>
           {t.action.label}
         </button>
       )}
@@ -9701,6 +9716,15 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
   // cannot take it back.
   const panelRef = useRef(null);
   const backRef = useRef(null);
+  // ★ A CENTRED PANEL IS A DIALOG, AND A DIALOG OWES MORE THAN GEOMETRY. Measured on the open
+  // "Finish workout?" confirm before this: `role` null, `aria-modal` null, focus still on BODY,
+  // and six consecutive Tabs landed on Messages / Activity / Discard / the workout-name input /
+  // Finish / 1RM — every one of them the screen BEHIND the dialog, including Discard, which
+  // destroys the session. Escape did nothing. Bottom SHEETS have always behaved this way and are
+  // left alone here (that is 18 call sites and its own piece of work); this applies only to the
+  // `center` variant, which is the one that changed category from "surface you came to" into
+  // "question that interrupts you". The share modal needed exactly this after a critique.
+  const firstFocusRef = useRef(null);
   const dragY = useRef(0);
   const startY = useRef(null);
   const dragging = useRef(false);
@@ -9765,6 +9789,36 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
     const t = setTimeout(() => setRender(false), SHEET_MS);
     return () => clearTimeout(t);
   }, [open]);
+  // Keyed on the OPEN transition only, so a re-render while the dialog is up cannot re-steal
+  // focus from whatever the user has tabbed to (the documented `[!!shareModal]` trick).
+  useEffect(() => {
+    if (!center || !open) return;
+    const t = setTimeout(() => { try { firstFocusRef.current && firstFocusRef.current.focus(); } catch (e) {} }, SHEET_MS);
+    return () => clearTimeout(t);
+  }, [center, open]);
+  useEffect(() => {
+    if (!center || !open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose && onClose(); return; }
+      // SEEDING FOCUS IS NOT CONTAINING IT. With `role=dialog` and focus placed on the panel,
+      // measured Tabs still went: Finish workout (inside), Keep going (inside), then OUT to the
+      // workout screen behind — Messages, Activity, and Discard, which destroys the session.
+      // `aria-modal` tells assistive tech the rest is inert; it does not stop the Tab ring, and
+      // this app was once rejected on an iPad, where a keyboard is ordinary. So the ring wraps.
+      if (e.key !== "Tab") return;
+      const p = panelRef.current;
+      if (!p) return;
+      const f = [...p.querySelectorAll('button, [href], input, select, textarea, [tabindex]')]
+        .filter(el => !el.hasAttribute("disabled") && el.tabIndex !== -1 && el.offsetParent !== null);
+      if (!f.length) { e.preventDefault(); return; }
+      const first = f[0], last = f[f.length - 1], a = document.activeElement;
+      if (!p.contains(a)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+      if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [center, open, onClose]);
   if (!render) return null;
   const ease = shown ? EASE_NAV : EASE_EXIT;
   // ★ THE HANDLE MUST NOT SIT INSIDE THE SCROLLING REGION. On iOS a touch that begins inside a
@@ -9809,9 +9863,14 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                // machinery is shared on purpose — mount delay, backdrop fade, unmount timer, portal
                // — per the every-sheet-goes-through-Sheet rule; only the anchor and the entrance
                // differ. NOTE the documented trap: `alignItems:center` CLIPS THE TOP of an
-               // over-tall child. What keeps that unreachable is the maxHeight clamp below, which
-               // every panel gets; a centred caller whose content could exceed it needs its own
-               // scroller, not a taller cap.
+               // over-tall child. The maxHeight clamp below does prevent the TOP clip — but with
+               // `overflow:visible` and no scroller it converts it into BOTTOM overflow off the
+               // viewport instead: measured with a 1400px filler injected into the live panel, the
+               // panel clamped to 864 while its content ran to 1585 and "Keep going" landed at
+               // y 1556 on an 874px viewport, `lastBtnHittable: false`. Latent, not live — the
+               // real content is fixed copy measuring 205px (scrollHeight === clientHeight) — but
+               // a centred caller whose content CAN grow needs its own scroller, and the clamp is
+               // not the guarantee this comment used to claim it was.
                alignItems: center ? "center" : "flex-end", justifyContent:"center",
                // ★ ONE `transition` KEY. These were two separate `transition:` entries in this same
                // object literal — the later one silently won, so the `bottom` transition was dead
@@ -9824,7 +9883,9 @@ export function Sheet({ open, onClose, children, z = 3000, backdrop = "rgba(0,0,
                // Taps during the exit would land on a panel already on its way out.
                pointerEvents: shown ? "auto" : "none",
                ...(backdropProps.style || {}) }}>
-      <div {...panelProps} onClick={e => e.stopPropagation()} ref={panelRef}
+      <div {...panelProps} onClick={e => e.stopPropagation()}
+        ref={(el) => { panelRef.current = el; if (center) firstFocusRef.current = el; }}
+        {...(center ? { role:"dialog", "aria-modal":"true", tabIndex:-1 } : null)}
         style={{ ...(center
                    // boxSizing is load-bearing and NOT decoration: this app has no global
                    // `box-sizing:border-box` reset (src/App.css, which held the only one, was
@@ -12627,7 +12688,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   safe-area band — which is what Mo reported as "lots of empty space at the bottom".
                   Pairing them says what they are: row one is the two SHARE destinations (a choice,
                   so they sit side by side and the fill/outline treatment carries which is primary),
-                  row two is the two ways to leave without sharing. Measured 199px -> 118px, and
+                  row two is the two ways to leave without sharing. Measured 199px -> 111px, and
                   every reclaimed pixel goes to the scroller because the footer is static and the
                   scroller is `flex:1`.
                   The bottom pad is `max(env(...), 14px)` rather than `env(...) + 10`: the last row
@@ -12688,7 +12749,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   );
                 })()}
                 {(store.groups||[]).filter(g=>(g.members||g.member_ids||[]).includes(currentUserId)).length === 0 && (
-                  <div style={{ width:"100%", background:"transparent", color:C.muted, border:`1.5px dashed ${C.border}`, borderRadius:14, padding:"11px", fontSize:12, fontFamily:F, letterSpacing:-0.1, textAlign:"center" }}>
+                  // boxSizing because this app has no global border-box reset: measured, this div
+                  // rendered 390px wide inside a 384px content box on a 402px viewport, so its
+                  // dashed right border was cut off by the viewport. Pre-existing (it was 10px
+                  // over before this row was rewritten), on a line this change touched.
+                  <div style={{ width:"100%", boxSizing:"border-box", background:"transparent", color:C.muted, border:`1.5px dashed ${C.border}`, borderRadius:14, padding:"11px", fontSize:12, fontFamily:F, letterSpacing:-0.1, textAlign:"center" }}>
                     Join a group from Discover → Groups to share workouts privately
                   </div>
                 )}
@@ -12696,7 +12761,11 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     neither is a destination, so stacking them was two whispers over a void. */}
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:workoutSummary.undo ? 14 : 0 }}>
                 <button onClick={() => { setShowWorkoutSummary(false); setWorkoutSummary(null); setSession(null); }} style={{ background:"none", color:C.sub, border:"none", padding:"9px 4px", fontSize:13, cursor:"pointer", fontFamily:F }}>Don't share</button>
-                {workoutSummary.undo && <div style={{ width:3, height:3, borderRadius:"50%", background:C.divider, flexShrink:0 }}/>}
+                {/* `C.divider` measured 1.06-1.37:1 against this panel on ALL NINE themes — under
+                    the 3:1 graphical floor everywhere, i.e. effectively not drawn on the five
+                    light ones. A separator nobody can see is not a separator. `C.sub` is what the
+                    app already uses for this job elsewhere and clears the text floor. */}
+                {workoutSummary.undo && <div aria-hidden="true" style={{ color:C.sub, fontSize:13, lineHeight:1, flexShrink:0, fontFamily:F }}>·</div>}
                 {workoutSummary.undo && (
                   <button onClick={async () => {
                     const u = workoutSummary.undo;
