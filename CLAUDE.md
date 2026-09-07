@@ -2671,6 +2671,45 @@ protected only by the `net` schema not being REST-exposed — one layer, where t
 has two. If `net` were ever exposed, reading responses would become possible and the guard would not
 help; that is what sweep step 6's first condition is for.
 
+## ★★ SECURITY ROUND 3 (Sep 7) — the coach-link surface, proven by stripping its masks
+Mo asked for a deep check. Scope: everything new since Round 2 (coach links, above all), plus
+re-DRIVING the load-bearing controls rather than re-reading the notes about them. **No live hole.**
+Every DB probe ran in a rolled-back transaction and was judged by ROW COUNT, never by catching an
+exception; verified afterwards that nothing survived (0 test rows, follows back to 5, all profiles
+back to public).
+- **★ THE COACH-LINK TEST IS ONLY WORTH ANYTHING WITH BOTH MASKS OFF, AND THAT IS THE WHOLE
+  LESSON REPEATING.** All three surviving accounts are `is_public = true` AND mutually following,
+  so the naive version passes for the wrong reason — the first run duly reported the coach reading
+  72 rows and a STRANGER reading the same 72, which says nothing about coach links at all. Redone
+  with the athlete set private and every follow to them deleted inside the transaction, so the link
+  was the ONLY possible grant: before redeem coach **0** / stranger **0** / stranger PRs **0**;
+  after redeem coach **72 history + 61 PRs** and posts still **0**; stranger **0** throughout;
+  anon reads **0** coach_links. That is the non-vacuous proof.
+- **Escalation is genuinely shut, both ways.** A coach repointing `athlete_id` via direct UPDATE is
+  refused by `trg_coach_link_immutable` ("only revoked_at may be changed"); forging a link for
+  another athlete via INSERT is refused by RLS. Revocation is immediate — the coach path returns
+  **0** the moment `revoked_at` is set.
+- **★ AND ONE ALARMING NUMBER WAS MY OWN PROBE, NOT A LEAK.** "Coach reads 3 of the athlete's
+  messages" looked like a scope break; the messages policy requires the READER to be a participant,
+  so those 3 were the coach's own DM thread with the athlete. Re-asked as "messages where the
+  athlete is a party and the coach is NOT": **0**. Count the thing you actually mean.
+- **pg_net residuals unchanged and still inert**: enqueue guard trigger present AND enabled, zero
+  public wrappers, `net` absent from the authenticator's config so the schema is not REST-exposed.
+  `net._http_response` stays anon-SELECTable and unrevokable from here — latent only because of
+  that one fact, which is why sweep step 6 exists.
+- **Swept clean, so it is not re-litigated:** every `SECURITY DEFINER` function in `public` pins
+  `search_path` (**0** without it — no hijack surface); RLS on all 22 tables with no `USING (true)`
+  anywhere; `ai_usage`/`code_redeem_failures`/`reports` unreadable by anon; no secrets in the tree
+  (the only JWT is the public anon key, `supabase/.temp` untracked, no `.env.local`, no `.p8`);
+  `npm audit` 0; the single `dangerouslySetInnerHTML` renders a static hardcoded muscle-icon path
+  map, not user data; PostHog still `autocapture:false` + recording off + fragments sanitised;
+  `sim_mediasrc`/`sim_authhash`/`sim_undef` green.
+- **Worth knowing, not a bug: the coach code is now the highest-value bearer credential the app
+  issues** — a whole training history + PRs, live, versus a share code's one-time COPY of a
+  program. Defended by the same 8-char/31-symbol space (~8.5e11), the redeem rate limiter that
+  `redeem_coach_code` shares with the other two, instant athlete-side revocation, and the athlete
+  having to mint and hand it over deliberately. Sound, but do not widen its scope casually.
+
 ## ★★ SECURITY ROUND 2 (Sep 1) — the media-URL sweep found one the first pass missed
 Mo, on the tracking-pixel finding: "make sure that can happen anywhere else." So the second round
 led with a full sweep for remote resources loaded from a value another user controls.
@@ -4630,6 +4669,33 @@ Profile lands on the remembered sub-tab (History), which read as "no Quick Start
 because an overlay does not remove the DOM beneath it — the confirm sheet was open at z=200 the
 whole time and I reported Finish as broken three times before asking what was actually PAINTED.
 A guard that greps `innerText` for a word the covered screen also contains is worth nothing.
+
+## ★ Sweep #9 (Sep 6, 2026) — ZERO Postgres errors, and the push fix is confirmed by USE
+**Postgres errors: none at all.** 49 log lines in 24h, every one severity `LOG` — no ERROR, no
+FATAL, no WARNING. The trend across sweeps is 1,650 -> 953 -> 83 -> 58 -> 31 -> 9 -> 2 -> **0**.
+Auth clean: 7 sign-ins all 200, one `400 Invalid login credentials` (a single typo, not a spike),
+no reset-email failures.
+**★ THE PUSH-REGISTRATION ERROR STOPPED, AND "NO NEW ERRORS" WAS CHECKED AGAINST USE RATHER THAN
+ASSUMED.** That message fired 30 times, last at 2026-09-04 01:10 on bundle `2026-09-04a`; the
+`.catch()` fix shipped in `2026-09-04d`. Zero since — and the app has genuinely RUN in that window
+(7 sign-ins in 24h, a logged workout, a PR update, a kudos, 10 notifications), which is what turns
+silence into evidence. `client_errors` flat at 102 rows. Ask what the absence of an error would look
+like on an idle phone before crediting a fix for it.
+**Storage/tables clean:** 26 objects across the three buckets (~30.7MB) with **0 orphans in all
+three** (each object's folder segment resolved back to a live `profiles`/`groups` row); tables all
+proportionate to 3 profiles, `posts` at 3.1MB/89 rows still the largest thing in the database;
+orphaned `member_ids` **0**; `code_redeem_failures` 0 rows so the opportunistic cleanup works; no
+backup tables left (the Sep 4 drop held). **pg_net tripwire all three correct** (not exposed / 0
+wrappers / guard = 1).
+**Advisors: nothing new that is not deliberate.** Two new entries, both from the coach-link work
+(`is_active_coach_of`, `redeem_coach_code`) and both expected — the anon EXECUTE on the first is
+LOAD-BEARING, since RLS policies call it with the CALLER'S privileges and revoking it would break
+reads with 42501 rather than harden anything (the `profile_is_public` scar, third instance).
+**One new minor item:** `coach_links` carries two permissive UPDATE policies ("athlete revokes own
+coach link" + "coach may remove themselves"). Unlike the known `workout_codes` duplicate these are
+two genuinely DIFFERENT grants that merely share role+action, so an `OR` would satisfy the linter;
+consolidate whenever that table is next touched, not on its own.
+**Baseline for the next run:** 0 Postgres errors, 102 `client_errors`, 26 storage objects, 3 profiles.
 
 ## ★ Sweep #8 (Sep 4, 2026) — two Postgres errors in 24h, and both are mine
 **Postgres: 169 LOG, 2 ERROR, and both ERRORs are `app = mgmt-api`** — my own MCP probes from the
