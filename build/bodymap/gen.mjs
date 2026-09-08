@@ -1,96 +1,256 @@
-import fs from 'fs'; import {spline,mirror,xform,pl,band} from './kit.mjs';
-const CX=132;
-// =================== FRONT (design frame: shoulders top 47.5, ground 386) ===================
-// arm: shoulder joint (170,66) -> elbow (188,138) -> wrist (194,197)
-const upperArm={ c: y=>170+21*(y-66)/72, w: pl([[78,6],[95,7.8],[108,8.2],[125,7.4],[138,6.6]]) };
-const foreArm ={ c: y=>191+5*(y-138)/59, w: pl([[138,6.6],[150,7.4],[165,6.4],[182,4.4],[197,2.2]]) };
-// leg: hip (152,200) -> knee (148,296) -> ankle (147,386)
-const thigh={ c: y=>152-4*(y-200)/96, w: pl([[198,20.5],[222,21],[248,19],[275,15.8],[296,13]]) };
-const shin ={ c: y=>148-1*(y-296)/90, w: pl([[296,12.5],[312,12.8],[332,13],[352,10.5],[372,8],[386,6.5]]) };
-// torso outer half-width (right edge x = CX + tw(y)) — the OBLIQUE's outer edge is built from this so the waist is real
-const tw=pl([[96,30.5],[110,28.5],[130,25.5],[148,23.5],[162,25],[176,30],[188,36],[198,39.5]]);
+#!/usr/bin/env node
+// Regenerate BODYMAP_FEMALE in src/bodyMapData.js from the licensed Illustrator artwork.
+//
+//   node build/bodymap/gen.mjs <path-to/AdobeStock_858843878.ai> [--write]
+//
+// ★ THE ARTWORK IS NOT IN THIS REPO AND MUST NOT BE ADDED. This repo is public and the file is
+// licensed for the app, not for redistribution — same rule as every other credential/asset in
+// CLAUDE.md. Mo holds it; the path is an argument.
+//
+// WHAT THIS DOES, AND WHY EACH STEP EXISTS:
+//  1. read the artist's own Béziers out of the EPS (eps.mjs) — no raster, no tracing anywhere.
+//     Three earlier attempts traced raster references and all three failed the same way: a
+//     ~200px-tall figure cannot carry ~78 individually-shaped muscles per view, so they came out
+//     as slivers with hairline barbs. This file has them as real vector paths.
+//  2. pick out the two female figures and their silhouettes by colour + x-band.
+//  3. CUT head, hands and feet, because the male map has none of them and the pair must match.
+//     Each cut is a CHORD across the outline (geom.cutChord): find where the outline crosses it,
+//     drop the arc containing the part being removed, close with the straight chord. Everything
+//     else keeps the artist's curves exactly; only the two split segments are recomputed, and by
+//     de Casteljau rather than resampling.
+//  4. drop head/hand/foot MUSCLES, and trim the few that straddle a cut (geom.clipHalf) — a shape
+//     poking past the trimmed silhouette would paint outside the body, which pw_bodymapfemale
+//     asserts against at pixel level.
+//  5. assign each muscle to one of the male map's nine region names by position. The bands were
+//     READ OFF an indexed render of the real shapes, not guessed, and they follow the MALE map's
+//     own conventions so the pair reads as one family — notably that its "Obliques" are the
+//     serratus digitations flanking the abs.
+//  6. bring the ARMS IN. Anchored on the landmarks both figures share, she comes out 5.6% wider
+//     than the male and past the tightest viewBox the app draws her in, so she would be clipped on
+//     device. Scaling down would break the shoulder->feet match and squeezing x would distort every
+//     muscle, so instead a y-dependent map leaves the torso identical, compresses only the EMPTY
+//     GAP between torso and arm, and translates the arm rigidly. No muscle shape is deformed, and
+//     the shift self-ramps to zero at the shoulder because there the gap closes.
+//  7. fit UNIFORMLY on deltoid top + ground line — never on outer extent. This figure has no head,
+//     so matching bounding boxes would put her shoulders where his neck is and stretch the body to
+//     fill the gap (that shipped once, measured +7.4% on the back, and Mo spotted it on the device).
+//  8. emit. _body is the cut silhouette PLUS every region subpath, so `region ⊂ _body` holds
+//     VERBATIM and registration cannot drift; sim_bodymapfemale asserts exactly that.
+import fs from "fs";
+import path from "path";
+import { readEPS } from "./eps.mjs";
+import { bb, ccw, centroid, clipHalf, cutChord, dOf, flatten, xf } from "./geom.mjs";
 
-const R={}, F={list:[]}; const add=(k,pts)=>{(R[k]??=[]).push(pts);}; const fill=pts=>F.list.push(pts);
-// ---- neck filler + traps
-fill([[127.5,29,0.2],[136.5,29,0.2],[139.5,40],[142,50],[132,53],[122,50],[124.5,40]]);
-add('Traps',[[137,37.5],[143,39],[152,44],[159,49],[161.5,53.5],[157.5,56],[149,53],[141.5,48],[137,43]]);
-// ---- deltoid: ovoid cap, widest high, tapering down INTO the arm (bottom overlaps the bicep top)
-add('Shoulders',[[160.5,49.5],[167,47.5],[173.5,48.5],[178.5,53],[181,60],[180.5,68],[178.5,76],[175,82],[170.5,84],[167.5,80],[165.5,70],[163,60]]);
-// ---- chest: soft pec — full at the outer-lower corner, sloping in toward the sternum, rounded underside
-add('Chest',[[135,60],[144,57.5],[153,59],[160.5,62.5],[163.5,71],[164.5,81],[160.5,91],[151,96.5],[141,95.5],[135.5,90],[134,76]]);
-// ---- armpit filler
-fill([[163,80],[169,84],[170,94],[162,93]]);
-fill([[130,57],[134,57],[134,90],[135,150],[134,197],[130,197]]);
-fill([[143,50],[158,52],[161.5,58],[144.5,59]]);
-// ---- upper arm: biceps belly (medial ~72%) + brachialis filler (lateral)
-add('Biceps',band({limb:upperArm,y0:85,y1:136,fL:0.04,fR:0.7,taperTop:0.6,taperBot:0.5,cap:0.4}));
-fill(band({limb:upperArm,y0:88,y1:137,fL:0.72,fR:0.97,taperTop:0.5,taperBot:0.5,cap:0.4}));
-// ---- forearm: extensor mass (lateral, longer) + flexor mass (medial); elbow + wrist fillers
-add('Forearms',band({limb:foreArm,y0:140,y1:187,fL:0.47,fR:0.97,taperTop:0.6,taperBot:0.85,cap:0.4,capBot:0.45}));
-add('Forearms',band({limb:foreArm,y0:142,y1:181,fL:0.03,fR:0.45,taperTop:0.6,taperBot:0.8,cap:0.4,capBot:0.45}));
-fill([[190.5,185],[196.5,185],[197.8,191],[197,196.5],[195.3,198],[192.5,195.5],[190.8,190]]);
-fill(band({limb:foreArm,y0:132,y1:142,fL:0.1,fR:0.9,taperTop:0.85,taperBot:0.85,cap:0.3}));
-// ---- abs: 2 soft blocks per side, flat-ish junction (no lens)
-add('Abs',[[134.5,101,0.15],[143,100],[147.5,104],[148,124],[147,146,0.15],[143.5,148.5,0.15],[134.5,148.5,0.15]]);
-add('Abs',[[134.5,152,0.15],[143.5,152,0.15],[147,155,0.15],[146.5,175],[144,188],[140.5,194.5],[136,196],[134.5,194,0.15]]);
-// ---- obliques: lateral leaf whose outer edge IS the torso profile (waist), wider under the chest, narrowing to the hip
-add('Obliques',(()=>{const o=[];for(const y of [102,112,124,138,152,164,174]) o.push([CX+tw(y)-1.5,y]); const inner=[[147.5,179],[148.5,168],[149.5,156],[149.5,142],[149.5,128],[149.8,114],[151,104]]; return [[155,100.5],...o,[156,180],...inner];})());
-// ---- pelvis: lower, smaller; hip fillers follow the profile
-fill([[122,192],[132,192],[142,192],[149,196],[150,206],[141,213],[132,209],[123,213],[114,206],[115,196]]);
-fill([[151,182],[158,179],[164,182],[169,189],[172.5,198],[170,204],[160,203],[152,198],[150,192]]);
-// ---- quads: VL, RF, VM; adductor filler inner-upper
-add('Quads',band({limb:thigh,y0:193,y1:287,fL:0.6,fR:0.97,taperTop:0.65,taperBot:0.45,cap:0.4,capTop:0.28}));
-add('Quads',band({limb:thigh,y0:197,y1:282,fL:0.3,fR:0.58,taperTop:0.65,taperBot:0.5,cap:0.45,capTop:0.28}));
-add('Quads',band({limb:thigh,y0:240,y1:291,fL:0.05,fR:0.28,taperTop:0.45,taperBot:0.55,cap:0.45}));
-fill(band({limb:thigh,y0:206,y1:236,fL:0.06,fR:0.26,taperTop:0.55,taperBot:0.5,cap:0.35}));
-fill(band({limb:shin,y0:286,y1:309,fL:0.1,fR:0.9,taperTop:0.8,taperBot:0.8,cap:0.3}));
-// ---- calves front: tibialis anterior (lateral, narrower) + gastroc medial head (fuller); ankle filler to 386
-add('Calves',band({limb:shin,y0:307,y1:374,fL:0.6,fR:0.96,taperTop:0.55,taperBot:0.45,cap:0.4}));
-add('Calves',band({limb:shin,y0:309,y1:364,fL:0.04,fR:0.57,taperTop:0.55,taperBot:0.5,cap:0.45}));
-fill(band({limb:shin,y0:366,y1:384.5,fL:0.1,fR:0.9,taperTop:0.8,taperBot:0.85,cap:0.3}));
+const AI = process.argv[2];
+const WRITE = process.argv.includes("--write");
+if(!AI || !fs.existsSync(AI)){ console.error("usage: node build/bodymap/gen.mjs <AdobeStock_858843878.ai> [--write]"); process.exit(2); }
+const ROOT = path.resolve(new URL("../..", import.meta.url).pathname);
+const log = (...a) => console.log(...a);
 
-// =================== BACK (designed in the same frame, then fitted to the male back by a uniform similarity) ===================
-const upperArmB={ c: y=>170+24*(y-66)/72, w: upperArm.w }, foreArmB={ c: y=>194+5*(y-138)/59, w: foreArm.w };
-const RB={}, FB={list:[]}; const addB=(k,pts)=>{(RB[k]??=[]).push(pts);}; const fillB=pts=>FB.list.push(pts);
-fillB([[127.5,29,0.2],[136.5,29,0.2],[140,43],[124,43]]);
-// traps: kite from the neck to the shoulder point, tail down to ~y118 beside the spine
-addB('Traps',[[133,37,0.15],[142,39.5],[152,46.5],[160,55],[159.5,60],[151,67],[142,80],[136.5,96],[135.5,104,0],[133,106,0]]);
-// rear delt: same trimmed cap, top 47.5
-addB('Rear Delts',[[160.5,49.5],[167,47.5],[173.5,48.5],[178.5,53],[181,60],[180.5,68],[178.5,76],[175,82],[170.5,84],[167,80],[165,70],[162.5,60]]);
-// lats: fan from the armpit down and in to the lower back; outer edge follows the torso profile
-addB('Lats',[[141,86],[149,83],[158,83.5],[165.5,87.5],[161,93.5],[158,100],[155,110],[152.5,124],[150,138],[147.5,152],[145.5,164],[143.5,169,0.15],[146.5,169.5,0.15],[145.5,160],[145,146],[144.5,132],[144,116],[143.5,102],[142,92]]);
-// lower back: erector strip between the lats, from the trap tail to the sacrum
-addB('LowerBack',[[134,110,0.15],[139,109.5],[140.5,122],[141.5,140],[141.5,158],[140.5,175],[139.5,184],[137,188,0],[134,188.5,0]]);
-// glutes: round, full, wider than the waist
-addB('Glutes',[[134,194,0],[144,193],[154,194.5],[162,198.5],[168,205],[172.5,214],[173,225],[168.5,233.5],[158,238.5],[146,239.5],[137,236.5],[134,231,0]]);
-addB('Glutes',[[146,184],[155,180],[163,182],[169,190],[170.5,198,0.2],[165,197.5,0.2],[156.5,192.5,0.2],[146,190,0.2]]);
-// armpit + hip fillers
-fillB([[161,79],[168,84],[170,94],[161,92]]); fillB([[150,62],[161,60],[165,70],[164,84],[149,84],[143,76]]); fillB([[130,100],[134,100],[134.5,150],[134,192],[130,192]]); fillB([[124,184],[140,184],[142,196],[132,200],[122,196]]); fillB([[142,163],[150,162],[153.5,176],[144,181],[140.5,172]]); fillB([[146,165],[158,169],[166,177],[165,184],[150,185],[143.5,179]]);
+// ── 1-2. figures ────────────────────────────────────────────────────────────────────────────────
+const MUSCLE_K = "0.677,0.609,0.599,0.476";
+const key = c => (c || [0,0,0,0]).map(v => (+v).toFixed(3)).join(",");
+const shapes = readEPS(AI);
+for(const s of shapes){ const q = bb(s.p); s.b = [q.x0, q.y0, q.x1, q.y1]; }
+const muscles = shapes.filter(s => key(s.c) === MUSCLE_K);
+// The female BACK silhouette shares a fill with the artboard background, so it is the second
+// subpath of that shape rather than a shape of its own.
+const bgShape   = shapes.find(s => s.p.length === 2 && s.b[2] > 3900);
+const frontSil  = shapes.find(s => key(s.c).startsWith("0.267") && s.p.length === 1 && s.b[0] > 2200 && s.b[2] < 3100 && (s.b[3]-s.b[1]) > 1000);
+const FIG = {
+  front: { sil: frontSil.p[0], muscles: muscles.filter(s => { const c=(s.b[0]+s.b[2])/2; return c >= 2000 && c < 3060; }).map(s => s.p[0]) },
+  back:  { sil: bgShape.p[1],  muscles: muscles.filter(s => { const c=(s.b[0]+s.b[2])/2; return c >= 3060; }).map(s => s.p[0]) },
+};
+log(`parsed ${shapes.length} shapes; female front ${FIG.front.muscles.length} muscles, back ${FIG.back.muscles.length}`);
 
+// ── scanline profile, the measurement every landmark comes from ─────────────────────────────────
+function scan(sil, step = 3){
+  const { pts } = flatten(sil, 24), B = bb([sil]), rows = [];
+  for(let y = B.y0 + 0.5; y <= B.y1; y += step){
+    const xs = [];
+    for(let k = 0; k < pts.length; k++){ const a = pts[k].p, b = pts[(k+1) % pts.length].p;
+      if((a[1]-y) * (b[1]-y) < 0) xs.push(a[0] + (b[0]-a[0]) * (y-a[1]) / (b[1]-a[1])); }
+    xs.sort((p,q) => p-q);
+    const runs = []; for(let i = 0; i+1 < xs.length; i += 2) runs.push([xs[i], xs[i+1]]);
+    rows.push({ y, runs });
+  }
+  return { rows, B };
+}
+// ── 3. landmarks + cuts ─────────────────────────────────────────────────────────────────────────
+function landmarks(sil){
+  const { rows, B } = scan(sil, 2), cx = (B.x0+B.x1)/2, H = B.y1-B.y0;
+  const rowAt = y => rows.reduce((b,r) => Math.abs(r.y-y) < Math.abs(b.y-y) ? r : b, rows[0]);
+  let neck = null;                                     // narrowest single run below the skull
+  for(const r of rows){ const f = (r.y-B.y0)/H; if(f < 0.11 || f > 0.22 || r.runs.length !== 1) continue;
+    const w = r.runs[0][1]-r.runs[0][0]; if(!neck || w < neck.w) neck = { y:r.y, w, run:r.runs[0] }; }
+  const armRuns = side => rows.filter(r => r.runs.length >= 3).map(r => {
+    const cand = r.runs.filter(u => side < 0 ? u[1] < cx-110 : u[0] > cx+110);
+    const u = side < 0 ? cand[0] : cand[cand.length-1];
+    return u ? { y:r.y, u, w:u[1]-u[0] } : null; }).filter(Boolean);
+  const wristOf = side => { const a = armRuns(side);   // last minimum before the hand flares
+    for(let i = 4; i < a.length-1; i++) if(a[i+1].w > a[i].w*1.08 && a[i].y > B.y0 + 0.38*H) return a[i];
+    return a[a.length-1]; };
+  const axisOf = (side, w) => { const a = armRuns(side);
+    const up = a.reduce((b,r) => Math.abs(r.y-(w.y-26)) < Math.abs(b.y-(w.y-26)) ? r : b, a[0]);
+    const d = [(w.u[0]+w.u[1])/2 - (up.u[0]+up.u[1])/2, w.y - up.y], L = Math.hypot(...d);
+    return [d[0]/L, d[1]/L]; };
+  let ankle = null;                                    // narrowest leg run above the foot flare
+  for(const r of rows){ const f = (r.y-B.y0)/H; if(f < 0.85 || f > 0.96) continue;
+    const L = r.runs.filter(u => u[1] < cx)[0]; if(!L) continue;
+    const w = L[1]-L[0]; if(!ankle || w <= ankle.w) ankle = { y:r.y, w }; }
+  const wl = wristOf(-1), wr = wristOf(1);
+  return { B, cx, H, neck, wl, wr, al: axisOf(-1,wl), ar: axisOf(1,wr), ankle, rowAt };
+}
+function cutSil(sil, L){
+  const steps = [{ name:"head", c1:[L.neck.run[0]-70, L.neck.y], c2:[L.neck.run[1]+70, L.neck.y],
+                   drop:[(L.neck.run[0]+L.neck.run[1])/2, L.B.y0] }];
+  for(const [side, w, ax] of [[-1, L.wl, L.al], [1, L.wr, L.ar]]){
+    const c = [(w.u[0]+w.u[1])/2, w.y], per = [-ax[1], ax[0]], R = w.w*1.4;   // chord ⊥ to the arm axis
+    steps.push({ name: side < 0 ? "hand L" : "hand R",
+      c1:[c[0]-per[0]*R, c[1]-per[1]*R], c2:[c[0]+per[0]*R, c[1]+per[1]*R],
+      drop:[c[0]+ax[0]*70, c[1]+ax[1]*70] });
+  }
+  for(const leg of L.rowAt(L.ankle.y).runs.filter(u => u[1]-u[0] < 90)){
+    const mid = (leg[0]+leg[1])/2;
+    steps.push({ name:`foot ${mid < L.cx ? "L" : "R"}`, c1:[mid-52, L.ankle.y], c2:[mid+52, L.ankle.y], drop:[mid, L.B.y1] });
+  }
+  let p = sil;
+  for(const s of steps){ const r = cutChord(p, s.c1, s.c2, s.drop);
+    if(!r || r.err) throw new Error(`cut ${s.name}: ${r ? r.err : "failed"}`); p = r; }
+  if(steps.length !== 5) throw new Error(`expected 5 cuts, made ${steps.length}`);
+  return ccw(p);
+}
+// ── 4. which muscles survive the cuts ───────────────────────────────────────────────────────────
+function keepMuscles(list, L){
+  const kept = [], why = {};
+  for(const m of list){
+    const c = centroid(m), B2 = bb([m]); let drop = null;
+    if(B2.y1 < L.neck.y + 4) drop = "head";
+    else if(B2.y0 > L.ankle.y - 4) drop = "foot";
+    else for(const [w, ax] of [[L.wl, L.al], [L.wr, L.ar]]){
+      const wc = [(w.u[0]+w.u[1])/2, w.y];
+      const along = (c[0]-wc[0])*ax[0] + (c[1]-wc[1])*ax[1];
+      const perp  = Math.abs((c[0]-wc[0])*-ax[1] + (c[1]-wc[1])*ax[0]);
+      if(along > 0 && perp < 90) drop = "hand";
+    }
+    if(drop){ why[drop] = (why[drop]||0)+1; continue; }
+    let t = m;
+    t = clipHalf(t, [0,-1], -L.neck.y)  ?? t;    // keep y >= neck cut
+    t = clipHalf(t, [0, 1],  L.ankle.y) ?? t;    // keep y <= ankle cut
+    kept.push(ccw(t));
+  }
+  return { kept, why };
+}
+// ── 5. regions ──────────────────────────────────────────────────────────────────────────────────
+const ORDER = {
+  front: ["Traps","Shoulders","Chest","Biceps","Forearms","Abs","Obliques","Quads","Calves"],
+  back:  ["Traps","Rear Delts","Lats","Triceps","Forearms","LowerBack","Glutes","Hamstrings","Calves"],
+};
+const BAND = {
+  front: x => {
+    if(x.part[0] === "a") return x.v <= 0.24 ? "Biceps" : "Forearms";
+    if(x.part[0] === "l") return x.v <= 0.75 ? "Quads" : "Calves";
+    if(x.v <= 0.115) return Math.abs(x.u) >= 0.20 ? "Shoulders" : "Traps";
+    if(x.v <= 0.16)  return "Chest";
+    // below the pubis the torso column is adductor/pectineus — leg movers, and the app has no
+    // Adductors region (the male art simply leaves this area grey, so there is no precedent).
+    if(x.v > 0.43)   return "Quads";
+    return Math.abs(x.u) <= 0.105 ? "Abs" : "Obliques";
+  },
+  back: x => {
+    if(x.part[0] === "a") return x.v <= 0.27 ? "Triceps" : "Forearms";
+    if(x.part[0] === "l") return x.v <= 0.75 ? "Hamstrings" : "Calves";
+    if(x.v <= 0.12) return Math.abs(x.u) >= 0.21 ? "Rear Delts" : "Traps";
+    if(x.v <= 0.33) return (x.v > 0.25 && Math.abs(x.u) <= 0.09) ? "LowerBack" : "Lats";
+    return "Glutes";
+  },
+};
+function classify(sil, kept){
+  const B = bb([sil]), H = B.y1-B.y0, CX = (B.x0+B.x1)/2, { rows } = scan(sil, 3);
+  const rowAt = y => rows.reduce((b,r) => Math.abs(r.y-y) < Math.abs(b.y-y) ? r : b, rows[0]);
+  return kept.map(m => {
+    const c = centroid(m), v = (c[1]-B.y0)/H, r = rowAt(c[1]).runs;
+    const i = r.findIndex(u => c[0] >= u[0]-2 && c[0] <= u[1]+2);
+    const part = r.length >= 3 ? (i === 0 || i === r.length-1 ? "arm" : "torso")
+               : r.length === 2 ? (v > 0.45 ? "leg" : "arm") : "torso";
+    return { m, v, u: (c[0]-CX)/(B.x1-B.x0), part };
+  });
+}
+// ── 6. arms in ──────────────────────────────────────────────────────────────────────────────────
+function narrower(sil, shift){
+  const { rows } = scan(sil, 3), B = bb([sil]), cx = (B.x0+B.x1)/2;
+  const info = rows.map(r => {
+    const arms = r.runs.filter(u => Math.abs((u[0]+u[1])/2 - cx) > 180);
+    const body = r.runs.filter(u => !arms.includes(u));
+    return { y: r.y,
+      b: (body.length ? Math.max(...body.map(u => Math.max(Math.abs(u[0]-cx), Math.abs(u[1]-cx)))) : 0) + 2,
+      a: arms.length ? Math.min(...arms.map(u => Math.min(Math.abs(u[0]-cx), Math.abs(u[1]-cx)))) - 2 : null };
+  });
+  const at = y => info.reduce((p,c) => Math.abs(c.y-y) < Math.abs(p.y-y) ? c : p, info[0]);
+  return (x, y) => {
+    const r = at(y), d = x-cx, ad = Math.abs(d), sg = Math.sign(d) || 1;
+    if(r.a === null || r.a <= r.b) return [x, y];
+    const S = Math.min(shift, (r.a-r.b) * 0.85);       // never let the gap invert
+    const nd = ad <= r.b ? ad
+             : ad >= r.a ? ad - S
+             : r.b + (ad-r.b) * ((r.a-r.b-S) / (r.a-r.b));
+    return [cx + sg*nd, y];
+  };
+}
+// ── 7-8. fit + emit ─────────────────────────────────────────────────────────────────────────────
+const TARGET_W = { front: 146, back: 145 };  // a little under the male's, so "no wider" holds with margin
+const mbox = d => { const n = d.match(/-?\d*\.?\d+/g).map(Number);
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  for(let i=0;i<n.length;i+=2){ x0=Math.min(x0,n[i]); x1=Math.max(x1,n[i]); y0=Math.min(y0,n[i+1]); y1=Math.max(y1,n[i+1]); }
+  return { x0,x1,y0,y1 }; };
+const MALE = (await import(`file://${ROOT}/src/bodyMapData.js`)).BODYMAP_MALE;
+const map = {};
+for(const view of ["front","back"]){
+  const L = landmarks(FIG[view].sil);
+  const sil = cutSil(FIG[view].sil, L);
+  const { kept, why } = keepMuscles(FIG[view].muscles, L);
+  const cls = classify(sil, kept);
+  const regions = Object.fromEntries(ORDER[view].map(r => [r, []]));
+  for(const x of cls) regions[BAND[view](x)].push(x.m);
+  for(const r of ORDER[view]) if(!regions[r].length) throw new Error(`${view}/${r} is empty`);
+  const LM = view === "front" ? "Shoulders" : "Rear Delts";
+  const mb = mbox(MALE[view]._body), md = mbox(MALE[view][LM]), mLen = mb.y1 - md.y0;
+  const fb0 = bb([sil]), fd0 = bb(regions[LM]);
+  const s = mLen / (fb0.y1 - fd0.y0), ty = mb.y1 - s*fb0.y1;
+  let lo = 0, hi = 120, shift = 0;                     // solve the arm shift for the target width
+  for(let i = 0; i < 40; i++){ shift = (lo+hi)/2;
+    const b = bb([xf(sil, narrower(sil, shift))]);
+    if(s * (b.x1-b.x0) > TARGET_W[view]) lo = shift; else hi = shift; }
+  const nf = narrower(sil, shift), fbN = bb([xf(sil, nf)]);
+  const tx = (mb.x0+mb.x1)/2 - s*(fbN.x0+fbN.x1)/2;
+  const T = sub => xf(xf(sub, nf), (x,y) => [s*x+tx, s*y+ty]);
+  const tSil = T(sil), tReg = Object.fromEntries(ORDER[view].map(r => [r, regions[r].map(T)]));
+  map[view] = { _body: [tSil, ...ORDER[view].flatMap(r => tReg[r])].map(dOf).join(" ") };
+  for(const r of ORDER[view]) map[view][r] = tReg[r].map(dOf).join(" ");
+  const fb = bb([tSil]), fd = bb(tReg[LM]);
+  log(`${view}: kept ${kept.length} (dropped ${JSON.stringify(why)})  scale ${s.toFixed(5)}  armShift ${shift.toFixed(1)}`);
+  log(`   x ${fb.x0.toFixed(1)}..${fb.x1.toFixed(1)} (w ${(fb.x1-fb.x0).toFixed(1)} vs male ${(mb.x1-mb.x0).toFixed(1)})  y ${fb.y0.toFixed(1)}..${fb.y1.toFixed(1)}  ground d=${Math.abs(fb.y1-mb.y1).toFixed(2)}  shoulder->feet ${(((fb.y1-fd.y0)/mLen-1)*100).toFixed(2)}%`);
+  log(`   ` + ORDER[view].map(r => `${r}:${tReg[r].length}`).join(" "));
+}
+// self-check the properties the guards rest on, before anything is written
+for(const v of ["front","back"]){
+  const body = new Set(map[v]._body.split(/\s*(?<=Z)\s*/).map(s => s.trim()).filter(Boolean));
+  for(const k of Object.keys(map[v])){
+    if(!/^[MLCZ0-9.,\s-]+$/.test(map[v][k])) throw new Error(`${v}/${k}: non M/L/C/Z command`);
+    if(k === "_body") continue;
+    const subs = map[v][k].split(/\s*(?<=Z)\s*/).map(s => s.trim()).filter(Boolean);
+    if(!subs.length || !subs.every(s => body.has(s))) throw new Error(`${v}/${k}: not verbatim in _body`);
+  }
+}
+log("self-check ok: verbatim subpaths + absolute M/L/C/Z only");
 
-// triceps: long head (medial) + lateral head; elbow filler
-addB('Triceps',band({limb:upperArmB,y0:86,y1:131,fL:0.03,fR:0.54,taperTop:0.6,taperBot:0.6,cap:0.4}));
-addB('Triceps',band({limb:upperArmB,y0:88,y1:133,fL:0.57,fR:0.97,taperTop:0.6,taperBot:0.6,cap:0.4}));
-fillB(band({limb:foreArmB,y0:128,y1:142,fL:0.1,fR:0.9,taperTop:0.8,taperBot:0.85,cap:0.3}));
-addB('Forearms',band({limb:foreArmB,y0:140,y1:187,fL:0.47,fR:0.97,taperTop:0.6,taperBot:0.85,cap:0.4,capBot:0.45}));
-addB('Forearms',band({limb:foreArmB,y0:142,y1:181,fL:0.03,fR:0.45,taperTop:0.6,taperBot:0.8,cap:0.4,capBot:0.45}));
-fillB([[193.5,185],[199.5,185],[200.8,191],[200,196.5],[198.3,198],[195.5,195.5],[193.8,190]]);
-// hamstrings: biceps femoris (lateral) + semi (medial)
-addB('Hamstrings',band({limb:thigh,y0:243,y1:300,fL:0.52,fR:0.96,taperTop:0.5,taperBot:0.5,cap:0.45}));
-addB('Hamstrings',band({limb:thigh,y0:243,y1:302,fL:0.05,fR:0.5,taperTop:0.5,taperBot:0.5,cap:0.45}));
-fillB(band({limb:shin,y0:296,y1:308,fL:0.12,fR:0.88,taperTop:0.8,taperBot:0.8,cap:0.3}));
-// calves back: medial head (bigger) + lateral head; soleus/achilles filler to ground
-addB('Calves',band({limb:shin,y0:309,y1:358,fL:0.04,fR:0.5,taperTop:0.5,taperBot:0.5,cap:0.45}));
-addB('Calves',band({limb:shin,y0:309,y1:352,fL:0.53,fR:0.96,taperTop:0.5,taperBot:0.5,cap:0.45}));
-fillB(band({limb:shin,y0:355,y1:384.5,fL:0.3,fR:0.7,taperTop:0.9,taperBot:0.8,cap:0.3}));
-
-function assemble(R,F,cx,tf){ const T=p=>tf?xform(p,tf):p; const out={}; const body=[];
-  for(const k of Object.keys(R)){ const subs=[]; for(const pts of R[k]){ subs.push(spline(T(mirror(pts,cx)))); subs.push(spline(T(pts))); } out[k]=subs.join(' '); body.push(...subs); }
-  for(const pts of F.list){ body.push(spline(T(mirror(pts,cx)))); body.push(spline(T(pts))); }
-  out._body=body.join(' '); return out; }
-const fr=assemble(R,F,CX); const front={_body:fr._body}; for(const k of ['Traps','Shoulders','Chest','Biceps','Forearms','Abs','Obliques','Quads','Calves']) front[k]=fr[k];
-// back fit: male back shoulder-top 59.8, ground 378.9; our frame: 47.5 -> 386.0. s = (378.9-59.8)/(386-47.5)
-const s=(378.9-59.8)/(386-47.5), BCX=106;
-const bk=assemble(RB,FB,CX,(x,y)=>[BCX+(x-CX)*s, 378.9-(386-y)*s]); const back={_body:bk._body}; for(const k of ['Traps','Rear Delts','Lats','Triceps','Forearms','LowerBack','Glutes','Hamstrings','Calves']) back[k]=bk[k];
-fs.writeFileSync('female_new.json',JSON.stringify({front,back}));
-console.log('ok scale',s.toFixed(4));
+const line = "export const BODYMAP_FEMALE = " + JSON.stringify(map) + ";";
+if(WRITE){
+  const f = `${ROOT}/src/bodyMapData.js`;
+  const src = fs.readFileSync(f, "utf8").split("\n");
+  const i = src.findIndex(l => l.startsWith("export const BODYMAP_FEMALE ="));
+  if(i < 0) throw new Error("BODYMAP_FEMALE line not found");
+  src[i] = line;
+  fs.writeFileSync(f, src.join("\n"));
+  log(`wrote src/bodyMapData.js line ${i+1} (${line.length} chars)`);
+} else log(`dry run — ${line.length} chars; pass --write to update src/bodyMapData.js`);

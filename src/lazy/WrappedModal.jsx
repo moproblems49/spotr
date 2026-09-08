@@ -30,7 +30,7 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
     const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
     const h = Math.round(w * 408 / 160);
     let s = `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="${vb}">`;
-    s += `<path d="${f._body}" fill="#34343e" fill-opacity="0.55" stroke="#34343e" stroke-opacity="0.55" stroke-width="19" stroke-linejoin="round"/><path d="${f._body}" fill="#34343e" stroke="#34343e" stroke-width="3" stroke-linejoin="round"/>`;
+    s += `<path d="${f._body}" fill="#34343e" fill-opacity="0.55" stroke="#34343e" stroke-opacity="0.55" stroke-width="${BODY_FUSE}" stroke-linejoin="round"/><path d="${f._body}" fill="#34343e" stroke="#34343e" stroke-width="3" stroke-linejoin="round"/>`;
     for (const mk of Object.keys(f).filter(k => k !== "_body")) {
       const t = max > 0 ? (region[view + ":" + mk] || 0) / max : 0;
       s += `<path d="${f[mk]}" fill="${heat(t)}" stroke="#0A0A0A" stroke-width="0.6"/>`;

@@ -5456,6 +5456,68 @@ lit and below the nav, all four nav buttons still hit-test to themselves, and qu
 balls on the pitch with the two discs **not the same colour**. Red-proofed at 2 failures with 4n2
 (the control) staying green.
 
+## ★★★ THE FEMALE MAP IS THE ARTIST'S OWN VECTORS NOW — FOUR ROUNDS ENDED BY BUYING THE FILE (Sep 8)
+Mo, of the drawn map that shipped in `2026-09-08f`: **"stop it needs to be way better like the male
+version."** He then sent two watermarked comps, stopped me mid-trace on both — *"Stop. I'm working
+on downloading the right file I bought"* — and produced a **licensed Illustrator .ai**. That ended
+the problem in one step, and the lesson is worth more than the map: **four rounds (warp → declaw →
+redraw → trace) all failed for the same reason, and none of them was a technique problem.** A
+360x224 raster cannot carry ~78 individually-shaped muscles per view; a warp changes proportions and
+a declaw removes barbs, but **neither can change what the artwork DEPICTS**. The `.ai` carries 327
+closed subpaths — 312 at the muscle colour, ~78 per figure — i.e. the male map's own order of
+detail, as real Béziers. **There is no tracing anywhere in the pipeline now.** When three attempts
+at a drawing miss, the answer is usually better SOURCE, not a better algorithm.
+**★ THE ARTWORK IS NOT IN THE REPO AND MUST NOT BE ADDED.** The repo is public and the file is
+licensed for the app, not for redistribution — the same rule this file applies to credentials.
+`build/bodymap/gen.mjs` takes its path as an argument; Mo holds the file. Regenerate with
+`node build/bodymap/gen.mjs <path/to/AdobeStock_858843878.ai> --write`. The generator is committed
+(`git add -f` — `build/` is gitignored) with `eps.mjs`, `geom.mjs` and a README, because a data file
+whose generator lives only in a scratchpad can only be hand-edited after the next container recycle.
+**★★ "CUT IT LIKE THE MALE" IS A GEOMETRY PROBLEM WITH A CLEAN ANSWER: CUT WITH A CHORD, NOT A
+CLIP.** Mo asked to cut feet, hands and head, which is right because the male map has none of them.
+A polygon clip would have turned the artist's curves into polylines — the whole point of buying the
+file. `geom.cutChord` instead finds where the outline crosses a chord, drops the arc containing the
+part being removed, and closes with the straight chord: **only the two segments a cut actually
+splits are recomputed, and by de Casteljau rather than resampling.** Five cuts per view (neck, two
+wrists, two ankles), each landmark MEASURED off the silhouette's own scanline profile rather than
+hardcoded — the wrist is the last width minimum before the hand flares, and its chord is
+perpendicular to the arm axis, because the arm hangs at ~37° and a horizontal cut there is visibly
+oblique. Six muscles straddled a cut and are trimmed by the same line (`geom.clipHalf`); a shape
+poking past the trimmed silhouette would paint outside the body, which `pw_bodymapfemale` catches at
+pixel level. Result: **74 front / 52 back region subpaths against the male's 72 / 54.**
+**★★ AND THE ONE THING THE LANDMARK FIT CANNOT ABSORB IS ARM SPAN.** Anchored on deltoid top +
+ground line (the two landmarks both figures really share — see the entry below for why matching
+bounding boxes is wrong when one figure has no head), she comes out **5.6% wider than the male and
+9px past the tightest viewBox the app draws her in**, so she would be CLIPPED ON DEVICE. Every
+obvious fix is wrong: scaling down breaks the shoulder→feet match the guard asserts to 3%, and
+squeezing x distorts every muscle. So **the arms come IN** — a y-dependent map that leaves the torso
+identical, compresses only the EMPTY GAP between torso and arm, and translates the arm rigidly. No
+muscle shape is deformed, and **the shift self-ramps to zero at the shoulder because that is where
+the gap closes**, so there is no seam to tune. Same conclusion the redraw reached independently
+("armspan:hip 1.40 → 1.14 is the number that actually changed the read").
+**Region assignment was READ OFF AN INDEXED RENDER, not guessed** — every shape numbered and
+screenshotted, then bands written to match. That is also how a wrong assumption got caught: the
+male's back **Traps is the big upper-back kite**, and it only *looked* like Lats owned the upper back
+because Lats paints over it in a full render. Rendering each male region ALONE settled it in one
+screenshot. Two other calls worth keeping: the male's "Obliques" are the serratus digitations
+flanking the abs (so the female's are too), and the torso column below the pubis is
+adductor/pectineus — leg movers, so Quads, since the app has no Adductors region and the male art
+simply leaves that area grey.
+**Measured outcomes: ground line 0.00 off, shoulder→feet 0.00%, 0.00% region ink outside the
+silhouette on all 18 regions, and the data is SMALLER — 47.6k path chars against the drawn map's
+78.8k** for far more detail, because the artist's Béziers are more efficient than generated splines.
+`build/bodymap/kit.mjs` (the drawing kit) is deleted; nothing uses it.
+**★ AND THE SAME PASS FOUND A REAL SHIPPED BUG THE FUSE-STROKE CONSOLIDATION MISSED.**
+`WrappedModal.jsx:33` — the **shared story-card SVG builder** — still hardcoded `stroke-width="19"`,
+the old `BODY_FUSE`, while every other site had moved to 8. The file *imports* `BODY_FUSE` and uses
+it correctly 185 lines lower. So the card people actually post to Instagram still drew the body with
+the exact stroke that welds the arms to the torso — the bug Mo reported on device and that was
+believed fixed everywhere. **Nothing in the battery can see it**, because that card is rasterised
+into a share image. Third instance of one-fix-didn't-get-copied inside a single file; the cheap
+check is `grep -rn 'stroke-width="19"' src/` after any consolidation, which now returns 0.
+
+## (SUPERSEDED Sep 8 by the entry above — the drawn map was replaced by the licensed vectors.
+## Kept for the trace-vs-redraw reasoning, which is what makes the entry above's conclusion honest.)
 ## ★★★ THE FEMALE MAP IS DRAWN NOW, AND A TRACE COULD NEVER HAVE GOT THERE (Sep 8)
 Mo, of the declawed trace: "Still needs a lot more work, doesn't look right... take your time to
 redraw and make it right", plus "give female shoulders a lil trimmed down to match males". His call
