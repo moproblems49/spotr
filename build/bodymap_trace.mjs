@@ -30,6 +30,24 @@ const FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/
 const refPath = process.argv[2]; if (!refPath || !fs.existsSync(refPath)) { console.error("usage: node build/bodymap_trace.mjs <ref.jpg> [--write]"); process.exit(2); }
 export const PROFILE = {
   TH: 110, EPS: 1.6, SMOOTH: 2,
+  // ★ ARM_SMOOTH — WHY THE ARM MUSCLES GET A WIDER SMOOTHING WINDOW THAN EVERYTHING ELSE.
+  // Mo, from his phone: "the female biceps are pointy, need to look more like the male."
+  // Measured rather than eyeballed: on the MALE map no arm-muscle outline has an interior corner
+  // under 45 degrees (sharpest 92-111), while the traced female had spikes at 7, 9, 15 and 16
+  // degrees — needle points, which is exactly what reads as "pointy". The cause is resolution, not
+  // the tracer: the reference is 360x224, so a female arm is ~10 source px wide and each muscle in
+  // it is a 3-4 px sliver; marching squares around a sliver that thin yields hairline barbs that
+  // SMOOTH:2 cannot blunt. A wider moving average on the DENSE outline (before Douglas-Peucker,
+  // while there are still hundreds of points) rounds the facets and pulls the barbs in, without
+  // collapsing the shape the way post-simplification smoothing would.
+  // Applied ONLY to the arm components — the torso and legs are wide enough in the source to trace
+  // cleanly at SMOOTH:2, and widening it globally would round detail that is genuinely there.
+  // Smoothing alone was TRIED AND MEASURED AND DID NOT WORK (9 left spikes at 2/15/17/28 deg, one
+  // WORSE than before): a needle is not a high-frequency wiggle, so a moving average shortens it
+  // without widening it. ARM_SMOOTH stays mild — it rounds the facets — and ARM_MIN_ANGLE does the
+  // actual declawing on the SIMPLIFIED polygon, where a needle finally shows up as one 2-degree
+  // vertex (on the dense outline every angle is ~180 deg, so nothing there can see it).
+  ARM_SMOOTH: 5, ARM_MIN_ANGLE: 50,
   scale: (386.5 - 24.3) / (223.8 - 2.8), refYTop: 2.8, yTop: 24.3,
   // st: mild proportion tune on top of the trace (set to [[0, 1]] for the untouched reference proportions) — shoulders/ribs in, pelvis + upper thigh out, knees in
   st: [[20, 0.95], [45, 0.93], [95, 0.93], [125, 0.96], [150, 0.97], [170, 1.02], [190, 1.07], [240, 1.07], [275, 1.0], [300, 0.96], [330, 0.98], [400, 0.98]],
@@ -73,7 +91,8 @@ const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-119
 const page = await b.newPage({ viewport: { width: 1440, height: 900 } });
 await page.setContent(`<body style="margin:0;background:#fff"><canvas id="c"></canvas></body>`);
 // ---- in-browser: label + trace every component; return outlines in source-pixel coords (4x resolution) ----
-const traced = await page.evaluate(async ({ src, TH, S, EPS, SMOOTH }) => {
+const traced = await page.evaluate(async ({ src, TH, S, EPS, SMOOTH, ARM_SMOOTH, ARM_MIN_ANGLE, ARM_IDS }) => {
+  const ARM = new Set(ARM_IDS || []);
   const img = new Image(); img.src = src; await img.decode();
   const c = document.getElementById("c"); c.width = img.width * S; c.height = img.height * S; const x = c.getContext("2d"); x.drawImage(img, 0, 0, c.width, c.height);
   const d = x.getImageData(0, 0, c.width, c.height).data; const W = c.width, H = c.height;
@@ -104,10 +123,34 @@ const traced = await page.evaluate(async ({ src, TH, S, EPS, SMOOTH }) => {
     const A = pts.slice(i0, i1 + 1), B = pts.slice(i1).concat(pts.slice(0, i0 + 1));
     const ra = rec(A), rb = rec(B); return ra.slice(0, -1).concat(rb.slice(0, -1));
   };
+  // Iteratively drop the sharpest vertex while any interior angle is below minDeg. Removing a
+  // needle's tip joins its two near-parallel flanks, so the barb is consumed a vertex at a time.
+  // Floored at 70% of the original vertices (and 8 absolute) so this can blunt a spike but can
+  // never dissolve the muscle's real silhouette.
+  const declaw = (pts, minDeg) => {
+    const lim = Math.cos(minDeg * Math.PI / 180);
+    let P = pts.slice(); const floor = Math.max(7, Math.ceil(pts.length * 0.45));
+    for (let guard = 0; guard < 300 && P.length > floor; guard++) {
+      let worst = -1, worstC = -2;
+      for (let i = 0; i < P.length; i++) {
+        const a = P[(i - 1 + P.length) % P.length], c = P[i], e = P[(i + 1) % P.length];
+        const v1 = [a[0] - c[0], a[1] - c[1]], v2 = [e[0] - c[0], e[1] - c[1]];
+        const n1 = Math.hypot(v1[0], v1[1]), n2 = Math.hypot(v2[0], v2[1]);
+        if (n1 < 1e-6 || n2 < 1e-6) continue;
+        const cs = (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2);
+        if (cs > lim && cs > worstC) { worst = i; worstC = cs; }
+      }
+      if (worst === -1) break;
+      P.splice(worst, 1);
+    }
+    return P;
+  };
   const out = {};
-  for (const cc of comps) { if (cc.area < 1) continue; let pts = outline(cc.id, cc); if (!pts) continue; if (SMOOTH) pts = smooth(pts, SMOOTH); pts = dp(pts, EPS); out[cc.id] = { area: cc.area, pts: pts.map(p => [p[0] / S, p[1] / S]), box: [cc.x0 / S, cc.y0 / S, cc.x1 / S, cc.y1 / S] }; }
+  for (const cc of comps) { if (cc.area < 1) continue; let pts = outline(cc.id, cc); if (!pts) continue; const sw = ARM.has(cc.id) ? (ARM_SMOOTH || SMOOTH) : SMOOTH; if (sw) pts = smooth(pts, sw); pts = dp(pts, EPS); if (ARM.has(cc.id) && ARM_MIN_ANGLE) pts = declaw(pts, ARM_MIN_ANGLE); out[cc.id] = { area: cc.area, pts: pts.map(p => [p[0] / S, p[1] / S]), box: [cc.x0 / S, cc.y0 / S, cc.x1 / S, cc.y1 / S] }; }
   return out;
-}, { src: ref, TH: P.TH, S: 4, EPS: P.EPS, SMOOTH: P.SMOOTH });
+}, { src: ref, TH: P.TH, S: 4, EPS: P.EPS, SMOOTH: P.SMOOTH, ARM_SMOOTH: P.ARM_SMOOTH, ARM_MIN_ANGLE: P.ARM_MIN_ANGLE,
+     ARM_IDS: ["front","back"].flatMap(v => ["Biceps","Triceps","Forearms"]
+       .flatMap(r => (P[v].regions[r] || []))) });
 await b.close();
 
 // ---- Node: assemble views ----

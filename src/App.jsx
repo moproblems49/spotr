@@ -1,4 +1,4 @@
-// v178091717042
+// v178091717043
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -2460,6 +2460,20 @@ const MUSCLE_FIGURE = {
 // has a graceful "no data yet" path (BodyMap falls back to MuscleIcon, MuscleIcon falls back to
 // a drawn SVG, and every per-view lookup is a `if (!f) return null/""` guard) — so defaulting to
 // an empty object while the import is in flight is safe everywhere, no new fallback UI needed.
+// ★ THE FUSE STROKE, AND WHY IT IS 8 RATHER THAN THE 19 IT SHIPPED AS.
+// `_body` is the UNION of the art's components, which are "floating islands" — so a thick
+// half-opacity stroke is drawn under the figure to weld them into one silhouette. At 19 units
+// that stroke grows every edge by 9.5, which CLOSES any channel narrower than 19 units — and the
+// arm/torso channel measures ~12u on the female map (~15u on the male). So both figures rendered
+// with the arms welded to the torso, and the forearm/bicep had no readable outline at all.
+// Mo, from his phone: "fix the female forearm/bicep and have a lil white between body and arm".
+// 8 is the measured floor, not a taste pick: below ~8 the MALE lower legs stop being bridged and
+// break into floating slivers (rendered at 19/12/10/8/6/5/0 and looked at), which is the exact
+// failure the stroke exists to prevent. 8 opens the arm channel on both sexes and keeps the legs.
+// ONE definition on purpose — it was four hardcoded 19s (two here, the Wrapped card, and
+// WrappedModal's own copy), which is the duplicated-constant class this file keeps paying for.
+const BODY_FUSE = 8;
+export { BODY_FUSE };
 let _bodyMapDataPromise = null;
 let _bodyMapDataCache = null;
 function loadBodyMapData() {
@@ -2519,7 +2533,7 @@ function BodyMap({ muscle = "", name = "", C, size = 150, sex = "male" }) {
             {/* pass 1: thick half-opacity stroke fuses the fiber shapes into one soft
                 silhouette (the stock art is "floating islands" — without this, the gaps
                 between muscle groups show the card background as white channels) */}
-            <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/>
+            <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={BODY_FUSE} strokeLinejoin="round"/>
             <path d={f._body} fill={bodyCol} stroke={bodyCol} strokeWidth={3} strokeLinejoin="round"/>
           </>}
           {muscles.map(mk => {
@@ -2721,7 +2735,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
             {/* pass 1: thick half-opacity stroke fuses the fiber shapes into one soft
                 silhouette (the stock art is "floating islands" — without this, the gaps
                 between muscle groups show the card background as white channels) */}
-            <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/>
+            <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={BODY_FUSE} strokeLinejoin="round"/>
             <path data-body="1" d={f._body} fill={bodyCol} stroke={bodyCol} strokeWidth={3} strokeLinejoin="round"/>
           </>}
           {muscles.map(mk => (
@@ -8222,7 +8236,7 @@ const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, o
                   const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
                   return (
                     <svg viewBox={vb} width={92} height={Math.round(92*408/160)} style={{ display:"block" }}>
-                      <><path d={f._body} fill="#34343e" fillOpacity={0.55} stroke="#34343e" strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/><path d={f._body} fill="#34343e" stroke="#34343e" strokeWidth={3} strokeLinejoin="round"/></>
+                      <><path d={f._body} fill="#34343e" fillOpacity={0.55} stroke="#34343e" strokeOpacity={0.55} strokeWidth={BODY_FUSE} strokeLinejoin="round"/><path d={f._body} fill="#34343e" stroke="#34343e" strokeWidth={3} strokeLinejoin="round"/></>
                       {Object.keys(f).filter(k=>k!=="_body").map(mk => (
                         <path key={mk} d={f[mk]} fill={heat((w.muscles[view+":"+mk]||0)/w.muscleMax)} stroke="#0A0A0A" strokeWidth={0.6}/>
                       ))}

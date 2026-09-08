@@ -7,7 +7,7 @@
 import { cvt } from "../engine/core.js";
 import { weeklyMuscleVolume } from "../engine/strength.js";
 import { calcStreak } from "../engine/insights.js";
-import { Icon, DISPLAY, F, MONO, fmtVol, toast, useBodyMapData, shareSvgCard, svgToDataURL, PR_TYPE_LABEL_SHORT } from "../App.jsx";
+import { Icon, DISPLAY, F, MONO, fmtVol, toast, useBodyMapData, shareSvgCard, svgToDataURL, PR_TYPE_LABEL_SHORT, BODY_FUSE } from "../App.jsx";
 
 // Builds a self-contained 1080×1350 share-card SVG (dark, branded) with the week's trained-muscle
 // body map, headline stats, and new PRs. Self-contained (paths + text only) so it rasterizes to a
@@ -215,7 +215,7 @@ export default function WrappedModal({ store, C, onClose, onPostToFeed, range })
               const vb = view === "front" ? "46 6 160 408" : "26 6 160 408";
               return (
                 <svg viewBox={vb} width={88} height={Math.round(88*408/160)} style={{ display:"block" }}>
-                  <><path d={f._body} fill="#34343e" fillOpacity={0.55} stroke="#34343e" strokeOpacity={0.55} strokeWidth={19} strokeLinejoin="round"/><path d={f._body} fill="#34343e" stroke="#34343e" strokeWidth={3} strokeLinejoin="round"/></>
+                  <><path d={f._body} fill="#34343e" fillOpacity={0.55} stroke="#34343e" strokeOpacity={0.55} strokeWidth={BODY_FUSE} strokeLinejoin="round"/><path d={f._body} fill="#34343e" stroke="#34343e" strokeWidth={3} strokeLinejoin="round"/></>
                   {Object.keys(f).filter(k=>k!=="_body").map(mk => {
                     const t = max>0 ? (region[view+":"+mk]||0)/max : 0;
                     return <path key={mk} d={f[mk]} fill={heat(t)} stroke="#0A0A0A" strokeWidth={0.6}/>;

@@ -5260,6 +5260,43 @@ unit there), and `PitchHoops` is in `DecorBack` at zIndex 45 because it stands o
 anything touching the bottom edge draws over the nav's buttons at 150. Verified by
 `elementFromPoint`: 4 of 4 nav buttons resolve to themselves.
 
+## ★★ THE ARMS WERE WELDED TO THE TORSO BY ONE STROKE WIDTH, AND THE BICEPS WERE NEEDLES (Sep 8)
+Mo, from his phone, two messages: "fix the female forearm/bicep and have a lil white between body
+and arm because it looks better", then "the female biceps are pointy, need to look more like the
+male". Two different causes; both measured before either was touched.
+- **★ `_body` IS DRAWN WITH A FAT HALF-OPACITY "FUSE" STROKE, AND AT 19 UNITS IT CLOSED THE ARM.**
+  The stroke exists because the art is "floating islands" — it welds the components into one
+  silhouette. But a 19-unit stroke grows every edge by 9.5, so it CLOSES any channel narrower than
+  19u, and the arm/torso channel measures **~12u on the female map, ~15u on the male**. Both figures
+  therefore rendered with the arms fused to the torso and the forearm/bicep with no readable
+  outline — which is what Mo was looking at. **`BODY_FUSE = 8` now, and 8 is a measured floor, not
+  a taste pick**: rendered at 19/12/10/8/6/5/0 and looked at, the MALE LOWER LEGS stop being
+  bridged below ~8 and break into floating slivers — the exact failure the stroke exists to
+  prevent. 8 opens the channel on both sexes and keeps the legs. It was **four hardcoded 19s** (two
+  in `BodyMap`, the Wrapped card, and `WrappedModal`'s own copy); one exported constant now, since
+  that is the duplicated-constant class this file keeps paying for.
+- **★★ "POINTY" WAS A NEEDLE, AND SMOOTHING IS THE WRONG TOOL FOR A NEEDLE — MEASURED TWICE.**
+  Quantified rather than eyeballed: on the MALE map no arm-muscle outline has an interior corner
+  under 45 degrees (sharpest **92-111**), while the traced female had **7, 9, 15 and 16 degree**
+  spikes. Cause is resolution, not the tracer — the reference is 360x224, so a female arm is ~10
+  source px wide and each muscle in it is a 3-4 px sliver, and marching squares around a sliver
+  that thin yields hairline barbs. **The first fix was a wider moving average (`ARM_SMOOTH: 9`) and
+  it FAILED, which is the useful half**: a needle is not a high-frequency wiggle, so averaging
+  shortens it without widening it — spikes came back at 2/15/17/28 deg, one WORSE than before.
+  What works is `declaw()`: iteratively drop the sharpest vertex while any interior angle is under
+  `ARM_MIN_ANGLE` (50), run on the SIMPLIFIED polygon — on the dense outline every angle is ~180
+  deg, so nothing there can see a needle. Front bicep went **15 deg -> 121 deg**. Floored at 45% of
+  the original vertices so it can blunt a barb and never dissolve a muscle.
+- **Both changes are safe by CONSTRUCTION, and that is why the guards stayed green**: `_body` is the
+  UNION of the same components the regions are built from, so declawing a region declaws the
+  silhouette with it and registration cannot drift. `sim_bodymapfemale` (shoulder->feet 0.0%,
+  every subpath verbatim in `_body`) and `pw_bodymapfemale` (0.00% of every region's ink outside
+  its silhouette, both sexes both views) both pass unchanged.
+- **Honest limit, worth not re-litigating:** the female arm muscles stay SLIMMER and chunkier than
+  the male's elongated leaves. That is inherited from the reference's own resolution and cannot be
+  traced out of it; the declaw removes the barbs, it does not redraw the anatomy. The back triceps
+  still carry a thin sliver. If this is reopened, the lever is the source art, not the tracer.
+
 ## ★★★ THE FEMALE MAP IS NOW A TRACE OF LICENSED ART — AND "SAME SIZE" WAS THE HARD PART (Sep 8)
 Mo supplied reference artwork (a female muscle figure, front and back) and asked to use it. He
 confirmed he is licensed for it but holds only a 360x224 JPG, not the vector original.
