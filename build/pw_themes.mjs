@@ -300,6 +300,64 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     await pd.close();
   }
 
+  // ── 4n. THE TWO ORNAMENTS ADDED BY NAMING A GAP, not by adding until a theme felt full.
+  //     Halloween's gap was a GROUND anchor — Fall skitters leaves along the bottom, Spring grew
+  //     grass, Summer plants the palm, Winter settles snow on the nav, and Halloween had nothing
+  //     below the middle of the screen. Quadball's gap was inside itself: PitchHoops draws a goal
+  //     on every screen and neither object in the air was the ball you score with.
+  //     Both are checked for the thing that would actually regress — an ornament silently not
+  //     rendering (the showGroupShare shape) and, for the ground one, eating a nav tap.
+  {
+    const { page: ph } = await boot("halloween");
+    const pk = await ph.evaluate(() => {
+      const back = document.querySelector(".seshd-decor-back");
+      if (!back) return null;
+      const svgs = [...back.querySelectorAll("svg")];
+      // The lit face is what makes a jack-o'-lantern read as a pumpkin rather than an orange
+      // blob, so count the ones that actually HAVE one instead of counting svgs.
+      const lit = svgs.filter(sv => [...sv.querySelectorAll("g,path")]
+        .some(n => (n.getAttribute("fill") || "").startsWith("rgba(255,214,120")));
+      const navTop = 926 * 0.937;   // the pill's own top edge, measured
+      return { n: svgs.length, lit: lit.length,
+               facesClear: svgs.filter(sv => sv.getBoundingClientRect().top < navTop).length,
+               z: +getComputedStyle(back).zIndex, pe: getComputedStyle(back).pointerEvents };
+    });
+    check("4n. halloween grounds itself with a lit pumpkin patch",
+      pk && pk.n >= 3 && pk.lit >= 3 && pk.z > 0 && pk.z < 50 && pk.pe === "none", JSON.stringify(pk));
+    // A ground ornament that covers a nav button is the exact failure that put the palm and the
+    // grass on their own layer. Hit-test rather than reason about z — the palm's 4l7 lesson.
+    const navOwn = await ph.evaluate(() => {
+      const out = [];
+      for (let i = 0; i < 4; i++) {
+        const el = document.elementFromPoint(14 + (400 / 4) * (i + 0.5), 893);
+        out.push(!!(el && el.closest("button")) && !(el.closest(".seshd-decor-back")));
+      }
+      return out;
+    });
+    check("4n2. every nav button is still on top of the pumpkins",
+      navOwn.length === 4 && navOwn.every(Boolean), JSON.stringify(navOwn));
+    await ph.close();
+  }
+  {
+    const { page: pq } = await boot("quadball");
+    // The quaffle and the bludger are both a spinning disc; what separates them at 20px is COLOUR
+    // (red leather vs iron) and motion. Assert the colours actually differ — two balls painted the
+    // same would render as one effect twice, which is the palette-that-encodes-nothing problem.
+    const balls = await pq.evaluate(() => {
+      const el = document.querySelector(".seshd-decor");
+      if (!el) return null;
+      const discs = [...el.querySelectorAll("svg")]
+        .map(sv => { const c = sv.querySelector("circle"); return c ? c.getAttribute("fill") : null; })
+        .filter(Boolean);
+      const anims = [...el.children].filter(x => x.tagName !== "STYLE")
+        .map(x => getComputedStyle(x).animationName);
+      return { discs, kinds: [...new Set(discs)].length, throws: anims.filter(a => a === "seshd-throw").length };
+    });
+    check("4n3. quadball puts all THREE balls on the pitch, and the two discs are not the same colour",
+      balls && balls.discs.length >= 3 && balls.kinds >= 2 && balls.throws === 1, JSON.stringify(balls));
+    await pq.close();
+  }
+
   // And a theme with no `decor` must render no layer at all.
   const { page: p2 } = await boot("dark");
   check("4h. an undecorated theme renders no decor layer",

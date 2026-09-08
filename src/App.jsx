@@ -1,4 +1,4 @@
-// v178091717043
+// v178091717044
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -895,7 +895,7 @@ const THEMES = {
     // cards visibly lift off the background (Things-3 / Linear approach). Borders are
     // present-but-quiet, text is deep near-black for crisp contrast.
     bg: "#f6f5f3",          // warm off-white canvas
-    surface: "#ffffff",     // cards are pure white → they float above the canvas
+    surface: "#fffefc",     // warm white, not pure — see arctic for why the surface carries hue
     card: "#ffffff",
     border: "#e7e4df",      // warm hairline, visible against white cards
     overlayEdge: "#e7e4df", // see the dark theme's note — light needs no boost (4.82:1 already)
@@ -998,8 +998,12 @@ const THEMES = {
   arctic: {
     id: "arctic",
     isDark: false,
-    bg: "#eef3fb",          // cool blue-white canvas — the hue lives HERE, not just in the accent
-    surface: "#ffffff",     // cards stay pure white so they lift off the tinted canvas
+    bg: "#e8f1fd",          // cool blue-white canvas — the hue lives HERE, not just in the accent
+    // ★ NOT pure white any more. Four light themes all declared surface #ffffff, so every CARD in
+    // the app — the largest painted area on most screens — was byte-identical across all four and
+    // only the canvas behind them differed. The surface carries the hue too now, still light
+    // enough to lift off its own bg.
+    surface: "#f8fbff",
     card: "#ffffff",
     border: "#d8e1ee",      // blue-grey hairline
     overlayEdge: "#d8e1ee", // light needs no boost — 4.71:1 against this theme's own scrim
@@ -1082,8 +1086,8 @@ const THEMES = {
     // is right (blossom on new growth); the green just had to become visible. Spread is 11 now, and
     // the borders and dividers carry it too, because the hue has to live in ALL the neutrals or it
     // reads as a tinted background rather than a themed app.
-    bg: "#f1f7ec",          // pale green-white, like new growth
-    surface: "#ffffff",
+    bg: "#f0f9ea",          // pale green-white, like new growth
+    surface: "#fafdf7",     // see arctic: the surface carries the hue, it is not pure white
     card: "#ffffff",
     border: "#dbe6d2",
     overlayEdge: "#dbe6d2",
@@ -1115,8 +1119,8 @@ const THEMES = {
   summer: {
     id: "summer",
     isDark: false,
-    bg: "#fdf6ea",          // warm sand
-    surface: "#ffffff",
+    bg: "#fdf4e3",          // warm sand
+    surface: "#fffcf5",     // see arctic: the surface carries the hue, it is not pure white
     card: "#ffffff",
     border: "#eee2cd",
     overlayEdge: "#eee2cd",
@@ -1725,12 +1729,18 @@ function CornerBranch({ blossom }) {
       style={{ position:"absolute", top: blossom ? -111 : -96, left:-27, opacity:0.75 }}>
       <g stroke={bark} fill="none" strokeLinecap="round">
         <path d="M-6 6 C40 14 78 30 116 62" strokeWidth="4"/>
-        <path d="M34 12 C44 30 46 44 42 60" strokeWidth="2.2"/>
+        {/* The left sub-branch is GONE. It hung down over x 14-119, which is the logo tile plus
+            the wordmark, and both of its ornaments rode on it — measured, 4 shapes overlapping the
+            LOGO at x 25-58. The earlier fix here protected the WORDMARK (x 54-119) and never put the
+            logo tile (x 14-44) in the protected zone, so the ornaments simply moved onto the logo
+            instead: the protected region was defined too narrowly, not the offset mis-tuned. The
+            bough now carries everything to the RIGHT of the wordmark, where there is real space. */}
+        <path d="M62 22 C74 34 78 44 74 58" strokeWidth="2.2"/>
         <path d="M72 27 C86 40 92 52 92 66" strokeWidth="2"/>
         <path d="M96 47 C112 52 124 50 138 42" strokeWidth="1.8"/>
       </g>
       {blossom
-        ? [[36, 58], [44, 66], [90, 64], [96, 72], [136, 40], [70, 26], [116, 60]].map(([cx, cy], i) => (
+        ? [[74, 56], [80, 64], [90, 64], [96, 72], [136, 40], [70, 26], [116, 60], [126, 54]].map(([cx, cy], i) => (
             <g key={i}>
               {[0, 72, 144, 216, 288].map(a => (
                 <ellipse key={a} cx={cx} cy={cy - 4.6} rx="3.1" ry="4.6" fill="rgba(249,186,211,0.85)"
@@ -1739,7 +1749,7 @@ function CornerBranch({ blossom }) {
               <circle cx={cx} cy={cy} r="1.7" fill="rgba(255,232,168,0.95)"/>
             </g>
           ))
-        : [[40, 58], [92, 64], [138, 42], [116, 60]].map(([cx, cy], i) => (
+        : [[76, 56], [92, 64], [138, 42], [116, 60], [106, 48]].map(([cx, cy], i) => (
             <path key={i} transform={`translate(${cx - 8} ${cy - 8}) rotate(${i * 47} 8 8)`}
               d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z"
               fill={["rgba(212,110,58,0.9)", "rgba(186,74,40,0.9)", "rgba(206,148,54,0.9)"][i % 3]}/>
@@ -1796,10 +1806,55 @@ function Bludger({ top, size, dur, delay }) {
   return (
     <div aria-hidden="true" style={{ position:"absolute", left:"-14vw", top:`${top}%`, opacity:0,
       animation:`seshd-glide ${dur}s ${delay}s linear infinite` }}>
+      {/* ★ WHY THIS IS NOT A RIMMED CIRCLE ANY MORE. Mo, of the old one: "why the bubbles?" — and
+          he was reading it correctly. A circle with a FULL light rim plus a specular arc following
+          that rim is, precisely, how you draw a soap bubble; at 14-22px on a dark canvas nothing
+          else about it said iron. A bludger is a heavy ball, so it is drawn the way a heavy ball
+          reads: no rim at all (the rim was the whole tell), a dark solid body, weight shaded into
+          the BOTTOM, one small OFF-CENTRE highlight rather than an arc, and a seam across it that
+          the existing spin animation carries round. Same size and same alpha budget as before, so
+          it still passes behind copy without competing. */}
       <svg width={size} height={size} viewBox="0 0 24 24" style={{ animation:`seshd-decor-spin 5.5s linear infinite` }}>
-        <circle cx="12" cy="12" r="11" fill="rgba(44,52,47,0.85)"/>
-        <circle cx="12" cy="12" r="11" fill="none" stroke="rgba(150,170,158,0.35)" strokeWidth="1"/>
-        <path d="M6.6 6.4a11 11 0 0 1 4.4-3" stroke="rgba(206,222,212,0.4)" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
+        <circle cx="12" cy="12" r="11" fill="rgba(26,32,28,0.92)"/>
+        <circle cx="12.9" cy="13.6" r="9.4" fill="rgba(0,0,0,0.30)"/>
+        <circle cx="10.2" cy="9.6" r="7.6" fill="rgba(196,214,203,0.07)"/>
+        <path d="M3.6 9.2c4.6 3.1 11.4 3.6 16.6 1.3" stroke="rgba(0,0,0,0.34)" strokeWidth="1.1" fill="none" strokeLinecap="round"/>
+        <ellipse cx="8.7" cy="8.2" rx="2.1" ry="1.5" fill="rgba(214,230,220,0.26)" transform="rotate(-28 8.7 8.2)"/>
+      </svg>
+    </div>
+  );
+}
+// ★ THE THIRD BALL, AND THE NAMED GAP IS THAT THE HOOPS HAD NOTHING TO SCORE THROUGH.
+// The house rule for adding decoration is to name the thing a theme is MISSING that its siblings
+// have, rather than adding ornaments because a theme feels thin. Quadball's gap is inside itself:
+// PitchHoops draws a goal on every screen and the only two objects in the air were the snitch
+// (which nobody scores with) and the bludger (which is thrown AT people). The sport has three
+// balls; two were drawn.
+// It is separated from the bludger by the two things that actually distinguish them in the game,
+// not by size alone: COLOUR (red leather against the bludger's iron, so a glance tells them apart
+// even at 20px) and MOTION — a quaffle is THROWN, so it travels on an arc that rises and falls,
+// where the bludger's `seshd-glide` wanders flat. Same alpha budget as its siblings.
+function Quaffle({ top, size, dur, delay }) {
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", left:"-16vw", top:`${top}%`, opacity:0,
+      animation:`seshd-throw ${dur}s ${delay}s linear infinite` }}>
+      {/* ★ HALF OPACITY ON THE GLYPH, and it is not a taste call. Driven on the real screen, the
+          quaffle at full alpha sat on "Pick a proven split and make it yours" and blotted out a
+          word — decoration that makes copy unreadable is the one thing this layer must never do.
+          Its two siblings cross the same band and get away with it for reasons it does not share:
+          the bludger's iron is within a few points of this theme's near-black canvas, and the
+          snitch is small and thin. A saturated RED SOLID DISC is the most copy-hostile shape in
+          the set, so it is the one that pays. On the SVG, not the wrapper — the wrapper's own
+          opacity is driven by the keyframe's fade in and out. */}
+      <svg width={size} height={size} viewBox="0 0 24 24"
+        style={{ opacity:0.5, animation:`seshd-decor-spin 3.4s linear infinite` }}>
+        <circle cx="12" cy="12" r="11" fill="rgba(150,44,34,0.9)"/>
+        <circle cx="12.8" cy="13.4" r="9.6" fill="rgba(0,0,0,0.22)"/>
+        {/* TWO stitched seams, where the bludger has one: a quaffle is a panelled leather ball and
+            the doubled seam is what reads as stitching rather than as a moon terminator. */}
+        <path d="M4 8.4c5 3.2 11 3.4 16 .4" stroke="rgba(86,22,16,0.75)" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+        <path d="M4.6 15.6c4.8-2.6 10.4-2.8 15.2-.2" stroke="rgba(86,22,16,0.75)" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+        <ellipse cx="9.4" cy="8.4" rx="2.4" ry="1.6" fill="rgba(255,214,190,0.20)" transform="rotate(-26 9.4 8.4)"/>
       </svg>
     </div>
   );
@@ -1892,6 +1947,36 @@ function GrassTuft({ left, size, delay, flip }) {
         <path d="M20 40C18.5 32 18 25 19 16" strokeWidth="2.2"/>
         <path d="M20 40C21 33 24 28 33 24" strokeWidth="2"/>
         <path d="M20 40C18 34 14 30 6 27" strokeWidth="1.8"/>
+      </g>
+    </svg>
+  );
+}
+
+// ★ HALLOWEEN'S MISSING GROUND ANCHOR, named the same way Spring's grass was named.
+// Every other seasonal theme already grounds itself at the BOTTOM edge — Fall skitters leaves along
+// it, Spring grew grass for exactly this reason, Summer plants the palm in it, Winter settles snow
+// on the nav pill — and Halloween had webs in the top corners, spiders in the margins and ghosts in
+// the middle, with nothing below. That is the asymmetry, not a wish for more ornaments.
+// THREE in a patch on ONE side, at three different sizes, because of the palm's own lesson: one
+// object alone reads as a sticker, several of different heights read as a place. They are STATIC —
+// PalmCorner, PitchHoops and Icicles are all still, and rocking a heavy ground object looks wrong;
+// GrassTuft moves because grass genuinely does. The one thing that IS animated is the FACE, which
+// is what makes a jack-o'-lantern read as lit rather than as an orange blob, and each carries its
+// own delay so they never flicker in unison.
+function Pumpkin({ left, size, delay }) {
+  const skin = "rgba(214,116,38,0.92)", rib = "rgba(158,78,22,0.7)", glow = "rgba(255,214,120,0.95)";
+  return (
+    <svg width={size} height={size} viewBox="0 0 30 27" aria-hidden="true"
+      style={{ position:"absolute", bottom:"6.5%", left:`${left}%`, opacity:0.5 }}>
+      <path d="M15 8.6C15 5.4 14.2 3.4 11.6 2.6" stroke="rgba(104,126,66,0.9)" strokeWidth="2.2"
+        fill="none" strokeLinecap="round"/>
+      <ellipse cx="15" cy="17.2" rx="14" ry="9.5" fill={skin}/>
+      <path d="M9.4 8.6C7.6 11.2 7.6 23.2 9.4 25.8" stroke={rib} strokeWidth="1.3" fill="none"/>
+      <path d="M20.6 8.6C22.4 11.2 22.4 23.2 20.6 25.8" stroke={rib} strokeWidth="1.3" fill="none"/>
+      <g fill={glow} style={{ animation:`seshd-flicker 2.6s ${delay}s ease-in-out infinite` }}>
+        <path d="M10 14.4l3.4 1.9-3.4 1.9z"/>
+        <path d="M20 14.4l-3.4 1.9 3.4 1.9z"/>
+        <path d="M9.9 20.3h10.2l-1.7 2.1-1.7-1.3-1.8 1.5-1.8-1.5-1.7 1.3z"/>
       </g>
     </svg>
   );
@@ -2204,6 +2289,17 @@ function ThemeDecor({ kind }) {
       // "a percentage is the wrong unit for clear of the header" trap. 28%+ clears it everywhere.
       snitches: [0, 1].map(() => ({ left: r(8, 72), top: r(28, 64), dur: r(19, 30), delay: -r(0, 26) })),
       bludgers: [0, 1].map(() => ({ top: r(32, 60), size: r(13, 20), dur: r(30, 48), delay: -r(0, 40) })),
+      // Same middle band as the snitch and the bludger, for the same measured reason: the tab row
+      // sits at a FIXED 47-87px, so a percentage that clears it on a tall phone lands on the labels
+      // on a short one. The arc adds +-9vh, and 30% of the shortest phone this ships to is still
+      // well clear at both ends. Bigger than the bludger because a quaffle is the largest ball, and
+      // ONE of them: it is the object being passed, not a hazard swarm.
+      quaffles: [0].map(() => ({ top: r(38, 62), size: r(19, 26), dur: r(26, 40), delay: -r(0, 34) })),
+      // A PATCH on one side rather than three spread across the width. They render inside DecorBack
+      // (zIndex 45, BELOW the nav pill at 50), so they cannot cover a button whatever the placement.
+      pumpkins: [{ left: r(-5, 3), size: r(54, 68), delay: -r(0, 2.6) },
+                 { left: r(9, 16), size: r(40, 50), delay: -r(0, 2.6) },
+                 { left: r(20, 27), size: r(46, 58), delay: -r(0, 2.6) }],
       butterflies: [0, 1].map(i => ({ left: r(10, 70), top: r(22, 62), dur: r(26, 38), delay: -r(0, 30),
                                       tint: i ? "rgba(255,214,235,0.9)" : "rgba(249,186,211,0.92)" })),
       // Pinned to the TOP BAND. At top: r(6,26) a cloud sailed across the middle of the screen and
@@ -2277,6 +2373,20 @@ function ThemeDecor({ kind }) {
           90% { opacity:1; }
           100% { opacity:0; transform: translate3d(122vw,-2vh,0); }
         }
+        /* A THROW, not a drift: the quaffle rises then falls, which is what separates it from
+           the bludger's flat wander at a glance even when both are on screen. */
+        @keyframes seshd-throw {
+          0% { opacity:0; transform: translate3d(-24vw,6vh,0); }
+          10% { opacity:1; }
+          45% { transform: translate3d(30vw,-7vh,0); }
+          90% { opacity:1; }
+          100% { opacity:0; transform: translate3d(122vw,9vh,0); }
+        }
+        /* Candle flicker. Opacity only — it runs on three ornaments for the whole session, so it
+           must never touch a layout property. */
+        @keyframes seshd-flicker {
+          0%,100% { opacity:0.72; } 22% { opacity:1; } 44% { opacity:0.8; } 70% { opacity:0.97; }
+        }
         @keyframes seshd-skitter {
           0% { opacity:0; transform: translate3d(0,0,0) rotate(0deg); }
           8% { opacity:1; }
@@ -2289,6 +2399,7 @@ function ThemeDecor({ kind }) {
       {kind === "halloween" && <>
         <Web/>
         <Web flip/>
+        <DecorBack style={{ inset:0 }}>{bits.pumpkins.map((pk, i) => <Pumpkin key={i} {...pk}/>)}</DecorBack>
         {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
         {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}
       </>}
@@ -2322,6 +2433,7 @@ function ThemeDecor({ kind }) {
         <PitchHoops/>
         {bits.snitches.map((sn, i) => <Snitch key={i} {...sn}/>)}
         {bits.bludgers.map((b, i) => <Bludger key={i} {...b}/>)}
+        {bits.quaffles.map((q, i) => <Quaffle key={i} {...q}/>)}
       </>}
     </div>, document.body);
 }
@@ -2605,6 +2717,36 @@ function _mixHex(from, to, t) {
   const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   const [a, b] = [rgb(from), rgb(to)];
   return "#" + [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t).toString(16).padStart(2, "0")).join("");
+}
+// ★★ THE NAV PILL AND TOP BAR WERE `isDark ? grey : white`, SO NINE THEMES SHARED TWO CHROMES.
+// Mo: "Our themes don't differ much in color, we need to fix." Measured, that is most of the
+// reason: the two elements visible on EVERY screen were hardcoded to one grey glass for all five
+// dark themes and one white glass for all four light ones, so the theme could only ever change
+// what sat between them. It is the isDark-as-proxy class for the FOURTH time (accentFillInk,
+// ACCENT_ON_SLAB, GROUP_COLOR.Legs were the first three) — `isDark` answers "is the ink light?",
+// never "what colour is this theme".
+// DERIVED from each palette's own surface/bg/text rather than hand-authored ten times, for the
+// reason bodyGreys is derived: a theme that does not exist yet gets its own chrome for free, and
+// there is no tenth pair to forget to update.
+function chromeGlass(C) {
+  const dark = !!C.isDark;
+  const bg = (C && C.bg) || "#0b0b0e", surf = (C && C.surface) || bg, ink = (C && C.text) || "#f4f4f6";
+  // Glass reads as a RAISED pane, so both stops sit a step off the canvas — toward the ink on a
+  // dark theme, toward white on a light one. The alphas are the ones the hardcoded gradients
+  // already used, so only the HUE changes and the glass keeps the weight it shipped with.
+  // On a LIGHT theme the glass is pulled toward that palette's own BORDER rather than toward white:
+  // mixing to white washed the hue straight back out (measured — all four light navs came back
+  // within ~7 channel points of each other, i.e. numerically distinct and visibly identical), and
+  // `border` is the neutral in every palette that carries the most hue.
+  const edge = (C && C.border) || surf;
+  const hi = dark ? _mixHex(surf, ink, 0.26) : _mixHex(surf, edge, 0.35);
+  const lo = dark ? _mixHex(bg, ink, 0.10) : _mixHex(bg, edge, 0.55);
+  const rgba = (h, a) => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+  return {
+    nav: `linear-gradient(165deg, ${rgba(hi, dark ? 0.5 : 0.68)} 0%, ${rgba(lo, dark ? 0.2 : 0.24)} 45%, ${rgba(hi, dark ? 0.35 : 0.34)} 100%)`,
+    bar: `linear-gradient(180deg, ${rgba(hi, dark ? 0.72 : 0.82)} 0%, ${rgba(lo, dark ? 0.62 : 0.7)} 100%)`,
+  };
 }
 function bodyGreys(C) {
   const bg = (C && C.bg) || "#0b0b0e", ink = (C && C.text) || "#f4f4f6";
@@ -21585,9 +21727,7 @@ function AppInner() {
           TODO(device-test): convert to a floating overlay like the bottom nav so content
           scrolls under it and the blur becomes real — needs per-screen scroller padding. */}
       <div style={{
-        background: C.isDark
-          ? "linear-gradient(180deg, rgba(28,28,34,0.72) 0%, rgba(20,20,24,0.62) 100%)"
-          : "linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(246,248,252,0.66) 100%)",
+        background: chromeGlass(C).bar,
         backdropFilter:"blur(22px) saturate(1.7)", WebkitBackdropFilter:"blur(22px) saturate(1.7)",
         borderBottom:`1px solid ${C.isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.06)"}`,
         boxShadow: C.isDark
@@ -22195,9 +22335,7 @@ function AppInner() {
         paddingRight:"calc(14px + env(safe-area-inset-right))",
       }}>
       <div style={{
-        background: C.isDark
-          ? "linear-gradient(165deg, rgba(70,70,78,0.5) 0%, rgba(40,40,46,0.2) 45%, rgba(55,55,62,0.35) 100%)"
-          : "linear-gradient(165deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.18) 45%, rgba(255,255,255,0.28) 100%)",
+        background: chromeGlass(C).nav,
         backdropFilter:"blur(28px) saturate(1.8)", WebkitBackdropFilter:"blur(28px) saturate(1.8)",
         border:`1px solid ${C.isDark ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.85)"}`,
         borderRadius:26,

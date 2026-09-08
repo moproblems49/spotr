@@ -5260,6 +5260,126 @@ unit there), and `PitchHoops` is in `DecorBack` at zIndex 45 because it stands o
 anything touching the bottom edge draws over the nav's buttons at 150. Verified by
 `elementFromPoint`: 4 of 4 nav buttons resolve to themselves.
 
+## ★★★ NINE THEMES SHARED TWO CHROMES — `isDark` AS A PROXY, FOR THE FOURTH TIME (Sep 8)
+Mo, with a screenshot: "Our themes don't differ much in color, we need to fix." Measured, that was
+most of the reason and it was two hardcoded gradients. The **nav pill** and the **top bar** — the
+only two elements visible on EVERY screen — were `C.isDark ? <one grey glass> : <one white glass>`,
+so all five dark themes shared one chrome and all four light ones shared another, and a theme could
+only ever change what sat BETWEEN them. **Two distinct top bars and two distinct nav pills across
+nine themes; eight and eight now.**
+This is the **`isDark`-as-proxy** class for the fourth recorded time (`accentFillInk`,
+`ACCENT_ON_SLAB`, `GROUP_COLOR.Legs` were the first three): `isDark` answers "is the ink light?", it
+never answers "what colour is this theme". Reach for it only when the question really is light-vs-
+dark ink, and derive anything else from the palette.
+**`chromeGlass(C)` is DERIVED, not ten hand-authored pairs** — the `bodyGreys` precedent — so a
+theme that does not exist yet gets its own chrome free and there is no tenth pair to forget. Alphas
+are byte-identical to the gradients they replace, so only the HUE moved and the glass keeps the
+weight it shipped with.
+**★ AND THE OBVIOUS DERIVATION WAS THE WRONG ONE, WHICH IS THE PART WORTH KEEPING.** On a light
+theme the first cut mixed toward WHITE (`_mixHex(surf, "#ffffff", …)`) — and that washes the hue
+straight back out: measured, all four light navs came back within ~7 channel points of each other,
+i.e. numerically distinct and visibly identical, which is the same bug wearing a different number.
+It mixes toward each palette's own **`border`** instead, the neutral that carries the most hue in
+every palette. **A derivation is not automatically a fix; measure the spread it actually produces.**
+**Four light themes also all declared `surface: "#ffffff"`** — spread ZERO on the largest painted
+area on most screens — so the surface carries hue now too. **`sim_a11y` immediately caught the first
+attempt**: spring's gold/red/orange landed at 4.47/4.50/4.48 against the 4.5 floor. Solved
+numerically rather than by nudging until green — `#eef8e7` gave more channel spread (17) but a
+4.51 minimum, and **a hairline margin is the documented failure mode**, so `#f0f9ea` (spread 15,
+min 4.57) shipped instead.
+**"Why the bubbles?" was a correct reading of the drawing.** Quadball's Bludger was a circle with a
+FULL light rim plus a specular arc following that rim, which is precisely how you draw a soap
+bubble; at 14-22px nothing else about it said iron. Redrawn with **no rim at all** (the rim was the
+whole tell), weight shaded into the BOTTOM, and one small off-centre highlight instead of an arc.
+**★ AND THE DECOR-OVER-COPY FIX FROM THE PREVIOUS ROUND HAD PROTECTED THE WRONG THING.** Its comment
+protects the WORDMARK (x 54-119) and the **LOGO TILE (x 14-44) was never in the protected zone**, so
+the ornaments simply moved onto the logo — measured, 4 branch shapes overlapping the logo at x 25-58,
+with a blossom sitting on the "S". **The protected region was defined too narrowly; the offset was
+not mis-tuned**, and a pure right shift could not fix it because the branch is 345px wide and would
+have reached the chat icon. The left sub-branch that carried them is DELETED and its ornaments moved
+right of the wordmark: **4 overlapping shapes -> 0**.
+**★★ AND THE TWO NEW ORNAMENTS WERE ADDED BY NAMING A GAP, WHICH IS THE ONLY WAY TO ADD ONE.**
+Mo: "I feel like we can add more decorations to our themes. What else can we add?" The house rule
+already answers the second half — *name the thing a theme is MISSING that its siblings have* — and
+applying it gave exactly two, not five. **Halloween had no GROUND anchor** (Fall skitters leaves
+along the bottom, Spring grew grass for this reason, Summer plants the palm, Winter settles snow on
+the nav) -> a three-pumpkin patch in `DecorBack`, at three sizes because *one object alone reads as
+a sticker, several of different heights read as a place*. **Quadball's gap was inside itself**:
+`PitchHoops` draws a goal on every screen and neither object in the air was the ball you score with
+-> the Quaffle, separated from the Bludger by the two things that actually tell them apart in the
+game (red leather vs iron, and a THROWN arc vs a flat wander) rather than by size. The four
+undecorated themes are NOT a gap — they are the plain option, and decorating them would delete it.
+**★ THE PUMPKINS ARE STATIC AND THEIR FACES ARE NOT.** Every other ground ornament here is still
+(PalmCorner, PitchHoops, Icicles); GrassTuft moves because grass genuinely does, and rocking a heavy
+ground object looks wrong. What IS animated is the FACE — a candle flicker, opacity only, each with
+its own delay — because that is the one thing that makes a jack-o'-lantern read as lit rather than
+as an orange blob.
+**★ AND DRIVING IT FOUND THE ONE REAL DEFECT, WHICH NO STATIC READ WOULD HAVE: THE QUAFFLE SAT ON
+THE COPY.** At full alpha it blotted out a word of "Pick a proven split and make it yours" — the one
+thing this layer must never do. Its two siblings cross the same band and get away with it for
+reasons it does not share: **the bludger's iron is within a few points of that theme's near-black
+canvas, and the snitch is small and thin. A saturated RED SOLID DISC is the most copy-hostile shape
+in the set**, so it is the one that pays, at 0.5 opacity on the SVG (not the wrapper — the wrapper's
+opacity is driven by the keyframe's own fade). Guard: `pw_themes` 4n/4n2/4n3 — the pumpkins render
+lit and below the nav, all four nav buttons still hit-test to themselves, and quadball puts three
+balls on the pitch with the two discs **not the same colour**. Red-proofed at 2 failures with 4n2
+(the control) staying green.
+
+## ★★★ THE FEMALE MAP IS DRAWN NOW, AND A TRACE COULD NEVER HAVE GOT THERE (Sep 8)
+Mo, of the declawed trace: "Still needs a lot more work, doesn't look right... take your time to
+redraw and make it right", plus "give female shoulders a lil trimmed down to match males". His call
+between fixing the trace and starting over was **draw from scratch**, and he was right for a reason
+the previous three rounds kept demonstrating: **a warp changes proportions and a declaw removes
+barbs, but neither can change what the ARTWORK DEPICTS.** The reference is 360x224, so a female arm
+is ~10 source px wide and each muscle in it is a 3-4 px sliver; marching squares around a sliver
+that thin produces hairline needles no matter how it is post-processed, and reshaping a bodybuilder
+écorché leaves you with a bodybuilder écorché.
+**IT IS GENERATED, NOT HAND-AUTHORED** — `build/bodymap/gen.mjs` + `kit.mjs`, committed with a
+README **because a data file whose generator lives only in a scratchpad can only be hand-edited
+after the next container recycle**, which is exactly how the geometry it guarantees would drift.
+(The battery itself was lost that way once.) Verified rather than assumed: the committed generator
+reproduces the shipped `BODYMAP_FEMALE` byte-for-byte.
+**★ THE PROPERTY THE GUARD RESTS ON IS STRUCTURAL: `_body` IS THE CONCATENATION OF THE VERY SUBPATH
+STRINGS THE REGIONS ARE MADE OF**, plus fillers (neck, clavicle, linea alba, armpit, elbow, wrist,
+pelvis, kneecap, ankle; back: scapula, spine, sacrum, popliteal, soleus). So a region cannot sit
+outside the silhouette — registration holds BY CONSTRUCTION rather than by care, and
+`sim_bodymapfemale` asserts it as a literal substring test. Note it is a **FEMALE-ONLY** property:
+the male map does not have it (0 of 9 non-Traps regions match), which is why the guard is named for
+this map rather than for both.
+**★★ AND THE SIZE LESSON FROM THE TRACE STILL HOLDS AND IS NOW ENFORCED BY THE GENERATOR: FIT ON
+LANDMARKS THE TWO FIGURES ACTUALLY SHARE, NEVER ON OUTER EXTENT.** This figure has no head, so
+matching bounding boxes puts her shoulders where the male's neck is and stretches the body to fill
+the gap. Deltoid top + ground line, scaled UNIFORMLY: shoulder->feet is +0.06% front / 0.00% back,
+and the back view is the front's own frame under ONE similarity so the two views cannot drift apart.
+**★★★ THE ROUND THAT MATTERED WAS ROUND 2, AND WHAT DROVE IT WAS A SIDE-BY-SIDE CROP.** Round 1
+passed every numeric pin and still looked wrong; judging it against the male from memory would have
+produced adjectives. Cropping the agent's own 4-up into `male front | female front` and
+`male back | female back` at identical scale made all five defects nameable in one look, and every
+one was fixed in a single round: the back lats were a **SHIELD** (a solid diamond with no lateral
+extent — a back's silhouette IS the flare out to the armpit and the taper in to the waist), the
+glutes were two near-perfect **CIRCLES** (larger than the male's is correct and should stay; the
+circle was the cartoon tell), the front traps were a horizontal **BAR** reading as a yoke instead of
+a V, the pecs stopped short of the delts leaving a grey channel so they read detached, and the neck
+was a domed rounded rectangle reading as a headless mannequin post. **The general rule: when a
+redraw "doesn't look right", crop it beside the thing it should resemble at the SAME scale before
+saying anything — the palm's lesson (ask for a reference picture) reached from the other direction.**
+**What that also settled: "trim the shoulders to match the males" was NOT a span problem.** Measured
+first, the female delt span was already narrower in absolute terms (0.277 of body height vs the
+male's 0.328), so widening or narrowing would have done nothing — it was deltoid MASS AND SHAPE, and
+the answer was an ovoid cap sloping down into the bicep rather than a domed ball. Measure before
+agreeing OR disagreeing with a shape complaint.
+**Verified IN PLACE, which the drawing agent explicitly could not do**: `sim_bodymapfemale` and
+`pw_bodymapfemale` both green against the real `src/bodyMapData.js` (0.00% of every region's ink
+outside its silhouette, all four maps), plus the whole battery — and then RENDERED THROUGH THE REAL
+APP on the profile screen at 428x926 in both themes with a fixture training every group, because the
+guards prove the geometry and only the screen proves it looks right.
+**Honest limits, so they are not rediscovered as bugs:** detail is deliberately below the male's
+écorché (2 forearm strips per arm vs 3, 3 quad heads vs 6, 2 calf pieces vs 5) — adding striation is
+a data edit in `gen.mjs`, not a redraw. And in the armpit band right under the rear delt (back
+y 96-102) the arm/torso channel is 5.7-9.7 rather than the 12+ it holds everywhere else: that is the
+direct cost of making the lat flare to the armpit, which is where the muscle actually inserts, and
+the male's own channel there is 2.3-10.
+
 ## ★★ THE ARMS WERE WELDED TO THE TORSO BY ONE STROKE WIDTH, AND THE BICEPS WERE NEEDLES (Sep 8)
 Mo, from his phone, two messages: "fix the female forearm/bicep and have a lil white between body
 and arm because it looks better", then "the female biceps are pointy, need to look more like the
@@ -5304,7 +5424,10 @@ confirmed he is licensed for it but holds only a 360x224 JPG, not the vector ori
 flat 2-tone, and because each muscle is drawn separated by LIGHT GAPS every muscle is already its
 own connected component, with left/right pairs coming out as matching areas. So segmentation is
 mechanical — threshold, connected components, marching-squares outline, group components into the
-10 named regions by position, union for `_body`. `build/bodymap_trace.mjs` is the generator and
+10 named regions by position, union for `_body`. **SUPERSEDED Sep 8 — the map is DRAWN now (see
+the entry above) and `build/bodymap_trace.mjs` IS DELETED**, deliberately rather than left lying
+around: it carried a `--write` flag that rewrote `BODYMAP_FEMALE` in place, so running it today
+would silently replace the drawn map with a trace. `build/bodymap/gen.mjs` is the generator and
 **`ref.jpg` is deliberately NOT in the repo** — the repo is public and the art is licensed for the
 app, not for redistribution. Mo holds the file; the generator takes its path as an argument.
 **★ WHY A TRACE AND NOT MORE WARPING: a warp cannot change the DRAWING.** The previous entry's
