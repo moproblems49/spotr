@@ -5260,6 +5260,97 @@ unit there), and `PitchHoops` is in `DecorBack` at zIndex 45 because it stands o
 anything touching the bottom edge draws over the nav's buttons at 150. Verified by
 `elementFromPoint`: 4 of 4 nav buttons resolve to themselves.
 
+## ★★★ `env()` IS THE *OPTIMISTIC* CASE FOR A BOTTOM ORNAMENT, AND TWO SHIPPED BURIED (Sep 8)
+Mo, from his phone: "Can't see the pumpkins on Halloween" and "make quadball hoops a higher." One
+cause, and it INVERTS a rule already in this file. The recorded version is that `env()` = 0 in
+Chromium is the PESSIMISTIC case for the tab row — a real inset pushes the row DOWN, away from the
+decor pinned to the viewport. At the BOTTOM the same fact runs the other way: a real
+`env(safe-area-inset-bottom)` of ~34pt is carried by the nav's padding, so **the pill RISES ~34px
+while an ornament anchored at `bottom: N%` does not move at all.** The occluder climbs over the
+thing it was only supposed to ground. Measured: with env()=0 the pill spans 8..58px above the
+bottom; on device it spans 42..92. The pumpkins' faces sat at ~60 and the shortest hoop's ring top
+at 44 — both fine in every screenshot here and both invisible in Mo's hand.
+**★ ASK WHICH WAY A REAL INSET MOVES THE OCCLUDER BEFORE TRUSTING A CHROMIUM SCREENSHOT OF ANYTHING
+ANCHORED TO THE BOTTOM.** Neither of these was a drawing problem and no amount of looking at the
+render here would have found them.
+**The two fixes are different shapes and both are the general answer for their case.** The pumpkins
+moved INSIDE the nav pill — the NavSnow answer: the pill already carries `overflow:hidden` and
+`borderRadius:26`, so drawing inside it clips to the rounded corners for free, inherits the bar's
+shrink transform, and moves WITH the bar on every device, with no second copy of the nav's geometry
+to drift. The hoops instead grew a TALLER BOX (132 -> 230) rather than being raised: raising the
+element would have left the poles stopping in mid-air, where growing the box keeps them on the
+ground and moves only the rings. All three ring tops now clear 92px.
+
+## ★★ THE FIVE ORNAMENTS FROM MO'S OWN LIST (Sep 8) — and each choice is an argument
+Mo picked all five of the options offered, each phrased as "X or Y". Which half to build was decided
+by the house rule — **it must be DIFFERENT from what that theme already does, not a second copy** —
+and the rejected halves are recorded because the reasoning is the reusable part:
+- **Winter -> frost creeping in from the SIDE edges.** Its existing fixed element (Icicles) hangs
+  from the TOP, so a side element is a new axis rather than more of the same.
+- **Fall -> a crow perched on the branch**, not rain: Fall already has two falling things and a
+  third would read as one effect.
+- **Spring -> bees**, not a perched bird — precisely because Fall was getting one, and two themes
+  sharing an ornament idea is the "three screens, one empty-state template" tell in decor form. A
+  bee differs from Spring's existing butterfly by MOTION (darting vs drifting), not just by glyph.
+- **Summer -> a boat**, not heat shimmer: shimmer is a full-screen filter over the app's
+  most-scrolled surface, i.e. a legibility and performance risk for an ornament.
+- **Halloween -> a bat.** "Ghosts reacting to a PR" is a bigger and different build — it hooks the
+  PR path and makes one theme change app BEHAVIOUR — worth doing deliberately, not in a decor batch.
+**★ A DARK SILHOUETTE IS INVISIBLE ON A DARK CANVAS, AND THAT IS NOT AS OBVIOUS AS IT SOUNDS.** The
+bat shipped near-black on the reasoning that a bat IS a dark silhouette — true against a night sky,
+false here, because Halloween's canvas is the dark thing. Driven on screen it all but vanished. The
+ghosts had already solved this by being LIGHTER than the ground they cross; the bat now matches
+them. **Ask what the shape is silhouetted AGAINST, not what colour the thing is in life.**
+**★ AND THE BOAT NEEDED A WAKE, BECAUSE THE APP HAS NO HORIZON.** Alone in an empty field it read as
+a sticker sliding sideways. Two short ripples under the hull say "water" at 30px where an actual
+horizon line would read as a divider across the whole screen.
+**★ BUILD A SMALL GLYPH FROM PRIMITIVES, NOT FROM ONE HAND-AUTHORED PATH.** The crow's first draw was
+a single long `c` chain and its TAIL came out as a fat drooping blob — rendered standalone at 4x it
+read as a slug behind the bird. An ellipse body, a circle head and two triangles are each
+independently adjustable, and at 30px a bird IS its silhouette. Same lesson as the palm, reached
+from the other side: there the fix was a reference picture, here it was simpler primitives.
+**★ AND THE FREEZE HARNESS LIED ABOUT THE BAT.** Travellers have 15-120s cycles, so they are
+off-screen in almost every screenshot and "I can't see it" says nothing — the fix is to pin every
+animation at 45% of its own duration and shoot. But that pins the WING animation too, catching the
+bat mid-flap at `scaleX(0.55)`, which reads as a squashed blob. **Render a glyph STANDALONE and at
+rest to judge its shape**; use the frozen screen only to judge placement.
+Guard: `pw_themes` 4o/4o2 — each ornament selected by a `data-ornament` hook (a stable hook beats
+size or animation-name), plus the crow's hard placement constraint (fully on screen, above the tab
+row at 43, right of the wordmark). 4n moved with the pumpkins rather than being deleted: same
+invariant, new reach. Red-proofed by removing all six at once — 7 failures naming each, with 4i for
+every seasonal and the nav hit-test staying green.
+**Two probe bugs of my own in that guard, both the documented kind:** it counted the nav's OWN
+BUTTON ICONS as ornaments (`pill.querySelectorAll("svg")`) and so failed a pointer-transparency
+assertion on controls that are correctly tappable; and it looked for a wordmark whose textContent is
+exactly `"SESHD"` when the DOM holds `"Seshd"` and CSS uppercases it — reporting `wordRight: null`,
+which reads exactly like the crow failing a placement rule it actually passes. **Match the text, not
+its rendered casing, and scope a query to the thing you mean.**
+
+## ★★ THE SECOND LICENSED REFERENCE WAS TRIED AND DOES NOT FIT — the stance, not the resolution
+Mo supplied different art he is licensed for ("try this female body map instead"). Traced properly —
+region-level fusing rather than shape-for-shape, `_body` = regions + (silhouette − regions) so the
+verbatim property holds — and the answer is to KEEP THE DRAWN MAP. Two structural reasons, both
+measured, neither fixable by tuning:
+1. **THE ARMS ARE HELD AWAY FROM THE BODY, so at the mandated fit the figure is 185 units wide
+   against a 158-unit box** — 18% too wide, with the wrists 84 units from centre. No offset fits
+   185 into 158. The only ways out are shrinking the figure (breaks the non-negotiable
+   shoulder->feet pin) or rotating the arms in, which is a redraw of the very thing the reference
+   was supposed to supply.
+2. **The arm muscles are 1.8-4.5 SOURCE PX**, so they needle at a light close radius and blob at a
+   heavy one — swept at r=5/8/10 and the forearm tips never clear 50°. At r=10 each thigh is a
+   single slab. The limbs come out as grey filler with small coloured commas.
+**★ AND I MISREAD THE ART AT FIRST, WHICH IS THE REUSABLE WARNING: the PINK is the outline and the
+inter-muscle separators; the BLACK shapes are the muscles.** Classifying it the intuitive way would
+have traced the negative of the picture. The previous reference was drawn the opposite way round,
+so its verdict did not transfer and had to be re-derived.
+**What was NOT the problem, and is worth knowing before anyone tries a third reference:**
+proportions. Measured as fractions of shoulder->feet, the art and the shipped drawn map agree
+closely — waist:delt 0.649 vs 0.644, chest 0.307 vs 0.284, delt span 0.282 vs 0.251. **A new
+reference is only worth tracing if it differs in something the drawn generator cannot already
+express**, and stance is exactly the thing that then fails to fit the male's frame.
+Candidate, generator and a four-panel comparison were produced and kept out of `src/`; the art is
+NOT committed, same rule as the first reference (public repo, licensed for the app only).
+
 ## ★★★ NINE THEMES SHARED TWO CHROMES — `isDark` AS A PROXY, FOR THE FOURTH TIME (Sep 8)
 Mo, with a screenshot: "Our themes don't differ much in color, we need to fix." Measured, that was
 most of the reason and it was two hardcoded gradients. The **nav pill** and the **top bar** — the

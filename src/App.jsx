@@ -1,4 +1,4 @@
-// v178091717044
+// v178091717045
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1739,6 +1739,7 @@ function CornerBranch({ blossom }) {
         <path d="M72 27 C86 40 92 52 92 66" strokeWidth="2"/>
         <path d="M96 47 C112 52 124 50 138 42" strokeWidth="1.8"/>
       </g>
+      {!blossom && <Crow/>}
       {blossom
         ? [[74, 56], [80, 64], [90, 64], [96, 72], [136, 40], [70, 26], [116, 60], [126, 54]].map(([cx, cy], i) => (
             <g key={i}>
@@ -1749,7 +1750,7 @@ function CornerBranch({ blossom }) {
               <circle cx={cx} cy={cy} r="1.7" fill="rgba(255,232,168,0.95)"/>
             </g>
           ))
-        : [[76, 56], [92, 64], [138, 42], [116, 60], [106, 48]].map(([cx, cy], i) => (
+        : [[76, 56], [92, 64], [150, 40], [104, 66], [96, 50]].map(([cx, cy], i) => (
             <path key={i} transform={`translate(${cx - 8} ${cy - 8}) rotate(${i * 47} 8 8)`}
               d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z"
               fill={["rgba(212,110,58,0.9)", "rgba(186,74,40,0.9)", "rgba(206,148,54,0.9)"][i % 3]}/>
@@ -1771,16 +1772,25 @@ function PitchHoops() {
   const brass = "rgba(212,175,105,0.9)", pole = "rgba(196,158,92,0.75)";
   const hoop = (x, y, r) => (
     <g>
-      <rect x={x - 2} y={y} width="4" height={132 - y} rx="2" fill={pole}/>
+      <rect x={x - 2} y={y} width="4" height={230 - y} rx="2" fill={pole}/>
       <ellipse cx={x} cy={y - r} rx={r} ry={r} fill="none" stroke={brass} strokeWidth="4.5"/>
     </g>
   );
+  // ★ TALLER POLES RATHER THAN A RAISED ELEMENT (Mo, from his phone: "make quadball hoops a
+  // higher"), and the arithmetic is the same trap the pumpkins hit. With `env(safe-area-inset-
+  // bottom)` at 0 the pill occupies 8..58px above the viewport bottom; on a real iPhone the inset
+  // is ~34pt and the nav's padding carries it, so the pill occupies 42..92 — it RISES over anything
+  // anchored to the bottom. At the old height 132 the shortest ring's top sat 44px above the
+  // bottom, i.e. entirely behind the pill on device while looking fine in Chromium.
+  // Raising the whole element was the wrong fix: the poles would stop in mid-air. The box grows
+  // instead (132 -> 230), so the poles still run to the ground and only the rings move up. All
+  // three ring tops now clear 92px with margin: 136 / 192 / 112 above the bottom.
   return (
     <DecorBack style={{ right: 6, bottom: 0, lineHeight: 0 }}>
-      <svg width="156" height="132" viewBox="0 0 156 132" style={{ opacity: 0.34 }}>
-        {hoop(26, 74, 19)}
-        {hoop(78, 46, 23)}
-        {hoop(130, 88, 16)}
+      <svg width="156" height="230" viewBox="0 0 156 230" style={{ opacity: 0.34 }}>
+        {hoop(26, 132, 19)}
+        {hoop(78, 84, 23)}
+        {hoop(130, 150, 16)}
       </svg>
     </DecorBack>
   );
@@ -1952,33 +1962,189 @@ function GrassTuft({ left, size, delay, flip }) {
   );
 }
 
-// ★ HALLOWEEN'S MISSING GROUND ANCHOR, named the same way Spring's grass was named.
-// Every other seasonal theme already grounds itself at the BOTTOM edge — Fall skitters leaves along
-// it, Spring grew grass for exactly this reason, Summer plants the palm in it, Winter settles snow
-// on the nav pill — and Halloween had webs in the top corners, spiders in the margins and ghosts in
-// the middle, with nothing below. That is the asymmetry, not a wish for more ornaments.
-// THREE in a patch on ONE side, at three different sizes, because of the palm's own lesson: one
-// object alone reads as a sticker, several of different heights read as a place. They are STATIC —
-// PalmCorner, PitchHoops and Icicles are all still, and rocking a heavy ground object looks wrong;
-// GrassTuft moves because grass genuinely does. The one thing that IS animated is the FACE, which
-// is what makes a jack-o'-lantern read as lit rather than as an orange blob, and each carries its
-// own delay so they never flicker in unison.
-function Pumpkin({ left, size, delay }) {
-  const skin = "rgba(214,116,38,0.92)", rib = "rgba(158,78,22,0.7)", glow = "rgba(255,214,120,0.95)";
+// ── THE FIVE ORNAMENTS MO PICKED, one per seasonal theme. Each is chosen from his own list for
+// the same reason the pumpkins and the quaffle were: it must be DIFFERENT from what that theme
+// already does, not a second copy of it.
+//   Winter  -> frost creeping in from the SIDE edges. Its existing fixed element (Icicles) hangs
+//              from the TOP, so a side element is a new axis rather than more of the same.
+//   Fall    -> a crow perched on the branch. Rain was the alternative and was declined: Fall
+//              already has two falling things (leaves) and a third would read as one effect.
+//   Spring  -> bees. A perched bird was the alternative and was declined precisely because Fall
+//              is getting one — two themes sharing an ornament idea is the "three screens, one
+//              empty-state template" tell in decor form. A bee differs from the butterfly Spring
+//              already has by MOTION (darting and hovering vs drifting), not just by glyph.
+//   Summer  -> a boat, low and slow. Heat shimmer was the alternative and was declined: it is a
+//              full-screen filter over the app's most-scrolled surface, which is a legibility and
+//              performance risk for an ornament.
+//   Halloween -> a bat. "Ghosts reacting to a PR" was the alternative and is a bigger, different
+//              build (it hooks the PR path and makes one theme change app behaviour); worth doing
+//              deliberately if Mo wants it, not folded into a decor batch.
+function FrostEdge({ side }) {
+  // Static, like every other fixed edge element here. Confined to the MIDDLE vertical band on
+  // purpose: the tab row sits at a fixed 47-87px and the nav pill at the bottom, so a fringe that
+  // ran the full height would reach both. Thin and faint because it necessarily sits over the
+  // edges of cards — it is frost on the glass, not a border.
+  const ice = "rgba(214,234,252,0.55)";
   return (
-    <svg width={size} height={size} viewBox="0 0 30 27" aria-hidden="true"
-      style={{ position:"absolute", bottom:"6.5%", left:`${left}%`, opacity:0.5 }}>
-      <path d="M15 8.6C15 5.4 14.2 3.4 11.6 2.6" stroke="rgba(104,126,66,0.9)" strokeWidth="2.2"
-        fill="none" strokeLinecap="round"/>
-      <ellipse cx="15" cy="17.2" rx="14" ry="9.5" fill={skin}/>
-      <path d="M9.4 8.6C7.6 11.2 7.6 23.2 9.4 25.8" stroke={rib} strokeWidth="1.3" fill="none"/>
-      <path d="M20.6 8.6C22.4 11.2 22.4 23.2 20.6 25.8" stroke={rib} strokeWidth="1.3" fill="none"/>
-      <g fill={glow} style={{ animation:`seshd-flicker 2.6s ${delay}s ease-in-out infinite` }}>
-        <path d="M10 14.4l3.4 1.9-3.4 1.9z"/>
-        <path d="M20 14.4l-3.4 1.9 3.4 1.9z"/>
-        <path d="M9.9 20.3h10.2l-1.7 2.1-1.7-1.3-1.8 1.5-1.8-1.5-1.7 1.3z"/>
-      </g>
+    <svg data-ornament="frost" width="30" height="420" viewBox="0 0 30 420" aria-hidden="true"
+      style={{ position:"absolute", top:"26%", [side]:0, opacity:0.5,
+               transform: side === "right" ? "scaleX(-1)" : undefined }}>
+      <path fill={ice} d="M0 0h9c-1 14 5 20 3 33-2 12-8 15-6 28 2 12 9 14 8 27-1 12-7 16-6 28 1 13 8 16 7 29
+        -1 12-8 15-7 28 1 12 8 15 8 28 0 13-7 17-6 30 1 12 7 15 6 27-1 13-8 16-7 29 1 12 6 15 5 26
+        -1 13-6 16-5 27 1 12 5 14 4 26-1 12-6 15-6 24H0Z"/>
+      {[26, 92, 168, 244, 318, 384].map((y, i) => (
+        <g key={i} stroke={ice} strokeWidth={i % 2 ? 1 : 1.4} fill="none" strokeLinecap="round">
+          <path d={`M8 ${y} L${19 + (i % 3) * 4} ${y - 7}`}/>
+          <path d={`M13 ${y - 3.5} l4 -4.5 M13 ${y - 3.5} l4.5 3`}/>
+        </g>
+      ))}
     </svg>
+  );
+}
+function Crow() {
+  // Perched on the branch's own bough, so it moves with every future re-tune of that element
+  // instead of carrying a second copy of its position — the NavSnow rule applied to an ornament.
+  // ★ THE FIRST DRAW WAS TOO SMALL AND READ AS A BLOB, which is the palm's lesson again: at this
+  // size a bird is carried entirely by its SILHOUETTE, so the three things that have to be
+  // unmistakable are the HEAVY STRAIGHT BEAK, the LONG WEDGE TAIL and the hunched back between
+  // them. Detail inside the shape only turns it into a smudge. Solid ink, no rim.
+  // The perch twig is grown down off the bough on purpose: the branch is anchored at top:-96 and
+  // most of it is off-screen, so without it the bird lands at screen y -12 and is clipped.
+  // Placed at viewBox (129,74) = screen (210,40), which is the one genuinely empty box in the top
+  // bar — right of the SESHD wordmark (ends x119) and left of the chat icon (starts ~330) — with
+  // its bottom 3px clear of the tab row at 43.
+  const ink = "rgba(18,14,12,0.9)";
+  return (
+    <g>
+      <path d="M124 50 C128 58 129 66 129 74" stroke="rgba(104,78,56,0.7)" strokeWidth="1.6"
+        fill="none" strokeLinecap="round"/>
+      <g data-ornament="crow" transform="translate(129 74)">
+        <path d="M-1.4 0v-4.5M2.6 0v-4.5" stroke={ink} strokeWidth="1.3" strokeLinecap="round"/>
+        {/* tail: a SLIM wedge sweeping back and slightly up. The first draw made it thick and
+            drooping, which reads as a slug rather than a bird. */}
+        <path fill={ink} d="M-4.2 -10.4 -20.8 -3.6 -20.2 -1.4 -3.4 -5.6Z"/>
+        <ellipse cx="0" cy="-8.2" rx="8.4" ry="6.1" fill={ink} transform="rotate(-13 0 -8.2)"/>
+        <circle cx="6.8" cy="-14.8" r="4.1" fill={ink}/>
+        <path fill={ink} d="M9.8 -16.4 17.6 -14 9.8 -12.3Z"/>
+        <circle cx="7.6" cy="-15.8" r="0.95" fill="rgba(232,222,206,0.9)"/>
+      </g>
+    </g>
+  );
+}
+function Bee({ left, top, dur, delay }) {
+  // Darts rather than drifts, which is the whole distinction from Spring's butterfly. Small on
+  // purpose — a bee that reads at 30px is a wasp.
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
+      animation:`seshd-dart ${dur}s ${delay}s linear infinite` }}>
+      <svg data-ornament="bee" width="17" height="14" viewBox="0 0 13 11">
+        <g style={{ animation:`seshd-wing 0.16s ease-in-out infinite` }}>
+          <ellipse cx="5" cy="2.6" rx="3.4" ry="2" fill="rgba(226,238,250,0.5)"/>
+          <ellipse cx="8.4" cy="2.6" rx="2.8" ry="1.7" fill="rgba(226,238,250,0.42)"/>
+        </g>
+        <ellipse cx="7" cy="6.6" rx="4.4" ry="3.1" fill="rgba(232,178,44,0.95)"/>
+        <path d="M6 3.9v5.4M8.6 4.3v4.6" stroke="rgba(38,30,14,0.9)" strokeWidth="1.5"/>
+        <circle cx="2.9" cy="6.2" r="2" fill="rgba(38,30,14,0.9)"/>
+      </svg>
+    </div>
+  );
+}
+function Boat({ top, size, dur, delay }) {
+  // Kept LOW and slow. Summer's other travellers are the gulls, which are pinned high — a boat in
+  // the same band would read as a second bird, and one below the content band reads as distance.
+  // The hull rocks on its own timer (seshd-dangle about the waterline) so it is not a sticker
+  // sliding sideways.
+  const sail = "rgba(255,252,244,0.8)", hull = "rgba(96,84,66,0.75)";
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", left:"-14vw", top:`${top}%`, opacity:0,
+      animation:`seshd-sail ${dur}s ${delay}s linear infinite` }}>
+      <svg data-ornament="boat" width={size} height={size} viewBox="0 0 28 29"
+        style={{ transformOrigin:"50% 82%", animation:`seshd-dangle 4.6s ease-in-out infinite` }}>
+        <path d="M14 3 14 19" stroke={hull} strokeWidth="1.2"/>
+        <path d="M13 4.5 13 18 4.5 18Z" fill={sail}/>
+        <path d="M15 7.5 15 18 22 18Z" fill={sail} opacity="0.8"/>
+        <path d="M2.5 19.5h23l-3.6 5.2c-.5.7-1.3 1.1-2.2 1.1H8.3c-.9 0-1.7-.4-2.2-1.1Z" fill={hull}/>
+        {/* A WAKE, because the app has no horizon and without it the boat reads as a sticker
+            floating in an empty field. Two short ripples say "water" at this size where a drawn
+            horizon line would read as a divider across the whole screen. */}
+        <g stroke={hull} strokeWidth="1.1" strokeLinecap="round" opacity="0.6" fill="none">
+          <path d="M1 26.4c1.6-1 3-1 4.6 0"/>
+          <path d="M22.6 26.4c1.6-1 3-1 4.4 0"/>
+        </g>
+      </svg>
+    </div>
+  );
+}
+function Bat({ top, size, dur, delay }) {
+  // Fast and erratic where the ghosts are slow and straight, so the two never read as one effect.
+  // ★ AND IT IS LIGHTER THAN THE CANVAS, NOT DARKER. The first draw was near-black on the logic
+  // that a bat is a dark silhouette — which is true against a NIGHT SKY and false here, because
+  // Halloween's canvas is the dark thing: measured on screen it was all but invisible. The ghosts
+  // already solve this by being lighter than the ground they cross, and the bat now matches them.
+  // Same restraint on alpha as the quaffle, for the same reason: it crosses real copy.
+  const ink = "rgba(150,140,168,0.5)";
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", left:"-16vw", top:`${top}%`, opacity:0,
+      animation:`seshd-swoop ${dur}s ${delay}s linear infinite` }}>
+      <svg data-ornament="bat" width={size} height={size * 0.45} viewBox="0 0 40 18"
+        style={{ animation:`seshd-wing 0.34s ease-in-out infinite` }}>
+        <path fill={ink} d="M20 4.4c1.6 0 2.6 1 3 2.3 1.4-2.6 4-4.6 7.4-5.4-1 1.6-1.3 3-1 4.4
+          1.8-1.4 4.2-2 6.9-1.8-2.3 1.2-3.6 2.9-4.2 5-.5 1.9-1.8 3-3.8 3.4-2.2.4-4.2-.2-5.9-1.6
+          -.6 1.2-1.4 1.9-2.4 1.9s-1.8-.7-2.4-1.9c-1.7 1.4-3.7 2-5.9 1.6-2-.4-3.3-1.5-3.8-3.4
+          -.6-2.1-1.9-3.8-4.2-5 2.7-.2 5.1.4 6.9 1.8-.3-1.4 0-2.8-1-4.4 3.4.8 6 2.8 7.4 5.4
+          .4-1.3 1.4-2.3 3-2.3Z"/>
+        <path fill={ink} d="M18.2 3.1 19.4 5.2 20.6 5.2 21.8 3.1 20.6 4 19.4 4Z"/>
+      </svg>
+    </div>
+  );
+}
+// ★★ THE PUMPKIN PATCH MOVED ONTO THE NAV PILL, AND THE REASON IS A MEASUREMENT TRAP THIS FILE
+// ALREADY DOCUMENTS FROM THE OTHER DIRECTION. Mo, from his phone: "Can't see the pumpkins on
+// Halloween." In Chromium they were clearly visible above the pill — because `env(safe-area-inset-
+// bottom)` is 0 there. On a real iPhone that inset is ~34pt and the nav's padding carries it, so
+// THE PILL SITS ~34px HIGHER while an ornament anchored at `bottom: N%` of the viewport does not
+// move at all: the occluder rises over the thing it was only supposed to ground. The recorded rule
+// is that env()=0 is the PESSIMISTIC case for the tab row; for anything at the BOTTOM it is the
+// OPTIMISTIC one, and this is the worked example. **Check which way a real inset moves the
+// occluder before trusting a Chromium screenshot of a bottom-anchored ornament.**
+// So they live INSIDE the pill now, the NavSnow answer: the pill already carries `overflow:hidden`
+// and `borderRadius:26`, so drawing inside it clips to the rounded corners for free, inherits the
+// bar's shrink transform, and — the point here — moves WITH the bar on every device instead of
+// being buried by it. No second copy of the nav's geometry to drift.
+// Small and quiet on purpose: this is the most-tapped surface in the app, so they sit in the band
+// ABOVE the icon glyphs at low alpha and must never compete with them.
+function NavPumpkins() {
+  const skin = "rgba(226,124,42,0.85)", rib = "rgba(158,78,22,0.5)", glow = "rgba(255,214,120,0.9)";
+  // Three sizes, not one: the palm's lesson — several of different heights read as a place, one
+  // repeated at a single size reads as wallpaper.
+  const pk = [[7, 19, 0], [27, 14, -0.9], [72, 16, -1.7], [91, 13, -2.4]];
+  return (
+    <span aria-hidden="true" style={{ position:"absolute", top:0, left:0, right:0, height:26,
+                                      pointerEvents:"none", lineHeight:0 }}>
+      {/* The keyframe is declared HERE, not in ThemeDecor's stylesheet. It used to live there and
+          the two happen to mount together, but that made the nav silently depend on another
+          component's <style> tag — the shape that leaves a dead rule behind the moment either
+          moves. This component is its only user, so it owns it. Opacity only: it runs for the
+          whole session on the most-tapped surface in the app and must never touch layout. */}
+      <style>{`@keyframes seshd-flicker {
+        0%,100% { opacity:0.72; } 22% { opacity:1; } 44% { opacity:0.8; } 70% { opacity:0.97; }
+      }`}</style>
+      {pk.map(([left, size, delay], i) => (
+        <svg key={i} data-ornament="pumpkin" width={size} height={size} viewBox="0 0 30 27"
+          style={{ position:"absolute", top: 3, left:`${left}%`, display:"block", opacity:0.75 }}>
+          <path d="M15 8.6C15 5.4 14.2 3.4 11.6 2.6" stroke="rgba(104,126,66,0.85)" strokeWidth="2.4"
+            fill="none" strokeLinecap="round"/>
+          <ellipse cx="15" cy="17.2" rx="14" ry="9.5" fill={skin}/>
+          <path d="M9.4 8.6C7.6 11.2 7.6 23.2 9.4 25.8" stroke={rib} strokeWidth="1.4" fill="none"/>
+          <path d="M20.6 8.6C22.4 11.2 22.4 23.2 20.6 25.8" stroke={rib} strokeWidth="1.4" fill="none"/>
+          <g fill={glow} style={{ animation:`seshd-flicker 2.6s ${delay}s ease-in-out infinite` }}>
+            <path d="M10 14.4l3.4 1.9-3.4 1.9z"/>
+            <path d="M20 14.4l-3.4 1.9 3.4 1.9z"/>
+            <path d="M9.9 20.3h10.2l-1.7 2.1-1.7-1.3-1.8 1.5-1.8-1.5-1.7 1.3z"/>
+          </g>
+        </svg>
+      ))}
+    </span>
   );
 }
 
@@ -2294,12 +2460,14 @@ function ThemeDecor({ kind }) {
       // on a short one. The arc adds +-9vh, and 30% of the shortest phone this ships to is still
       // well clear at both ends. Bigger than the bludger because a quaffle is the largest ball, and
       // ONE of them: it is the object being passed, not a hazard swarm.
+      // All three travellers stay in the MIDDLE band for the documented reason: the tab row sits at
+      // a FIXED 47-87px, so a percentage that clears it on a tall phone lands on the labels on a
+      // short one. The bat also carries +-9vh of swoop, so its band starts lower than the others'.
+      bees: [0, 1].map(() => ({ left: r(4, 52), top: r(30, 62), dur: r(15, 24), delay: -r(0, 20) })),
+      bats: [0].map(() => ({ top: r(34, 54), size: r(30, 42), dur: r(17, 26), delay: -r(0, 22) })),
+      // LOW: the gulls own Summer's high band, and a boat beside them would read as a third bird.
+      boats: [0].map(() => ({ top: r(62, 71), size: r(26, 36), dur: r(78, 118), delay: -r(0, 100) })),
       quaffles: [0].map(() => ({ top: r(38, 62), size: r(19, 26), dur: r(26, 40), delay: -r(0, 34) })),
-      // A PATCH on one side rather than three spread across the width. They render inside DecorBack
-      // (zIndex 45, BELOW the nav pill at 50), so they cannot cover a button whatever the placement.
-      pumpkins: [{ left: r(-5, 3), size: r(54, 68), delay: -r(0, 2.6) },
-                 { left: r(9, 16), size: r(40, 50), delay: -r(0, 2.6) },
-                 { left: r(20, 27), size: r(46, 58), delay: -r(0, 2.6) }],
       butterflies: [0, 1].map(i => ({ left: r(10, 70), top: r(22, 62), dur: r(26, 38), delay: -r(0, 30),
                                       tint: i ? "rgba(255,214,235,0.9)" : "rgba(249,186,211,0.92)" })),
       // Pinned to the TOP BAND. At top: r(6,26) a cloud sailed across the middle of the screen and
@@ -2382,10 +2550,28 @@ function ThemeDecor({ kind }) {
           90% { opacity:1; }
           100% { opacity:0; transform: translate3d(122vw,9vh,0); }
         }
-        /* Candle flicker. Opacity only — it runs on three ornaments for the whole session, so it
-           must never touch a layout property. */
-        @keyframes seshd-flicker {
-          0%,100% { opacity:0.72; } 22% { opacity:1; } 44% { opacity:0.8; } 70% { opacity:0.97; }
+        /* A BEE DARTS: short holds and sudden jumps, where the butterfly's seshd-flutter is one
+           smooth wave. The motion is the distinction between the two, not the glyph. */
+        @keyframes seshd-dart {
+          0% { opacity:0; transform: translate3d(0,0,0); }
+          8% { opacity:1; transform: translate3d(3vw,-2vh,0); }
+          20% { transform: translate3d(4vw,3vh,0); }
+          32% { transform: translate3d(11vw,1vh,0); }
+          44% { transform: translate3d(12vw,-4vh,0); }
+          58% { transform: translate3d(21vw,-2vh,0); }
+          70% { transform: translate3d(22vw,4vh,0); }
+          84% { opacity:1; transform: translate3d(31vw,2vh,0); }
+          100% { opacity:0; transform: translate3d(34vw,-3vh,0); }
+        }
+        /* A BAT SWOOPS: big vertical arcs across the whole width, faster than the ghosts drift. */
+        @keyframes seshd-swoop {
+          0% { opacity:0; transform: translate3d(-4vw,0,0); }
+          9% { opacity:1; }
+          28% { transform: translate3d(26vw,-9vh,0); }
+          50% { transform: translate3d(56vw,7vh,0); }
+          74% { transform: translate3d(86vw,-6vh,0); }
+          91% { opacity:1; }
+          100% { opacity:0; transform: translate3d(122vw,2vh,0); }
         }
         @keyframes seshd-skitter {
           0% { opacity:0; transform: translate3d(0,0,0) rotate(0deg); }
@@ -2399,12 +2585,14 @@ function ThemeDecor({ kind }) {
       {kind === "halloween" && <>
         <Web/>
         <Web flip/>
-        <DecorBack style={{ inset:0 }}>{bits.pumpkins.map((pk, i) => <Pumpkin key={i} {...pk}/>)}</DecorBack>
+        {bits.bats.map((bt, i) => <Bat key={i} {...bt}/>)}
         {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
         {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}
       </>}
       {kind === "snow" && <>
         <Icicles/>
+        <FrostEdge side="left"/>
+        <FrostEdge side="right"/>
         {bits.snow.map((x, i) => <Faller key={i} shape="snow" {...x}/>)}
         {bits.twinkles.map((t, i) => <Twinkle key={i} {...t}/>)}
       </>}
@@ -2413,6 +2601,7 @@ function ThemeDecor({ kind }) {
         <DecorBack style={{ inset:0 }}>{bits.grass.map((g, i) => <GrassTuft key={i} {...g}/>)}</DecorBack>
         {bits.petals.map((x, i) => <Faller key={i} shape="petals" {...x}/>)}
         {bits.butterflies.map((bf, i) => <Butterfly key={i} {...bf}/>)}
+        {bits.bees.map((be, i) => <Bee key={i} {...be}/>)}
       </>}
       {kind === "leaves" && <>
         <CornerBranch/>
@@ -2428,6 +2617,7 @@ function ThemeDecor({ kind }) {
         <PalmCorner/>
         {bits.clouds.map((c2, i) => <Cloud key={i} {...c2}/>)}
         {bits.gulls.map((g, i) => <Seagull key={i} {...g}/>)}
+        {bits.boats.map((bo, i) => <Boat key={i} {...bo}/>)}
       </>}
       {kind === "quadball" && <>
         <PitchHoops/>
@@ -22348,6 +22538,7 @@ function AppInner() {
         transition: "transform 0.25s cubic-bezier(0.34,1.2,0.4,1), opacity 0.25s",
       }}>
         {themeDecorOf(C.id) === "snow" && <NavSnow/>}
+        {themeDecorOf(C.id) === "halloween" && <NavPumpkins/>}
         {[
           {
             id: "feed", label: "Home",

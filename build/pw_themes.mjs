@@ -305,32 +305,41 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   //     grass, Summer plants the palm, Winter settles snow on the nav, and Halloween had nothing
   //     below the middle of the screen. Quadball's gap was inside itself: PitchHoops draws a goal
   //     on every screen and neither object in the air was the ball you score with.
-  //     Both are checked for the thing that would actually regress — an ornament silently not
-  //     rendering (the showGroupShare shape) and, for the ground one, eating a nav tap.
+  //     ★ THE PUMPKINS MOVED ONTO THE NAV PILL and this check moved with them: anchored to the
+  //     viewport bottom they were buried on device, because a real `env(safe-area-inset-bottom)`
+  //     raises the pill ~34px while a `bottom: N%` ornament does not move. Chromium reports that
+  //     inset as 0, so it is the OPTIMISTIC case here and a screenshot could not show it. The
+  //     invariant is unchanged — Halloween is grounded by lit pumpkins that never eat a nav tap —
+  //     so the reach is fixed and the check kept.
   {
     const { page: ph } = await boot("halloween");
     const pk = await ph.evaluate(() => {
-      const back = document.querySelector(".seshd-decor-back");
-      if (!back) return null;
-      const svgs = [...back.querySelectorAll("svg")];
+      const pill = [...document.querySelectorAll("div")].find(d => {
+        const st = getComputedStyle(d);
+        return st.borderRadius === "26px" && st.overflow === "hidden"
+               && d.getBoundingClientRect().width > 300;
+      });
+      if (!pill) return null;
+      const svgs = [...pill.querySelectorAll('[data-ornament="pumpkin"]')];
       // The lit face is what makes a jack-o'-lantern read as a pumpkin rather than an orange
       // blob, so count the ones that actually HAVE one instead of counting svgs.
       const lit = svgs.filter(sv => [...sv.querySelectorAll("g,path")]
         .some(n => (n.getAttribute("fill") || "").startsWith("rgba(255,214,120")));
-      const navTop = 926 * 0.937;   // the pill's own top edge, measured
+      const pr = pill.getBoundingClientRect();
       return { n: svgs.length, lit: lit.length,
-               facesClear: svgs.filter(sv => sv.getBoundingClientRect().top < navTop).length,
-               z: +getComputedStyle(back).zIndex, pe: getComputedStyle(back).pointerEvents };
+               inside: svgs.every(sv => { const r = sv.getBoundingClientRect();
+                 return r.top >= pr.top - 1 && r.bottom <= pr.bottom + 1; }),
+               pe: svgs.every(sv => getComputedStyle(sv).pointerEvents !== "auto") };
     });
-    check("4n. halloween grounds itself with a lit pumpkin patch",
-      pk && pk.n >= 3 && pk.lit >= 3 && pk.z > 0 && pk.z < 50 && pk.pe === "none", JSON.stringify(pk));
-    // A ground ornament that covers a nav button is the exact failure that put the palm and the
-    // grass on their own layer. Hit-test rather than reason about z — the palm's 4l7 lesson.
+    check("4n. halloween is grounded by lit pumpkins ON the nav pill, so a safe-area inset cannot bury them",
+      pk && pk.lit >= 3 && pk.inside && pk.pe, JSON.stringify(pk));
+    // A nav ornament that covers a button is the exact failure that put the palm and the grass on
+    // their own layer. Hit-test rather than reason about z — the palm's 4l7 lesson.
     const navOwn = await ph.evaluate(() => {
       const out = [];
       for (let i = 0; i < 4; i++) {
         const el = document.elementFromPoint(14 + (400 / 4) * (i + 0.5), 893);
-        out.push(!!(el && el.closest("button")) && !(el.closest(".seshd-decor-back")));
+        out.push(!!(el && el.closest("button")));
       }
       return out;
     });
@@ -356,6 +365,53 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     check("4n3. quadball puts all THREE balls on the pitch, and the two discs are not the same colour",
       balls && balls.discs.length >= 3 && balls.kinds >= 2 && balls.throws === 1, JSON.stringify(balls));
     await pq.close();
+  }
+  // ── 4o. THE FIVE ORNAMENTS MO PICKED FROM THE "what else can we add" list, one per seasonal.
+  //     Each is checked for the failure that actually happens: an ornament that silently renders
+  //     NOTHING (the showGroupShare shape — a capability built and never wired), which no other
+  //     check here can see because the decor layer still has plenty of children without it.
+  //     Selected by `data-ornament`, not by size or animation-name: a restyle or a re-tune must not
+  //     be able to make the guard stop seeing the thing it guards.
+  for (const [theme, want] of [["winter", { frost: 2 }], ["fall", { crow: 1 }],
+                               ["spring", { bee: 2 }], ["summer", { boat: 1 }],
+                               ["halloween", { bat: 1 }]]) {
+    const { page: po } = await boot(theme);
+    const got = await po.evaluate(() => {
+      const out = {};
+      for (const el of document.querySelectorAll("[data-ornament]")) {
+        const k = el.dataset.ornament;
+        out[k] = (out[k] || 0) + 1;
+      }
+      // pointer-transparency is inherited from the layer, but assert it at the ORNAMENT so a
+      // future one rendered outside that layer cannot quietly become tappable.
+      const solid = [...document.querySelectorAll("[data-ornament]")]
+        .filter(e => getComputedStyle(e).pointerEvents === "auto").length;
+      return { out, solid };
+    });
+    const ok = Object.entries(want).every(([k, n]) => (got.out[k] || 0) >= n) && got.solid === 0;
+    check(`4o. ${theme} renders its ${Object.keys(want)[0]}`, ok, JSON.stringify(got));
+    await po.close();
+  }
+  // The crow is the one with a hard placement constraint: it perches on a branch anchored at
+  // top:-96, so it has to clear BOTH the top of the viewport and the tab row at 43, in the only
+  // empty box the top bar has (right of the SESHD wordmark, left of the chat icon).
+  {
+    const { page: pc } = await boot("fall");
+    const g = await pc.evaluate(() => {
+      const c = document.querySelector('[data-ornament="crow"]');
+      if (!c) return null;
+      const r = c.getBoundingClientRect();
+      const words = [...document.querySelectorAll("*")]
+        .filter(e => (e.textContent || "").trim().toUpperCase() === "SESHD" && !e.children.length);
+      const word = words[words.length - 1];   // innermost
+      const w = word ? word.getBoundingClientRect() : null;
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left),
+               right: Math.round(r.right), wordRight: w ? Math.round(w.right) : null };
+    });
+    check("4o2. the crow is fully on screen, above the tab row, and clear of the wordmark",
+      g && g.top >= 0 && g.bottom <= 43 && g.wordRight !== null && g.left >= g.wordRight,
+      JSON.stringify(g));
+    await pc.close();
   }
 
   // And a theme with no `decor` must render no layer at all.
