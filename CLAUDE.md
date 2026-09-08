@@ -5220,6 +5220,46 @@ light themes; the strength ladder's `Advanced` is still the volt accent literall
 and the silhouette's `bodyCol` key on `isDark` rather than the palette, so they are neutral greys
 on Arctic/Halloween rather than tuned to them.
 
+## ★★ Quadball, and the mark whose identity IS a colour (Sep 8)
+Mo: "make a Quidditch theme because my friends play real life quidditch/quadball." Named **Quadball**
+— the sport renamed in 2022 and the older word is a live Warner Bros. trademark that would ship in a
+store listing. Tenth theme, in the SEASONAL group, with the documented three-part decor shape:
+`PitchHoops` fixed at the edge, drifting `Snitch`es, tumbling `Bludger`s.
+**The accent was MEASURED, not picked.** Computing the hue of all nine existing accents found a
+single 126-degree gap with its midpoint at 276 — amethyst. Everything else follows the Arctic rule:
+the hue lives in ALL the neutrals (`#0a1310` pitch green-black canvas, green-grey borders and
+dividers) so it reads as a themed app rather than a tinted background. Every contrast pair passed
+`sim_a11y` on the first attempt.
+**★ AND THE ONE REAL DEFECT WAS INVISIBLE TO EVERY GUARD AND OBVIOUS THE MOMENT IT WAS RENDERED.**
+`ThemeMark` paints every glyph in the theme's accent (`THEME_MARKS[kind](C.accent)`), which is right
+for every other seasonal **because that theme's accent IS its glyph's natural colour** — pumpkin
+orange, ice, blossom pink, sienna. Quadball's accent was chosen for the hue gap, so the Golden
+Snitch on Quick Start rendered `#c08cff` and read as a violet blob with ears. **Repainting it gold
+is not the fix either**: that is `gold`, the PR colour, and a gold glyph on a card would read as a PR
+marker — the exact collision the accent rules exist to prevent. So the MARK changed instead:
+Quick Start wears a **broom**, whose identity is carried entirely by its SILHOUETTE and which
+therefore survives being repainted. The snitch keeps its gold in the DECOR layer, which hardcodes
+its own colours on purpose (`PitchHoops` uses brass three lines away). Quaffle and hoop were already
+shape-carried and needed nothing.
+**The general rule: before giving a theme a mark, ask whether the glyph's identity is its SHAPE or
+its COLOUR. Only a shape-carried glyph can be painted in an arbitrary accent.** A colour-carried
+one belongs in decor, or not at all.
+**Nothing in the battery could see it** — `pw_themes` asserts the mark exists, is distinct per slot,
+is pointer-transparent and is planted-or-not; the colour is correct by construction from its own
+point of view. It was found by rendering the theme and LOOKING, which is now the third time in a row
+that every real design finding came from a screenshot rather than a check.
+**★ AND `pw_themes` HELD A STALE HARDCODED COPY OF `MARK_PLANT`.** Check 4m5 failed the hoop for
+being planted when the geometry was correct — the guard's `PLANTED = ["palm","tree","fir","sprout"]`
+list simply had not heard of it. It parses `MARK_PLANT` out of `src/App.jsx` now and throws loudly if
+that block changes shape, per the `accentSlab` rule: a guard that hardcodes the value under test is
+testing its copy. Its `SLOTS`/`ALL`/`wantDark` lists are still hand-maintained and are the next
+thing to derive if a theme is ever added without them.
+**Placement followed the two existing scars rather than re-deriving them**: the ambient band is
+28-64% (measured clear of the tab row, which sits at a FIXED 47-87px — a percentage is the wrong
+unit there), and `PitchHoops` is in `DecorBack` at zIndex 45 because it stands on the ground and
+anything touching the bottom edge draws over the nav's buttons at 150. Verified by
+`elementFromPoint`: 4 of 4 nav buttons resolve to themselves.
+
 ## ★★ Themes phase 4: the four seasons, and a comment that shipped on screen (Aug 30)
 Mo, after Halloween: *"make a winter, summer, maybe a fall and spring themed too."* Nine themes
 now — Light / Arctic / Dark / Midnight, then a **SEASONAL** group of Spring / Summer / Fall /

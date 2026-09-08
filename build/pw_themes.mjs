@@ -8,6 +8,18 @@
 // crash on every launch, the same shape as the PROGRAM_TEMPLATES outage in CLAUDE.md.
 import { chromium } from "playwright-core";
 
+import { readFileSync } from "node:fs";
+// The planted-glyph table, parsed from the app rather than duplicated here.
+function plantedKinds() {
+  const src = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const i = src.indexOf("const MARK_PLANT = {");
+  if (i === -1) throw new Error("MARK_PLANT not found in src/App.jsx — the planted-mark check cannot run");
+  const block = src.slice(i, src.indexOf("\n};", i));
+  const kinds = [...block.matchAll(/^\s*(\w+):\s*\[/gm)].map(m => m[1]);
+  if (!kinds.length) throw new Error("MARK_PLANT parsed to zero kinds — the regex no longer matches");
+  return kinds;
+}
+
 const ME = "11111111-1111-4111-8111-111111111111";
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 let fails = 0;
@@ -81,7 +93,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     // Count the rows by their hook, not by finding the words in the page text — "Dark" appears in
     // plenty of other copy, and a text match would pass on a picker that rendered nothing.
     const ids = await page.evaluate(() => [...document.querySelectorAll("[data-theme-option]")].map(e => e.dataset.themeOption));
-    const ALL = ["light","arctic","dark","midnight","spring","summer","fall","winter","halloween"];
+    const ALL = ["light","arctic","dark","midnight","spring","summer","fall","winter","halloween","quadball"];
     check("2e. opening it reveals every registered theme", ALL.every(x => ids.includes(x)), JSON.stringify(ids));
     check("2f. and no more than the registry lists", ids.length === ALL.length, JSON.stringify(ids));
     check("2g. the occasion themes sit under their own heading", /SEASONAL/.test(await txt(page)));
@@ -158,7 +170,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   // Every seasonal theme brings its OWN ornaments. A shared kind, or a theme whose decor silently
   // renders nothing, is exactly the "capability built, call site never wired" shape that let
   // showGroupShare ship dead for six weeks.
-  for (const [theme, kind] of [["spring","petals"],["summer","summer"],["fall","leaves"],["winter","snow"]]) {
+  for (const [theme, kind] of [["spring","petals"],["summer","summer"],["fall","leaves"],["winter","snow"],["quadball","quadball"]]) {
     const { page: ps } = await boot(theme);
     const got = await ps.evaluate(() => {
       const el = document.querySelector(".seshd-decor");
@@ -186,6 +198,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     spring:    { start: "blossom", friends: "butterfly", groups: "sprout" },
     fall:      { start: "leaf",    friends: "acorn",     groups: "tree" },
     summer:    { start: "sun",     friends: "wave",      groups: "palm" },
+    quadball:  { start: "broom",   friends: "quaffle",   groups: "hoop" },
   };
   for (const [theme, want] of Object.entries(SLOTS)) {
     const { page: pm } = await boot(theme);
@@ -211,7 +224,12 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
       //     inside, and the card must actually clip. A glyph without a base (halloween's spider)
       //     must stay a top-right sticker. Nothing else in this file can see the difference —
       //     4j3 only checks WHICH glyph renders, so the whole placement mode was unguarded.
-      const PLANTED = ["palm", "tree", "fir", "sprout"];
+      // ★ READ THE TABLE OUT OF THE APP, DO NOT KEEP A COPY OF IT. This list was hardcoded
+      //   ["palm","tree","fir","sprout"] and went red the moment a tenth theme added a planted
+      //   glyph — reporting "a hoop has no base" about a hoop that is correctly planted, i.e.
+      //   the guard testing its own stale copy rather than the app. Same rule as the accentSlab
+      //   check, which parses the two slab fills out of App.jsx for exactly this reason.
+      const PLANTED = plantedKinds();
       const geo = await pm.evaluate(() => [...document.querySelectorAll("[data-theme-mark]")].map(e => {
         const card = e.closest("button").getBoundingClientRect();
         // Measure the INK, not the element box. A planted glyph can be ROTATED about its base
@@ -324,7 +342,7 @@ for (const t of ["light", "dark", "summer", "winter"]) {
     cs: getComputedStyle(document.documentElement).colorScheme,
     inlineBg: document.documentElement.style.background || document.documentElement.style.backgroundColor,
   }));
-  const wantDark = ["dark", "midnight", "winter", "halloween", "fall"].includes(t);
+  const wantDark = ["dark", "midnight", "winter", "halloween", "fall", "quadball"].includes(t);
   check(`5. [${t}] <html> declares color-scheme:${wantDark ? "dark" : "light"}`,
     m.cs === (wantDark ? "dark" : "light"), `got ${m.cs}`);
   // "not transparent" is the load-bearing half: a wiped cssText leaves it rgba(0,0,0,0).

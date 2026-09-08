@@ -1,4 +1,4 @@
-// v178091717035
+// v178091717037
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1207,6 +1207,52 @@ const THEMES = {
     muted: "#8395a9",
     tabBg: "rgba(13,20,29,0.88)",
   },
+  // ★ QUADBALL — the sport Mo's friends actually play. Named "quadball", not the older name:
+  // the sport's own governing bodies renamed it in 2022 to separate itself from the books, and
+  // the older word is a live Warner Bros. trademark that this app would be shipping in a store
+  // listing. Same theme, no legal surface.
+  //
+  // The palette follows the rule the other nine established: a theme owns its ACCENT and its
+  // NEUTRALS, never the semantic colours. So the pitch lives in the neutrals — every grey here is
+  // a green-black rather than a grey-black, which is what makes it read as a night match rather
+  // than as the dark theme with a different highlight.
+  //
+  // WHY VIOLET AND NOT GOLD. Gold is the obvious choice and it is the one hue this theme may not
+  // have: `gold` is the PR/trophy colour app-wide, so a gold accent makes the PR marker stop
+  // standing out — exactly the trap Fall documented when it chose burnt sienna over amber. Green
+  // and red are semantic for the same reason. Measuring the nine accent hues already in use left
+  // one genuinely open gap, 213deg -> 339deg, and its midpoint is violet. Amethyst on a floodlit
+  // pitch is also simply what the sport looks like at night.
+  quadball: {
+    id: "quadball",
+    isDark: true,
+    bg: "#0a1310",          // pitch green-black — the hue is in the neutrals, per the Arctic note
+    surface: "#152119",
+    card: "#152119",
+    border: "#2c4335",
+    overlayEdge: "#5b8168",
+    divider: "#1f2f25",
+    accent: "#c08cff",          // amethyst — the open hue gap
+    accentSoft: "rgba(192,140,255,0.14)",
+    accentInk: "#c08cff",
+    accent2: "#a76ef2",
+    onAccent: "#16081f",
+    // See the dark theme's note — the accent for the near-black rest-timer slab.
+    accentSlab: "#c08cff",
+    // See the dark theme's note — this is ink ON the accent fill, not `onAccent`.
+    accentFillInk: "#16081f",
+    primary: "#eef6f1",
+    onPrimary: "#0a1310",
+    orange: "#fb923c",
+    green: "#34d399",
+    gold: "#fbbf24",
+    red: "#f87171",
+    text: "#eef6f1",
+    textDim: "#c6d8cc",
+    sub: "#9cb4a4",
+    muted: "#8aa393",
+    tabBg: "rgba(10,19,16,0.9)",
+  },
 
 };
 // ★ THEMES ARE PLURAL NOW, SO THE KEY IS DATA AND HAS TO BE VALIDATED. `THEMES[store.theme]` was
@@ -1244,6 +1290,8 @@ const THEME_META = [
     marks: { start: "snowman",   friends: "snowflake", groups: "fir" } },
   { id: "halloween", label: "Halloween", blurb: "Pumpkin, purple, cobwebs",     decor: "halloween", season: true,
     marks: { start: "pumpkin",   friends: "ghost",     groups: "spider" } },
+  { id: "quadball",  label: "Quadball",  blurb: "Night pitch, chasing the snitch", decor: "quadball", season: true,
+    marks: { start: "broom",     friends: "quaffle",   groups: "hoop" } },
 ];
 function themeOf(key) {
   return THEMES[key] || THEMES[DEFAULT_THEME];
@@ -1678,6 +1726,63 @@ function CornerBranch({ blossom }) {
     </svg>
   );
 }
+// ── QUADBALL ORNAMENTS ──────────────────────────────────────
+// The three-part shape every seasonal decor kind has: something fixed at an edge, something that
+// travels, something with its own motion. Note these hardcode their colours rather than reading a
+// token — decor is not a themed surface, which is what lets the GOLD snitch exist here even though
+// a gold ACCENT is forbidden (it would collide with `gold`, the PR colour).
+function PitchHoops() {
+  // The fixed edge element, and the one shape that names the sport: THREE hoops at DIFFERENT
+  // heights, which is what a real pitch has and what stops the silhouette reading as basketball.
+  // It stands on the ground, so it belongs in DecorBack (zIndex 45, BELOW the nav) — the rule the
+  // palm and the grass established: anything touching the bottom edge draws over the nav's
+  // buttons at 150.
+  const brass = "rgba(212,175,105,0.9)", pole = "rgba(196,158,92,0.75)";
+  const hoop = (x, y, r) => (
+    <g>
+      <rect x={x - 2} y={y} width="4" height={132 - y} rx="2" fill={pole}/>
+      <ellipse cx={x} cy={y - r} rx={r} ry={r} fill="none" stroke={brass} strokeWidth="4.5"/>
+    </g>
+  );
+  return (
+    <DecorBack style={{ right: 6, bottom: 0, lineHeight: 0 }}>
+      <svg width="156" height="132" viewBox="0 0 156 132" style={{ opacity: 0.34 }}>
+        {hoop(26, 74, 19)}
+        {hoop(78, 46, 23)}
+        {hoop(130, 88, 16)}
+      </svg>
+    </DecorBack>
+  );
+}
+function Snitch({ left, top, dur, delay }) {
+  // Travels rather than falls, and its wings beat on their own timer — the Butterfly pattern,
+  // because a snitch that drifted straight down would read as a dropped ball.
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
+      animation:`seshd-flutter ${dur}s ${delay}s ease-in-out infinite` }}>
+      <svg width="26" height="17" viewBox="0 0 26 17" style={{ animation:`seshd-wing 0.42s ease-in-out infinite` }}>
+        <path d="M11.4 8.6C8.6 5.4 4.6 3.9.9 5c-.6.2-.8.9-.3 1.3 2.6 2.4 6 3.8 9.5 4.1z" fill="rgba(240,213,138,0.85)"/>
+        <path d="M14.6 8.6c2.8-3.2 6.8-4.7 10.5-3.6.6.2.8.9.3 1.3-2.6 2.4-6 3.8-9.5 4.1z" fill="rgba(240,213,138,0.85)"/>
+        <circle cx="13" cy="10.4" r="5" fill="rgba(226,186,88,0.95)"/>
+        <path d="M10.2 7.6a5 5 0 0 1 3-1" stroke="rgba(255,246,214,0.7)" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+      </svg>
+    </div>
+  );
+}
+function Bludger({ top, size, dur, delay }) {
+  // The ambient element: a heavy ball crossing the pitch, tumbling as it goes. Deliberately dark
+  // and small — it is the quiet one, so it can pass behind copy without competing with it.
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", left:"-14vw", top:`${top}%`, opacity:0,
+      animation:`seshd-glide ${dur}s ${delay}s linear infinite` }}>
+      <svg width={size} height={size} viewBox="0 0 24 24" style={{ animation:`seshd-decor-spin 5.5s linear infinite` }}>
+        <circle cx="12" cy="12" r="11" fill="rgba(44,52,47,0.85)"/>
+        <circle cx="12" cy="12" r="11" fill="none" stroke="rgba(150,170,158,0.35)" strokeWidth="1"/>
+        <path d="M6.6 6.4a11 11 0 0 1 4.4-3" stroke="rgba(206,222,212,0.4)" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
+      </svg>
+    </div>
+  );
+}
 function Butterfly({ left, top, dur, delay, tint }) {
   // Spring's third element. It TRAVELS rather than falls, and its wings beat on their own timer,
   // so it never reads as a petal that forgot to drop.
@@ -1856,6 +1961,44 @@ const THEME_MARKS = {
       <rect x="10.6" y="19.8" width="2.8" height="3.2" rx="0.7" fill="rgba(0,0,0,0.35)"/>
     </g>
   ),
+  // QUADBALL. Drawn edge-to-edge in the 24-unit box for the documented reason: a glyph whose art
+  // only fills ~60% of its viewBox renders visibly smaller than the `size` asked for, which is
+  // half of why the first pumpkin read as too small.
+  // Quick Start's mark is a BROOM, not a snitch, and the reason generalises: every mark is painted
+  // in the theme's accent (`THEME_MARKS[kind](C.accent)` below), which works for every other
+  // seasonal because that theme's accent IS its glyph's natural colour — pumpkin orange, ice,
+  // blossom pink, sienna. Quadball's accent was picked for the open HUE GAP, so it is amethyst, and
+  // a snitch whose entire identity is that it is GOLD rendered here as a violet blob with ears
+  // (measured: fill #c08cff). Repainting it gold is not the fix either — that is `gold`, the PR
+  // colour. A broom is carried entirely by its SILHOUETTE, so it survives being repainted. The
+  // snitch keeps its gold in the DECOR layer, which hardcodes its own colours on purpose.
+  broom: (c) => (
+    <g>
+      <path d="M13.8 13.4L23.4 15.4Q21.2 21.2 15.4 23.4z" fill={c}/>
+      <g stroke="rgba(0,0,0,0.26)" strokeWidth="0.9" fill="none" strokeLinecap="round">
+        <path d="M14.8 14.4L22.4 16.2M15 15.4L21.1 19.3M15.6 16.4L18.5 21.5"/>
+      </g>
+      <path d="M2 2L14.4 14.4" stroke={c} strokeWidth="2.8" strokeLinecap="round" fill="none"/>
+      <path d="M12.2 11.4L14.8 14" stroke="rgba(0,0,0,0.3)" strokeWidth="3.4" strokeLinecap="round" fill="none"/>
+    </g>
+  ),
+  quaffle: (c) => (
+    <g>
+      <circle cx="12" cy="12" r="11" fill={c}/>
+      <g stroke="rgba(0,0,0,0.3)" strokeWidth="1.2" fill="none" strokeLinecap="round">
+        <path d="M12 1c-3.6 4.2-3.6 17.8 0 22M12 1c3.6 4.2 3.6 17.8 0 22M1.6 8.2c4.2 1.5 16.6 1.5 20.8 0M1.6 15.8c4.2-1.5 16.6-1.5 20.8 0"/>
+      </g>
+      <path d="M5.6 6a11 11 0 0 1 4.6-3.2" stroke="rgba(255,255,255,0.42)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+    </g>
+  ),
+  hoop: (c) => (
+    <g>
+      <rect x="10.7" y="9.5" width="2.6" height="14" rx="1.3" fill={c} opacity="0.92"/>
+      <ellipse cx="12" cy="7.4" rx="6.6" ry="6.6" fill="none" stroke={c} strokeWidth="2.6"/>
+      <ellipse cx="12" cy="7.4" rx="6.6" ry="6.6" fill="none" stroke="rgba(0,0,0,0.18)" strokeWidth="0.8"/>
+      <ellipse cx="12" cy="23.2" rx="4" ry="1" fill="rgba(0,0,0,0.32)"/>
+    </g>
+  ),
   blossom: (c) => (
     <g>
       {[0, 72, 144, 216, 288].map(a => (
@@ -1964,6 +2107,8 @@ const MARK_PLANT = {
   tree:   [0.5,   0.95,    0, 44, 0.72],
   fir:    [0.5,   0.958,   0, 44, 0.72],
   sprout: [0.5,   0.942,   0, 44, 0.72],
+  // A hoop is a ring on a POLE, so it has a base in exactly the way a spider does not.
+  hoop:   [0.5,   0.96,    0, 44, 0.72],
 };
 // The base is pushed this far BELOW the container so the stem is cropped by the edge rather than
 // stopping short of it — the container needs `overflow:hidden` for that crop to happen.
@@ -2033,6 +2178,11 @@ function ThemeDecor({ kind }) {
       // bird instead of a line drawn over the copy.
       gulls: [0, 1, 2].map(() => ({ top: r(11, 24), size: r(18, 30), dur: r(38, 62), delay: -r(0, 55) })),
       twinkles: [0, 1, 2, 3].map(() => ({ left: r(8, 88), top: r(14, 78), size: r(9, 15), delay: -r(0, 5.5) })),
+      // Kept to the MIDDLE band on purpose. The tab row sits at a fixed 47-87px, so a percentage
+      // that looks safe on a tall phone lands on the labels on a short one — the documented
+      // "a percentage is the wrong unit for clear of the header" trap. 28%+ clears it everywhere.
+      snitches: [0, 1].map(() => ({ left: r(8, 72), top: r(28, 64), dur: r(19, 30), delay: -r(0, 26) })),
+      bludgers: [0, 1].map(() => ({ top: r(32, 60), size: r(13, 20), dur: r(30, 48), delay: -r(0, 40) })),
       butterflies: [0, 1].map(i => ({ left: r(10, 70), top: r(22, 62), dur: r(26, 38), delay: -r(0, 30),
                                       tint: i ? "rgba(255,214,235,0.9)" : "rgba(249,186,211,0.92)" })),
       // Pinned to the TOP BAND. At top: r(6,26) a cloud sailed across the middle of the screen and
@@ -2146,6 +2296,11 @@ function ThemeDecor({ kind }) {
         <PalmCorner/>
         {bits.clouds.map((c2, i) => <Cloud key={i} {...c2}/>)}
         {bits.gulls.map((g, i) => <Seagull key={i} {...g}/>)}
+      </>}
+      {kind === "quadball" && <>
+        <PitchHoops/>
+        {bits.snitches.map((sn, i) => <Snitch key={i} {...sn}/>)}
+        {bits.bludgers.map((b, i) => <Bludger key={i} {...b}/>)}
       </>}
     </div>, document.body);
 }
