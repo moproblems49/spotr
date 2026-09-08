@@ -5260,6 +5260,55 @@ unit there), and `PitchHoops` is in `DecorBack` at zIndex 45 because it stands o
 anything touching the bottom edge draws over the nav's buttons at 150. Verified by
 `elementFromPoint`: 4 of 4 nav buttons resolve to themselves.
 
+## ★★★ THE FEMALE BODY MAP WAS THE MALE ONE SQUEEZED SIDEWAYS, AND THE OBVIOUS FIX WAS THE WRONG ONE (Sep 8)
+Mo: "the female body map needs to look more female", and to use Fable 5.1 for it. Both halves of
+that were right — the diagnosis was measurable and the redraw needed the render-look-redraw loop
+that only a fresh context has the patience for (the palm precedent).
+**What it actually was:** every one of the 20 `BODYMAP_FEMALE` paths had a y-extent **identical to
+the male's** — zero vertical change — with widths multiplied by ~0.70-0.94 depending on region. So
+"female" had been implemented as "narrower man", écorché and all: same square pec slabs, same
+six-pack, same serratus striations.
+**★★ AND MY OWN DIAGNOSIS OF *WHY* IT READ MALE WAS WRONG, WHICH IS THE FINDING WORTH KEEPING.**
+I briefed the agent that shoulder:hip is the dominant cue and that the old female was far from the
+1.0-1.15 female range. Measured, the OLD female was **already at 1.02 front / 1.06 back** by the
+same method that scores the male 1.31 — and still read unmistakably male. What carried the male
+read was the **OUTER CONTOUR, not the torso**: the arms hang at the sides and the fists sat ~40
+units outside the hips (arm span 1.40x hip, the widest point of the whole figure), so the outline
+was a RECTANGLE regardless of what the torso underneath was doing, with the waist hidden behind the
+arms. **Widening the pelvis alone would not have worked.** The arms had to come IN, and because the
+torso-arm gap is only 13-22 units they had to be slimmed to fit. Armspan:hip 1.40 -> 1.14 is the
+number that actually changed the read; shoulder:hip 1.02 -> 0.94 is almost cosmetic beside it.
+**The generalisable rule: for a silhouette, measure the CONTOUR the eye actually traces, not the
+anatomy you think it is looking at.** A torso ratio hidden behind limbs explains nothing.
+**★ THE IMPLEMENTATION IS ONE SHARED TRANSFORM, WHICH IS WHAT KEEPS REGISTRATION.** The nine muscle
+regions are drawn OVER `_body` and coloured at runtime, so a reshaped body with unmoved overlays
+paints muscle colour outside the outline. Rather than hand-editing 20 paths, the female map is now
+purely `warp(BODYMAP_MALE)`: one y-dependent, three-zone horizontal map (torso scaled about the
+centre line / the gap to the hanging arm / the arm itself), applied identically to all 10 paths in
+a view, continuous with every slope > 0 so nothing can cross or overlap. **Registration then holds
+by CONSTRUCTION rather than by care** — measured at 0.00% of each region's ink outside its own
+`_body`, all 18 regions, red-proofed (a 3-unit Chest shift reads 1.94%). No path was hand-edited.
+**Guard: `sim_bodymapwarp` + the generator `build/bodymap_female_warp.mjs`.** The guard re-derives
+the female map from the CURRENT male and asserts byte-identity, so the two can never drift; it also
+pins every path inside the viewBoxes the app draws it in (front 48..206 — WrappedModal's box is
+tighter than the profile's, so check both — back 26..186) and pins the y-extent to the male's.
+Red-proofed independently of the agent that wrote it: a +3 nudge on one Glutes coordinate fails
+`back/Glutes` AND **exits 1** — that second half matters, because a guard that prints FAIL while
+exiting 0 is invisible to `run_sims`. Both files are in the gitignored `build/` and need `git add -f`.
+**Honest limit, stated rather than papered over:** a warp cannot change the DRAWING. With every
+region lit it is still recognisably a bodybuilder écorché wearing female proportions — the pec
+slabs, the six-pack and the striations are the artwork itself. A chest-rounding y-bump was tried
+and dropped (invisible at 5 units, deforms the abs at more). The waist:hip of 0.55 is deliberately
+exaggerated to beat that drawing; if it ever reads cartoonish the knob is `st` at y 128-162 in the
+profile, not a new path.
+**Measurement method note, because two earlier attempts were both wrong:** `isPointInFill` on this
+path is unreliable — the écorché splits a row into 5-14 islands, so "the run containing the centre"
+returns a muscle fibre, not the body. Rasterise via canvas `Path2D` with a closing stroke that
+approximates the app's own halo, scan pixel rows, and DRAW the landmark rows onto the image so the
+numbers can be checked against the picture. And do not compare against textbook anatomy tables: the
+halo adds ~12 units to every width and compresses all ratios toward 1, so the only valid reference
+is the MALE measured the same way.
+
 ## ★★ The corner branch at 1.5x: the tab row stopped being the binding constraint (Sep 8)
 Mo: the Fall and Spring branches "need to be about 50% bigger", and the Summer palm "20% more see
 through". The palm was one number (0.36 -> 0.29). The branch took four attempts, and every wrong one
