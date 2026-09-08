@@ -5281,6 +5281,46 @@ to drift. The hoops instead grew a TALLER BOX (132 -> 230) rather than being rai
 element would have left the poles stopping in mid-air, where growing the box keeps them on the
 ground and moves only the rings. All three ring tops now clear 92px.
 
+## ★★ MO'S DEVICE REVIEW CUT THREE OF THE FIVE, AND THAT IS THE PROCESS WORKING (Sep 8)
+"I don't see the crow so feel free to remove. Same with the boat." Also: remove the frost on the
+side edges, lengthen a couple of icicles, and **"make all the moving objects in all themes about
+50% more see through."** Three of five ornaments deleted one day after shipping — worth recording
+rather than quietly tidying, because the ones that died are the ones that were only ever visible
+in a frozen screenshot: **the crow and the boat both READ well standalone at 4x and are gone,
+while the bee and the bat, which I was least sure of, survived.** A glyph rendering correctly is
+not the same as an ornament being noticed on a moving screen full of content.
+**★ THE SEE-THROUGH PASS IS ONE CONSTANT, `DECOR_MOVING`, AND THE PLACEMENT IS THE INTERESTING
+PART.** Thirteen hardcoded rgba alphas is the duplicated-constant class, and the fourteenth
+ornament would ship at full strength. It is applied as a `<g opacity>` INSIDE each ornament's svg,
+never on the wrapper: most of these have a keyframe animating the WRAPPER's opacity (the fade in
+and out at the ends of a crossing), so a static opacity there is simply overridden. The two that
+already carried their own reduction (quaffle, bat) were folded into the constant rather than
+stacked with it. STATIC ornaments are deliberately excluded — icicles, webs, palm, hoops, branch,
+sun, grass, nav snow, nav pumpkins: Mo asked for the things that MOVE, and those are the ones that
+cross copy.
+**★★ AND THE LONGER ICICLES LANDED ON TWO TAB WORDS, BECAUSE AN INDEX IN THAT LIST SAYS NOTHING
+ABOUT WHERE A SPIKE IS.** The spike list is a cumulative walk (a `[0,0]` entry is an 8px gap), so
+"lengthen a couple" cannot be done by picking indices that look spread out. Computed the x of every
+spike, then measured the tab words' real INK — **a `Range` over the text node, because the tab
+BUTTON's box is a full third of the screen and overlaps everything**, which is exactly what the
+first version of the check used and why it reported five bogus hits. Measured at 428px: Workout
+x 47-96, Exercises 188-240, History 338-375, all y 55-69. The five long spikes now sit in the gaps
+between those words. Note **`env()` = 0 is the PESSIMISTIC case here** — a real top inset pushes the
+tab row DOWN while the decor layer stays pinned to the viewport — so clearing it in Chromium clears
+it everywhere, the opposite of the bottom-anchored case one entry above.
+**★ AND MY FIRST RED-PROOF OF THAT CHECK STAYED GREEN, WHICH WAS THE MUTATION BEING WRONG, NOT THE
+CHECK.** Restoring the h=47 spike at x 188-201 puts its tip at y 47 and the word ink starts at
+y 55 — genuinely no overlap, because my earlier x-only analysis had ignored the Y axis entirely.
+Reaching the real failure needed a spike long enough to enter the text band AND at a word's x
+(h=68), which fails naming `[188,201,68]`. **A red-proof that stays green proves the mutation was
+wrong at least as often as it proves the check is worthless — find one that reaches the behaviour
+before concluding either.**
+Guards: `pw_themes` 4p (per theme, the count of `<g opacity>` wrappers matches the traveller count
+and none exceeds 0.5 — a new traveller added without one changes the count) and 4q (no icicle ink
+overlaps a tab word's ink, and some are genuinely long). 4p's first version scanned `.seshd-decor`
+only and reported fall at 7 of 10: **its ground leaves live in the z45 sub-nav layer**, so both
+layers have to be counted.
+
 ## ★★ THE FIVE ORNAMENTS FROM MO'S OWN LIST (Sep 8) — and each choice is an argument
 Mo picked all five of the options offered, each phrased as "X or Y". Which half to build was decided
 by the house rule — **it must be DIFFERENT from what that theme already does, not a second copy** —

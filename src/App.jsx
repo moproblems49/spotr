@@ -1,4 +1,4 @@
-// v178091717045
+// v178091717046
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1360,11 +1360,13 @@ function Spider({ left, drop, delay }) {
       animation:`seshd-dangle 6.5s ${delay}s ease-in-out infinite`, transformOrigin:"top center" }}>
       <div style={{ width:1, height:drop, background:DECOR_INK, margin:"0 auto" }}/>
       <svg width="26" height="20" viewBox="0 0 26 20" style={{ display:"block", marginTop:-1 }}>
+        <g opacity={DECOR_MOVING}>
         <g fill="none" stroke={DECOR_INK_SOLID} strokeWidth="1.2" strokeLinecap="round">
           <path d="M11 10 L4 6 M11 11 L3 11 M11 12 L4 16 M15 10 L22 6 M15 11 L23 11 M15 12 L22 16"/>
         </g>
         <ellipse cx="13" cy="11" rx="4.6" ry="5.2" fill={DECOR_INK_SOLID}/>
         <circle cx="13" cy="5.4" r="2.6" fill={DECOR_INK_SOLID}/>
+      </g>
       </svg>
     </div>
   );
@@ -1374,11 +1376,13 @@ function Ghost({ left, size, dur, delay }) {
     <svg width={size} height={size * 1.28} viewBox="0 0 25 32" aria-hidden="true"
       style={{ position:"absolute", bottom:-40, left:`${left}%`, opacity:0,
                animation:`seshd-drift ${dur}s ${delay}s linear infinite` }}>
+        <g opacity={DECOR_MOVING}>
       <path d="M12.5 1C6.7 1 2 5.7 2 11.5V31l3.5-3 3.5 3 3.5-3 3.5 3 3.5-3 3.5 3V11.5C23 5.7 18.3 1 12.5 1z"
         fill="rgba(240,232,248,0.42)"/>
       <circle cx="9" cy="12" r="1.7" fill="#0f0a16"/>
       <circle cx="16" cy="12" r="1.7" fill="#0f0a16"/>
-    </svg>
+    </g>
+      </svg>
   );
 }
 // A FALLING ORNAMENT — snow, petals and leaves are the same mechanism with a different glyph, so
@@ -1450,8 +1454,10 @@ function Faller({ shape, left, size, dur, delay, sway, spin, alpha, tone }) {
       <div style={{ animation:`seshd-sway ${sway}s ${delay}s ease-in-out infinite` }}>
         <svg width={size} height={size} viewBox="0 0 16 16" style={{ display:"block",
           animation: spin ? `seshd-decor-spin ${spin}s linear infinite` : undefined }}>
+        <g opacity={DECOR_MOVING}>
           {FALL_SHAPES[shape](alpha, tone)}
-        </svg>
+        </g>
+      </svg>
       </div>
     </div>
   );
@@ -1475,9 +1481,11 @@ function Seagull({ top, size, dur, delay }) {
     <svg width={size} height={size * 0.42} viewBox="0 0 40 17" aria-hidden="true"
       style={{ position:"absolute", top:`${top}%`, left:0, opacity:0,
                animation:`seshd-glide ${dur}s ${delay}s linear infinite` }}>
+        <g opacity={DECOR_MOVING}>
       <path d="M2 11C7 11 10 3.4 14 3.4c3 0 4.6 4.2 6 4.2s3-4.2 6-4.2c4 0 7 7.6 12 7.6"
         stroke="rgba(92,104,120,0.34)" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-    </svg>
+    </g>
+      </svg>
   );
 }
 // ★ THE PALM — Mo picked v3 of six drawn by a cold-context agent, after five of my own attempts
@@ -1655,15 +1663,15 @@ function Icicles() {
   // slight curve. The list is deterministic — a static ornament that reshuffles on every mount
   // reads as a glitch.
   const spikes = [
-    [11, 26], [7, 13], [9, 19], [0, 0], [13, 31], [8, 15], [6, 10], [10, 22], [0, 0], [0, 0],
-    [12, 28], [7, 12], [9, 17], [14, 34], [8, 14], [0, 0], [11, 24], [6, 11], [10, 20], [7, 15],
-    [0, 0], [13, 30], [9, 18], [7, 12], [11, 25], [0, 0], [8, 16], [12, 27], [6, 10], [9, 21],
-    [0, 0], [10, 23], [7, 13], [13, 32], [8, 15], [0, 0], [11, 26], [9, 17], [6, 11], [12, 29],
-    [7, 14], [0, 0], [10, 22], [8, 16], [13, 28], [9, 19], [0, 0], [11, 24], [7, 12], [10, 20],
+    [11, 26], [7, 13], [9, 54], [0, 0], [13, 31], [8, 15], [6, 10], [10, 22], [0, 0], [0, 0],
+    [12, 28], [7, 12], [9, 17], [14, 61], [8, 14], [0, 0], [11, 24], [6, 11], [10, 20], [7, 15],
+    [0, 0], [13, 30], [9, 18], [7, 12], [11, 25], [0, 0], [8, 16], [12, 27], [6, 10], [9, 48],
+    [0, 0], [10, 23], [7, 13], [13, 55], [8, 15], [0, 0], [11, 26], [9, 17], [6, 11], [12, 29],
+    [7, 14], [0, 0], [10, 22], [8, 16], [13, 44], [9, 19], [0, 0], [11, 24], [7, 12], [10, 20],
   ];
   let x = 0;
   return (
-    <svg width="100%" height="36" aria-hidden="true" style={{ position:"absolute", top:0, left:0, opacity:0.55 }}>
+    <svg width="100%" height="64" aria-hidden="true" style={{ position:"absolute", top:0, left:0, opacity:0.55 }}>
       {spikes.map(([w, h], i) => {
         if (!w) { x += 8; return null; }
         const at = x; x += w;
@@ -1683,8 +1691,10 @@ function Twinkle({ left, top, size, delay }) {
     <svg width={size} height={size} viewBox="0 0 12 12" aria-hidden="true"
       style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
                animation:`seshd-twinkle 5.5s ${delay}s ease-in-out infinite` }}>
+        <g opacity={DECOR_MOVING}>
       <path d="M6 0.6 L7.1 4.9 L11.4 6 L7.1 7.1 L6 11.4 L4.9 7.1 L0.6 6 L4.9 4.9 Z" fill="rgba(233,247,255,0.9)"/>
-    </svg>
+    </g>
+      </svg>
   );
 }
 function CornerBranch({ blossom }) {
@@ -1739,7 +1749,6 @@ function CornerBranch({ blossom }) {
         <path d="M72 27 C86 40 92 52 92 66" strokeWidth="2"/>
         <path d="M96 47 C112 52 124 50 138 42" strokeWidth="1.8"/>
       </g>
-      {!blossom && <Crow/>}
       {blossom
         ? [[74, 56], [80, 64], [90, 64], [96, 72], [136, 40], [70, 26], [116, 60], [126, 54]].map(([cx, cy], i) => (
             <g key={i}>
@@ -1802,10 +1811,12 @@ function Snitch({ left, top, dur, delay }) {
     <div aria-hidden="true" style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
       animation:`seshd-flutter ${dur}s ${delay}s ease-in-out infinite` }}>
       <svg width="26" height="17" viewBox="0 0 26 17" style={{ animation:`seshd-wing 0.42s ease-in-out infinite` }}>
+        <g opacity={DECOR_MOVING}>
         <path d="M11.4 8.6C8.6 5.4 4.6 3.9.9 5c-.6.2-.8.9-.3 1.3 2.6 2.4 6 3.8 9.5 4.1z" fill="rgba(240,213,138,0.85)"/>
         <path d="M14.6 8.6c2.8-3.2 6.8-4.7 10.5-3.6.6.2.8.9.3 1.3-2.6 2.4-6 3.8-9.5 4.1z" fill="rgba(240,213,138,0.85)"/>
         <circle cx="13" cy="10.4" r="5" fill="rgba(226,186,88,0.95)"/>
         <path d="M10.2 7.6a5 5 0 0 1 3-1" stroke="rgba(255,246,214,0.7)" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+      </g>
       </svg>
     </div>
   );
@@ -1825,11 +1836,13 @@ function Bludger({ top, size, dur, delay }) {
           the existing spin animation carries round. Same size and same alpha budget as before, so
           it still passes behind copy without competing. */}
       <svg width={size} height={size} viewBox="0 0 24 24" style={{ animation:`seshd-decor-spin 5.5s linear infinite` }}>
+        <g opacity={DECOR_MOVING}>
         <circle cx="12" cy="12" r="11" fill="rgba(26,32,28,0.92)"/>
         <circle cx="12.9" cy="13.6" r="9.4" fill="rgba(0,0,0,0.30)"/>
         <circle cx="10.2" cy="9.6" r="7.6" fill="rgba(196,214,203,0.07)"/>
         <path d="M3.6 9.2c4.6 3.1 11.4 3.6 16.6 1.3" stroke="rgba(0,0,0,0.34)" strokeWidth="1.1" fill="none" strokeLinecap="round"/>
         <ellipse cx="8.7" cy="8.2" rx="2.1" ry="1.5" fill="rgba(214,230,220,0.26)" transform="rotate(-28 8.7 8.2)"/>
+      </g>
       </svg>
     </div>
   );
@@ -1857,7 +1870,7 @@ function Quaffle({ top, size, dur, delay }) {
           the set, so it is the one that pays. On the SVG, not the wrapper — the wrapper's own
           opacity is driven by the keyframe's fade in and out. */}
       <svg width={size} height={size} viewBox="0 0 24 24"
-        style={{ opacity:0.5, animation:`seshd-decor-spin 3.4s linear infinite` }}>
+        style={{ opacity: DECOR_MOVING, animation:`seshd-decor-spin 3.4s linear infinite` }}>
         <circle cx="12" cy="12" r="11" fill="rgba(150,44,34,0.9)"/>
         <circle cx="12.8" cy="13.4" r="9.6" fill="rgba(0,0,0,0.22)"/>
         {/* TWO stitched seams, where the bludger has one: a quaffle is a panelled leather ball and
@@ -1876,11 +1889,13 @@ function Butterfly({ left, top, dur, delay, tint }) {
     <div aria-hidden="true" style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
       animation:`seshd-flutter ${dur}s ${delay}s ease-in-out infinite` }}>
       <svg width="19" height="16" viewBox="0 0 19 16" style={{ animation:`seshd-wing 0.55s ease-in-out infinite` }}>
+        <g opacity={DECOR_MOVING}>
         <ellipse cx="6" cy="6" rx="5.4" ry="4.2" fill={tint} transform="rotate(-24 6 6)"/>
         <ellipse cx="13" cy="6" rx="5.4" ry="4.2" fill={tint} transform="rotate(24 13 6)"/>
         <ellipse cx="6.6" cy="11" rx="3.4" ry="3" fill={tint} opacity="0.8" transform="rotate(-14 6.6 11)"/>
         <ellipse cx="12.4" cy="11" rx="3.4" ry="3" fill={tint} opacity="0.8" transform="rotate(14 12.4 11)"/>
         <rect x="9" y="3.6" width="1.3" height="9" rx="0.65" fill="rgba(90,60,72,0.75)"/>
+      </g>
       </svg>
     </div>
   );
@@ -1894,6 +1909,7 @@ function Cloud({ top, size, dur, delay }) {
     <svg width={size} height={size * 0.44} viewBox="0 0 100 44" aria-hidden="true"
       style={{ position:"absolute", top, left:0, opacity:0,
                animation:`seshd-sail ${dur}s ${delay}s linear infinite` }}>
+        <g opacity={DECOR_MOVING}>
       {/* Blue-white, not white: a white cloud on the sand canvas is ~1.05:1 and simply is not
           there. The hue is what makes it read, not the alpha. */}
       <g fill="rgba(214,232,255,0.5)">
@@ -1902,7 +1918,8 @@ function Cloud({ top, size, dur, delay }) {
         <ellipse cx="72" cy="29" rx="18" ry="13"/>
         <rect x="12" y="28" width="70" height="13" rx="6.5"/>
       </g>
-    </svg>
+    </g>
+      </svg>
   );
 }
 function SunRays() {
@@ -1930,8 +1947,10 @@ function GroundLeaf({ left, dur, delay, tone }) {
     <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"
       style={{ position:"absolute", bottom:"7%", left:`${left}%`, opacity:0,
                animation:`seshd-skitter ${dur}s ${delay}s linear infinite` }}>
+        <g opacity={DECOR_MOVING}>
       <path d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z" fill={tint}/>
-    </svg>
+    </g>
+      </svg>
   );
 }
 
@@ -1962,6 +1981,18 @@ function GrassTuft({ left, size, delay, flip }) {
   );
 }
 
+// ★ ONE KNOB FOR EVERY MOVING ORNAMENT, IN EVERY THEME. Mo: "make all the moving objects in all
+// themes about 50% more see through." Doing that by editing thirteen hardcoded rgba alphas would
+// guarantee the next one is missed and the fourteenth ornament ships at full strength — the
+// duplicated-constant class this file keeps paying for. It is applied as a `<g opacity>` INSIDE
+// each ornament's svg rather than on the wrapper, because most of these have a keyframe animating
+// the wrapper's own opacity (the fade in and out at the ends of a crossing) and a static opacity
+// there would simply be overridden. The two that already carried their own reduction (quaffle,
+// bat) are folded into this instead of stacking with it.
+// STATIC ornaments are deliberately NOT included — icicles, webs, the palm, the hoops, the branch,
+// the sun, the grass, the nav snow and the nav pumpkins. Mo asked for the things that MOVE, and
+// those are the ones that cross copy; a fixed corner element does not.
+const DECOR_MOVING = 0.5;
 // ── THE FIVE ORNAMENTS MO PICKED, one per seasonal theme. Each is chosen from his own list for
 // the same reason the pumpkins and the quaffle were: it must be DIFFERENT from what that theme
 // already does, not a second copy of it.
@@ -1979,58 +2010,6 @@ function GrassTuft({ left, size, delay, flip }) {
 //   Halloween -> a bat. "Ghosts reacting to a PR" was the alternative and is a bigger, different
 //              build (it hooks the PR path and makes one theme change app behaviour); worth doing
 //              deliberately if Mo wants it, not folded into a decor batch.
-function FrostEdge({ side }) {
-  // Static, like every other fixed edge element here. Confined to the MIDDLE vertical band on
-  // purpose: the tab row sits at a fixed 47-87px and the nav pill at the bottom, so a fringe that
-  // ran the full height would reach both. Thin and faint because it necessarily sits over the
-  // edges of cards — it is frost on the glass, not a border.
-  const ice = "rgba(214,234,252,0.55)";
-  return (
-    <svg data-ornament="frost" width="30" height="420" viewBox="0 0 30 420" aria-hidden="true"
-      style={{ position:"absolute", top:"26%", [side]:0, opacity:0.5,
-               transform: side === "right" ? "scaleX(-1)" : undefined }}>
-      <path fill={ice} d="M0 0h9c-1 14 5 20 3 33-2 12-8 15-6 28 2 12 9 14 8 27-1 12-7 16-6 28 1 13 8 16 7 29
-        -1 12-8 15-7 28 1 12 8 15 8 28 0 13-7 17-6 30 1 12 7 15 6 27-1 13-8 16-7 29 1 12 6 15 5 26
-        -1 13-6 16-5 27 1 12 5 14 4 26-1 12-6 15-6 24H0Z"/>
-      {[26, 92, 168, 244, 318, 384].map((y, i) => (
-        <g key={i} stroke={ice} strokeWidth={i % 2 ? 1 : 1.4} fill="none" strokeLinecap="round">
-          <path d={`M8 ${y} L${19 + (i % 3) * 4} ${y - 7}`}/>
-          <path d={`M13 ${y - 3.5} l4 -4.5 M13 ${y - 3.5} l4.5 3`}/>
-        </g>
-      ))}
-    </svg>
-  );
-}
-function Crow() {
-  // Perched on the branch's own bough, so it moves with every future re-tune of that element
-  // instead of carrying a second copy of its position — the NavSnow rule applied to an ornament.
-  // ★ THE FIRST DRAW WAS TOO SMALL AND READ AS A BLOB, which is the palm's lesson again: at this
-  // size a bird is carried entirely by its SILHOUETTE, so the three things that have to be
-  // unmistakable are the HEAVY STRAIGHT BEAK, the LONG WEDGE TAIL and the hunched back between
-  // them. Detail inside the shape only turns it into a smudge. Solid ink, no rim.
-  // The perch twig is grown down off the bough on purpose: the branch is anchored at top:-96 and
-  // most of it is off-screen, so without it the bird lands at screen y -12 and is clipped.
-  // Placed at viewBox (129,74) = screen (210,40), which is the one genuinely empty box in the top
-  // bar — right of the SESHD wordmark (ends x119) and left of the chat icon (starts ~330) — with
-  // its bottom 3px clear of the tab row at 43.
-  const ink = "rgba(18,14,12,0.9)";
-  return (
-    <g>
-      <path d="M124 50 C128 58 129 66 129 74" stroke="rgba(104,78,56,0.7)" strokeWidth="1.6"
-        fill="none" strokeLinecap="round"/>
-      <g data-ornament="crow" transform="translate(129 74)">
-        <path d="M-1.4 0v-4.5M2.6 0v-4.5" stroke={ink} strokeWidth="1.3" strokeLinecap="round"/>
-        {/* tail: a SLIM wedge sweeping back and slightly up. The first draw made it thick and
-            drooping, which reads as a slug rather than a bird. */}
-        <path fill={ink} d="M-4.2 -10.4 -20.8 -3.6 -20.2 -1.4 -3.4 -5.6Z"/>
-        <ellipse cx="0" cy="-8.2" rx="8.4" ry="6.1" fill={ink} transform="rotate(-13 0 -8.2)"/>
-        <circle cx="6.8" cy="-14.8" r="4.1" fill={ink}/>
-        <path fill={ink} d="M9.8 -16.4 17.6 -14 9.8 -12.3Z"/>
-        <circle cx="7.6" cy="-15.8" r="0.95" fill="rgba(232,222,206,0.9)"/>
-      </g>
-    </g>
-  );
-}
 function Bee({ left, top, dur, delay }) {
   // Darts rather than drifts, which is the whole distinction from Spring's butterfly. Small on
   // purpose — a bee that reads at 30px is a wasp.
@@ -2038,6 +2017,7 @@ function Bee({ left, top, dur, delay }) {
     <div aria-hidden="true" style={{ position:"absolute", left:`${left}%`, top:`${top}%`, opacity:0,
       animation:`seshd-dart ${dur}s ${delay}s linear infinite` }}>
       <svg data-ornament="bee" width="17" height="14" viewBox="0 0 13 11">
+        <g opacity={DECOR_MOVING}>
         <g style={{ animation:`seshd-wing 0.16s ease-in-out infinite` }}>
           <ellipse cx="5" cy="2.6" rx="3.4" ry="2" fill="rgba(226,238,250,0.5)"/>
           <ellipse cx="8.4" cy="2.6" rx="2.8" ry="1.7" fill="rgba(226,238,250,0.42)"/>
@@ -2045,32 +2025,7 @@ function Bee({ left, top, dur, delay }) {
         <ellipse cx="7" cy="6.6" rx="4.4" ry="3.1" fill="rgba(232,178,44,0.95)"/>
         <path d="M6 3.9v5.4M8.6 4.3v4.6" stroke="rgba(38,30,14,0.9)" strokeWidth="1.5"/>
         <circle cx="2.9" cy="6.2" r="2" fill="rgba(38,30,14,0.9)"/>
-      </svg>
-    </div>
-  );
-}
-function Boat({ top, size, dur, delay }) {
-  // Kept LOW and slow. Summer's other travellers are the gulls, which are pinned high — a boat in
-  // the same band would read as a second bird, and one below the content band reads as distance.
-  // The hull rocks on its own timer (seshd-dangle about the waterline) so it is not a sticker
-  // sliding sideways.
-  const sail = "rgba(255,252,244,0.8)", hull = "rgba(96,84,66,0.75)";
-  return (
-    <div aria-hidden="true" style={{ position:"absolute", left:"-14vw", top:`${top}%`, opacity:0,
-      animation:`seshd-sail ${dur}s ${delay}s linear infinite` }}>
-      <svg data-ornament="boat" width={size} height={size} viewBox="0 0 28 29"
-        style={{ transformOrigin:"50% 82%", animation:`seshd-dangle 4.6s ease-in-out infinite` }}>
-        <path d="M14 3 14 19" stroke={hull} strokeWidth="1.2"/>
-        <path d="M13 4.5 13 18 4.5 18Z" fill={sail}/>
-        <path d="M15 7.5 15 18 22 18Z" fill={sail} opacity="0.8"/>
-        <path d="M2.5 19.5h23l-3.6 5.2c-.5.7-1.3 1.1-2.2 1.1H8.3c-.9 0-1.7-.4-2.2-1.1Z" fill={hull}/>
-        {/* A WAKE, because the app has no horizon and without it the boat reads as a sticker
-            floating in an empty field. Two short ripples say "water" at this size where a drawn
-            horizon line would read as a divider across the whole screen. */}
-        <g stroke={hull} strokeWidth="1.1" strokeLinecap="round" opacity="0.6" fill="none">
-          <path d="M1 26.4c1.6-1 3-1 4.6 0"/>
-          <path d="M22.6 26.4c1.6-1 3-1 4.4 0"/>
-        </g>
+      </g>
       </svg>
     </div>
   );
@@ -2088,12 +2043,14 @@ function Bat({ top, size, dur, delay }) {
       animation:`seshd-swoop ${dur}s ${delay}s linear infinite` }}>
       <svg data-ornament="bat" width={size} height={size * 0.45} viewBox="0 0 40 18"
         style={{ animation:`seshd-wing 0.34s ease-in-out infinite` }}>
+        <g opacity={DECOR_MOVING}>
         <path fill={ink} d="M20 4.4c1.6 0 2.6 1 3 2.3 1.4-2.6 4-4.6 7.4-5.4-1 1.6-1.3 3-1 4.4
           1.8-1.4 4.2-2 6.9-1.8-2.3 1.2-3.6 2.9-4.2 5-.5 1.9-1.8 3-3.8 3.4-2.2.4-4.2-.2-5.9-1.6
           -.6 1.2-1.4 1.9-2.4 1.9s-1.8-.7-2.4-1.9c-1.7 1.4-3.7 2-5.9 1.6-2-.4-3.3-1.5-3.8-3.4
           -.6-2.1-1.9-3.8-4.2-5 2.7-.2 5.1.4 6.9 1.8-.3-1.4 0-2.8-1-4.4 3.4.8 6 2.8 7.4 5.4
           .4-1.3 1.4-2.3 3-2.3Z"/>
         <path fill={ink} d="M18.2 3.1 19.4 5.2 20.6 5.2 21.8 3.1 20.6 4 19.4 4Z"/>
+      </g>
       </svg>
     </div>
   );
@@ -2465,8 +2422,6 @@ function ThemeDecor({ kind }) {
       // short one. The bat also carries +-9vh of swoop, so its band starts lower than the others'.
       bees: [0, 1].map(() => ({ left: r(4, 52), top: r(30, 62), dur: r(15, 24), delay: -r(0, 20) })),
       bats: [0].map(() => ({ top: r(34, 54), size: r(30, 42), dur: r(17, 26), delay: -r(0, 22) })),
-      // LOW: the gulls own Summer's high band, and a boat beside them would read as a third bird.
-      boats: [0].map(() => ({ top: r(62, 71), size: r(26, 36), dur: r(78, 118), delay: -r(0, 100) })),
       quaffles: [0].map(() => ({ top: r(38, 62), size: r(19, 26), dur: r(26, 40), delay: -r(0, 34) })),
       butterflies: [0, 1].map(i => ({ left: r(10, 70), top: r(22, 62), dur: r(26, 38), delay: -r(0, 30),
                                       tint: i ? "rgba(255,214,235,0.9)" : "rgba(249,186,211,0.92)" })),
@@ -2591,8 +2546,6 @@ function ThemeDecor({ kind }) {
       </>}
       {kind === "snow" && <>
         <Icicles/>
-        <FrostEdge side="left"/>
-        <FrostEdge side="right"/>
         {bits.snow.map((x, i) => <Faller key={i} shape="snow" {...x}/>)}
         {bits.twinkles.map((t, i) => <Twinkle key={i} {...t}/>)}
       </>}
@@ -2617,7 +2570,6 @@ function ThemeDecor({ kind }) {
         <PalmCorner/>
         {bits.clouds.map((c2, i) => <Cloud key={i} {...c2}/>)}
         {bits.gulls.map((g, i) => <Seagull key={i} {...g}/>)}
-        {bits.boats.map((bo, i) => <Boat key={i} {...bo}/>)}
       </>}
       {kind === "quadball" && <>
         <PitchHoops/>

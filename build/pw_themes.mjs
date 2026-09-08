@@ -366,15 +366,15 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
       balls && balls.discs.length >= 3 && balls.kinds >= 2 && balls.throws === 1, JSON.stringify(balls));
     await pq.close();
   }
-  // ── 4o. THE FIVE ORNAMENTS MO PICKED FROM THE "what else can we add" list, one per seasonal.
-  //     Each is checked for the failure that actually happens: an ornament that silently renders
-  //     NOTHING (the showGroupShare shape — a capability built and never wired), which no other
-  //     check here can see because the decor layer still has plenty of children without it.
-  //     Selected by `data-ornament`, not by size or animation-name: a restyle or a re-tune must not
-  //     be able to make the guard stop seeing the thing it guards.
-  for (const [theme, want] of [["winter", { frost: 2 }], ["fall", { crow: 1 }],
-                               ["spring", { bee: 2 }], ["summer", { boat: 1 }],
-                               ["halloween", { bat: 1 }]]) {
+  // ── 4o. THE ORNAMENTS THAT SURVIVED MO'S REVIEW ON DEVICE, and the two that did not.
+  //     Five were built from his own either/or list; he then removed three of them by looking at
+  //     his phone — the frost on the side edges, the crow and the boat ("I don't see the crow so
+  //     feel free to remove. Same with the boat"). What is left is checked for the failure that
+  //     actually happens: an ornament that silently renders NOTHING (the showGroupShare shape),
+  //     which no other check here can see because the decor layer still has plenty of children
+  //     without it. Selected by `data-ornament`, not by size or animation-name, so a restyle
+  //     cannot make the guard stop seeing the thing it guards.
+  for (const [theme, want] of [["spring", { bee: 2 }], ["halloween", { bat: 1 }]]) {
     const { page: po } = await boot(theme);
     const got = await po.evaluate(() => {
       const out = {};
@@ -392,26 +392,56 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     check(`4o. ${theme} renders its ${Object.keys(want)[0]}`, ok, JSON.stringify(got));
     await po.close();
   }
-  // The crow is the one with a hard placement constraint: it perches on a branch anchored at
-  // top:-96, so it has to clear BOTH the top of the viewport and the tab row at 43, in the only
-  // empty box the top bar has (right of the SESHD wordmark, left of the chat icon).
-  {
-    const { page: pc } = await boot("fall");
-    const g = await pc.evaluate(() => {
-      const c = document.querySelector('[data-ornament="crow"]');
-      if (!c) return null;
-      const r = c.getBoundingClientRect();
-      const words = [...document.querySelectorAll("*")]
-        .filter(e => (e.textContent || "").trim().toUpperCase() === "SESHD" && !e.children.length);
-      const word = words[words.length - 1];   // innermost
-      const w = word ? word.getBoundingClientRect() : null;
-      return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left),
-               right: Math.round(r.right), wordRight: w ? Math.round(w.right) : null };
+  // ── 4p. EVERY MOVING ORNAMENT GOES THROUGH `DECOR_MOVING`. Mo asked for all of them to be 50%
+  //     more see-through, and thirteen hardcoded alphas is exactly the shape where the fourteenth
+  //     ornament ships at full strength. Counting the `<g opacity>` wrappers per theme is what
+  //     catches that: a new traveller added without one changes the count.
+  //     The quaffle sets its opacity in `style` rather than as an attribute and is covered by 4n3;
+  //     STATIC ornaments are deliberately excluded (icicles, webs, palm, hoops, branch, sun) and
+  //     so are the two ground anchors that sway in place (grass, and the sun's rotation) — Mo asked
+  //     for the things that MOVE across the screen, which are the ones that cross copy.
+  for (const [theme, n] of [["winter", 15], ["spring", 12], ["fall", 10],
+                            ["summer", 6], ["halloween", 6], ["quadball", 4]]) {
+    const { page: pm } = await boot(theme);
+    const got = await pm.evaluate(() => {
+      const gs = [...document.querySelectorAll(".seshd-decor g[opacity], .seshd-decor-back g[opacity]")];
+      return { n: gs.length, max: gs.reduce((m, g) => Math.max(m, parseFloat(g.getAttribute("opacity"))), 0) };
     });
-    check("4o2. the crow is fully on screen, above the tab row, and clear of the wordmark",
-      g && g.top >= 0 && g.bottom <= 43 && g.wordRight !== null && g.left >= g.wordRight,
-      JSON.stringify(g));
-    await pc.close();
+    check(`4p. ${theme}'s moving ornaments are all dimmed through the one constant`,
+      got.n === n && got.max <= 0.5, JSON.stringify({ ...got, want: n }));
+    await pm.close();
+  }
+  // ── 4q. THE LONG ICICLES MUST NOT HANG ON A TAB WORD. Mo: "make a couple of the icicles on top
+  //     a little longer" — and lengthening five of them put two straight onto "Workout" and
+  //     "Exercises", because the spike list is a cumulative walk and an index says nothing about
+  //     where a spike lands. Measured against the tab words' real INK (a Range over the text node;
+  //     the tab BUTTON's box is a full third of the screen and overlaps everything, which is what
+  //     the first version of this check wrongly used). env()=0 is the PESSIMISTIC case here — a
+  //     real top inset pushes the tab row DOWN while this layer stays pinned to the viewport.
+  {
+    const { page: pi } = await boot("winter");
+    const hit = await pi.evaluate(() => {
+      const words = [...document.querySelectorAll("button,div")]
+        .filter(e => ["Workout", "Exercises", "History"].includes((e.textContent || "").trim()) && !e.children.length)
+        .map(e => { const rg = document.createRange(); rg.selectNodeContents(e); return rg.getBoundingClientRect(); });
+      if (!words.length) return { err: "no tab words" };
+      const ice = [...document.querySelectorAll(".seshd-decor svg")]
+        .find(sv => sv.querySelectorAll("path").length > 30);
+      if (!ice) return { err: "no icicles" };
+      const bad = [];
+      let lowest = 0;
+      for (const pa of ice.querySelectorAll("path")) {
+        const r = pa.getBoundingClientRect();
+        lowest = Math.max(lowest, r.bottom);
+        for (const w of words)
+          if (r.left < w.right && r.right > w.left && r.top < w.bottom && r.bottom > w.top)
+            bad.push([Math.round(r.left), Math.round(r.right), Math.round(r.bottom)]);
+      }
+      return { bad, lowest: Math.round(lowest) };
+    });
+    check("4q. no icicle hangs over a tab word, and some are genuinely long",
+      hit && !hit.err && hit.bad.length === 0 && hit.lowest >= 50, JSON.stringify(hit));
+    await pi.close();
   }
 
   // And a theme with no `decor` must render no layer at all.
