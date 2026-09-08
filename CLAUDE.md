@@ -5260,6 +5260,60 @@ unit there), and `PitchHoops` is in `DecorBack` at zIndex 45 because it stands o
 anything touching the bottom edge draws over the nav's buttons at 150. Verified by
 `elementFromPoint`: 4 of 4 nav buttons resolve to themselves.
 
+## ★★★ THE FEMALE MAP IS NOW A TRACE OF LICENSED ART — AND "SAME SIZE" WAS THE HARD PART (Sep 8)
+Mo supplied reference artwork (a female muscle figure, front and back) and asked to use it. He
+confirmed he is licensed for it but holds only a 360x224 JPG, not the vector original.
+**Feasibility was measured before anyone was committed to the work**, and the art cooperated: it is
+flat 2-tone, and because each muscle is drawn separated by LIGHT GAPS every muscle is already its
+own connected component, with left/right pairs coming out as matching areas. So segmentation is
+mechanical — threshold, connected components, marching-squares outline, group components into the
+10 named regions by position, union for `_body`. `build/bodymap_trace.mjs` is the generator and
+**`ref.jpg` is deliberately NOT in the repo** — the repo is public and the art is licensed for the
+app, not for redistribution. Mo holds the file; the generator takes its path as an argument.
+**★ WHY A TRACE AND NOT MORE WARPING: a warp cannot change the DRAWING.** The previous entry's
+honest limit was that reshaping still left a bodybuilder écorché — the pec slabs, the six-pack and
+the striations ARE the artwork. The trace replaces them. What it costs is proportion: the reference
+is a broad-shouldered fitness figure, front shoulder:hip 1.31 — the same as the male — so the pure
+trace read androgynous and a mild proportion tune rides on top of it.
+**★★ AND THE FINDING WORTH THE WHOLE ENTRY: "THE SAME HEIGHT" IS NOT "THE SAME SIZE" WHEN ONE
+FIGURE IS MISSING A BODY PART.** The first fit matched the female's y-extent to the male's, which
+measured perfectly — 0.0% height difference, feet aligned, 16-23% narrower — and Mo said it still
+"feels alooot bigger". He was right and the reason is anatomical: the male's traps rise to the base
+of the skull (26.6 units of neck above his deltoids on the back), while the reference's back figure
+had its HEAD CUT OFF by the image edge, so the female has 2.9. Matching outer extents therefore put
+her SHOULDERS where his NECK is and stretched the body to fill the gap. Measured shoulder-top to
+feet — the actual body — she was **+3.1% front and +7.4% back** while every extent check passed.
+**The fix is to anchor on landmarks both figures really share**: the deltoid top and the ground
+line. Both views now scale UNIFORMLY (never y-only — that would fix the height and stretch the
+figure horizontally against it, and this repo's rule is that the female map scales uniformly to
+preserve anatomy) so shoulder->feet equals the male's exactly. The empty band left above her
+shoulders is the neck she does not have, and leaving it empty is precisely what keeps the two
+BODIES the same size.
+**The general rule: a bounding box cannot tell you what is IN it.** Before pinning two figures to
+each other, check they contain the same parts — otherwise "same extent" silently means "different
+body". `sim_bodymapfemale` now asserts shoulder->feet within 3%, a shared ground line, and
+female-no-wider-than-male, instead of the extent equality it shipped with. Red-proofed against the
+REAL bug by restoring the old fit: it fails naming exactly the 7.4% Mo felt, and exits 1.
+**Hands: removed, to match the male.** The reference draws splayed hands with fingers; the male's
+arm tapers to a point at the wrist. The hand components also got assigned to the FOREARMS region,
+so the orange muscle ran into the fingers — that was Mo's "fix the forearm", and it was the same
+defect. Because `_body` is the UNION of every assigned component, **dropping an id from its region
+removes it from the silhouette too**, so this was one deletion rather than a region edit plus a
+separate silhouette edit. Identified by geometry, not by eye: the hand components sit below the
+forearm (source y 87-111 vs 52-86) and further from the centre line.
+**Guards (both need `git add -f`):** `sim_bodymapfemale` (no browser — keys, bounds, the size pins
+above, and every female region subpath occurring VERBATIM in `_body`, which is the structural form
+of registration) and `pw_bodymapfemale` (canvas — every region's ink inside its own `_body`, both
+sexes both views, plus an area floor). The warp-era guards were DELETED rather than weakened: they
+asserted `female == warp(male)`, false by design once the map is a trace. **Red-proofed by me, not
+just by the agent that wrote them** — and one of my own red-proofs was too weak first: nudging a
+single point 4 units left the region inside the torso and neither guard moved. Shifting the WHOLE
+region 30 units fails at 20.65%. *A red-proof that does not reach the failure mode proves nothing
+about the guard.*
+**Pre-existing find, not touched:** the MALE front hand reaches x=210.5, inside the profile
+screen's box (48..216) but outside `WrappedModal`'s front box (46..206) — the male is clipped by
+~4.5 units in Wrapped today. The "front widened" fix never reached Wrapped.
+
 ## ★★★ THE FEMALE BODY MAP WAS THE MALE ONE SQUEEZED SIDEWAYS, AND THE OBVIOUS FIX WAS THE WRONG ONE (Sep 8)
 Mo: "the female body map needs to look more female", and to use Fable 5.1 for it. Both halves of
 that were right — the diagnosis was measurable and the redraw needed the render-look-redraw loop
