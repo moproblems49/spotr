@@ -5260,6 +5260,40 @@ unit there), and `PitchHoops` is in `DecorBack` at zIndex 45 because it stands o
 anything touching the bottom edge draws over the nav's buttons at 150. Verified by
 `elementFromPoint`: 4 of 4 nav buttons resolve to themselves.
 
+## ★★ The corner branch at 1.5x: the tab row stopped being the binding constraint (Sep 8)
+Mo: the Fall and Spring branches "need to be about 50% bigger", and the Summer palm "20% more see
+through". The palm was one number (0.36 -> 0.29). The branch took four attempts, and every wrong one
+is a variation on the same documented rule.
+**★ AT 345x236 THE BINDING ELEMENT IS THE SESHD WORDMARK, NOT THE TAB ROW.** Every previous size
+bump was tuned against the tab row at a fixed y 43. The branch grows DOWN-RIGHT, so this bump pushed
+its LEAVES across the header instead: measured, a leaf at x 98-125 against a wordmark at x 54-119.
+The previous size only ever worked because its leaves happened to land PAST the wordmark's right
+edge — an accident nobody had written down, and the property that actually had to be preserved.
+**Two fixes were tried and measured before the third worked**, which is worth keeping because both
+are the obvious move: **UP** (-96 -> -123) cleared the wordmark and left the branch essentially
+invisible (fall ink bottom 8.2), and on a device with a 59pt inset the whole thing sits behind the
+status bar, because the decor layer is pinned to the VIEWPORT while the header moves down. **LEFT**
+cannot work at all: the logo and the wordmark occupy x 14-119 with no gap to drop a leaf into.
+**RIGHT is the answer** (-57 -> -27), which puts both leaf clusters at x 128-199 — clear of the
+wordmark and well short of the chat icon at ~340.
+**★★ AND THE TWO THEMES NEEDED DIFFERENT OFFSETS, WHICH ONE SHARED NUMBER CANNOT EXPRESS.** They
+share one bough and differ only in what hangs off it, so a single `top` had always been right —
+until the size made the difference matter. Spring's blossoms sit at viewBox y 58-72 where Fall's
+leaves sit higher, so at a shared -96 Fall was clean and a Spring blossom landed on the **"S"**
+(measured: blossom x 48-60 y 20-31). Spring rides 15px higher (`blossom ? -111 : -96`) so its two
+low-left blossoms clear the wordmark's TOP instead; its ink still ends at 38.7, above the tab row.
+**Do not collapse that back to one number.**
+**Method note: env()=0 is the pessimistic case for the TAB ROW and NOT for the header.** A real
+inset pushes the tab row down while the decor stays put, so a Chromium-clean tab row is clean
+everywhere — but the same inset also moves the wordmark down and out from under a branch that was
+tuned to sit above it, which is why "up" looked right in Chromium and measured wrong on a simulated
+device. **Check which direction the inset moves the thing you are avoiding before deciding whether
+Chromium is the worst case.** Emulated by setting the top bar's real padding formula at inset 59
+and re-shooting; that is the cheap stand-in for a device this repo cannot run.
+Final measurements at 428x926, env()=0: fall ink bottom 35.2 / spring 38.7 against a tab row at 43,
+and both wordmarks fully legible in a 3x header crop. Verified by LOOKING at the crop, which is what
+caught the blossom on the "S" after the numbers said the tab row was fine.
+
 ## ★★ Themes phase 4: the four seasons, and a comment that shipped on screen (Aug 30)
 Mo, after Halloween: *"make a winter, summer, maybe a fall and spring themed too."* Nine themes
 now — Light / Arctic / Dark / Midnight, then a **SEASONAL** group of Spring / Summer / Fall /

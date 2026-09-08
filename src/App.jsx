@@ -1,4 +1,4 @@
-// v178091717037
+// v178091717038
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1632,7 +1632,8 @@ function PalmCorner() {
   // the SAND MOUND is inside the viewBox — it is what hides the trunk bases, so it scales with
   // the tree and the "no roots, no visible base" property survives any size.
   return (
-    <DecorBack style={{ bottom:0, right:0, width:165, height:182, opacity:0.36 }}>
+    // Opacity 0.36 -> 0.29 (Mo, Sep 8: "about 20% more see through"). 0.36 x 0.8 = 0.288.
+    <DecorBack style={{ bottom:0, right:0, width:165, height:182, opacity:0.29 }}>
       <svg viewBox="0 0 190 210" width="100%" height="100%">
         {PALM_SCENE.map(([d, f], i) => <path key={i} d={d} fill={f}/>)}
       </svg>
@@ -1700,8 +1701,28 @@ function CornerBranch({ blossom }) {
     // -46, not -41: the tab row moved UP to y 43 when the top bar's icon padding went 11 -> 9,
     // and this offset had been tuned to the pixel against the old 47. A number tuned against
     // another element's position has to be re-measured whenever that element moves.
-    <svg width="230" height="157" viewBox="0 0 188 128" aria-hidden="true"
-      style={{ position:"absolute", top:-46, left:-38, opacity:0.75 }}>
+    // 50% bigger again (Mo, Sep 8): 230x157 -> 345x236. The offset is RE-MEASURED, not scaled.
+    // ★ AND AT THIS SIZE A SECOND ELEMENT BINDS: THE SESHD WORDMARK, NOT THE TAB ROW. The branch
+    // grows DOWN-RIGHT, so every size bump pushes its leaves further across the header — at
+    // 345x236 with a proportionally-scaled -57/-96 a leaf landed squarely on the "D" (measured:
+    // leaf x 98-125 against a wordmark at x 54-119). Decoration that makes copy unreadable is the
+    // one thing this layer must never do.
+    // ★★ AND THE FIX IS TO GO RIGHT, NOT UP OR LEFT — the previous size only worked because its
+    // leaves happened to land PAST the wordmark's right edge, and that is the property to keep.
+    // Moving UP was tried and hides the branch (measured: fall ink bottom 8.2, and on a device
+    // whose inset is 59 the whole thing sits behind the status bar); moving LEFT cannot work at
+    // all, because the logo and the wordmark occupy x 14-119 with no gap to drop a leaf into.
+    // left -57 -> -27 puts both leaf clusters at x 128-199, clear of the wordmark and well short
+    // of the chat icon at ~340.
+    // ★★★ AND THE TWO THEMES NEED DIFFERENT OFFSETS, WHICH IS THE WHOLE REASON THIS COMMENT IS
+    // LONG. They share one bough and differ only in what hangs off it — but Spring's blossoms sit
+    // at viewBox y 58-72 where Fall's leaves sit higher, so at a shared -96 a blossom landed on
+    // the "S" (measured: blossom x 48-60 y 20-31 against the wordmark's x 54-119 y 11-28) while
+    // Fall was clean. Spring rides 15px higher so both of its low-left blossoms clear the
+    // wordmark's TOP instead, and its ink still ends at 38.7 — above the tab row at 43.
+    // Do not "simplify" this back to one number: a shared offset is wrong for one of them.
+    <svg width="345" height="236" viewBox="0 0 188 128" aria-hidden="true"
+      style={{ position:"absolute", top: blossom ? -111 : -96, left:-27, opacity:0.75 }}>
       <g stroke={bark} fill="none" strokeLinecap="round">
         <path d="M-6 6 C40 14 78 30 116 62" strokeWidth="4"/>
         <path d="M34 12 C44 30 46 44 42 60" strokeWidth="2.2"/>
