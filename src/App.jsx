@@ -1,4 +1,4 @@
-// v178091717051
+// v178091717052
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6179,7 +6179,20 @@ const REPLY_POST_CAP = 25;
 // Pure and module-level so a test can drive it without rendering the screen.
 export function buildActivityEvents(store, currentUserId) {
   const users = store.users || [];
-  const findUser = (id) => users.find(u => u.id === id);
+  // ★ A BLOCKED PERSON MUST NOT REACH THIS SCREEN, AND THE SERVER CANNOT DO IT FOR US. The
+  // `comments` SELECT policy applies `is_blocked_between` to the POST'S OWNER only, never to the
+  // comment's AUTHOR — so a blocked account's comment text arrives from the server perfectly
+  // legitimately. `PostCard` already filters them out of a post's comment list for exactly this
+  // reason; that filter simply never existed on this screen, which is why blocked actors have
+  // always been able to appear here as "liked your post" / "commented".
+  //
+  // It matters more now than it did: `commentPeers` fetches comments from posts that are NOT on
+  // the feed page, i.e. content that previously never reached the client at all, and turns it
+  // into a notification. Filtering at the FINDER covers every event type at once rather than
+  // seven call sites — and note the block is symmetric, so this also covers someone who blocked
+  // YOU still generating rows.
+  const blocked = new Set(store.blockedUsers || []);
+  const findUser = (id) => (blocked.has(id) ? undefined : users.find(u => u.id === id));
   const posts = store.posts || [];
   const events = [];
   const myUsername = (findUser(currentUserId)?.username || "").toLowerCase();
@@ -6289,11 +6302,25 @@ export function keyOfActivityEvent(ev) {
     case "comment_like": return `clike:${ev.myComment?.id}:${ev.user?.id}`;
     case "follow":
     case "follow_request": return `follow:${ev.user?.id}:${ev.followedAt || 0}`;
-    case "reply":        return `reply:${ev.comment?.id}`;
     case "coach_redeem": return `coach:${ev.redeemId}`;
-    // comment / mention: the comment's own id, with the index as the fallback for an id-less one.
-    // Two id-less comments by the same person previously produced the SAME key, and dismissing
-    // one hid both (measured: 2 rows -> 0 on one click).
+    // ★ comment / mention / reply ALL KEY ON THE COMMENT ITSELF, NEVER ON THE TYPE — because the
+    // TYPE IS NOT STABLE. One comment is a `mention` when its post is on the newest-30 feed page
+    // (that pass walks `store.posts`) and a `reply` when it is not (that pass walks the separately
+    // fetched `store.commentPeers`), and the dedup between them can only fire while both sources
+    // can see it. Keyed by type, dismissing it as a mention left a key that stopped matching the
+    // moment the post aged off the feed, and the same comment came back as an un-dismissed reply
+    // with the "Show N hidden" affordance gone — so nothing on screen said it had ever been
+    // dismissed. Measured in both directions. The three types are disjoint for any one comment
+    // (mention and reply both exclude posts I own; `comment` covers only posts I own), so one key
+    // per comment cannot collide across them.
+    //
+    // The index fallback stays for an id-less comment: two of those by the same person previously
+    // produced the SAME key and dismissing one hid both (measured: 2 rows -> 0 on one click).
+    case "reply":
+    case "comment":
+    case "mention":      return ev.comment?.id
+                                ? `cmt:${ev.comment.id}`
+                                : `${ev.type}:${ev.post?.id}:${ev.user?.id}:i${ev.idx ?? 0}`;
     default: return `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? `i${ev.idx ?? 0}`}`;
   }
 }
@@ -20760,9 +20787,25 @@ function AppInner() {
       // (see the `onboardedLocally` check), so clearing it can only ever affect a genuinely new
       // account, which should see onboarding anyway.
       localStorage.removeItem("seshd_onboarded");
+      // ★ THE TWO ACTIVITY KEYS, found by the audit of the Activity expansion. Same shared-phone
+      // family as everything above, and the same "one key that didn't get copied" shape: this
+      // list grew twice for exactly this reason and neither pass reached these.
+      // `seshd_seen_activity_count` is a persisted BASELINE, so the next account to sign in on
+      // this phone inherits the previous one's number and sees NO badge until its own activity
+      // exceeds it — and this release makes that number much larger, because the count now
+      // includes follows and coach redemptions. `seshd_dismissed_activity` cannot mis-hide across
+      // accounts (its keys embed server uuids) but it is still the previous person's data sitting
+      // on the device, and it grows to MAX_DISMISSED_ACTIVITY entries.
+      localStorage.removeItem("seshd_seen_activity_count");
+      localStorage.removeItem("seshd_dismissed_activity");
     } catch {}
     setSession(null);
     setStore(loadStore());
+    // CLEARING THE KEYS IS NOT ENOUGH ON ITS OWN. Both are `useState` initialisers, which run
+    // ONCE, and AppInner never unmounts across a sign-out — so the previous account's values
+    // would survive in memory no matter what localStorage says. Reset the state too.
+    setSeenActivityCount(0);
+    setDismissedActivity({});
     setDbReady(false);
   }
 
@@ -21996,7 +22039,7 @@ function AppInner() {
   const activityEvents = useMemo(
     () => buildActivityEvents(store, currentUserId),
     [store.posts, store.users, store.followEvents, store.myComments, store.commentPeers,
-     store.coachRedemptions, currentUserId]
+     store.coachRedemptions, store.blockedUsers, currentUserId]
   );
   const currentActivityCount = activityEvents.length;
 
@@ -22294,7 +22337,13 @@ function AppInner() {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     const prevReqs = store.followRequests || [];
     const prevUsers = store.users;
-    const prevEvents = store.followEvents || [];
+    // TARGETED, not a whole-array snapshot. A foreground refetch can land between the click and
+    // a failed PATCH, and restoring the array wholesale then silently drops whatever it brought —
+    // measured: a new follower who arrived mid-flight vanished from Activity until the next
+    // refetch. Capturing just this one row lets the rollback put back exactly what it changed.
+    // (`prevUsers`/`prevReqs` below have the same shape and predate this; only followEvents is
+    // fixed here, so the same transient can still affect the followers COUNT.)
+    const prevRow = (store.followEvents || []).find(f => f.userId === otherId) || null;
     setStore(prev => ({
       ...prev,
       followRequests: (prev.followRequests || []).filter(id => id !== otherId),
@@ -22317,7 +22366,13 @@ function AppInner() {
       haptic("tap");
     } catch (e) {
       devError("follow request error:", e);
-      setStore(prev => ({ ...prev, followRequests: prevReqs, users: prevUsers, followEvents: prevEvents }));
+      setStore(prev => ({
+        ...prev, followRequests: prevReqs, users: prevUsers,
+        // Put back only the row this handler touched, leaving anything that arrived meanwhile.
+        followEvents: prevRow
+          ? [...(prev.followEvents || []).filter(f => f.userId !== otherId), prevRow]
+          : (prev.followEvents || []).filter(f => f.userId !== otherId),
+      }));
       toast("Couldn't update that request", "error");
     }
   }

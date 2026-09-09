@@ -33,6 +33,13 @@ const ASKER    = "33333333-3333-4333-8333-333333333333"; // pending follow reque
 const LIKER    = "44444444-4444-4444-8444-444444444444"; // liked my comment
 const REPLIER  = "55555555-5555-4555-8555-555555555555"; // commented after me
 const COACH    = "66666666-6666-4666-8666-666666666666"; // redeemed my coach code
+const BLOCKED  = "77777777-7777-4777-8777-777777777777"; // I blocked them; must never appear
+
+// Whether the post I commented on is currently on the newest-30 feed page. THIS IS THE WHOLE
+// POINT OF SECTION 7: it is the only thing that decides whether one comment is a `mention` (found
+// by the pass over store.posts) or a `reply` (found by the pass over commentPeers), and it is not
+// under the user's control — it changes as other people post.
+let postOnFeed = false;
 
 const t = (msAgo) => new Date(Date.now() - msAgo).toISOString();
 const MY_COMMENT_AT = t(6 * 3600e3);
@@ -81,7 +88,25 @@ await page.route("**/rest/v1/**", r => {
       { id: LIKER,    username: "sam",   name: "Sam",   is_public: true },
       { id: REPLIER,  username: "tess",  name: "Tess",  is_public: true },
       { id: COACH,    username: "coachj", name: "Coach J", is_public: true },
+      // MUST be a KNOWN profile. Omitting them made section 6 vacuous: buildActivityEvents drops
+      // any event whose actor is not in store.users, so the rows disappeared for the wrong reason
+      // and the check passed against a build with no block filter at all.
+      { id: BLOCKED,  username: "troll", name: "Troll", is_public: true },
     ]);
+  } else if (/\/rest\/v1\/blocked_users\?/.test(u)) {
+    body = JSON.stringify([{ blocked_id: BLOCKED }]);
+  } else if (/\/rest\/v1\/posts\?/.test(u)) {
+    const mine = {
+      id: "p-mine", user_id: ME, caption: "my post", type: "text", created_at: t(4 * 3600e3),
+      // Both shapes of engagement, both from someone I have blocked.
+      kudos: [{ user_id: BLOCKED }],
+      comments: [{ id: "c-blocked", user_id: BLOCKED, text: "BLOCKED-TEXT", likes: [], created_at: t(3 * 3600e3) }],
+    };
+    const theirs = {
+      id: "p-theirs", user_id: REPLIER, caption: "their post", type: "text", created_at: t(10 * 3600e3),
+      kudos: [], comments: [{ id: "peer-after", user_id: REPLIER, text: "@momo agreed", likes: [], created_at: t(1 * 3600e3) }],
+    };
+    body = JSON.stringify(postOnFeed ? [mine, theirs] : [mine]);
   } else if (/\/rest\/v1\/follows\?/.test(u)) {
     // Both directions of the same table: one accepted follow, one still pending.
     body = JSON.stringify([
@@ -100,7 +125,7 @@ await page.route("**/rest/v1/**", r => {
   } else if (/\/rest\/v1\/comments\?/.test(u)) {
     // Other people on that same post. The EARLIER one must not count as a reply to me.
     body = JSON.stringify([
-      { id: "peer-after",  post_id: "p-theirs", user_id: REPLIER, text: "agreed",     created_at: t(1 * 3600e3) },
+      { id: "peer-after",  post_id: "p-theirs", user_id: REPLIER, text: "@momo agreed", created_at: t(1 * 3600e3) },
       { id: "peer-before", post_id: "p-theirs", user_id: REPLIER, text: "first post", created_at: t(9 * 3600e3) },
     ]);
   }
@@ -189,6 +214,68 @@ check("5c the answered request stops asking", hasAccept && !/wants to follow you
   hasAccept ? JSON.stringify(afterAccept.slice(0, 300)) : "no Accept button on screen");
 check("5d ...and reads as a follower instead", hasAccept && /dana\s+started following you/i.test(afterAccept),
   hasAccept ? "" : "no Accept button on screen");
+
+// ── 6. A BLOCKED PERSON REACHES NEITHER THE SCREEN NOR THE BADGE ─────────────────────────────
+// The server cannot do this for us: the `comments` SELECT policy applies is_blocked_between to the
+// POST'S OWNER only, never to the comment's AUTHOR, so a blocked account's comment text arrives
+// legitimately. The fixture blocks someone who has both kudos'd and commented on my own post, so
+// an unfiltered build renders TWO extra rows and counts them.
+check("6a a blocked user's comment text never renders", !/BLOCKED-TEXT/.test(txt), JSON.stringify(txt.slice(0, 400)));
+check("6b ...and neither does their kudos or comment row",
+  !/liked your post/.test(txt) && !/commented:/.test(txt), JSON.stringify(txt.slice(0, 400)));
+// The badge is read before the screen is opened, so this also proves the COUNT excludes them —
+// a filter applied only at render time would leave a badge nobody can clear.
+check("6c ...and the badge did not count them either", badge === "5", `badge=${badge}`);
+
+// ── 7. ONE COMMENT MUST NOT HAVE TWO DISMISSAL KEYS ──────────────────────────────────────────
+// A comment on a post I do not own is a `mention` while that post is on the newest-30 feed page
+// and a `reply` once it ages off — and which one it is depends on other people's posting, not on
+// anything the user did. Keyed by TYPE, dismissing it in one state left a key that stopped
+// matching in the other, so it returned un-dismissed with the "Show N hidden" affordance gone.
+// This drives the real transition rather than asserting on the key string.
+{
+  const freshRows = await rows();
+  // State B: post is OFF the feed, so the comment arrives via commentPeers and reads as a reply.
+  postOnFeed = false;
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  await openActivity();
+  const asReply = await bodyText();
+  check("7a [control] off the feed, the comment reads as a reply", /replied/.test(asReply) && !/mentioned you/.test(asReply),
+    JSON.stringify(asReply.slice(0, 300)));
+
+  // Dismiss THAT row specifically. The first draft used a `:has-text` locator plus `.last()`,
+  // which silently fell through to "the last Dismiss button on screen" — a different row
+  // entirely (rows are sorted newest-first, so that was the oldest event). It reported PASS,
+  // because a row HAD been dismissed; it was simply the wrong one, and 7d then failed for a
+  // reason that had nothing to do with the app. Target by the row's own text.
+  const before = await rows();
+  const hiddenBefore = Number((/Show (\d+) hidden/.exec(await bodyText()) || [0, 0])[1]);
+  const idx = await page.evaluate(() => [...document.querySelectorAll('button[aria-label="Dismiss"]')]
+    .findIndex(b => (b.parentElement?.textContent || "").includes("replied")));
+  check("7b [control] the reply row was actually located", idx >= 0, `idx=${idx}`);
+  if (idx >= 0) await page.getByLabel("Dismiss").nth(idx).click();
+  await page.waitForTimeout(400);
+  const hid = await rows();
+  check("7b2 dismissing it hides it", hid === before - 1, `${before} -> ${hid}`);
+
+  // State A: the post comes back onto the feed, so the SAME comment is now found as a mention.
+  postOnFeed = true;
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  await openActivity();
+  const nowTxt = await bodyText();
+  check("7c [control] on the feed, that comment is now a mention, not a reply",
+    !/replied/.test(nowTxt), JSON.stringify(nowTxt.slice(0, 300)));
+  check("7d ...and it is STILL dismissed rather than back as a new row",
+    !/mentioned you/.test(nowTxt), JSON.stringify(nowTxt.slice(0, 300)));
+  // Derived, not hard-coded: section 4 already dismissed a row, so the absolute number depends
+  // on what ran before. What must hold is that the reply's dismissal SURVIVED the type change.
+  const hiddenNow = Number((/Show (\d+) hidden/.exec(nowTxt) || [0, 0])[1]);
+  check("7e ...and it is still counted as hidden", hiddenNow === hiddenBefore + 1,
+    `hidden ${hiddenBefore} -> ${hiddenNow}`);
+  void freshRows;
+}
 
 console.log(fails === 0 ? "\nPASS pw_activityevents" : `\nFAIL pw_activityevents (${fails})`);
 await browser.close();
