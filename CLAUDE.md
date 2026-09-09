@@ -5456,6 +5456,62 @@ lit and below the nav, all four nav buttons still hit-test to themselves, and qu
 balls on the pitch with the two discs **not the same colour**. Red-proofed at 2 failures with 4n2
 (the control) staying green.
 
+## ★★ MO CUT THE GRAVEYARD AND THE NAV PUMPKINS ONE DAY AFTER SHIPPING THEM (Sep 9)
+Three asks, all from his phone: "The stuff you added for Halloween on bottom left, move to bottom
+right and change them to something else"; "for all 3 themes change the pictures we have on the 3
+buttons"; "remove the tiny pumpkins inside the nav bar, doesn't look good, maybe add other things
+either on top or bottom of that." Same shape as the crow and the boat: **things that read fine in a
+frozen screenshot here and did not survive a day on a real screen.** The graveyard and the pumpkins
+were both shipped the day before, both with green guards, and both are gone.
+- **The bottom-right scene is a HAUNTED HOUSE AND A DEAD TREE, not three grave markers.** The slot
+  is unchanged and is still why it exists (every sibling theme stands something on the ground), but
+  the graveyard was three variations on ONE idea — cross, headstone, clawing hand — where a house
+  with a tree is a PLACE with a thing in it. The tree goes on the RIGHT because the group bleeds
+  off the screen edge and a tree cut by the edge reads as continuing past it while half a house
+  reads as broken. Heights (138/152) are set by the NAV, not by taste: on device the pill occupies
+  42..92px above the bottom, so these clear it by 46 and 60.
+- **★ HALF OF THE HALLOWEEN SHEET IS A WHITE BACKING LAYER, NOT INK.** Every dark shape on that page
+  is paired with near-white fills that vanish once a glyph is flattened to one colour — and they
+  were HALF the extracted weight (the house came out at 15.2k characters and is 7.7k without them).
+  Filter on the fill's own colour, then LOOK: the windows survive because they are HOLES in the
+  dark fill, which is not something a colour filter can tell you. Twelve new glyphs came to 36.8k
+  chars this way against 57.3k unfiltered.
+- **★★ A MARK IS PAINTED IN THE THEME'S ACCENT, SO ONLY A SHAPE-CARRIED GLYPH CAN BE ONE — AND
+  THAT RULED OUT THREE OF THE FIVE FALL CANDIDATES.** The Quadball snitch lesson, re-run as a
+  measurement rather than recalled: the fall sheet's ACORN, PUMPKIN and GOURD were all traced,
+  rendered flat, and rejected on sight — a single-colour acorn is an egg, a single-colour gourd is
+  a pear, and a single-colour pumpkin is a plain ball. The pumpkin was the only one worth rescuing
+  and it is the set's one TWO-TONE glyph: body in the accent with its ribs kept as a darker group
+  over it, which is exactly what the old hand-drawn mark's rib strokes were already there to do.
+  New marks: Halloween **witch / owl / cauldron**, Fall **rowanleaf / berries / pumpkin**, Summer
+  **dolphin / starfish / shell**. `MARK_PLANT` gained cauldron and pumpkin (both sit on the ground,
+  both flush at the bottom of their own box, so their base is exactly 1.0 unlike the hand-drawn
+  ones) and lost palm and tree; `PALM_MARK_PATHS` went with them rather than being left as dead
+  code — the `grave2` lesson, since nothing in the battery scans for an unreferenced object key.
+- **★ THE NAV CAT CANNOT LIVE INSIDE THE PILL, AND THAT IS THE STRUCTURAL DIFFERENCE FROM NavSnow.**
+  Snow SETTLES ON the bar, so drawing it as the pill's first child gets the rounded-corner clip for
+  free. A cat SITS ON TOP of the bar, so the pill's own `overflow:hidden` cuts it in half. The
+  nav's scale/translate therefore MOVED off the pill onto a new wrapper that holds both, so the cat
+  rides the shrink instead of detaching from it by a few pixels every time the user scrolls.
+  One object deliberately: "several at different heights read as a place" is a rule about a ground
+  scene floating in empty space, and a cat on a bar is a bird on a wire — it has something to sit on.
+- **Two placement bugs found by rendering, not by reading.** At `right:22%` the cat sat directly on
+  the haunted house's own tower and disappeared into it — two ornaments in the same ink, one behind
+  the other; it is at 55% over empty canvas now. And `DECOR_INK_SOLID` already carries a 0.5 alpha,
+  so an `opacity:0.5` on the svg multiplied to an effective 0.25 and the cat read as a smudge on the
+  bar's glass. **Check what alpha a shared ink token already carries before adding another.**
+- **★ AND THE NEW GUARD MEASURED THE BOX INSTEAD OF THE INK, WHICH ITS OWN RED-PROOF EXPOSED.**
+  `pw_themes` 4n asserts the ground scene clears the nav as the nav sits ON DEVICE (>=92px) rather
+  than as Chromium draws it — the pumpkins' whole lesson. Its first version read
+  `getBoundingClientRect()` on the `<svg>`, which keeps its declared height however small the
+  drawing inside it gets: shrinking the scene from 152 to 70 left it reporting a healthy 152 and
+  PASSING. It converts `getBBox()` through the viewBox scale now. Same class as the planted-mark
+  guard, which had to stop reading rects for exactly this reason. Red-proofed at both checks
+  failing with real numbers (`sceneRise:70`, `insidePill:true`, `ridesShrink:false`).
+- **4n1b is the one that matters structurally**: it asserts the cat is NOT a descendant of the pill,
+  sits on its top edge, and shares a transformed ancestor with it. "It renders" is true of the
+  broken version too.
+
 ## ★★★ THREE THEMES GOT THE ARTIST'S OWN VECTORS (Sep 9) — and the probe caught a clipped bat
 Mo bought three licensed decoration sheets and asked for "changes to make themes look better".
 Halloween, Fall and Summer now draw traced ornaments where they drew hand-made primitives.

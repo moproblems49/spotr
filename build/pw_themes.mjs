@@ -193,12 +193,12 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   // Each button gets its OWN glyph — one mark repeated three times is wallpaper, which is the
   // thing this was changed away from, so assert the three are DISTINCT as well as correct.
   const SLOTS = {
-    halloween: { start: "pumpkin", friends: "ghost",     groups: "spider" },
-    winter:    { start: "snowman", friends: "snowflake", groups: "fir" },
-    spring:    { start: "blossom", friends: "butterfly", groups: "sprout" },
-    fall:      { start: "leaf",    friends: "acorn",     groups: "tree" },
-    summer:    { start: "sun",     friends: "wave",      groups: "palm" },
-    quadball:  { start: "broom",   friends: "quaffle",   groups: "hoop" },
+    halloween: { start: "witch",     friends: "owl",       groups: "cauldron" },
+    winter:    { start: "snowman",   friends: "snowflake", groups: "fir" },
+    spring:    { start: "blossom",   friends: "butterfly", groups: "sprout" },
+    fall:      { start: "rowanleaf", friends: "berries",   groups: "pumpkin" },
+    summer:    { start: "dolphin",   friends: "starfish",  groups: "shell" },
+    quadball:  { start: "broom",     friends: "quaffle",   groups: "hoop" },
   };
   for (const [theme, want] of Object.entries(SLOTS)) {
     const { page: pm } = await boot(theme);
@@ -305,12 +305,16 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   //     grass, Summer plants the palm, Winter settles snow on the nav, and Halloween had nothing
   //     below the middle of the screen. Quadball's gap was inside itself: PitchHoops draws a goal
   //     on every screen and neither object in the air was the ball you score with.
-  //     ★ THE PUMPKINS MOVED ONTO THE NAV PILL and this check moved with them: anchored to the
-  //     viewport bottom they were buried on device, because a real `env(safe-area-inset-bottom)`
-  //     raises the pill ~34px while a `bottom: N%` ornament does not move. Chromium reports that
-  //     inset as 0, so it is the OPTIMISTIC case here and a screenshot could not show it. The
-  //     invariant is unchanged — Halloween is grounded by lit pumpkins that never eat a nav tap —
-  //     so the reach is fixed and the check kept.
+  //     ★ THE GROUND SCENE MUST CLEAR THE NAV AS THE NAV IS *ON DEVICE*, WHICH IS NOT WHAT THIS
+  //     BROWSER DRAWS. Chromium reports `env(safe-area-inset-bottom)` as 0, so the pill sits
+  //     8..58px above the bottom here and 42..92 on a real iPhone, RISING over anything anchored
+  //     to the viewport bottom. That is how the pumpkins were buried while every screenshot here
+  //     looked fine, so the number this asserts is the DEVICE one (92) and not the measured pill.
+  //     ★ AND THE CAT CANNOT BE A CHILD OF THE PILL. The pill carries `overflow:hidden` — the clip
+  //     that gives NavSnow its rounded corners free — so an ornament sitting ON TOP of the bar is
+  //     cut in half by it. It lives in the shrink wrapper instead, which is also what keeps it
+  //     attached to the bar while the nav scales; assert both, because "it renders" is true of the
+  //     broken version too.
   {
     const { page: ph } = await boot("halloween");
     const pk = await ph.evaluate(() => {
@@ -319,20 +323,35 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
         return st.borderRadius === "26px" && st.overflow === "hidden"
                && d.getBoundingClientRect().width > 300;
       });
-      if (!pill) return null;
-      const svgs = [...pill.querySelectorAll('[data-ornament="pumpkin"]')];
-      // The lit face is what makes a jack-o'-lantern read as a pumpkin rather than an orange
-      // blob, so count the ones that actually HAVE one instead of counting svgs.
-      const lit = svgs.filter(sv => [...sv.querySelectorAll("g,path")]
-        .some(n => (n.getAttribute("fill") || "").startsWith("rgba(255,214,120")));
-      const pr = pill.getBoundingClientRect();
-      return { n: svgs.length, lit: lit.length,
-               inside: svgs.every(sv => { const r = sv.getBoundingClientRect();
-                 return r.top >= pr.top - 1 && r.bottom <= pr.bottom + 1; }),
-               pe: svgs.every(sv => getComputedStyle(sv).pointerEvents !== "auto") };
+      const cat = document.querySelector('[data-ornament="navcat"]');
+      const scene = document.querySelector('[data-ornament="hauntedcorner"]');
+      if (!pill || !cat || !scene) return { pill: !!pill, cat: !!cat, scene: !!scene };
+      const pr = pill.getBoundingClientRect(), cr = cat.getBoundingClientRect();
+      // The wrapper that carries the nav's shrink, and which must hold BOTH.
+      const wrap = cat.parentElement.parentElement;
+      // ★ MEASURE THE INK, NOT THE BOX. `getBoundingClientRect()` on the <svg> returns the
+      //   ELEMENT, which keeps its declared height however small the drawing inside it gets — so
+      //   the first version of this check reported a healthy 152px rise for a scene shrunk to 62.
+      //   Same class as the planted-mark guard, which had to stop reading rects for this reason.
+      const srect = scene.getBoundingClientRect();
+      const vb = (scene.getAttribute("viewBox") || "0 0 1 1").split(/[\s,]+/).map(Number);
+      const bb = scene.getBBox();
+      const inkTop = srect.top + bb.y * (srect.height / vb[3]);
+      return {
+        insidePill: pill.contains(cat),                       // must be false
+        sitsOnBar: Math.abs(cr.bottom - pr.top) <= 6,
+        onScreen: cr.top >= 0 && cr.left >= 0,
+        ridesShrink: wrap.contains(pill) && getComputedStyle(wrap).transform !== "none",
+        pe: getComputedStyle(cat).pointerEvents !== "auto",
+        // How far the scene's tallest ink rises above the viewport bottom.
+        sceneRise: Math.round(innerHeight - inkTop),
+      };
     });
-    check("4n. halloween is grounded by lit pumpkins ON the nav pill, so a safe-area inset cannot bury them",
-      pk && pk.lit >= 3 && pk.inside && pk.pe, JSON.stringify(pk));
+    check("4n. halloween's ground scene clears the nav as it sits ON DEVICE (>=92px), not as Chromium draws it",
+      pk && pk.sceneRise >= 92, JSON.stringify(pk));
+    check("4n1b. the cat sits ON the nav pill, outside its clip, and rides the nav's shrink",
+      pk && pk.insidePill === false && pk.sitsOnBar && pk.onScreen && pk.ridesShrink && pk.pe,
+      JSON.stringify(pk));
     // A nav ornament that covers a button is the exact failure that put the palm and the grass on
     // their own layer. Hit-test rather than reason about z — the palm's 4l7 lesson.
     const navOwn = await ph.evaluate(() => {
@@ -343,7 +362,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
       }
       return out;
     });
-    check("4n2. every nav button is still on top of the pumpkins",
+    check("4n2. every nav button is still on top of the cat",
       navOwn.length === 4 && navOwn.every(Boolean), JSON.stringify(navOwn));
     await ph.close();
   }
@@ -374,7 +393,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   //     which no other check here can see because the decor layer still has plenty of children
   //     without it. Selected by `data-ornament`, not by size or animation-name, so a restyle
   //     cannot make the guard stop seeing the thing it guards.
-  for (const [theme, want] of [["spring", { bee: 2 }], ["halloween", { bat: 1 }]]) {
+  for (const [theme, want] of [["spring", { bee: 2 }], ["halloween", { bat: 1, hauntedcorner: 1 }]]) {
     const { page: po } = await boot(theme);
     const got = await po.evaluate(() => {
       const out = {};
