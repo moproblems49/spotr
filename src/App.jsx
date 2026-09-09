@@ -1,4 +1,4 @@
-// v178091717050
+// v178091717051
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -6153,6 +6153,150 @@ const MAX_DISMISSED_ACTIVITY = 1000;
 // realistic volume; it is still a cap, because rendering thousands of rows would jank the screen,
 // and the badge is displayed as "9+" long before you reach it.
 const ACTIVITY_RENDER_CAP = 300;
+// How far back the two comment-derived event types look. These bound a BOOT-TIME fetch, so they
+// are deliberately smaller than ACTIVITY_RENDER_CAP: a like on a comment carries no timestamp of
+// its own (`comments.likes` is a bare id array, exactly like kudos), so the only thing that can
+// order these rows is the COMMENT's own date — which means scanning further back buys older rows,
+// never newer ones. 100 of my own comments is far more than the list can usefully show.
+const MY_COMMENT_SCAN = 100;
+// Replies are fetched for the posts those comments sit on, so this is the second dimension of the
+// same window. A single busy post could otherwise return thousands of rows for one notification.
+const REPLY_SCAN = 200;
+// How many distinct posts the reply lookup asks about at once — a URL bound, not a row bound.
+const REPLY_POST_CAP = 25;
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ACTIVITY EVENTS — ONE definition, because there used to be two and they drifted.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// The badge and the list are answers to the SAME question ("what is waiting for me"), and they
+// were computed by two separate passes over store.posts. That is the duplicated-formula class this
+// file keeps paying for, and it had already bitten once: the count included events whose actor was
+// missing from store.users while the list dropped them, so a kudos from a withheld profile showed
+// a badge of 1 over a screen reading "No activity yet" — a badge you could not clear by looking at
+// it. Adding five more event types to two parallel passes would have been five more chances at
+// exactly that. There is one pass now; the badge is its LENGTH.
+//
+// Pure and module-level so a test can drive it without rendering the screen.
+export function buildActivityEvents(store, currentUserId) {
+  const users = store.users || [];
+  const findUser = (id) => users.find(u => u.id === id);
+  const posts = store.posts || [];
+  const events = [];
+  const myUsername = (findUser(currentUserId)?.username || "").toLowerCase();
+
+  // ── things done to MY posts ──────────────────────────────────────────────────────────────
+  posts.filter(p => p.userId === currentUserId).forEach(post => {
+    (post.kudos || []).filter(uid => uid !== currentUserId).forEach(uid => {
+      const u = findUser(uid);
+      if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
+    });
+    (post.comments || []).forEach((c, idx) => {
+      if (c.userId === currentUserId) return;
+      const u = findUser(c.userId);
+      if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt, idx });
+    });
+  });
+
+  // ── @mentions of me, on anyone's post ────────────────────────────────────────────────────
+  // Tracked by comment id so the REPLY pass below cannot report the same comment twice. A reply
+  // that names me is a mention: it is the stronger signal, and it wins.
+  const mentionedCommentIds = new Set();
+  if (myUsername) {
+    posts.forEach(post => {
+      (post.comments || []).filter(c => c.userId !== currentUserId).forEach(c => {
+        if (!extractMentions(c.text, users).includes(currentUserId)) return;
+        const u = findUser(c.userId);
+        // A mention on MY OWN post is already reported as a comment above.
+        if (u && post.userId !== currentUserId) {
+          events.push({ type:"mention", user:u, post, comment:c, ts: c.createdAt });
+          if (c.id) mentionedCommentIds.add(c.id);
+        }
+      });
+    });
+  }
+
+  // ── follows and follow requests ──────────────────────────────────────────────────────────
+  // A follow is not attached to a post, so none of the passes above could ever see one — even
+  // though Settings carries a "Follows" notification toggle and the push webhook has always
+  // fired for it. Miss the push and the follow was invisible everywhere in the app.
+  (store.followEvents || []).forEach(fe => {
+    const u = findUser(fe.userId);
+    if (!u) return;
+    events.push({
+      type: fe.status === "pending" ? "follow_request" : "follow",
+      user: u, ts: fe.createdAt || 0, followedAt: fe.createdAt || 0,
+    });
+  });
+
+  // ── likes on MY comments ─────────────────────────────────────────────────────────────────
+  // `comments.likes` is a bare user-id array with no timestamp of its own — the same shape as
+  // kudos — so the comment's own date is the only thing that can order these, and the key below
+  // must not include a timestamp for the same reason kudos keys must not.
+  (store.myComments || []).forEach(mc => {
+    (mc.likes || []).filter(uid => uid !== currentUserId).forEach(uid => {
+      const u = findUser(uid);
+      if (u) events.push({ type:"comment_like", user:u, myComment:mc, ts: mc.createdAt });
+    });
+  });
+
+  // ── replies: someone else commenting after me, on a post I do not own ────────────────────
+  // `comments` has no parent_id, so there is no real threading to read and this is the honest
+  // definition available: they joined a conversation I was already in. Posts I OWN are excluded
+  // because those comments are already reported as "commented on your post".
+  const myEarliestOnPost = new Map();
+  (store.myComments || []).forEach(mc => {
+    if (!mc.postOwnerId || mc.postOwnerId === currentUserId) return;
+    const cur = myEarliestOnPost.get(mc.postId);
+    if (cur == null || mc.createdAt < cur) myEarliestOnPost.set(mc.postId, mc.createdAt);
+  });
+  (store.commentPeers || []).forEach(pc => {
+    if (pc.userId === currentUserId) return;
+    if (pc.id && mentionedCommentIds.has(pc.id)) return;
+    const mineAt = myEarliestOnPost.get(pc.postId);
+    // Strictly after: a comment that predates mine is not a reply to me.
+    if (mineAt == null || !(pc.createdAt > mineAt)) return;
+    const u = findUser(pc.userId);
+    if (u) events.push({ type:"reply", user:u, comment:pc, ts: pc.createdAt });
+  });
+
+  // ── a coach redeemed my code ─────────────────────────────────────────────────────────────
+  // Deliberately NOT gated on the coach being found in store.users, unlike every event above.
+  // The others are social and a nameless row is worthless; this one says somebody can now read
+  // your entire training history and PRs, and that is worth telling you even if the app cannot
+  // name them. `Avatar` already renders "?" for an absent user.
+  (store.coachRedemptions || []).forEach(cr => {
+    events.push({ type:"coach_redeem", user: findUser(cr.coachId), redeemId: cr.id, ts: cr.redeemedAt || 0 });
+  });
+
+  events.sort((a, b) => b.ts - a.ts);
+  return events;
+}
+
+// A stable identity for a row that exists only as a computation.
+//
+// The rule that governs every branch: include a timestamp ONLY when the underlying fact has one
+// of its own. Kudos and comment-likes do not (both are bare id arrays), so they fall back to
+// their parent's date — and a parent re-serialised a millisecond apart would resurrect a row the
+// user had dismissed. Measured, and the reason those two keys look thinner than the rest.
+//
+// A follow DOES carry created_at, so its key can include it, and a genuine unfollow-then-refollow
+// correctly produces a new row. `follow` and `follow_request` share one key on purpose: they are
+// the same row in `follows`, so accepting a request you had already dismissed must not pop the
+// resulting "started following you" back onto the screen.
+export function keyOfActivityEvent(ev) {
+  switch (ev.type) {
+    case "kudos":        return `kudos:${ev.post?.id}:${ev.user?.id}`;
+    case "comment_like": return `clike:${ev.myComment?.id}:${ev.user?.id}`;
+    case "follow":
+    case "follow_request": return `follow:${ev.user?.id}:${ev.followedAt || 0}`;
+    case "reply":        return `reply:${ev.comment?.id}`;
+    case "coach_redeem": return `coach:${ev.redeemId}`;
+    // comment / mention: the comment's own id, with the index as the fallback for an id-less one.
+    // Two id-less comments by the same person previously produced the SAME key, and dismissing
+    // one hid both (measured: 2 rows -> 0 on one click).
+    default: return `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? `i${ev.idx ?? 0}`}`;
+  }
+}
 // Device-only half: find the plugin and get permission. Everything that decides a NUMBER lives in
 // readRecoveryFrom, which takes the plugin as an argument so a test can hand it a fake one.
 async function readRecovery() {
@@ -6471,6 +6615,13 @@ function loadStore() {
     seenOnboarding: false,
     bodyLog: [], // body tracking entries: { id, date, weight, measurements:{}, photoData }
     customExercises: [], // user-created exercises: { id, name, muscle, equipment }
+    // Activity sources that are not attached to a post. All server-derived and replaced wholesale
+    // by loadUserData, so they are listed here only so a store saved by an older build cannot hand
+    // the Activity screen an undefined collection.
+    followEvents: [],     // [{ userId, status, createdAt }] — every follow row pointing at me
+    myComments: [],       // [{ id, postId, text, likes, createdAt, postOwnerId }]
+    commentPeers: [],     // [{ id, postId, userId, text, createdAt }] — others on those posts
+    coachRedemptions: [], // [{ id, coachId, redeemedAt }]
   };
   try {
     const r = localStorage.getItem(SK);
@@ -20180,7 +20331,10 @@ function AppInner() {
       // Load follows. `status` matters: a follow of a PRIVATE account starts as 'pending' and
       // grants nothing until the target accepts, so only ACCEPTED rows count as following — the
       // counts on screen must mean the same thing the RLS policies mean.
-      const follows = await sb.query(`follows?select=follower_id,following_id,status`, {}, tok);
+      // `created_at` is selected for ACTIVITY, not for the counts: a follow is not attached to a
+      // post, so it is the only timestamp that can date a "started following you" row. It rides on
+      // this existing query rather than a second round trip.
+      const follows = await sb.query(`follows?select=follower_id,following_id,status,created_at`, {}, tok);
       const accepted = (follows || []).filter(f => (f.status || "accepted") === "accepted");
       const pending  = (follows || []).filter(f => f.status === "pending");
       // Load my blocked users (best-effort; table may not exist on older DBs)
@@ -20189,9 +20343,63 @@ function AppInner() {
         const blocks = await sb.query(`blocked_users?blocker_id=eq.${currentUserId}&select=blocked_id`, {}, tok);
         blockedIds = (blocks || []).map(b => b.blocked_id);
       } catch (e) { /* table missing or RLS — ignore, leave empty */ }
+
+      // ── ACTIVITY SOURCES THAT ARE NOT ATTACHED TO A POST ──────────────────────────────
+      // Activity was derived entirely from `store.posts`, which can only ever answer "who
+      // engaged with something I posted". A follow, a coach-link redemption and a like on a
+      // comment I left on SOMEONE ELSE'S post are none of those, so they were invisible — the
+      // follow one visibly so, since Settings has a "Follows" toggle and the push webhook has
+      // always fired for it. These three fetches are what makes them renderable.
+      //
+      // ALL BEST-EFFORT, and that is load-bearing rather than defensive habit: this block runs
+      // inside loadUserData, which is what sets `dbReady`. A throw here would take out the whole
+      // boot for a NOTIFICATION LIST. Each one degrades to "no rows of this kind" instead.
+      let coachRedemptions = [], myComments = [], commentPeers = [];
+      try {
+        const [redeemed, mine] = await Promise.all([
+          // A coach who redeemed my code can read my entire training history and PRs — the
+          // highest-consequence grant the app issues, and until now it happened silently.
+          // `revoked_at is null` because a link I have already revoked is not news.
+          sb.query(`coach_links?athlete_id=eq.${currentUserId}&redeemed_at=not.is.null&revoked_at=is.null&select=id,coach_id,redeemed_at`, {}, tok).catch(() => []),
+          // My own comments, with the post's OWNER embedded so a reply can be told apart from a
+          // comment on my own post (which the post-derived path already reports). Bounded — this
+          // feeds a notification list, not an archive.
+          sb.query(`comments?user_id=eq.${currentUserId}&select=id,post_id,text,likes,created_at,posts!inner(id,user_id)&order=created_at.desc&limit=${MY_COMMENT_SCAN}`, {}, tok).catch(() => []),
+        ]);
+        coachRedemptions = (redeemed || []).map(r => ({ id: r.id, coachId: r.coach_id, redeemedAt: new Date(r.redeemed_at).getTime() }));
+        myComments = (mine || []).map(c => ({
+          id: c.id, postId: c.post_id, text: c.text || "",
+          likes: Array.isArray(c.likes) ? c.likes : [],
+          createdAt: new Date(c.created_at).getTime(),
+          postOwnerId: c.posts?.user_id || null,
+        }));
+        // Comments by OTHER people on the posts I commented on. This is what a "reply" has to be
+        // here: `comments` has no parent_id, so there is no true threading to read. Scoped to the
+        // posts I am actually in, and ordered so the newest are kept when the cap bites.
+        // CAPPED, and the cap is about the URL rather than the row count: these ids go into a
+        // `post_id=in.(...)` list, and 100 uuids is a ~3.8kB request line. That is inside the
+        // usual 8kB limit but not comfortably inside every proxy's — and Cloudflare fronts this.
+        // myComments is already newest-first, so the cap keeps the most recent conversations,
+        // which is the only place a reply worth notifying about can be.
+        const otherPostIds = [...new Set(myComments.filter(c => c.postOwnerId && c.postOwnerId !== currentUserId).map(c => c.postId))].slice(0, REPLY_POST_CAP);
+        if (otherPostIds.length) {
+          const rows = await sb.query(`comments?post_id=in.(${otherPostIds.join(",")})&user_id=neq.${currentUserId}&select=id,post_id,user_id,text,created_at&order=created_at.desc&limit=${REPLY_SCAN}`, {}, tok).catch(() => []);
+          commentPeers = (rows || []).map(c => ({ id: c.id, postId: c.post_id, userId: c.user_id, text: c.text || "", createdAt: new Date(c.created_at).getTime() }));
+        }
+      } catch (e) { devError("activity sources:", e); }
+
       setStore(prev => ({
         ...prev,
         blockedUsers: blockedIds,
+        coachRedemptions,
+        myComments,
+        commentPeers,
+        // Every follow row pointing AT me, dated. `followRequests` below stays as the bare id list
+        // it has always been (the followers sheet and the profile button both read it); this is the
+        // same facts with timestamps, which is all Activity needs and all it should own.
+        followEvents: (follows || [])
+          .filter(f => f.following_id === currentUserId && f.follower_id !== currentUserId)
+          .map(f => ({ userId: f.follower_id, status: f.status || "accepted", createdAt: f.created_at ? new Date(f.created_at).getTime() : 0 })),
         // People waiting on ME to approve them, and the requests I've sent that aren't approved
         // yet (so the button can read "Requested" instead of pretending it worked).
         followRequests: pending.filter(f => f.following_id === currentUserId).map(f => f.follower_id),
@@ -21778,32 +21986,19 @@ function AppInner() {
   const [showActivity, setShowActivity] = useState(false);
 
   // Current total of activity items on the user's own posts
-  const currentActivityCount = (() => {
-    // No time window — see MAX_DISMISSED_ACTIVITY. This must match what the Activity LIST shows,
-    // or the badge and the screen disagree about what exists.
-    let count = (store.posts || [])
-      .filter(p => p.userId === currentUserId)
-      .reduce((a, pt) => {
-        // COUNT ONLY WHAT THE LIST CAN RENDER. The Activity list drops an event whose actor is
-        // missing from store.users (`if (u) events.push`); this used to count it anyway, so a
-        // kudos from a withheld or deleted profile produced a badge of 1 over a screen reading
-        // "No activity yet" — a badge you cannot clear by looking at it.
-        const known = (id) => !!store.users.find(u => u.id === id);
-        const kudosFromOthers = (pt.kudos || []).filter(x => x !== currentUserId && known(x)).length;
-        const commentsFromOthers = (pt.comments || []).filter(c => c.userId !== currentUserId && known(c.userId)).length;
-        return a + kudosFromOthers + commentsFromOthers;
-      }, 0);
-    // @mentions of me in comments on others' posts
-    (store.posts || []).forEach(p => {
-      if (p.userId === currentUserId) return; // already counted above
-      (p.comments || []).filter(c => c.userId !== currentUserId && store.users.find(u => u.id === c.userId)).forEach(c => {
-        if (extractMentions(c.text, store.users).includes(currentUserId)) count++;
-      });
-    });
-    // Activity is now strictly things directed at you — kudos, comments, mentions.
-    // (Removed friend-post counting; that lived in the main feed and inflated the badge.)
-    return count;
-  })();
+  // THE BADGE IS THE EVENT LIST'S LENGTH — not a second pass that tries to agree with it.
+  // It used to be its own reduce over store.posts, and the two had already drifted (see
+  // buildActivityEvents). No time window — see MAX_DISMISSED_ACTIVITY.
+  //
+  // Memoised because this now walks four more collections and runs on EVERY render of AppInner,
+  // which re-renders on things as frequent as a keystroke. The dependency list is every input
+  // buildActivityEvents reads.
+  const activityEvents = useMemo(
+    () => buildActivityEvents(store, currentUserId),
+    [store.posts, store.users, store.followEvents, store.myComments, store.commentPeers,
+     store.coachRedemptions, currentUserId]
+  );
+  const currentActivityCount = activityEvents.length;
 
   function markActivitySeen() {
     setSeenActivityCount(currentActivityCount);
@@ -21825,7 +22020,12 @@ function AppInner() {
   // happened to be on the feed page -> activity on all of your posts). A persisted count needs a
   // fresh re-baseline whenever its meaning changes, or every existing user gets a phantom badge on
   // first launch for kudos they already read. The v2 guard had already been burned by bundle q.
-  const REBASELINE_KEY = "seshd_activity_rebaselined_v3";
+  // v4: bumped for the same reason a third time. Activity gained five event types (follows,
+  // follow requests, likes on your comments, replies, coach-code redemptions), so the count means
+  // something new again — a user with 40 existing followers would open the app to a badge of 40
+  // for people who followed them months ago. This is the documented rule, not a precaution: a
+  // persisted COUNT needs a fresh re-baseline whenever what it counts changes.
+  const REBASELINE_KEY = "seshd_activity_rebaselined_v4";
   useEffect(() => {
     // WAIT FOR THE FEED, NOT JUST FOR dataLoading. `dataLoading` tracks loadUserData and clears
     // before loadFeed returns, so re-baselining on it alone banks a count of 0 and the phantom
@@ -22094,9 +22294,16 @@ function AppInner() {
     const tok = tokenRef.current || session?.access_token || loadSession()?.access_token;
     const prevReqs = store.followRequests || [];
     const prevUsers = store.users;
+    const prevEvents = store.followEvents || [];
     setStore(prev => ({
       ...prev,
       followRequests: (prev.followRequests || []).filter(id => id !== otherId),
+      // Keep the Activity row in step with the answer. Accepting turns "wants to follow you" into
+      // "started following you" IN PLACE (same `follows` row, same key, so a dismissal still
+      // holds); declining deletes the row, so the event goes with it.
+      followEvents: accept
+        ? (prev.followEvents || []).map(f => f.userId === otherId ? { ...f, status:"accepted" } : f)
+        : (prev.followEvents || []).filter(f => f.userId !== otherId),
       users: !accept ? prev.users : prev.users.map(u => {
         if (u.id === currentUserId) return { ...u, followers: [...new Set([...(u.followers||[]), otherId])] };
         if (u.id === otherId) return { ...u, following: [...new Set([...(u.following||[]), currentUserId])] };
@@ -22110,7 +22317,7 @@ function AppInner() {
       haptic("tap");
     } catch (e) {
       devError("follow request error:", e);
-      setStore(prev => ({ ...prev, followRequests: prevReqs, users: prevUsers }));
+      setStore(prev => ({ ...prev, followRequests: prevReqs, users: prevUsers, followEvents: prevEvents }));
       toast("Couldn't update that request", "error");
     }
   }
@@ -23301,52 +23508,11 @@ function AppInner() {
           <EdgeSwipeBack onBack={() => setShowActivity(false)}
             style={{ background:C.bg, height:"100%", display:"flex", flexDirection:"column", color:C.text, fontFamily:F }}>
             {(() => {
-        // NO TIME WINDOW — activity stays until dismissed, and this must match the badge count.
-        const myPosts = (store.posts||[]).filter(p => p.userId === currentUserId);
-        const events = [];
-        const myUsername = (store.users.find(u => u.id === currentUserId)?.username || "").toLowerCase();
-        myPosts.forEach(post => {
-          (post.kudos||[]).filter(uid => uid !== currentUserId).forEach(uid => {
-            const u = store.users.find(x => x.id === uid);
-            if (u) events.push({ type:"kudos", user:u, post, ts: post.createdAt });
-          });
-          (post.comments||[]).forEach((c, idx) => {
-            if (c.userId === currentUserId) return;
-            const u = store.users.find(x => x.id === c.userId);
-            if (u) events.push({ type:"comment", user:u, post, comment:c, ts: c.createdAt, idx });
-          });
-        });
-        // @mentions of me — scan comments on ALL visible posts (not just mine) for my handle
-        if (myUsername) {
-          (store.posts||[]).forEach(post => {
-            (post.comments||[]).filter(c => c.userId !== currentUserId).forEach(c => {
-              const mentioned = extractMentions(c.text, store.users).includes(currentUserId);
-              if (mentioned) {
-                const u = store.users.find(x => x.id === c.userId);
-                // avoid duplicating an event already captured as a comment-on-my-post
-                const dup = post.userId === currentUserId;
-                if (u && !dup) events.push({ type:"mention", user:u, post, comment:c, ts: c.createdAt });
-              }
-            });
-          });
-        }
-        // Note: removed friend_post / friend_pr events — Activity is now strictly things
-        // directed at you (kudos, comments, mentions). Friend posts already appear in your
-        // main feed; piling them into Activity made the badge noisy with many follows.
-        events.sort((a,b) => b.ts - a.ts);
-        // A stable identity for a row that exists only as a computation. Kudos carry no
-        // timestamp of their own (they are a bare user-id array), so their key leans on the
-        // post and the actor, which is exactly what makes them unique anyway.
-        // A kudos is unique by (post, actor) — it is a bare entry in the post's user-id array,
-        // so there is nothing else to key on and nothing else needed. It must NOT include the
-        // timestamp: kudos carry none of their own and fall back to `post.createdAt`, which
-        // means a post re-serialised a millisecond apart resurrects a dismissed row (measured).
-        // A comment keys on its own id; the index is the fallback for a comment that somehow has
-        // none, because two id-less comments by the same person previously produced the SAME key
-        // and dismissing one hid both (measured: 2 rows -> 0 on one click).
-        const keyOfEvent = (ev) => ev.type === "kudos"
-          ? `kudos:${ev.post?.id}:${ev.user?.id}`
-          : `${ev.type}:${ev.post?.id}:${ev.user?.id}:${ev.comment?.id ?? `i${ev.idx ?? 0}`}`;
+        // NO TIME WINDOW — activity stays until dismissed. `activityEvents` is the SAME array the
+        // badge counts (see buildActivityEvents); the screen and the badge cannot disagree about
+        // what exists, because there is nothing left for them to disagree with.
+        const events = activityEvents;
+        const keyOfEvent = keyOfActivityEvent;
         const hiddenKeys = events.map(keyOfEvent).filter(k => dismissedActivity[k]);
         const hiddenCount = hiddenKeys.length;
         const visible = events.filter(ev => !dismissedActivity[keyOfEvent(ev)]);
@@ -23393,25 +23559,47 @@ function AppInner() {
               <div style={{ textAlign:"center", padding:"60px 20px", color:C.sub }}>
                 <svg width="46" height="64" viewBox="0 0 40 56" style={{ display:"block", margin:"0 auto 12px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
                 <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
-                <div style={{ fontSize:13, lineHeight:1.5 }}>When friends like, comment on, or mention you, you'll see it here.</div>
+                <div style={{ fontSize:13, lineHeight:1.5 }}>Follows, likes, comments, replies and mentions all land here.</div>
               </div>
             ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => (
               <SwipeToDismissRow key={keyOfEvent(ev)} C={C} onDismiss={() => dismissActivity(keyOfEvent(ev))}>
               <div className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <Avatar user={ev.user} size={40} C={C} onClick={() => presentProfile(ev.user.id)}/>
+                <Avatar user={ev.user} size={40} C={C} onClick={ev.user ? () => presentProfile(ev.user.id) : undefined}/>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
-                    <span style={{ fontWeight:600 }}>{ev.user.username} </span>
+                    {/* A coach redemption is the one row that may have no known actor — it is
+                        reported anyway, so it needs a name to fall back on. */}
+                    <span style={{ fontWeight:600 }}>{ev.user?.username || "Someone"} </span>
                     {ev.type === "kudos" ? "liked your post"
                       : ev.type === "comment" ? `commented: "${ev.comment?.text}"`
                       : ev.type === "mention" ? `mentioned you: "${ev.comment?.text}"`
+                      : ev.type === "follow" ? "started following you"
+                      : ev.type === "follow_request" ? "wants to follow you"
+                      : ev.type === "comment_like" ? `liked your comment: "${ev.myComment?.text}"`
+                      : ev.type === "reply" ? `replied: "${ev.comment?.text}"`
+                      // Says what the coach can now SEE, not merely that a code was used. The
+                      // point of surfacing this at all is that it is an access grant.
+                      : ev.type === "coach_redeem" ? "redeemed your coach code — they can now see your workouts and PRs"
                       : ev.type === "friend_pr" ? "hit a new PR"
                       : ev.type === "friend_post" ? (ev.verb || "shared a post")
                       : ""}
                   </div>
                   <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{timeAgo(ev.ts)}</div>
                 </div>
-                {ev.post.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
+                {/* A request is the only row that ASKS something, so its answer lives on it.
+                    Both buttons go through handleFollowRequest, which writes to `follows` and
+                    rolls the optimistic update back if the write fails — a local-only setState
+                    here would be the dominant bug class in this app (it would look approved and
+                    be pending again on the next foreground). */}
+                {ev.type === "follow_request" && (
+                  <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                    <button onClick={() => handleFollowRequest(ev.user.id, true)}
+                      style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:RADIUS.pill, padding:"6px 12px", fontSize:12, fontWeight:700, fontFamily:F, cursor:"pointer" }}>Accept</button>
+                    <button onClick={() => handleFollowRequest(ev.user.id, false)}
+                      style={{ background:"none", color:C.sub, border:`1px solid ${C.border}`, borderRadius:RADIUS.pill, padding:"6px 10px", fontSize:12, fontWeight:600, fontFamily:F, cursor:"pointer" }}>Decline</button>
+                  </div>
+                )}
+                {ev.post?.workout && <div style={{ fontSize:11, color:C.sub, flexShrink:0 }}>{ev.post.workout.name}</div>}
                 {/* Dismiss. Nothing is deleted server-side — the row is a computation over your
                     posts, and the kudos or comment itself still exists on the post. This only
                     says "stop showing me this one", and the header offers it back. */}
