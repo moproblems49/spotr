@@ -462,9 +462,16 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
           if (vb.length !== 4) continue;               // no viewBox: nothing to clip against
           let bb = null; try { bb = s.getBBox(); } catch { /* not rendered */ }
           if (!bb || !bb.width) continue;
-          const pad = 0.6;                             // stroke ends and rounding
-          const fits = bb.x >= vb[0] - pad && bb.y >= vb[1] - pad
-            && bb.x + bb.width <= vb[0] + vb[2] + pad && bb.y + bb.height <= vb[1] + vb[3] + pad;
+          // ★ THE PAD IS RELATIVE BECAUSE getBBox LIES ABOUT ROTATED CHILDREN. It returns the
+          //   axis-aligned bound of the rotated bounding BOX, not of the rotated SHAPE, so a
+          //   `rotate(24)` ellipse inflates it. Measured on Spring's Butterfly (viewBox 19x16):
+          //   getBBox said -0.64..19.64 while a canvas pixel scan of the same glyph put the real
+          //   paint at 0.75..18.2, touching no edge. The defect this check exists for is a whole-
+          //   glyph normalisation error and is enormous (the bat overflowed its box by ~90% of its
+          //   height), so a percentage tolerance still catches it while absorbing rotation slop.
+          const padX = Math.max(0.6, vb[2] * 0.06), padY = Math.max(0.6, vb[3] * 0.06);
+          const fits = bb.x >= vb[0] - padX && bb.y >= vb[1] - padY
+            && bb.x + bb.width <= vb[0] + vb[2] + padX && bb.y + bb.height <= vb[1] + vb[3] + padY;
           if (!fits) out.push({ id: s.dataset.ornament || s.querySelector("[data-ornament]")?.dataset.ornament || "?",
             vb: vb.join(" "), ink: [bb.x, bb.y, bb.width, bb.height].map(v => +v.toFixed(1)).join(" ") });
         }
