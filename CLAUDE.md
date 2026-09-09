@@ -5456,6 +5456,99 @@ lit and below the nav, all four nav buttons still hit-test to themselves, and qu
 balls on the pitch with the two discs **not the same colour**. Red-proofed at 2 failures with 4n2
 (the control) staying green.
 
+## ★★★ ACTIVITY STOPPED BEING "WHO TOUCHED MY POSTS" (Sep 9)
+Mo: "The Notification Center/tab should show follows, likes, comments and what else?" — and the
+premise was already wrong: **follows were NOT in there.** Every row was derived from `store.posts`,
+which can only answer "who engaged with something I posted", so a follow — not attached to any post
+— had nowhere to go. The app promised one anyway: Settings carries a **"Follows" toggle** and
+`send-activity-push` has always fired *"X started following you"*. Miss the push and the follow left
+no trace in the app at all. Added: follows, follow requests (with inline Accept/Decline), likes on
+my own comments, replies, and coach-code redemptions.
+**No schema change was needed and that was CHECKED, not assumed:** `follows.created_at` and
+`coach_links.redeemed_at` already existed, so `created_at` rides on the EXISTING follows query
+rather than a second round trip. Only the two comment queries are new.
+**★ THE REAL WORK WAS COLLAPSING TWO PASSES INTO ONE.** The badge and the list were separate
+computations over `store.posts` and had already drifted once (the count included events whose actor
+was unknown while the list dropped them — a badge of 1 over a screen reading "No activity yet",
+unclearable by looking at it). Adding five types to two parallel passes is five more chances at
+exactly that. `buildActivityEvents(store, currentUserId)` is the only definition now and **the badge
+is its LENGTH**; `keyOfActivityEvent` likewise. Both module-level and exported, so they are testable
+without rendering the screen.
+**Definitions where the schema had no direct answer, and they are judgement calls worth knowing:**
+`comments` has **no `parent_id`**, so a "reply" is *someone commenting after me on a post I do not
+own* — posts I own already report "commented on your post". `comments.likes` is a **bare id array
+with no timestamp**, exactly the kudos shape, so its key omits one for exactly the kudos reason.
+**★ THE COACH ROW IS DELIBERATELY NOT GATED ON A KNOWN ACTOR, unlike every other type.** The others
+are social and a nameless row is worthless; this one says *somebody can now read your entire
+training history and PRs*. `Avatar` already renders "?" for an absent user — but that means every
+`ev.user.x` on that row needs a guard, and `ev.post.workout` had to become `ev.post?.workout`.
+**`follow` and `follow_request` share ONE dismissal key** (`follow:<id>:<created_at>`): they are one
+row in `follows`, so accepting a request you had dismissed must not pop the resulting "started
+following you" back onto the screen. A follow DOES carry its own timestamp, so unlike kudos its key
+can include one, and a genuine unfollow-then-refollow correctly makes a new row.
+**Re-baseline bumped to v4** — third time this rule has been paid. `seenActivityCount` is a
+persisted COUNT and this changed what it counts; without it a user with 40 followers opens the app
+to a badge of 40 for people who followed them months ago.
+**All three fetches are BEST-EFFORT and that is load-bearing:** they run inside `loadUserData`,
+which is what sets `dbReady`, so a throw would take out the entire boot for a NOTIFICATION LIST.
+The `in.()` list is capped at 25 posts for a **URL** reason, not a row reason — 100 uuids is a
+~3.8kB request line, inside the usual 8kB limit but not inside every proxy's, and Cloudflare fronts
+this.
+**★ VERIFIED AGAINST THE REAL POSTGREST, NOT THE STUB.** Both new URLs returned **200 `[]`** through
+`net.http_get` with the public anon key — and the negative control, a deliberately bad embed,
+returned **400 PGRST200 "Could not find a relationship"**. Without that control the two 200s would
+have been a query that could not fail. The audit went one better and got REAL ROWS back, which is
+what proved `posts!inner(...)` returns an **object** and not an array — had it been an array,
+`c.posts?.user_id` would be `null` and the whole reply feature would have shipped silently dead.
+
+### ★★ THE AUDIT FOUND THREE, AND THE FIRST IS A NEW SHAPE OF AN OLD SCAR
+Run BEFORE publishing, which is the whole point of that rule — none of this reached a phone.
+- **★★ ONE COMMENT HAD TWO DISMISSAL KEYS, AND WHICH ONE IT GOT WAS DECIDED BY FEED PAGINATION.**
+  A comment on a post I do not own is a `mention` while that post is on the newest-30 feed page
+  (that pass walks `store.posts`) and a `reply` once it ages off (that pass walks the separately
+  fetched `commentPeers`) — and the dedup between them can only fire while BOTH sources see it.
+  Keyed by type, dismissing it in one state left a key that stopped matching in the other, so the
+  same comment came back **un-dismissed with the "Show N hidden" affordance gone** — nothing on
+  screen said it had ever been dismissed. Measured in both directions. This is the documented
+  "a key that changes spuriously resurrects a dismissed row" class, driven by PAGINATION rather
+  than by re-serialisation. Fix: `comment`/`mention`/`reply` all key on the **comment id alone**.
+  They are disjoint for any one comment, so one key per comment cannot collide across them.
+  **The general rule: never key a dismissal on a TYPE that is itself derived from which page of a
+  paginated list the source happened to be on.**
+- **★ A BLOCKED PERSON WAS REPORTED IN ACTIVITY, USERNAME AND FULL COMMENT TEXT — AND THE SERVER
+  CANNOT COVER IT.** The `comments` SELECT policy applies `is_blocked_between` to the POST'S OWNER
+  only, never to the comment's AUTHOR, so a blocked account's text arrives perfectly legitimately.
+  `PostCard` already filters blocked authors out of a post's comments for exactly this reason; that
+  filter never existed on this screen. **Pre-existing for kudos/comments, newly worse**:
+  `commentPeers` pulls comments from posts NOT on the feed page — content that previously never
+  reached the client at all — and turns it into a notification. Filtered at the FINDER so it covers
+  every event type at once, and `store.blockedUsers` added to the memo deps with it. Note the block
+  is symmetric, so this also covers someone who blocked YOU.
+- **A whole-array rollback discarded whatever a refetch brought in mid-flight** (measured: a new
+  follower vanished from Activity until the next refetch). Targeted at the one row now. **NOT the
+  `nextOrder` scar** — the audit checked specifically: `prevRow` is read eagerly, not captured by a
+  side effect inside a `setStore` updater, so it can never be spuriously `[]`.
+- **Adjacent, pre-existing, fixed: `handleSignOut` never cleared `seshd_seen_activity_count` or
+  `seshd_dismissed_activity`.** That list grew twice for this exact shared-phone reason and neither
+  pass reached these two. The seen count is a persisted BASELINE, so the next account inherits it
+  and sees NO badge until its own activity exceeds it — and this release makes that number much
+  larger. **Clearing the keys is not enough**: both are `useState` initialisers and `AppInner` never
+  unmounts across a sign-out, so the state has to be reset too.
+**Guard: `pw_activityevents`** (28 checks), each fix red-proofed SEPARATELY — the block filter at
+**4 failures** (rows 7 vs 5, badge 7) and the key fix at **2**, with every `[control]` staying green.
+**★ AND TWO OF ITS OWN CHECKS WERE DEFECTIVE FIRST, BOTH DOCUMENTED CLASSES.** Section 7 used a
+`:has-text` locator plus `.last()` which silently fell through to the last Dismiss button on screen
+— a different row entirely, since rows sort newest-first — so it **reported PASS having dismissed
+the wrong row**, and the real check then failed for a reason that had nothing to do with the app.
+And section 6 was **VACUOUS**: the blocked user was not in the profiles stub, so `buildActivityEvents`
+dropped their rows as "unknown actor" rather than as "blocked", and the check passed against a build
+with **no block filter at all**. *A fixture that is accidentally right because of what it omits is a
+future misdiagnosis, not a passing test* — and *a red-proof that stays green means the mutation was
+wrong at least as often as it means the check is worthless.*
+**Honest limit on live data:** `coach_links` has **0 rows** and `comments` has 17, so the coach,
+reply and comment-like types are mostly guards against future events rather than things anyone will
+see this week. The follow types have real data immediately.
+
 ## ★★ MO CUT THE GRAVEYARD AND THE NAV PUMPKINS ONE DAY AFTER SHIPPING THEM (Sep 9)
 Three asks, all from his phone: "The stuff you added for Halloween on bottom left, move to bottom
 right and change them to something else"; "for all 3 themes change the pictures we have on the 3
