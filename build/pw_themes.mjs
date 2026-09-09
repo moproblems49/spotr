@@ -420,7 +420,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   //     so are the two ground anchors that sway in place (grass, and the sun's rotation) — Mo asked
   //     for the things that MOVE across the screen, which are the ones that cross copy.
   for (const [theme, n] of [["winter", 15], ["spring", 12], ["fall", 10],
-                            ["summer", 6], ["halloween", 6], ["quadball", 4]]) {
+                            ["summer", 6], ["halloween", 9], ["quadball", 4]]) {
     const { page: pm } = await boot(theme);
     const got = await pm.evaluate(() => {
       const gs = [...document.querySelectorAll(".seshd-decor g[opacity], .seshd-decor-back g[opacity]")];
@@ -499,6 +499,26 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     check(`4r. ${theme}: no decor glyph is cut off by its own viewBox`,
       clipped && clipped.length === 0, JSON.stringify(clipped));
     await pc.close();
+  }
+
+  // ── 4s. ALL SIX GHOST DRAWINGS ARE USED (Mo: "we have multiple ghosts pictures so make sure to
+  //     use all 6 different ghosts for variety"). Five of the six had been sitting in the sheet
+  //     unused, and the failure this guards is the quiet one: a regression to a single glyph still
+  //     renders ghosts, still animates, still passes 4o and 4p, and only looks like less variety.
+  //     So compare the actual PATH DATA, not the count of ghosts — six spawns of one drawing is
+  //     exactly the state this exists to catch, and it is indistinguishable by any other check.
+  {
+    const { page: pg } = await boot("halloween");
+    const g = await pg.evaluate(() => {
+      const els = [...document.querySelectorAll('[data-ornament="ghost"]')];
+      const shapes = new Set(els.map(e => [...e.querySelectorAll("path")]
+        .map(n => n.getAttribute("d")).join("|")));
+      return { spawned: els.length, distinct: shapes.size,
+               indices: [...new Set(els.map(e => e.dataset.ghost))].sort() };
+    });
+    check("4s. halloween draws all six ghost glyphs, not one repeated",
+      g.spawned === 6 && g.distinct === 6 && g.indices.length === 6, JSON.stringify(g));
+    await pg.close();
   }
 
   // And a theme with no `decor` must render no layer at all.

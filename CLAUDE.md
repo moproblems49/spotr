@@ -5508,6 +5508,19 @@ were both shipped the day before, both with green guards, and both are gone.
   PASSING. It converts `getBBox()` through the viewBox scale now. Same class as the planted-mark
   guard, which had to stop reading rects for exactly this reason. Red-proofed at both checks
   failing with real numbers (`sceneRise:70`, `insidePill:true`, `ridesShrink:false`).
+- **★ AND FIVE OF THE SIX GHOST DRAWINGS HAD BEEN SITTING UNUSED** (Mo: "we have multiple ghosts
+  pictures so make sure to use all 6 different ghosts for variety"). The sheet draws six and the
+  extraction wired one, so two thirds of the art shipped as dead weight — and the single entry ALSO
+  carried the white backing copy of its own outline, so it cost 1,994 characters where the filtered
+  glyph is 997. All six together are 6.4k. **One spawn per drawing, indexed, NOT a random pick from
+  six**: "use all six" is a property of the array, and a random pick can legitimately draw the same
+  ghost three times. `left` is spread by index too, because six independent randoms over one range
+  clump often enough to look like a bug and a ghost is on screen for ~30s.
+  **★ THE GUARD COMPARES PATH DATA, NOT THE INDEX, AND THE RED-PROOF IS WHY.** Pointing every spawn
+  at `ghosts[0]` still reports six ghosts, six distinct `data-ghost` indices, six animations and
+  passes 4o and 4p — it is invisible to every other check and looks only like less variety.
+  `pw_themes` 4s asserts six DISTINCT sets of `d` attributes; red-proofed at `distinct:1` with
+  `indices` still reading 0-5, which is exactly the trap an index-based check would have fallen into.
 - **4n1b is the one that matters structurally**: it asserts the cat is NOT a descendant of the pill,
   sits on its top edge, and shares a transformed ancestor with it. "It renders" is true of the
   broken version too.
