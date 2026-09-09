@@ -444,6 +444,37 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     await pi.close();
   }
 
+  // ── 4r. NO DECOR GLYPH MAY BE CLIPPED BY ITS OWN viewBox. The traced ornaments are emitted into
+  //     a normalised box and the call site writes `viewBox="0 0 w h"` from the numbers that come
+  //     back — so a normaliser that pads or centres the ink silently cuts every glyph whose aspect
+  //     is not 1:1. That shipped once: the bat (100 x 35.8) was the top THIRD of a bat in the
+  //     source, and a frozen screenshot could not see it because a traveller is usually off-screen.
+  //     Asking the geometry directly is what catches it — getBBox is the drawn ink, so ink outside
+  //     the viewBox is by definition invisible on screen.
+  for (const theme of ["halloween", "fall", "summer", "winter", "spring", "quadball"]) {
+    const { page: pc } = await boot(theme);
+    const clipped = await pc.evaluate(() => {
+      const out = [];
+      for (const sel of [".seshd-decor svg", ".seshd-decor-back svg"])
+        for (const s of document.querySelectorAll(sel)) {
+          if (s.dataset.decorBleed) continue;          // deliberately overruns its box (CornerBranch)
+          const vb = (s.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
+          if (vb.length !== 4) continue;               // no viewBox: nothing to clip against
+          let bb = null; try { bb = s.getBBox(); } catch { /* not rendered */ }
+          if (!bb || !bb.width) continue;
+          const pad = 0.6;                             // stroke ends and rounding
+          const fits = bb.x >= vb[0] - pad && bb.y >= vb[1] - pad
+            && bb.x + bb.width <= vb[0] + vb[2] + pad && bb.y + bb.height <= vb[1] + vb[3] + pad;
+          if (!fits) out.push({ id: s.dataset.ornament || s.querySelector("[data-ornament]")?.dataset.ornament || "?",
+            vb: vb.join(" "), ink: [bb.x, bb.y, bb.width, bb.height].map(v => +v.toFixed(1)).join(" ") });
+        }
+      return out;
+    });
+    check(`4r. ${theme}: no decor glyph is cut off by its own viewBox`,
+      clipped && clipped.length === 0, JSON.stringify(clipped));
+    await pc.close();
+  }
+
   // And a theme with no `decor` must render no layer at all.
   const { page: p2 } = await boot("dark");
   check("4h. an undecorated theme renders no decor layer",

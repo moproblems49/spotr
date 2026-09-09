@@ -1,4 +1,4 @@
-// v178091717047
+// v178091717048
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1336,6 +1336,162 @@ function themeDecorOf(key) {
 // Two inks, because a web and a spider have different jobs. The web is ambience and must lose to
 // the wordmark it sits behind; the spider is the punchline and gets to be seen. Both are well
 // under the text-contrast floor on purpose — decoration that competes with the copy is the bug.
+// ★★ THE HALLOWEEN GLYPHS ARE TRACED FROM LICENSED VECTOR ART, NOT HAND-DRAWN.
+// Mo bought three decoration sets and asked for the themes to look better; this is that set for
+// Halloween. Every entry is one ornament lifted out of the sheet, normalised into a 100-unit box
+// and rounded to ONE decimal, which is where the size saving is: the raw art carries 4-digit
+// coordinates with 2 decimals (~7 chars a number) and 0.1 of a 100-unit box at the 34px these
+// render at is 0.034px, below a device pixel even at 3x.
+// ★ EACH ENTRY IS AN ARRAY OF `d` STRINGS, ONE PER ORIGINAL FILL, AND THAT IS LOAD-BEARING.
+// The sheet punches eyes, jack-o'-lantern faces and window openings as REVERSE-WOUND SUBPATHS OF
+// THE SAME FILL. Flattening a glyph into one path per subpath welds every one of those holes shut
+// — the first extraction came back with an owl that had no eyes and a skull with no sockets, and
+// nothing about it looked broken. Keep the grouping; render one <path> per string in `d`.
+// The source .ai is NOT in this repo and must not be added: the repo is public and the art is
+// licensed for the app, not for redistribution. The extractor lives in the session scratchpad.
+const HW_ART = {
+  ghost: { w: 84.6, h: 100, d: [
+    "M25 10.1C21.2 16.5 21.8 24.2 20 31.2C12 29.8 13.7 18 6 16.1C2.2 15.3 0 19.7 .6 22.9C1.6 34.2 10.4 42.4 18.3 " +
+      "49.6C22.4 53.1 23.2 58.7 25.6 63.3C29.7 71.6 36.3 79.1 45 82.7C54.3 87.2 65.6 85.5 74.2 91.6C77.5 93.5 79.3 " +
+      "96.9 81.1 100C83.5 96.5 84.6 92 83.6 87.8C82.9 83.9 79.9 81 78.2 77.5C80.2 77.3 83.4 78.7 84.1 76C84.1 71.7 " +
+      "80.5 68.8 77.6 66.2C72.4 61.8 67.7 55.9 67.7 48.8C68.5 43.1 73.3 39.1 75.4 33.9C78.3 27.4 80.3 20 78.6 12.9C" +
+      "77.9 9.7 74.1 6.4 70.9 8.9C67.3 12.6 67.6 18.3 65.9 22.9C65.1 25.1 63.2 27.2 60.7 27.2C56.9 23.4 56.9 17.7 5" +
+      "4.8 13C53.1 7.4 48.5 2.9 42.7 1.6C35.7 0 28.6 4.1 25 10.1ZM40.3 15.6C41 15 41.7 14.4 42.5 13.9C45.3 15.4 47." +
+      "4 17.7 49.2 20.3C48.2 21 47.4 23.1 45.8 22.2C43 21 41.4 18.3 40.3 15.6Z",
+    "M25 10.1C28.6 4.1 35.7 0 42.7 1.6C48.5 2.9 53.1 7.4 54.8 13C56.9 17.7 56.9 23.4 60.7 27.2C63.2 27.2 65.1 25." +
+      "1 65.9 22.9C67.6 18.3 67.3 12.6 70.9 8.9C74.1 6.4 77.9 9.7 78.6 12.9C80.3 20 78.3 27.4 75.4 33.9C73.3 39.1 6" +
+      "8.5 43.1 67.7 48.8C67.7 55.9 72.4 61.8 77.6 66.2C80.5 68.8 84.1 71.7 84.1 76C83.4 78.7 80.2 77.3 78.2 77.5C7" +
+      "9.9 81 82.9 83.9 83.6 87.8C84.6 92 83.5 96.5 81.1 100C79.3 96.9 77.5 93.5 74.2 91.6C65.6 85.5 54.3 87.2 45 8" +
+      "2.7C36.3 79.1 29.7 71.6 25.6 63.3C23.2 58.7 22.4 53.1 18.3 49.6C10.4 42.4 1.6 34.2 .6 22.9C0 19.7 2.2 15.3 6" +
+      " 16.1C13.7 18 12 29.8 20 31.2C21.8 24.2 21.2 16.5 25 10.1ZM40.3 15.6C41.4 18.3 43 21 45.8 22.2C47.4 23.1 48." +
+      "2 21 49.2 20.3C47.4 17.7 45.3 15.4 42.5 13.9C41.7 14.4 41 15 40.3 15.6ZM27.3 21.1C28.1 21.9 28.9 22.7 29.7 2" +
+      "3.4C32 21.8 34.4 19.8 35.1 16.9C35.5 15.1 34.7 14.2 32.8 14.4C30 15.7 28.6 18.5 27.3 21.1ZM35.9 26.1C33.2 26" +
+      ".9 30.8 29 30 31.8C29 32.8 30.1 35.8 31.7 34.7C34.8 33.1 38.2 30.5 41.8 32.3C44 32.7 46.7 35.6 48.4 33C47.5 " +
+      "27.7 40.8 24.5 35.9 26.1Z",
+    "M27.3 21.1C28.6 18.5 30 15.7 32.8 14.4C34.7 14.2 35.5 15.1 35.1 16.9C34.4 19.8 32 21.8 29.7 23.4C28.9 22.7 2" +
+      "8.1 21.9 27.3 21.1Z",
+    "M35.9 26.1C40.8 24.5 47.5 27.7 48.4 33C46.7 35.6 44 32.7 41.8 32.3C38.2 30.5 34.8 33.1 31.7 34.7C30.1 35.8 2" +
+      "9 32.8 30 31.8C30.8 29 33.2 26.9 35.9 26.1Z",
+  ] },
+  spider: { w: 87, h: 100, d: [
+    "M26.3 32C28.6 35.4 32.4 37.6 35 40.8C31.3 39.9 27.6 38.7 24.1 37C18.6 34.6 14.9 29.4 12.6 24.1C11.2 20.9 11." +
+      "2 17.1 8.3 14.9C7.3 21.8 10.9 28.2 14.6 33.8C19.1 40.4 27.6 41.9 34.4 45C26.6 46.1 18.1 46.7 11.4 51.4C5 56." +
+      "2 .1 63.5 0 71.7L1.7 70.4C5 63.2 9.6 55.9 16.9 52.2C22.5 50.2 28.5 49.4 34.5 49.3C28.4 53.7 20.4 56.2 16.5 6" +
+      "3C14.2 71.6 11.3 81 14.9 89.7C16.4 93.4 17.4 98.1 21.6 99.7C20.5 96.4 19 93.2 17.8 89.9C14.9 82.8 17.3 75 18" +
+      ".7 67.8C19.7 62.7 24.6 60 28.5 57.3C23.2 69.1 29.9 85.6 43.2 87.9C57.4 87 64.8 68.3 58 56.6C60.7 58.8 63.6 6" +
+      "0.7 66 63.2C68.6 65.9 68.6 69.9 69.5 73.3C70.2 77.9 71.7 82.5 70.2 87.1C69.3 91.5 66.7 95.4 66.2 100C70.3 96" +
+      ".6 72 91.4 73.5 86.5C75.5 79.8 73 73 71.6 66.5C69.8 56.9 58.8 54.4 52.1 49C57.8 49.1 63.4 50.3 68.8 51.9C73." +
+      "8 53.4 77.1 57.8 80.4 61.5C83.2 64.6 83.2 69.6 87 71.8C86.7 62.6 80.7 54.4 72.9 49.8C66.7 46.6 59.7 46 53 44" +
+      ".8C59.9 41.6 68.6 40.4 73 33.5C76.6 28.2 80.6 21.2 77.9 14.7C75.5 20.2 74.6 26.5 70.6 31.2C66.3 37.1 58.8 38" +
+      ".6 52.3 40.7C55.6 36.9 60.5 34.3 62.1 29.2C66.1 20 65.6 7.6 58.4 .1C59.8 6.8 62.2 13.5 61.1 20.4C60.2 25.4 5" +
+      "8.2 30.6 54.2 34C53 34.7 51.8 36.6 50.4 35.3C49.4 31.3 51.6 26 46.7 24C46.9 26.1 47.2 28.3 47.4 30.4C44.9 30" +
+      ".3 42.3 30.3 39.8 30.3C40 28.1 40.2 25.9 40.4 23.7C37 25.7 36.7 29.6 37.9 33C37.4 33.8 36.6 35.4 36.2 36.2C2" +
+      "9.6 32 25.8 24.3 26 16.6C25.8 10.9 28.2 5.6 28.6 0C21.3 8.8 21.3 22 26.3 32Z",
+    "M26.3 32C21.3 22 21.3 8.8 28.6 0C28.2 5.6 25.8 10.9 26 16.6C25.8 24.3 29.6 32 36.2 36.2C36.6 35.4 37.4 33.8 " +
+      "37.9 33C36.7 29.6 37 25.7 40.4 23.7C40.2 25.9 40 28.1 39.8 30.3C42.3 30.3 44.9 30.3 47.4 30.4C47.2 28.3 46.9" +
+      " 26.1 46.7 24C51.6 26 49.4 31.3 50.4 35.3C51.8 36.6 53 34.7 54.2 34C58.2 30.6 60.2 25.4 61.1 20.4C62.2 13.5 " +
+      "59.8 6.8 58.4 .1C65.6 7.6 66.1 20 62.1 29.2C60.5 34.3 55.6 36.9 52.3 40.7C58.8 38.6 66.3 37.1 70.6 31.2C74.6" +
+      " 26.5 75.5 20.2 77.9 14.7C80.6 21.2 76.6 28.2 73 33.5C68.6 40.4 59.9 41.6 53 44.8C59.7 46 66.7 46.6 72.9 49." +
+      "8C80.7 54.4 86.7 62.6 87 71.8C83.2 69.6 83.2 64.6 80.4 61.5C77.1 57.8 73.8 53.4 68.8 51.9C63.4 50.3 57.8 49." +
+      "1 52.1 49C58.8 54.4 69.8 56.9 71.6 66.5C73 73 75.5 79.8 73.5 86.5C72 91.4 70.3 96.6 66.2 100C66.7 95.4 69.3 " +
+      "91.5 70.2 87.1C71.7 82.5 70.2 77.9 69.5 73.3C68.6 69.9 68.6 65.9 66 63.2C63.6 60.7 60.7 58.8 58 56.6C64.8 68" +
+      ".3 57.4 87 43.2 87.9C29.9 85.6 23.2 69.1 28.5 57.3C24.6 60 19.7 62.7 18.7 67.8C17.3 75 14.9 82.8 17.8 89.9C1" +
+      "9 93.2 20.5 96.4 21.6 99.7C17.4 98.1 16.4 93.4 14.9 89.7C11.3 81 14.2 71.6 16.5 63C20.4 56.2 28.4 53.7 34.5 " +
+      "49.3C28.5 49.4 22.5 50.2 16.9 52.2C9.6 55.9 5 63.2 1.7 70.4L0 71.7C.1 63.5 5 56.2 11.4 51.4C18.1 46.7 26.6 4" +
+      "6.1 34.4 45C27.6 41.9 19.1 40.4 14.6 33.8C10.9 28.2 7.3 21.8 8.3 14.9C11.2 17.1 11.2 20.9 12.6 24.1C14.9 29." +
+      "4 18.6 34.6 24.1 37C27.6 38.7 31.3 39.9 35 40.8C32.4 37.6 28.6 35.4 26.3 32Z",
+  ] },
+  bat: { w: 100, h: 35.8, d: [
+    "M0 11.1C3.7 11.1 7.8 10.9 11.1 13.1C13.6 14.4 15 17 15.7 19.7C18.9 18.8 22.4 18.3 25.4 19.9C28.4 21 29.8 24." +
+      "2 30.8 27C34.4 25.2 39 25 42.3 27.7C45.1 30.1 48.1 32.5 50.2 35.8C52 32.6 55.2 30.8 57.5 28.1C60.7 24.9 65.7" +
+      " 25.8 69.6 27.1C70.6 24.5 71.7 21.6 74.3 20.2C77.4 18.2 81.3 18.8 84.6 19.7C85.3 16.6 87 13.5 90.1 12.4C93.2" +
+      " 10.9 96.7 11.4 100 11.7C94 5 84.8 2.1 76.1 1C74.4 1 71.9 0 71.3 2.2C68.3 8.6 62.5 13.4 56 16.1C55.9 13.3 55" +
+      ".7 10.5 55.3 7.8C54.3 8.8 53.4 9.9 52.2 10.8C50.6 10.9 48.9 10.9 47.2 10.7C46.4 9.7 45.5 8.8 44.7 7.8C43.9 1" +
+      "0.4 44.1 13.2 44 15.9C37.1 12.8 31 7.4 27.8 .4C17.9 1.6 7.4 3.9 0 11.1ZM51.8 14.1C54.3 11.9 54.2 17.5 51.8 1" +
+      "5.5C51.8 15.1 51.8 14.5 51.8 14.1Z",
+    "M0 11.1C7.4 3.9 17.9 1.6 27.8 .4C31 7.4 37.1 12.8 44 15.9C44.1 13.2 43.9 10.4 44.7 7.8C45.5 8.8 46.4 9.7 47." +
+      "2 10.7C48.9 10.9 50.6 10.9 52.2 10.8C53.4 9.9 54.3 8.8 55.3 7.8C55.7 10.5 55.9 13.3 56 16.1C62.5 13.4 68.3 8" +
+      ".6 71.3 2.2C71.9 0 74.4 1 76.1 1C84.8 2.1 94 5 100 11.7C96.7 11.4 93.2 10.9 90.1 12.4C87 13.5 85.3 16.6 84.6" +
+      " 19.7C81.3 18.8 77.4 18.2 74.3 20.2C71.7 21.6 70.6 24.5 69.6 27.1C65.7 25.8 60.7 24.9 57.5 28.1C55.2 30.8 52" +
+      " 32.6 50.2 35.8C48.1 32.5 45.1 30.1 42.3 27.7C39 25 34.4 25.2 30.8 27C29.8 24.2 28.4 21 25.4 19.9C22.4 18.3 " +
+      "18.9 18.8 15.7 19.7C15 17 13.6 14.4 11.1 13.1C7.8 10.9 3.7 11.1 0 11.1ZM46.3 14.1C45.9 15.6 46.4 16 47.8 15." +
+      "6C48.3 14.2 47.8 13.7 46.3 14.1ZM51.8 14.1C51.8 14.5 51.8 15.1 51.8 15.5C54.2 17.5 54.3 11.9 51.8 14.1Z",
+    "M46.3 14.1C47.8 13.7 48.3 14.2 47.8 15.6C46.4 16 45.9 15.6 46.3 14.1Z",
+  ] },
+  cross: { w: 62.3, h: 100, d: [
+    "M30.3 0C29.3 6.9 28.5 13.9 27.7 20.8C20.8 20.1 13.9 19 6.9 18.2C6.2 22.9 5.6 27.6 5.1 32.4C12 33.2 18.9 34.1" +
+      " 25.8 35C23.5 50 21.8 65.1 19.7 80C15 80.9 10 81.9 6.3 85.1C1.8 88.6 .2 94.4 0 99.9C17.2 100 34.5 99.9 51.7 " +
+      "99.9C51.6 96.4 51.6 92.8 49.7 89.7C46.3 84.1 39.8 81.7 33.8 80.1C36 65.7 37.8 51.3 39.8 37C46.7 37.7 53.6 38" +
+      ".6 60.4 39.7C61.3 35 61.7 30.2 62.3 25.5C55.6 24.5 48.7 23.8 42 22.7C42.7 15.8 43.9 8.9 44.7 2C39.9 1.4 35.1" +
+      " .5 30.3 0Z",
+    "M30.3 0C35.1 .5 39.9 1.4 44.7 2C43.9 8.9 42.7 15.8 42 22.7C48.7 23.8 55.6 24.5 62.3 25.5C61.7 30.2 61.3 35 6" +
+      "0.4 39.7C53.6 38.6 46.7 37.7 39.8 37C37.8 51.3 36 65.7 33.8 80.1C39.8 81.7 46.3 84.1 49.7 89.7C51.6 92.8 51." +
+      "6 96.4 51.7 99.9C34.5 99.9 17.2 100 0 99.9C.2 94.4 1.8 88.6 6.3 85.1C10 81.9 15 80.9 19.7 80C21.8 65.1 23.5 " +
+      "50 25.8 35C18.9 34.1 12 33.2 5.1 32.4C5.6 27.6 6.2 22.9 6.9 18.2C13.9 19 20.8 20.1 27.7 20.8C28.5 13.9 29.3 " +
+      "6.9 30.3 0Z",
+  ] },
+  stone: { w: 88.4, h: 100, d: [
+    "M17.8 12.3C18.6 13.4 19.4 14.5 20.2 15.6C18.9 14.8 17.6 14 16.3 13.3C13.1 18.1 9.9 23.4 9.9 29.3C10.5 41.9 1" +
+      "1.9 54.4 12.6 67C14.7 66.3 16.7 65.6 18.8 64.8C18.8 65.3 18.8 66.5 18.8 67C20.3 66.7 22 66 23.6 66.4C21.3 67" +
+      ".5 18.8 67.9 16.2 67.5C15.1 68 14 68.6 12.9 69.2C13.4 73.8 13.5 78.4 14.2 82.9C33.7 83.1 53.3 82.8 72.9 82.9" +
+      "C73.1 79 73.5 75 73.4 71.1C70.4 70.1 67.3 70.3 64.2 70.3C67.4 69.1 70.7 68.8 74 69.6C74.3 65.1 74.8 60.5 74." +
+      "4 56C76.2 48.8 75.9 41.2 76.7 33.8C78.2 24.2 73.6 14.1 65.5 8.7C64.1 9.8 62.9 11.1 61.9 12.5C61.9 14.9 62.1 " +
+      "17.4 60.7 19.6C60.4 19.7 59.8 19.9 59.6 20.1C60 18.6 60.4 17.2 60.9 15.8C60.4 15.2 59.5 14 59 13.4C60.5 11.6" +
+      " 62 9.8 63.2 7.7C60.3 4 55.4 3 51.2 2C39.4 0 25.4 2.2 17.8 12.3ZM77.8 78.5C77.7 77.1 77.5 74.3 77.4 72.9C75." +
+      "9 76.7 75.6 80.7 75.2 84.7C54 84.5 32.7 84.5 11.4 84.5C9.4 80.8 7.7 77 4.9 73.8C5.6 77.2 6.9 80.4 8 83.6C6.2" +
+      " 82.2 4.6 80.6 2.8 79.2C3.6 81.2 4.7 83.1 5.8 85C0 87.7 1.4 94.7 1.2 100C29.4 100 57.5 99.9 85.7 100C85.6 96" +
+      ".7 85.8 93.3 85.3 90C84.5 87.9 83 86.3 81.8 84.4C83.9 82 86.2 79.7 88.4 77.4C85.7 78.3 82.8 79.2 80.7 81.3C8" +
+      "0.4 81.4 80 81.7 79.7 81.8C81 78.1 82.5 74.4 83.7 70.6C81 72.6 79.4 75.6 77.8 78.5ZM28.3 32.3C33.7 21.8 50.9" +
+      " 20.9 57.5 30.7C60.9 35.6 59.4 41.9 58.3 47.3C57.6 49.9 54.6 50.7 53.2 52.7C52.7 55.4 53.3 59.1 49.9 60.1C48" +
+      ".9 58.9 48.2 57.5 47.6 56C46.8 57.5 46.1 59.1 45.4 60.6C44.9 59.8 43.9 58 43.5 57.1C42.6 58.2 41.8 59.2 41 6" +
+      "0.2C40.2 58.9 39.6 57.5 38.8 56.1C38.6 57.9 37.8 59.3 36.4 60.3C34.2 58.1 34.6 54.9 33.8 52.2C32 50.6 28.5 5" +
+      "0.2 28.4 47.2C27.7 42.3 25.9 37.1 28.3 32.3ZM33.4 38.8C31.4 40.5 31.5 44 33.8 45.4C36.6 47.2 41.2 45.2 40.7 " +
+      "41.6C40.7 37.9 35.9 36.3 33.4 38.8ZM47.9 38.4C45.1 39.6 45.7 43.4 47.9 45C50.1 47.2 54.5 45.9 55 42.7C55.4 3" +
+      "9.2 50.9 36.4 47.9 38.4ZM41 51.6C42 50.7 43 49.7 43.9 48.6C43.9 49.4 44 50.9 44 51.7C47.5 49.8 45.4 46.9 43." +
+      "2 45.1C41.9 47 40.7 49.1 41 51.6Z",
+    "M17.8 12.3C25.4 2.2 39.4 0 51.2 2C55.4 3 60.3 4 63.2 7.7C62 9.8 60.5 11.6 59 13.4C59.5 14 60.4 15.2 60.9 15." +
+      "8C60.4 17.2 60 18.6 59.6 20.1C59.8 19.9 60.4 19.7 60.7 19.6C62.1 17.4 61.9 14.9 61.9 12.5C62.9 11.1 64.1 9.8" +
+      " 65.5 8.7C73.6 14.1 78.2 24.2 76.7 33.8C75.9 41.2 76.2 48.8 74.4 56C74.8 60.5 74.3 65.1 74 69.6C70.7 68.8 67" +
+      ".4 69.1 64.2 70.3C67.3 70.3 70.4 70.1 73.4 71.1C73.5 75 73.1 79 72.9 82.9C53.3 82.8 33.7 83.1 14.2 82.9C13.5" +
+      " 78.4 13.4 73.8 12.9 69.2C14 68.6 15.1 68 16.2 67.5C18.8 67.9 21.3 67.5 23.6 66.4C22 66 20.3 66.7 18.8 67C18" +
+      ".8 66.5 18.8 65.3 18.8 64.8C16.7 65.6 14.7 66.3 12.6 67C11.9 54.4 10.5 41.9 9.9 29.3C9.9 23.4 13.1 18.1 16.3" +
+      " 13.3C17.6 14 18.9 14.8 20.2 15.6C19.4 14.5 18.6 13.4 17.8 12.3ZM28.3 32.3C25.9 37.1 27.7 42.3 28.4 47.2C28." +
+      "5 50.2 32 50.6 33.8 52.2C34.6 54.9 34.2 58.1 36.4 60.3C37.8 59.3 38.6 57.9 38.8 56.1C39.6 57.5 40.2 58.9 41 " +
+      "60.2C41.8 59.2 42.6 58.2 43.5 57.1C43.9 58 44.9 59.8 45.4 60.6C46.1 59.1 46.8 57.5 47.6 56C48.2 57.5 48.9 58" +
+      ".9 49.9 60.1C53.3 59.1 52.7 55.4 53.2 52.7C54.6 50.7 57.6 49.9 58.3 47.3C59.4 41.9 60.9 35.6 57.5 30.7C50.9 " +
+      "20.9 33.7 21.8 28.3 32.3ZM77.8 78.5C79.4 75.6 81 72.6 83.7 70.6C82.5 74.4 81 78.1 79.7 81.8C80 81.7 80.4 81." +
+      "4 80.7 81.3C82.8 79.2 85.7 78.3 88.4 77.4C86.2 79.7 83.9 82 81.8 84.4C83 86.3 84.5 87.9 85.3 90C85.8 93.3 85" +
+      ".6 96.7 85.7 100C57.5 99.9 29.4 100 1.2 100C1.4 94.7 0 87.7 5.8 85C4.7 83.1 3.6 81.2 2.8 79.2C4.6 80.6 6.2 8" +
+      "2.2 8 83.6C6.9 80.4 5.6 77.2 4.9 73.8C7.7 77 9.4 80.8 11.4 84.5C32.7 84.5 54 84.5 75.2 84.7C75.6 80.7 75.9 7" +
+      "6.7 77.4 72.9C77.5 74.3 77.7 77.1 77.8 78.5Z",
+    "M41 51.6C40.7 49.1 41.9 47 43.2 45.1C45.4 46.9 47.5 49.8 44 51.7C44 50.9 43.9 49.4 43.9 48.6C43 49.7 42 50.7" +
+      " 41 51.6Z",
+    "M33.4 38.8C35.9 36.3 40.7 37.9 40.7 41.6C41.2 45.2 36.6 47.2 33.8 45.4C31.5 44 31.4 40.5 33.4 38.8Z",
+    "M47.9 38.4C50.9 36.4 55.4 39.2 55 42.7C54.5 45.9 50.1 47.2 47.9 45C45.7 43.4 45.1 39.6 47.9 38.4Z",
+  ] },
+  zombie: { w: 69.7, h: 100, d: [
+    "M32.6 1.7C30.6 6.1 29.5 10.8 29 15.6C28.5 20.5 30 25.4 29.4 30.4C25.6 24.3 24.3 16.7 25.6 9.7C24.9 8.4 24 7." +
+      "2 23.2 6C21.4 7.2 20.2 8.9 19.9 11.1C17.5 18.9 20.8 26.8 22 34.5C19.4 31.6 16.2 28.5 16.3 24.4C16.1 22 16.6 " +
+      "18.3 13.3 18.1C10 21.2 11.1 26 11.5 30C12.9 34.5 16.5 37.9 18.2 42.3C20.4 47.8 19.1 54.2 22 59.5C22.8 61.4 2" +
+      "4.4 63 24.9 65C25.5 72.2 25.1 79.5 24.4 86.7C20.3 86.1 15.4 86.9 13.1 90.7C11.7 93.8 8.1 92.3 5.6 93.5C2.8 9" +
+      "4.5 1.3 97.3 0 99.8C23.2 100 46.5 99.9 69.7 99.8C67.9 95.2 63.6 91.7 58.5 91.8C56 87.1 50.5 85.5 45.6 87.1C4" +
+      "4.8 80.3 44.4 73.4 45.4 66.6C45.9 62.7 49.1 60 51.4 57C54.3 53.4 55.7 48.9 58.5 45.2C59.5 43.4 61 41.7 61.2 " +
+      "39.6C60.9 36.7 60.4 33.9 60.6 30.9C60.8 29.6 60.6 26 58.3 27.7C54.6 28.9 53.9 33.1 53.7 36.5C53.7 39.5 50.7 " +
+      "41.1 48.8 42.9C46.2 39.5 46.4 35.1 46.1 31C46 24.7 46.9 18.2 49.7 12.5C50.7 10.2 50.3 7.7 49.7 5.3C45.7 6.4 " +
+      "43.9 10.4 42.4 13.8C39.8 18.6 39.9 24.3 37.7 29.3C36 25.3 35.7 20.9 35.6 16.6C35.3 11.8 37.5 7.2 36.5 2.5C36" +
+      " .7 33.7 0 32.6 1.7Z",
+    "M32.6 1.7C33.7 0 36 .7 36.5 2.5C37.5 7.2 35.3 11.8 35.6 16.6C35.7 20.9 36 25.3 37.7 29.3C39.9 24.3 39.8 18.6" +
+      " 42.4 13.8C43.9 10.4 45.7 6.4 49.7 5.3C50.3 7.7 50.7 10.2 49.7 12.5C46.9 18.2 46 24.7 46.1 31C46.4 35.1 46.2" +
+      " 39.5 48.8 42.9C50.7 41.1 53.7 39.5 53.7 36.5C53.9 33.1 54.6 28.9 58.3 27.7C60.6 26 60.8 29.6 60.6 30.9C60.4" +
+      " 33.9 60.9 36.7 61.2 39.6C61 41.7 59.5 43.4 58.5 45.2C55.7 48.9 54.3 53.4 51.4 57C49.1 60 45.9 62.7 45.4 66." +
+      "6C44.4 73.4 44.8 80.3 45.6 87.1C50.5 85.5 56 87.1 58.5 91.8C63.6 91.7 67.9 95.2 69.7 99.8C46.5 99.9 23.2 100" +
+      " 0 99.8C1.3 97.3 2.8 94.5 5.6 93.5C8.1 92.3 11.7 93.8 13.1 90.7C15.4 86.9 20.3 86.1 24.4 86.7C25.1 79.5 25.5" +
+      " 72.2 24.9 65C24.4 63 22.8 61.4 22 59.5C19.1 54.2 20.4 47.8 18.2 42.3C16.5 37.9 12.9 34.5 11.5 30C11.1 26 10" +
+      " 21.2 13.3 18.1C16.6 18.3 16.1 22 16.3 24.4C16.2 28.5 19.4 31.6 22 34.5C20.8 26.8 17.5 18.9 19.9 11.1C20.2 8" +
+      ".9 21.4 7.2 23.2 6C24 7.2 24.9 8.4 25.6 9.7C24.3 16.7 25.6 24.3 29.4 30.4C30 25.4 28.5 20.5 29 15.6C29.5 10." +
+      "8 30.6 6.1 32.6 1.7Z",
+  ] },
+};
 const DECOR_INK = "rgba(240,232,248,0.34)";
 const DECOR_INK_SOLID = "rgba(240,232,248,0.5)";
 function Web({ flip }) {
@@ -1359,30 +1515,37 @@ function Spider({ left, drop, delay }) {
     <div aria-hidden="true" style={{ position:"absolute", top:0, left:`${left}%`,
       animation:`seshd-dangle 6.5s ${delay}s ease-in-out infinite`, transformOrigin:"top center" }}>
       <div style={{ width:1, height:drop, background:DECOR_INK, margin:"0 auto" }}/>
-      <svg width="26" height="20" viewBox="0 0 26 20" style={{ display:"block", marginTop:-1 }}>
-        <g opacity={DECOR_MOVING}>
-        <g fill="none" stroke={DECOR_INK_SOLID} strokeWidth="1.2" strokeLinecap="round">
-          <path d="M11 10 L4 6 M11 11 L3 11 M11 12 L4 16 M15 10 L22 6 M15 11 L23 11 M15 12 L22 16"/>
+      {/* The traced spider carries its own legs, so the six stroked lines the hand-drawn one
+          needed are gone with it. Width is derived from the glyph's aspect rather than pinned,
+          which is what stops a future swap squashing it. */}
+      <svg width={26 * HW_ART.spider.w / HW_ART.spider.h} height="26"
+        viewBox={`0 0 ${HW_ART.spider.w} ${HW_ART.spider.h}`}
+        style={{ display:"block", margin:"-1px auto 0" }}>
+        <g opacity={DECOR_MOVING} fill={DECOR_INK_SOLID}>
+          {HW_ART.spider.d.map((d, i) => <path key={i} d={d}/>)}
         </g>
-        <ellipse cx="13" cy="11" rx="4.6" ry="5.2" fill={DECOR_INK_SOLID}/>
-        <circle cx="13" cy="5.4" r="2.6" fill={DECOR_INK_SOLID}/>
-      </g>
       </svg>
     </div>
   );
 }
 function Ghost({ left, size, dur, delay }) {
+  // The hand-drawn version was a rounded rectangle with a scalloped hem and two eyes painted in
+  // "#0f0a16" — the Halloween background, hardcoded. The traced glyph carries its eyes and mouth
+  // as HOLES, so it needs no knowledge of what it is sitting on and cannot go wrong if the canvas
+  // ever changes: the same reason the plate discs got a rim instead of a repaint.
+  const g = HW_ART.ghost;
   return (
-    <svg width={size} height={size * 1.28} viewBox="0 0 25 32" aria-hidden="true"
+    // x1.28 because `size` used to be the ghost's WIDTH and is now the side of its 100-unit box;
+    // without it the traced glyph (84.6 x 100) renders ~22% shorter than the one it replaces and
+    // the ghosts quietly shrink. Same on-screen stature, different box.
+    <svg width={size * 1.28 * g.w / 100} height={size * 1.28 * g.h / 100} viewBox={`0 0 ${g.w} ${g.h}`}
+      aria-hidden="true"
       style={{ position:"absolute", bottom:-40, left:`${left}%`, opacity:0,
                animation:`seshd-drift ${dur}s ${delay}s linear infinite` }}>
-        <g opacity={DECOR_MOVING}>
-      <path d="M12.5 1C6.7 1 2 5.7 2 11.5V31l3.5-3 3.5 3 3.5-3 3.5 3 3.5-3 3.5 3V11.5C23 5.7 18.3 1 12.5 1z"
-        fill="rgba(240,232,248,0.42)"/>
-      <circle cx="9" cy="12" r="1.7" fill="#0f0a16"/>
-      <circle cx="16" cy="12" r="1.7" fill="#0f0a16"/>
-    </g>
-      </svg>
+      <g opacity={DECOR_MOVING} fill="rgba(240,232,248,0.42)">
+        {g.d.map((d, i) => <path key={i} d={d}/>)}
+      </g>
+    </svg>
   );
 }
 // A FALLING ORNAMENT — snow, petals and leaves are the same mechanism with a different glyph, so
@@ -1392,7 +1555,108 @@ function Ghost({ left, size, dur, delay }) {
 // middle sways, inner spins — three separate transforms that compose instead of clobbering.
 // Autumn is not one colour: three tones, picked per leaf, because seven identical brown glyphs
 // read as debris rather than leaves. Snow and petals are single-tone on purpose — real ones are.
-const LEAF_TONES = [[212, 110, 58], [186, 74, 40], [206, 148, 54]];
+// ★★ THE FALLING LEAVES ARE TRACED FROM LICENSED VECTOR ART. Six species where there was one.
+// The hand-drawn leaf was a single lanceolate blob recoloured three ways, which is what the tone
+// array existed for; real autumn is a MIX OF SHAPES, so the variety now comes from the species and
+// each one carries the artist's own colours and veins. Same normalisation as HW_ART — a 100-unit
+// box at 1dp — and same rule about the source .ai staying out of this public repo.
+// Fills are grouped BY COLOUR (body first, then every vein in one path) rather than kept one per
+// original fill: an oak leaf is 11 fills and 10 of them are the same darker tone, so grouping
+// turns 11 <path> elements into 2 with byte-identical data. Order still matters — the body must
+// paint before the veins — and it holds because every one of these is drawn body-first.
+const FALL_ART = [
+  { w: 95.3, h: 100, f: [
+    ["#fc9a25",
+      "M5 .4C7.7 20.4 13.8 24.8 19.2 32.5C21.9 36.3 23.9 51.3 13.6 65.9C1.5 83.1 0 82.7 1 86.1C2.1 89.4 14.1 100 34" +
+      " 98.5C54 97 64.2 88.2 64.8 84C65.4 79.7 48.3 61 49.6 60.1C50.7 58.9 68.1 77.4 72.4 77.4C76.6 77.4 86.8 68.5 " +
+      "91 48.9C95.3 29.4 86.4 16 83.3 14.5C80.1 13 80.1 14.3 61.5 24.2C42.9 34 28.3 33.2 22.7 29C11.1 20.2 9.2 6.4 " +
+      "9.2 .5C7.4 0 5 .4 5 .4Z"],
+  ] },  // ginkgo
+  { w: 83.6, h: 100, f: [
+    ["#fc9a25",
+      "M77.8 95.6C73.4 100 67.8 92.3 66.2 93.8C64.3 95.5 63.6 99.4 58.9 98.6C51.8 97.5 53.7 86.4 49.4 87.3C45.1 88." +
+      "2 46.9 91.4 40.8 91.7C33.3 92.2 34.3 72.8 31.6 70.2C28 66.9 25.1 77.4 19.4 71.6C12.5 64.3 20.3 45.7 17.3 44." +
+      "9C13.9 44 13.7 48.7 10 47.4C4.8 45.6 6.4 30.6 7.3 24C8.7 14.1 11.9 12 24.5 12.9C31.7 13.4 44 15.2 43.7 19.9C" +
+      "43.4 24.5 38.6 24.4 40.7 27.9C42.3 30.7 58.8 24.2 64.4 32.3C69.2 39.1 57.6 40.3 60.3 44.5C62.4 47.7 80.3 49." +
+      "5 79.3 57.6C78.6 63.7 75 61.1 74 65.5C73 70.1 83.4 69.2 83.5 77.1C83.6 82 80.5 81.8 78.4 83.1C76.2 84.5 82.2" +
+      " 91.2 77.8 95.6Z"],
+    ["#d86f21",
+      "M77.5 96.3C77.1 96.3 76.8 96.2 76.6 95.9C76.2 95.4 35.1 47.7 .4 2C0 1.5 .1 .8 .6 .4C1.1 0 1.8 .1 2.2 .6C36.9" +
+      " 46.2 77.9 94 78.3 94.5C78.7 94.9 78.7 95.6 78.2 96C78 96.2 77.7 96.3 77.5 96.3Z"],
+  ] },  // oakyellow
+  { w: 90.4, h: 100, f: [
+    ["#e33b26",
+      "M51.2 76.6C51.2 76.6 43.1 93.7 30.3 91.4C7.8 87.5 2 59.3 0 53.9C4.6 52.5 10.7 49.5 21.1 50.5C11.8 34 13.8 12" +
+      ".5 19.8 .1C31.1 3.3 50 15.2 55.5 31.7C62.1 23.6 66.8 21.8 71.3 19.5C76.3 28.2 90.4 46.7 79.7 63.5C72 75.7 57" +
+      " 75.6 53.4 75C55.3 80.7 66.1 96.3 66.1 96.3C66.1 96.3 65.9 100 63.8 97.7C61.7 95.5 53.9 82.9 51.2 76.6Z"],
+    ["#a91f2b",
+      "M52 75.8C51.7 75.8 51.5 75.7 51.4 75.5C37.3 50.9 29.5 31.9 25.3 20.3C20.8 7.7 19.7 .9 19.6 .8C19.6 .5 19.8 ." +
+      "1 20.2 .1C20.5 0 20.9 .2 20.9 .6C21 .9 25.8 27.9 52.5 74.8C52.7 75.1 52.6 75.5 52.3 75.7C52.2 75.8 52.1 75.8" +
+      " 52 75.8ZM52 75.8C51.9 75.8 51.9 75.8 51.9 75.8C23.5 71.6 .7 55.2 .5 55.1C.2 54.8 .2 54.4 .4 54.1C.6 53.8 1 " +
+      "53.8 1.3 54C1.5 54.2 24 70.3 52.1 74.5C52.4 74.6 52.7 74.9 52.6 75.2C52.6 75.6 52.3 75.8 52 75.8ZM52 75.8C51" +
+      ".8 75.8 51.7 75.8 51.6 75.7C51.3 75.5 51.2 75.1 51.4 74.8C67.2 53.2 70.4 20.5 70.5 20.2C70.5 19.8 70.8 19.5 " +
+      "71.2 19.6C71.5 19.6 71.8 19.9 71.8 20.3C71.7 20.6 68.5 53.7 52.5 75.5C52.4 75.7 52.2 75.8 52 75.8Z"],
+  ] },  // redmaple
+  { w: 100, h: 94.4, f: [
+    ["#e33b26",
+      "M34.3 .7C34.9 6.3 36.5 15.6 44.1 25.6C34.9 20 14.4 16.5 6.3 16.8C10.2 21.7 24.9 32.7 35 37C20.9 38.3 6.9 47." +
+      "8 .3 54.6C10.1 56.9 30.9 56.8 39.7 51.2C30 64.5 26.9 84.3 26.9 94.2C35.8 86.9 50 72.6 53.9 57.8C55.6 68.5 66" +
+      ".7 84.4 76.7 92.1C77.3 81.7 76.9 69.7 69.2 54.2C77.5 59.3 92.7 64.7 100 65.9C97.2 59.2 84.2 45.8 73.9 41C80." +
+      "5 41.9 91.7 39.6 99.1 35.8C90.3 31.5 80.6 27.1 71 28.3C68 28.7 62.1 31.7 59.9 32.7C63.5 26.5 71.1 12.8 77.1 " +
+      "2.5C77.1 1.6 76.5 0 74.5 .8C69.3 10 60.6 27.3 58.1 32.4C57.6 30.3 56.8 24 55.1 20.6C50.3 11.2 41 4 34.3 .7Z"],
+    ["#a91f2b",
+      "M27.1 94.4C27 94.4 26.9 94.4 26.8 94.4C26.6 94.2 26.5 94 26.6 93.7L57.4 35C57.5 34.7 57.8 34.7 58 34.8C58.3 " +
+      "34.9 58.4 35.2 58.2 35.4L27.5 94.2C27.4 94.3 27.2 94.4 27.1 94.4ZM76.5 92.4C76.2 92.4 76.1 92.2 76 92L57.4 3" +
+      "6L.7 54.8C.4 54.9 .2 54.8 .1 54.5C0 54.3 .1 54 .4 53.9L58 34.8L76.9 91.7C77 92 76.9 92.2 76.6 92.3C76.6 92.3" +
+      " 76.5 92.4 76.5 92.4ZM57.8 35.7C57.7 35.7 57.7 35.7 57.6 35.7L6.3 17.4C6 17.3 5.9 17 6 16.8C6.1 16.5 6.4 16." +
+      "4 6.6 16.5L58 34.8C58.2 34.8 58.3 35.1 58.3 35.4C58.2 35.6 58 35.7 57.8 35.7ZM57.8 35.7C57.6 35.7 57.5 35.6 " +
+      "57.4 35.5L34 1.2C33.8 .9 33.9 .6 34.1 .5C34.3 .3 34.6 .4 34.8 .6L58.2 34.9C58.3 35.2 58.3 35.5 58.1 35.6C58 " +
+      "35.7 57.9 35.7 57.8 35.7Z"],
+  ] },  // jmaple
+  { w: 100, h: 98.5, f: [
+    ["#fc9a25",
+      "M52.1 37.8C48.4 32.2 52.7 23.3 46.7 15.7C42.8 10.7 33.6 9.6 30.1 8.2C30.8 10.5 22.2 28.3 51.6 38.5C40.6 39.3" +
+      " 34.1 29.4 22.2 28.3C8.6 27 4.7 36.8 .3 40.4C3.4 42.5 11.2 51.5 20.3 51.1C33.7 50.5 41.3 40.9 51 39.8C39.4 4" +
+      "8.3 31.3 50.2 23.4 54.2C20.9 55.5 18.9 57 17.3 58.6C7.8 68 13.1 81.5 11.5 85.9C15.8 83.2 30.2 85.1 39.3 72.4" +
+      "C45.9 63.1 44.1 54 51.9 40.5C51.3 52.6 46 58.5 44.9 72C43.6 86.4 61.5 93.7 66.3 98.2C67.9 91.8 78.7 80.6 70." +
+      "8 66.3C64.5 55 55.8 47.5 53.3 40.2C59.8 42.9 63 56.9 76.3 61.6C87.9 65.8 94.7 58.9 100 59.4C96.6 55.8 94.9 4" +
+      "2.7 83.7 40.2C72.4 37.7 62.6 43 53.3 39C53.3 39 85.5 41.5 85.3 20.7C82.2 20.8 71.3 18.8 66.7 22.8C60.6 28.3 " +
+      "57 36.8 53.2 37.8C54.2 27.4 63.8 7.4 67.4 2.6C67.9 1 66.4 0 65.6 1.5C59.5 10.6 53.8 24.9 52.1 37.8Z"],
+    ["#d86f21",
+      "M52.4 39.4C52.2 39.4 52.1 39.3 52 39.1C51.9 38.9 52 38.6 52.2 38.5C67 32.3 84.7 20.6 84.9 20.5C85.1 20.4 85." +
+      "4 20.4 85.5 20.7C85.7 20.9 85.6 21.2 85.4 21.3C85.2 21.4 67.4 33.1 52.6 39.4C52.5 39.4 52.5 39.4 52.4 39.4ZM" +
+      "52.5 39.3C52.3 39.3 52.2 39.2 52.1 39.1C44.5 30.2 30 8.8 29.8 8.6C29.7 8.3 29.8 8.1 30 7.9C30.2 7.8 30.5 7.8" +
+      " 30.6 8C30.8 8.3 45.2 29.7 52.8 38.5C53 38.7 52.9 39 52.7 39.2C52.7 39.3 52.6 39.3 52.5 39.3ZM4.8 40.9C2.2 4" +
+      "0.9 .5 40.9 .5 40.9C.2 40.9 0 40.7 0 40.4C0 40.2 .2 40 .5 40C.5 40 .5 40 .5 40C.9 40 40.4 40.2 52.2 38.5C52." +
+      "4 38.5 52.6 38.7 52.7 38.9C52.7 39.2 52.5 39.4 52.3 39.4C42.8 40.8 15.5 40.9 4.8 40.9ZM66.3 98.5C66.1 98.5 6" +
+      "5.9 98.3 65.8 98.1C65.7 97.7 54.8 56.1 52 39C51.9 38.8 52.1 38.5 52.3 38.5C52.6 38.4 52.8 38.6 52.9 38.9C55." +
+      "7 55.9 66.6 97.5 66.7 97.9C66.8 98.1 66.6 98.4 66.4 98.5C66.3 98.5 66.3 98.5 66.3 98.5ZM11.8 86.2C11.7 86.2 " +
+      "11.6 86.1 11.5 86.1C11.3 85.9 11.3 85.6 11.4 85.4L51.9 38.9C52.1 38.7 52.4 38.7 52.6 38.9C52.7 39 52.8 39.3 " +
+      "52.6 39.5L12.1 86C12 86.1 11.9 86.2 11.8 86.2Z"],
+  ] },  // chestnutleaf
+  { w: 89.1, h: 100, f: [
+    ["#ff812f",
+      "M0 99.7C0 99.7 8.2 92.5 11.5 87.9C14.7 83.3 9.2 70.6 12.1 61.1C12.5 59.9 14.6 56.3 17.3 59.4C18.4 60.6 19.7 " +
+      "64.1 20.7 63.8C21.5 63.6 19 55.6 18.9 54.4C18 48.9 16.1 41.4 21.3 36.7C27.1 31.5 27.8 46.1 30 45C32 44 26.8 " +
+      "32.2 29.7 22.1C32.6 11.6 39.3 10.4 41.9 15C43.3 17.3 43 23.9 45.3 24.4C47 24.7 49 16.3 50.4 12.4C52.4 7.1 56" +
+      ".6 5 59.3 8.4C61.1 10.6 59.8 15.1 61 15.7C62.7 16.6 70.8 0 77.7 4.5C83.4 8.3 75.9 19.7 74.2 23.3C72.4 27 80." +
+      "6 20.7 83.3 24.7C89.1 33.2 69.8 36.5 71.5 39.2C72.8 41.5 79.1 41.5 81.9 43.9C84 45.8 84 47.6 82 50.3C76 58.3" +
+      " 60.1 53.2 60.4 56.9C60.6 58.7 66.6 57.9 70 60.7C71.9 62.2 71.6 64.4 70.6 66.1C66.4 73.3 48.8 67.3 46.8 68.9" +
+      "C45.2 70.3 48.5 70.5 51.6 71.7C52.4 72 54.6 73.4 54.5 75.4C54.3 82.3 33.4 77.7 34.1 81C34.2 81.5 38 82.5 39." +
+      "3 83.4C42 85.3 40.3 88.1 37.1 89.1C32.3 90.4 16.8 85.4 12.9 89.7C8.8 94.3 3.1 100 3.1 100L0 99.7Z"],
+    ["#d1482d",
+      "M13.2 88.4L12.4 87.7C49.8 47.1 76.9 4.8 77.2 4.4L78 5C77.8 5.4 50.6 47.7 13.2 88.4ZM46.6 48.5L46.7 47.5C66.7" +
+      " 49.3 82.9 45.7 83 45.7L83.2 46.7C83.1 46.8 66.8 50.3 46.6 48.5ZM41.3 54.3C38.9 45.2 36.5 28.3 37 12.5L38.1 " +
+      "12.5C37.6 28.2 39.9 45 42.3 54L41.3 54.3ZM56.5 35.6L56.3 34.5C70.1 32.4 83.9 26 84.1 25.9L84.5 26.9C84.4 26." +
+      "9 70.4 33.4 56.5 35.6ZM54.7 36.7C54 27.4 54.4 19.7 54.9 14.9C55.4 9.7 56.1 6.8 56.1 6.6L57.1 6.9C57.1 6.9 56" +
+      ".4 9.9 55.9 15C55.5 19.8 55.1 27.4 55.7 36.6L54.7 36.7ZM42.3 62.8C40.2 62.5 38.2 62.1 36.2 61.7L36.4 60.7C52" +
+      ".1 64.1 71.1 62.7 71.3 62.7L71.3 63.7C71.2 63.7 56.5 64.8 42.3 62.8ZM29.7 68.5C25.1 58.5 22.2 36.3 22.1 36.1" +
+      "L23.2 35.9C23.2 36.2 26.1 58.2 30.6 68L29.7 68.5ZM36.1 74.8C33 74.3 29.8 73.7 26.7 72.8L26.9 71.8C36.4 74.5 " +
+      "46.9 74.7 52.5 74.9C53.2 74.9 53.9 74.9 54.4 74.9L54.4 76C53.8 75.9 53.2 75.9 52.5 75.9C48.7 75.8 42.6 75.7 " +
+      "36.1 74.8ZM25.2 85.1C20.8 84.4 17.4 83.8 17.1 83.7L17.3 82.7C17.9 82.8 31.4 85.5 40.4 85.1L40.4 86.2C35.8 86" +
+      ".3 29.9 85.7 25.2 85.1ZM18.1 81.9C14.8 71.9 14 58.7 14 58.5L15 58.5C15 58.6 15.8 71.7 19.1 81.5L18.1 81.9Z"],
+  ] },  // oak
+];
 const FALL_SHAPES = {
   // ★ A SIX-SPOKE ASTERISK IS NOT A SNOWFLAKE. The first cut was three crossed lines with four
   // stubs and read as a `*` at any size — Mo's report was "the snow flakes don't look that great".
@@ -1426,16 +1690,20 @@ const FALL_SHAPES = {
       <path d="M8 13.6V4.6" stroke={`rgba(212,124,160,${k * 0.8})`} strokeWidth="0.7" fill="none"/>
     </g>
   ),
+  // The traced species are authored in a 100-unit box and this component's viewBox is 16, so each
+  // one is scaled and centred into it — one dimension always maps to exactly 16 because the
+  // normaliser fits the LARGER side. `k` stays the alpha knob it always was, applied to the group
+  // rather than baked into an rgba, since the art carries opaque colours of its own.
+  // ★ `fillOpacity`, NOT `opacity`, and that is not a style preference. `pw_themes` 4p counts
+  // `g[opacity]` wrappers per theme to prove every traveller goes through DECOR_MOVING, so a
+  // second opacity attribute per leaf would double fall's count and push the max past 0.5 — the
+  // check would go red for a reason that has nothing to do with the thing it guards. These have
+  // no strokes, so fill-opacity is visually identical.
   leaves: (k, tone) => {
-    const [r, g, b] = LEAF_TONES[tone % LEAF_TONES.length];
+    const L = FALL_ART[tone % FALL_ART.length], s = 0.16;
     return (
-      <g>
-        {/* Lanceolate — pointed at BOTH ends, with a midrib and two side veins. The first cut was
-            a rounded blob with one diagonal stroke and rendered as an acorn. */}
-        <path d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z" fill={`rgba(${r},${g},${b},${k})`}/>
-        <g stroke={`rgba(70,34,12,${k * 0.8})`} strokeWidth="0.75" strokeLinecap="round" fill="none">
-          <path d="M8 2.6V13.4"/><path d="M8 6.4L5.4 8.6M8 6.4l2.6 2.2M8 9.6l-2.2 1.9M8 9.6l2.2 1.9"/>
-        </g>
+      <g fillOpacity={k} transform={`translate(${(16 - L.w * s) / 2} ${(16 - L.h * s) / 2}) scale(${s})`}>
+        {L.f.map(([c, d], i) => <path key={i} d={d} fill={c}/>)}
       </g>
     );
   },
@@ -1476,16 +1744,27 @@ function Sun() {
 // duplicating the theme's own anchor is the same mistake as repeating one mark on three buttons.
 // A gull GLIDES (its own axis, its own silhouette) and the frond is a fixed corner anchor in the
 // corner the sun does not occupy, so the four elements never read as one effect.
+// Traced from the licensed beach set, same normalisation as HW_ART and FALL_ART. The hand-drawn
+// version was a single constant-width stroke, which reads as a pen squiggle rather than a bird:
+// a real gull at distance is TWO TAPERED WINGS, thick at the shoulder and pointed at the tip, and
+// a stroke cannot taper. This is the only glyph taken from that sheet — the rest of it is
+// ink-drawn line art with visible brush texture that neither survives 34px nor matches the flat
+// style of Summer's own sun and palm, which is worth writing down so the sheet is not re-mined.
+const GULL_ART = { w: 100, h: 41.4, d:
+    "M.5 24C0 23.3 1.9 21.7 2.4 21.3C12.4 12.7 29.9 16.6 40.1 23C41.2 23.7 43 26 44 25.7C52.9 11.2 74.7 0 91." +
+    "5 5C93 5.4 100 8.4 95.5 9.2C93.3 9.6 89.2 8.5 86.2 8.7C76.7 9.3 71.3 14.3 63.7 19C58.5 22.1 56.6 22.2 52" +
+    ".6 27.6C50.3 30.6 48.7 35.3 46.8 37.7C43.7 41.4 40.5 35.6 38.6 33.9C31.2 27.3 24.5 24.2 14.5 23.5C9.5 23" +
+    ".1 5.1 25.1 .5 24Z" };
 function Seagull({ top, size, dur, delay }) {
   return (
-    <svg width={size} height={size * 0.42} viewBox="0 0 40 17" aria-hidden="true"
+    <svg width={size} height={size * GULL_ART.h / GULL_ART.w} viewBox={`0 0 ${GULL_ART.w} ${GULL_ART.h}`}
+      aria-hidden="true"
       style={{ position:"absolute", top:`${top}%`, left:0, opacity:0,
                animation:`seshd-glide ${dur}s ${delay}s linear infinite` }}>
-        <g opacity={DECOR_MOVING}>
-      <path d="M2 11C7 11 10 3.4 14 3.4c3 0 4.6 4.2 6 4.2s3-4.2 6-4.2c4 0 7 7.6 12 7.6"
-        stroke="rgba(92,104,120,0.34)" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-    </g>
-      </svg>
+      <g opacity={DECOR_MOVING}>
+        <path d={GULL_ART.d} fill="rgba(92,104,120,0.34)"/>
+      </g>
+    </svg>
   );
 }
 // ★ THE PALM — Mo picked v3 of six drawn by a cold-context agent, after five of my own attempts
@@ -1735,7 +2014,11 @@ function CornerBranch({ blossom }) {
     // Fall was clean. Spring rides 15px higher so both of its low-left blossoms clear the
     // wordmark's TOP instead, and its ink still ends at 38.7 — above the tab row at 43.
     // Do not "simplify" this back to one number: a shared offset is wrong for one of them.
-    <svg width="345" height="236" viewBox="0 0 188 128" aria-hidden="true"
+    // data-decor-bleed: this one is DESIGNED to overrun its box — its ink starts at x -6 and the
+    // element sits at left -27, so the overrun is off-screen by construction. pw_themes 4r asserts
+    // every other decor glyph fits inside its own viewBox (a normaliser that pads or centres the
+    // ink silently cut the bat to a third of a bat), and this is the one deliberate exception.
+    <svg data-decor-bleed="1" width="345" height="236" viewBox="0 0 188 128" aria-hidden="true"
       style={{ position:"absolute", top: blossom ? -111 : -96, left:-27, opacity:0.75 }}>
       <g stroke={bark} fill="none" strokeLinecap="round">
         <path d="M-6 6 C40 14 78 30 116 62" strokeWidth="4"/>
@@ -1942,15 +2225,17 @@ function GroundLeaf({ left, dur, delay, tone }) {
   // Fall's third element: a leaf skittering along the BOTTOM edge, which is where wind actually
   // moves them. Different axis and different height band from the fallers, so the two never
   // read as one effect.
-  const tint = ["rgba(212,110,58,0.85)", "rgba(186,74,40,0.85)", "rgba(206,148,54,0.85)"][tone % 3];
+  // Draws from the same FALL_ART set as the fallers rather than keeping its own tinted copy of the
+  // old blob: one glyph source, so a species added above shows up here too instead of the two
+  // drifting apart (the N-copies rule, applied to a leaf).
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"
       style={{ position:"absolute", bottom:"7%", left:`${left}%`, opacity:0,
                animation:`seshd-skitter ${dur}s ${delay}s linear infinite` }}>
-        <g opacity={DECOR_MOVING}>
-      <path d="M8 1.1C12.2 5 12.9 10.1 8 14.9 3.1 10.1 3.8 5 8 1.1z" fill={tint}/>
-    </g>
-      </svg>
+      <g opacity={DECOR_MOVING}>
+        {FALL_SHAPES.leaves(0.85, tone)}
+      </g>
+    </svg>
   );
 }
 
@@ -2041,16 +2326,12 @@ function Bat({ top, size, dur, delay }) {
   return (
     <div aria-hidden="true" style={{ position:"absolute", left:"-16vw", top:`${top}%`, opacity:0,
       animation:`seshd-swoop ${dur}s ${delay}s linear infinite` }}>
-      <svg data-ornament="bat" width={size} height={size * 0.45} viewBox="0 0 40 18"
+      <svg data-ornament="bat" width={size} height={size * HW_ART.bat.h / HW_ART.bat.w}
+        viewBox={`0 0 ${HW_ART.bat.w} ${HW_ART.bat.h}`}
         style={{ animation:`seshd-wing 0.34s ease-in-out infinite` }}>
-        <g opacity={DECOR_MOVING}>
-        <path fill={ink} d="M20 4.4c1.6 0 2.6 1 3 2.3 1.4-2.6 4-4.6 7.4-5.4-1 1.6-1.3 3-1 4.4
-          1.8-1.4 4.2-2 6.9-1.8-2.3 1.2-3.6 2.9-4.2 5-.5 1.9-1.8 3-3.8 3.4-2.2.4-4.2-.2-5.9-1.6
-          -.6 1.2-1.4 1.9-2.4 1.9s-1.8-.7-2.4-1.9c-1.7 1.4-3.7 2-5.9 1.6-2-.4-3.3-1.5-3.8-3.4
-          -.6-2.1-1.9-3.8-4.2-5 2.7-.2 5.1.4 6.9 1.8-.3-1.4 0-2.8-1-4.4 3.4.8 6 2.8 7.4 5.4
-          .4-1.3 1.4-2.3 3-2.3Z"/>
-        <path fill={ink} d="M18.2 3.1 19.4 5.2 20.6 5.2 21.8 3.1 20.6 4 19.4 4Z"/>
-      </g>
+        <g opacity={DECOR_MOVING} fill={ink}>
+          {HW_ART.bat.d.map((d, i) => <path key={i} d={d}/>)}
+        </g>
       </svg>
     </div>
   );
@@ -2102,6 +2383,38 @@ function NavPumpkins() {
         </svg>
       ))}
     </span>
+  );
+}
+
+function Graveyard() {
+  // ★ THE ONE THING HALLOWEEN WAS MISSING THAT EVERY SIBLING HAS: A GROUND ANCHOR. Winter settles
+  // snow on the nav, Spring grows grass, Fall skitters leaves along the bottom, Summer plants the
+  // palm, Quadball stands the hoops on the pitch — and Halloween had nothing at the bottom edge at
+  // all once the pumpkins moved INTO the nav pill. That is the test for adding decor: name what a
+  // theme lacks that its siblings have, rather than adding because it feels thin.
+  // THREE OBJECTS AT THREE HEIGHTS, sharing one ground line, because one object alone reads as a
+  // sticker and several of different heights read as a place (the palm's lesson).
+  // ★ AND THE HEIGHTS ARE SET BY THE NAV, NOT BY TASTE. With `env(safe-area-inset-bottom)` at 0
+  // the pill occupies 8..58px above the bottom; on a real iPhone the inset is ~34pt and the nav's
+  // padding carries it, so it occupies 42..92 and RISES over anything anchored to the bottom.
+  // Anything shorter than ~92px here is invisible on device while looking fine in Chromium —
+  // exactly how the pumpkins were lost. Tops clear it by 46 / 30 / 14px.
+  // Each glyph carries the artist's own ground bar at the foot of its box, so aligning them is a
+  // matter of putting all three bases on the svg's bottom edge; there is no baseline to tune.
+  const place = (g, h, x) => (
+    <g transform={`translate(${x} ${138 - h}) scale(${h / 100})`}>
+      {g.d.map((d, i) => <path key={i} d={d}/>)}
+    </g>
+  );
+  return (
+    <DecorBack style={{ bottom:0, left:-20, lineHeight:0 }}>
+      <svg data-ornament="graveyard" width="244" height="138" viewBox="0 0 244 138" style={{ opacity:0.19 }}
+        fill="rgba(214,205,226,0.9)">
+        {place(HW_ART.cross, 138, 0)}
+        {place(HW_ART.stone, 122, 68)}
+        {place(HW_ART.zombie, 106, 170)}
+      </svg>
+    </DecorBack>
   );
 }
 
@@ -2540,6 +2853,7 @@ function ThemeDecor({ kind }) {
       {kind === "halloween" && <>
         <Web/>
         <Web flip/>
+        <Graveyard/>
         {bits.bats.map((bt, i) => <Bat key={i} {...bt}/>)}
         {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
         {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}

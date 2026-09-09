@@ -5456,6 +5456,78 @@ lit and below the nav, all four nav buttons still hit-test to themselves, and qu
 balls on the pitch with the two discs **not the same colour**. Red-proofed at 2 failures with 4n2
 (the control) staying green.
 
+## ★★★ THREE THEMES GOT THE ARTIST'S OWN VECTORS (Sep 9) — and the probe caught a clipped bat
+Mo bought three licensed decoration sheets and asked for "changes to make themes look better".
+Halloween, Fall and Summer now draw traced ornaments where they drew hand-made primitives.
+**★ THE SHEETS ARE NOT IN THE REPO AND MUST NOT BE ADDED** — same rule as the body-map art: the
+repo is public and the licence covers the app, not redistribution. The extractor lives in the
+session scratchpad, and the only thing committed is the extracted path data. The three sheets are
+`AdobeStock_2121519050` (Halloween silhouettes), `AdobeStock_667117109` (autumn leaves) and
+`AdobeStock_2109309309` (beach line art) — catalogue numbers, so a future session can ask Mo for
+the right file rather than guessing; the files themselves stay with him.
+**★ THREE EPS DIALECTS IN THREE FILES, AND MO'S LABELS WERE SWAPPED.** Two sheets use Illustrator
+shorthand (`mo`/`li`/`cv`/`cp`/`f`) with `cmyk` or `rgb`; one is plain PostScript longhand
+(`moveto`/`curveto`/`fill` + `setrgbcolor`) with no `%%EndPageSetup` and y-UP, so it needs
+`y = H - y`. And the file Mo called "halloween" is the BEACH set while the one called "summer" is
+the Halloween set — established by RENDERING them, not by trusting the names.
+**★★ CLUSTER SUBPATHS, NOT SHAPES.** In the Halloween sheet a SINGLE fill draws every bat on the
+page, so grouping at shape level collapses the whole sheet into one blob. Crop by the CENTRE of
+each subpath's bbox — centre, not overlap, or a big neighbouring leaf whose box merely reaches
+into the rect gets dragged in.
+**★★ AND SUBPATHS OF ONE FILL MUST STAY IN ONE `<path>`, OR EVERY HOLE IS WELDED SHUT.** These
+sheets punch eyes, jack-o'-lantern faces, fence gaps and gravestone lettering as REVERSE-WOUND
+subpaths of the same fill. The first extraction emitted one `<path>` per subpath and came back
+with a plain pumpkin where a carved one is, an owl with no eyes and a skull with no sockets —
+and nothing about it looked broken. Carry the shape id through the crop and group on the way out.
+**★★★ THE SAVING IS COORDINATE PRECISION, AND THE NORMALISER'S ANCHOR IS A TRAP.** Raw art
+carries 4-digit coordinates at 2dp (~7 chars a number); normalised into a 100-unit box at 1dp
+they are ~4, and 0.1 of that box at the 34px these render at is 0.034px — under a device pixel at
+3x. That is ~35% off every glyph. **But the first normaliser CENTRED the ink in a 100x100 square
+while returning the INK's w/h**, so `viewBox="0 0 w h"` — the obvious thing to write at the call
+site — clipped every glyph whose aspect was not 1:1. It shipped into the source: the BAT (100 x
+35.8) would have been the top third of a bat. **Found by rendering a gull at five sizes and seeing
+one wing** — the probe that was checking something else. Anchor the ink at the ORIGIN so
+`viewBox="0 0 w h"` is exactly right, and re-render every glyph after changing an emitter.
+**What each theme got, and why that and not more:**
+- **Halloween — Ghost, Spider and Bat re-glyphed, plus a GRAVEYARD.** The ground layer is the one
+  thing it lacked that every sibling has: Winter settles snow on the nav, Spring grows grass, Fall
+  skitters leaves, Summer plants the palm, Quadball stands the hoops — and Halloween had NOTHING at
+  the bottom once the pumpkins moved into the nav pill. A leaning cross, a skull gravestone and a
+  hand clawing out of the ground, three heights on one line (one object reads as a sticker, several
+  of different heights read as a place). **Heights are set by the NAV, not by taste**: the pill
+  occupies 42..92px above the bottom on device, so anything shorter is invisible there while
+  looking fine in Chromium — tops clear it by 46/30/14px. The traced ghost also DELETES a
+  hardcoded `#0f0a16` (the Halloween background painted into the eyes); its eyes are holes.
+- **A MOON WAS BUILT AND CUT.** 404 chars, and it had no home: `top:13%` parked it on the Quick
+  Start card beside the seasonal mark and the chevron, and every band that clears the tab row (43-87
+  fixed px) is a band that holds content. Halloween already has a fixed top anchor in its two corner
+  webs, so it was additive-for-its-own-sake — the same call Mo made on the crow and the boat.
+- **AND THE R.I.P. GRAVESTONE WAS CUT FOR BEING LEGIBLE.** It is the prettiest stone on the sheet
+  and its lettering renders as a readable WORD at the bottom-left of a fitness app. Decoration that
+  reads as copy is the one thing this layer must never do; a CROSS says graveyard with no text at
+  all, and costs 916 chars against its 3,738.
+- **Fall — SIX SPECIES where there was one.** Ginkgo, oak, red maple, japanese maple, horse
+  chestnut and a yellow oak, each with the artist's own colours and veins, for 7,049 chars total —
+  the old glyph was ONE lanceolate blob recoloured three ways, which is what `LEAF_TONES` existed
+  for. `GroundLeaf` draws from the same set instead of keeping its own tinted copy.
+  **★ `fillOpacity`, NOT `opacity`, on the leaf group** — `pw_themes` 4p counts `g[opacity]`
+  wrappers per theme to prove every traveller goes through `DECOR_MOVING`, so a second opacity
+  attribute per leaf doubles fall's count and pushes the max past 0.5. The check would have gone
+  red for a reason that has nothing to do with what it guards.
+- **Summer — the seagull only, and that is the honest answer.** The beach sheet is INK-DRAWN line
+  art with visible brush texture: measured at 34px the crab, turtle, fish and hibiscus are
+  scribbles, and the style does not match Summer's own flat sun and palm. `gull2` is the exception
+  — a plain two-tapered-wing bird at 330 chars, where the hand-drawn one was a constant-width
+  stroke, and a stroke cannot taper. Everything else on that sheet was left; the palm island
+  (17,745 chars) is not worth swapping for one Mo already approved after six redraws.
+**Deliberately NOT done, so it is not re-litigated:** the CornerBranch keeps its own leaves (its
+offsets are tuned to the pixel against the wordmark and the tab row across three rounds — swapping
+its glyphs changes the ink footprint and re-opens that); the ThemeMark glyphs stay hand-drawn,
+because the ACORN cannot survive flattening to one colour — its cap is what identifies it, so as a
+silhouette it reads as a pear. That is the Quadball snitch lesson again: **only a SHAPE-carried
+glyph can be repainted in an arbitrary accent.** The maple and oak leaves would flatten fine, so a
+`leaf` mark swap is available if it is ever wanted.
+
 ## ★★★ THE FEMALE MAP IS THE ARTIST'S OWN VECTORS NOW — FOUR ROUNDS ENDED BY BUYING THE FILE (Sep 8)
 Mo, of the drawn map that shipped in `2026-09-08f`: **"stop it needs to be way better like the male
 version."** He then sent two watermarked comps, stopped me mid-trace on both — *"Stop. I'm working
