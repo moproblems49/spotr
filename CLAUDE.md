@@ -5456,6 +5456,51 @@ lit and below the nav, all four nav buttons still hit-test to themselves, and qu
 balls on the pitch with the two discs **not the same colour**. Red-proofed at 2 failures with 4n2
 (the control) staying green.
 
+## ★★ THE GUEST MIGRATION'S RETRY PASS COVERED ONE TABLE OF THREE (Sep 10)
+Mo, relaying a friend: "he tried the app without signing in and made a workout (create your own
+program) and it didn't save." **The pure-guest path is FINE and that was measured, not assumed** —
+driven end to end in a real browser (welcome -> Start Tracking -> "or build your own" -> name it ->
+add an exercise -> Save -> RELOAD), the program lands in `seshd_v1.programs` and renders after the
+relaunch. So the reported flow did not reproduce, and the honest answer was to say so rather than
+to invent a cause.
+**What the hunt DID find is one step along the same path, and it produces exactly that symptom.**
+`migrateGuestData` uploads programs, PRs and history when a guest creates an account. The Sep 1
+work added `failedRows` + **a one-retry pass to `workout_history` ONLY**. Its two neighbours in the
+same `try` block, ten lines apart, counted a failure and dropped the row. So a program whose single
+POST failed transiently (flaky gym wifi is the normal case) was counted honestly into the toast and
+then LOST — and because `loadUserData` REPLACES `programs` wholesale from the server on the very
+next foreground, it was gone from the PHONE too, with nothing left to retry from. Identical shape
+to the history bug that block is already commented for, in the lines beside it: **one guard that
+didn't get copied**, now the fourth recorded instance.
+Fixed: both use `?on_conflict=id` / `?on_conflict=user_id,exercise_name` upserts with the same
+`queueWrite` retry, so an offline retry lands in the durable queue instead of evaporating. **Naming
+the conflict target is what makes the retry safe** — a bare POST re-sent after a 20s timeout whose
+write had actually landed would 409 on the primary key. Programs now retry **BEFORE** the
+`active_program_id` PATCH, because that column is an FK onto `programs.id`, so a failed program
+used to take the PATCH down with it too.
+Sim: `sim_guestmigrate` gained a section that fails the FIRST POST to each table exactly once (a
+PERMANENT failure would prove nothing about retrying). Red-proofed at **6 failures** against HEAD
+with both `[control]` checks green, the old code's URL printing as bare `/rest/v1/programs`.
+**★ AND THREE OF THE PROBE'S OWN DEFECTS ARE DOCUMENTED CLASSES, HIT AGAIN.** The fetch stub's
+parameter is named `opts` and it **SHADOWED** `runMigration`'s own `opts`, so `failOnce` was always
+undefined, no injected failure ever fired, and the retry checks read RED against correct code — two
+steps from "fixing" a bug that did not exist. Two checks passed **vacuously** because `.every()` on
+an EMPTY array is `true`, so they were green on a build that wrote nothing at all (gated on
+`length > 0` now), and only the `[control]` checks exposed it. And the Playwright driver's
+`getByRole("button",{name:"Save"})` matched the guest banner's **"Save progress"** (`exact:true`
+fixes it). *A red-proof that reports failures against code you have already fixed is a probe bug
+until proven otherwise.*
+**Two process scars paid again, both already in this file:** a wait-loop polling
+`pgrep -f run_sims.mjs` **matched itself** and spun until timeout (use `run_[s]ims`, or poll a
+file); and the publish `-x` list was written from memory instead of copied from
+`api/app-update.js`, so `icon-*.png` excluded **`icon-192.png`** — the ONE image the native shell
+loads. `ota_assets_check` caught it, which is exactly why that guard is mandatory rather than
+advisory: nothing else here can see a 404 that only happens on device.
+**Open, and it needs Mo:** whether the friend ever created an account. If he did, this was his bug.
+If he genuinely never signed in, the remaining suspect is device-only — iOS purging the WebView's
+localStorage — which a GUEST notices and a signed-in user never does, because a guest has no server
+copy to restore from.
+
 ## ★★★ ACTIVITY STOPPED BEING "WHO TOUCHED MY POSTS" (Sep 9)
 Mo: "The Notification Center/tab should show follows, likes, comments and what else?" — and the
 premise was already wrong: **follows were NOT in there.** Every row was derived from `store.posts`,

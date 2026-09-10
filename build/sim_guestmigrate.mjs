@@ -28,7 +28,7 @@ const HISTORY = {
   "2026-07-22": { [UUID_SID]: { dayName: "Pull A", exercises: [{ name: "Row", sets: [{ weight: "155", reps: "8", done: true, type: "normal" }] }], duration: 2800, unit: "lbs" } },
 };
 
-async function runMigration(label, historyOverride) {
+async function runMigration(label, historyOverride, cfg = {}) {
   // Drive the BOOT migration path: an auth callback landing while `seshd_guest` is still set is
   // exactly the interrupted-migration replay this has to survive. AUTH_CALLBACK is captured at
   // module load, so the fragment must be on the URL before the dynamic import below.
@@ -49,18 +49,24 @@ async function runMigration(label, historyOverride) {
   navigator.vibrate = () => {};
 
   // A GUEST with local history, mid-signup: the app migrates on the next authenticated boot.
-  window.localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: "guest", history: historyOverride === undefined ? HISTORY : historyOverride, users: [], programs: [], prs: {} }));
+  window.localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: "guest", history: historyOverride === undefined ? HISTORY : historyOverride, users: [], programs: cfg.programs || [], prs: cfg.prs || {} }));
   window.localStorage.setItem("seshd_guest", "1");
   window.localStorage.setItem("seshd_onboarded", "1");
   window.localStorage.setItem("seshd_custom_merge_v1", "1");
   window.localStorage.setItem("seshd_session", JSON.stringify({ access_token: "tok", refresh_token: "r", expires_in: 3600, user: { id: "newuser", email: "mo@example.com" } }));
 
   const writes = [];
+  const failedOnce = new Set();
   global.fetch = window.fetch = async (url, opts) => {
     const u = String(url), m = (opts?.method || "GET").toUpperCase();
     let body = null; try { body = opts?.body ? JSON.parse(opts.body) : null; } catch {}
     if (m !== "GET") writes.push({ url: u, method: m, body, prefer: (opts?.headers || {})["Prefer"] });
     const ok = (b, s = 200) => ({ ok: s < 400, status: s, json: async () => b, text: async () => JSON.stringify(b) });
+    // Fail the FIRST write to each named table exactly once — the transient failure the retry
+    // pass exists for. A permanent failure would prove nothing about retrying.
+    for (const t of (cfg.failOnce || [])) {
+      if (m !== "GET" && u.includes(t) && !failedOnce.has(t)) { failedOnce.add(t); writes[writes.length-1].failed = true; return ok({ message: "boom" }, 500); }
+    }
     if (u.includes("/auth/v1/token")) return ok({ access_token: "tok", refresh_token: "r", user: { id: "newuser" } });
     if (u.includes("/auth/v1/user")) return ok({ id: "newuser" });
     if (/\/rest\/v1\/(profiles|public_profiles)\?/.test(u)) return ok([{ id: "newuser", username: "mo", unit: "lbs", seen_onboarding: true }]);
@@ -75,6 +81,9 @@ async function runMigration(label, historyOverride) {
 
   const hist = writes.filter(w => w.url.includes("workout_history") && w.method === "POST");
   dom.window.close();
+  // History writes stay the return value (every existing caller filters on it); the raw write
+  // log rides along as a property so a caller can inspect the other tables too.
+  hist.allWrites = writes;
   return hist;
 }
 
@@ -118,6 +127,36 @@ check("every second-run write is an upsert, so nothing accumulates",
 const empty = await runMigration("three", {});
 console.log("RUN 3 (no guest data) history writes:", empty.length);
 check("a lingering guest flag with no data writes nothing", empty.length === 0, JSON.stringify(empty.map(w => w.body)));
+
+// ── A TRANSIENT FAILURE ON A PROGRAM OR PR MUST BE RETRIED, NOT JUST COUNTED ────────────────
+// The retry pass was written for workout_history and never copied to its two neighbours. A
+// program that failed its single POST was counted into `failedRows` (so the toast was honest)
+// and then DROPPED — and loadUserData replaces `programs` wholesale from the server on the next
+// foreground, so the program the guest had just built was gone from the phone too.
+const PROG = [{ id: "9f8e7d6c-1111-4222-8333-444455556666", name: "Guest Split",
+  days: [{ id: "d1", name: "Push", exercises: [{ name: "Bench Press", reps: "3x8" }] }] }];
+const r = (await runMigration("retry", {}, { programs: PROG, prs: { "Bench Press": 225 },
+  failOnce: ["/programs", "/personal_records"] })).allWrites;
+
+const progW = r.filter(w => w.url.includes("/programs") && w.method === "POST");
+const prW   = r.filter(w => w.url.includes("/personal_records") && w.method === "POST");
+check("[control] the program upload was attempted", progW.length >= 1, `${progW.length} writes`);
+check("[control] the PR upload was attempted", prW.length >= 1, `${prW.length} writes`);
+check("a program whose first POST fails is RETRIED", progW.length >= 2,
+  `only ${progW.length} program write(s) — a transient failure lost it`);
+check("a PR whose first POST fails is RETRIED", prW.length >= 2,
+  `only ${prW.length} PR write(s) — a transient failure lost it`);
+// `.every` on an EMPTY array is true, so both of these would pass on a build that wrote
+// nothing at all. Gate them on there actually being writes to inspect.
+check("the program write names its conflict target, so the retry can't 409",
+  progW.length > 0 && progW.every(w => w.url.includes("on_conflict=id")), progW.map(w => w.url).join(" | ") || "no writes");
+check("...with merge-duplicates set",
+  progW.length > 0 && progW.every(w => /merge-duplicates/.test(w.prefer || "")),
+  progW.map(w => w.prefer).join(" | ") || "no writes");
+check("the retried program carries the same id (not a fresh row)",
+  progW.length >= 2 && progW.every(w => w.body?.id === PROG[0].id), JSON.stringify(progW.map(w => w.body?.id)));
+check("the retried PR keys on the same exercise",
+  prW.length >= 2 && prW.every(w => w.body?.exercise_name === "Bench Press"), JSON.stringify(prW.map(w => w.body?.exercise_name)));
 
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);
 process.exit(fails ? 1 : 0);

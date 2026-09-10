@@ -1,4 +1,4 @@
-// v178091717052
+// v178091717053
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -20613,16 +20613,38 @@ function AppInner() {
     // once, and never report a partial run as a whole one.
     let failedRows = 0;
     try {
-      // Upload programs
+      // Upload programs.
+      // ★ THE RETRY PASS BELOW WAS WRITTEN FOR HISTORY AND NEVER COPIED HERE, AND A PROGRAM IS
+      // JUST AS IRREPLACEABLE. A transient failure on one program POST counted into `failedRows`
+      // — so the toast was honest — and then loadUserData REPLACED `programs` wholesale from the
+      // server on the very next foreground, so the program the guest had just built was gone from
+      // the PHONE too, with nothing left to retry from. Same shape as the history bug this whole
+      // block is commented for; the guard simply didn't get copied to its two neighbours.
+      // Naming the conflict target is what makes the retry safe: a bare POST re-sent after a
+      // 20s timeout whose write had actually landed would 409 on the primary key.
+      const programRetry = [];
       for (const prog of (store.programs || [])) {
+        const row = { id: prog.id, user_id: newUserId, name: prog.name, days: prog.days };
         try {
-          await sb.query("programs", {
+          await sb.query("programs?on_conflict=id", {
             method: "POST",
-            body: JSON.stringify({
-              id: prog.id, user_id: newUserId, name: prog.name, days: prog.days,
-            })
+            headers_extra: { "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify(row)
           }, tok);
-        } catch (e) { failedRows++; devError("migrate program:", e); }
+        } catch (e) { programRetry.push(row); devError("migrate program:", e); }
+      }
+      // One retry pass, before the active-program PATCH below — that column is an FK onto
+      // programs.id, so retrying first also stops a failed program taking the PATCH down with it.
+      for (const row of programRetry.splice(0)) {
+        try {
+          // queueWrite so an offline retry lands in the durable queue and replays on reconnect.
+          // `idempotent` is safe to assert: the URL names the conflict target.
+          await sb.queueWrite("programs?on_conflict=id", {
+            method: "POST", idempotent: true,
+            headers_extra: { "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify(row)
+          }, tok);
+        } catch (e) { failedRows++; devError("migrate program retry:", e); }
       }
       // Active program is a single FK on the profile row.
       if (store.activeProgramId) {
@@ -20633,6 +20655,7 @@ function AppInner() {
         } catch (e) { devError("migrate active program:", e); }
       }
       // Upload PRs
+      const prRetry = [];
       for (const [exName, weightLbs] of Object.entries(store.prs || {})) {
         try {
           // NAME THE CONFLICT TARGET. Without `?on_conflict=`, PostgREST emits ON CONFLICT("id")
@@ -20643,7 +20666,18 @@ function AppInner() {
             headers_extra: { "Prefer": "resolution=merge-duplicates" },
             body: JSON.stringify({ user_id: newUserId, exercise_name: exName, weight_lbs: weightLbs })
           }, tok);
-        } catch (e) { failedRows++; devError("migrate PR:", e); }
+        } catch (e) { prRetry.push({ user_id: newUserId, exercise_name: exName, weight_lbs: weightLbs }); devError("migrate PR:", e); }
+      }
+      // Same one-retry pass. merge-duplicates on (user_id, exercise_name) already makes this
+      // idempotent, so re-sending a PR that actually landed is a no-op.
+      for (const row of prRetry.splice(0)) {
+        try {
+          await sb.queueWrite("personal_records?on_conflict=user_id,exercise_name", {
+            method: "POST", idempotent: true,
+            headers_extra: { "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify(row)
+          }, tok);
+        } catch (e) { failedRows++; devError("migrate PR retry:", e); }
       }
       // Upload workout history.
       // MUST BE IDEMPOTENT. This used to be a bare POST with no id, so every run inserted a fresh
