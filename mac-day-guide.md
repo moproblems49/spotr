@@ -234,7 +234,8 @@ is optional polish; if you want it, ask Claude that day and we'll walk through i
 
 ## Step 10 · The on-phone test list (cable build)
 
-Sign in as **`appreview@getseshd.app`** / **the demo password (in App Store Connect — not in this repo)** and accept the notification
+Sign in as the **App Review demo account** — its address and password both live in App Store
+Connect's review notes, never in this repo — and accept the notification
 permission popup when it appears.
 
 Then check these, in any order:

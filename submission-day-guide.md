@@ -239,7 +239,7 @@ Go to **appstoreconnect.apple.com** → **My Apps** → **Seshd**.
 2. Scroll to **Build** and click **+** (or **Select a build**). Choose build **2**.
 3. Scroll to **App Review Information**:
    - **Sign-in required**: checked
-   - **User name**: `appreview@getseshd.app`
+   - **User name**: _the demo account's address — in App Store Connect only, not in this repo_
    - **Password**: the demo password (in App Store Connect — not in this repo)
    - **Notes**: paste the review notes from `appstore-submission.md` in the project folder
 4. Everything else — description, keywords, screenshots, support URL, age rating, privacy — is

@@ -11,7 +11,7 @@ in chat: subtitle, description, keywords, promo text.)
 
 | Field | Value |
 |---|---|
-| **User name** | `appreview@getseshd.app` |
+| **User name** | _not stored in this repo — enter it directly in App Store Connect_ |
 | **Password** | _not stored in this repo — enter it directly in App Store Connect_ |
 
 > ⚠️ Before you submit: sign in to the app once with these credentials to confirm they work.

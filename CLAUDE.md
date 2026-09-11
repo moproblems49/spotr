@@ -2506,7 +2506,7 @@ Assets live in the repo: `appstore-screenshots/captioned/` (upload-ready, lifter
 + `plain/` — both **1284×2778** (the 6.5" slot REJECTED 1290×2796; 1284×2778 is accepted in both
 slots); `appstore-submission.md` (App Review notes + TestFlight what-to-test, paste-ready);
 `public/support.html` + `terms.html` + `privacy.html` all live (a "404" was browser cache).
-**App Review demo accounts (live in prod DB):** `appreview@getseshd.app` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)
+**App Review demo accounts (live in prod DB):** `the App Review demo account (address AND password live ONLY in App Store Connect's review notes — see the credential-hygiene entry in CLAUDE.md)` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)
 (follows Coach Kai so the feed + Report/Block are testable) and buddy `coachkai@getseshd.app`
 (same pw, has one post) — created via SQL insert into auth.users (token columns need explicit
 empty strings, profile auto-created by `handle_new_user` trigger). Login VERIFIED by Mo.
@@ -3184,7 +3184,7 @@ recycle, which is exactly how the original battery was lost. Force-add every new
 ## ★ The demo personas are GONE, and the group hand-over trigger got its first real workout (Aug 31)
 Mo's call once review cleared. Deleted: `maya@`, `jordan@`, `tess@`, `sam@`, `coachkai@` — five
 content personas, via `delete from auth.users where email like '%@getseshd.app' and email <>
-'appreview@getseshd.app'`. **`seshdreview` (appreview@) was deliberately KEPT and was never in the
+'the App Review demo account (address AND password live ONLY in App Store Connect's review notes — see the credential-hygiene entry in CLAUDE.md)'`. **`seshdreview` (appreview@) was deliberately KEPT and was never in the
 question Mo answered**: any future native change needs a new review, and that needs a demo login
 with a populated app. It still has 2 posts / 29 workouts / 21 PRs, so its own History, charts and
 muscle map still demo correctly.
@@ -3246,7 +3246,7 @@ deliberately — invisible, free, and the only way to diagnose a boot that lands
 `pw_authdiag` asserts the readout stays gone (it seeds both keys so a survivor shows up loudly
 rather than rendering blank and passing).
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
-(demo login `appreview@getseshd.app` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)).
+(demo login `the App Review demo account (address AND password live ONLY in App Store Connect's review notes — see the credential-hygiene entry in CLAUDE.md)` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)).
 (3) **RE-DATE THE DEMO CORPUS.** The five personas' posts and workouts go stale on a clock, and a
 reviewer opening a feed whose newest post is three weeks old sees an abandoned app. Last shifted
 **Aug 28 (+6 days, mid-review)** — with the review pending, the reviewer's own demo account had
@@ -5455,6 +5455,55 @@ opacity is driven by the keyframe's own fade). Guard: `pw_themes` 4n/4n2/4n3 —
 lit and below the nav, all four nav buttons still hit-test to themselves, and quadball puts three
 balls on the pitch with the two discs **not the same colour**. Red-proofed at 2 failures with 4n2
 (the control) staying green.
+
+## ★★★ A CREDENTIAL SCANNER CAME FOR THE DEMO ACCOUNT, AND THE ROTATION HELD (Sep 11)
+Mo: "Just got a reset your password email but I didn't request one." It was real, it was targeted,
+and **it failed** — worth recording in full because the defence that worked was one Mo had already
+done, and the diagnosis depended on knowing a piece of infrastructure that is easy to forget.
+**The email was NOT for Mo's account.** It was for the App Review demo login, and he received it
+because `getseshd.app` runs an ImprovMX **catch-all** that forwards every address at the domain to
+his Gmail. *Before treating a reset mail as an attack on the named recipient, check whether a
+catch-all is putting somebody else's mail in that inbox.*
+**The auth log is unambiguous — one datacenter IP (139.178.129.17, Packet/Equinix), 32 seconds:**
+`05:30:08 /token 400` · `05:30:24 /token 400` · `05:30:26 /token 400` · `05:30:40 /recover 200`.
+Three password guesses, then a fallback to the reset path. Nothing else from that IP in the whole
+24h window; no `/verify`, no `/user`, no new session, and the account's `last_sign_in_at` never
+moved off Sep 5. **The link was never opened.**
+**★ WHAT IT WAS: THE PUBLIC-REPO LEAK, ARRIVING ~10 DAYS LATE.** The demo password sat in this
+repo's git history; scrubbing the working tree on Sep 1 does nothing about history, which is
+permanent and public. A scanner found the OLD password, tried it, and **it failed because Mo
+rotated it on Sep 5** — that rotation is the entire reason this is a log entry and not an incident.
+**★ AND `updated_at > recovery_sent_at` IS NOT EVIDENCE OF A PASSWORD CHANGE — IT IS TRUE BY
+CONSTRUCTION.** GoTrue stamps `updated_at` when it writes `recovery_sent_at`, so the two differ by
+~0.4s on every reset request and a naive "was the row changed after the reset" column reads TRUE
+for an attack that did nothing. The load-bearing signals are `last_sign_in_at` and the newest row
+in `auth.sessions`: a completed reset issues a session, so **no new session means the link was
+never redeemed.** Nearly reported a takeover off a column that cannot mean what it looks like.
+**FIXED: the demo account's EMAIL was rotated too, not just its password.** The address was
+published in four repo files, so it was permanently guessable and permanently reset-spammable —
+and every attempt eats the project-wide **30/hour** email budget that real users' resets and signup
+confirmations come out of. The new address is unpublished and is NOT written anywhere in this repo;
+it lives in App Store Connect's review notes beside the password, per the one-place rule. The
+update cleared `recovery_token` in the same statement, which also killed the live link sitting in
+Mo's inbox. Verified after: both `auth.users` and `public.profiles` carry the new address,
+`email_confirmed_at` intact (no re-confirmation needed), and the old address resolves to 0 rows.
+**★ THE BIGGER QUESTION MO ASKED — "can they find other people's emails?" — IS MEASURED AND THE
+ANSWER IS NO.** Two independent checks, because the repo and the API are different attack surfaces:
+  * **The repo.** Scanned EVERY BLOB that has ever existed (`git rev-list --objects --all` ->
+    `cat-file --batch`, deduplicated by blob, which is far faster than per-commit pickaxe over a
+    20k-line file and strictly more complete than scanning diffs). **14 distinct address-shaped
+    strings in all of history**: four `@getseshd.app` (the demo personas + the Resend sender),
+    seven obvious fixtures (`t@t.com`, `mo@example.com`, `real@person.com`…), a pooler connection
+    username, one PNG filename matched by the regex, and **`mohaggagz@gmail.com`** — Mo's own,
+    published deliberately as the support contact on privacy/terms/support.html. Targeted pickaxe
+    agrees: the two real non-Mo users appear in **0 commits**. The structural reason is that user
+    data lives in Supabase and the app never commits it.
+  * **The live API.** As `anon`: `public.profiles` -> **0 rows, 0 emails**, and `public_profiles`
+    -> 4 rows with **no `email` column at all**. The column-limited view is doing its job.
+**Open, Mo's call, NOT done:** his personal Gmail is the support contact on three public pages, so
+it is scrapeable and its reset endpoint is reachable by anyone who reads the site. Switching those
+pages to `support@getseshd.app` (the catch-all already forwards it to him) would decouple his
+published contact address from his login address, which is the same fix applied to the demo account.
 
 ## ★★ THE GUEST MIGRATION'S RETRY PASS COVERED ONE TABLE OF THREE (Sep 10)
 Mo, relaying a friend: "he tried the app without signing in and made a workout (create your own
