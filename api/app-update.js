@@ -71,6 +71,25 @@ const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 // the repo and its public half compiled into the native binary (a Mac day).
 const BUNDLE_SHA256 = "6c6138c126dbc38517f38908450749cad56d03be44baf0d8c6ccb771efbf4510";
 
+// ★ A FRESH APP STORE INSTALL DOWNLOADS A BUNDLE IT ALREADY HAS, AND THAT IS THE "RELAUNCH TWICE"
+// COMPLAINT. On a phone that has never taken an OTA, the plugin reports its current version as the
+// literal string "builtin" (BundleInfo.swift:111 — an empty version falls back to ID_BUILTIN), which
+// can never equal LATEST_VERSION. So the reply below always offered the bundle: launch 1 downloaded
+// ~500 kB, launch 2 applied code byte-identical to what the binary already carried.
+// `npx cap sync ios` bakes the compiled dist/ into the archive, so the build KNOWS which bundle it
+// contains — this constant records it, and the check answers "no update" to a device whose builtin
+// is already at or past it. The plugin also sends version_code = CFBundleVersion, i.e. the build
+// number (CapacitorUpdaterPlugin.swift:262), which is how a build is identified.
+// ★ IT DISABLES ITSELF, WHICH IS THE WHOLE SAFETY ARGUMENT. The suppression fires ONLY while
+// `version` here still equals LATEST_VERSION. Publish any new OTA and they diverge, so every
+// builtin device is offered the update again — a stale constant costs a redundant download, never a
+// missed one. Do NOT "simplify" this to a bare build-number comparison: that WOULD strand every
+// store install on old code, silently, with the app looking perfectly healthy.
+// Update it on a Mac day, in the same commit as the archive: set `build` to the CFBundleVersion you
+// archived (>= is used, so a later archive needs no edit) and `version` to whatever LATEST_VERSION
+// is at that moment.
+const BUILTIN_BUNDLE = { build: 16, version: "2026-09-10a" };
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -79,9 +98,11 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   let current = "";
+  let buildNo = NaN;
   try {
     const b = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     current = String(b.version_name || b.version || "");
+    buildNo = parseInt(String(b.version_code ?? ""), 10);
   } catch { /* GET or malformed body — treat as unknown current version */ }
 
   // No published bundle, or the device already runs it → "no update" (version: null is the
@@ -91,7 +112,15 @@ export default async function handler(req, res) {
   // res.message ... rejectCall`), so a friendly "up to date" string surfaced in the app as
   // "couldn't reach the update server". Auto-update ignores `message`, which is why background
   // updates still worked and only the manual check appeared broken.
-  if (!LATEST_VERSION || current === LATEST_VERSION) {
+  // A device still on its builtin bundle already carries LATEST_VERSION when its build number is
+  // at or past the archive that baked it in — see BUILTIN_BUNDLE above for why this is fail-safe.
+  const builtinIsCurrent =
+    current === "builtin" &&
+    BUILTIN_BUNDLE.version === LATEST_VERSION &&
+    Number.isFinite(buildNo) &&
+    buildNo >= BUILTIN_BUNDLE.build;
+
+  if (!LATEST_VERSION || current === LATEST_VERSION || builtinIsCurrent) {
     return res.status(200).json({ version: null });
   }
   return res.status(200).json({

@@ -3382,6 +3382,61 @@ the code side; goes live after ONE more Mac build (see next-Mac-day checklist be
   plugin/capability/entitlement still requires a real Mac build + TestFlight upload — and the
   FIRST build containing the updater plugin itself is exactly that.
 
+### ★★ A FRESH INSTALL DOWNLOADED A BUNDLE IT ALREADY HAD — the "relaunch twice" bug (Sep 13)
+Mo, on getting the Mac: "will need to put the updated version of the app so people don't have to
+relaunch it twice after downloading." Two separate causes, and `cap sync` only fixes one of them.
+- **Half one, the obvious half:** the store build was archived before weeks of OTA work, so a new
+  downloader saw OLD code on launch 1. `npm run build` THEN `npx cap sync ios` bakes the compiled
+  `dist/` into the archive and closes it. This is why the golden order is not optional.
+- **★ HALF TWO, MEASURED IN THE PLUGIN'S OWN SOURCE: A PHONE THAT HAS NEVER TAKEN AN OTA REPORTS
+  ITS VERSION AS THE LITERAL STRING `"builtin"`** (`BundleInfo.swift:111` — an empty version falls
+  back to `ID_BUILTIN`), which can never equal `LATEST_VERSION`. So `api/app-update.js` offered the
+  bundle to **every new downloader, forever**: ~500 kB fetched on launch 1 and applied on launch 2,
+  for code the binary already contained. `cap sync` alone does not touch this — a freshly archived
+  build still does the round trip on day one.
+  Fixed with `BUILTIN_BUNDLE = { build, version }`: the plugin also sends `version_code` =
+  `CFBundleVersion` (`CapacitorUpdaterPlugin.swift:262`), so the endpoint can tell that a builtin
+  device at or past that build already carries `LATEST_VERSION` and answer `{version:null}`.
+  **★ THE SUPPRESSION DISABLES ITSELF, AND THAT IS THE ENTIRE SAFETY ARGUMENT.** It is gated on
+  `BUILTIN_BUNDLE.version === LATEST_VERSION`, so publishing any new OTA makes them diverge and
+  every builtin device is offered the update again. A stale constant therefore costs a redundant
+  download, never a missed one. **Do NOT "simplify" it to a bare build-number comparison** — that
+  would strand every store install on stale code, silently, with the app looking perfectly healthy,
+  which is far worse than the bug it replaces.
+  **Update it on a Mac day, in the same commit as the archive.** Sim: `sim_otabuiltin` drives the
+  REAL handler with the request shape the plugin sends, and spends most of its weight on the
+  directions that must still update (older build, missing/garbage `version_code`, a device already
+  on an older OTA). Red-proofed twice: removing the suppression fails checks 1-2, removing the
+  version gate fails the fail-safe check, and every control stays green in both.
+  **The fail-safe check is BEHAVIOURAL, not a regex over the source.** It writes a copy of the real
+  module with `LATEST_VERSION` moved on, imports that, and drives it — a regex would only prove the
+  gate is written, not that it governs the reply.
+
+### The App Store frame generator is committed now (`build/appstore_frame.mjs`)
+`build/shots.mjs`, which made the original four captioned screenshots, was **lost to a container
+recycle** — `build/` is gitignored and it was never `git add -f`'d, the same way the first sim
+battery was lost. Its replacement is force-added along with `build/assets/inter-latin.woff2`, so a
+frame made next year still matches the ones already on the listing.
+- **1284x2778 is deliberate and is NOT the phone's native size.** The 6.5" slot REJECTED 1290x2796;
+  1284x2778 is accepted in both the 6.5" and 6.9" slots. A raw iPhone 16 Pro capture is 1206x2622
+  and must be REFRAMED, not merely resized.
+- **Crop the iOS status bar off a real capture.** The four originals were captured in Chromium and
+  carry no clock, signal bars or battery; leaving them in is what makes a new frame look foreign.
+  `cropTop` is in source pixels (145 for a full screen, or down to the sheet's own top edge for a
+  sheet — found by scanning the left margin for where the dimmed backdrop gives way).
+- **★ MEASURE THE INK, NOT "ANY PIXEL THAT DIFFERS FROM THE BACKGROUND".** The first pass read the
+  headline as **148px** and it is really **~113px**: the lime glow behind it satisfied a
+  differs-from-background test, so glow rows merged into the text band. A bright-ink test (r,g,b all
+  > 150) excludes the glow and gives bands consistent across all four originals — eyebrow cap
+  205-232, headline ascender-tops 299 and 422, subhead 594 and 663. Two independent derivations then
+  agree: "Your body knows." measures 109 tall cap-to-descender AND 937 wide, which is Inter 800 at
+  ~113px with -0.032em to within 1% **on both axes**. **When one measurement gives an implausible
+  number, find a second axis that must agree with it** — width settled what height alone could not.
+- Blocks are positioned by the top of their own INK via Inter's real vertical metrics, not by flow
+  layout, so a headline that gains a descender cannot shift everything under it.
+- `white-space:nowrap` keeps the author's line breaks exact, which means an over-long line would run
+  silently off the canvas — the generator measures the rendered ink and THROWS instead.
+
 **★ SUBMISSION MAC DAY — the checklist for the App Store build (agreed with Mo, Aug 9).**
 An App Store build needs Xcode regardless, so anything native rides along for free that day. Do
 these BEFORE archiving:
