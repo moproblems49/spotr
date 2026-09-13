@@ -3248,7 +3248,17 @@ rather than rendering blank and passing).
 (2) App Review notes + demo accounts are already prepared in `appstore-submission.md`
 (demo login `the App Review demo account (address AND password live ONLY in App Store Connect's review notes — see the credential-hygiene entry in CLAUDE.md)` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)).
 (3) **RE-DATE THE DEMO CORPUS.** The five personas' posts and workouts go stale on a clock, and a
-reviewer opening a feed whose newest post is three weeks old sees an abandoned app. Last shifted
+reviewer opening a feed whose newest post is three weeks old sees an abandoned app.
+**★ DONE Sep 13 2026 (+15 days), and the job is much smaller now that only `seshdreview` survives**
+— 29 workouts, 2 posts, 2 group posts, 3 kudos. It had gone 15 days stale with **ZERO workouts in
+the 7-day muscle-map window**, i.e. the reviewer's own Muscles Trained map would have been empty:
+that is the failure this item exists to prevent, and it is invisible unless you query for it, so
+**measure `workouts_in_7d` rather than eyeballing "the newest post looks recent"**. After: newest
+workout today, 6 workouts in the window, and all 19 exercise names resolved through `getExEntry`
+covering all 13 trainable groups. The mirror trap fired exactly as documented — three real kudos on
+seshdreview's posts were left alone (correctly, they are a real user's) and so would have predated
+the posts they sit on; re-placed inside `[post.created_at, now())` by construction. Backup:
+`demo_shift_backup_20260913`. Previously shifted
 **Aug 28 (+6 days, mid-review)** — with the review pending, the reviewer's own demo account had
 drifted to the very edge of the 7-day muscle-map window, i.e. an empty "Muscles Trained" on the
 account named in the review notes. Method notes that survive to the next shift: pick the offset so
