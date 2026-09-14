@@ -88,7 +88,7 @@ const BUNDLE_SHA256 = "6c6138c126dbc38517f38908450749cad56d03be44baf0d8c6ccb771e
 // Update it on a Mac day, in the same commit as the archive: set `build` to the CFBundleVersion you
 // archived (>= is used, so a later archive needs no edit) and `version` to whatever LATEST_VERSION
 // is at that moment.
-const BUILTIN_BUNDLE = { build: 16, version: "2026-09-10a" };
+const BUILTIN_BUNDLE = { build: 17, version: "2026-09-10a" };
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
