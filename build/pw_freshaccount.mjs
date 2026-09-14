@@ -82,6 +82,31 @@ for (const [label, id, needles] of TABS) {
   check(`[${id}] no number computed from nothing`, !junk, junk && `found "${junk[0]}"`);
 }
 
+// 1b — the Workout tab's utility row must not strand its only control.
+// That row is [streak card][1RM], and the streak card returns null while you have no streak AND
+// nothing logged this week — i.e. on every freshly created account. It shipped with
+// justifyContent:"flex-end", so the one remaining button sat hard against the RIGHT edge with
+// 291px of empty row beside it, on the first screen a new user ever sees. Measured in pixels
+// rather than asserted on the style, because the defect is where the button LANDS: the row is
+// correct with a streak present (the card carries flex:1 and fills it) and only a real fresh
+// store can tell the two apart. This is the "every fixture starts with data already in the
+// store" blind spot — no other suite here can see it.
+await nav("Workout");
+const oneRM = await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button[aria-label="1RM Calculator"]')].find(e => e.offsetParent);
+  if (!b) return null;
+  const r = b.parentElement.getBoundingClientRect(), bb = b.getBoundingClientRect();
+  return { siblings: b.parentElement.children.length, gapLeft: Math.round(bb.left - r.left),
+           rowWidth: Math.round(r.width) };
+});
+check("[tracker] the 1RM control is on screen", !!oneRM);
+if (oneRM) {
+  check("[tracker] fresh account really has no streak card beside it (fixture is a true zero)",
+    oneRM.siblings === 1, `siblings=${oneRM.siblings} — a streak leaked into the fixture, so the next check is vacuous`);
+  check("[tracker] the lone 1RM control is not stranded against the right edge",
+    oneRM.gapLeft <= 4, `${oneRM.gapLeft}px of dead row to its left (row is ${oneRM.rowWidth}px)`);
+}
+
 // 2 — History's stat tiles must read a real 0, not blank and not NaN. A tile whose value is
 // missing entirely renders as an empty box that looks like a loading state forever.
 await nav("Workout");

@@ -1,4 +1,4 @@
-// v178091717053
+// v178091717054
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14380,8 +14380,18 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           {/* Streak + 1RM share one compact row. The streak used to be a full-width slab and the
               calculators a second full-width row below it, so two utilities ate the top third of
               the screen before Quick Start. Plates moved out entirely — it already lives in the
-              workout screen, which is where you're standing at the rack. */}
-          <div style={{ display:"flex", gap:8, marginTop:10, marginBottom:12, alignItems:"stretch", justifyContent:"flex-end" }}>
+              workout screen, which is where you're standing at the rack.
+
+              flex-START, not flex-end, and that is a NEW-USER fix rather than a taste call. The
+              streak card returns null while you have no streak AND nothing logged this week, i.e.
+              for every account that has just signed up — so on the very first screen a new user
+              sees, this row held ONE small button and flex-end stranded it against the right edge
+              with two thirds of the row empty. It reads as a rendering mistake on the landing
+              screen of a freshly downloaded app. Nothing changes once the streak exists: that card
+              carries flex:1, so it fills the row and justifyContent has no effect either way.
+              Invisible to Mo (he has a streak) and to every fixture that seeds history, which is
+              the documented "every fixture starts with data already in the store" blind spot. */}
+          <div style={{ display:"flex", gap:8, marginTop:10, marginBottom:12, alignItems:"stretch", justifyContent:"flex-start" }}>
           {(() => {
             const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
             if (!ws.count && !ws.thisWeek) return null;
