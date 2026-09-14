@@ -111,6 +111,71 @@ Found a bug or have an idea? Email hello@getseshd.app — every message reaches 
 
 ---
 
+## App Store description (paste-ready — App Store Connect > version > Description)
+
+Rewritten Sep 14 2026 for voice. The previous draft read as generated for three measurable
+reasons and all three are fixed here: NINE em dashes, almost every one in the same
+`Thing — explanation` bullet shape; "so you can / so you know" three times; and a
+"WHY LIFTERS SWITCH TO SESHD" header making a social-proof claim nothing backs — nobody has
+switched, the app has a handful of users. Zero em dashes now, and the sentence lengths vary.
+
+Every claim was checked against the code before it was polished rather than after:
+- "swipe right to log a set" — SetRow's onTouchEnd calls onToggleDone() past +60px (App.jsx),
+  the same path as tapping the checkmark. I suspected this was false and it is not; screenshot
+  01's "Swipe to complete" subhead is correct too.
+- "estimated 1RM on every WORKING set" — the e1RM chip is gated on `set.type !== "warmup"`.
+- "plates per side on every barbell lift" — the breakdown renders only when platesBreakdown
+  exists, and reads LOADED rather than PER SIDE on one-sided bars.
+- "private until you turn it public" — `checked={store.isPublic === true} // default off`.
+  This is the strongest line in the section and the old copy never used it; it hedged with
+  "(WHEN YOU WANT TO)", "your call" and "the social side stays optional", saying the same
+  thing three times without ever stating the actual default.
+Body Battery is named for the first time — screenshot 06 is entirely about it and the
+description had never mentioned it.
+
+1,950 characters of the 4,000 allowed.
+
+```
+Seshd is a gym log that keeps up with you between sets.
+
+Swipe a set done and the rest timer starts itself. The plate math is already on screen. Come back tomorrow and the app opens on your next session with the weights filled in.
+
+IN THE GYM
+• Swipe right to log a set, left to delete one
+• Plates per side on every barbell lift, for the weight you just typed
+• Estimated 1RM on every working set
+• Rest timer starts the moment a set goes green
+• Last session sits beside today's, so you always know the number to beat
+
+SEE YOURSELF GET STRONGER
+• PRs for weight, estimated 1RM and volume, tracked without you doing anything
+• Weekly volume, a year of training in one heatmap, every session you've logged
+• Muscle balance that catches the groups you've been quietly skipping
+
+TRAIN AROUND YOUR RECOVERY
+• Daily readiness from Apple Health: HRV, resting heart rate and sleep, each read against your own baseline
+• Body Battery. One number that falls as you train and recharges when you actually rest
+• Per-muscle recovery, so you can see your legs are still cooked while your back is ready to go
+• Works without a watch. Connect Apple Health and the estimates become real measurements.
+
+BUILD YOUR PROGRAM
+• Start from a Push / Pull / Legs split or build your own from scratch
+• Reorder and swap exercises mid-workout
+• Next time it opens with what you actually lifted, not what the template said
+
+TRAIN WITH FRIENDS, OR DON'T
+• Your profile is private until you turn it public. That's the default, not a setting you have to find.
+• Post a workout or a PR to your feed when you want to
+• Private groups with members-only photos
+• Follow, react, message. None of it is required to use the app.
+
+YOUR DATA STAYS YOURS
+• Every set saves to your phone first and syncs when you have signal. A gym dead zone doesn't cost you a workout.
+• No ads. We don't sell your data.
+
+Questions or feedback: hello@getseshd.app
+```
+
 ## Support / legal URLs (all live)
 
 - Support URL: https://spotr-drab.vercel.app/support.html
