@@ -59,7 +59,7 @@ Reports are insert-only (not readable by other users) and reviewed within 24h. B
 8. ACCOUNT DELETION
 Settings -> scroll to bottom -> "Delete account" (type DELETE to confirm).
 
-Contact: mohaggagz@gmail.com
+Contact: support@getseshd.app
 ```
 
 ---
