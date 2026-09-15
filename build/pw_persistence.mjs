@@ -108,6 +108,24 @@ if (bumped) check("changing the weekly goal writes profiles.weekly_target", sawP
   JSON.stringify(profilePatches(mGoal)).slice(0, 160));
 else check("the weekly-goal control is present", false, "no day-count button found — a shape change would otherwise silently delete this check");
 
+// ★ AND IT MUST CARRY THE BOUNDARY, IN THE SAME WRITE. The streak recomputes every past week
+// against whatever target it is handed, so a target change with no recorded boundary retroactively
+// re-judges the user's whole history and can wipe a genuinely-earned run. The boundary is what
+// stops that — and if it only ever reached `setStore`, it would look saved, survive a tab switch,
+// and be gone on the next foreground like every other local-only write in this app. Assert the
+// SHAPE too: `until` is what targetForWeek compares against, and an entry without it is ignored
+// as junk, which would be indistinguishable from never having written one.
+if (bumped) {
+  // profilePatches yields PARSED BODIES, not strings — the first draft of this pair regex-tested
+  // the object, which stringifies to "[object Object]" and can never match, so it reported the
+  // app broken when the write was fine. A probe is code too.
+  const patch = profilePatches(mGoal).filter(b => b && b.weekly_target_history).pop() || null;
+  const entry = patch ? (patch.weekly_target_history || [])[0] : null;
+  check("changing the weekly goal ALSO writes the target boundary", !!entry, JSON.stringify(profilePatches(mGoal)).slice(0, 200));
+  check("the boundary records the OLD target and a date", !!entry && entry.target === 3 && /^\d{4}-\d{2}-\d{2}$/.test(entry.until || ""),
+    JSON.stringify(entry));
+}
+
 // ── Private account ──────────────────────────────────────────────────────────────────────────
 const mPriv = writes.length;
 // The public/private control is a real switch now (it was an On/Off segmented pair; a boolean is

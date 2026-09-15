@@ -3357,6 +3357,29 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
+- **A PAID STREAK RESTORE, Snapchat-style** (Mo parked this Sep 15 2026, the day he lost a 17-week
+  run to a week of illness). The free half of it — one forgiven week per 13 — SHIPPED that day and
+  is what the parked idea has to be judged against: a restore that only does what the grace already
+  does for free is not a product. What it would actually sell is **a SECOND forgiveness inside the
+  spacing window**, i.e. the case the grace deliberately refuses (two weeks off, or a second miss
+  three weeks after the first).
+  **★ THE ARCHITECTURE IS THE WHOLE PROBLEM, AND IT IS WORTH KNOWING BEFORE ANYONE SCOPES THIS:
+  THERE IS NO STORED STREAK TO RESTORE.** `calcWeeklyStreak` recomputes the entire run from
+  `workoutDates` on every render, so "restore my streak" cannot be a row that says `streak = 17`.
+  It has to be a stored EXCEPTION the walk consults — `{ week: "2026-W37", source: "purchase" }` —
+  which is the same shape as `weeklyTargetHistory` and would live beside it. That also means a
+  purchased restore is durable and idempotent by construction (re-walking gives the same answer),
+  which is the property you want when money is involved.
+  **Three things make it a later project.** (1) An iOS in-app purchase must use Apple IAP — 15%
+  under $1M — which needs StoreKit, a native plugin, a Mac day and server-side receipt validation:
+  more work than the feature. (2) It is the first thing in this app that would make a NUMBER
+  purchasable, so the honesty rule that forgiven weeks do not increment `count` has to survive
+  contact with someone who paid for them; if a buyer expects the number to go UP, the product and
+  the number disagree and one of them has to give. (3) Seshd has one organic signup. Selling a
+  streak restore to nobody is the definition of building the wrong thing first.
+  **The cheap demand test needs no IAP at all**: count how often `graceUsed` fires and how often a
+  streak breaks on exactly TWO missed weeks. If almost nobody ever loses a streak they cared about,
+  there is nothing here to sell.
 - **Naps should count toward the Body Battery recharge** (Mo parked this Aug 1, from the Garmin
   comparison). `pickSleepBlock()` deliberately picks ONE main block and discards anything under
   `MIN_MAIN_SLEEP_H` (2.5h), so a real afternoon nap is thrown away — Garmin credits it. The
@@ -5591,16 +5614,104 @@ ANSWER IS NO.** Two independent checks, because the repo and the API are differe
     20k-line file and strictly more complete than scanning diffs). **14 distinct address-shaped
     strings in all of history**: four `@getseshd.app` (the demo personas + the Resend sender),
     seven obvious fixtures (`t@t.com`, `mo@example.com`, `real@person.com`…), a pooler connection
-    username, one PNG filename matched by the regex, and **`mohaggagz@gmail.com`** — Mo's own,
-    published deliberately as the support contact on privacy/terms/support.html. Targeted pickaxe
-    agrees: the two real non-Mo users appear in **0 commits**. The structural reason is that user
-    data lives in Supabase and the app never commits it.
+    username, one PNG filename matched by the regex, and **Mo's own personal Gmail**, which was at
+    the time the support contact on privacy/terms/support.html (see the resolution below). Targeted
+    pickaxe agrees: the two real non-Mo users appear in **0 commits**. The structural reason is that
+    user data lives in Supabase and the app never commits it.
   * **The live API.** As `anon`: `public.profiles` -> **0 rows, 0 emails**, and `public_profiles`
     -> 4 rows with **no `email` column at all**. The column-limited view is doing its job.
-**Open, Mo's call, NOT done:** his personal Gmail is the support contact on three public pages, so
-it is scrapeable and its reset endpoint is reachable by anyone who reads the site. Switching those
-pages to `support@getseshd.app` (the catch-all already forwards it to him) would decouple his
-published contact address from his login address, which is the same fix applied to the demo account.
+**★ RESOLVED Sep 15 2026 — the published contact is `support@getseshd.app`**, on privacy.html,
+terms.html, support.html and the App Review notes in `appstore-submission.md`. His personal Gmail
+was the support contact on three public pages, so it was scrapeable AND it is his login address —
+anyone reading the site could aim `/auth/v1/recover` at it, which is exactly the shape of the Sep 11
+scanner incident against the demo account. The ImprovMX catch-all already forwards the whole domain
+to him (verified live: `mx1`/`mx2.improvmx.com` at priority 10/20), so nothing had to be created and
+no mail is lost. **The decoupling is the point, not the address** — a published contact must never
+be an address that can sign in. Git history still holds the old one and always will, which is a
+reason to rotate a LOGIN, not a reason to keep publishing it.
+**Mo-side, not done from here:** App Store Connect's own "Support URL" already points at
+support.html so it needs nothing, but if a contact EMAIL is set in App Store Connect (App
+Information, and the App Review notes field) it still reads the Gmail — paste the updated notes
+from `appstore-submission.md` on the next submission.
+
+## ★★★ THE STREAK JUDGED EVERY PAST WEEK AGAINST TODAY'S TARGET, AND ONE ILL WEEK RESET IT (Sep 15)
+Mo: "I accidentally messed up my streak, anyway to get it back?" It had broken CORRECTLY — target
+2, the week of Sep 7 he logged 1 because he was ill — so there was no bug in the number. Looking at
+`calcWeeklyStreak` to answer him found two real ones next to it, and both punish the user for
+something that is not slacking.
+- **★ RAISING YOUR WEEKLY TARGET RETROACTIVELY WIPED A GENUINELY-EARNED RUN.** The streak
+  recomputes the WHOLE history on every render against the CURRENT `weeklyTarget`, so going from 2
+  to 3 re-judged every past week against a goal the user did not have at the time. Measured on
+  Mo's real dates: a 17-week run becomes **1** the instant the button is tapped, with no warning
+  and no way back except lowering the target again. The app punishing you for getting more
+  ambitious is close to the worst thing a streak can do. `profiles.weekly_target_history` records
+  the boundaries — `[{ until:"YYYY-MM-DD", target:n }]`, "target n applied to every week that
+  STARTED before `until`" — and `targetForWeek` reads them. **An EMPTY history reproduces the old
+  behaviour exactly**, which is what makes it safe for every existing row: it is backward-compatible
+  by construction and only starts mattering at the first change made after it ships. There is no
+  way to recover what someone's target was last March and inventing one would be worse.
+  **★ THE BOUNDARY IS THIS WEEK'S MONDAY, NOT THE DAY OF THE CHANGE, AND READING THE CODE BACK IS
+  WHAT CAUGHT IT.** The first cut recorded `until = today`, which makes the CURRENT week a past
+  week — so the walk judged it against the OLD target while `countingThisWeek` judged it against
+  the NEW one. Lower your target mid-week and the two disagree: the easier test says the week is
+  made (status "active") while the harder one breaks the run at step 0 (count 0). A card reading
+  "active" above a zero. Anchoring to Monday means this week always uses the target the pips and
+  the "N/M" caption are already showing, which is the only value consistent with what is on screen.
+  Red-proofed: restoring the day anchor fails four checks, including the count dropping by exactly
+  the current week. Measuring found the two bugs above; READING found this one — the pair is the
+  point.
+- **★ ONE MISSED WEEK IS NOW FORGIVEN (`STREAK_GRACE_EVERY_WEEKS = 13`).** A week ill was worth the
+  same as a week quit, and a streak that cannot survive one bad week stops being a reason to come
+  back at the exact moment the user needs one. Two missed weeks in a row still break it, because
+  the spacing rule refuses a second grace one step later — so this forgives illness and not drift.
+  **A forgiven week does NOT increment `count`**: the card reads "17 wks" and that has to mean
+  weeks you actually hit the target. Counting the sick week would make the headline a lie while
+  delivering nothing the user wanted, which was the chain not resetting to zero. Mo's own number
+  went **0 → 17, one week forgiven**.
+- **★ THE CARD SAYS SO, BECAUSE A NUMBER THAT SURVIVES A WEEK YOU KNOW YOU MISSED READS AS A BUG.**
+  `savedWeek` is specifically "the MOST RECENT COMPLETED week was forgiven" — not "a grace was used
+  somewhere in the run", which would leave the label stuck on for months — and in that state the
+  kicker reads **STREAK SAVED** instead of STREAK AT RISK. The amber fill and the `0/N` in the
+  caption directly below already carry the urgency; nothing else on the screen answered the
+  question the user actually has.
+- **★ AND THE GUARD CAUGHT A DEFECT IN MY OWN FIX ON ITS FIRST RUN: A GRACE SPENT PAST THE END OF
+  THE RUN.** The walk always finishes by running off the start of the user's history into empty
+  weeks, so the LAST thing it ever did was forgive a week with nothing behind it. A perfect
+  21-week run came back `graceUsed: 1` — "streak saved" on a card belonging to someone who has
+  never missed a week. Graces are held PENDING and committed only when a week actually counts
+  (`lastGraceStep` is still set immediately, or the spacing rule cannot see a pending grace and the
+  walk forgives two trailing weeks in a row). It also silently changed Mo's number from "2 forgiven"
+  to the honest "1".
+- **★ AND THE FIRST DRAFT'S `streak > 0` GUARD BLOCKED THE ONLY CASE GRACE EXISTS FOR.** I added it
+  to stop a lapsed account walking back to a run it abandoned — and measured against Mo's real
+  dates it returned **0**, because the FIRST week the walk reaches is the one he just missed, so
+  `streak` is always 0 there. The spacing rule already does that job: a lapsed account hits a
+  second consecutive gap one step later and stops. **I would not have found either of these by
+  reading; both came from driving the real function over real data.**
+- **`storeStreak(store, plusDateKey)` is the one store-shaped call.** Eight sites had hand-written
+  `store.weeklyTarget || 3` and would each now need the history threaded too — the N-copies-drift
+  class. The friend-stats call in `DiscoverScreen` deliberately stays raw: it passes a FRIEND's
+  dates and target, and their history is not in `public_profiles` (nor should it be — the column is
+  NOT in that view, which lists its columns explicitly for exactly this reason). Grace still applies
+  there, because grace lives inside `calcWeeklyStreak` itself.
+- **Found while threading it: History's `weeklyStreak` was DEAD** — assigned, never read, and
+  passing no target so it silently used the default 3 whatever the user had chosen. A wrong number
+  recomputed over every workout date on every History render and displayed nowhere. Deleted.
+- **Sim: `sim_streakgrace`** (34 checks, clock pinned via `opts.now` — a streak test that reads the
+  wall clock passes at one hour and fails at another, the `sim_bbgate` scar). Red-proofed as TWO
+  SEPARATE mutations because the fixes are independent: grace removed → **7 failures**, target
+  history ignored → **5**, both exit 1, and in each the `[control]` checks stay green. Swept across
+  eight timezones including the sub-hour ones. **Reverting the file wholesale was NOT a valid red
+  proof** — the old revision does not export `storeStreak`/`targetForWeek`, so the sim died on an
+  import error, which is the documented "an import error is not a red result" trap; the bugs had to
+  be reintroduced in place. `pw_persistence` additionally asserts the boundary rides the SAME PATCH
+  as the target (a boundary that only reached `setStore` would look saved and be gone on the next
+  foreground), and `sim_settingsrace` covers the new field — verified by instrumenting its own
+  extraction rather than trusting a green tick, then red-proofed by removing it from the guard.
+- **Known and deliberately NOT changed: `get_streak_at_risk_candidates` (the Sunday push) does not
+  know about grace.** Its `join prev_week` is an INNER join, so during a forgiven week it simply
+  does not fire. That is a missed nudge, not a wrong one, and fixing it is a server-side SQL change
+  in its own right.
 
 ## ★★ THE GUEST MIGRATION'S RETRY PASS COVERED ONE TABLE OF THREE (Sep 10)
 Mo, relaying a friend: "he tried the app without signing in and made a workout (create your own

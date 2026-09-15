@@ -1,4 +1,4 @@
-// v178091717055
+// v178091717056
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -27,7 +27,7 @@ import { getExerciseSessions, topSet, calc1RM, detectDeloadNeeded, epley1RM, get
 import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
 import { plateColor, calcPlatesPerSide, generateWarmupSets } from "./engine/plates.js";
-import { calcWeeklyStreak, getProgressInsights, reconstructPrEvents } from "./engine/insights.js";
+import { storeStreak, recordTargetChange, getProgressInsights, reconstructPrEvents } from "./engine/insights.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DURABLE NATIVE STORAGE
@@ -5375,7 +5375,7 @@ function buildCoachContext(store, unit) {
   const todayMs = new Date(dKey() + "T12:00:00").getTime();
   const sex = store.strengthSex || "male";
   const ss = computeStrengthScore(store, unit, sex);
-  const streak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+  const streak = storeStreak(store);
   const dates = Object.keys(store.history || {}).sort().reverse();
   const recent = [];
   for (const d of dates) {
@@ -6638,6 +6638,10 @@ function loadStore() {
     closeFriends: [], // user ids hand-picked for the Close Friends leaderboard (max 10, local-only v1)
     groups: [],
     weeklyTarget: 3, // default: 3 workouts/week for streak system
+    // Boundaries for past weekly targets: [{ until:"YYYY-MM-DD", target:n }] meaning "target n
+    // applied to every week that STARTED before `until`". Empty means no recorded change, which
+    // falls back to weeklyTarget — i.e. the behaviour this app shipped with.
+    weeklyTargetHistory: [],
     dismissedInsights: [], // keys of insight cards the user swiped away (persisted)
     seenOnboarding: false,
     bodyLog: [], // body tracking entries: { id, date, weight, measurements:{}, photoData }
@@ -7246,10 +7250,12 @@ function Heatmap({ workoutDates, history, unit = "lbs", C, onDayTap }) {
     if (d.date.getMonth() !== now.getMonth() || d.date.getFullYear() !== now.getFullYear()) return a;
     return a + sessionsOn(d.k);
   }, 0);
-  // Weekly "active week" streak — kept available, but no longer shown as its own tile here;
-  // it already has a home on the Workout tab's streak card, so showing it again in History
-  // was redundant. Lifetime volume below replaces it with something History-specific.
-  const weeklyStreak = calcWeeklyStreak(workoutDates || {});
+  // The weekly streak used to be a tile here and was removed as redundant with the Workout tab's
+  // streak card — but the CALL was left behind, assigned to a local nothing ever read. It also
+  // passed no target, so it silently used the default 3 whatever the user had chosen: a wrong
+  // number, recomputed over every workout date on every History render, displayed nowhere. Deleted
+  // rather than threaded through storeStreak; dead code that looks live is how a future reader
+  // concludes History has its own streak rule.
   // sessionVolume() rather than another inline filter+reduce — this was already correct, but it
   // was the eighth hand-rolled copy of the same sum and the copies are how they drift apart.
   const lifetimeVolume = Object.values(history || {}).reduce((total, sessions) =>
@@ -10988,11 +10994,16 @@ const FINISH_PHRASES = {
     "Progress made — the work is working. 💪",
     "Up from last time. Momentum is yours.",
   ],
+  // "in a row" and "straight" were retired when the streak gained a forgiven week: the count is
+  // weeks you HIT the target, and a run can now contain one you did not, so literal consecutiveness
+  // is a claim the number no longer backs. Every phrase here is true under either rule. The same
+  // "read the label, then check the number answers it" rule that retired "57 PRs this week" —
+  // motivational copy is a reporting surface and inherits it.
   streak: [
     "{n} weeks strong. Consistency is king. 👑",
     "{n}-week streak alive. Don't stop now. 🔥",
-    "{n} weeks in a row. Built for this.",
-    "{n} straight weeks. This is who you are now.",
+    "{n} weeks logged. Built for this.",
+    "{n} weeks deep. This is who you are now.",
   ],
   base: [
     "LET'S GO!!! 🔥",
@@ -12735,7 +12746,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // Show summary
       // Capture undo info so user can roll back if they finished by accident
       // Streak INCLUDING today — see the note on streakWeeks below.
-      const finishStreak = calcWeeklyStreak({ ...(store.workoutDates || {}), [dk]: true }, store.weeklyTarget || 3).count;
+      const finishStreak = storeStreak(store, dk).count;
       // The volume in LBS, used for the Apple Health calorie write further down. It read
       // (volLbsForHealth is declared above writeHealthAndHr — see the TDZ note there.)
       setWorkoutSummary({
@@ -14393,7 +14404,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               the documented "every fixture starts with data already in the store" blind spot. */}
           <div style={{ display:"flex", gap:8, marginTop:10, marginBottom:12, alignItems:"stretch", justifyContent:"flex-start" }}>
           {(() => {
-            const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+            const ws = storeStreak(store);
             if (!ws.count && !ws.thisWeek) return null;
             const isAtRisk = ws.status === "at-risk";
             const isBuilding = !ws.count && ws.thisWeek > 0;
@@ -14439,7 +14450,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })()}
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:10, fontWeight:700, opacity:0.6, letterSpacing:1.2, marginBottom:1 }}>
-                    {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
+                    {/* "STREAK SAVED" beats "STREAK AT RISK" here because the amber fill and the
+                        0/N in the caption directly below ALREADY carry the urgency, while nothing
+                        else on the screen answers the question the user actually has in this
+                        state: "I missed last week — why does this still say 17?". A number that
+                        survives a week the user KNOWS they missed reads as a bug unless something
+                        says otherwise. ws.savedWeek is specifically "the most recent completed
+                        week was forgiven", not "a grace was used somewhere in the run" — an old
+                        forgiven week is not news and would leave this label stuck on for months. */}
+                    {isAtRisk && ws.savedWeek ? "STREAK SAVED" : isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
                   </div>
                   <div style={{ display:"flex", alignItems:"baseline", gap:6, minWidth:0 }}>
                     <div style={{ fontFamily:MONO, fontSize:21, fontWeight:700, letterSpacing:-0.8, lineHeight:1, flexShrink:0 }}>
@@ -16856,7 +16875,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     }
     setFeedbackSending(false);
   }
-  const weeklyStreak = isMe ? calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3) : { count: 0, thisWeek: 0, target: 3, status: "lost" };
+  const weeklyStreak = isMe ? storeStreak(store) : { count: 0, thisWeek: 0, target: 3, status: "lost" };
   const streak = weeklyStreak.count;
   const followers = store.users.find(u => u.id === userId)?.followers?.length || 0;
   const following2 = store.users.find(u => u.id === userId)?.following?.length || 0;
@@ -17878,11 +17897,22 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
                     {[2, 3, 4, 5].map(n => (
                       <button key={n} onClick={async () => {
-                        setStore(p => ({ ...p, weeklyTarget: n }));
+                        // ★ RECORD THE BOUNDARY BEFORE MOVING THE TARGET. The streak recomputes
+                        // every past week against whatever target it is handed, so without this a
+                        // 2 -> 3 change wiped a genuinely-earned run the instant it was tapped —
+                        // the app punishing you for raising your goal. recordTargetChange returns
+                        // null for a no-op (or a second change the same week) so an unchanged tap
+                        // writes nothing. Computed OUTSIDE the setStore updater on purpose: React
+                        // does not always run an updater eagerly, and this store's fiber takes
+                        // interval-driven updates, so a value captured inside one can be stale —
+                        // the measured `nextOrder` -> `program_order: []` scar.
+                        const prevTarget = store.weeklyTarget || 3;
+                        const nextHistory = recordTargetChange(store.weeklyTargetHistory, prevTarget, n);
+                        setStore(p => ({ ...p, weeklyTarget: n, ...(nextHistory ? { weeklyTargetHistory: nextHistory } : {}) }));
                         _lastSettingsEditAt = Date.now();
                         const tok = token || loadSession()?.access_token;
                         if (tok) {
-                          try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n }) }, tok); }
+                          try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ weekly_target: n, ...(nextHistory ? { weekly_target_history: nextHistory } : {}) }) }, tok); }
                           catch (e) { devError("weekly_target save error:", e); }
                         }
                       }} style={{
@@ -19322,7 +19352,7 @@ function AppInner() {
       const Cap = (typeof window !== "undefined") ? window.Capacitor : null;
       const Pref = Cap?.isNativePlatform?.() ? Cap.Plugins?.Preferences : null;
       if (!Pref) return;
-      const wStreak = typeof calcWeeklyStreak === "function" ? calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3).count : 0;
+      const wStreak = typeof storeStreak === "function" ? storeStreak(store).count : 0;
       const nextDay = (() => {
         const prog = (store.programs || []).find(p => p.id === store.activeProgramId);
         if (!prog?.days?.length) return null;
@@ -20273,6 +20303,11 @@ function AppInner() {
             barTypes: prev.barTypes || {},
             closeFriends: prev.closeFriends || [],
             weeklyTarget: prev.weeklyTarget || 3,
+            // Written in the SAME handler as weeklyTarget and equally optimistic, so it needs the
+            // same window. Losing it to a stale re-serve is worse than losing the target itself:
+            // the target flips back visibly and the user can re-tap it, while a lost boundary is
+            // silent and takes the streak with it the next time the history is walked.
+            weeklyTargetHistory: prev.weeklyTargetHistory || [],
             isPublic: prev.isPublic === true,
             // Same optimistic-setStore + immediate-queueWrite shape as the six above. It was the
             // one field with that shape still missing the guard — found by auditing the commit
@@ -20311,6 +20346,9 @@ function AppInner() {
             // weeklyTarget: prefer the server value (survives reinstalls/new devices), fall back
             // to the on-device value, then the default. Persisted to profiles.weekly_target.
             weeklyTarget: (me?.weekly_target != null ? me.weekly_target : (sameUser ? (prev.weeklyTarget || 3) : 3)),
+            weeklyTargetHistory: (Array.isArray(me?.weekly_target_history) && me.weekly_target_history.length)
+              ? me.weekly_target_history
+              : (sameUser ? (prev.weeklyTargetHistory || []) : []),
             // Public-profile opt-in. Defaults to private (false) until the user turns it on.
             isPublic: me?.is_public === true,
             exerciseNotes: { ...(sameUser ? (prev.exerciseNotes || {}) : {}), ...(me?.exercise_notes || {}) },
@@ -22260,7 +22298,7 @@ function AppInner() {
   const storyUserIds = [...new Set(recentStoryPosts.map(p => p.userId))]
     .filter(id => id !== currentUserId && following.includes(id));
   const storyUsers = storyUserIds.map(id => store.users.find(u => u.id === id)).filter(Boolean);
-  const weeklyStreak = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+  const weeklyStreak = storeStreak(store);
   const streak = weeklyStreak.count;
   // NOTE: there is deliberately NO "unposted workouts in the feed" path. The feed shows what you
   // chose to POST; a workout you only logged still appears in History and on your own profile

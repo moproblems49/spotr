@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react
 import { createPortal } from "react-dom";
 import { cvt, dKey, dateFromKey, devWarn, uid } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
 import { EXERCISE_DB } from "../engine/exercises.js";
-import { calcWeeklyStreak } from "../engine/insights.js";
+import { calcWeeklyStreak, storeStreak } from "../engine/insights.js";
 import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark } from "../App.jsx";
 
 // GROUP DETAIL — lazy-loaded (src/lazy/GroupDetail.jsx). Most sessions never open a group.
@@ -777,7 +777,7 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
       // addition would mix kg and lbs totals for anyone who has switched.
       volume += daySessions.reduce((a, s) => a + cvt(sessionVolume(s), s.unit || "lbs", unit || "lbs"), 0);
     }
-    const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+    const ws = storeStreak(store);
     // PRs THIS WEEK — not `Object.keys(store.prs).length`, which is every exercise you have EVER
     // set a PR on. Under a heading that reads "THIS WEEK" that rendered as "57 PRs" for a lifter
     // with 57 lifts on record, whatever they had actually done that week. `prEvents` is the dated

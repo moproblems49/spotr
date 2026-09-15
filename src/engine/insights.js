@@ -6,7 +6,7 @@
 // session token and call the AI endpoint, which makes them device/network glue, not analytics —
 // the closure that included them dragged in the HealthKit auth chain and the API base URL, which
 // is how you know a "pure" function isn't.
-import { dateFromKey, workingDone, dKey, cvt } from "./core.js";
+import { dateFromKey, dateKeyOf, workingDone, dKey, cvt } from "./core.js";
 import { getMuscle } from "./exercises.js";
 import { calc1RM, epley1RM, sessionVolume } from "./workout.js";
 
@@ -77,13 +77,77 @@ function weekKey(d) {
 }
 
 
+// ★ ONE FORGIVEN WEEK PER THIS MANY WEEKS OF THE WALK. A single missed week inside an otherwise
+// unbroken run does not reset the streak. Being ill for a week is not the same as quitting, and a
+// streak that cannot survive one bad week stops being a reason to come back the moment it breaks —
+// which is exactly when the user needs one. Every serious streak product has some version of this
+// (Duolingo's freeze, Snapchat's restore). TWO missed weeks in a row still breaks it, because the
+// spacing rule refuses a second grace one step later, so this forgives illness and not drift.
+const STREAK_GRACE_EVERY_WEEKS = 13;
+
+// ★ THE TARGET A PAST WEEK IS JUDGED AGAINST IS THE ONE THAT WAS IN FORCE WHEN THAT WEEK BEGAN,
+// NOT TODAY'S. The streak recomputes the whole history on every render, so before this existed,
+// raising your weekly target from 2 to 3 instantly wiped a genuinely-earned run — the app
+// punished you for getting more ambitious, with no warning and no way back except lowering the
+// target again.
+//
+// `history` entries read "target N applied to every week that STARTED before `until`", ascending
+// by `until`. The earliest boundary still ahead of the week wins; a week past every recorded
+// boundary falls through to the CURRENT target. So an EMPTY history reproduces the old behaviour
+// exactly for every existing user — this is backward-compatible by construction and only starts
+// mattering at the first change made after it ships. There is no way to recover what someone's
+// target was last March, and inventing one would be worse than falling back.
+//
+// The boundary is the CURRENT WEEK'S MONDAY, not the day of the change, and that is a
+// consistency requirement rather than a preference: `countingThisWeek` is computed against the
+// CURRENT target, so if the loop judged this week against the OLD one the two could disagree —
+// lower your target mid-week and you would get status "active" above a count of 0, because the
+// easier test said the week was made and the harder one broke the run at step 0. Anchoring to
+// Monday means this week always uses the target the pips and the "N/M" caption are already
+// showing.
+//
+// Junk entries are skipped rather than thrown on: this runs on every render of the landing screen,
+// so a malformed row from an older build must degrade to "no recorded change", never to a crash.
+// `weekStartDate` is taken AS GIVEN — it is not re-normalised to a Monday, because both ends of
+// the comparison already guarantee one (recordTargetChange only ever writes a Monday key, and the
+// walk's cursor is seeded by weekStart and stepped in whole weeks). The obvious worry is that
+// `cursor.setDate(-7)` DST-drifts off midnight and makes dateKeyOf report the Sunday, flipping a
+// boundary that sits exactly on the Monday. MEASURED and it does not: 400 start dates x 110 steps
+// across Santiago, Havana, Asuncion, Beirut and Auckland — the four midnight-transition zones plus
+// a southern one — gave ZERO drifted steps. Same answer as the earlier weekKey sweep. Do not add a
+// normalisation here without a failing case: it would also change what this function means when
+// handed an arbitrary day, which sim_streakgrace section 8 pins deliberately.
+function targetForWeek(weekStartDate, currentTarget, history) {
+  if (!Array.isArray(history) || !history.length) return currentTarget;
+  const ws = dateKeyOf(weekStartDate);
+  let best = null;
+  for (const e of history) {
+    const until = e && typeof e.until === "string" ? e.until : null;
+    const t = Number(e && e.target);
+    if (!until || !Number.isFinite(t) || t < 1) continue;
+    if (ws < until && (best === null || until < best.until)) best = { until, target: t };
+  }
+  return best ? best.target : currentTarget;
+}
+
 // Streak v2 — "active week" model.
 // User has a weekly workout target (default 3). Each week they hit the target counts as "active".
 // Streak is # of consecutive active weeks ending in the current or previous week.
-// Returns: { count, target, thisWeek, weeksActive, status } where status is "active" | "at-risk" | "lost"
-function calcWeeklyStreak(workoutDates, target = 3) {
+// Returns: { count, target, thisWeek, status, graceUsed, savedWeek } where status is
+// "active" | "at-risk" | "lost", graceUsed is how many weeks inside the counted run were forgiven
+// (see STREAK_GRACE_EVERY_WEEKS), and savedWeek says the MOST RECENT completed week was one of
+// them — the only grace the user can actually see happen, and so the only one worth a label.
+// A forgiven week does NOT increment `count`: the number is displayed as "17 wks" and has to mean
+// weeks you actually hit the target. Counting a week you were ill would make the headline a lie
+// while delivering nothing the user wanted — what they wanted is the chain not resetting to zero.
+//
+// `opts`: { targetHistory, graceEvery, now } — all optional. `now` exists so a sim can pin the
+// clock; a streak test that reads the wall clock passes at one hour and fails at another.
+function calcWeeklyStreak(workoutDates, target = 3, opts = {}) {
+  const targetHistory = opts && opts.targetHistory;
+  const graceEvery = (opts && Number.isFinite(opts.graceEvery)) ? opts.graceEvery : STREAK_GRACE_EVERY_WEEKS;
   const keys = Object.keys(workoutDates || {});
-  if (!keys.length) return { count: 0, target, thisWeek: 0, status: "lost" };
+  if (!keys.length) return { count: 0, target, thisWeek: 0, status: "lost", graceUsed: 0, savedWeek: false };
 
   // Group workouts by week key. Parse the date key at LOCAL noon — `new Date("2026-06-15")`
   // is parsed as UTC midnight, which in negative-UTC timezones lands on the previous day
@@ -95,7 +159,7 @@ function calcWeeklyStreak(workoutDates, target = 3) {
   }
 
   // Start from the most recent week we have activity in, walk backward
-  const now = new Date();
+  const now = opts && opts.now != null ? new Date(opts.now) : new Date();
   const thisWeekKey = weekKey(now);
   const thisWeekCount = byWeek[thisWeekKey] || 0;
 
@@ -103,6 +167,8 @@ function calcWeeklyStreak(workoutDates, target = 3) {
   // (this week not counted as failure until the week is over)
   let streak = 0;
   let cursor = new Date(now);
+  // This week is judged against the CURRENT target, not a historical one — it is the week you are
+  // living in, so the goal you have now is the goal that applies.
   let countingThisWeek = thisWeekCount >= target;
 
   // Move cursor to start of this week, then iterate weeks
@@ -113,11 +179,50 @@ function calcWeeklyStreak(workoutDates, target = 3) {
     cursor.setDate(cursor.getDate() - 7);
   }
 
+  // Walking BACKWARD means the most recent shortfall is the one that gets forgiven, which is the
+  // right bias: it is the week the user is staring at. (Forward-in-time semantics would spend the
+  // grace on the oldest gap instead and break the run at the newest — the same inputs, a worse
+  // answer for the person looking at the card.)
+  let graceUsed = 0;
+  let lastGraceStep = -Infinity;
+  // The walk step that IS the most recent completed week: 0 when we started at last week (this
+  // week not made yet), 1 when we started at this week. Forgiving THAT week is the only grace the
+  // user can see happening, and a card reading "17 wks" the week after they missed one would
+  // otherwise be a silent lie — the number would be right and the sentence it forms with the
+  // user's own memory would not.
+  const lastWeekStep = countingThisWeek ? 1 : 0;
+  let savedWeek = false;
+  // ★ A GRACE IS ONLY SPENT IF SOMETHING COUNTS BEHIND IT. The walk always ends by running off
+  // the start of the user's history into empty weeks, so the LAST thing it ever does is forgive a
+  // week that contributes nothing and then break on the next one. That grace changes no count and
+  // must not be reported: a perfect 21-week run came back `graceUsed: 1`, which would have put
+  // "streak saved" on a card belonging to someone who has never missed a week. Graces are held
+  // pending and committed the moment a week actually counts. (`lastGraceStep` is still set
+  // immediately — the SPACING rule has to see a pending grace, or the walk would forgive two
+  // trailing weeks in a row and keep going.)
+  let pendingGrace = 0;
+  let pendingSaved = false;
   for (let i = 0; i < 104; i++) { // up to 2 years
     const wk = weekKey(cursor);
     const count = byWeek[wk] || 0;
-    if (count >= target) {
+    if (count >= targetForWeek(cursor, target, targetHistory)) {
       streak++;
+      graceUsed += pendingGrace;
+      if (pendingSaved) savedWeek = true;
+      pendingGrace = 0;
+      pendingSaved = false;
+      cursor.setDate(cursor.getDate() - 7);
+    } else if (graceEvery > 0 && i - lastGraceStep >= graceEvery) {
+      // Forgiven: the chain survives, the count does not grow.
+      // A first draft guarded this with `streak > 0` to stop a lapsed account walking back to a
+      // run it abandoned months ago — and measured against real data it returned 0, because the
+      // FIRST week the walk reaches is the one the user just missed, so `streak` is always 0
+      // there. The guard blocked the only case grace exists for. The spacing rule already does
+      // that job properly: a lapsed account hits a SECOND consecutive gap one step later, which
+      // is refused, so the walk stops. Two weeks off still breaks the streak.
+      pendingGrace++;
+      if (i === lastWeekStep) pendingSaved = true;
+      lastGraceStep = i;
       cursor.setDate(cursor.getDate() - 7);
     } else {
       break;
@@ -129,7 +234,48 @@ function calcWeeklyStreak(workoutDates, target = 3) {
   if (countingThisWeek) status = "active";
   else if (streak > 0) status = "at-risk"; // had a streak going, this week not yet made
 
-  return { count: streak, target, thisWeek: thisWeekCount, status };
+  // A forgiven week with nothing counted behind it is not a forgiven week, it is just an empty
+  // walk — reporting graceUsed there would put "1 week forgiven" on a card reading 0.
+  return { count: streak, target, thisWeek: thisWeekCount, status, graceUsed: streak > 0 ? graceUsed : 0, savedWeek: streak > 0 && savedWeek };
+}
+
+// The store-shaped call. Eight call sites had hand-written `store.weeklyTarget || 3` and would now
+// each need the target history threaded through as well — which is the N-copies-drift class this
+// codebase keeps paying for, so there is one definition instead. `plusDateKey` is for the finish
+// flow, which asks "what will my streak be once today counts" before today has reached the store.
+// The friend-stats call in DiscoverScreen deliberately does NOT come through here: it passes a
+// FRIEND's dates and a FRIEND's target, and their history is not in public_profiles (nor should
+// it be). Grace still applies there, because grace lives inside calcWeeklyStreak itself.
+function storeStreak(store, plusDateKey) {
+  const base = (store && store.workoutDates) || {};
+  return calcWeeklyStreak(
+    plusDateKey ? { ...base, [plusDateKey]: true } : base,
+    (store && store.weeklyTarget) || 3,
+    { targetHistory: store && store.weeklyTargetHistory }
+  );
+}
+
+// Record a weekly-target change so past weeks keep being judged against the old goal.
+// Returns the NEW history array (never mutates), or null when nothing needs recording.
+// `until` is THIS WEEK'S MONDAY and means "the old target applied to every week that started
+// before this one". Two guards that each close a real hole: a no-op change records nothing, and a
+// SECOND change in the same week does not append again — the first entry already pins that
+// boundary, and the intermediate value (2 -> 3 -> 4 in one sitting) was never in force for a whole
+// week, so recording it would judge past weeks against a target the user held for ten seconds.
+function recordTargetChange(history, oldTarget, newTarget, now = Date.now()) {
+  if (!Number.isFinite(oldTarget) || !Number.isFinite(newTarget) || oldTarget === newTarget) return null;
+  // The caller passes a CLOCK, not a boundary — the boundary rule (this week's Monday, see
+  // targetForWeek) belongs here, beside the function that reads it, or the two drift.
+  const until = dateKeyOf(weekStart(new Date(now)));
+  const list = Array.isArray(history) ? history.filter(e => e && typeof e.until === "string" && Number.isFinite(Number(e.target))) : [];
+  if (list.some(e => e.until === until)) return null;
+  // Capped so a user who changes their mind every week cannot grow this without bound — but the
+  // cap has to CLEAR the walk, not merely be small. `slice(-N)` keeps the NEWEST N and drops the
+  // OLDEST, and dropping an old boundary does not make that week fall back to the current target;
+  // it makes it inherit the next boundary along, i.e. a target from years later. At one change a
+  // week the walk's own 104-week reach is the binding number, so the cap sits just above it. Each
+  // entry is ~35 bytes, so even a full array is a few kB in a jsonb column.
+  return [...list, { until, target: oldTarget }].sort((a, b) => a.until < b.until ? -1 : 1).slice(-110);
 }
 
 
@@ -224,7 +370,7 @@ function getProgressInsight(store, unit, returnAll = false) {
   }
 
   // 2. Weekly streak milestone
-  const ws = calcWeeklyStreak(store.workoutDates || {}, store.weeklyTarget || 3);
+  const ws = storeStreak(store);
   if (ws.count >= 2) {
     candidates.push({ key: `streak:${ws.count}`, priority: ws.count >= 4 ? 1 : 3, icon: "flame", headline: `${ws.count} week streak`, sub: `You've hit your weekly target ${ws.count} weeks running. Keep it alive.` });
   }
@@ -312,4 +458,4 @@ function getProgressInsights(store, unit) {
 // Exported: what App.jsx and src/lazy/ import — calcStreak looked internal from App.jsx alone,
 // but WrappedModal imports it directly (the closure tool reads App.jsx only; grep src/lazy/ before
 // calling anything private). getProgressInsight stays internal: getProgressInsights is the caller.
-export { calcStreak, calcWeeklyStreak, getProgressInsights, reconstructPrEvents };
+export { calcStreak, calcWeeklyStreak, storeStreak, recordTargetChange, targetForWeek, STREAK_GRACE_EVERY_WEEKS, getProgressInsights, reconstructPrEvents };
