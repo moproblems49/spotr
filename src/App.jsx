@@ -1,4 +1,4 @@
-// v178091717056
+// v178091717057
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14450,15 +14450,12 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 })()}
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:10, fontWeight:700, opacity:0.6, letterSpacing:1.2, marginBottom:1 }}>
-                    {/* "STREAK SAVED" beats "STREAK AT RISK" here because the amber fill and the
-                        0/N in the caption directly below ALREADY carry the urgency, while nothing
-                        else on the screen answers the question the user actually has in this
-                        state: "I missed last week — why does this still say 17?". A number that
-                        survives a week the user KNOWS they missed reads as a bug unless something
-                        says otherwise. ws.savedWeek is specifically "the most recent completed
-                        week was forgiven", not "a grace was used somewhere in the run" — an old
-                        forgiven week is not news and would leave this label stuck on for months. */}
-                    {isAtRisk && ws.savedWeek ? "STREAK SAVED" : isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
+                    {/* There is no "STREAK SAVED" branch here on purpose: the streak grace is OFF
+                        (STREAK_GRACE_EVERY_WEEKS = 0), so ws.savedWeek can never be true and the
+                        label would be UI nothing can reach. Anything that turns grace back on —
+                        free or paid — has to restore it in the same change; the reasoning is
+                        recorded beside that constant in src/engine/insights.js. */}
+                    {isAtRisk ? "STREAK AT RISK" : isBuilding ? "THIS WEEK" : "WEEKLY STREAK"}
                   </div>
                   <div style={{ display:"flex", alignItems:"baseline", gap:6, minWidth:0 }}>
                     <div style={{ fontFamily:MONO, fontSize:21, fontWeight:700, letterSpacing:-0.8, lineHeight:1, flexShrink:0 }}>

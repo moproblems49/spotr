@@ -77,13 +77,27 @@ function weekKey(d) {
 }
 
 
-// ★ ONE FORGIVEN WEEK PER THIS MANY WEEKS OF THE WALK. A single missed week inside an otherwise
-// unbroken run does not reset the streak. Being ill for a week is not the same as quitting, and a
-// streak that cannot survive one bad week stops being a reason to come back the moment it breaks —
-// which is exactly when the user needs one. Every serious streak product has some version of this
-// (Duolingo's freeze, Snapchat's restore). TWO missed weeks in a row still breaks it, because the
-// spacing rule refuses a second grace one step later, so this forgives illness and not drift.
-const STREAK_GRACE_EVERY_WEEKS = 13;
+// ★★ GRACE IS OFF (Mo, Sep 15 2026) — 0 DISABLES IT, AND THAT IS THE ONLY SWITCH.
+// One forgiven week per N weeks of the backward walk shipped free earlier the same day and was
+// turned off hours later: Mo would rather sell a streak restore than give one away, and a free
+// grace is exactly the product a paid restore would have to compete with. See PARKED IDEAS in
+// CLAUDE.md — the paid version's stored exception is a different mechanism (a per-week record of
+// what was bought), but the WALK's grace branch is the thing it plugs into, so the branch stays
+// here, tested, rather than being deleted and rebuilt from memory later.
+//
+// What 0 does, precisely: the walk's `graceEvery > 0` guard short-circuits, so no week is ever
+// forgiven, `graceUsed` is always 0 and `savedWeek` is always false. That is byte-identical to
+// the behaviour before grace existed — a missed week resets the streak. sim_streakgrace pins BOTH
+// halves: the mechanism still works when a caller passes graceEvery explicitly, AND the shipped
+// default is off.
+//
+// ★ RE-ENABLING IT IS TWO EDITS, NOT ONE. The card's "STREAK SAVED" kicker was REMOVED with this,
+// because a label nothing can reach is the dead-UI class this file keeps paying for. Whatever
+// turns grace back on has to put it back, and it is not decoration: a count that survives a week
+// the user KNOWS they missed reads as a bug unless something on screen says otherwise. The label
+// keys on `savedWeek` ("the most recent COMPLETED week was forgiven"), never on graceUsed > 0 —
+// an old forgiven week is not news and would leave the label stuck on for months.
+const STREAK_GRACE_EVERY_WEEKS = 0;
 
 // ★ THE TARGET A PAST WEEK IS JUDGED AGAINST IS THE ONE THAT WAS IN FORCE WHEN THAT WEEK BEGAN,
 // NOT TODAY'S. The streak recomputes the whole history on every render, so before this existed,

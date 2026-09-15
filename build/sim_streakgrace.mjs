@@ -8,9 +8,15 @@
 //      judged against the target that was in force when that week began. An EMPTY history
 //      reproduces the old behaviour exactly, which is what makes it safe for existing users.
 //
-//   2. NO GRACE. A week ill is the same as a week quit. STREAK_GRACE_EVERY_WEEKS forgives one
-//      short week per 13 of the backward walk; a forgiven week does NOT increment the count,
-//      because "17 wks" has to mean weeks you actually hit the target.
+//   2. NO GRACE. A week ill was the same as a week quit. The walk grew a grace branch that
+//      forgives one short week per N of the backward walk, without incrementing the count.
+//
+// ★ THE GRACE IS SHIPPED OFF (STREAK_GRACE_EVERY_WEEKS = 0) — Mo would rather sell a restore than
+// give one away. So this file tests TWO different things and the distinction is load-bearing:
+// the `[grace]` sections pass `graceEvery` EXPLICITLY, exercising a mechanism the paid restore
+// will plug into, while `[shipped]` asserts the DEFAULT is off. A `[grace]` section that relied
+// on the default would silently become a test of the shipped behaviour the day the flag moved,
+// and the file would keep printing PASS while meaning something else entirely.
 //
 // EVERY CHECK PINS THE CLOCK via opts.now. A streak test that reads the wall clock passes at one
 // hour and fails at another — the documented sim_bbgate scar. The fixture dates are FIXED and the
@@ -39,11 +45,18 @@ function weeks(spec) {
 }
 const run = (wd, target, extra = {}) => calcWeeklyStreak(wd, target, { now: NOW, ...extra });
 
+// The spacing the grace MECHANISM is tested at. Deliberately a literal and not
+// STREAK_GRACE_EVERY_WEEKS: that constant is 0 (shipped off), and a mechanism test that read it
+// would test nothing at all. 13 is the value the free grace shipped with for a few hours and the
+// one a paid restore would most likely reuse.
+const GRACE = 13;
+const graced = (wd, target, extra = {}) => run(wd, target, { graceEvery: GRACE, ...extra });
+
 // ── 1. The grace week ────────────────────────────────────────────────────────────────────────
 // Ten weeks at target, then last week short. The old code returned 0.
 {
   const wd = weeks({ 1: 1, 2: 3, 3: 3, 4: 3, 5: 3, 6: 3, 7: 3, 8: 3, 9: 3, 10: 3, 11: 3 });
-  const r = run(wd, 3);
+  const r = graced(wd, 3);
   check("[grace] one short week does not reset the streak", r.count >= 9, `count=${r.count}`);
   check("[grace] the forgiven week is NOT counted", r.count === 10, `count=${r.count}, expected 10 (weeks 2..11)`);
   check("[grace] graceUsed reports it", r.graceUsed === 1, `graceUsed=${r.graceUsed}`);
@@ -56,15 +69,15 @@ const run = (wd, target, extra = {}) => calcWeeklyStreak(wd, target, { now: NOW,
 // ── 2. Two short weeks in a row still break it ───────────────────────────────────────────────
 {
   const wd = weeks({ 1: 1, 2: 1, 3: 3, 4: 3, 5: 3, 6: 3, 7: 3 });
-  const r = run(wd, 3);
+  const r = graced(wd, 3);
   check("[grace] two consecutive short weeks DO break the streak", r.count === 0, `count=${r.count}`);
 }
 
 // ── 3. A second grace inside the spacing window is refused ───────────────────────────────────
 {
-  // short at 1 and again at 4 — three weeks apart, well inside STREAK_GRACE_EVERY_WEEKS.
+  // short at 1 and again at 4 — three weeks apart, well inside the spacing window.
   const wd = weeks({ 1: 1, 2: 3, 3: 3, 4: 1, 5: 3, 6: 3, 7: 3, 8: 3 });
-  const r = run(wd, 3);
+  const r = graced(wd, 3);
   check("[grace] a second grace inside the window is refused", r.count === 2, `count=${r.count}, expected weeks 2..3 only`);
   check("[grace] only one grace was spent", r.graceUsed === 1, `graceUsed=${r.graceUsed}`);
 }
@@ -72,15 +85,15 @@ const run = (wd, target, extra = {}) => calcWeeklyStreak(wd, target, { now: NOW,
 // ── 4. A second grace OUTSIDE the spacing window is allowed ──────────────────────────────────
 {
   const spec = { 1: 1 };
-  for (let w = 2; w <= 30; w++) spec[w] = (w === 1 + STREAK_GRACE_EVERY_WEEKS) ? 1 : 3;
-  const r = run(weeks(spec), 3);
+  for (let w = 2; w <= 30; w++) spec[w] = (w === 1 + GRACE) ? 1 : 3;
+  const r = graced(weeks(spec), 3);
   check("[grace] a second grace beyond the window IS allowed", r.graceUsed === 2, `graceUsed=${r.graceUsed}`);
 }
 
 // ── 5. A lapsed account gets no phantom streak ───────────────────────────────────────────────
 {
   const wd = weeks({ 8: 3, 9: 3, 10: 3, 11: 3, 12: 3 });  // trained, then stopped 7 weeks ago
-  const r = run(wd, 3);
+  const r = graced(wd, 3);
   check("[grace] an account that stopped weeks ago reads 0", r.count === 0, `count=${r.count}`);
   check("[grace] and reports no forgiven week", r.graceUsed === 0 && r.savedWeek === false);
 }
@@ -188,8 +201,35 @@ const run = (wd, target, extra = {}) => calcWeeklyStreak(wd, target, { now: NOW,
 // The riskiest regression is making a CORRECT streak wrong, so pin that explicitly.
 {
   const spec = {}; for (let w = 0; w <= 20; w++) spec[w] = 3;
-  const r = run(weeks(spec), 3);
+  const r = graced(weeks(spec), 3);
   check("[compat] a perfect run is unchanged and spends no grace", r.count === 21 && r.graceUsed === 0 && r.status === "active", JSON.stringify(r));
+  // And the same run under the SHIPPED settings — a perfect streak must not depend on the flag.
+  const shipped = run(weeks(spec), 3);
+  check("[shipped] a perfect run is identical with grace off", shipped.count === 21 && shipped.status === "active", JSON.stringify(shipped));
+}
+
+// ── 12. THE SHIPPED DEFAULT IS GRACE OFF ─────────────────────────────────────────────────────
+// Everything labelled [grace] above passes graceEvery explicitly, so none of it can see the flag.
+// This section is the only thing that does. It is the guard against grace coming back by accident
+// — a free forgiven week is a product decision (it competes with the paid restore Mo parked), not
+// a tuning knob, so it must never return as a side effect of an unrelated edit.
+{
+  check("[shipped] STREAK_GRACE_EVERY_WEEKS is 0", STREAK_GRACE_EVERY_WEEKS === 0, `= ${STREAK_GRACE_EVERY_WEEKS}`);
+  // Behavioural, not just the constant: the section-1 fixture is the one grace was built for.
+  const wd = weeks({ 1: 1, 2: 3, 3: 3, 4: 3, 5: 3, 6: 3, 7: 3, 8: 3, 9: 3, 10: 3, 11: 3 });
+  const r = run(wd, 3);
+  check("[shipped] a missed week DOES reset the streak", r.count === 0, `count=${r.count}`);
+  check("[shipped] nothing is reported as forgiven", r.graceUsed === 0 && r.savedWeek === false, JSON.stringify(r));
+  // The control: the same fixture with the mechanism switched on must differ, or this section is
+  // passing because the fixture never needed grace rather than because the flag is off.
+  check("[control] the same fixture WITH grace still counts 10", graced(wd, 3).count === 10, `count=${graced(wd, 3).count}`);
+  // And the retroactive-target fix is independent of the flag — it must survive grace being off.
+  const mon = "2026-09-14";
+  const spec = {}; for (let w = 1; w <= 12; w++) spec[w] = 2;
+  const wd2 = weeks(spec);
+  const hist = [{ until: mon, target: 2 }];
+  check("[shipped] past weeks still use their own target with grace off",
+    run(wd2, 3, { targetHistory: hist }).count === 12, `count=${run(wd2, 3, { targetHistory: hist }).count}`);
 }
 
 console.log(fails === 0 ? "\nPASS all streak-grace checks" : `\nFAIL ${fails} streak-grace check(s)`);

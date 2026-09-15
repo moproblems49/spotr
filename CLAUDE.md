@@ -3358,11 +3358,13 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
 
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
 - **A PAID STREAK RESTORE, Snapchat-style** (Mo parked this Sep 15 2026, the day he lost a 17-week
-  run to a week of illness). The free half of it — one forgiven week per 13 — SHIPPED that day and
-  is what the parked idea has to be judged against: a restore that only does what the grace already
-  does for free is not a product. What it would actually sell is **a SECOND forgiveness inside the
-  spacing window**, i.e. the case the grace deliberately refuses (two weeks off, or a second miss
-  three weeks after the first).
+  run to a week of illness). The free half of it — one forgiven week per 13 — shipped that day and
+  **he switched it off within hours, explicitly to leave room for this**: "just remove the Grace
+  week for now, might do the paid version in the future instead." So the scope is now the whole
+  thing rather than the second forgiveness, and the competitor it has to beat is nothing rather
+  than a free grace. `STREAK_GRACE_EVERY_WEEKS = 0` is the switch, the walk's grace branch is still
+  there and still tested, and `sim_streakgrace`'s `[grace]` sections pass `graceEvery` explicitly
+  precisely so the mechanism stays red-proofed while switched off.
   **★ THE ARCHITECTURE IS THE WHOLE PROBLEM, AND IT IS WORTH KNOWING BEFORE ANYONE SCOPES THIS:
   THERE IS NO STORED STREAK TO RESTORE.** `calcWeeklyStreak` recomputes the entire run from
   `workoutDates` on every render, so "restore my streak" cannot be a row that says `streak = 17`.
@@ -3377,8 +3379,10 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   contact with someone who paid for them; if a buyer expects the number to go UP, the product and
   the number disagree and one of them has to give. (3) Seshd has one organic signup. Selling a
   streak restore to nobody is the definition of building the wrong thing first.
-  **The cheap demand test needs no IAP at all**: count how often `graceUsed` fires and how often a
-  streak breaks on exactly TWO missed weeks. If almost nobody ever loses a streak they cared about,
+  **The cheap demand test needs no IAP at all** — and with grace off it gets simpler, because every
+  broken streak is now a candidate rather than only the double-miss: count how often a run of real
+  length dies on a single missed week. `workout_history` already holds everything needed; it is one
+  query, no client change and no tracking. If almost nobody ever loses a streak they cared about,
   there is nothing here to sell.
 - **Naps should count toward the Body Battery recharge** (Mo parked this Aug 1, from the Garmin
   comparison). `pickSleepBlock()` deliberately picks ONE main block and discards anything under
@@ -5660,20 +5664,50 @@ something that is not slacking.
   Red-proofed: restoring the day anchor fails four checks, including the count dropping by exactly
   the current week. Measuring found the two bugs above; READING found this one — the pair is the
   point.
-- **★ ONE MISSED WEEK IS NOW FORGIVEN (`STREAK_GRACE_EVERY_WEEKS = 13`).** A week ill was worth the
-  same as a week quit, and a streak that cannot survive one bad week stops being a reason to come
-  back at the exact moment the user needs one. Two missed weeks in a row still break it, because
-  the spacing rule refuses a second grace one step later — so this forgives illness and not drift.
-  **A forgiven week does NOT increment `count`**: the card reads "17 wks" and that has to mean
-  weeks you actually hit the target. Counting the sick week would make the headline a lie while
-  delivering nothing the user wanted, which was the chain not resetting to zero. Mo's own number
-  went **0 → 17, one week forgiven**.
-- **★ THE CARD SAYS SO, BECAUSE A NUMBER THAT SURVIVES A WEEK YOU KNOW YOU MISSED READS AS A BUG.**
-  `savedWeek` is specifically "the MOST RECENT COMPLETED week was forgiven" — not "a grace was used
-  somewhere in the run", which would leave the label stuck on for months — and in that state the
-  kicker reads **STREAK SAVED** instead of STREAK AT RISK. The amber fill and the `0/N` in the
-  caption directly below already carry the urgency; nothing else on the screen answered the
-  question the user actually has.
+- **★★ THE GRACE WEEK SHIPPED FREE AND WAS SWITCHED OFF HOURS LATER — `STREAK_GRACE_EVERY_WEEKS`
+  IS `0` (Mo, Sep 15 2026): "just remove the Grace week for now, might do the paid version in the
+  future instead."** He is right that the two compete: a free forgiven week is precisely the
+  product a paid restore would have to beat, so giving one away first prices the other at zero.
+  **0 is the whole switch** — the walk's `graceEvery > 0` guard short-circuits, `graceUsed` is
+  always 0, `savedWeek` is always false, and the behaviour is byte-identical to before grace
+  existed. The branch STAYS in the walk, tested, because the parked paid restore plugs into it;
+  deleting it would mean rebuilding it from memory later. **Mo's own streak went back to 0 with
+  it, and that is not a bug to work around** — see the next bullet.
+  **★ AND AT 0 THE CARD DOES NOT SHOW A ZERO — IT DISAPPEARS.** `if (!ws.count && !ws.thisWeek)
+  return null` has always been there and was invisible while grace held the number up. Measured on
+  Mo's real dates the moment the flag flipped: count 0, thisWeek 0, so the streak card is simply
+  ABSENT from the tracker screen until he logs something this week, at which point it returns as
+  "THIS WEEK 1/2" and then "WEEKLY STREAK 1". That is correct behaviour and it looks exactly like
+  something broke, so it is worth saying out loud rather than letting it be reported as a bug.
+- **★★ THERE IS NO STORED STREAK, SO "GIVE IT BACK AND THEN REMOVE IT" IS NOT A THING THE APP CAN
+  DO — AND THAT SHAPES THE PAID FEATURE TOO.** Mo asked to keep the grace just long enough to get
+  his 17 weeks back and then take it out. It cannot work: `calcWeeklyStreak` recomputes the entire
+  run from `workoutDates` on every render, so the number is a FUNCTION of the logged workouts, not
+  a row anybody can edit. Remove the grace and the streak re-breaks the same instant — the same
+  reason seeding and deleting fake workouts would not have worked either. **Anything that
+  "restores" a streak has to be a stored EXCEPTION the walk consults** (`{ week, source }`), which
+  is exactly the shape the PARKED IDEAS entry describes. Worth saying out loud to Mo when it comes
+  up, because "just give it back" is the natural ask and the honest answer is architectural.
+- **★ REMOVING THE MECHANISM MEANT REMOVING ITS LABEL, OR SHIPPING DEAD UI.** The card's kicker
+  had a `ws.savedWeek ? "STREAK SAVED"` branch; with grace off `savedWeek` can never be true, so
+  that is UI nothing can reach — the `showGroupShare` class, which sat dead for six weeks here.
+  Deleted with the flag. **Re-enabling grace is therefore TWO edits, not one**, and the label is
+  not decoration: a count that survives a week the user KNOWS they missed reads as a bug unless
+  something on screen says otherwise. It keys on `savedWeek` ("the MOST RECENT COMPLETED week was
+  forgiven"), never on `graceUsed > 0`, which would leave the label stuck on for months. Both
+  halves of that reasoning now live beside the constant in `insights.js`, since the code that
+  needed it is gone from `App.jsx`.
+- **★ AND THE GUARDS SPLIT IN TWO WHEN THE FLAG DID, WHICH IS THE REUSABLE PART.** Every `[grace]`
+  section in `sim_streakgrace` now passes `graceEvery` **explicitly** — testing a MECHANISM the
+  paid restore will plug into — while a new `[shipped]` section is the only thing that reads the
+  flag, asserting the default is off both as a constant and behaviourally. Had the grace sections
+  kept relying on the default, they would have silently become tests of the shipped behaviour the
+  day it moved and the file would have gone on printing PASS while meaning something else. Same
+  split in `pw_streakcard`, whose surviving value is now the RETROACTIVE-TARGET path (scenes 2 and
+  3 are the same fixture differing only in whether the boundary exists — a paired control, so a
+  green 2 means the history did the work). Red-proofed as two separate mutations: grace back on →
+  2 failures naming the card text `"STREAK AT RISK10wks · 1/2"`, the walk ignoring the history →
+  2 failures, and in both the paired control stayed green.
 - **★ AND THE GUARD CAUGHT A DEFECT IN MY OWN FIX ON ITS FIRST RUN: A GRACE SPENT PAST THE END OF
   THE RUN.** The walk always finishes by running off the start of the user's history into empty
   weeks, so the LAST thing it ever did was forgive a week with nothing behind it. A perfect
@@ -5697,7 +5731,7 @@ something that is not slacking.
 - **Found while threading it: History's `weeklyStreak` was DEAD** — assigned, never read, and
   passing no target so it silently used the default 3 whatever the user had chosen. A wrong number
   recomputed over every workout date on every History render and displayed nowhere. Deleted.
-- **Sim: `sim_streakgrace`** (34 checks, clock pinned via `opts.now` — a streak test that reads the
+- **Sim: `sim_streakgrace`** (45 checks, clock pinned via `opts.now` — a streak test that reads the
   wall clock passes at one hour and fails at another, the `sim_bbgate` scar). Red-proofed as TWO
   SEPARATE mutations because the fixes are independent: grace removed → **7 failures**, target
   history ignored → **5**, both exit 1, and in each the `[control]` checks stay green. Swept across
@@ -5708,10 +5742,18 @@ something that is not slacking.
   as the target (a boundary that only reached `setStore` would look saved and be gone on the next
   foreground), and `sim_settingsrace` covers the new field — verified by instrumenting its own
   extraction rather than trusting a green tick, then red-proofed by removing it from the guard.
-- **Known and deliberately NOT changed: `get_streak_at_risk_candidates` (the Sunday push) does not
-  know about grace.** Its `join prev_week` is an INNER join, so during a forgiven week it simply
-  does not fire. That is a missed nudge, not a wrong one, and fixing it is a server-side SQL change
-  in its own right.
+- **`get_streak_at_risk_candidates` (the Sunday push) does not know about grace — MOOT while grace
+  is off, and the note is kept because it comes straight back if it is ever switched on.** Its
+  `join prev_week` is an INNER join, so during a forgiven week it would simply not fire: a missed
+  nudge, not a wrong one, and a server-side SQL change in its own right. It also does not know
+  about `weekly_target_history`, which is NOT moot. READ OFF THE LIVE FUNCTION rather than assumed:
+  it qualifies on `pw.cnt >= coalesce(p.weekly_target, 3)` and tests this week against the SAME
+  number, so BOTH weeks are judged at today's target and the push can disagree with the card in
+  either direction after a change. Raise 2 -> 3 and last week's 2 no longer qualifies, so a live
+  streak gets no nudge; lower 3 -> 2 and last week's 2 does qualify, so it nudges about a run the
+  card correctly shows as already broken. (`date_trunc('week', …)` is Monday-anchored, so the week
+  boundary itself does agree with `weekStart`.) Harmless at this user count; fix it in the same SQL
+  pass if either is ever touched.
 
 ## ★★ THE GUEST MIGRATION'S RETRY PASS COVERED ONE TABLE OF THREE (Sep 10)
 Mo, relaying a friend: "he tried the app without signing in and made a workout (create your own
