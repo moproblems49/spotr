@@ -3480,6 +3480,27 @@ relaunch it twice after downloading." Two separate causes, and `cap sync` only f
   **The fail-safe check is BEHAVIOURAL, not a regex over the source.** It writes a copy of the real
   module with `LATEST_VERSION` moved on, imports that, and drives it — a regex would only prove the
   gate is written, not that it governs the reply.
+  **★★ AND THAT GUARD WAS REWRITTEN Sep 15 2026, BECAUSE IT SCORED THE DANGEROUS BUG BETTER THAN
+  HEALTHY CODE — MEASURED, NOT INFERRED.** The endpoint has TWO legitimate states: ALIGNED (between
+  a Mac-day archive and the next OTA publish, suppression live) and DORMANT (from that publish until
+  the next archive, suppression disabled by its own fail-safe). A bundle ships with nearly every
+  change here and Mac days are rare, so **DORMANT is the normal state** — and the original guard
+  asserted the suppression against the REAL module, so it went red the instant an OTA was published
+  and stayed red until a Mac day. On today's constants: **healthy code → 3 failures; code with the
+  `BUILTIN_BUNDLE.version === LATEST_VERSION` gate DELETED (the strand-every-store-install bug) → 2
+  failures.** A guard that rates the catastrophe as an improvement is worse than no guard, and its
+  permanent red is exactly the noise that hides the next real one.
+  Fixed by testing the suppression against a **synthetic ALIGNED module** — the mirror of the
+  synthetic STALE one the fail-safe check already built — so checks 1-5 run on every invocation
+  instead of only in the rare aligned window (strictly MORE coverage), while check 9 asks the real
+  module the only question that has a single right answer in both states: *does it behave like what
+  its own constants say it is?* Dormant now demands the bundle IS offered, which is precisely what
+  mutation B breaks. Re-red-proofed: suppression broken → checks 1-2 fail with 8 and 9 green;
+  fail-safe removed → checks 8-9 fail with 1 and 2 green. Two independent halves, two distinct
+  signals. It also PRINTS the pending-Mac-day state as a NOTE rather than a failure.
+  **The general rule: before trusting a guard, ask which states of the system it considers normal.
+  One that can only be green in a state you are rarely in will be red by default, and a red that
+  means "normal" trains everyone to ignore it.**
 
 ### The App Store frame generator is committed now (`build/appstore_frame.mjs`)
 `build/shots.mjs`, which made the original four captioned screenshots, was **lost to a container

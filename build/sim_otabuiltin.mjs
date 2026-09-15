@@ -12,6 +12,20 @@
 // update: an older build, a published OTA newer than the baked-in one, a missing/garbage
 // version_code, and any device that has already taken an OTA.
 //
+// ★★ THE ENDPOINT HAS TWO LEGITIMATE STATES AND THE FIRST VERSION OF THIS GUARD ONLY KNEW ONE.
+// The suppression fires only while BUILTIN_BUNDLE.version === LATEST_VERSION, so it is live between
+// a Mac-day archive and the next OTA publish, and DORMANT from that publish until the next archive.
+// Since a bundle ships with essentially every change here and Mac days are rare, dormant is the
+// NORMAL state — and a guard that asserts the suppression against the real module therefore went
+// red the moment an OTA was published and stayed red until a Mac day. A guard whose red means
+// "normal" is noise that masks the next real red, which is the disease this repo keeps treating.
+//
+// So the suppression is now tested against a SYNTHETIC ALIGNED module (the mirror of the synthetic
+// STALE one check 8 already built), which makes those checks run on EVERY invocation instead of
+// only in the rare aligned window — strictly more coverage, not less. What the REAL module is asked
+// is a different question: does it behave correctly for the constants it actually has? Both states
+// have a right answer and check 9 pins whichever one applies.
+//
 // It drives the REAL handler with the request shape the plugin actually sends
 // (InternalUtils.swift InfoObject.toParameters), not a copy of its logic.
 import { readFileSync } from "node:fs";
@@ -56,28 +70,66 @@ async function ask({ version_name, version_code, version_build = "1.0.1" }) {
 
 const offered = (r) => !!(r && r.version);
 
-// ── The fix itself ───────────────────────────────────────────────────────────
-const atBuild = await ask({ version_name: "builtin", version_code: String(BUILTIN.build) });
-check("1 builtin at the baked-in build is NOT offered the bundle it already has",
+// Build a variant of the REAL module with substitutions applied, so a hypothetical configuration
+// can be DRIVEN rather than reasoned about. Every substitution must actually apply — a silent
+// no-op would leave the variant identical to the real module and the check would pass for the
+// wrong reason, which is the "assert the string changed" scar.
+const tmpDirs = [];
+async function variant(subs) {
+  let src = SRC;
+  for (const [from, to] of subs) {
+    const next = src.replace(from, to);
+    if (next === src) throw new Error(`substitution did not apply: ${from}`);
+    src = next;
+  }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "otabuiltin-"));
+  tmpDirs.push(dir);
+  const file = path.join(dir, "app-update.variant.mjs");
+  await fs.writeFile(file, src, "utf8");
+  const h = (await import(pathToFileURL(file).href)).default;
+  return async (params) => askWith(h, params);
+}
+async function askWith(h, { version_name, version_code, version_build = "1.0.1" }) {
+  const req = { method: "POST", body: { app_id: "com.seshd.app", device_id: "d", platform: "ios",
+                                        version_name, version_code, version_build } };
+  let payload = null;
+  const res = { setHeader() {}, status() { return res; },
+                json(b) { payload = b; return res; }, end() { return res; } };
+  await h(req, res);
+  return payload;
+}
+
+// ── The suppression, tested in the state where it is SUPPOSED to fire ────────
+// i.e. the post-Mac-day alignment. When the real constants already agree this IS the real module.
+const ALIGNED = BUILTIN.version === LATEST
+  ? ask
+  : await variant([[/const BUILTIN_BUNDLE = \{[^}]*\}/,
+                    `const BUILTIN_BUNDLE = { build: ${BUILTIN.build}, version: "${LATEST}" }`]]);
+
+const atBuild = await ALIGNED({ version_name: "builtin", version_code: String(BUILTIN.build) });
+check("1 [aligned] builtin at the baked-in build is NOT offered the bundle it already has",
       !offered(atBuild), JSON.stringify(atBuild));
 
-const laterBuild = await ask({ version_name: "builtin", version_code: String(BUILTIN.build + 4) });
-check("2 a LATER build is not offered it either (>= not ==)",
+const laterBuild = await ALIGNED({ version_name: "builtin", version_code: String(BUILTIN.build + 4) });
+check("2 [aligned] a LATER build is not offered it either (>= not ==)",
       !offered(laterBuild), JSON.stringify(laterBuild));
 
 // ── Every direction that must still receive an update ────────────────────────
-const olderBuild = await ask({ version_name: "builtin", version_code: String(BUILTIN.build - 1) });
-check("3 an OLDER store build IS still offered the bundle",
+// These run against ALIGNED too: with the suppression DORMANT they are all trivially true, so
+// asserting them on the real module in the normal state would prove nothing about over-reach.
+const olderBuild = await ALIGNED({ version_name: "builtin", version_code: String(BUILTIN.build - 1) });
+check("3 [aligned] an OLDER store build IS still offered the bundle",
       offered(olderBuild) && olderBuild.version === LATEST, JSON.stringify(olderBuild));
 
-const noCode = await ask({ version_name: "builtin", version_code: undefined });
-check("4 a builtin device that sends no version_code IS still offered it",
+const noCode = await ALIGNED({ version_name: "builtin", version_code: undefined });
+check("4 [aligned] a builtin device that sends no version_code IS still offered it",
       offered(noCode), JSON.stringify(noCode));
 
-const junkCode = await ask({ version_name: "builtin", version_code: "not-a-number" });
-check("5 a non-numeric version_code IS still offered it",
+const junkCode = await ALIGNED({ version_name: "builtin", version_code: "not-a-number" });
+check("5 [aligned] a non-numeric version_code IS still offered it",
       offered(junkCode), JSON.stringify(junkCode));
 
+// ── The real module, in whatever state it is actually in ─────────────────────
 const onOldOta = await ask({ version_name: "2026-01-01a", version_code: String(BUILTIN.build) });
 check("6 a device already on an OLDER OTA bundle is still offered the new one",
       offered(onOldOta), JSON.stringify(onOldOta));
@@ -91,35 +143,38 @@ check("7 a device already on LATEST is told 'no update' (unchanged behaviour)",
 // BUILTIN_BUNDLE left pointing at the older bundle. Build that state by importing a copy of the
 // real module with LATEST_VERSION moved on, and drive it. A regex over the source would only
 // prove the gate is written, not that it governs the reply.
-const staleDir = await fs.mkdtemp(path.join(os.tmpdir(), "otabuiltin-"));
-const stalePath = path.join(staleDir, "app-update.stale.mjs");
-const staleSrc = SRC.replace(`const LATEST_VERSION = "${LATEST}"`,
-                             'const LATEST_VERSION = "9999-99-99z"');
-if (staleSrc === SRC) throw new Error("could not move LATEST_VERSION for the fail-safe check");
-await fs.writeFile(stalePath, staleSrc, "utf8");
-const staleHandler = (await import(pathToFileURL(stalePath).href)).default;
-let stalePayload = null;
-await staleHandler(
-  { method: "POST", body: { version_name: "builtin", version_code: String(BUILTIN.build + 4) } },
-  { setHeader() {}, status() { return this; }, json(b) { stalePayload = b; return this; }, end() { return this; } }
-);
-await fs.rm(staleDir, { recursive: true, force: true });
+const stale = await variant([[`const LATEST_VERSION = "${LATEST}"`, 'const LATEST_VERSION = "9999-99-99z"']]);
+const stalePayload = await stale({ version_name: "builtin", version_code: String(BUILTIN.build + 4) });
 check("8 [fail-safe] a NEWER OTA than the baked-in one IS offered to a builtin device",
       offered(stalePayload) && stalePayload.version === "9999-99-99z",
       `a stale BUILTIN_BUNDLE must cost a redundant download, never a missed update — got ${JSON.stringify(stalePayload)}`);
-check("9 [control] BUILTIN_BUNDLE.version currently names the published bundle",
-      BUILTIN.version === LATEST,
-      `builtin=${BUILTIN.version} latest=${LATEST} — fine if an OTA shipped since the last archive, ` +
-      `but then checks 1-2 are vacuous and new installs take a redundant download`);
+
+// ── The REAL module must match its OWN constants ─────────────────────────────
+// Both states are legitimate and each has exactly one right answer, so this is an assertion rather
+// than a reminder. ALIGNED (just archived) → a current builtin device is suppressed. DORMANT (an
+// OTA shipped since) → that same device MUST be offered the bundle, because the binary does not
+// contain it. Getting this wrong in the dormant direction is the strand-every-install failure.
+const aligned = BUILTIN.version === LATEST;
+const realAtBuild = await ask({ version_name: "builtin", version_code: String(BUILTIN.build) });
+check(`9 the live config behaves like what it is (${aligned ? "ALIGNED" : "OTA pending a Mac day"})`,
+      aligned ? !offered(realAtBuild) : (offered(realAtBuild) && realAtBuild.version === LATEST),
+      `builtin=${BUILTIN.version} latest=${LATEST} → ${JSON.stringify(realAtBuild)}`);
+if (!aligned) {
+  console.log(`NOTE  BUILTIN_BUNDLE names ${BUILTIN.version} while ${LATEST} is published, so new`);
+  console.log(`      store installs take one redundant ~500 kB download until the next archive.`);
+  console.log(`      That is the fail-safe working; set BUILTIN_BUNDLE on the next Mac day.`);
+}
 
 // ── The reply must otherwise be untouched ────────────────────────────────────
 check("10 an offered reply still carries url + checksum",
-      offered(olderBuild) && typeof olderBuild.url === "string" &&
-      olderBuild.url.endsWith(`seshd-${LATEST}.zip`) && /^[0-9a-f]{64}$/.test(olderBuild.checksum || ""),
-      JSON.stringify(olderBuild));
+      offered(onOldOta) && typeof onOldOta.url === "string" &&
+      onOldOta.url.endsWith(`seshd-${LATEST}.zip`) && /^[0-9a-f]{64}$/.test(onOldOta.checksum || ""),
+      JSON.stringify(onOldOta));
 check("11 a no-update reply carries version:null and NO message field",
       onLatest && onLatest.version === null && !("message" in onLatest),
       JSON.stringify(onLatest));
+
+for (const d of tmpDirs) await fs.rm(d, { recursive: true, force: true });
 
 console.log(fails ? `\nFAIL sim_otabuiltin (${fails})` : "\nPASS sim_otabuiltin");
 process.exit(fails ? 1 : 0);
