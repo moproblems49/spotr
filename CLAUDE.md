@@ -179,6 +179,38 @@ it found something real that nobody had reported: a mid-review demo corpus that 
    select count(*) from pg_trigger
     where tgrelid='net.http_request_queue'::regclass and tgname='aaa_pgnet_enqueue_guard';  -- must be 1
    ```
+7. **Activation** — added Sep 15 2026, the day the App Store release went live, because from
+   here signups are strangers rather than Mo. It answers the one question that decides what to
+   build next: **do people who sign up ever log a workout?** It needs NO analytics, NO tracking
+   library and NO privacy-policy change, because both facts are already stored — signup time is
+   `auth.users.created_at`, the first logged session is `min(workout_history.created_at)`. That is
+   the whole reason to prefer this over switching PostHog on: PostHog earns its place only for
+   things that never reach the server (which screen someone abandoned, what they tapped), and we
+   are nowhere near needing that.
+   ```sql
+   select date_trunc('week', u.created_at)::date as signup_week,
+          count(*)                               as signups,
+          count(*) filter (where exists (
+            select 1 from workout_history w
+             where w.user_id = u.id
+               and w.created_at < u.created_at + interval '7 days')) as logged_within_7d,
+          count(*) filter (where exists (
+            select 1 from workout_history w where w.user_id = u.id)) as logged_ever
+   from auth.users u
+   where u.created_at > now() - interval '12 weeks'
+     and u.email not like '%@getseshd.app'
+   group by 1 order by 1 desc;
+   ```
+   **The `@getseshd.app` exclusion is load-bearing, not tidiness.** The demo corpus's
+   `workout_history` was backfilled and then re-dated several times, so its "first workout" is a
+   fiction that would quietly flatter the ratio. Same caveat for any account that came through the
+   GUEST MIGRATION: that path stamps `created_at` at migration time, not when the set was logged,
+   so a migrated user can look like they activated instantly. Neither distorts the number today
+   (one organic signup, `dallas`, who has not logged), but both will the moment there is traffic.
+   **Do not read this before there are ~20 signups** — under that it is noise, and acting on it
+   would be the "n=1 is not a pattern" mistake. Its value is that it exists BEFORE the users do,
+   so there is a baseline rather than a retroactive guess.
+   **Baseline at launch (Sep 15 2026): 1 signup in the last 12 weeks, 0 activated.**
 Report findings even when everything is clean; "the error rate went from 1,650/day to single
 digits" is the point of running it again after a fix.
 **Sweep #3 (Aug 28, ~04:40 UTC), for the next run's baseline:** 950 of 953 daily Postgres errors
