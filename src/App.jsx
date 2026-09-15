@@ -1,4 +1,4 @@
-// v178091717054
+// v178091717055
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17820,6 +17820,21 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   ["kudos", "Kudos"],
                   ["comments", "Comments"],
                   ["follows", "New followers"],
+                  // "streak" is the key the SERVER already reads —
+                  // get_streak_at_risk_candidates gates on
+                  // `coalesce(notification_prefs->>'streak','true') <> 'false'` — but nothing in
+                  // the app ever set it, so the weekly Sunday push ("Your streak is on the line")
+                  // shipped with no in-app way to switch it off. Harmless while Mo was the only
+                  // user; not once the App Store release went live. The label says STREAK
+                  // deliberately rather than a vaguer "Training reminders": that is the only
+                  // thing this key controls today, and a toggle promising more than it governs is
+                  // the same class of lie as a tile label that misnames its number. Widen the
+                  // label when a second reminder actually rides this key.
+                  // Default-ON needs no migration and that was checked, not assumed: the server
+                  // coalesces a missing key to 'true', and the row below reads
+                  // `prefs[key] !== false`, so an existing profile with no "streak" key renders
+                  // ON on both sides and only a deliberate toggle-off writes false.
+                  ["streak", "Streak reminders"],
                 ].map(([key, label], i) => {
                   const prefs = store.notificationPrefs || {};
                   const on = prefs[key] !== false;

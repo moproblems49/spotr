@@ -68,7 +68,23 @@ for (const theme of ["dark", "light"]) {
       onOffButtons: [...document.querySelectorAll("button")].filter(b => /^(On|Off)$/.test((b.textContent || "").trim())).length };
   });
 
-  check(`[${theme}] five booleans render as switches`, info.switches.length === 5, `found ${info.switches.length}`);
+  // SIX since Sep 15 2026: public profile + five notification prefs. The fifth notification
+  // pref ("Streak reminders") is the in-app off switch for the weekly Sunday push, which the
+  // server has always gated on notification_prefs->>'streak' while nothing in the app ever set
+  // it. Pinned to an exact count on purpose — a toggle silently disappearing is the failure this
+  // check exists for, and >= would not see it.
+  check(`[${theme}] six booleans render as switches`, info.switches.length === 6, `found ${info.switches.length}`);
+  // The streak switch is a CONTRACT with the server, not just another boolean:
+  // get_streak_at_risk_candidates gates on notification_prefs->>'streak', so a switch that flips
+  // on screen while writing a differently-named key would be decorative and nothing else here
+  // could tell. Its default must also agree with the server, which coalesces a missing key to
+  // 'true' — a client defaulting it OFF would silently suppress a push the server thinks is on.
+  const streakSw = info.switches.find(s => /streak/i.test(s.label));
+  check(`[${theme}] a streak-reminders switch exists`, !!streakSw,
+    `labels: ${info.switches.map(s => s.label).join(", ")}`);
+  check(`[${theme}] it defaults ON, agreeing with the server's coalesce`,
+    !!streakSw && streakSw.checked === "true", streakSw && `checked=${streakSw.checked}`);
+
   check(`[${theme}] no leftover "On"/"Off" segmented buttons`, info.onOffButtons === 0, `${info.onOffButtons} found`);
   const labels = info.switches.map(s => s.label).join(",");
   check(`[${theme}] all five are labelled for a screen reader`,
