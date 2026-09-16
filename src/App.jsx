@@ -1,4 +1,4 @@
-// v178091717059
+// v178091717060
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -22553,14 +22553,23 @@ function AppInner() {
       <Onboarding C={C} suggestedUsers={suggestedUsers} onComplete={async (answers, followIds) => {
       const target = answers?.daysPerWeek ? Math.min(7, Math.max(1, parseInt(answers.daysPerWeek))) : 3;
       try { localStorage.setItem("seshd_onboarded", "1"); } catch {}
-      const oSex = answers?.sex === "female" ? "female" : answers?.sex === "male" ? "male" : undefined;
+      // ★ "other" IS A REAL ANSWER HERE, NOT A SYNONYM FOR MALE. computeStrengthScore averages
+      // the male and female bodyweight-aware thresholds for it (see its own comment), and the
+      // Settings SexToggle has offered all three since long before onboarding did. bodyType is
+      // the half that stays binary — there is no third body map — so it is written ONLY for
+      // male/female and an "other" (or an unanswered field) is left unset, which MuscleHeatmap
+      // already handles: bodyType -> strengthSex -> male. Writing body_type:"other" would store a
+      // value that column can never mean.
+      const oSex = ["male","female","other"].includes(answers?.sex) ? answers.sex : undefined;
+      const oBody = (oSex === "male" || oSex === "female") ? oSex : undefined;
       const oAge = (answers?.age > 0 && answers?.age < 100) ? answers.age : undefined;
       // Auto-create a starter program matched to their goal + training days so they land
       // on a ready-to-start plan instead of an empty "No active program" screen.
       const recTemplate = PROGRAM_TEMPLATES.find(t => t.id === recommendTemplateId(answers));
       const starterProg = recTemplate ? buildProgramFromTemplate(recTemplate) : null;
       setStore(prev => ({ ...prev, seenOnboarding: true, weeklyTarget: target, onboardingAnswers: answers || {},
-        ...(oSex ? { strengthSex: oSex, bodyType: oSex } : {}),
+        ...(oSex ? { strengthSex: oSex } : {}),
+        ...(oBody ? { bodyType: oBody } : {}),
         ...(oAge ? { age: oAge } : {}) }));
       // THE STARTER PROGRAM MUST GO THROUGH handleSaveProgram, NOT A BARE setStore.
       // It used to be seeded straight into local state and never written anywhere. loadUserData
@@ -22598,7 +22607,7 @@ function AppInner() {
       // flag still prevents it showing again this session/device.
       const tok = tokenRef.current || loadSession()?.access_token;
       if (tok) {
-        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target, ...(answers?.sex ? { strength_sex: answers.sex, body_type: answers.sex } : {}), ...((answers?.age > 0 && answers?.age < 100) ? { age: answers.age } : {}) }) }, tok); }
+        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ seen_onboarding: true, onboarding_answers: answers || {}, weekly_target: target, ...(oSex ? { strength_sex: oSex } : {}), ...(oBody ? { body_type: oBody } : {}), ...((answers?.age > 0 && answers?.age < 100) ? { age: answers.age } : {}) }) }, tok); }
         catch (e) { devError("onboarding flag save error:", e); }
       }
       // Follow whichever suggested accounts the user picked during onboarding.

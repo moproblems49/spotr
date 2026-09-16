@@ -59,10 +59,17 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   const inForm = step === 0;
   const inFollowStep = step === followStep;
   const inClosing = step === closingStep;
-  // Age is deliberately NOT required — it is labelled optional and only nudges the strength
-  // standards. The other three all feed recommendTemplateId or the standards themselves, so
-  // Continue stays disabled until they are answered rather than silently guessing for the user.
-  const formReady = !!answers.goal && !!answers.daysPerWeek && !!answers.sex;
+  // ★ ONLY GOAL AND DAYS ARE REQUIRED. Those two are the ONLY inputs recommendTemplateId reads,
+  // so without them there is no program to start anyone on — the wizard genuinely cannot finish.
+  // Sex and age are not in that class: both only tune the strength standards (and sex picks the
+  // body-map silhouette), both are changeable in Settings, and both have an honest answer for
+  // "unset". Gating Continue on sex forced a physiological disclosure to use a workout tracker,
+  // which is the pattern Garmin / Whoop / Oura all abandoned: two physiological options plus a
+  // way to decline, because there is no third baseline to offer but there is no reason to demand
+  // one either. Seshd goes one better — `computeStrengthScore` has a real "other" that averages
+  // the male and female bodyweight-aware thresholds, so the third option is not a euphemism for
+  // "we picked male anyway".
+  const formReady = !!answers.goal && !!answers.daysPerWeek;
 
   function next() {
     if (step < totalSteps - 1) setStep(step + 1);
@@ -207,13 +214,23 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
               })}
             </div>
 
-            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Biological sex</div>
-            <div style={{ display:"flex", gap:10, marginBottom:22 }}>
-              {[["male","Male"],["female","Female"]].map(([v,label]) => {
+            {/* ★ THREE OPTIONS, MATCHING SETTINGS — WHICH HAS HAD THEM ALL ALONG. The Strength
+                Score card's own SexToggle is Male / Female / Other and `computeStrengthScore`
+                implements "other" as the midpoint of the male and female bodyweight-aware
+                thresholds. Onboarding offered two and REQUIRED one, so the same question had two
+                different answer sets in one app and the narrower one was the one every new user
+                met: the N-copies-drift class, in a form. `bodyType` stays binary (there is no
+                third body map and tracing one is licensed-art work), which is why onComplete
+                writes body_type only for male/female and leaves the silhouette to the documented
+                bodyType -> strengthSex -> male fallback in MuscleHeatmap. */}
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Biological sex <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.4 }}>Sets your strength standards and body map. Other uses a neutral baseline.</div>
+            <div style={{ display:"flex", gap:8, marginBottom:22 }}>
+              {[["male","Male"],["female","Female"],["other","Other"]].map(([v,label]) => {
                 const sel = answers.sex === v;
                 return (
-                  <button key={v} onClick={() => set("sex", v)} aria-pressed={sel} style={{
-                    flex:1, padding:"15px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                  <button key={v} onClick={() => set("sex", sel ? null : v)} aria-pressed={sel} style={{
+                    flex:1, padding:"15px 8px", borderRadius:14, cursor:"pointer", fontFamily:F,
                     background: sel ? C.primary : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
                     color: sel ? C.onPrimary : C.text, fontSize:15, fontWeight:600,
                     transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",

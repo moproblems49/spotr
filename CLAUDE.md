@@ -3456,6 +3456,67 @@ server" and points at the wrong thing. Red-proofed by making `formReady` also re
 Continue can never enable: it fails with **`finished=false clicked=["Build muscle","4","Male"]`**
 — the three answers in and no way forward — while the "onboarding renders" control stays green.
 
+**★★ AND THE SEX FIELD WAS REQUIRED, AND OFFERED TWO OPTIONS WHERE SETTINGS OFFERED THREE
+(Sep 16 2026).** Mo: "should we add other? should we make it optional? should we call it something
+different? what do other popular apps do?" Two real defects fell out of answering it, and the
+second is one I asserted the OPPOSITE of before reading the code — see the correction below.
+- **It was a GATE.** `formReady` included `!!answers.sex`, so a brand-new user could not reach
+  their first set without a physiological disclosure. Only `goal` and `daysPerWeek` gate anything
+  — they are the ONLY fields `recommendTemplateId` reads, so without them there is genuinely no
+  program to start anyone on. Sex and age are not in that class: both only tune the strength
+  standards, both are changeable in Settings, and both have an honest answer for "unset". It is
+  optional now, marked exactly as Age already was.
+- **★ ONBOARDING OFFERED TWO ANSWERS AND SETTINGS OFFERED THREE — THE N-COPIES-DRIFT CLASS, IN A
+  FORM.** The Strength Score card's `SexToggle` has been **Male / Female / Other** for as long as
+  `computeStrengthScore` has had its `sex === "other"` branch, which averages the male and female
+  **bodyweight-aware** thresholds for a genuine neutral baseline (its caption even reads "neutral
+  standards"). So the narrower answer set was the one every new user met, and the wider one was
+  buried behind a card most people never open. **I told Mo "there is no third set of standards"
+  before checking, and that was simply false** — it has existed the whole time. Read the engine
+  before answering a question about what the engine can do.
+- **`bodyType` IS THE HALF THAT STAYS BINARY, AND THE TWO FIELDS HAD TO BE UNCOUPLED TO SHIP IT.**
+  There is no third body map (the female one is traced from licensed art over four rounds), so
+  `onComplete` now writes `strength_sex` for all three answers and `body_type` only for
+  male/female. An unset or "other" body type is already handled by `MuscleHeatmap`'s documented
+  `bodyType -> strengthSex -> male` fallback. Writing `body_type:"other"` would store a value that
+  column can never mean — and the old code did exactly that, since the server write used the raw
+  `answers.sex` while the local `setStore` used the sanitised `oSex`. **Two spellings of one
+  value in one function is how they drift.**
+- **The label stayed "Biological sex"** — it is the honest name for something used for
+  physiological norms rather than identity, and it is what keeps `ob_walk.mjs`'s gate valid. What
+  it was missing was a REASON, not a better noun: a muted line now says what it sets and what
+  "Other" does.
+- **What the comparable apps actually do, CHECKED rather than recalled** (my first answer to Mo
+  got this wrong too): **Hevy** has a "Strength Level" feature comparing you per-exercise against
+  **its own users** of the same sex, age band and bodyweight, with a percentile — and its Sex
+  field is Male / Female / **Other**, where "Other" renders the **male** heat-map figure. That is
+  byte-for-byte the resolution shipped here, arrived at independently. **Strong** (strong.app)
+  has NO strength standards or percentile at all — PRs, e1RM and volume only — so the earlier
+  claim that it does was wrong. The app whose feature set genuinely resembles ours is **Stronger**
+  (a different product): 12 muscle groups, Beginner -> World Class, a body diagram that fills in,
+  one overall Strength Score.
+- **Ours vs Hevy's is a real design difference worth keeping straight:** Hevy scores against a
+  LIVE SELF-SELECTED POPULATION (bigger n, but it drifts as their user base changes, and it can
+  only say "you beat 63% of people"); Seshd scores against PUBLISHED Symmetric Strength
+  weight-class standards, interpolated by actual bodyweight between anchors rather than a fixed
+  ratio, across 11 lifts and 8 tiers — a fixed external yardstick that can say "Intermediate" and
+  mean the same thing next year.
+**Sim: `pw_obsex`** (22 checks) — the three options render, the field is marked optional, Continue
+is ENABLED with sex blank (and nothing auto-selected one), skipping writes NEITHER column, "Other"
+writes `strength_sex` and NOT `body_type`, and the binary path still writes both. Red-proofed as
+**two separate mutations** because the fixes are independent: reverting `Onboarding.jsx` alone
+fails 11 checks naming `{"text":"Continue","disabled":true}` and a walk stalled at
+`["Build muscle","4"]`; reverting `App.jsx` alone fails exactly ONE — 3c — printing the offending
+`"body_type":"other"`. Every `[control]` stayed green in both.
+**★ AND ITS OWN "the field says what it is for" CHECK WAS VACUOUS FIRST.** It matched
+`/strength standards/i`, which is ALSO in the form's heading sub-copy, so it passed against a build
+with no caption at all. Anchored on the caption's own sentence now. *A phrase that appears twice on
+one screen cannot prove which copy rendered.*
+**★ AND THE STALE-BUNDLE SCAR, PAID AGAIN:** restoring both files from the scratch copies and
+re-running the guard reported the mutation-B failure verbatim, because `cp` does not rebuild
+`dist`. Rebuild after every restore, or the two runs you are comparing are not the two builds you
+think.
+
 **★ AND THE WELCOME SCREEN'S HEIGHT IS THE CONSTRAINT ON EVER ADDING A FOURTH ROW — MEASURED AT
 375x667, WHERE MY FIRST READING WAS WRONG IN A WAY WORTH RECORDING.** I reported to Mo that a
 fourth feature row "broke the iPhone SE" and that I had caused it. Re-measuring both builds with
