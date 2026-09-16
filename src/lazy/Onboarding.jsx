@@ -7,7 +7,7 @@
 // duplicated here) because they're ALSO used by App.jsx's own onboarding-completion handler
 // and the "Browse templates" sheet — see the ReferenceError history on PROGRAM_TEMPLATES in
 // App.jsx right above its definition before touching either.
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Icon, SeshdLogo, Avatar, PROGRAM_TEMPLATES, recommendTemplateId, F, KB_SAFE_INSET } from "../App.jsx";
 
 export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
@@ -22,47 +22,57 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   // merged with the feature list already there rather than being appended (two pitches for one app
   // is the N-copies class in content form — they had already drifted, each naming things the other
   // did not). Measured: the wizard went 8 screens / 9 taps to 4 / 5.
-  const questions = [
-    { key:"goal", q:"What's your main goal?", opts:[
-      { v:"strength", label:"Get stronger" },
-      { v:"muscle", label:"Build muscle" },
-      { v:"lean", label:"Get lean" },
-      { v:"general", label:"Stay healthy" },
-    ]},
-    // ★ "How long have you been lifting?" WAS DELETED (Sep 16 2026) BECAUSE NOTHING READ IT.
-    // It wrote answers.experience, and the only reader of store.onboardingAnswers in the whole app
-    // is recommendTemplateId — which destructured `experience` and never mentioned it again. So
-    // every new signup answered a question that could not change one pixel of what they got: the
-    // dead-UI class in QUESTION form, and invisible to sim_deadui because the setter IS called and
-    // the value IS stored. Nothing reads it. When auditing a form, trace each field to a READER.
-    { key:"daysPerWeek", q:"How many days a week can you train?", opts:[
-      { v:2, label:"2 days" },
-      { v:3, label:"3 days" },
-      { v:4, label:"4 days" },
-      { v:5, label:"5+ days" },
-    ]},
-    { key:"profile", q:"A bit about you", profile:true },
+  // ★ GOAL + DAYS + SEX/AGE ARE ONE SCREEN (Sep 16 2026). They were three, each with its own
+  // heading and its own tap, and they are all the same question — "what should we set you up
+  // with" — asked in instalments. Three screens buy nothing here: none of the answers changes
+  // which questions follow, so there is no branching to justify pacing them, and a wizard that
+  // paginates a form with eight taps of content is just a form behind three taps of chrome.
+  // The step count is what a new user pays before their first set, so it is worth the density.
+  // Measured: 8 screens / 9 taps -> 4 / 5 (the intro cards) -> 2 / 2 (this).
+  //
+  // ★ AND THE LAYOUT IS DENSE ON PURPOSE, BECAUSE STACKED FULL-WIDTH BUTTONS DO NOT FIT.
+  // Eight options at the old one-per-row size is ~500px of buttons before the labels, headings
+  // or the age field. Goal is a 2x2 grid and days is a single 4-across row (the labels are one
+  // character, and a row reads as the scale it is). This screen has a REAL scroll container with
+  // the Continue button in a STATIC footer outside it, so overflowing on a short phone costs a
+  // scroll and can never strand the CTA — unlike the welcome screen, which has no scroller and
+  // where a fourth row was therefore refused outright. Do not move Continue into the scroller.
+  const GOALS = [
+    { v:"strength", label:"Get stronger" },
+    { v:"muscle",   label:"Build muscle" },
+    { v:"lean",     label:"Get lean" },
+    { v:"general",  label:"Stay healthy" },
   ];
-  // step layout: [questions][follow suggestions][closing]
+  // ★ "How long have you been lifting?" WAS DELETED (Sep 16 2026) BECAUSE NOTHING READ IT.
+  // It wrote answers.experience, and the only reader of store.onboardingAnswers in the whole app
+  // is recommendTemplateId — which destructured `experience` and never mentioned it again. So
+  // every new signup answered a question that could not change one pixel of what they got: the
+  // dead-UI class in QUESTION form, and invisible to sim_deadui because the setter IS called and
+  // the value IS stored. Nothing reads it. When auditing a form, trace each field to a READER.
+  // 5 means "5 or more" — recommendTemplateId's last branch is `else`, so nothing above 5 exists.
+  const DAYS = [2, 3, 4, 5];
+  // step layout: [setup form][follow suggestions][closing]
   const hasFollowStep = suggestedUsers.length > 0;
-  const totalSteps = questions.length + (hasFollowStep ? 1 : 0) + 1;
+  const totalSteps = 1 + (hasFollowStep ? 1 : 0) + 1;
   const closingStep = totalSteps - 1;
   const followStep = hasFollowStep ? closingStep - 1 : -1;
-  const qIndex = step;
-  const inQuestions = qIndex >= 0 && qIndex < questions.length;
+  const inForm = step === 0;
   const inFollowStep = step === followStep;
   const inClosing = step === closingStep;
+  // Age is deliberately NOT required — it is labelled optional and only nudges the strength
+  // standards. The other three all feed recommendTemplateId or the standards themselves, so
+  // Continue stays disabled until they are answered rather than silently guessing for the user.
+  const formReady = !!answers.goal && !!answers.daysPerWeek && !!answers.sex;
 
   function next() {
     if (step < totalSteps - 1) setStep(step + 1);
     else onComplete(answers, Array.from(followIds));
   }
   function back() { if (step > 0) setStep(step - 1); }
-  function pick(key, v) {
-    setAnswers(a => ({ ...a, [key]: v }));
-    // Auto-advance shortly after a tap for a snappy feel (into the next question or the closing screen)
-    setTimeout(() => setStep(s => Math.min(s + 1, closingStep)), 220);
-  }
+  // No auto-advance any more: with one merged form there is nothing to advance INTO until every
+  // answer is in, and jumping the moment the last one is tapped would take the screen away from
+  // someone still deciding whether to change an earlier answer. Continue is the only way forward.
+  const set = (key, v) => setAnswers(a => ({ ...a, [key]: v }));
   function toggleFollowSuggestion(id) {
     setFollowIds(prev => {
       const next = new Set(prev);
@@ -71,7 +81,6 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
     });
   }
 
-  const question = inQuestions ? questions[qIndex] : null;
 
   // Personalized closing copy from their answers
   const goalLabel = { strength:"getting stronger", muscle:"building muscle", lean:"getting lean", general:"staying healthy" }[answers.goal] || "your goals";
@@ -115,7 +124,9 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
             re-centring into the shrunken box. Switching justifyContent instead was measured
             leaving 34px of residual jump; this leaves none. */}
         <div style={{ width:"100%", display:"flex", flexDirection:"column", alignItems:"center", margin: typing ? "0" : "auto 0" }}>
-        <div style={{ marginBottom:48 }}>
+        {/* 48 elsewhere, 24 on the form — that step carries four sections and the margin is
+            competing with them for the same vertical budget on a short phone. */}
+        <div style={{ marginBottom: inForm ? 24 : 48 }}>
           <SeshdLogo C={C} big/>
         </div>
         {inClosing ? (
@@ -125,7 +136,7 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
             </div>
             <div style={{ fontSize:28, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.6, lineHeight:1.15 }}>You're all set</div>
             <div style={{ fontSize:15, color:C.sub, lineHeight:1.5, marginBottom:8 }}>
-              We'll tailor things around {goalLabel}, {dpw} days a week.{recProgram ? <> We've set you up with a <strong style={{ color:C.text, fontWeight:700 }}>{recProgram.name}</strong> program to start — tweak it anytime.</> : ""} Your progress builds from here.
+              We'll tailor things around {goalLabel}, {dpw} days a week.{recProgram ? <> We've started you on <strong style={{ color:C.text, fontWeight:700 }}>{recProgram.name}</strong> — tweak it anytime.</> : ""} Your progress builds from here.
             </div>
           </div>
         ) : inFollowStep ? (
@@ -156,46 +167,67 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
               })}
             </div>
           </div>
-        ) : (inQuestions && question.profile) ? (
-          <div key="profile" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
-            <div style={{ fontSize:14, color:C.sub, marginBottom:24, lineHeight:1.4 }}>This tailors your strength standards and recovery estimates. You can change it later.</div>
+        ) : (
+          <div key="form" className="seshd-enter" style={{ width:"100%", maxWidth:340, textAlign:"left" }}>
+            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:8, letterSpacing:-0.5, lineHeight:1.2, textAlign:"center" }}>Let's set you up</div>
+            <div style={{ fontSize:14, color:C.sub, marginBottom:26, lineHeight:1.4, textAlign:"center" }}>This picks your starting program and tailors your strength standards. You can change any of it later.</div>
+
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Main goal</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:22 }}>
+              {GOALS.map(o => {
+                const sel = answers.goal === o.v;
+                return (
+                  <button key={o.v} onClick={() => set("goal", o.v)} aria-pressed={sel} style={{
+                    padding:"15px 8px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                    background: sel ? C.primary : C.surface,
+                    border:`1.5px solid ${sel ? C.accent : C.border}`,
+                    color: sel ? C.onPrimary : C.text,
+                    fontSize:14, fontWeight:600, textAlign:"center",
+                    transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
+                  }}>{o.label}</button>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Days a week</div>
+            <div style={{ display:"flex", gap:8, marginBottom:22 }}>
+              {DAYS.map(d => {
+                const sel = answers.daysPerWeek === d;
+                return (
+                  <button key={d} onClick={() => set("daysPerWeek", d)} aria-pressed={sel}
+                    aria-label={d === 5 ? "5 or more days a week" : `${d} days a week`} style={{
+                    flex:1, padding:"15px 4px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                    background: sel ? C.primary : C.surface,
+                    border:`1.5px solid ${sel ? C.accent : C.border}`,
+                    color: sel ? C.onPrimary : C.text,
+                    fontSize:15, fontWeight:700, textAlign:"center",
+                    transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
+                  }}>{d === 5 ? "5+" : d}</button>
+                );
+              })}
+            </div>
+
             <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Biological sex</div>
-            <div style={{ display:"flex", gap:10, marginBottom:24 }}>
+            <div style={{ display:"flex", gap:10, marginBottom:22 }}>
               {[["male","Male"],["female","Female"]].map(([v,label]) => {
                 const sel = answers.sex === v;
                 return (
-                  <button key={v} onClick={() => setAnswers(a => ({ ...a, sex: v }))} style={{
-                    flex:1, padding:"16px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                  <button key={v} onClick={() => set("sex", v)} aria-pressed={sel} style={{
+                    flex:1, padding:"15px", borderRadius:14, cursor:"pointer", fontFamily:F,
                     background: sel ? C.primary : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
                     color: sel ? C.onPrimary : C.text, fontSize:15, fontWeight:600,
+                    transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
                   }}>{label}</button>
                 );
               })}
             </div>
+
             <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Age <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
             <input type="text" inputMode="numeric" autoComplete="off" autoCorrect="off" spellCheck={false} data-1p-ignore data-lpignore="true" placeholder="e.g. 28" min="14" max="99"
+              aria-label="Age"
               value={answers.age || ""}
               onChange={e => { const a = parseInt(e.target.value); setAnswers(p => ({ ...p, age: (a > 0 && a < 100) ? a : null })); }}
               style={{ width:"100%", padding:"15px 16px", borderRadius:14, border:`1.5px solid ${C.border}`, background:C.surface, color:C.text, fontSize:15, fontWeight:600, fontFamily:F, outline:"none", boxSizing:"border-box" }}/>
-          </div>
-        ) : (
-          <div key={step} className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
-            <div style={{ fontSize:24, fontWeight:800, color:C.text, marginBottom:24, letterSpacing:-0.5, lineHeight:1.2 }}>{question.q}</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-              {question.opts.map(opt => {
-                const selected = answers[question.key] === opt.v;
-                return (
-                  <button key={String(opt.v)} onClick={() => pick(question.key, opt.v)} style={{
-                    width:"100%", padding:"16px 18px", borderRadius:14, cursor:"pointer", fontFamily:F,
-                    background: selected ? C.primary : C.surface,
-                    border:`1.5px solid ${selected ? C.accent : C.border}`,
-                    color: selected ? C.onPrimary : C.text,
-                    fontSize:15, fontWeight:600, textAlign:"left", transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
-                  }}>{opt.label}</button>
-                );
-              })}
-            </div>
           </div>
         )}
         </div>
@@ -204,11 +236,11 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
         <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:24 }}>
           {Array.from({ length: totalSteps }).map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s cubic-bezier(0.22, 1, 0.36, 1)" }}/>)}
         </div>
-        {inQuestions && question.profile && (
-          <button onClick={next} disabled={!answers.sex} style={{
-            width:"100%", background: answers.sex ? C.text : C.surface, color: answers.sex ? C.bg : C.muted,
+        {inForm && (
+          <button onClick={next} disabled={!formReady} style={{
+            width:"100%", background: formReady ? C.text : C.surface, color: formReady ? C.bg : C.muted,
             border:"none", borderRadius:14, padding:"16px", fontSize:15, fontWeight:700,
-            cursor: answers.sex ? "pointer" : "not-allowed", fontFamily:F, letterSpacing:-0.2
+            cursor: formReady ? "pointer" : "not-allowed", fontFamily:F, letterSpacing:-0.2
           }}>
             Continue
           </button>

@@ -3356,7 +3356,7 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   worked example of a reasoned-not-observed fix that turned out right — and of why `pw_reorder`
   now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
-## ★★ THE ONBOARDING WENT 8 SCREENS -> 4, AND THE DEAD QUESTION IS GONE (Sep 16 2026)
+## ★★ THE ONBOARDING WENT 8 SCREENS -> 2, AND THE DEAD QUESTION IS GONE (Sep 16 2026)
 Mo: "Is the onboarding too long?" Driven end to end as a real new signup at 402x874 rather than
 read, because the step count is computed (`introScreens + questions + maybe-follow + closing`) and
 counting it from the source is how you get the wrong number.
@@ -3408,6 +3408,54 @@ an assertion ORed against a marker you just removed is a check that quietly stop
 own step 7 baseline is **1 signup, 0 activated**, so there is no evidence onboarding costs anyone
 anything. The argument for shipping this was that a question nothing reads cannot be worth a tap —
 do NOT justify onboarding changes with a funnel nobody has.
+**★★ AND THEN MO CUT IT AGAIN THE SAME DAY: "the first 3 pages could be merged into one." 8 -> 4
+-> 2 SCREENS, 2 TAPS.** Goal, days-per-week and sex/age are now ONE form. The argument for
+merging is that none of the three answers changes which questions follow — there is no branching
+anywhere in this wizard — so paginating them bought pacing and nothing else, and a wizard that
+splits a form across three screens is a form behind three taps of chrome. What survives is the
+form and the closing card.
+**The layout is dense BECAUSE STACKED FULL-WIDTH BUTTONS DO NOT FIT, and that was measured.**
+Eight options at the old one-per-row size is ~500px of buttons before any label, heading or the
+age field. Goal is a **2x2 grid**; days is a **single 4-across row** of one-character labels
+(`2 3 4 5+`), which also reads as the scale it is. Measured after: **iPhone 16 Pro and Pro Max
+overflow by 0px — the whole form fits** — and the iPhone SE overflows by 125px, where the three
+REQUIRED fields are all above the fold and only the optional Age is below it.
+**★ THIS SCREEN MAY OVERFLOW AND THE WELCOME SCREEN MAY NOT, AND THE DIFFERENCE IS STRUCTURAL.**
+Onboarding has a real `overflowY:auto` scroller with **Continue in a STATIC footer outside it**,
+so overflowing costs a scroll and can never strand the CTA — hit-tested at all three sizes, on
+screen and reachable every time, including while disabled. The welcome screen has no scroller and
+no footer, which is why a fourth row there was refused outright on 48px of margin. **Do not move
+Continue into the scroller**, and do not reason from one screen's height budget to the other's.
+**Auto-advance is GONE**, deliberately: with one form there is nothing to advance into until every
+answer is in, and jumping the moment the last one is tapped takes the screen away from someone
+still deciding whether to change an earlier answer. Continue is gated on goal + days + sex; age
+stays optional and ungated, since it is labelled optional and only nudges the strength standards.
+**★ AND THE CLOSING CARD SAID "a Upper / Lower program".** Of the seven templates exactly one
+starts with a vowel sound, and it is the 4-day recommendation, so it is a common landing. **Fixed
+by REMOVING THE ARTICLE, not by picking one** ("We've started you on **Upper / Lower**") — a
+first-letter vowel test is wrong for a /juu/ name ("a Unilateral..."), and a sentence with no
+article in it cannot be broken by a template added later. Found by reading the rendered screen
+aloud, which is the standing rule and the only thing that catches this class.
+**★★ AND THE THREE SUITES THAT WALK THE WIZARD NOW SHARE ONE WALKER — `build/ob_walk.mjs`.**
+`pw_journey`, `pw_starterprog` and `pw_templates` each carried their own copy, so every wizard
+change had to find all three, and the previous round had already caught two of them asserting on
+copy deleted a day earlier. **Worse, and only visible once the loops were read properly: they
+finished BY ACCIDENT.** Their continue-condition was `/main goal|days a week|bit about you/` and
+the CLOSING card reads "…4 days a week" — so the loop kept running there purely because a phrase
+it was never written for happened to appear, and that coincidence is the only reason "Let's go"
+was ever clicked and the starter program ever reached the stub. The shared walker names the
+wizard's screens explicitly (`OB_SCREENS`), checks it is still IN the wizard **before** clicking
+so it can never tap a same-named button in the app proper, and answers ONE field per pass —
+because `HTMLButtonElement.click()` on a DISABLED button dispatches nothing, so a Continue-first
+walker taps a no-op until it runs out of iterations (the pre-merge version burned 20 passes on the
+sex step exactly that way).
+**It returns `{ clicked, finished }` and `finished` is the load-bearing half**, asserted by all
+three suites: a fixture whose selectors stop matching leaves the form un-answered, Continue
+disabled and the walk spinning, which otherwise surfaces six screens later as "no program on the
+server" and points at the wrong thing. Red-proofed by making `formReady` also require age, so
+Continue can never enable: it fails with **`finished=false clicked=["Build muscle","4","Male"]`**
+— the three answers in and no way forward — while the "onboarding renders" control stays green.
+
 **★ AND THE WELCOME SCREEN'S HEIGHT IS THE CONSTRAINT ON EVER ADDING A FOURTH ROW — MEASURED AT
 375x667, WHERE MY FIRST READING WAS WRONG IN A WAY WORTH RECORDING.** I reported to Mo that a
 fourth feature row "broke the iPhone SE" and that I had caused it. Re-measuring both builds with

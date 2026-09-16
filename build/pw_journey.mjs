@@ -16,6 +16,7 @@
 // only what the client actually wrote, so anything that never left the phone is gone after it —
 // which is exactly the mechanism all three bugs used.
 import { chromium } from "playwright-core";
+import { walkOnboarding } from "./ob_walk.mjs";
 
 const PORT = process.env.PORT || "8199";
 const ME = "11111111-1111-4111-8111-111111111111";
@@ -122,36 +123,19 @@ const body = () => page.evaluate(() => document.body.innerText);
 // ── 1. A brand-new user reaches onboarding at all ────────────────────────────────────────────
 const first = await body();
 check("1. a new signup reaches onboarding, not the error boundary",
-  // The onboarding intro cards were deleted on Sep 16 2026 (they moved onto the welcome screen in
-  // front of signup), so "track every rep" is gone. Match only text the wizard actually renders —
-  // an OR with a dead marker degrades quietly into a check of whatever survives.
-  !/went sideways|unexpected error/i.test(first) && /main goal/i.test(first),
+  // Match only text the wizard actually renders today. An OR with a marker that has been deleted
+  // degrades quietly into a check of whatever survives — which is how three suites ended up
+  // asserting on onboarding copy that had not existed for a day.
+  !/went sideways|unexpected error/i.test(first) && /Let's set you up/i.test(first),
   first.slice(0, 110).replace(/\n/g, " | "));
 
 // ── 2. Walk the wizard ───────────────────────────────────────────────────────────────────────
-for (let i = 0; i < 26; i++) {
-  const hit = await page.evaluate(() => {
-    const vis = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-    const bs = [...document.querySelectorAll("button")].filter(vis).map(x => ({ x, t: (x.textContent || "").trim() }));
-    if (/Biological sex/i.test(document.body.innerText) && !window.__sex) {
-      const m = bs.find(o => /^male$/i.test(o.t));
-      if (m) { window.__sex = true; m.x.click(); return "Male"; }
-    }
-    const pick = bs.find(o => /^(get started|continue|next|finish|done|let's go|start|create my plan)$/i.test(o.t))
-      || bs.filter(o => o.t && o.t.length > 1 && o.t.length < 40
-                   && !/^‹|^back$|^skip$|^cancel$/i.test(o.t)
-                   && !/^(home|workout|discover|profile|activity|messages|exercises|history|1rm)$/i.test(o.t))[0];
-    if (pick) { pick.x.click(); return pick.t; }
-    return null;
-  });
-  if (!hit) break;
-  await page.waitForTimeout(450);
-  // Live wizard screens only: the three intro cards ("track every rep" / "know your body" /
-  // "coached weekly") and the "How long have you been lifting?" question were all deleted on
-  // Sep 16 2026. A dead alternative here would keep the loop alive on a screen that no longer
-  // exists, which is how a walk-the-wizard loop stops walking the wizard.
-  if (!/main goal|days a week|bit about you/i.test(await body())) break;
-}
+// Shared walker (build/ob_walk.mjs) rather than a local copy: this loop existed in three suites
+// and every wizard change had to find all three. See that file's header.
+const walk = await walkOnboarding(page);
+console.log(`  onboarding taps: ${JSON.stringify(walk.clicked)}`);
+check("2a. the wizard was actually completed, not merely tapped at",
+  walk.finished, `finished=${walk.finished} clicked=${JSON.stringify(walk.clicked)}`);
 await page.waitForTimeout(2500);
 check("2. onboarding completes without crashing", !/went sideways/i.test(await body()),
   (await body()).slice(0, 110).replace(/\n/g, " | "));

@@ -18,6 +18,7 @@
 //
 // Goes red on the previous commit: 0 POSTs to /programs, and the program is gone after reload.
 import { chromium } from "playwright-core";
+import { walkOnboarding } from "./ob_walk.mjs";
 
 const PORT = process.env.PORT || "8199";
 const ME = "11111111-1111-4111-8111-111111111111";
@@ -83,41 +84,15 @@ await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(3000);
 
 const body = () => page.evaluate(() => document.body.innerText);
-check("onboarding renders for a brand-new signup", /main goal/i.test(await body()),
+check("onboarding renders for a brand-new signup", /Let's set you up/i.test(await body()),
   (await body()).slice(0, 100).replace(/\n/g, " | "));
 
-// Walk the whole wizard: click any advancing control until onboarding is gone.
-for (let i = 0; i < 26; i++) {
-  const hit = await page.evaluate(() => {
-    const vis = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-    const bs = [...document.querySelectorAll("button")].filter(vis).map(x => ({ x, t: (x.textContent || "").trim() }));
-    // The wizard's answer buttons are free-form copy ("Just starting", "1–3 years", "3 days"),
-    // so an allow-list of labels stalls the walk the moment a new question is added — the first
-    // draft died at "How long have you been lifting?". Click the advance control when there is
-    // one, otherwise the FIRST answer option: anything that is not the back chevron, not a nav
-    // label, and sits in the sheet body.
-    // "A bit about you" requires a Biological sex choice before Continue does anything — a
-    // Continue-first walker taps a no-op forever there (it burned 20 iterations in one run).
-    // Answer that screen before reaching for the advance control.
-    if (/Biological sex/i.test(document.body.innerText) && !window.__pickedSex) {
-      const m = bs.find(o => /^male$/i.test(o.t));
-      if (m) { window.__pickedSex = true; m.x.click(); return "Male"; }
-    }
-    const pick = bs.find(o => /^(get started|continue|next|finish|done|let's go|start|create my plan)$/i.test(o.t))
-      || bs.filter(o => o.t && o.t.length > 1 && o.t.length < 40
-                   && !/^‹|^back$|^skip$|^cancel$/i.test(o.t)
-                   && !/^(home|workout|discover|profile|activity|messages|exercises|history|1rm)$/i.test(o.t))[0];
-    if (pick) { pick.x.click(); return pick.t; }
-    return null;
-  });
-  if (!hit) break;
-  await page.waitForTimeout(450);
-  // Onboarding is a full-screen overlay; once it's gone the wizard is done and anything else on
-  // screen is the app proper.
-  // Live wizard screens only — the intro cards and the "been lifting" question were deleted
-  // Sep 16 2026, and a dead alternative would keep this loop alive on a screen that is gone.
-  if (!/main goal|days a week|bit about you/i.test(await body())) break;
-}
+// Walk the whole wizard via the shared walker (build/ob_walk.mjs) — see its header for why this
+// is not a local copy, and for the accidental-pass the old per-suite loops relied on.
+const walk = await walkOnboarding(page);
+console.log(`  onboarding taps: ${JSON.stringify(walk.clicked)}`);
+check("the wizard was actually completed, not merely tapped at",
+  walk.finished, `finished=${walk.finished} clicked=${JSON.stringify(walk.clicked)}`);
 await page.waitForTimeout(2500);
 
 console.log(`  POSTs to /programs: ${server.programPosts.length}`);

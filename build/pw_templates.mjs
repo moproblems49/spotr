@@ -15,6 +15,7 @@
 //
 // This file goes RED on 90927ed..d232377 with "Something went sideways" on both checks.
 import { chromium } from "playwright-core";
+import { walkOnboarding } from "./ob_walk.mjs";
 
 const PORT = process.env.PORT || "8199";
 const ME = "11111111-1111-4111-8111-111111111111";
@@ -56,20 +57,14 @@ const body = p => p.evaluate(() => document.body.innerText);
   const t = await body(page);
   check("a fresh signup renders onboarding instead of crashing", !CRASH.test(t),
     t.slice(0, 90).replace(/\n/g, " | "));
-  check("it is really the onboarding screen", /main goal/i.test(t),
+  check("it is really the onboarding screen", /Let's set you up/i.test(t),
     t.slice(0, 90).replace(/\n/g, " | "));
-  // Walk a few steps: the completion handler reads PROGRAM_TEMPLATES too, so a crash can also
-  // land one screen later than the first.
-  for (let i = 0; i < 6; i++) {
-    const hit = await page.evaluate(() => {
-      const bs = [...document.querySelectorAll("button")].map(x => ({ x, t: (x.textContent || "").trim() }));
-      const p = bs.find(o => /^(continue|next|get started)$/i.test(o.t)) || bs.find(o => /^(build muscle|3|intermediate)$/i.test(o.t));
-      if (p) { p.x.click(); return p.t; } return null;
-    });
-    if (!hit) break;
-    await page.waitForTimeout(650);
-    if (CRASH.test(await body(page))) break;
-  }
+  // Walk the whole wizard, not "a few steps": the COMPLETION handler reads PROGRAM_TEMPLATES too
+  // (buildProgramFromTemplate), so the crash this suite exists to catch can land on the very last
+  // tap. The old loop stopped partway and never reached it. Shared walker — see ob_walk.mjs.
+  const walk = await walkOnboarding(page, { settle: 650 });
+  check("the wizard completed, so the completion handler actually ran",
+    walk.finished, `finished=${walk.finished} clicked=${JSON.stringify(walk.clicked)}`);
   const t2 = await body(page);
   check("walking through onboarding does not crash", !CRASH.test(t2), t2.slice(0, 90).replace(/\n/g, " | "));
   await page.close();
