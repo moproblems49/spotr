@@ -3356,6 +3356,40 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   worked example of a reasoned-not-observed fix that turned out right — and of why `pw_reorder`
   now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
+## ★★ THE ONBOARDING IS 8 SCREENS AND ONE OF THEM CHANGES NOTHING (measured Sep 16 2026)
+Mo: "Is the onboarding too long?" Driven end to end as a real new signup at 402x874 rather than
+read, because the step count is computed (`introScreens + questions + maybe-follow + closing`) and
+counting it from the source is how you get the wrong number.
+**Measured: 8 screens, 9 taps** — 3 intro cards, 3 questions, a sex/age step, a closing card — plus
+a 9th screen and a 10th tap when `suggestedUsers` is non-empty. And that is AFTER welcome + the
+signup form, so a new user meets ~10 screens before they can log one set.
+**★ THE LOAD-BEARING FINDING IS NOT THE LENGTH, IT IS THAT SCREEN 5 IS DEAD.** "How long have you
+been lifting?" writes `answers.experience`, and the ONLY reader of `store.onboardingAnswers` in the
+whole app is `recommendTemplateId`, which destructures `{ goal, experience, daysPerWeek }` and then
+**never mentions `experience` in its body**. Grepped across `src/`: outside that dead destructure
+the only hits are an unrelated AICoachModal field and a comment. So a question every new signup
+answers cannot change one pixel of what they get — the `showGroupShare` dead-UI class in QUESTION
+form, which `sim_deadui` cannot see because the setter IS called and the value IS stored; nothing
+reads it. **When auditing a form, trace each field to a READER, not to a writer.**
+**And `goal` is half-inert, which is only visible by enumerating the answer space.** Computed all
+16 goal x days combinations: at **2 days and 4 days all four goals give the same program**
+(`full3` / `ul4`); goal only changes the outcome at 3 days (strength -> sl5x5) and 5+ (muscle ->
+ppl6). Days-per-week alone produces 4 of the 5 distinct outcomes. So the honest ranking of the
+three questions is: days/week does the work, goal matters half the time, experience never.
+**The other three screens are the intro cards, and their weakness is WHERE they sit**: a pitch
+("Track every rep", "Know your body", "Coached weekly") delivered to someone who has already
+downloaded the app and typed in a password. The person is sold; that copy belongs on the welcome
+screen, in front of the signup form, where a pitch is still doing a job.
+**What is genuinely earning its place:** the sex/age step (`strengthSex` drives the strength
+standards in 5 call sites, `age` feeds `strength.js`; age is already optional), days-per-week, and
+the closing card, which is the first moment the app says something back to you about YOUR answers.
+**NOT changed unilaterally** — this is the first screen of every new account and Mo has cut things
+faster than they shipped twice this month. Recorded because the dead question is a fact whatever
+the product decision turns out to be.
+**Activation context, and it cuts against acting fast:** the sweep's own step 7 baseline is
+**1 signup, 0 activated**, so there is no evidence onboarding is what costs anyone. Shortening it
+is defensible on the dead-question finding alone; do NOT justify it with a funnel nobody has.
+
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
 - **A PAID STREAK RESTORE, Snapchat-style** (Mo parked this Sep 15 2026, the day he lost a 17-week
   run to a week of illness). The free half of it — one forgiven week per 13 — shipped that day and
