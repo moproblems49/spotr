@@ -215,17 +215,44 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           </p>
 
           {/* Feature tiles — accent-tinted icon chips with distinct glyphs read more premium (and
-              more informative) than three identical checkmarks. */}
+              more informative) than three identical checkmarks.
+              ★ THIS LIST ABSORBED THE ONBOARDING'S THREE INTRO CARDS (Sep 16 2026) RATHER THAN
+              SITTING BESIDE THEM. The app had TWO pitches — this one and a three-screen wizard
+              intro after signup — and they had already drifted: this list never mentioned the
+              muscle map, recovery or the weekly review, and the wizard never mentioned the plate
+              maths or that the data stays yours. That is the N-copies-drift class in CONTENT form,
+              and the fix is the same one the volume maths got: one definition. The pitch also
+              belongs HERE, in front of the signup form, because after signup the reader has
+              already bought and three taps of persuasion just delay their first set.
+              ★ AND IT IS THREE ROWS, NOT FOUR, BECAUSE THE SCROLLER ONLY RECOVERS A FRACTION OF
+              WHAT A ROW COSTS — MEASURED AT 375x667, AND MY FIRST READING OF IT WAS WRONG.
+              At iPhone SE size NOTHING below "Start Tracking" fits above the fold on ANY version
+              of this screen, shipped included: unscrolled, Create lands at 706.8 and Sign in at
+              739.8 against a 667 viewport. That is not a regression and it is not the 2.1(a)
+              shape either, because this screen DOES scroll (the inner overflow:auto column has
+              real capacity; #root is overflow:hidden but is not the scroller). Scrolled to the
+              end, all three CTAs are on screen and hit-testable with 49px to spare.
+              The reason a fourth row is still refused is the ARITHMETIC of that scroller: adding
+              one row grows the content by 56px and grows the scroller's capacity by only 8, so
+              the fourth row eats 48px of the 49px of margin — Sign in then rests at 665.8 against
+              667. It is technically reachable and it is a 1.2px margin, which this project has
+              already been bitten by once (see the Arctic surface pick in CLAUDE.md: a hairline
+              pass is the documented failure mode). One more line of text wrap, Dynamic Type, or a
+              shorter device and the last CTA is genuinely gone.
+              So the wizard's three ideas merged into the existing three rows and the trust claim
+              moved into the footnote under the CTAs, where it costs no height.
+              **Adding a row here needs a measurement at 375x667 THAT SCROLLS TO THE END — an
+              unscrolled reading condemns the shipped screen too and tells you nothing.** */}
           <div style={{ marginTop:32, display:"flex", flexDirection:"column", gap:14 }}>
             {[
-              { label:"Plate calculator & 1RM, built in", icon:(
+              { label:"Swipe to log a set — rest timer and plate math handled", icon:(
                 <><line x1="4" y1="12" x2="20" y2="12"/><rect x="1" y="9" width="3" height="6" rx="1"/><rect x="20" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2" height="10" rx="1"/><rect x="17" y="7" width="2" height="10" rx="1"/></>
               ) },
-              { label:"Auto rest timer, swipe to log", icon:(
-                <><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></>
+              { label:"See what you've trained, and what's recovered", icon:(
+                <><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z"/></>
               ) },
-              { label:"Your data stays yours", icon:(
-                <><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>
+              { label:"A weekly review that says what to work on", icon:(
+                <><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></>
               ) },
             ].map((f, i) => (
               <div key={i} style={{ display:"flex", alignItems:"center", gap:13 }}>
@@ -274,7 +301,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
             Already have an account? <span style={{ color:C.accent, fontWeight:700 }}>Sign in</span>
           </button>
           <div style={{ textAlign:"center", marginTop:2, fontSize:11, color:C.muted, fontFamily:F }}>
-            No account needed to start lifting
+            No account needed to start lifting · Your data stays yours
           </div>
         </div>
       </div>

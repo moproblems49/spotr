@@ -3356,11 +3356,11 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   worked example of a reasoned-not-observed fix that turned out right — and of why `pw_reorder`
   now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
-## ★★ THE ONBOARDING IS 8 SCREENS AND ONE OF THEM CHANGES NOTHING (measured Sep 16 2026)
+## ★★ THE ONBOARDING WENT 8 SCREENS -> 4, AND THE DEAD QUESTION IS GONE (Sep 16 2026)
 Mo: "Is the onboarding too long?" Driven end to end as a real new signup at 402x874 rather than
 read, because the step count is computed (`introScreens + questions + maybe-follow + closing`) and
 counting it from the source is how you get the wrong number.
-**Measured: 8 screens, 9 taps** — 3 intro cards, 3 questions, a sex/age step, a closing card — plus
+**Measured BEFORE the cut: 8 screens, 9 taps** — 3 intro cards, 3 questions, a sex/age step, a closing card — plus
 a 9th screen and a 10th tap when `suggestedUsers` is non-empty. And that is AFTER welcome + the
 signup form, so a new user meets ~10 screens before they can log one set.
 **★ THE LOAD-BEARING FINDING IS NOT THE LENGTH, IT IS THAT SCREEN 5 IS DEAD.** "How long have you
@@ -3383,12 +3383,49 @@ screen, in front of the signup form, where a pitch is still doing a job.
 **What is genuinely earning its place:** the sex/age step (`strengthSex` drives the strength
 standards in 5 call sites, `age` feeds `strength.js`; age is already optional), days-per-week, and
 the closing card, which is the first moment the app says something back to you about YOUR answers.
-**NOT changed unilaterally** — this is the first screen of every new account and Mo has cut things
-faster than they shipped twice this month. Recorded because the dead question is a fact whatever
-the product decision turns out to be.
-**Activation context, and it cuts against acting fast:** the sweep's own step 7 baseline is
-**1 signup, 0 activated**, so there is no evidence onboarding is what costs anyone. Shortening it
-is defensible on the dead-question finding alone; do NOT justify it with a funnel nobody has.
+**SHIPPED, on Mo's call ("dead question + intros to welcome"): 8 screens -> 4.** The `experience`
+question is deleted outright, and the three intro cards were **MERGED INTO the welcome screen's
+existing feature list rather than appended to it** — the app had TWO pitches that had already
+drifted apart (the welcome list never mentioned the muscle map, recovery or the weekly review; the
+wizard never mentioned the plate maths or that the data stays yours), which is the N-copies-drift
+class in CONTENT form, and the fix is the same one the volume maths got: one definition. What
+survives the wizard is goal, days/week, sex+age, and the closing card.
+**Deleting the question meant deleting its READER's parameter too.** `recommendTemplateId`
+destructured `{ goal, experience, daysPerWeek }` and never used the middle one; leaving it would
+have been a parameter documenting a field that no longer exists. `answers` is now
+`{ goal, daysPerWeek }` and the step layout is `[questions][follow suggestions][closing]` with no
+`inIntro` branch. **`sim_undef` found the survivor** — the intro branch's own Continue button
+outlived the branch — which is the deletion rule paying out again.
+**★ THREE PLAYWRIGHT SUITES MATCHED ON THE DELETED COPY, AND EACH WOULD HAVE DEGRADED SILENTLY
+RATHER THAN FAILED.** `pw_journey`, `pw_starterprog` and `pw_templates` all asserted
+`/track every rep|main goal|Continue/` and looped while
+`/main goal|been lifting|…|track every rep|know your body|coached weekly/`. Every one of those is
+an **OR containing a dead alternative**, so the check silently narrows to whatever survives instead
+of going red — and the walk-the-wizard loops would have kept spinning on screens that no longer
+exist. All three now match only live wizard text. **When you delete copy, grep the SUITES for it:
+an assertion ORed against a marker you just removed is a check that quietly stopped checking.**
+**Activation context, and it is why the cut was justified on the dead question alone:** the sweep's
+own step 7 baseline is **1 signup, 0 activated**, so there is no evidence onboarding costs anyone
+anything. The argument for shipping this was that a question nothing reads cannot be worth a tap —
+do NOT justify onboarding changes with a funnel nobody has.
+**★ AND THE WELCOME SCREEN'S HEIGHT IS THE CONSTRAINT ON EVER ADDING A FOURTH ROW — MEASURED AT
+375x667, WHERE MY FIRST READING WAS WRONG IN A WAY WORTH RECORDING.** I reported to Mo that a
+fourth feature row "broke the iPhone SE" and that I had caused it. Re-measuring both builds with
+ONE corrected probe: they are **pixel-identical** (feature list 154px, Start Tracking bottom 648.8,
+Create 706.8, Sign in 739.8 on BOTH). Nothing regressed. Two probe defects produced that false
+alarm — the row matcher was TEXT-based and the trust claim had just moved into the footnote, so it
+counted the footnote as a fourth row on a three-row build; and the verdict demanded every CTA be
+above the fold UNSCROLLED, **which condemns the shipped screen too**. This screen DOES scroll (an
+inner `overflow:auto` column with real capacity; `#root` is `overflow:hidden` but is not the
+scroller), and scrolled to the end all three CTAs are hit-testable with 49px to spare.
+**The real reason to refuse a fourth row is the scroller's ARITHMETIC:** one row costs 56px of
+content and buys only **8px** of extra scroll capacity, so it eats 48 of that 49px margin and Sign
+in rests at **665.8 against 667**. Technically reachable, and a 1.2px margin is the documented
+failure mode (see the Arctic surface pick — a hairline pass is not a pass). **Any future
+measurement here must SCROLL TO THE END; an unscrolled reading condemns the shipped screen and
+tells you nothing.** Note the two longest new labels WRAP to two lines at 375px and cost zero
+height, because each row is `alignItems:center` against a 40px icon chip that dominates a ~34px
+two-line text block — so label length is free here and row COUNT is not.
 
 **PARKED IDEAS (not scheduled — raise them when the moment fits):**
 - **A PAID STREAK RESTORE, Snapchat-style** (Mo parked this Sep 15 2026, the day he lost a 17-week

@@ -122,7 +122,10 @@ const body = () => page.evaluate(() => document.body.innerText);
 // ── 1. A brand-new user reaches onboarding at all ────────────────────────────────────────────
 const first = await body();
 check("1. a new signup reaches onboarding, not the error boundary",
-  !/went sideways|unexpected error/i.test(first) && /track every rep|main goal|Continue/i.test(first),
+  // The onboarding intro cards were deleted on Sep 16 2026 (they moved onto the welcome screen in
+  // front of signup), so "track every rep" is gone. Match only text the wizard actually renders —
+  // an OR with a dead marker degrades quietly into a check of whatever survives.
+  !/went sideways|unexpected error/i.test(first) && /main goal/i.test(first),
   first.slice(0, 110).replace(/\n/g, " | "));
 
 // ── 2. Walk the wizard ───────────────────────────────────────────────────────────────────────
@@ -143,7 +146,11 @@ for (let i = 0; i < 26; i++) {
   });
   if (!hit) break;
   await page.waitForTimeout(450);
-  if (!/main goal|been lifting|days a week|bit about you|track every rep|know your body|coached weekly/i.test(await body())) break;
+  // Live wizard screens only: the three intro cards ("track every rep" / "know your body" /
+  // "coached weekly") and the "How long have you been lifting?" question were all deleted on
+  // Sep 16 2026. A dead alternative here would keep the loop alive on a screen that no longer
+  // exists, which is how a walk-the-wizard loop stops walking the wizard.
+  if (!/main goal|days a week|bit about you/i.test(await body())) break;
 }
 await page.waitForTimeout(2500);
 check("2. onboarding completes without crashing", !/went sideways/i.test(await body()),

@@ -56,7 +56,7 @@ const body = p => p.evaluate(() => document.body.innerText);
   const t = await body(page);
   check("a fresh signup renders onboarding instead of crashing", !CRASH.test(t),
     t.slice(0, 90).replace(/\n/g, " | "));
-  check("it is really the onboarding screen", /track every rep|main goal|Continue/i.test(t),
+  check("it is really the onboarding screen", /main goal/i.test(t),
     t.slice(0, 90).replace(/\n/g, " | "));
   // Walk a few steps: the completion handler reads PROGRAM_TEMPLATES too, so a crash can also
   // land one screen later than the first.

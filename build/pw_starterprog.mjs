@@ -83,7 +83,7 @@ await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(3000);
 
 const body = () => page.evaluate(() => document.body.innerText);
-check("onboarding renders for a brand-new signup", /track every rep|main goal|Continue/i.test(await body()),
+check("onboarding renders for a brand-new signup", /main goal/i.test(await body()),
   (await body()).slice(0, 100).replace(/\n/g, " | "));
 
 // Walk the whole wizard: click any advancing control until onboarding is gone.
@@ -114,7 +114,9 @@ for (let i = 0; i < 26; i++) {
   await page.waitForTimeout(450);
   // Onboarding is a full-screen overlay; once it's gone the wizard is done and anything else on
   // screen is the app proper.
-  if (!/main goal|been lifting|days a week|bit about you|track every rep|know your body|coached weekly/i.test(await body())) break;
+  // Live wizard screens only — the intro cards and the "been lifting" question were deleted
+  // Sep 16 2026, and a dead alternative would keep this loop alive on a screen that is gone.
+  if (!/main goal|days a week|bit about you/i.test(await body())) break;
 }
 await page.waitForTimeout(2500);
 

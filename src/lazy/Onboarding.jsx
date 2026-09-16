@@ -12,15 +12,16 @@ import { Icon, SeshdLogo, Avatar, PROGRAM_TEMPLATES, recommendTemplateId, F, KB_
 
 export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState({ goal: null, experience: null, daysPerWeek: null });
+  const [answers, setAnswers] = useState({ goal: null, daysPerWeek: null });
   const [followIds, setFollowIds] = useState(() => new Set());
 
-  // Intro screens followed by quick personalization questions.
-  const introScreens = [
-    { icon:"barbell", title:"Track every rep", body:"Swipe to log sets in seconds. Seshd remembers your last weights and suggests what to lift next." },
-    { icon:"activity", title:"Know your body", body:"See which muscles you've trained, how recovered you are, and how your lifts measure up to real strength standards." },
-    { icon:"spark", title:"Coached weekly", body:"A weekly review reads your training and tells you exactly what to work on — plus streaks and friends to keep you consistent." },
-  ];
+  // ★ THE THREE INTRO CARDS ARE GONE — THEY MOVED TO THE WELCOME SCREEN (AuthScreen), IN FRONT OF
+  // SIGNUP. They were a sales pitch delivered to someone who had already downloaded the app and
+  // typed in a password: the person is sold, and three taps of "here is what this is" sit between
+  // them and their first set. On the welcome screen the same copy is still doing a job, and it
+  // merged with the feature list already there rather than being appended (two pitches for one app
+  // is the N-copies class in content form — they had already drifted, each naming things the other
+  // did not). Measured: the wizard went 8 screens / 9 taps to 4 / 5.
   const questions = [
     { key:"goal", q:"What's your main goal?", opts:[
       { v:"strength", label:"Get stronger" },
@@ -28,12 +29,12 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
       { v:"lean", label:"Get lean" },
       { v:"general", label:"Stay healthy" },
     ]},
-    { key:"experience", q:"How long have you been lifting?", opts:[
-      { v:"new", label:"Just starting" },
-      { v:"some", label:"Less than a year" },
-      { v:"experienced", label:"1–3 years" },
-      { v:"advanced", label:"3+ years" },
-    ]},
+    // ★ "How long have you been lifting?" WAS DELETED (Sep 16 2026) BECAUSE NOTHING READ IT.
+    // It wrote answers.experience, and the only reader of store.onboardingAnswers in the whole app
+    // is recommendTemplateId — which destructured `experience` and never mentioned it again. So
+    // every new signup answered a question that could not change one pixel of what they got: the
+    // dead-UI class in QUESTION form, and invisible to sim_deadui because the setter IS called and
+    // the value IS stored. Nothing reads it. When auditing a form, trace each field to a READER.
     { key:"daysPerWeek", q:"How many days a week can you train?", opts:[
       { v:2, label:"2 days" },
       { v:3, label:"3 days" },
@@ -42,13 +43,12 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
     ]},
     { key:"profile", q:"A bit about you", profile:true },
   ];
-  // step layout: [intro screens][questions][follow suggestions][closing]
+  // step layout: [questions][follow suggestions][closing]
   const hasFollowStep = suggestedUsers.length > 0;
-  const totalSteps = introScreens.length + questions.length + (hasFollowStep ? 1 : 0) + 1;
+  const totalSteps = questions.length + (hasFollowStep ? 1 : 0) + 1;
   const closingStep = totalSteps - 1;
   const followStep = hasFollowStep ? closingStep - 1 : -1;
-  const inIntro = step < introScreens.length;
-  const qIndex = step - introScreens.length;
+  const qIndex = step;
   const inQuestions = qIndex >= 0 && qIndex < questions.length;
   const inFollowStep = step === followStep;
   const inClosing = step === closingStep;
@@ -71,7 +71,6 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
     });
   }
 
-  const s = inIntro ? introScreens[step] : null;
   const question = inQuestions ? questions[qIndex] : null;
 
   // Personalized closing copy from their answers
@@ -119,18 +118,7 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
         <div style={{ marginBottom:48 }}>
           <SeshdLogo C={C} big/>
         </div>
-        {inIntro ? (
-          <>
-            <div key={step} className="seshd-enter" style={{
-              width:88, height:88, borderRadius:24, background:C.text, color:C.bg,
-              display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28
-            }}>
-              <Icon name={s.icon} size={40} color={C.bg} strokeWidth={1.7}/>
-            </div>
-            <div className="seshd-enter" style={{ fontSize:30, fontWeight:800, color:C.text, marginBottom:12, letterSpacing:-0.8, lineHeight:1.1 }}>{s.title}</div>
-            <div className="seshd-enter" style={{ fontSize:15, color:C.sub, lineHeight:1.5, maxWidth:300 }}>{s.body}</div>
-          </>
-        ) : inClosing ? (
+        {inClosing ? (
           <div key="closing" className="seshd-enter" style={{ width:"100%", maxWidth:340 }}>
             <div style={{ width:88, height:88, borderRadius:24, background:C.primary, color:C.onPrimary, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28, marginLeft:"auto", marginRight:"auto" }}>
               <Icon name="check" size={42} color="#fff" strokeWidth={2}/>
@@ -216,14 +204,6 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
         <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:24 }}>
           {Array.from({ length: totalSteps }).map((_,i) => <div key={i} style={{ width:i===step?22:6, height:6, borderRadius:3, background:i===step?C.text:C.border, transition:"all 0.3s cubic-bezier(0.22, 1, 0.36, 1)" }}/>)}
         </div>
-        {inIntro && (
-          <button onClick={next} style={{
-            width:"100%", background:C.text, color:C.bg, border:"none", borderRadius:14, padding:"16px",
-            fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:F, letterSpacing:-0.2
-          }}>
-            Continue
-          </button>
-        )}
         {inQuestions && question.profile && (
           <button onClick={next} disabled={!answers.sex} style={{
             width:"100%", background: answers.sex ? C.text : C.surface, color: answers.sex ? C.bg : C.muted,

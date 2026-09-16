@@ -1,4 +1,4 @@
-// v178091717057
+// v178091717058
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -8927,7 +8927,12 @@ export const PROGRAM_TEMPLATES = [
   ]},
 ];
 
-export function recommendTemplateId({ goal, experience, daysPerWeek } = {}) {
+// `experience` was a parameter here for months and was never read in the body — which is why the
+// onboarding question that collected it was deleted (Sep 16 2026). Do not re-add the parameter
+// without a use: an unread destructured field is what made a whole onboarding screen look load-
+// bearing. NOTE `goal` only changes the answer at 3 and 5+ days; at 2 and 4 every goal gives the
+// same program, which is worth knowing before adding a fifth branch on it.
+export function recommendTemplateId({ goal, daysPerWeek } = {}) {
   const days = parseInt(daysPerWeek) || 3;
   if (days <= 2) return "full3";
   if (days === 3) return goal === "strength" ? "sl5x5" : "full3";
