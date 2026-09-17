@@ -79,7 +79,10 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   // No auto-advance any more: with one merged form there is nothing to advance INTO until every
   // answer is in, and jumping the moment the last one is tapped would take the screen away from
   // someone still deciding whether to change an earlier answer. Continue is the only way forward.
-  const set = (key, v) => setAnswers(a => ({ ...a, [key]: v }));
+  // Picking a binary sex CLEARS any bodyMap left over from a previous "Other" tap — the
+  // sub-question only exists under Other, and a stale value would silently outrank the sex
+  // the user just chose.
+  const set = (key, v) => setAnswers(a => ({ ...a, [key]: v, ...(key === "sex" && v !== "other" ? { bodyMap: null } : {}) }));
   function toggleFollowSuggestion(id) {
     setFollowIds(prev => {
       const next = new Set(prev);
@@ -221,8 +224,8 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                 different answer sets in one app and the narrower one was the one every new user
                 met: the N-copies-drift class, in a form. `bodyType` stays binary (there is no
                 third body map and tracing one is licensed-art work), which is why onComplete
-                writes body_type only for male/female and leaves the silhouette to the documented
-                bodyType -> strengthSex -> male fallback in MuscleHeatmap.
+                writes body_type only for male/female — and, when the answer is "other", for
+                whichever silhouette the user picks in the conditional Body map row below.
                 ★ THE LABEL IS "Sex", NOT "Biological sex". With only two options "Biological" was
                 doing real work — it said the question is about physiology rather than identity. The
                 moment a third option exists it stops being accurate ("Other" is not a biological
@@ -231,7 +234,7 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                 for the same reason. The "why we ask" work moved to the caption, which is where it
                 belonged all along. */}
             <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Sex <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.4 }}>Sets your strength standards and body map. Other uses a neutral baseline.</div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.4 }}>Sets your strength standards. Other uses a neutral baseline.</div>
             <div style={{ display:"flex", gap:8, marginBottom:22 }}>
               {[["male","Male"],["female","Female"],["other","Other"]].map(([v,label]) => {
                 const sel = answers.sex === v;
@@ -245,6 +248,40 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                 );
               })}
             </div>
+
+            {/* ★ "OTHER" ASKS WHICH FIGURE TO DRAW, RATHER THAN SILENTLY DRAWING THE MALE ONE.
+                The strength side has a real third answer — computeStrengthScore averages the two
+                bodyweight-aware tables — but the body map does not: there are exactly two
+                silhouettes and tracing a third is licensed-art work. So the honest split is TWO
+                questions that collapse into one for almost everybody: a binary sex answers both,
+                and "Other" answers the standards and hands the silhouette back to the user.
+                Before this, picking Other fell through MuscleHeatmap's bodyType -> strengthSex ->
+                male fallback, so the caption above claimed this field set your body map and the
+                one option that most needed it got male with no say. Left unanswered it still
+                falls back to male, which is exactly the old behaviour and never worse.
+                The aria-labels say "body map" because "Male"/"Female" alone, read out two rows
+                under an identical pair, is ambiguous — the days row sets one for the same
+                reason. */}
+            {answers.sex === "other" && (
+              <div className="seshd-enter" style={{ marginBottom:22 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Body map</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.4 }}>Which figure we draw on your muscle map. It doesn't change your strength standards.</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[["male","Male"],["female","Female"]].map(([v,label]) => {
+                    const sel = answers.bodyMap === v;
+                    return (
+                      <button key={v} onClick={() => set("bodyMap", sel ? null : v)} aria-pressed={sel}
+                        aria-label={`${label} body map`} style={{
+                        flex:1, padding:"15px 8px", borderRadius:14, cursor:"pointer", fontFamily:F,
+                        background: sel ? C.primary : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
+                        color: sel ? C.onPrimary : C.text, fontSize:15, fontWeight:600,
+                        transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
+                      }}>{label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Age <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
             <input type="text" inputMode="numeric" autoComplete="off" autoCorrect="off" spellCheck={false} data-1p-ignore data-lpignore="true" placeholder="e.g. 28" min="14" max="99"

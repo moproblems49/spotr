@@ -101,7 +101,23 @@ async function readInnerOpacity() {
 // Past the last scroll event the header settles to a rest state on a 140ms idle timer + a 220ms
 // animation. Anything asserting a RESTING value has to wait that out; anything asserting the
 // mid-gesture value must NOT.
-const settle = () => page.waitForTimeout(650); // MIN_TRAVEL_MS(460) + margin for frame jitter
+// ★ POLL FOR A RESTING VALUE; DO NOT GUESS A DURATION. This was a flat 650ms
+// ("MIN_TRAVEL_MS(460) + margin for frame jitter") and that margin is only a margin on an idle
+// machine: under the full battery it went RED at 112.09px against an expected 94.1 — a header
+// still travelling, not a header that snapped, and 3c failed with it purely because a less-collapsed
+// header is less faded. It passes alone every time. A false red under load is worse than no check,
+// because it trains everyone to re-run the battery instead of reading it. Same fix and same reason
+// as pw_kbinset's one-pixel flake: wait for the value to STOP CHANGING rather than for a clock.
+// Polls for stability, never for the expected number — waiting for the answer you want makes a
+// check unable to fail.
+const settle = async () => {
+  let last = null, still = 0;
+  for (let i = 0; i < 60; i++) {           // cap ~3s; the follower's own limit is MIN_TRAVEL_MS
+    const h = await readWrapMaxH();
+    if (h === last) { if (++still >= 3) return; } else { still = 0; last = h; }
+    await page.waitForTimeout(50);
+  }
+};
 const closed = h => parseFloat(h) < 2;   // 0px, allowing for sub-pixel rounding
 const open   = h => parseFloat(h) > 80;  // real header content is >100px; 80 leaves margin
 
@@ -149,7 +165,7 @@ const restedH = await readWrapMaxH();
 // scroll already asked for — but it must come to rest THERE and not at an endpoint. Landing on
 // an endpoint is the spring; landing on the scroll-implied position is the fix.
 const expected = OPEN_H * (1 - 40 / 170);
-console.log(`   140ms+ after the scroll stopped: maxHeight=${restedH} (asked for ~${expected.toFixed(1)}px)`);
+console.log(`   once the header came to rest: maxHeight=${restedH} (asked for ~${expected.toFixed(1)}px)`);
 check("3b. it comes to rest where the SCROLL asked, not snapped to an endpoint",
   Math.abs(parseFloat(restedH) - expected) < 3 && !atRest(restedH),
   `rested at ${restedH}, expected ~${expected.toFixed(1)}; open is ${openH0}`);

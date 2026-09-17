@@ -3464,8 +3464,16 @@ second is one I asserted the OPPOSITE of before reading the code — see the cor
   their first set without a physiological disclosure. Only `goal` and `daysPerWeek` gate anything
   — they are the ONLY fields `recommendTemplateId` reads, so without them there is genuinely no
   program to start anyone on. Sex and age are not in that class: both only tune the strength
-  standards, both are changeable in Settings, and both have an honest answer for "unset". It is
-  optional now, marked exactly as Age already was.
+  standards, both are changeable in Settings, and both are marked optional identically.
+  **★ CORRECTION (cold-context audit, Sep 17): "both have an honest answer for unset" was FALSE
+  for sex, and the distinction matters.** Age really is null-tolerant end to end; sex is not —
+  `loadUserData` resolves it as `me?.strength_sex || (sameUser ? prev.strengthSex : null) ||
+  "male"` (App.jsx:20279) and every reader defaults the same way, so a skipper's store holds a
+  positive `"male"` they never chose and the Settings `SexToggle` then renders Male as PRESSED.
+  There is no "unset" state downstream. The marking is identical; the handling is not. Still open
+  and NOT fixed — the honest fix is either to stop hard-defaulting in `loadUserData` (risky: that
+  is the 28-key wholesale-replace function) or to make the toggle render nothing pressed when the
+  value is absent. Raise it before anyone claims the field is fully optional.
 - **★ ONBOARDING OFFERED TWO ANSWERS AND SETTINGS OFFERED THREE — THE N-COPIES-DRIFT CLASS, IN A
   FORM.** The Strength Score card's `SexToggle` has been **Male / Female / Other** for as long as
   `computeStrengthScore` has had its `sex === "other"` branch, which averages the male and female
@@ -3479,9 +3487,13 @@ second is one I asserted the OPPOSITE of before reading the code — see the cor
   `onComplete` now writes `strength_sex` for all three answers and `body_type` only for
   male/female. An unset or "other" body type is already handled by `MuscleHeatmap`'s documented
   `bodyType -> strengthSex -> male` fallback. Writing `body_type:"other"` would store a value that
-  column can never mean — and the old code did exactly that, since the server write used the raw
-  `answers.sex` while the local `setStore` used the sanitised `oSex`. **Two spellings of one
-  value in one function is how they drift.**
+  column can never mean, and the server write used the raw `answers.sex` while the local `setStore`
+  used the sanitised `oSex`. **Two spellings of one value in one function is how they drift.**
+  **★ CORRECTION (same audit): "the old code did exactly that" was FALSE.** The pre-`8f84e19` form
+  offered only `[["male","Male"],["female","Female"]]`, so `answers.sex` could never BE `"other"`
+  and no shipped build ever wrote it — the drift was LATENT and would have activated the moment the
+  third option landed. Worth correcting because it changes whether any live `profiles` row could
+  hold `body_type:"other"`: **none can.**
 - **The label is "Sex" (Mo, Sep 17) — it shipped as "Biological sex" for one day and that was the
   wrong noun the moment a third option existed.** With two options "Biological" did real work: it
   said the question is about physiology rather than identity. With Other on the row it stops being
@@ -3533,6 +3545,101 @@ one screen cannot prove which copy rendered.*
 re-running the guard reported the mutation-B failure verbatim, because `cp` does not rebuild
 `dist`. Rebuild after every restore, or the two runs you are comparing are not the two builds you
 think.
+
+**★★ AND "OTHER" NOW PICKS ITS OWN SILHOUETTE (Mo, Sep 17): "how about having people pick the body
+map during onboarding if they choose others".** The cold-context audit of the two commits above
+found the caption was making a promise the code did not keep — it read *"Sets your strength
+standards and body map"*, and `onComplete` writes `body_type` only for male/female, so the ONE
+option that most needed a say fell through `MuscleHeatmap`'s `bodyType -> strengthSex -> male`
+fallback. A user picking Other was told that choice set their body map and was then shown the male
+figure on the profile heat map, exercise detail and the Wrapped card, with the Strength Score
+card's own toggle rendering **Male** as pressed. Every number was correct; the SENTENCE was false.
+**The fix is the honest split rather than a reworded caption: these are TWO questions that collapse
+into one for almost everybody.** A binary sex answers both. "Other" answers the standards — the
+engine has a real third baseline — and reveals a conditional **Body map** row that hands the
+silhouette back to the user. The sex caption stopped claiming the body map; the new row owns it.
+**Four things constrain any future edit here, and each is a defect avoided rather than a
+preference:**
+- **The sub-question is OPTIONAL like its parent.** Left unanswered it still falls through to male
+  — the pre-existing behaviour, never worse — so nothing on screen is false in any branch.
+- **Picking a binary sex CLEARS a stale `bodyMap`** (`set()` does it), or switching Other -> Male
+  leaves a sub-answer that silently outranks the sex just chosen.
+- **`onComplete` re-validates `answers.bodyMap` against `male|female`** rather than trusting the
+  wizard. It is the only writer of `body_type` on the signup path and that column has exactly two
+  legal values.
+- **The two buttons carry `aria-label="Male body map"` / `"Female body map"`.** They read "Male"
+  and "Female" exactly like the sex row two lines above, so a screen-reader user tabbing the form
+  would otherwise hear the same pair twice with nothing to tell them apart. The days row already
+  sets a label for the same reason.
+**`walkOnboarding` gained an optional `bodyMap` opt** (matched on aria-label, not text, for that
+same collision) so the three suites that share it can drive the row.
+**Guard: `pw_obsex` is now 40 checks**, red-proofed as **THREE separate mutations** because the
+fixes are independent: deleting the row fails **6** naming the absent control and the missing
+write; making `onComplete` ignore the pick fails exactly **2** and isolates beautifully — the patch
+prints `"sex":"other","bodyMap":"female"` with no `body_type`, i.e. the UI captured the answer and
+the write dropped it; removing the `formReady` gate fails exactly **2**. Every `[control]` green in
+all three.
+
+**★★ AND THE AUDIT'S OTHER THREE GUARD FINDINGS WERE ALL REAL AND ARE FIXED:**
+- **★ `OB_SCREENS` CONTAINED A STRING THAT IS NOT UNIQUE TO THE WIZARD — the exact class the
+  rename commit exists to close, one step removed.** `"Follow some lifters"` is the onboarding
+  heading AND a prefix of two lines of `MessagesScreen` body copy ("Follow some lifters in
+  Discover first — …"). Unreachable today only because onboarding is an early return in `AppInner`,
+  so the walker never sees another screen's DOM — but the moment it did, or if onboarding stopped
+  early-returning, `OB_SCREENS.test()` would be true forever, `finished` would stay false, and all
+  four consuming suites would fail with a message about onboarding pointing at entirely the wrong
+  cause. Anchored to a whole innerText LINE now (`/^Follow some lifters$/m`), which the heading is
+  and the sentence is not. **A heading is only a screen name if it is unique** — grep `src/` before
+  trusting one.
+- **`pw_obsex` guarded only the SERVER half of a fix whose failure mode was local/server DRIFT.**
+  Every assertion read `server.profilePatches`; nothing read the store. Reintroduce the drift in
+  the `setStore` direction and all checks stay green while the PHONE holds `bodyType:"other"`,
+  which `loadUserData` then re-serves from `prev` forever on that device. It reads both now.
+- **Nothing asserted Continue is DISABLED** — only that it is enabled. Deleting `formReady`
+  outright left `pw_obsex`, `pw_journey`, `pw_starterprog` and `pw_templates` ALL green, because
+  the walker answers the form fields before it ever looks for Continue. Section 7 is that negative
+  control. **A gate needs asserting in both directions or it is not guarded at all.**
+
+**★★ AND THE NEW CHECKS WERE WRONG TWICE BEFORE THEY WERE RIGHT, BOTH DOCUMENTED CLASSES:**
+- **A SECOND TAP ON A CHOSEN SEX CLEARS IT** (the field is optional, and toggling off is the only
+  way to un-answer). The first draft tapped Other by hand to check the row appears and then let
+  `walkOnboarding` tap it again — which DESELECTED it — so the patch came back `sex:null` and the
+  app looked like it had dropped the answer. Now pinned as checks 3a4/3a5 (a second tap clears the
+  answer AND takes the Body map row with it) rather than left as an undocumented behaviour waiting
+  to mislead the next reader.
+- **★ `saveStore` PERSISTS ON A LATER TICK, SO A SINGLE READ OF `localStorage` RIGHT AFTER THE WALK
+  MEASURES THE PRE-ONBOARDING SNAPSHOT.** Measured with a probe: at t+0 the persisted store read
+  `strengthSex:"male"` — `loadUserData`'s hard default — and only at t+500ms did it settle to the
+  real answer and stay. Three checks reported local/server drift **that did not exist**, i.e. they
+  would have justified "fixing" an app that was already correct. `settledStore()` polls until the
+  persisted string STOPS CHANGING rather than until the expected value appears — waiting for the
+  answer you want makes a check unable to fail. `onboardPatch()` got the same treatment, because
+  `onComplete` awaits `handleSaveProgram` (plus a 1200ms retry) BEFORE issuing the profiles PATCH.
+  Same family as `pw_kbinset`'s one-pixel flake: **a fixed settle after an interaction is a guess
+  about a mechanism you do not own.**
+- **And the stub was unfaithful in a way that pointed at the app**: its profiles GET ignored its own
+  PATCHes, so `loadUserData` fell through to the `"male"` default and the suite blamed the client.
+  Fixed first, because a fixture defect must be ruled out before a finding is believed — but note
+  it was NOT the cause here; the real cause was the timing above. **Fix the fixture, then re-measure
+  before concluding anything.**
+
+**★★ AND THE BATTERY THEN WENT RED ON A SUITE THIS WORK NEVER TOUCHED, FOR THE SAME REASON — SO
+`pw_hideheader` IS FIXED TOO.** `pw_hideheader` 3b/3c failed at **112.09px against an expected
+94.1** and passed alone, every time, reading exactly 94.0588. That is not a header that snapped; it
+is a header still TRAVELLING. Its `settle()` was a flat `waitForTimeout(650)` commented
+"MIN_TRAVEL_MS(460) + margin for frame jitter" — and a margin is only a margin on an idle machine.
+Under the full battery the rate-limited rAF follower had not arrived, and 3c failed WITH it purely
+because a less-collapsed header is less faded, i.e. one timing defect printing two findings that
+both name the wrong thing. It polls for a resting value now (three identical reads, cap ~3s).
+**The assertion is unweakened** — the band is still ±3px with `!atRest`, so a header that genuinely
+snapped to 0 or 123 still fails; the poll only stops it reading one mid-flight.
+**The general rule, third instance in this file: a fixed `setTimeout` after an interaction is a
+guess about an animation you do not own, and this app has several that outlast the usual guess.**
+The other two are `pw_kbinset`'s one-pixel flake and the workout header's own 340ms follower — the
+SAME mechanism, which is the tell that the fix belonged in the suite rather than in a re-run.
+**And the corollary that keeps earning its place: a false red under load is worse than no check,
+because it trains everyone to re-run the battery instead of reading it.** When a suite fails in the
+battery and passes alone, do not shrug and re-run — find the guess.
 
 **★ AND THE WELCOME SCREEN'S HEIGHT IS THE CONSTRAINT ON EVER ADDING A FOURTH ROW — MEASURED AT
 375x667, WHERE MY FIRST READING WAS WRONG IN A WAY WORTH RECORDING.** I reported to Mo that a

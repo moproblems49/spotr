@@ -1,4 +1,4 @@
-// v178091717061
+// v178091717062
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -22557,11 +22557,18 @@ function AppInner() {
       // the male and female bodyweight-aware thresholds for it (see its own comment), and the
       // Settings SexToggle has offered all three since long before onboarding did. bodyType is
       // the half that stays binary — there is no third body map — so it is written ONLY for
-      // male/female and an "other" (or an unanswered field) is left unset, which MuscleHeatmap
-      // already handles: bodyType -> strengthSex -> male. Writing body_type:"other" would store a
-      // value that column can never mean.
+      // male/female. Writing body_type:"other" would store a value that column can never mean.
+      // ★ AN "other" ANSWER CARRIES ITS OWN SILHOUETTE PICK (answers.bodyMap), because otherwise
+      // the one option that most needed a say got MuscleHeatmap's bodyType -> strengthSex -> male
+      // fallback with nothing on screen saying so — while the form's own caption claimed this
+      // field set the body map. The sub-question is optional like its parent, so an unanswered
+      // one still falls through to that fallback, which is the pre-existing behaviour and never
+      // worse. Validate it here rather than trusting the wizard: this handler is the only writer
+      // of body_type on the signup path and the column has exactly two legal values.
       const oSex = ["male","female","other"].includes(answers?.sex) ? answers.sex : undefined;
-      const oBody = (oSex === "male" || oSex === "female") ? oSex : undefined;
+      const oBody = (oSex === "male" || oSex === "female") ? oSex
+        : (oSex === "other" && (answers?.bodyMap === "male" || answers?.bodyMap === "female")) ? answers.bodyMap
+        : undefined;
       const oAge = (answers?.age > 0 && answers?.age < 100) ? answers.age : undefined;
       // Auto-create a starter program matched to their goal + training days so they land
       // on a ready-to-start plan instead of an empty "No active program" screen.
