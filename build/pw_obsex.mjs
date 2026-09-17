@@ -40,9 +40,14 @@ const resetServer = () => { server.profilePatches = []; server.seenOnboarding = 
 // seshd_onboarded is REMOVED here, not merely left unset: onComplete writes it, and this file
 // runs the wizard three times in one browser. Init scripts run on every navigation, so this is
 // what puts each scenario back on the new-user path.
-// The theme comes off the URL (?t=light) rather than being hardcoded: init scripts run on EVERY
-// navigation and cannot be removed, so a hardcoded one silently re-seeds dark over anything a
-// later step sets — which is how section 8's "light" pass first ran entirely in the dark theme.
+// ★ THE THEME COMES OFF THE URL (?t=light), AND THE REASON IS NOT THE ONE ORIGINALLY WRITTEN HERE.
+// The first version of this comment claimed a hardcoded seed "silently re-seeds dark over anything
+// a later step sets". MEASURED, that is false: reverting this line to theme:"dark" leaves the whole
+// suite green, because loadUserData takes the theme from the stubbed profiles row and repaints —
+// timed at 261ms, well inside section 8's 3000ms wait. What the param actually buys is that the
+// theme is true from the FIRST PAINT rather than from whenever loadUserData happens to land, so the
+// control cannot flake under battery load (the pw_hideheader class). Worth keeping for that, but do
+// not repeat the old explanation: the server row does reach the app.
 await page.addInitScript(me => {
   const _t = new URLSearchParams(location.search).get("t") || "dark";
   localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:_t, unit:"lbs",
@@ -315,17 +320,27 @@ for (const theme of ["dark", "light"]) {
   for (let i = 0; i < 24; i++) {
     tiles = await page.evaluate(() => [...document.querySelectorAll("[data-body-map-option]")].map(b => {
       const svg = b.querySelector("svg"), paths = svg ? [...svg.querySelectorAll("path")] : [];
+      // ★ COUNT THE MUSCLES, NOT THE PATHS. The silhouette alone is TWO paths (the fuse pass and
+      // the solid pass), so the obvious `paths > 1` is satisfied by a figure with every muscle
+      // deleted — measured: that mutation left 8c/8d/8e all PASSING and only 8f fired, reporting
+      // "contrast" for what was really "there are no muscles", i.e. a failure naming the wrong
+      // cause (the pw_daysets rep-chip lesson). Muscles all share C.green, so they are the paths
+      // matching the LAST path's fill; the silhouette is whatever differs from it.
+      const lastFill = paths.length ? paths[paths.length - 1].getAttribute("fill") : null;
       return { v: b.dataset.bodyMapOption, paths: paths.length,
+        muscles: paths.filter(p => p.getAttribute("fill") === lastFill).length,
+        bodyDiffers: paths.length > 1 && paths[0].getAttribute("fill") !== lastFill,
         d: paths.map(p => (p.getAttribute("d") || "").length).join(","),
-        fill: paths.length ? paths[paths.length - 1].getAttribute("fill") : null,
+        fill: lastFill,
         h: svg ? Math.round(svg.getBoundingClientRect().height) : 0,
         bg: getComputedStyle(b).backgroundColor };
     }));
-    if (tiles.length === 2 && tiles.every(t => t.paths > 1)) break;
+    if (tiles.length === 2 && tiles.every(t => t.muscles >= 8)) break;
     await page.waitForTimeout(250);
   }
   check(`8c ${theme}: both tiles draw a real figure, not the words alone`,
-    tiles.length === 2 && tiles.every(t => t.paths > 1), JSON.stringify(tiles.map(t => ({ v: t.v, paths: t.paths }))));
+    tiles.length === 2 && tiles.every(t => t.muscles >= 8 && t.bodyDiffers),
+    JSON.stringify(tiles.map(t => ({ v: t.v, paths: t.paths, muscles: t.muscles, bodyDiffers: t.bodyDiffers }))));
   // Two tiles both rendering the male glyph would satisfy "a figure renders" and tell the user
   // nothing — the same class as pw_themes asserting six DISTINCT ghosts rather than six indices.
   check(`8d ${theme}: the two figures are different drawings`,
@@ -335,6 +350,31 @@ for (const theme of ["dark", "light"]) {
   const r = (tiles[0] && tiles[0].fill) ? await contrast(tiles[0].fill, tiles[0].bg) : 0;
   check(`8f ${theme}: the muscle fill clears AA on this theme's card`, !!(tiles[0] && tiles[0].fill) && r >= 4.5,
     `${tiles[0] && tiles[0].fill} on ${tiles[0] && tiles[0].bg} = ${r.toFixed(2)}:1`);
+  // ★ 8g MEASURES THE *SELECTED* TILE, BECAUSE 8f CANNOT SEE THE DECISION THE COMPONENT'S LONGEST
+  // COMMENT DEFENDS. Everything above runs with NO tile picked, so the background the figure sits
+  // on is only ever C.surface — and the whole argument for not inverting the tile (the way Goal,
+  // Days and Sex do) is about what happens when it IS picked. Measured by mutating the component
+  // to `sel ? C.primary : C.surface`: the suite stayed FULLY GREEN while shipping the green at
+  // 1.75:1 on dark and 3.43:1 on light, i.e. dark WORSE than the #34d399 literal this commit was
+  // careful to avoid. A guard that only ever samples the resting state cannot protect a rule about
+  // the active one.
+  await page.evaluate(() => document.querySelector('[data-body-map-option="female"]').click());
+  await page.waitForTimeout(300);
+  const selTile = await page.evaluate(() => {
+    const b = document.querySelector('[data-body-map-option="female"]');
+    const paths = [...b.querySelectorAll("svg path")];
+    const lastFill = paths.length ? paths[paths.length - 1].getAttribute("fill") : null;
+    return { pressed: b.getAttribute("aria-pressed"), fill: lastFill, bg: getComputedStyle(b).backgroundColor,
+             ring: getComputedStyle(b).borderTopColor };
+  });
+  check(`8g ${theme}: [control] tapping the tile actually selects it`, selTile.pressed === "true", JSON.stringify(selTile));
+  const rSel = selTile.fill ? await contrast(selTile.fill, selTile.bg) : 0;
+  check(`8g2 ${theme}: the muscle fill still clears AA once the tile is SELECTED`, !!selTile.fill && rSel >= 4.5,
+    `${selTile.fill} on ${selTile.bg} = ${rSel.toFixed(2)}:1`);
+  const rRing = selTile.ring ? await contrast(selTile.ring, selTile.bg) : 0;
+  check(`8g3 ${theme}: the selection ring clears the 3:1 graphical floor`, rRing >= 3,
+    `${selTile.ring} on ${selTile.bg} = ${rRing.toFixed(2)}:1`);
+
 }
 
 await browser.close();

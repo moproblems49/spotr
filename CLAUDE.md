@@ -3610,17 +3610,71 @@ DERIVED from the palette so that a theme which does not exist yet gets its silho
 free, and a private copy would be a second answer the moment one is added.
 **Guard: `pw_obsex` section 8**, which loops BOTH themes because a one-theme check cannot see the
 hardcoded-colour bug at all. Red-proofed as three more separate mutations: a words-only fallback
-fails **6** (naming `paths:0`), a hardcoded `#34d399` fails exactly **1** — light only, at 1.91:1,
-with dark staying green — and hoisting `useBodyMapData()` into `Onboarding` fails **2** (the chunk
-arriving before the tap). 8d asserts the two figures are DIFFERENT drawings, not just that a figure
-rendered: two tiles both drawing the male glyph would satisfy "it renders" and tell the user
-nothing, the same class as `pw_themes` asserting six distinct ghosts rather than six indices.
-**★ AND ITS LIGHT PASS RAN ENTIRELY IN THE DARK THEME UNTIL A CONTROL CAUGHT IT.** Flipping
-`server.profile.theme` does nothing, because `addInitScript` runs on EVERY navigation, cannot be
-removed, and re-seeded `theme:"dark"` into `seshd_v1` each time — so the check written to catch a
-colour that fails on light was measuring dark twice and passing. It reads the theme off the URL
-(`?t=light`) now, and a `[control]` asserts the PAINTED background matches the theme asked for.
+fails **8** (naming `paths:0`; this entry said 6 before the audit counted it — the direction is
+safe, but a number written from memory is still wrong), a hardcoded `#34d399` fails exactly **1** —
+light only, at 1.91:1, with dark staying green — and hoisting `useBodyMapData()` into `Onboarding`
+fails **2** (the chunk arriving before the tap). 8d asserts the two figures are DIFFERENT drawings,
+not just that a figure rendered: two tiles both drawing the male glyph would satisfy "it renders"
+and tell the user nothing, the same class as `pw_themes` asserting six distinct ghosts rather than
+six indices.
+**★★ AND THE AUDIT FOUND THAT TWO OF SECTION 8'S CHECKS COULD NOT SEE THE THINGS THEY NAMED.**
+Both are now fixed and both are the documented "a check that cannot fail" class:
+- **`8c` asserted `paths > 1`, and the SILHOUETTE ALONE IS TWO PATHS** (the fuse pass plus the solid
+  pass), so a figure with every muscle deleted satisfied it. Measured on that mutation: 8c, 8d and
+  8e all PASSED and only `8f` fired — reporting **"the muscle fill clears AA … 1.72:1"** when the
+  real cause was that there were no muscles at all, i.e. a failure naming the wrong thing, which is
+  the `pw_daysets` rep-chip lesson repeating. It counts MUSCLE paths now (`fill` equal to the last
+  path's, `>= 8`) and asserts the silhouette's fill DIFFERS from them; red-proofed at
+  `paths:2, muscles:2, bodyDiffers:false`.
+- **★ NOTHING GUARDED THE ONE DECISION THE COMPONENT'S LONGEST COMMENT DEFENDS.** Every check in
+  section 8 sampled the tile with NO silhouette selected, so the background the figure sits on was
+  only ever `C.surface` — and the whole argument for not inverting the tile is about what happens
+  when it IS selected. Mutating the component to `sel ? C.primary : C.surface` (what every other
+  row on the form does) left the suite **FULLY GREEN** while shipping the green at **1.75:1 on dark
+  and 3.43:1 on light** — dark WORSE than the `#34d399` literal this work was careful to avoid.
+  `8g`/`8g2`/`8g3` tap a tile and re-measure; red-proofed at exactly those numbers, and 8g3 also
+  caught the RING collapsing to **1.19:1 / 2.43:1**, which the audit had not measured.
+  **A guard that only ever samples the resting state cannot protect a rule about the active one.**
+**★★ AND A REJECTED DYNAMIC IMPORT WAS UNCAUGHT AND CACHED — PRE-EXISTING, NEWLY REACHABLE.**
+`loadBodyMapData` stored the promise and never caught it, so one failed fetch of the ~109 kB chunk
+threw `Failed to fetch dynamically imported module` into `unhandledrejection` AND left the REJECTED
+promise in `_bodyMapDataPromise` for the life of the page — the body map could never load again that
+session, and every later `useBodyMapData()` mount fired another rejection. Not introduced by this
+work, but this row is now the FIRST screen a brand-new user can pull that chunk from, which is the
+likeliest moment for a bad link; `pw_obsex` also counts `pageerror` as a failure, so a flaky chunk
+would turn the suite red with a message about nothing. Caught now, with the slot CLEARED so the next
+mount retries. Measured against a served dist with the chunk deleted: **1 pageerror + 1 unhandled
+rejection without the catch, 0 with it**, row answerable either way.
+**★ AND MY OWN RED-PROOF OF THAT WAS VACUOUS TWICE BEFORE IT WAS REAL — BOTH TIMES BECAUSE THE
+FIXTURE NEVER BROKE THE THING IT CLAIMED TO BREAK.** `page.route("**/bodyMapData-*.js", 404)` did
+not intercept the dynamic import at all (nor did a `/bodyMapData/` regex route): the `[control]`
+line I added afterwards printed **`chunk responses: [200] | svg paths per tile: [11,11]`** — the
+chunk had loaded perfectly in both the "before" and "after" runs, so both greens meant nothing.
+Worse, my own fix had REMOVED the tell: reserving the slot height made the tile 153px whether or not
+the figure arrives, so the number I was reading could no longer distinguish the two states. What
+works is the audit's method — copy `dist`, delete `assets/bodyMapData-*.js`, serve THAT. **When a
+red-proof stays green, add a control that proves the mutation reached the behaviour before
+concluding anything about either.**
+**★ AND THE SLOT NOW RESERVES ITS HEIGHT.** `Fig` returned `null` while the chunk was in flight, so
+on a slow link the tile sat at **41px for 1.55s** and then became 153px, moving the Age field
+**112px down** under the user's finger. A fallback that renders nothing still has to occupy the
+space the real thing will.
+**★ AND ITS LIGHT PASS RAN ENTIRELY IN THE DARK THEME UNTIL A CONTROL CAUGHT IT.** The loop was
+measuring dark twice and passing, so the check written to catch a colour that fails on light could
+never have caught one. A `[control]` now asserts the PAINTED background matches the theme asked for.
 *A loop over two configurations is worth nothing until something proves the configuration changed.*
+**★ CORRECTION (cold-context audit, Sep 17): the MECHANISM recorded here was wrong, and it is the
+kind of wrong that misleads the next person to copy it.** This entry said flipping
+`server.profile.theme` "does nothing, because `addInitScript` runs on EVERY navigation … and
+re-seeded `theme:"dark"` each time". Measured: reverting the fixture to a hardcoded `theme:"dark"`
+leaves the suite FULLY GREEN including the light control, because `loadUserData` takes the theme
+from the stubbed profiles row and repaints — timed at **261ms**, well inside the 3000ms wait. The
+negative control confirms the control itself works (pinning the server row to dark makes the light
+pass fail at `painted rgb(11,11,14)`). The `?t=` param is kept because it makes the theme true from
+the FIRST PAINT rather than from whenever `loadUserData` lands, which is real hardening against
+battery load — but it is not what fixed the original vacuity, and the honest answer for what did is
+the control. **A fixture change and a control landing in the same edit will get credited to the
+wrong one unless each is reverted separately.**
 
 **★★ AND THE AUDIT'S OTHER THREE GUARD FINDINGS WERE ALL REAL AND ARE FIXED:**
 - **★ `OB_SCREENS` CONTAINED A STRING THAT IS NOT UNIQUE TO THE WIZARD — the exact class the

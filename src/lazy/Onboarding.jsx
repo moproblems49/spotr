@@ -340,9 +340,13 @@ function BodyMapPick({ C, value, onPick }) {
   const VB = "48 6 168 408"; // the front box BodyMap uses; the male hand reaches x=214.7
   const H = 104, W = Math.round(H * 168 / 408);
 
+  // ★ THE SLOT RESERVES ITS HEIGHT WHETHER OR NOT THE FIGURE HAS ARRIVED. The chunk is ~109 kB
+  // gzipped and lands whenever the link allows; measured on a deliberately slow server the tile
+  // sat at 41px for 1.55s and then became 153px, moving the Age field 112px DOWN under the user's
+  // finger. A fallback that renders nothing still has to occupy the space the real thing will.
   const Fig = ({ sex }) => {
     const f = bm && (bm.BODYMAPS[sex] || bm.BODYMAP_MALE) && (bm.BODYMAPS[sex] || bm.BODYMAP_MALE).front;
-    if (!f) return null;
+    if (!f) return <div style={{ width:W, height:H }} aria-hidden="true"/>;
     return (
       <svg viewBox={VB} width={W} height={H} style={{ display:"block" }} aria-hidden="true">
         {f._body && <>

@@ -3446,7 +3446,19 @@ let _bodyMapDataPromise = null;
 let _bodyMapDataCache = null;
 function loadBodyMapData() {
   if (!_bodyMapDataPromise) {
-    _bodyMapDataPromise = import("./bodyMapData.js").then((m) => { _bodyMapDataCache = m; return m; });
+    // ★ A REJECTED DYNAMIC IMPORT MUST NOT BE CACHED, AND MUST NOT ESCAPE AS AN UNHANDLED
+    // REJECTION. Without the catch, one flaky fetch of this ~109 kB chunk threw
+    // "Failed to fetch dynamically imported module" into window.onunhandledrejection AND left the
+    // REJECTED promise in _bodyMapDataPromise for the life of the page — so the body map could
+    // never load again that session and every later mount fired another rejection. Clearing the
+    // slot makes the next mount retry, which is what a transient network failure deserves.
+    // Newly reachable rather than newly broken: onboarding's body-map picker is now the FIRST
+    // screen a brand-new user can pull this chunk from, which is the likeliest moment for a bad
+    // link. Resolving null is what the callers already handle — useBodyMapData keeps `data` null
+    // and every consumer renders its own fallback.
+    _bodyMapDataPromise = import("./bodyMapData.js")
+      .then((m) => { _bodyMapDataCache = m; return m; })
+      .catch((e) => { _bodyMapDataPromise = null; devWarn("bodyMapData chunk failed to load", e); return null; });
   }
   return _bodyMapDataPromise;
 }
