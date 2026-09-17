@@ -40,8 +40,12 @@ const resetServer = () => { server.profilePatches = []; server.seenOnboarding = 
 // seshd_onboarded is REMOVED here, not merely left unset: onComplete writes it, and this file
 // runs the wizard three times in one browser. Init scripts run on every navigation, so this is
 // what puts each scenario back on the new-user path.
+// The theme comes off the URL (?t=light) rather than being hardcoded: init scripts run on EVERY
+// navigation and cannot be removed, so a hardcoded one silently re-seeds dark over anything a
+// later step sets — which is how section 8's "light" pass first ran entirely in the dark theme.
 await page.addInitScript(me => {
-  localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
+  const _t = new URLSearchParams(location.search).get("t") || "dark";
+  localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:_t, unit:"lbs",
     programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [],
     profile: { username:"momo", name:"Mo" }, users: [{ id: me, username:"momo", name:"Mo", followers:[], following:[] }] }));
   localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
@@ -256,6 +260,82 @@ check("7b ...still disabled with only a goal", (await btn("^Continue$"))?.disabl
 await tap("^4$");            await page.waitForTimeout(250);
 check("7c ...and enabled once goal AND days are in", (await btn("^Continue$"))?.disabled === false,
   JSON.stringify(await btn("^Continue$")));
+
+// ---------------------------------------------------------------- 8. the row shows the FIGURES
+// ★ THE TILES DRAW THE REAL SILHOUETTES, NOT THE WORDS "Male" / "Female". The question is literally
+// "which of these two drawings goes on your muscle map", so the drawings are the answer to it, and
+// a regression to a text-only pair would keep every check above green — 3a2 matches aria-labels,
+// which the words-only version also had. This section is the only thing that can see it.
+//
+// It also pins the two properties that make the figures shippable at all:
+//   * the bodyMapData chunk (~109 kB gzipped) is fetched ONLY once somebody taps Other. A hook
+//     cannot be conditional, which is why the picker is its own component — calling
+//     useBodyMapData() in Onboarding itself would make EVERY new signup download the body map to
+//     render a wizard that never shows it.
+//   * the muscle fill clears contrast on BOTH themes. It must be C.green (theme-resolved), never
+//     a literal: #34d399 is 8.8:1 on the dark card and 1.79:1 on the light one, the documented
+//     "re-measure every hardcoded colour when the surface changes" trap. Measuring only the dark
+//     theme — which every other check in this file runs on — cannot see that, so this loops.
+const bmRequests = [];
+page.on("request", r => { if (/bodyMapData/.test(r.url())) bmRequests.push(r.url().split("/").pop()); });
+
+const contrast = (fg, bg) => page.evaluate(([f, b]) => {
+  const px = c => { const d = document.createElement("div"); d.style.color = c; document.body.appendChild(d);
+    const v = getComputedStyle(d).color.match(/[\d.]+/g).slice(0, 3).map(Number); d.remove(); return v; };
+  const L = ([r, g, bl]) => { const t = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    return 0.2126 * t(r) + 0.7152 * t(g) + 0.0722 * t(bl); };
+  const a = L(px(f)), c = L(px(b));
+  return (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05);
+}, [fg, bg]);
+
+for (const theme of ["dark", "light"]) {
+  server.profile = { ...BASE_PROFILE, theme };     // loadUserData replaces theme from the server row
+  bmRequests.length = 0;
+  await page.goto(`http://127.0.0.1:${PORT}/?t=${theme}`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3000);
+  // ★ THE THEME MUST ACTUALLY HAVE FLIPPED, OR THE LIGHT PASS IS THE DARK PASS RUN TWICE — which
+  // is exactly the hardcoded-colour bug this loop exists to catch, made invisible. Assert the
+  // painted background, not the value we asked for.
+  const painted = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const isDarkPaint = painted.match(/\d+/g).slice(0,3).map(Number).reduce((a,b)=>a+b,0) < 200;
+  check(`[control] ${theme}: onboarding renders IN THIS THEME`,
+    /Let's set you up/i.test(await body()) && isDarkPaint === (theme === "dark"), `${theme} painted ${painted}`);
+  await tap("^Build muscle$"); await page.waitForTimeout(250);
+  await tap("^4$");            await page.waitForTimeout(250);
+  check(`8a ${theme}: the body map chunk is NOT fetched before Other is tapped`, bmRequests.length === 0,
+    JSON.stringify(bmRequests));
+  await tap("^Other$");
+  for (let i = 0; i < 20 && !bmRequests.length; i++) await page.waitForTimeout(250);
+  check(`8b ${theme}: tapping Other fetches it`, bmRequests.length > 0, JSON.stringify(bmRequests));
+
+  // The chunk arrives asynchronously and the tiles render their labels alone until it does, so
+  // poll rather than guessing a settle — the documented "a fixed setTimeout is a guess about
+  // something you do not own" class.
+  let tiles = [];
+  for (let i = 0; i < 24; i++) {
+    tiles = await page.evaluate(() => [...document.querySelectorAll("[data-body-map-option]")].map(b => {
+      const svg = b.querySelector("svg"), paths = svg ? [...svg.querySelectorAll("path")] : [];
+      return { v: b.dataset.bodyMapOption, paths: paths.length,
+        d: paths.map(p => (p.getAttribute("d") || "").length).join(","),
+        fill: paths.length ? paths[paths.length - 1].getAttribute("fill") : null,
+        h: svg ? Math.round(svg.getBoundingClientRect().height) : 0,
+        bg: getComputedStyle(b).backgroundColor };
+    }));
+    if (tiles.length === 2 && tiles.every(t => t.paths > 1)) break;
+    await page.waitForTimeout(250);
+  }
+  check(`8c ${theme}: both tiles draw a real figure, not the words alone`,
+    tiles.length === 2 && tiles.every(t => t.paths > 1), JSON.stringify(tiles.map(t => ({ v: t.v, paths: t.paths }))));
+  // Two tiles both rendering the male glyph would satisfy "a figure renders" and tell the user
+  // nothing — the same class as pw_themes asserting six DISTINCT ghosts rather than six indices.
+  check(`8d ${theme}: the two figures are different drawings`,
+    tiles.length === 2 && tiles[0].d && tiles[0].d !== tiles[1].d,
+    JSON.stringify(tiles.map(t => t.d.slice(0, 40))));
+  check(`8e ${theme}: the figure is big enough to read`, tiles.every(t => t.h >= 80), JSON.stringify(tiles.map(t => t.h)));
+  const r = (tiles[0] && tiles[0].fill) ? await contrast(tiles[0].fill, tiles[0].bg) : 0;
+  check(`8f ${theme}: the muscle fill clears AA on this theme's card`, !!(tiles[0] && tiles[0].fill) && r >= 4.5,
+    `${tiles[0] && tiles[0].fill} on ${tiles[0] && tiles[0].bg} = ${r.toFixed(2)}:1`);
+}
 
 await browser.close();
 console.log(fails ? `FAIL ${fails} check(s)` : "PASS all checks");

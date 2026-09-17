@@ -1,4 +1,4 @@
-// v178091717062
+// v178091717063
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3609,6 +3609,10 @@ function bodyGreys(C) {
   const dark = !C || C.isDark;
   return { body: _mixHex(bg, ink, dark ? 0.24 : 0.18), empty: _mixHex(bg, ink, dark ? 0.33 : 0.29) };
 }
+// Exported for src/lazy/Onboarding.jsx, whose body-map picker draws the same silhouette. It is
+// DERIVED from the palette rather than hardcoded (see the note above), so a lazy file that keeps
+// its own copy would be a second answer to "what colour is the body" the moment a theme is added.
+export { bodyGreys };
 // A muscle you trained ZERO times is DATA, not absence — see the note below on why it must not be
 // the body colour. It is one step off the silhouette, still quiet enough that the filled muscles
 // own the map.

@@ -3580,6 +3580,48 @@ prints `"sex":"other","bodyMap":"female"` with no `body_type`, i.e. the UI captu
 the write dropped it; removing the `formReady` gate fails exactly **2**. Every `[control]` green in
 all three.
 
+**★★ AND THE TILES NOW SHOW THE FIGURES THEMSELVES, NOT THE WORDS (Mo, Sep 17): "is it better to
+have small pictures of the silhouettes instead of male female buttons" + "the real pictures maybe
+colored green (as if all muscles are recovered)".** Right on both counts. The question is literally
+*which of these two drawings goes on your muscle map*, so the drawings are the answer to it and the
+words were a description of a picture the app already owns; and green is what `_readyColor`'s `t=1`
+end looks like, so the tile previews the REAL screen rather than inventing a swatch. Front view
+only — the back adds nothing here and two figures per tile halves each one. 104px, measured: at 84
+the limbs stop separating.
+**★ THE LAZY CHUNK IS THE WHOLE REASON IT IS A SEPARATE COMPONENT.** `bodyMapData` is **~109 kB
+gzipped** and onboarding did not load it at all before this. A hook cannot be conditional, so the
+condition has to sit at the COMPONENT boundary — calling `useBodyMapData()` in `Onboarding` itself
+would make every new signup download the body map to render a wizard that never shows it.
+`BodyMapPick` mounts only under "Other", and until the chunk lands the tiles render their labels
+alone, so the row is answerable either way and never empty. Measured end to end: 0 requests before
+the Other tap, 1 after.
+**★ AND THE TILE BACKGROUND DELIBERATELY DOES NOT FLIP, WHICH IS THE OPPOSITE OF EVERY OTHER ROW
+ON THIS FORM.** Goal/Days/Sex mark selection by filling with `C.primary` — an INVERTED ground. Do
+that under a figure and you move both the muscle green and the silhouette grey (mixed from `C.bg`)
+onto a surface neither was calibrated for. Selection is the accent ring plus the label instead,
+which is also what every image picker does. Two colour calls came out of measuring rather than
+eyeballing: the fill is **`C.green`, never a literal** (`#34d399` is 8.82:1 on the dark card and
+**1.91:1** on the light one — the documented re-measure-every-hardcoded-colour-when-the-surface-
+changes trap), and the ring is **`C.accentInk`, not `C.accent`**, because `accent` as a thin line
+on a near-white card measures ~3.1:1, a hairline pass this repo has already been bitten by.
+Measured after: green 8.82 dark / 4.98 light, ring 12.99 / 7.02.
+**`bodyGreys` is now exported from App.jsx** rather than re-derived in the lazy file — it is
+DERIVED from the palette so that a theme which does not exist yet gets its silhouette grey for
+free, and a private copy would be a second answer the moment one is added.
+**Guard: `pw_obsex` section 8**, which loops BOTH themes because a one-theme check cannot see the
+hardcoded-colour bug at all. Red-proofed as three more separate mutations: a words-only fallback
+fails **6** (naming `paths:0`), a hardcoded `#34d399` fails exactly **1** — light only, at 1.91:1,
+with dark staying green — and hoisting `useBodyMapData()` into `Onboarding` fails **2** (the chunk
+arriving before the tap). 8d asserts the two figures are DIFFERENT drawings, not just that a figure
+rendered: two tiles both drawing the male glyph would satisfy "it renders" and tell the user
+nothing, the same class as `pw_themes` asserting six distinct ghosts rather than six indices.
+**★ AND ITS LIGHT PASS RAN ENTIRELY IN THE DARK THEME UNTIL A CONTROL CAUGHT IT.** Flipping
+`server.profile.theme` does nothing, because `addInitScript` runs on EVERY navigation, cannot be
+removed, and re-seeded `theme:"dark"` into `seshd_v1` each time — so the check written to catch a
+colour that fails on light was measuring dark twice and passing. It reads the theme off the URL
+(`?t=light`) now, and a `[control]` asserts the PAINTED background matches the theme asked for.
+*A loop over two configurations is worth nothing until something proves the configuration changed.*
+
 **★★ AND THE AUDIT'S OTHER THREE GUARD FINDINGS WERE ALL REAL AND ARE FIXED:**
 - **★ `OB_SCREENS` CONTAINED A STRING THAT IS NOT UNIQUE TO THE WIZARD — the exact class the
   rename commit exists to close, one step removed.** `"Follow some lifters"` is the onboarding

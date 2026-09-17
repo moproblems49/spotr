@@ -8,7 +8,7 @@
 // and the "Browse templates" sheet — see the ReferenceError history on PROGRAM_TEMPLATES in
 // App.jsx right above its definition before touching either.
 import { useState } from "react";
-import { Icon, SeshdLogo, Avatar, PROGRAM_TEMPLATES, recommendTemplateId, F, KB_SAFE_INSET } from "../App.jsx";
+import { Icon, SeshdLogo, Avatar, PROGRAM_TEMPLATES, recommendTemplateId, F, KB_SAFE_INSET, useBodyMapData, bodyGreys, BODY_FUSE } from "../App.jsx";
 
 export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
   const [step, setStep] = useState(0);
@@ -263,24 +263,7 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                 under an identical pair, is ambiguous — the days row sets one for the same
                 reason. */}
             {answers.sex === "other" && (
-              <div className="seshd-enter" style={{ marginBottom:22 }}>
-                <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Body map</div>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.4 }}>Which figure we draw on your muscle map. It doesn't change your strength standards.</div>
-                <div style={{ display:"flex", gap:8 }}>
-                  {[["male","Male"],["female","Female"]].map(([v,label]) => {
-                    const sel = answers.bodyMap === v;
-                    return (
-                      <button key={v} onClick={() => set("bodyMap", sel ? null : v)} aria-pressed={sel}
-                        aria-label={`${label} body map`} style={{
-                        flex:1, padding:"15px 8px", borderRadius:14, cursor:"pointer", fontFamily:F,
-                        background: sel ? C.primary : C.surface, border:`1.5px solid ${sel ? C.accent : C.border}`,
-                        color: sel ? C.onPrimary : C.text, fontSize:15, fontWeight:600,
-                        transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
-                      }}>{label}</button>
-                    );
-                  })}
-                </div>
-              </div>
+              <BodyMapPick C={C} value={answers.bodyMap} onPick={(v) => set("bodyMap", v)}/>
             )}
 
             <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Age <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
@@ -322,6 +305,87 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
             Let's go
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ★ THE PICKER SHOWS THE ACTUAL FIGURES, NOT THE WORDS "Male" / "Female".
+// The question is literally "which of these two drawings do we put on your muscle map", and the
+// two drawings are the only honest answer to it — the words are a description of a picture the
+// app already owns. Front view only: the back adds no information here (the silhouettes differ in
+// the same way from either side) and two figures per tile halves the size of each.
+//
+// ★ THE MUSCLES ARE ALL GREEN BECAUSE GREEN IS WHAT "FULLY RECOVERED" LOOKS LIKE ON THIS MAP
+// (_readyColor's t=1 end, i.e. C.green), so the tile previews the real screen rather than
+// inventing a swatch. C.green — never a literal — is the one value calibrated to clear 4.5:1 on
+// BOTH themes against bg and surface; a hardcoded #34d399 measures 1.91:1 on the light theme's
+// card, which is the documented "re-measure every hardcoded colour when the surface changes"
+// trap. The tile background therefore stays C.surface in BOTH states: inverting it to C.primary
+// the way the text rows above do would flip the ground under the figure and put the green (and
+// the derived silhouette grey, which is mixed from C.bg) on a surface neither was calibrated for.
+// Selection is carried by the accent ring and the label instead, which is also what every
+// image picker does.
+//
+// ★ IT IS A SEPARATE COMPONENT SO THE 109 KB (gzipped) bodyMapData CHUNK IS FETCHED ONLY WHEN
+// SOMEBODY TAPS "Other". A hook cannot be conditional, so the condition has to sit at the
+// component boundary — calling useBodyMapData() in Onboarding itself would make every new signup
+// download the body map to render a wizard that never shows it. Until the chunk lands (or if it
+// fails) the tiles render their labels alone, so the row is answerable either way and never
+// empty.
+function BodyMapPick({ C, value, onPick }) {
+  const bm = useBodyMapData();
+  const bodyCol = bodyGreys(C).body;
+  const sepCol = C?.isDark ? "#2a2a30" : "#ffffff";
+  const VB = "48 6 168 408"; // the front box BodyMap uses; the male hand reaches x=214.7
+  const H = 104, W = Math.round(H * 168 / 408);
+
+  const Fig = ({ sex }) => {
+    const f = bm && (bm.BODYMAPS[sex] || bm.BODYMAP_MALE) && (bm.BODYMAPS[sex] || bm.BODYMAP_MALE).front;
+    if (!f) return null;
+    return (
+      <svg viewBox={VB} width={W} height={H} style={{ display:"block" }} aria-hidden="true">
+        {f._body && <>
+          {/* two passes, same as BodyMap: the fat half-opacity stroke fuses the floating fiber
+              shapes into one silhouette, then the solid pass draws it. */}
+          <path d={f._body} fill={bodyCol} fillOpacity={0.55} stroke={bodyCol} strokeOpacity={0.55} strokeWidth={BODY_FUSE} strokeLinejoin="round"/>
+          <path d={f._body} fill={bodyCol} stroke={bodyCol} strokeWidth={3} strokeLinejoin="round"/>
+        </>}
+        {Object.keys(f).filter(k => k !== "_body").map(mk => (
+          <path key={mk} d={f[mk]} fill={C.green} stroke={sepCol} strokeWidth={0.5} strokeLinejoin="round"/>
+        ))}
+      </svg>
+    );
+  };
+
+  return (
+    <div className="seshd-enter" style={{ marginBottom:22 }}>
+      <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Body map</div>
+      <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.4 }}>Which figure we draw on your muscle map. It doesn't change your strength standards.</div>
+      <div style={{ display:"flex", gap:8 }}>
+        {[["male","Male"],["female","Female"]].map(([v,label]) => {
+          const sel = value === v;
+          return (
+            <button key={v} onClick={() => onPick(sel ? null : v)} aria-pressed={sel}
+              data-body-map-option={v}
+              // "Male" alone, read out two rows under an identical pair, is ambiguous — the sex
+              // row above says the same two words. The days row sets a label for the same reason.
+              aria-label={`${label} body map`} style={{
+              flex:1, padding:"12px 8px 10px", borderRadius:14, cursor:"pointer", fontFamily:F,
+              display:"flex", flexDirection:"column", alignItems:"center", gap:8,
+              // accentInk, not accent: the ring is the ONLY signal of selection here (the tile
+              // background deliberately does not flip), and on the light theme C.accent as a thin
+              // line on a near-white card measures ~3.1:1 — a hairline pass, which this repo has
+              // already been bitten by. accentInk is 7:1 there and is simply accent on dark.
+              background: C.surface, border:`2px solid ${sel ? C.accentInk : C.border}`,
+              color: sel ? C.accentInk : C.text, fontSize:13, fontWeight:sel ? 700 : 600,
+              transition:"all 0.15s cubic-bezier(0.22, 1, 0.36, 1)",
+            }}>
+              <Fig sex={v}/>
+              <span>{label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
