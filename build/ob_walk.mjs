@@ -11,7 +11,14 @@
 // loop kept going there purely because that phrase happened to appear on a screen the regex was
 // never written for — which is the only reason "Let's go" was ever clicked and the starter
 // program ever reached the stub server. Here the wizard's screens are named explicitly.
-export const OB_SCREENS = /Let's set you up|Biological sex|Follow some lifters|You're all set/i;
+// ★ NO FIELD LABEL IN HERE. The first version listed "Biological sex" as a wizard screen and as
+// the form gate below, so renaming that one label to "Sex" would have silently taken the walker
+// off the form — it would answer nothing, Continue would stay disabled, and all three suites would
+// fail six screens later pointing at the wrong thing. Match the HEADINGS, which name the screens
+// rather than their contents.
+export const OB_SCREENS = /Let's set you up|Follow some lifters|You're all set/i;
+// The merged setup form is exactly the screen whose heading is "Let's set you up".
+const OB_FORM = /Let's set you up/i;
 
 /**
  * Clicks through the wizard and returns { clicked, finished }.
@@ -35,7 +42,7 @@ export async function walkOnboarding(page, opts = {}) {
     const txt = await page.evaluate(() => document.body.innerText);
     if (!OB_SCREENS.test(txt)) { finished = true; break; }
 
-    const hit = await page.evaluate(([g, d, s]) => {
+    const hit = await page.evaluate(([g, d, s, f]) => {
       const vis = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
       const bs = [...document.querySelectorAll("button")].filter(vis)
         .map(x => ({ x, t: (x.textContent || "").trim() }));
@@ -49,14 +56,15 @@ export async function walkOnboarding(page, opts = {}) {
       // Continue is disabled until all three are in, and HTMLButtonElement.click() on a disabled
       // button dispatches NOTHING, so a Continue-first walker taps a no-op until it runs out of
       // iterations. The pre-merge version burned 20 passes on the sex step exactly that way.
-      if (/Biological sex/i.test(document.body.innerText)) {
+      if (new RegExp(f[0], f[1]).test(document.body.innerText)) {
         const r = once(g, "__obGoal") || once(d, "__obDays") || once(s, "__obSex");
         if (r) return r;
       }
       const go = bs.find(o => /^(continue|let's go|skip for now)$/i.test(o.t) && !o.x.disabled);
       if (go) { go.x.click(); return go.t; }
       return null;
-    }, [[goal.source, goal.flags], [days.source, days.flags], [sex.source, sex.flags]]);
+    }, [[goal.source, goal.flags], [days.source, days.flags], [sex.source, sex.flags],
+        [OB_FORM.source, OB_FORM.flags]]);
 
     if (!hit) break;
     clicked.push(hit);

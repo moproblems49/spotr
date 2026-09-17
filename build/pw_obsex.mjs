@@ -95,9 +95,14 @@ async function fresh() {
 await fresh();
 check("[control] onboarding renders for a brand-new signup", /Let's set you up/i.test(await body()),
   (await body()).slice(0, 120).replace(/\n/g, " | "));
-check("1a the sex field is still on the form", /Biological sex/i.test(await body()));
-check("1b it is marked optional", /Biological sex\s*\(optional\)/i.test(await body()),
-  (await body()).match(/Biological sex[^\n]*/i)?.[0]);
+// ★ ANCHORED AT BOTH ENDS. "Sex" is a substring of "Biological sex", so an unanchored /Sex/i would
+// pass against the very build this rename replaced — the documented accidentally-right-regex class.
+// ^ and the optional marker together can only match the new label on its own line.
+check("1a the sex field is still on the form", /^Sex\b/im.test(await body()),
+  (await body()).match(/^[^\n]*\bsex\b[^\n]*/im)?.[0]);
+check("1b it is marked optional", /^Sex\s*\(optional\)/im.test(await body()),
+  (await body()).match(/^[^\n]*\bsex\b[^\n]*/im)?.[0]);
+check("1b2 the old label is gone", !/Biological sex/i.test(await body()));
 for (const label of ["Male", "Female", "Other"]) {
   check(`1c "${label}" is offered`, !!(await btn(`^${label}$`)));
 }

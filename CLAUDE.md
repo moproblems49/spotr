@@ -3482,10 +3482,27 @@ second is one I asserted the OPPOSITE of before reading the code — see the cor
   column can never mean — and the old code did exactly that, since the server write used the raw
   `answers.sex` while the local `setStore` used the sanitised `oSex`. **Two spellings of one
   value in one function is how they drift.**
-- **The label stayed "Biological sex"** — it is the honest name for something used for
-  physiological norms rather than identity, and it is what keeps `ob_walk.mjs`'s gate valid. What
-  it was missing was a REASON, not a better noun: a muted line now says what it sets and what
-  "Other" does.
+- **The label is "Sex" (Mo, Sep 17) — it shipped as "Biological sex" for one day and that was the
+  wrong noun the moment a third option existed.** With two options "Biological" did real work: it
+  said the question is about physiology rather than identity. With Other on the row it stops being
+  accurate — "Other" is not a biological sex — so the heading contradicted the control under it.
+  Apple Health and Hevy, the two most-scrutinised precedents, both label it exactly **Sex** with
+  Female/Male/Other for that reason. The "why we ask" work belongs in the caption, which it now
+  carries.
+  **★ AND THE RENAME WOULD HAVE SILENTLY TAKEN THE WALKER OFF THE FORM — VERIFIED, NOT ASSUMED.**
+  `ob_walk.mjs` listed `Biological sex` BOTH in `OB_SCREENS` and as its form gate, so it was a
+  FIELD LABEL doing a SCREEN's job. Driven with the new label against the old walker:
+  **`finished=false clicked=[]`** — it answered nothing, Continue stayed disabled, and
+  `pw_starterprog` failed six checks about the starter program, i.e. pointing at entirely the wrong
+  cause. Both now match HEADINGS (`Let's set you up` / `Follow some lifters` / `You're all set`),
+  which name the screens rather than their contents, and `OB_FORM` is threaded into the page
+  evaluate rather than hardcoded inside it. **A walker must key on what identifies the SCREEN; a
+  field label is content and will be renamed.**
+  **★ AND `/Sex/i` IS A SUBSTRING OF "Biological sex", so the obvious assertion would have passed
+  against the very build the rename replaced.** `pw_obsex` 1a/1b anchor with `/^Sex\b/im` and
+  `/^Sex\s*\(optional\)/im`, plus a 1b2 that asserts the OLD label is gone. Red-proofed by
+  restoring the old wording: **3 failures printing `Biological sex (optional)`**, every other check
+  and both controls green.
 - **What the comparable apps actually do, CHECKED rather than recalled** (my first answer to Mo
   got this wrong too): **Hevy** has a "Strength Level" feature comparing you per-exercise against
   **its own users** of the same sex, age band and bodyweight, with a percentile — and its Sex

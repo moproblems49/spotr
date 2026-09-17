@@ -222,8 +222,15 @@ export default function Onboarding({ C, onComplete, suggestedUsers = [] }) {
                 met: the N-copies-drift class, in a form. `bodyType` stays binary (there is no
                 third body map and tracing one is licensed-art work), which is why onComplete
                 writes body_type only for male/female and leaves the silhouette to the documented
-                bodyType -> strengthSex -> male fallback in MuscleHeatmap. */}
-            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Biological sex <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
+                bodyType -> strengthSex -> male fallback in MuscleHeatmap.
+                ★ THE LABEL IS "Sex", NOT "Biological sex". With only two options "Biological" was
+                doing real work — it said the question is about physiology rather than identity. The
+                moment a third option exists it stops being accurate ("Other" is not a biological
+                sex) and starts contradicting the control under it. Apple Health and Hevy, the two
+                most-scrutinised precedents here, both label it exactly "Sex" with Female/Male/Other
+                for the same reason. The "why we ask" work moved to the caption, which is where it
+                belonged all along. */}
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Sex <span style={{ color:C.muted, fontWeight:500 }}>(optional)</span></div>
             <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.4 }}>Sets your strength standards and body map. Other uses a neutral baseline.</div>
             <div style={{ display:"flex", gap:8, marginBottom:22 }}>
               {[["male","Male"],["female","Female"],["other","Other"]].map(([v,label]) => {
