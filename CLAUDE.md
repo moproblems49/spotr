@@ -3281,6 +3281,65 @@ rather than rendering blank and passing).
 (demo login `the App Review demo account (address AND password live ONLY in App Store Connect's review notes — see the credential-hygiene entry in CLAUDE.md)` (password NOT stored in this repo — it lives in App Store Connect's review notes only; see the credential-hygiene entry in CLAUDE.md)).
 (3) **RE-DATE THE DEMO CORPUS.** The five personas' posts and workouts go stale on a clock, and a
 reviewer opening a feed whose newest post is three weeks old sees an abandoned app.
+**★★ THERE ARE TWO DEMO ACCOUNTS, NOT ONE, AND THIS FILE HAD NEVER MENTIONED THE SECOND.**
+`seshd_demo` (Mo's own hotmail address, so he can sign in) sits beside `seshdreview` and is the
+account he means by "the Seshd demo workout". It survived the Aug-31 persona wipe because that
+statement targeted `%@getseshd.app`. Found only by listing every profile; a re-date that greps this
+file for account names would have missed it, and it was **94 days stale**.
+**★ DONE Sep 18 2026 — seshd_demo +94 days, seshdreview +4 days, and the two offsets are NOT a
+matter of taste.** Each is the largest shift that keeps `max(dependent timestamp) + offset < now()`,
+and the binding row is rarely the one you look at: for seshdreview it was a **kudos** at 21:08, not
+a post. seshd_demo additionally had its `created_at` REBUILT from `workout_date` — it was a single
+backfill blob dated 2026-06-15 for sessions spanning April to June, i.e. a finish time two months
+after the session it describes, and `created_at` is what becomes `finishedAt` while `workout_date`
+is the key the whole app buckets on.
+**★ AND THE MIRROR TRAP FIRED FROM THE OTHER SIDE THIS TIME.** The documented version is "a persona
+kudos on a recent REAL post goes future". Here it was the reverse: **a real user's kudos and comment
+on a SHIFTED demo post**, which correctly did not move and so ended up predating the post they sit
+on. Same fix (`post.created_at + least(3h, (now() - post.created_at)/2)`), and the same reason to
+verify DATABASE-WIDE rather than persona-scoped — a persona-scoped check reports clean, because the
+offending rows' owners are real users.
+**★ THE THIN SESSIONS WERE THE REAL FINDING, AND MEASURING IS WHAT SURFACED THEM.** seshdreview's 27
+"Coach Push/Pull/Legs" sessions were **3 exercises / 5 sets** — a main lift with one warmup and two
+working sets, then two lifts of ONE set each. Fresh dates on a session that thin still shows a
+reviewer an app nobody trains with. All 27 rebuilt to 6 exercises / 19 sets, plus a session dated
+TODAY so History's top row and the 7-day muscle map read as an account in use.
+**The invariant that made that safe to do mechanically: never RAISE an existing top set.** Every
+added set on a lift that was already there is a BACK-OFF, so no PR is minted out of nothing and the
+`personal_records` story stays shut; accessories climb with the session index so the Progress charts
+slope. Asserted afterwards against the backup, not assumed: **0 raised, 0 lowered, 91 matched
+(session, exercise) pairs.** `personal_records` itself was deliberately NOT touched, per the
+standing note — it is off the reviewer-visible path and its `updated_at` trigger re-opens the
+57-PRs class.
+After: both accounts newest workout TODAY, seshdreview 6 workouts in the 7-day window covering all
+13 trainable groups, ~5.9 exercises per session, and every name resolved through `getExEntry` before
+it was written. Backup: `demo_backup_20260918` (110 rows, RLS on with no policy).
+**★★ AND THE PHOTOS NEEDED A NEW ROUTE, PLUS ONE CORRECTION TO THE RECORDED ONE.** Neither demo
+account had ever carried a post image. Uploading one needs the Storage API, which is unreachable
+from a sandbox session, so the documented answer is a disposable edge function invoked from Postgres
+via `net.http_post`. Two things that recipe did not cover:
+  * **Embedding the bytes as base64 in the function moves them through the session's own context**
+    (~180 kB ≈ 45k tokens for two images). It does not have to: commit the files under
+    `public/bundles/`, let Vercel serve them, and have the function FETCH them. `bundles/*` is
+    already in the OTA zip's `-x` list, so a file parked there cannot ride into a published bundle
+    or trip `ota_assets_check` while it is staged. Delete it in the follow-up commit.
+  * **★ `SUPABASE_SERVICE_ROLE_KEY` IS NO LONGER A JWT.** The runtime now injects the new `sb_...`
+    format (41 chars), and Storage answers a bare `Authorization: Bearer` with
+    **403 "Invalid Compact JWS"**. Sending the **`apikey`** header as well is what makes it work —
+    so the orphan-image recipe recorded in Sweep #3 would fail today as written. The function
+    reported the env var's SHAPE rather than its value, which is what named the cause in one run
+    instead of a sequence of guesses.
+**The images are GRAPHICS, not fabricated photographs** — a Seshd-language card built from the
+palette tokens and Inter, and every number on one is read off the session it names (the seshdreview
+card's 19 sets / 13,745 lbs equals both its `workout_history` row and its post's `workout` payload,
+asserted). **The first render was thrown away for being false**: it claimed a deadlift PR with
+"previous best 400" on a day when 405 was only MATCHED, six days after it was actually set. Checking
+a card's claim against the account's own history is the same rule as reading a tile's label and then
+checking the number answers it.
+Storage paths are `{userId}/...`, so the account-deletion sweep finds them and the orphan check
+resolves their folder to a live profile. The superseded card was DELETED through the API (a SQL
+delete on `storage.objects` is refused by `storage.protect_delete()`, correctly), and
+`upload-demo-images` is a 410 stub now — safe for Mo to delete from the dashboard.
 **★ DONE Sep 13 2026 (+15 days), and the job is much smaller now that only `seshdreview` survives**
 — 29 workouts, 2 posts, 2 group posts, 3 kudos. It had gone 15 days stale with **ZERO workouts in
 the 7-day muscle-map window**, i.e. the reviewer's own Muscles Trained map would have been empty:
@@ -3872,6 +3931,18 @@ relaunch it twice after downloading." Two separate causes, and `cap sync` only f
   download, never a missed one. **Do NOT "simplify" it to a bare build-number comparison** — that
   would strand every store install on stale code, silently, with the app looking perfectly healthy,
   which is far worse than the bug it replaces.
+  **★★ AND THE CONSEQUENCE THAT MATTERS FOR ANY ONBOARDING OR FIRST-RUN CHANGE (asked Sep 18 2026,
+  and the answer is not the comfortable one): AN OTA CANNOT REACH A SCREEN THAT ONLY SHOWS ON LAUNCH
+  1.** The plugin fetches on one launch and APPLIES on the next, so a brand-new App Store downloader
+  runs the STORE BINARY's code for their entire first session — which is signup and onboarding, the
+  only time onboarding ever renders. They then never see the new wizard at all, because by launch 2
+  they are already onboarded. Every other OTA change lands a launch later and nobody notices; this
+  class simply does not land. Measured that day: `BUILTIN_BUNDLE.version` was `2026-09-10a` while
+  the onboarding work (8 screens → 2, the sex field, the body-map picker) all shipped Sep 16-17, so
+  the store build predated every bit of it. **The only fix is a Mac day** — `git pull && npm install
+  && npm run build && npx cap sync ios` bakes the current `dist/` into the archive, and
+  `BUILTIN_BUNDLE` is updated in that same commit. Ask this question before assuming any first-run
+  change is live: *does the screen render before the second launch?*
   **Update it on a Mac day, in the same commit as the archive.** Sim: `sim_otabuiltin` drives the
   REAL handler with the request shape the plugin sends, and spends most of its weight on the
   directions that must still update (older build, missing/garbage `version_code`, a device already
