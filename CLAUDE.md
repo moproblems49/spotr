@@ -3932,17 +3932,30 @@ relaunch it twice after downloading." Two separate causes, and `cap sync` only f
   would strand every store install on stale code, silently, with the app looking perfectly healthy,
   which is far worse than the bug it replaces.
   **★★ AND THE CONSEQUENCE THAT MATTERS FOR ANY ONBOARDING OR FIRST-RUN CHANGE (asked Sep 18 2026,
-  and the answer is not the comfortable one): AN OTA CANNOT REACH A SCREEN THAT ONLY SHOWS ON LAUNCH
-  1.** The plugin fetches on one launch and APPLIES on the next, so a brand-new App Store downloader
-  runs the STORE BINARY's code for their entire first session — which is signup and onboarding, the
-  only time onboarding ever renders. They then never see the new wizard at all, because by launch 2
-  they are already onboarded. Every other OTA change lands a launch later and nobody notices; this
-  class simply does not land. Measured that day: `BUILTIN_BUNDLE.version` was `2026-09-10a` while
-  the onboarding work (8 screens → 2, the sex field, the body-map picker) all shipped Sep 16-17, so
-  the store build predated every bit of it. **The only fix is a Mac day** — `git pull && npm install
-  && npm run build && npx cap sync ios` bakes the current `dist/` into the archive, and
-  `BUILTIN_BUNDLE` is updated in that same commit. Ask this question before assuming any first-run
-  change is live: *does the screen render before the second launch?*
+  and the answer is narrower than the first one given): AN OTA MAY NOT REACH A SCREEN THAT ONLY
+  SHOWS BEFORE THE FIRST BACKGROUNDING.** The first answer here was "fetches on one launch, applies
+  on the NEXT", which is the folklore and is wrong about the apply point. **Read off the plugin's
+  own iOS source rather than inferred:** `appMovedToBackground()` (`CapacitorUpdaterPlugin.swift`
+  :4612) calls `installNext()` (:4494), which does `set(bundle:)` + `_reload()` — so a downloaded
+  bundle is swapped in **when the app is BACKGROUNDED**, not when it is next launched. The plugin
+  even says so in its own status string: *"update downloaded, will install next background"* (:4449;
+  `shouldAutoSetNextBundle()` is true because `autoUpdate` is `true` rather than `onlyDownload`).
+  `backgroundDownload()` fires at plugin load and on every foreground (:4553), and **`directUpdate`
+  is absent from `capacitor.config.json`**, so `directUpdateMode` resolves to `"false"` (:3904) and
+  nothing is ever swapped in mid-session — that part of the folklore is right.
+  **So the population that gets the stale first-run screen is smaller than "every new downloader":
+  it is whoever downloads, signs up and onboards in ONE UNINTERRUPTED SITTING.** Anyone who opens
+  the app, lets the ~485 kB land, then presses home or swipes it away and comes back — before
+  signing up — is already on the new bundle and sees the new wizard. It is still a RACE, not a
+  guarantee: the download has to have finished before that backgrounding, which is a second or two
+  on wifi and not assured on a bad cellular link.
+  Measured the day this came up: `BUILTIN_BUNDLE.version` was `2026-09-10a` while the onboarding
+  work (8 screens → 2, the sex field, the body-map picker) all shipped Sep 16-17, so the store build
+  predated every bit of it. **The only way to make it certain is a Mac day** — `git pull && npm
+  install && npm run build && npx cap sync ios` bakes the current `dist/` into the archive, and
+  `BUILTIN_BUNDLE` is updated in that same commit. Ask this before assuming any first-run change is
+  live: *can this screen render before the app has ever been backgrounded?* If yes, an OTA reaches
+  it only by luck.
   **Update it on a Mac day, in the same commit as the archive.** Sim: `sim_otabuiltin` drives the
   REAL handler with the request shape the plugin sends, and spends most of its weight on the
   directions that must still update (older build, missing/garbage `version_code`, a device already
