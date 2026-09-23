@@ -3415,6 +3415,49 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   worked example of a reasoned-not-observed fix that turned out right — and of why `pw_reorder`
   now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
+## ★★ IMPORT FROM STRONG (Sep 23 2026) — and the 1,000-row cap it exposed
+Mo asked for ways to beat the competition; importing an existing log removes the biggest reason
+not to switch. Profile → Settings → **Import from Strong** (`src/lazy/StrongImport.jsx`, parser
+and name resolver in `src/engine/strongimport.js`). Built against Mo's real export, which is
+personal data and **never enters this public repo** — both guards use synthetic fixtures.
+- **The format, measured:** `Set Order` is `W` warm-up / `F` failure / a number / **`Rest Timer`**,
+  which is a TIMER SETTING, not a set. Duration is unreliable (forgotten timers 5h–125h, and "30s")
+  so anything outside 5min–5h imports as unknown (0), and History now HIDES a 0 duration instead of
+  printing "00:00". No unit column. Timed sets (planks) carry `Seconds`; they go into reps.
+- **Rest timers are NOT imported, deliberately.** Seshd has no per-exercise rest setting, so they
+  would be dead data. Say so rather than pretending.
+- **★ NAME RESOLUTION IS TWO-PASS, BECAUSE `_exNorm` STRIPS PARENTHESES.** Strong names are all
+  "Move (Equipment)", so every candidate was fuzzy and first-pass matching went 57% wrong-or-missing
+  (Reverse Fly → a cable exercise, Smith calf raise → standing). Pass 1 compares with parentheses
+  PRESERVED, pass 2 falls back to fuzzy, both through the real `getExEntry` — never a copy of the
+  library. Synonym tables cover the rest (`MOVE_SYNONYMS`, `MOVE_EQUIP_SYNONYMS`).
+- **★ NOTHING IS WRITTEN UNTIL EVERY NAME HAS AN ANSWER** (pick / create / skip). An unresolved
+  name imports with no muscle and silently zeroes the muscle map — the demo-corpus scar.
+- **Ids are deterministic user-scoped UUIDs** (hash of user+date+workout name), written as
+  `?on_conflict=id` upserts in batches of 50 with one retry, so a second import rewrites the same
+  rows. Only sessions the server CONFIRMED go into the local store and the notes.
+- **Notes go to the PRIVATE `profiles.workout_notes`**, never the follower-readable exercises jsonb,
+  and that PATCH is awaited BEFORE the refresh (loadUserData replaces workoutNotes).
+- **★★ `workout_history` WAS READ WITH ONE QUERY, AND POSTGREST SILENTLY CAPS A RESPONSE AT 1,000
+  ROWS.** Nobody had hit it; an import is the first thing that puts a user past it. Because
+  `loadUserData` REPLACES history wholesale, a truncated read would have silently deleted the
+  OLDEST sessions from the phone on every refresh — no error, the newest 1,000 look fine.
+  `fetchAllPages` pages it in 500s. Any other table that can grow past 1,000 per user needs the
+  same treatment before it gets there.
+- **Known side effect:** after import, `loadUserData`'s PR self-heal bumps `personal_records` for
+  every improved best, and the `updated_at` trigger stamps them NOW — so the importer's weekly PR
+  count on Friends Activity can read high that week. The dated log (`pr_events`) is untouched.
+**Guards:** `sim_strongimport` (parser/resolver, 41 checks) and `pw_strongimport` (the screen,
+against a stateful stub that models the uuid/user_id constraints and the 1,000-row cap).
+Red-proofed: reverting to a single history query fails "1,120 sessions" at exactly 1000; counting
+refused batches as saved fails the notes check. **★ And the guard's first run failed on its own
+probe, the documented overlay trap:** after the first import the profile UNDER the importer lists
+twenty sessions containing "Cable Fly (Neutral)", `.first()` clicked one of those off-screen cards,
+nothing was picked and the sheet covered the next button. It now clicks the match that
+`elementFromPoint` confirms is on screen. **And the local "only what the server confirmed" filter
+is invisible to any guard** — the refresh overwrites it — so the observable half (notes) is what
+is asserted.
+
 ## ★★ THE ONBOARDING WENT 8 SCREENS -> 2, AND THE DEAD QUESTION IS GONE (Sep 16 2026)
 Mo: "Is the onboarding too long?" Driven end to end as a real new signup at 402x874 rather than
 read, because the step count is computed (`introScreens + questions + maybe-follow + closing`) and

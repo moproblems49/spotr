@@ -170,8 +170,8 @@ const graced = (wd, target, extra = {}) => run(wd, target, { graceEvery: GRACE, 
   const spec = {}; for (let w = 1; w <= 12; w++) spec[w] = 2;
   const wd = weeks(spec);
   const hist = [{ until: "2026-09-14", target: 2 }];
-  const viaStore = storeStreak({ workoutDates: wd, weeklyTarget: 3, weeklyTargetHistory: hist });
-  const direct = calcWeeklyStreak(wd, 3, { targetHistory: hist });
+  const viaStore = storeStreak({ workoutDates: wd, weeklyTarget: 3, weeklyTargetHistory: hist }, undefined, NOW);
+  const direct = calcWeeklyStreak(wd, 3, { targetHistory: hist, now: NOW });
   check("[store] storeStreak passes the history through", viaStore.count === direct.count && viaStore.count > 1, `count=${viaStore.count}`);
   check("[store] a missing store degrades to the defaults", storeStreak(undefined).count === 0);
   check("[store] plusDateKey adds today without mutating the store", (() => {

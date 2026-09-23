@@ -260,12 +260,15 @@ function calcWeeklyStreak(workoutDates, target = 3, opts = {}) {
 // The friend-stats call in DiscoverScreen deliberately does NOT come through here: it passes a
 // FRIEND's dates and a FRIEND's target, and their history is not in public_profiles (nor should
 // it be). Grace still applies there, because grace lives inside calcWeeklyStreak itself.
-function storeStreak(store, plusDateKey) {
+// `now` is for tests only: a caller that omits it gets the wall clock, exactly as before. Without
+// it sim_streakgrace's [store] check was pinned to a fixed fixture date while this read today, so
+// it went red on its own nine days after it was written.
+function storeStreak(store, plusDateKey, now) {
   const base = (store && store.workoutDates) || {};
   return calcWeeklyStreak(
     plusDateKey ? { ...base, [plusDateKey]: true } : base,
     (store && store.weeklyTarget) || 3,
-    { targetHistory: store && store.weeklyTargetHistory }
+    { targetHistory: store && store.weeklyTargetHistory, ...(now != null ? { now } : {}) }
   );
 }
 

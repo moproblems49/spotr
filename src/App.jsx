@@ -1,4 +1,4 @@
-// v178091717064
+// v178091717066
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -10682,6 +10682,7 @@ export function CreateExercisePicker({ name, C, store, setStore, currentUserId, 
 // History row's edit action.
 const EditHistoryModal = lazy(() => import("./lazy/EditHistoryModal.jsx"));
 const CoachScreen = lazy(() => import("./lazy/CoachScreen.jsx"));
+const StrongImport = lazy(() => import("./lazy/StrongImport.jsx"));
 
 // Swipeable stack of progress-insight cards (Robinhood-style): swipe a card away to
 // dismiss it and reveal the next. No close button. Tracks finger; snaps back if the
@@ -11604,6 +11605,31 @@ let _lastSettingsEditAt = 0;
 // SyntaxError — the same trap the _discoverSubTab getter/setter pair exists for). BodyTrackingScreen
 // writes `body_log`, which the recent-edit guard now covers, so it needs a real setter.
 function markSettingsEdit() { _lastSettingsEditAt = Date.now(); }
+
+// Read EVERY row a query matches, a page at a time. PostgREST silently truncates any response at
+// the project's "Max rows" API setting (Supabase default 1,000), and it does so WITHOUT an error:
+// the client just receives fewer rows. For `workout_history` that was harmless while a user could
+// only ever log sessions by hand -- and stopped being harmless the day a Strong import could land
+// six years of training at once. `loadUserData` REPLACES history wholesale, so a truncated read
+// would silently delete the oldest sessions from the phone on every foreground, with nothing on
+// screen to say so (the dominant bug class in this app, reached through the API instead of a
+// bare setStore).
+// Stops on a SHORT page, so anyone under PAGE rows still makes exactly one request, as before.
+// That is only correct while the server cap is >= PAGE: a cap below it would return a short page
+// that is NOT the end. The cap here is the platform default (1,000) and has never been changed;
+// if it ever is, lower PAGE with it. The `id` tiebreak makes the order total, so a row cannot
+// straddle two pages when timestamps collide.
+const HISTORY_PAGE = 500;
+async function fetchAllPages(path, tok) {
+  const out = [];
+  for (let offset = 0; offset < 200000; offset += HISTORY_PAGE) {
+    const rows = await sb.query(`${path}&limit=${HISTORY_PAGE}&offset=${offset}`, {}, tok);
+    if (!Array.isArray(rows)) break;
+    out.push(...rows);
+    if (rows.length < HISTORY_PAGE) break;
+  }
+  return out;
+}
 // ESM import bindings are read-only from the importing side even when the source `let` is
 // mutable — DiscoverScreen (src/lazy/DiscoverScreen.jsx) needs to both read AND write this
 // module-level value (that's the whole point of it — see the note above), so it goes through
@@ -15020,7 +15046,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtTime(sess.duration||0)} · {done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:C.red, fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}</div>
+                          <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>{sess.duration ? `${fmtTime(sess.duration)} · ` : ""}{done} set{done === 1 ? "" : "s"} · {Math.round(vol).toLocaleString()} {sess.unit||"lbs"}{sess.hrSummary?.avg ? <span style={{ color:C.red, fontWeight:600 }}>{hrInline(sess.hrSummary)}</span> : null}</div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                           {/* THE BADGE HAS ONE FORM: `PRTag`. This chip was missed when the badge
@@ -16874,6 +16900,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   const coverImgRef = useRef(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showCoaching, setShowCoaching] = useState(false);
+  const [showStrongImport, setShowStrongImport] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSending, setFeedbackSending] = useState(false);
   async function submitFeedback() {
@@ -17602,6 +17629,15 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             onBack={() => setShowCoaching(false)}/>
         </Suspense>
       )}
+      {/* Gated on the flag for the same reason as CoachScreen above: an ungated lazy component
+          fetches its chunk on every mount of the parent. onDone runs the full refresh, which
+          re-reads history from the server and rebuilds PRs from it. */}
+      {showStrongImport && (
+        <Suspense fallback={null}>
+          <StrongImport C={C} store={store} setStore={setStore} currentUserId={currentUserId} token={token}
+            unit={displayUnit} onBack={() => setShowStrongImport(false)} onDone={onRefresh}/>
+        </Suspense>
+      )}
       <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000} dragHandle
         panelStyle={{ background:C.bg, borderRadius:"18px 18px 0 0", borderTop:`1px solid ${C.overlayEdge}`, padding:"18px 16px calc(env(safe-area-inset-bottom) + 16px)", fontFamily:F }}>
         {showFeedback && (
@@ -18076,6 +18112,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Coaching</div>
                     <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Let a coach see your training, or view an athlete's</div>
+                  </div>
+                  <span style={{ fontSize:14, color:C.sub, flexShrink:0 }}>›</span>
+                </button>
+                <button onClick={() => { setShowSettings(false); setShowStrongImport(true); }} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Import from Strong</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Bring your workout history across</div>
                   </div>
                   <span style={{ fontSize:14, color:C.sub, flexShrink:0 }}>›</span>
                 </button>
@@ -20038,7 +20085,7 @@ function AppInner() {
         sb.query(`public_profiles?select=*`, {}, tok),
         sb.query(`programs?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, tok),
         sb.query(`personal_records?user_id=eq.${currentUserId}&select=*`, {}, tok),
-        sb.query(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc`, {}, tok),
+        fetchAllPages(`workout_history?user_id=eq.${currentUserId}&select=*&order=created_at.desc,id.desc`, tok),
         sb.query(`groups?select=*`, {}, tok).catch(() => []),
       ]);
       const ownRow = Array.isArray(ownRows) ? ownRows.find(p => p.id === currentUserId) : null;
