@@ -99,5 +99,28 @@ threw = "";
 try { strongToSessions(workouts, { userId: "u", unit: "lbs", nameMap: { Plank: "Plank" } }); } catch (e) { threw = e.message; }
 ok(/No mapping/.test(threw), "an unmapped exercise REFUSES rather than importing a muscle-less name", threw);
 
+// ── set shapes Seshd cannot hold ──────────────────────────────────────────────────────────────
+// A LOADED timed set must not become reps (farmer's walk 100 lb x 60 s -> "60 reps" is 6,000 lb of
+// volume and a fake 140 lb e1RM), cardio with a distance is not a rep count, and a bodyweight hold
+// still imports as seconds-in-reps. D is a drop set. Found by audit, measured before fixing.
+{
+  const H2 = "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE";
+  const csv2 = [H2,
+    '2024-06-01 10:00:00,"Mix",1h,"Farmers Walk (Dumbbell)",1,100,0,0,60,,,',
+    '2024-06-01 10:00:00,"Mix",1h,"Running",1,0,0,3.1,1500,,,',
+    '2024-06-01 10:00:00,"Mix",1h,"Plank",1,0,0,0,90,,,',
+    '2024-06-01 10:00:00,"Mix",1h,"Bench Press (Barbell)",1,185,5,0,0,,,',
+    '2024-06-01 10:00:00,"Mix",1h,"Bench Press (Barbell)",D,135,10,0,0,,,',
+  ].join("\n");
+  const r2 = parseStrongExport(csv2);
+  const ex2 = (n) => r2.workouts[0]?.exercises.find((e) => e.rawName === n);
+  ok(!ex2("Farmers Walk (Dumbbell)"), "a LOADED timed set is not imported as reps (no 6,000 lb fake volume)", JSON.stringify(ex2("Farmers Walk (Dumbbell)")?.sets));
+  ok(!ex2("Running"), "cardio with a distance is not imported as reps", JSON.stringify(ex2("Running")?.sets));
+  ok(r2.skippedTimed === 2, "both are counted so the review can say what was left out", `got ${r2.skippedTimed}`);
+  ok(ex2("Plank")?.sets[0]?.reps === "90", "[control] a bodyweight hold still imports as seconds-in-reps", JSON.stringify(ex2("Plank")?.sets));
+  ok(ex2("Bench Press (Barbell)")?.sets[1]?.type === "drop", "D -> drop set (not normal)", ex2("Bench Press (Barbell)")?.sets[1]?.type);
+  ok(ex2("Bench Press (Barbell)")?.sets[0]?.type === "normal", "[control] 1 -> normal");
+}
+
 console.log(`\n${fails ? "FAIL" : "PASS"} sim_strongimport (${fails} failure${fails === 1 ? "" : "s"})`);
 process.exit(fails ? 1 : 0);

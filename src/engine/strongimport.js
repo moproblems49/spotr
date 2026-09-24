@@ -288,13 +288,17 @@ export function parseStrongExport(text) {
   const col = (name) => head.indexOf(name);
   const C = {
     date: col("Date"), name: col("Workout Name"), dur: col("Duration"), ex: col("Exercise Name"),
-    order: col("Set Order"), w: col("Weight"), r: col("Reps"), secs: col("Seconds"),
+    order: col("Set Order"), w: col("Weight"), r: col("Reps"), secs: col("Seconds"), dist: col("Distance"),
     note: col("Notes"), wnote: col("Workout Notes"), rpe: col("RPE"),
   };
   const get = (row, i) => (i >= 0 ? (row[i] ?? "") : "");
 
   const workouts = new Map();
   let skippedSets = 0;
+  // Sets Seshd has no way to hold, counted separately so the review can SAY what was left out
+  // rather than dropping it silently: cardio (a distance) and loaded carries/holds (weight plus
+  // seconds, no reps). Seshd logs weight x reps, and a set has no duration field.
+  let skippedTimed = 0;
   for (const row of rows.slice(1)) {
     const date = get(row, C.date).trim();
     if (!/^\d{4}-\d{2}-\d{2}/.test(date)) continue;
@@ -317,13 +321,21 @@ export function parseStrongExport(text) {
 
     const order = get(row, C.order).trim();
     if (order === "Rest Timer" || !order) continue; // a timer SETTING, not a set
-    const type = order === "W" ? "warmup" : order === "F" ? "failure" : "normal";
+    // Strong's D is a drop set, which Seshd has its own type for -- mapping it to "normal" threw
+    // the label away.
+    const type = order === "W" ? "warmup" : order === "F" ? "failure" : order === "D" ? "drop" : "normal";
     let weight = cleanNum(get(row, C.w));
     let reps = cleanNum(get(row, C.r));
     const secs = parseFloat(get(row, C.secs)) || 0;
+    const dist = parseFloat(get(row, C.dist)) || 0;
+    if (!reps && dist > 0) { skippedTimed++; continue; } // cardio: a distance is not a rep count
     if (!reps && secs > 0) {
       if (secs > MAX_TIMED_SECS) { skippedSets++; continue; }
-      reps = String(Math.round(secs)); // timed hold: seconds go in reps, as a plank is logged in-app
+      // A LOADED timed set (farmer's walk 100 lb x 60 s) must not become 60 reps: that is 6,000 lb
+      // of volume and a 140 lb "estimated 1RM" out of nothing, i.e. fake PRs. Only a bodyweight
+      // hold (plank) goes in as seconds-in-reps, the way it is logged in the app.
+      if (parseFloat(weight) > 0) { skippedTimed++; continue; }
+      reps = String(Math.round(secs));
     }
     if (!reps) { skippedSets++; continue; } // an empty set: nothing was done
     const set = { weight, reps, done: true, type };
@@ -338,7 +350,7 @@ export function parseStrongExport(text) {
     if (!exercises.length) continue;
     out.push({ ...w, exercises });
   }
-  return { workouts: out, skippedSets };
+  return { workouts: out, skippedSets, skippedTimed };
 }
 
 // Turn parsed workouts into rows the app can store, given a name map (Strong name -> Seshd name)

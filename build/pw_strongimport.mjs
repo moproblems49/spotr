@@ -36,7 +36,7 @@ const csvFile = path.join(os.tmpdir(), "seshd_strong_fixture.csv");
 fs.writeFileSync(csvFile, lines.join("\n"));
 
 // ── stub server ────────────────────────────────────────────────────────────────────────────────
-function makeServer({ failDay = null, preseed = 0 } = {}) {
+function makeServer({ failDay = null, preseed = 0, native = [] } = {}) {
   const hist = new Map(); let notes = {}; const posts = [];
   const iso = (ms) => new Date(ms).toISOString();
   for (let k = 0; k < preseed; k++) {   // pre-existing history, so the total crosses the 1,000 cap
@@ -44,6 +44,12 @@ function makeServer({ failDay = null, preseed = 0 } = {}) {
     hist.set(id, { id, user_id: ME, day_name: "Old", exercises: [{ name: "Barbell Bench Press", sets: [{ weight: "100", reps: "5", done: true, type: "normal" }] }],
       duration_secs: 3000, unit: "lbs", note: "", workout_date: "2021-01-01", created_at: iso(Date.UTC(2021, 0, 1) + k * 1000) });
   }
+  // Sessions logged natively IN SESHD (random ids, as the app mints them) on the given days.
+  native.forEach((day, k) => {
+    const id = `aaaaaaaa-0000-4000-8000-${String(k).padStart(12, "0")}`;
+    hist.set(id, { id, user_id: ME, day_name: "Native", exercises: [{ name: "Barbell Bench Press", sets: [{ weight: "200", reps: "5", done: true, type: "normal" }] }],
+      duration_secs: 3000, unit: "lbs", note: "", workout_date: day, created_at: `${day}T20:00:00.000Z` });
+  });
   return { hist, posts, get notes() { return notes; }, async handle(r) {
     const q = r.request(), u = q.url(), m = q.method(); let status = 200, body = "[]";
     if (/\/rest\/v1\/workout_history/.test(u)) {
@@ -204,6 +210,39 @@ const bad = path.join(os.tmpdir(), "seshd_not_strong.csv"); fs.writeFileSync(bad
 await p3.locator("input[data-strong-file]").setInputFiles(bad); await p3.waitForTimeout(700);
 check("it is refused with a readable message", /doesn't look like a Strong export/.test(await overlayText(p3)));
 await p3.close();
+
+// ── 5. a Strong workout on a day already logged IN SESHD ─────────────────────────────────────────
+// Native ids are random, so no id match can catch this; without the day check someone who used both
+// apps side by side imports every shared day twice. Day 3 of the fixture is 2023-01-11.
+console.log("\n[5] a Strong workout on a day already logged in Seshd");
+const s5 = makeServer({ native: ["2023-01-11"] });
+const p5 = await open(s5);
+await openImporter(p5);
+await p5.locator("input[data-strong-file]").setInputFiles(csvFile); await p5.waitForTimeout(900);
+const ov = p5.locator("[data-import-overlap]");
+check("the review names the overlapping workout", await ov.count() > 0 && /1 on days you already logged/i.test(await ov.innerText()), await ov.count() ? await ov.innerText() : "no overlap section");
+check("the overlap is skipped by default", (await p5.locator("[data-import-overlap] [role=switch]").getAttribute("aria-checked", { timeout: 1500 }).catch(() => null)) === "true");
+await answerAll(p5);
+const go5 = p5.locator("[data-import-go]");
+check("the button counts one fewer (119)", /Import 119 workouts/.test(await go5.innerText()), await go5.innerText());
+await go5.click(); await watchText(p5, 5000);
+const dayRows = [...s5.hist.values()].filter(r => r.workout_date === "2023-01-11");
+check("that day still holds ONLY the native session (not a second copy)", dayRows.length === 1 && dayRows[0].day_name === "Native", JSON.stringify(dayRows.map(r => r.day_name)));
+check("[control] the other 119 Strong workouts landed", [...s5.hist.values()].filter(r => r.day_name !== "Native").length === 119);
+check("no page errors in [5]", p5._errors.length === 0, p5._errors.join(" | "));
+await p5.close();
+
+// Turning it off imports it after all -- the switch must govern the write, not just the label.
+const s6 = makeServer({ native: ["2023-01-11"] });
+const p6 = await open(s6);
+await openImporter(p6);
+await p6.locator("input[data-strong-file]").setInputFiles(csvFile); await p6.waitForTimeout(900);
+await p6.locator("[data-import-overlap] [role=switch]").click({ timeout: 1500 }).catch(() => {}); await p6.waitForTimeout(200);
+await answerAll(p6);
+check("switched off, the button counts all 120", /Import 120 workouts/.test(await p6.locator("[data-import-go]").innerText()));
+await p6.locator("[data-import-go]").click(); await watchText(p6, 5000);
+check("switched off, the overlapping day gets the Strong workout too", [...s6.hist.values()].filter(r => r.workout_date === "2023-01-11").length === 2);
+await p6.close();
 
 await b.close();
 console.log(`\n${fails ? "FAIL" : "PASS"} pw_strongimport (${fails} failure${fails === 1 ? "" : "s"})`);

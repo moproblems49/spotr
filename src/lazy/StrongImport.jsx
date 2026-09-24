@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   F, MONO, RADIUS, sb, toast, markSettingsEdit, EdgeSwipeBack, KB_SAFE_INSET,
-  ExercisePickerSheet, SectionLabel,
+  ExercisePickerSheet, SectionLabel, Switch,
 } from "../App.jsx";
 import { devError } from "../engine/core.js";
 import { getMuscle } from "../engine/exercises.js";
@@ -35,6 +35,7 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
   const [picking, setPicking] = useState(null); // raw name currently being mapped
   const [showMatched, setShowMatched] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+  const [skipOverlap, setSkipOverlap] = useState(true);
 
   // Sets per raw exercise name, so the list can lead with what matters most.
   const setCounts = useMemo(() => {
@@ -55,19 +56,36 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
   // The button's count must be what will actually be WRITTEN. A workout made up only of skipped
   // exercises has nothing left to import -- measured on a real export, the label read 328 while
   // 327 landed. A label is a claim about a number.
-  const importCount = (parsed?.workouts || []).filter(w => w.exercises.some(e => answerFor(e.rawName) !== SKIP)).length;
-
-  // How many of these are already in Seshd (a re-import): the ids are deterministic, so they
-  // upsert onto the same rows rather than duplicating -- worth SAYING, or a second run looks scary.
-  const alreadyIn = useMemo(() => {
-    if (!parsed) return 0;
-    const have = new Set();
-    Object.values(store.history || {}).forEach(day => Object.keys(day || {}).forEach(id => have.add(id)));
+  // The id each Strong workout WILL have, aligned with parsed.workouts. Ids are deterministic, so
+  // this answers two different questions below without a second conversion.
+  const importIds = useMemo(() => {
+    if (!parsed) return [];
     const nameMap = Object.fromEntries(rawNames.map(r => [r, "x"]));
-    try {
-      return strongToSessions(parsed.workouts, { userId: currentUserId, unit, nameMap }).filter(s => have.has(s.id)).length;
-    } catch { return 0; }
-  }, [parsed, store.history, currentUserId, unit, rawNames]);
+    try { return strongToSessions(parsed.workouts, { userId: currentUserId, unit, nameMap }).map(s => s.id); }
+    catch { return []; }
+  }, [parsed, currentUserId, unit, rawNames]);
+
+  // (1) Already imported (a re-run): upserts onto the same rows rather than duplicating -- worth
+  // SAYING, or a second run looks scary.
+  // (2) OVERLAP: a Strong workout on a day that already holds a session logged IN SESHD. Those ids
+  // can never match (a native session's id is random), so without this a person who ran both apps
+  // side by side imports every shared day twice and doubles volume, streak and training load. It
+  // is keyed on the DAY because that is all the two apps share; an ordinary second session on the
+  // same day is possible, which is why this is a choice (default: skip) rather than a rule.
+  const { alreadyIn, overlapIdx } = useMemo(() => {
+    const hist = store.history || {};
+    const mine = new Set(importIds);
+    let already = 0; const overlap = new Set();
+    (parsed?.workouts || []).forEach((w, i) => {
+      const day = hist[w.date.slice(0, 10)] || {};
+      const ids = Object.keys(day);
+      if (ids.includes(importIds[i])) already++;
+      else if (ids.some(id => !mine.has(id))) overlap.add(i);
+    });
+    return { alreadyIn: already, overlapIdx: overlap };
+  }, [parsed, store.history, importIds]);
+  const excluded = (i) => skipOverlap && overlapIdx.has(i);
+  const importCount = (parsed?.workouts || []).filter((w, i) => !excluded(i) && w.exercises.some(e => answerFor(e.rawName) !== SKIP)).length;
 
   const onFile = async (file) => {
     setErr("");
@@ -92,6 +110,7 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
     rawNames.forEach(r => { const a = answerFor(r); if (a && a !== SKIP) nameMap[r] = a; });
     // Skipped exercises are removed BEFORE conversion, and a workout left with nothing is dropped.
     const workouts = parsed.workouts
+      .filter((w, i) => !excluded(i))
       .map(w => ({ ...w, exercises: w.exercises.filter(e => nameMap[e.rawName]) }))
       .filter(w => w.exercises.length);
     const sessions = strongToSessions(workouts, { userId: currentUserId, unit, nameMap });
@@ -242,7 +261,25 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
                     {alreadyIn} of these are already in Seshd and will be updated, not duplicated.
                   </div>
                 )}
+                {parsed.skippedTimed > 0 && (
+                  <div style={{ fontSize: 12, color: C.sub, marginTop: 6, lineHeight: 1.45 }} data-import-timed>
+                    {parsed.skippedTimed} cardio or weighted timed set{parsed.skippedTimed === 1 ? "" : "s"} won't come across — Seshd logs weight × reps, not distance or time.
+                  </div>
+                )}
               </div>
+
+              {overlapIdx.size > 0 && (
+                <div data-import-overlap>
+                  <SectionLabel C={C}>{overlapIdx.size} on days you already logged</SectionLabel>
+                  <div style={{ fontSize: 12, color: C.sub, margin: "6px 0 8px", lineHeight: 1.45 }}>
+                    {overlapIdx.size === 1 ? "This Strong workout falls" : "These Strong workouts fall"} on a day that already has a workout in Seshd. If you logged the same session in both apps, importing it counts it twice.
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Skip {overlapIdx.size === 1 ? "it" : "them"}</span>
+                    <Switch C={C} checked={skipOverlap} onChange={setSkipOverlap} label="Skip workouts on days already logged in Seshd"/>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <SectionLabel C={C}>Weights are in</SectionLabel>

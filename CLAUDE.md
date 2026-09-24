@@ -3457,6 +3457,29 @@ nothing was picked and the sheet covered the next button. It now clicks the matc
 `elementFromPoint` confirms is on screen. **And the local "only what the server confirmed" filter
 is invisible to any guard** — the refresh overwrites it — so the observable half (notes) is what
 is asserted.
+**★★ THE COLD-CONTEXT AUDIT RAN AFTER PUBLISHING (Sep 24) — the rule says before, and it paid out
+anyway.** No data loss; three real fixes, each red-proofed on its own:
+- **A Strong workout on a day already logged IN SESHD imported as a second session.** Native ids are
+  random, so no id match can ever catch it; someone who ran both apps side by side doubled volume,
+  streak and training load for every shared day. The review now names those workouts and skips them
+  by default behind a `Switch` (it is a choice, not a rule — two sessions in a day are real). Keyed on
+  the DAY because that is all the two apps share. Measured against Mo's own file: exactly ONE Strong
+  workout is dated after his first Seshd session (2026-05-21 "PULL 1", 30s) and it falls the day
+  BEFORE his nearest Seshd workout, so the day check does not flag it — told him, rather than widen
+  the window into false positives for ordinary training.
+- **A LOADED timed set became reps**: farmer's walk 100 lb x 60 s -> "60 reps" = 6,000 lb of volume
+  and a 140 lb fake e1RM. Cardio with a distance did the same. Both are skipped now and COUNTED, and
+  the review says how many; a bodyweight hold (plank) still imports as seconds-in-reps.
+- **Strong's `D` (drop set) mapped to "normal"** although Seshd has a `drop` type.
+Red-proofs: parser checks fail 4 ways on the old parser with the controls green; the overlap section
+fails 5 ways with detection neutered, naming `["Native","Day 3"]` on one day. **And the first red run
+CRASHED instead of failing** — a `getAttribute` on the absent switch timed out and killed the suite,
+printing one FAIL and no verdict. A red-proof that crashes hides every check after the crash; the
+reads are guarded now so the red run names all of them.
+**Known and left, from the same audit:** `fetchAllPages` offset-pages, so a DELETE racing a load can
+skip one row until the next refresh (harmless, and far better than the old 1,000 cap); a decimal
+comma ("102,5") truncates if some locale exports it; and the notes PATCH is duplicated by the
+prefs-sync effect's own durable write, so "notes didn't save" can be a false alarm.
 
 ## ★★ THE ONBOARDING WENT 8 SCREENS -> 2, AND THE DEAD QUESTION IS GONE (Sep 16 2026)
 Mo: "Is the onboarding too long?" Driven end to end as a real new signup at 402x874 rather than

@@ -1,4 +1,4 @@
-// v178091717066
+// v178091717067
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15878,7 +15878,7 @@ function useExerciseCues() {
 // and volt stays reserved for PRs, progress, the muscle map and the streak. The knob takes
 // `C.onPrimary` when on so it contrasts against the filled track on both themes, and carries a
 // shadow so it still reads against the pale OFF track on the light theme.
-function Switch({ checked, onChange, label, C }) {
+export function Switch({ checked, onChange, label, C }) {
   const W = 46, H = 28, PAD = 3, KNOB = H - PAD * 2;
   return (
     <button
