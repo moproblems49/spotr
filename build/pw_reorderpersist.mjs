@@ -172,6 +172,9 @@ async function programNames(page) {
   // Wait the throttle out BEFORE the edit, which is also the realistic shape of the race: app open
   // a while, then a change, then a background/foreground.
   await page.waitForTimeout(31000);
+  // Notifications and Custom exercises are collapsed disclosures now; open them the way a finger would.
+  await page.evaluate(() => document.querySelectorAll('[data-disclosure]').forEach(b => b.getAttribute("aria-expanded") === "false" && b.click()));
+  await page.waitForTimeout(300);
   const hasRow = await page.evaluate(() => /Zolgar Row/.test(document.body.innerText));
   check("4a. the custom exercise is listed in Settings", hasRow);
   if (hasRow) {

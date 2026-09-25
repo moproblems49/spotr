@@ -53,6 +53,9 @@ for (const theme of ["dark", "light"]) {
   await page.waitForTimeout(900);
   await page.evaluate(() => { const s = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => (x.getAttribute("aria-label") || "") === "Settings"); s && s.click(); });
   await page.waitForTimeout(1300);
+  // Notifications and Custom exercises are collapsed disclosures now; open them the way a finger would.
+  await page.evaluate(() => document.querySelectorAll('[data-disclosure]').forEach(b => b.getAttribute("aria-expanded") === "false" && b.click()));
+  await page.waitForTimeout(300);
 
   const info = await page.evaluate(() => {
     const sw = [...document.querySelectorAll('[role="switch"]')];
@@ -155,6 +158,9 @@ for (const theme of ["dark", "light"]) {
   await page.waitForTimeout(900);
   await page.evaluate(() => { const s = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => (x.getAttribute("aria-label") || "") === "Settings"); s && s.click(); });
   await page.waitForTimeout(1200);
+  // Notifications and Custom exercises are collapsed disclosures now; open them the way a finger would.
+  await page.evaluate(() => document.querySelectorAll('[data-disclosure]').forEach(b => b.getAttribute("aria-expanded") === "false" && b.click()));
+  await page.waitForTimeout(300);
   const readKudos = () => page.evaluate(() => { const k = [...document.querySelectorAll('[role="switch"]')].find(s => s.getAttribute("aria-label") === "Kudos"); return k && k.getAttribute("aria-checked"); });
   // Read WHICH unit is selected, not the selected button's colour: this section also switches the
   // THEME, which repaints the whole palette, so an absolute-colour comparison fails for a reason

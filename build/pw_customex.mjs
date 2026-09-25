@@ -52,6 +52,9 @@ await page.waitForTimeout(900);
 await page.evaluate(() => { const s=[...document.querySelectorAll("button")].filter(x=>x.offsetParent).find(x=>(x.getAttribute("aria-label")||"")==="Settings"); s&&s.click(); });
 await page.waitForTimeout(1300);
 // Scroll the settings sheet to the custom-exercises section.
+// Notifications and Custom exercises are collapsed disclosures now; open them the way a finger would.
+await page.evaluate(() => document.querySelectorAll('[data-disclosure]').forEach(b => b.getAttribute("aria-expanded") === "false" && b.click()));
+await page.waitForTimeout(300);
 await page.evaluate(() => { const c=[...document.querySelectorAll("*")].filter(el=>{const cs=getComputedStyle(el);
   return /auto|scroll/.test(cs.overflowY)&&el.scrollHeight>el.clientHeight+8&&el.clientHeight>200;});
   const el=c.sort((a,b)=>(b.scrollHeight-b.clientHeight)-(a.scrollHeight-a.clientHeight))[0]; if(el) el.scrollTop=el.scrollHeight; });

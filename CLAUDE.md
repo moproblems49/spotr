@@ -3415,6 +3415,40 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   worked example of a reasoned-not-observed fix that turned out right — and of why `pw_reorder`
   now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
+## ★ SETTINGS REGROUPED, AND A <button> CENTRES ITS TEXT BY DEFAULT (Sep 25 2026)
+Mo, from his phone: "coaching and import are pushed off." They were `<button>` rows whose child
+is a block `<div>` (title + subtitle), and **a button's default `text-align` is CENTER** — the
+block inherits it, so the title centred over a left-hugging subtitle (measured on the old build:
+Coaching's title 103px in from where it belongs, Import 32px). The one-line rows hid the same bug:
+a lone child in a `space-between` flex row is only as wide as its text. `AppVersionRow` and
+`HealthConnectRow` already carried `textAlign:"left"`; the rows written after them never got it —
+**one guard that didn't get copied, fifth recorded instance.** Every settings row button now sets it.
+**The sections, in order:** PREFERENCES · TRAINING (weekly target) · CUSTOM EXERCISES (only when
+any exist) · PRIVACY (public profile + **Coaching**, since both answer "who can see my training") ·
+NOTIFICATIONS · YOUR DATA (Apple Health, Import from Strong, both exports) · SUPPORT (app version,
+feedback) · ACCOUNT (signed in as, sign out, delete). The old ABOUT section is **deleted**: it
+hardcoded "Version 1.0 (beta)" beside the real `AppVersionRow`, i.e. a second, wrong answer to the
+same question. Also fixed: the notification card's divider was `i < 3` from when it had four
+toggles, so "New followers" and "Streak reminders" ran together.
+**Then Mo, same day: "I meant like clicking Notifications opens the notification settings drop
+down."** So Notifications and Custom exercises are DISCLOSURES now (`SettingsDisclosure`, the
+Appearance picker's shape made reusable): Notifications folds into the PREFERENCES card and shows
+"All on" / "N of 5 on" / "Off" when collapsed; Custom exercises folds into TRAINING and shows its
+count. Both start closed and reset on every Settings close. Children are CONDITIONALLY rendered —
+a `display:none` row can still be `el.click()`ed by a suite, which is exactly how the Appearance
+picker's guard once passed on a build whose disclosure never opened. **Any suite that touches a
+notification switch or a custom-exercise Remove must open the disclosure first**
+(`[data-disclosure]`, `aria-expanded`) — `pw_switch`, `pw_customex` and `pw_reorderpersist` do.
+The nav rows also dropped their bold titles and text "›" for the regular-weight + icon chevron
+every other row uses. Red-proof for the disclosure half: rendering children unconditionally fails
+"collapsed means absent from the DOM" at both widths.
+**Guard: `pw_settingsrows`** — measures the INK of each row's first text node (a `Range`, not the
+button's box, which is exactly where it should be on the broken build) against its CARD's 14px
+inset, at 402 and 375px, and pins the section order. Red-proofed: reverting the `textAlign` fails
+naming `["Coaching",103],["Import from Strong",32]`. It measures against the card rather than the
+button because the Appearance disclosure is a padding-less button inside a padded row — correct,
+and it reads as 0px against its own box.
+
 ## ★★ IMPORT FROM STRONG (Sep 23 2026) — and the 1,000-row cap it exposed
 Mo asked for ways to beat the competition; importing an existing log removes the biggest reason
 not to switch. Profile → Settings → **Import from Strong** (`src/lazy/StrongImport.jsx`, parser

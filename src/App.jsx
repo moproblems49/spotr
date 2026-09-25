@@ -1,4 +1,4 @@
-// v178091717067
+// v178091717070
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11400,6 +11400,31 @@ export function FlatRow({ idx, C, onClick, style, children }) {
 // to tell whether an over-the-air update landed — the app looks identical either way, which made a
 // silent OTA failure impossible to diagnose. "Bundle" is the OTA payload (or "built-in" when the
 // app is still on the code that shipped inside the TestFlight/App Store build).
+// A collapsible Settings row: label + a summary of the collapsed state + the rotating chevron,
+// matching the Appearance picker. The borderTop belongs to the disclosure, so it never depends on
+// the row above remembering a borderBottom. Children are CONDITIONALLY rendered, not hidden — a
+// display:none row can still be clicked by a suite, which would let a check pass against a build
+// whose disclosure never opens.
+function SettingsDisclosure({ C, label, summary, open, onToggle, hook, children }) {
+  return (
+    <div style={{ borderTop:`1px solid ${C.divider}` }}>
+      <button onClick={onToggle} aria-expanded={open} data-disclosure={hook} style={{
+        width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+        padding:"14px", background:"none", border:"none", cursor:"pointer", fontFamily:F, textAlign:"left",
+      }}>
+        <span style={{ fontSize:14, color:C.text }}>{label}</span>
+        <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <span style={{ fontSize:13, color:C.sub }}>{summary}</span>
+          <span style={{ display:"flex", transform:`rotate(${open ? 90 : 0}deg)`, transition:`transform 0.2s ${EASE_NAV}` }}>
+            <Icon name="chevron-right" size={16} color={C.sub}/>
+          </span>
+        </span>
+      </button>
+      {open && <div style={{ borderTop:`1px solid ${C.divider}` }}>{children}</div>}
+    </div>
+  );
+}
+
 function AppVersionRow({ C }) {
   const [bundle, setBundle] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -16932,7 +16957,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
   // remembering, so Settings always opens looking the same — and one effect covers every close
   // path (Done, the backdrop, the drag-to-dismiss) instead of three handlers that can drift.
   const [themeOpen, setThemeOpen] = useState(false);
-  useEffect(() => { if (!showSettings) setThemeOpen(false); }, [showSettings]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  useEffect(() => { if (!showSettings) { setThemeOpen(false); setNotifOpen(false); setCustomOpen(false); } }, [showSettings]);
   const [showBody, setShowBody] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false); // overflow menu (Report / Block) for other users
   const [showDelete, setShowDelete] = useState(false);
@@ -17857,91 +17884,75 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     ))}
                   </div>
                 </div>
-              </div>
-
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PRIVACY</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
-                  <div style={{ flex:1, paddingRight:12 }}>
-                    <div style={{ fontSize:14, color:C.text }}>Public profile</div>
-                    {/* Follow approval changed what this toggle actually does, and the old copy
-                        only mentioned the share link — the far bigger consequence is that people
-                        now have to ask before they can see anything. */}
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>On: anyone can see your workouts and follow you straight away. Off: people must ask to follow, and until you approve them they see nothing.</div>
-                  </div>
-                  <Switch
-                    checked={store.isPublic === true} // default off (private) until opted in
-                    label="Public profile"
-                    C={C}
-                    onChange={async (val) => {
-                      setStore(p => ({ ...p, isPublic: val }));
-                      _lastSettingsEditAt = Date.now();
-                      const tok = token || loadSession()?.access_token;
-                      if (tok) {
-                        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
-                        catch (e) { devError("privacy save error:", e); }
-                      }
-                      haptic("tap");
-                    }}/>
-                </div>
-              </div>
-
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>NOTIFICATIONS</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-                {[
-                  ["messages", "Messages"],
-                  ["kudos", "Kudos"],
-                  ["comments", "Comments"],
-                  ["follows", "New followers"],
-                  // "streak" is the key the SERVER already reads —
-                  // get_streak_at_risk_candidates gates on
-                  // `coalesce(notification_prefs->>'streak','true') <> 'false'` — but nothing in
-                  // the app ever set it, so the weekly Sunday push ("Your streak is on the line")
-                  // shipped with no in-app way to switch it off. Harmless while Mo was the only
-                  // user; not once the App Store release went live. The label says STREAK
-                  // deliberately rather than a vaguer "Training reminders": that is the only
-                  // thing this key controls today, and a toggle promising more than it governs is
-                  // the same class of lie as a tile label that misnames its number. Widen the
-                  // label when a second reminder actually rides this key.
-                  // Default-ON needs no migration and that was checked, not assumed: the server
-                  // coalesces a missing key to 'true', and the row below reads
-                  // `prefs[key] !== false`, so an existing profile with no "streak" key renders
-                  // ON on both sides and only a deliberate toggle-off writes false.
-                  ["streak", "Streak reminders"],
-                ].map(([key, label], i) => {
+                {(() => {
+                  // NOTIFICATIONS IS A DISCLOSURE (Mo, Sep 25: "clicking notifications opens the
+                  // notification settings"). Five switches permanently open made them the heaviest
+                  // block on the sheet for a control most people set once; the collapsed row still
+                  // reports the state so nothing is hidden that the reader needs at a glance.
                   const prefs = store.notificationPrefs || {};
-                  const on = prefs[key] !== false;
+                  const keys = ["messages","kudos","comments","follows","streak"];
+                  const onN = keys.filter(k => prefs[k] !== false).length;
+                  const summary = onN === keys.length ? "All on" : onN === 0 ? "Off" : `${onN} of ${keys.length} on`;
                   return (
-                    <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom: i < 3 ? `1px solid ${C.divider}` : "none" }}>
-                      <div style={{ fontSize:14, color:C.text }}>{label}</div>
-                      <Switch
-                        checked={on}
-                        label={label}
-                        C={C}
-                        onChange={async (val) => {
-                          const nextPrefs = { ...prefs, [key]: val };
-                          setStore(p => ({ ...p, notificationPrefs: nextPrefs }));
-                          // Stamp the edit, exactly as the units / weekly-target / public-profile
-                          // writes do. Without it loadUserData's 20s "a settings edit just
-                          // happened" window does not cover this field, and a foreground refresh
-                          // landing before the queued PATCH does re-serves the server's stale
-                          // value — the switch visibly flips back under the user's finger. The
-                          // write is durable so it self-heals on a later load, which is exactly
-                          // what makes it look like a glitch rather than a failure.
-                          _lastSettingsEditAt = Date.now();
-                          const tok = token || loadSession()?.access_token;
-                          if (tok) {
-                            try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
-                            catch (e) { devError("notification_prefs save error:", e); }
-                          }
-                          haptic("tap");
-                        }}/>
-                    </div>
+                <SettingsDisclosure C={C} label="Notifications" summary={summary} hook="notifications"
+                  open={notifOpen} onToggle={() => setNotifOpen(o => !o)}>
+                    {[
+                      ["messages", "Messages"],
+                      ["kudos", "Kudos"],
+                      ["comments", "Comments"],
+                      ["follows", "New followers"],
+                      // "streak" is the key the SERVER already reads —
+                      // get_streak_at_risk_candidates gates on
+                      // `coalesce(notification_prefs->>'streak','true') <> 'false'` — but nothing in
+                      // the app ever set it, so the weekly Sunday push ("Your streak is on the line")
+                      // shipped with no in-app way to switch it off. Harmless while Mo was the only
+                      // user; not once the App Store release went live. The label says STREAK
+                      // deliberately rather than a vaguer "Training reminders": that is the only
+                      // thing this key controls today, and a toggle promising more than it governs is
+                      // the same class of lie as a tile label that misnames its number. Widen the
+                      // label when a second reminder actually rides this key.
+                      // Default-ON needs no migration and that was checked, not assumed: the server
+                      // coalesces a missing key to 'true', and the row below reads
+                      // `prefs[key] !== false`, so an existing profile with no "streak" key renders
+                      // ON on both sides and only a deliberate toggle-off writes false.
+                      ["streak", "Streak reminders"],
+                    ].map(([key, label], i, all) => {
+                      const prefs = store.notificationPrefs || {};
+                      const on = prefs[key] !== false;
+                      return (
+                        <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom: i < all.length - 1 ? `1px solid ${C.divider}` : "none" }}>
+                          <div style={{ fontSize:14, color:C.text }}>{label}</div>
+                          <Switch
+                            checked={on}
+                            label={label}
+                            C={C}
+                            onChange={async (val) => {
+                              const nextPrefs = { ...prefs, [key]: val };
+                              setStore(p => ({ ...p, notificationPrefs: nextPrefs }));
+                              // Stamp the edit, exactly as the units / weekly-target / public-profile
+                              // writes do. Without it loadUserData's 20s "a settings edit just
+                              // happened" window does not cover this field, and a foreground refresh
+                              // landing before the queued PATCH does re-serves the server's stale
+                              // value — the switch visibly flips back under the user's finger. The
+                              // write is durable so it self-heals on a later load, which is exactly
+                              // what makes it look like a glitch rather than a failure.
+                              _lastSettingsEditAt = Date.now();
+                              const tok = token || loadSession()?.access_token;
+                              if (tok) {
+                                try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ notification_prefs: nextPrefs }) }, tok); }
+                                catch (e) { devError("notification_prefs save error:", e); }
+                              }
+                              haptic("tap");
+                            }}/>
+                        </div>
+                      );
+                    })}
+                </SettingsDisclosure>
                   );
-                })}
+                })()}
               </div>
 
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>STREAK</div>
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>TRAINING</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
                   <div>
@@ -17977,110 +17988,182 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     ))}
                   </div>
                 </div>
-              </div>
-
-              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ABOUT</div>
-              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
-                  <div style={{ fontSize:14, color:C.text }}>Version</div>
-                  <div style={{ fontSize:13, color:C.sub }}>1.0 (beta)</div>
-                </div>
-              </div>
-
-
-              {(store.customExercises || []).length > 0 && (
-                <>
-                  <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>CUSTOM EXERCISES</div>
-                  <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
-                    {(store.customExercises || []).map((ex) => (
-                      <div key={ex.id || ex.name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                        <div style={{ minWidth:0, paddingRight:12 }}>
-                          <div style={{ fontSize:14, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ex.name}</div>
-                          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.muscle}{ex.equipment && ex.equipment !== "Other" ? ` · ${ex.equipment}` : ""}</div>
-                        </div>
+                {(store.customExercises || []).length > 0 && (
+                  // Custom exercises live with TRAINING now, collapsed: the list is only ever
+                  // opened to fix or remove one, and open by default it pushed everything below it
+                  // off the sheet for anyone with more than a few.
+                  <SettingsDisclosure C={C} label="Custom exercises" summary={String((store.customExercises || []).length)}
+                    hook="custom-exercises" open={customOpen} onToggle={() => setCustomOpen(o => !o)}>
+                        {(store.customExercises || []).map((ex) => (
+                          <div key={ex.id || ex.name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+                            <div style={{ minWidth:0, paddingRight:12 }}>
+                              <div style={{ fontSize:14, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ex.name}</div>
+                              <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>{ex.muscle}{ex.equipment && ex.equipment !== "Other" ? ` · ${ex.equipment}` : ""}</div>
+                            </div>
+                            <button onClick={() => {
+                              // REMOVING A CUSTOM EXERCISE SILENTLY STRIPS THE MUSCLE MAPPING FROM
+                              // EVERY PAST WORKOUT THAT USED IT, and until now it happened on one tap
+                              // with no warning. History keeps the name and its volume, but the name
+                              // no longer resolves: measured, a 4-set session went from {Back: 4} to
+                              // {} in weeklyMuscleVolume the moment the registry lost it — so those
+                              // sets stop counting toward the muscle map, muscle readiness and "most
+                              // trained" while still showing in History. That is the documented
+                              // library-invisible-name failure, reachable from a Settings button.
+                              // Destructive controls go through confirmAction in this app; these two
+                              // never did. The count comes from real history so the warning is
+                              // specific rather than a generic "are you sure".
+                              const sessions = Object.values(store.history || {})
+                                .flatMap(day => Object.values(day || {}))
+                                .filter(sess => (sess.exercises || []).some(e => e.name === ex.name)).length;
+                              confirmAction({
+                                title: `Remove ${ex.name}?`,
+                                message: sessions > 0
+                                  ? `${sessions} logged workout${sessions === 1 ? "" : "s"} use${sessions === 1 ? "s" : ""} this exercise. ${sessions === 1 ? "It" : "They"} will stay in your history, but ${sessions === 1 ? "its" : "their"} sets will stop counting toward your muscle map.`
+                                  : "It will be removed from your exercise list. No logged workouts use it.",
+                                confirmLabel: "Remove",
+                                cancelLabel: "Keep",
+                                destructive: true,
+                                onConfirm: () => {
+                                  // Derive from the LIVE store inside the updater, not from the
+                                  // render-time snapshot: the confirm sheet stretches the gap between
+                                  // reading and writing from ~0 to however long the user takes, and a
+                                  // foreground refresh landing in that gap would otherwise let a stale
+                                  // list clobber a custom exercise added on another device — locally
+                                  // and on the server, since the same array is PATCHed.
+                                  // ★ DERIVE `next` OUTSIDE THE UPDATER. Assigning it inside and
+                                  // reading it below only works when React invokes the updater
+                                  // EAGERLY, which it does not when the store's fiber already has a
+                                  // pending update — and this fiber takes interval-driven ones (the
+                                  // message poll, the feed refresh, the health sync). In that case
+                                  // `next` stays `[]` and the PATCH sends `custom_exercises: []`,
+                                  // wiping EVERY custom exercise instead of the one being removed,
+                                  // and `setCustomExerciseRegistry([])` strips the muscle mapping
+                                  // from every past workout that used any of them. The updater form
+                                  // was chosen to read the freshest list; the recent-edit guard in
+                                  // loadUserData now covers that window, and a stale-by-one-render
+                                  // list is a far smaller problem than an empty one.
+                                  const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
+                                  setStore(p => ({ ...p, customExercises: next }));
+                                  setCustomExerciseRegistry(next);
+                                  const tok = token || loadSession()?.access_token;
+                                  markSettingsEdit();
+                                  if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
+                                  haptic("tap");
+                                },
+                              });
+                            }} style={{ flexShrink:0, background:"none", border:"none", color:C.red, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Remove</button>
+                          </div>
+                        ))}
                         <button onClick={() => {
-                          // REMOVING A CUSTOM EXERCISE SILENTLY STRIPS THE MUSCLE MAPPING FROM
-                          // EVERY PAST WORKOUT THAT USED IT, and until now it happened on one tap
-                          // with no warning. History keeps the name and its volume, but the name
-                          // no longer resolves: measured, a 4-set session went from {Back: 4} to
-                          // {} in weeklyMuscleVolume the moment the registry lost it — so those
-                          // sets stop counting toward the muscle map, muscle readiness and "most
-                          // trained" while still showing in History. That is the documented
-                          // library-invisible-name failure, reachable from a Settings button.
-                          // Destructive controls go through confirmAction in this app; these two
-                          // never did. The count comes from real history so the warning is
-                          // specific rather than a generic "are you sure".
+                          // The same hazard as Remove, multiplied by every custom exercise at once —
+                          // and this one fired on a single tap with no confirmation at all.
+                          const names = new Set((store.customExercises || []).map(e => e.name));
                           const sessions = Object.values(store.history || {})
                             .flatMap(day => Object.values(day || {}))
-                            .filter(sess => (sess.exercises || []).some(e => e.name === ex.name)).length;
+                            .filter(sess => (sess.exercises || []).some(e => names.has(e.name))).length;
+                          const n = (store.customExercises || []).length;
                           confirmAction({
-                            title: `Remove ${ex.name}?`,
+                            title: `Clear all ${n} custom exercise${n === 1 ? "" : "s"}?`,
                             message: sessions > 0
-                              ? `${sessions} logged workout${sessions === 1 ? "" : "s"} use${sessions === 1 ? "s" : ""} this exercise. ${sessions === 1 ? "It" : "They"} will stay in your history, but ${sessions === 1 ? "its" : "their"} sets will stop counting toward your muscle map.`
-                              : "It will be removed from your exercise list. No logged workouts use it.",
-                            confirmLabel: "Remove",
+                              ? `${sessions} logged workout${sessions === 1 ? "" : "s"} ${sessions === 1 ? "uses" : "use"} them. ${sessions === 1 ? "It" : "They"} will stay in your history, but ${sessions === 1 ? "its" : "their"} sets will stop counting toward your muscle map.`
+                              : "They will be removed from your exercise list. No logged workouts use them.",
+                            confirmLabel: "Clear all",
                             cancelLabel: "Keep",
                             destructive: true,
                             onConfirm: () => {
-                              // Derive from the LIVE store inside the updater, not from the
-                              // render-time snapshot: the confirm sheet stretches the gap between
-                              // reading and writing from ~0 to however long the user takes, and a
-                              // foreground refresh landing in that gap would otherwise let a stale
-                              // list clobber a custom exercise added on another device — locally
-                              // and on the server, since the same array is PATCHed.
-                              // ★ DERIVE `next` OUTSIDE THE UPDATER. Assigning it inside and
-                              // reading it below only works when React invokes the updater
-                              // EAGERLY, which it does not when the store's fiber already has a
-                              // pending update — and this fiber takes interval-driven ones (the
-                              // message poll, the feed refresh, the health sync). In that case
-                              // `next` stays `[]` and the PATCH sends `custom_exercises: []`,
-                              // wiping EVERY custom exercise instead of the one being removed,
-                              // and `setCustomExerciseRegistry([])` strips the muscle mapping
-                              // from every past workout that used any of them. The updater form
-                              // was chosen to read the freshest list; the recent-edit guard in
-                              // loadUserData now covers that window, and a stale-by-one-render
-                              // list is a far smaller problem than an empty one.
-                              const next = (store.customExercises || []).filter(e => (e.id || e.name) !== (ex.id || ex.name));
-                              setStore(p => ({ ...p, customExercises: next }));
-                              setCustomExerciseRegistry(next);
+                              setStore(p => ({ ...p, customExercises: [] }));
+                              setCustomExerciseRegistry([]);
                               const tok = token || loadSession()?.access_token;
                               markSettingsEdit();
-                              if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: next }) }, tok).catch(()=>{}); } catch(e){} }
-                              haptic("tap");
+                              if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: [] }) }, tok).catch(()=>{}); } catch(e){} }
+                              haptic("success");
                             },
                           });
-                        }} style={{ flexShrink:0, background:"none", border:"none", color:C.red, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>Remove</button>
-                      </div>
-                    ))}
-                    <button onClick={() => {
-                      // The same hazard as Remove, multiplied by every custom exercise at once —
-                      // and this one fired on a single tap with no confirmation at all.
-                      const names = new Set((store.customExercises || []).map(e => e.name));
-                      const sessions = Object.values(store.history || {})
-                        .flatMap(day => Object.values(day || {}))
-                        .filter(sess => (sess.exercises || []).some(e => names.has(e.name))).length;
-                      const n = (store.customExercises || []).length;
-                      confirmAction({
-                        title: `Clear all ${n} custom exercise${n === 1 ? "" : "s"}?`,
-                        message: sessions > 0
-                          ? `${sessions} logged workout${sessions === 1 ? "" : "s"} ${sessions === 1 ? "uses" : "use"} them. ${sessions === 1 ? "It" : "They"} will stay in your history, but ${sessions === 1 ? "its" : "their"} sets will stop counting toward your muscle map.`
-                          : "They will be removed from your exercise list. No logged workouts use them.",
-                        confirmLabel: "Clear all",
-                        cancelLabel: "Keep",
-                        destructive: true,
-                        onConfirm: () => {
-                          setStore(p => ({ ...p, customExercises: [] }));
-                          setCustomExerciseRegistry([]);
-                          const tok = token || loadSession()?.access_token;
-                          markSettingsEdit();
-                          if (tok && currentUserId) { try { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ custom_exercises: [] }) }, tok).catch(()=>{}); } catch(e){} }
-                          haptic("success");
-                        },
-                      });
-                    }} style={{ width:"100%", background:"none", border:"none", padding:"13px 14px", textAlign:"left", fontSize:13, color:C.red, fontWeight:600, cursor:"pointer", fontFamily:F }}>Clear all custom exercises</button>
+                        }} style={{ width:"100%", background:"none", border:"none", padding:"13px 14px", textAlign:"left", fontSize:13, color:C.red, fontWeight:600, cursor:"pointer", fontFamily:F }}>Clear all custom exercises</button>
+                  </SettingsDisclosure>
+                )}
+              </div>
+
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>PRIVACY</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderBottom:`1px solid ${C.divider}` }}>
+                  <div style={{ flex:1, paddingRight:12 }}>
+                    <div style={{ fontSize:14, color:C.text }}>Public profile</div>
+                    {/* Follow approval changed what this toggle actually does, and the old copy
+                        only mentioned the share link — the far bigger consequence is that people
+                        now have to ask before they can see anything. */}
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>On: anyone can see your workouts and follow you straight away. Off: people must ask to follow, and until you approve them they see nothing.</div>
                   </div>
-                </>
-              )}
+                  <Switch
+                    checked={store.isPublic === true} // default off (private) until opted in
+                    label="Public profile"
+                    C={C}
+                    onChange={async (val) => {
+                      setStore(p => ({ ...p, isPublic: val }));
+                      _lastSettingsEditAt = Date.now();
+                      const tok = token || loadSession()?.access_token;
+                      if (tok) {
+                        try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ is_public: val }) }, tok); }
+                        catch (e) { devError("privacy save error:", e); }
+                      }
+                      haptic("tap");
+                    }}/>
+                </div>
+                <button onClick={() => { setShowSettings(false); setShowCoaching(true); }} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px",
+                  display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, textAlign:"left",
+                  cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:14, color:C.text }}>Coaching</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Let a coach see your training, or view an athlete's</div>
+                  </div>
+                  <span style={{ display:"flex", flexShrink:0 }}><Icon name="chevron-right" size={16} color={C.sub}/></span>
+                </button>
+              </div>
+
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>YOUR DATA</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <HealthConnectRow C={C} setStore={setStore}/>
+                <button onClick={() => { setShowSettings(false); setShowStrongImport(true); }} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, textAlign:"left",
+                  cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:14, color:C.text }}>Import from Strong</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Bring your workout history across</div>
+                  </div>
+                  <span style={{ display:"flex", flexShrink:0 }}><Icon name="chevron-right" size={16} color={C.sub}/></span>
+                </button>
+                <button onClick={exportData} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, textAlign:"left", cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:C.text }}>Export my data <span style={{ fontSize:11, color:C.sub }}>(JSON)</span></div>
+                  <Icon name="share" size={15} color={C.sub}/>
+                </button>
+                <button onClick={exportCSV} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px",
+                  display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, textAlign:"left", cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:C.text }}>Export workouts <span style={{ fontSize:11, color:C.sub }}>(CSV / spreadsheet)</span></div>
+                  <Icon name="share" size={15} color={C.sub}/>
+                </button>
+              </div>
+
+              <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>SUPPORT</div>
+              <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
+                <AppVersionRow C={C}/>
+                <button onClick={() => { setShowSettings(false); setShowFeedback(true); }} style={{
+                  width:"100%", background:"none", border:"none", padding:"14px",
+                  display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, textAlign:"left",
+                  cursor:"pointer", fontFamily:F
+                }}>
+                  <div style={{ fontSize:14, color:C.text }}>Send feedback</div>
+                  <span style={{ display:"flex", flexShrink:0 }}><Icon name="chevron-right" size={16} color={C.sub}/></span>
+                </button>
+              </div>
 
               <div style={{ fontSize:11, fontWeight:600, color:C.sub, letterSpacing:1, marginBottom:10 }}>ACCOUNT</div>
               <div style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:18 }}>
@@ -18088,52 +18171,6 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   <div style={{ fontSize:14, color:C.text }}>Signed in as</div>
                   <div style={{ fontSize:12, color:C.sub }}>{email || ""}</div>
                 </div>
-                <AppVersionRow C={C}/>
-                <HealthConnectRow C={C} setStore={setStore}/>
-                <button onClick={exportData} style={{
-                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
-                  display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
-                }}>
-                  <div style={{ fontSize:14, color:C.text }}>Export my data <span style={{ fontSize:11, color:C.sub }}>(JSON)</span></div>
-                  <Icon name="share" size={15} color={C.sub}/>
-                </button>
-                <button onClick={exportCSV} style={{
-                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
-                  display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
-                }}>
-                  <div style={{ fontSize:14, color:C.text }}>Export workouts <span style={{ fontSize:11, color:C.sub }}>(CSV / spreadsheet)</span></div>
-                  <Icon name="share" size={15} color={C.sub}/>
-                </button>
-                <button onClick={() => { setShowSettings(false); setShowCoaching(true); }} style={{
-                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
-                  display:"flex", alignItems:"center", justifyContent:"space-between",
-                  cursor:"pointer", fontFamily:F
-                }}>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Coaching</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Let a coach see your training, or view an athlete's</div>
-                  </div>
-                  <span style={{ fontSize:14, color:C.sub, flexShrink:0 }}>›</span>
-                </button>
-                <button onClick={() => { setShowSettings(false); setShowStrongImport(true); }} style={{
-                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
-                  display:"flex", alignItems:"center", justifyContent:"space-between",
-                  cursor:"pointer", fontFamily:F
-                }}>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Import from Strong</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Bring your workout history across</div>
-                  </div>
-                  <span style={{ fontSize:14, color:C.sub, flexShrink:0 }}>›</span>
-                </button>
-                <button onClick={() => { setShowSettings(false); setShowFeedback(true); }} style={{
-                  width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
-                  display:"flex", alignItems:"center", justifyContent:"space-between",
-                  cursor:"pointer", fontFamily:F
-                }}>
-                  <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>Send feedback</div>
-                  <span style={{ fontSize:14, color:C.sub }}>›</span>
-                </button>
                 <button onClick={() => { setShowSettings(false); setTimeout(() => onSignOut && onSignOut(), 200); }} style={{
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
                   display:"flex", alignItems:"center", justifyContent:"space-between",
