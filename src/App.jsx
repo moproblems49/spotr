@@ -1,4 +1,4 @@
-// v178091717070
+// v178091717071
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -11396,19 +11396,16 @@ export function FlatRow({ idx, C, onClick, style, children }) {
   );
 }
 
-// Which code the app is actually running, plus a manual update check. Without this there is no way
-// to tell whether an over-the-air update landed — the app looks identical either way, which made a
-// silent OTA failure impossible to diagnose. "Bundle" is the OTA payload (or "built-in" when the
-// app is still on the code that shipped inside the TestFlight/App Store build).
 // A collapsible Settings row: label + a summary of the collapsed state + the rotating chevron,
 // matching the Appearance picker. The borderTop belongs to the disclosure, so it never depends on
 // the row above remembering a borderBottom. Children are CONDITIONALLY rendered, not hidden — a
 // display:none row can still be clicked by a suite, which would let a check pass against a build
 // whose disclosure never opens.
-function SettingsDisclosure({ C, label, summary, open, onToggle, hook, children }) {
+function SettingsDisclosure({ C, label, summary, spokenSummary, open, onToggle, hook, children }) {
   return (
     <div style={{ borderTop:`1px solid ${C.divider}` }}>
-      <button onClick={onToggle} aria-expanded={open} data-disclosure={hook} style={{
+      <button onClick={onToggle} aria-expanded={open} data-disclosure={hook}
+        aria-label={`${label}, ${spokenSummary || summary}`} style={{
         width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
         padding:"14px", background:"none", border:"none", cursor:"pointer", fontFamily:F, textAlign:"left",
       }}>
@@ -11425,6 +11422,10 @@ function SettingsDisclosure({ C, label, summary, open, onToggle, hook, children 
   );
 }
 
+// Which code the app is actually running, plus a manual update check. Without this there is no way
+// to tell whether an over-the-air update landed — the app looks identical either way, which made a
+// silent OTA failure impossible to diagnose. "Bundle" is the OTA payload (or "built-in" when the
+// app is still on the code that shipped inside the TestFlight/App Store build).
 function AppVersionRow({ C }) {
   const [bundle, setBundle] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -17893,8 +17894,10 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   const keys = ["messages","kudos","comments","follows","streak"];
                   const onN = keys.filter(k => prefs[k] !== false).length;
                   const summary = onN === keys.length ? "All on" : onN === 0 ? "Off" : `${onN} of ${keys.length} on`;
+                  // "Off" alone reads to a screen reader as if the ROW were disabled.
+                  const spoken = onN === 0 ? "all off" : summary;
                   return (
-                <SettingsDisclosure C={C} label="Notifications" summary={summary} hook="notifications"
+                <SettingsDisclosure C={C} label="Notifications" summary={summary} spokenSummary={spoken} hook="notifications"
                   open={notifOpen} onToggle={() => setNotifOpen(o => !o)}>
                     {[
                       ["messages", "Messages"],
@@ -17993,6 +17996,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   // opened to fix or remove one, and open by default it pushed everything below it
                   // off the sheet for anyone with more than a few.
                   <SettingsDisclosure C={C} label="Custom exercises" summary={String((store.customExercises || []).length)}
+                    spokenSummary={`${(store.customExercises || []).length} saved`}
                     hook="custom-exercises" open={customOpen} onToggle={() => setCustomOpen(o => !o)}>
                         {(store.customExercises || []).map((ex) => (
                           <div key={ex.id || ex.name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
@@ -18173,7 +18177,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </div>
                 <button onClick={() => { setShowSettings(false); setTimeout(() => onSignOut && onSignOut(), 200); }} style={{
                   width:"100%", background:"none", border:"none", padding:"14px", borderBottom:`1px solid ${C.divider}`,
-                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  display:"flex", alignItems:"center", justifyContent:"space-between", textAlign:"left",
                   cursor:"pointer", fontFamily:F
                 }}>
                   <div style={{ fontSize:14, color:C.red, fontWeight:600 }}>Sign Out</div>
@@ -18181,7 +18185,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 </button>
                 <button onClick={() => setShowDelete(true)} style={{
                   width:"100%", background:"none", border:"none", padding:"14px",
-                  display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontFamily:F
+                  display:"flex", alignItems:"center", justifyContent:"space-between", textAlign:"left", cursor:"pointer", fontFamily:F
                 }}>
                   <div style={{ fontSize:14, color:C.red, fontWeight:600 }}>Delete account</div>
                   <Icon name="trash" size={15} color={C.red}/>

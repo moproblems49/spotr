@@ -24,7 +24,7 @@ for (const width of [402, 375]) {
   await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "t", user: { id: ME, email: "mo@example.com" } }) }));
   await page.route("**/rest/v1/**", r => {
     const q = r.request(); let body = "[]";
-    // A custom exercise so the conditional CUSTOM EXERCISES section renders and its order is checked.
+    // Two custom exercises so the Custom exercises disclosure renders and its count summary is checked.
     if (/\/rest\/v1\/profiles\?/.test(q.url()) && q.method() === "GET")
       body = JSON.stringify([{ id: ME, username: "momo", name: "Mo", unit: "lbs", theme: "light", is_public: true, seen_onboarding: true, weekly_target: 3, pr_events: [],
         custom_exercises: [{ name: "Zercher Carry Thing", muscle: "Core" }, { name: "Yoke Press Thing", muscle: "Shoulders" }],
@@ -63,12 +63,14 @@ for (const width of [402, 375]) {
     check(`[${width}] row "${want}" is present`, info.rows.some(r => r.text.startsWith(want)));
   // ── Disclosures: Notifications and Custom exercises start COLLAPSED, say what is inside, and open.
   const disc = await page.evaluate(() => [...document.querySelectorAll("[data-disclosure]")].map(b => ({
-    hook: b.getAttribute("data-disclosure"), expanded: b.getAttribute("aria-expanded"), text: (b.textContent || "").trim() })));
+    hook: b.getAttribute("data-disclosure"), name: b.getAttribute("aria-label"), expanded: b.getAttribute("aria-expanded"), text: (b.textContent || "").trim() })));
   const notif = disc.find(d => d.hook === "notifications"), cust = disc.find(d => d.hook === "custom-exercises");
   check(`[${width}] Notifications is a collapsed disclosure`, notif && notif.expanded === "false", JSON.stringify(notif));
   // One pref is seeded OFF, so the summary must count it — "All on" here would be a lie.
   check(`[${width}] its summary counts the switches that are on`, notif && /4 of 5 on/.test(notif.text), notif && notif.text);
   check(`[${width}] Custom exercises is a collapsed disclosure with its count`, cust && cust.expanded === "false" && /2$/.test(cust.text), JSON.stringify(cust));
+  // The accessible name must say what the summary MEANS — a bare "2" or "Off" does not.
+  check(`[${width}] disclosures have spoken names`, notif && notif.name === "Notifications, 4 of 5 on" && cust && cust.name === "Custom exercises, 2 saved", JSON.stringify([notif && notif.name, cust && cust.name]));
   const hiddenBefore = await page.evaluate(() => ({ kudos: !!document.querySelector('[role="switch"][aria-label="Kudos"]'), ex: /Zercher Carry Thing/.test(document.body.innerText) }));
   check(`[${width}] collapsed means absent from the DOM`, !hiddenBefore.kudos && !hiddenBefore.ex, JSON.stringify(hiddenBefore));
   await page.evaluate(() => document.querySelectorAll("[data-disclosure]").forEach(b => b.click()));

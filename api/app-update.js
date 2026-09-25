@@ -51,7 +51,7 @@
 // NEVER OTA a change that needs new native plugins/capabilities — that requires a real
 // TestFlight build (cap sync + archive on the Mac).
 
-const LATEST_VERSION = "2026-09-25a"; // null = no OTA update published
+const LATEST_VERSION = "2026-09-25b"; // null = no OTA update published
 const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 
 // ★ INTEGRITY: lowercase hex sha256 of the published .zip, exactly as `sha256sum` prints it.
@@ -69,7 +69,7 @@ const BUNDLE_BASE = "https://spotr-drab.vercel.app/bundles";
 // NOTE this is an integrity check, not a signature: it proves the bundle is the one this endpoint
 // published, NOT that the publisher was authorised. Real signing needs a private key held outside
 // the repo and its public half compiled into the native binary (a Mac day).
-const BUNDLE_SHA256 = "3c36dc3add6ff48ea7e674c4d715c54cbb431ed5889aa4b8f260a407ceac597b";
+const BUNDLE_SHA256 = "577b6bface142cc181ad63a2986030a5499a3a2c91f06367218277815dc3f9b1";
 
 // ★ A FRESH APP STORE INSTALL DOWNLOADS A BUNDLE IT ALREADY HAS, AND THAT IS THE "RELAUNCH TWICE"
 // COMPLAINT. On a phone that has never taken an OTA, the plugin reports its current version as the
