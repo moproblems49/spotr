@@ -7,7 +7,7 @@ import {
 import { devError, cvt } from "../engine/core.js";
 import { epley1RM, historyMaxPRs } from "../engine/workout.js";
 import { getMuscle } from "../engine/exercises.js";
-import { parseStrongExport, resolveImportNames, strongToSessions, isImportedSessionId } from "../engine/strongimport.js";
+import { parseWorkoutExport, resolveImportNames, strongToSessions, isImportedSessionId } from "../engine/strongimport.js";
 
 // ── IMPORT FROM STRONG ──────────────────────────────────────────────────────────────────────────
 // The single biggest reason someone with years of Strong history will not switch: their PRs and
@@ -103,11 +103,13 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
     if (!file) return;
     try {
       const text = await file.text();
-      const res = parseStrongExport(text);
+      const res = parseWorkoutExport(text);
       if (!res.workouts.length) throw new Error("No workouts found in that file.");
       const names = [...new Set(res.workouts.flatMap(w => w.exercises.map(e => e.rawName)))];
       setAuto(resolveImportNames(names).matched);
       setChosen({});
+      // Hevy names its unit in the header, so there is nothing to ask; Strong does not.
+      if (res.unit) setUnit(res.unit);
       setParsed(res);
       setStage("review");
     } catch (e) {
@@ -345,25 +347,29 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
               <div style={{ fontSize: 14, color: C.text, lineHeight: 1.5 }}>
                 Bring your training history from another app — workouts, sets, warm-ups and notes. Your PRs and charts rebuild from it.
               </div>
-              {/* The screen is named for the job, not for one competitor — but the parser only reads
-                  Strong's CSV today, so the supported list says so plainly rather than letting a Hevy
-                  file find out by being refused. Add a row here when a second format lands. */}
+              {/* Only the apps the parser actually reads are marked SUPPORTED; everything else is said
+                  plainly, so an unsupported file is never refused as a surprise. Add a row when a
+                  third format lands, built against a REAL export like these two were. */}
               <div data-import-sources style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-                <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.divider}` }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Strong</div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.green, letterSpacing: 0.5 }}>SUPPORTED</div>
+                {[
+                  ["Strong", ["Open Strong and go to Settings", "Tap Export Strong Data and save the CSV"]],
+                  ["Hevy", ["Open Hevy and go to Settings", "Tap Export & Import Data, then Export Workouts"]],
+                ].map(([app, steps]) => (
+                  <div key={app} data-import-source={app} style={{ padding: "12px 14px", borderBottom: `1px solid ${C.divider}` }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>{app}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.green, letterSpacing: 0.5 }}>SUPPORTED</div>
+                    </div>
+                    <ol data-import-steps style={{ fontSize: 12, color: C.sub, lineHeight: 1.6, margin: "6px 0 0", paddingLeft: 18 }}>
+                      {steps.map(t => <li key={t}>{t}</li>)}
+                      <li>Come back here and tap <b style={{ color: C.text }}>Choose export file</b></li>
+                    </ol>
                   </div>
-                  <ol data-import-steps style={{ fontSize: 12, color: C.sub, lineHeight: 1.6, margin: "6px 0 0", paddingLeft: 18 }}>
-                    <li>Open Strong and go to <b style={{ color: C.text }}>Settings</b></li>
-                    <li>Tap <b style={{ color: C.text }}>Export Strong Data</b> and save the CSV</li>
-                    <li>Come back here and tap <b style={{ color: C.text }}>Choose Strong export</b></li>
-                  </ol>
-                </div>
+                ))}
                 <div style={{ padding: "12px 14px" }}>
                   <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Other apps</div>
                   <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5, marginTop: 4 }}>
-                    Hevy, Fitbod and others aren't supported yet. Tell us which one you use and we'll prioritise it.
+                    Fitbod and others aren't supported yet. Tell us which one you use and we'll prioritise it.
                   </div>
                   {onRequestApp && (
                     <button data-import-request onClick={onRequestApp} style={{
@@ -376,7 +382,7 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
               <input ref={fileRef} type="file" accept=".csv,text/csv,text/comma-separated-values"
                 onChange={e => { onFile(e.target.files?.[0]); e.target.value = ""; }}
                 style={{ display: "none" }} data-strong-file/>
-              <button onClick={() => fileRef.current?.click()} style={primaryBtn(false)}>Choose Strong export</button>
+              <button onClick={() => fileRef.current?.click()} style={primaryBtn(false)}>Choose export file</button>
               {err && <div role="alert" style={{ fontSize: 13, color: C.red, lineHeight: 1.45 }}>{err}</div>}
               <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>
                 Safe to run more than once — importing the same file again updates those workouts instead of adding copies. You can remove an import later.
@@ -419,7 +425,7 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
                 <div data-import-overlap>
                   <SectionLabel C={C}>{overlapIdx.size} on days you already logged</SectionLabel>
                   <div style={{ fontSize: 12, color: C.sub, margin: "6px 0 8px", lineHeight: 1.45 }}>
-                    {overlapIdx.size === 1 ? "This Strong workout falls" : "These Strong workouts fall"} on a day that already has a workout in Seshd. If you logged the same session in both apps, importing it counts it twice.
+                    {overlapIdx.size === 1 ? "This imported workout falls" : "These imported workouts fall"} on a day that already has a workout in Seshd. If you logged the same session in both apps, importing it counts it twice.
                   </div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Skip {overlapIdx.size === 1 ? "it" : "them"}</span>
@@ -428,19 +434,25 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
                 </div>
               )}
 
-              <div>
-                <SectionLabel C={C}>Weights are in</SectionLabel>
-                <div role="radiogroup" aria-label="Weight unit" style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  {["lbs", "kg"].map(u => (
-                    <button key={u} role="radio" aria-checked={unit === u} onClick={() => setUnit(u)} style={{
-                      flex: 1, padding: "10px", borderRadius: RADIUS.sm, fontFamily: F, fontSize: 14, fontWeight: 700, cursor: "pointer",
-                      border: `1px solid ${unit === u ? C.primary : C.border}`,
-                      background: unit === u ? C.primary : "transparent", color: unit === u ? C.onPrimary : C.text,
-                    }}>{u}</button>
-                  ))}
+              {parsed.unit ? (
+                <div data-import-unit style={{ fontSize: 13, color: C.sub }}>
+                  Weights are in <b style={{ color: C.text }}>{parsed.unit}</b>, read from the file.
                 </div>
-                <div style={{ fontSize: 12, color: C.sub, marginTop: 6 }}>Strong exports in whatever unit you used there.</div>
-              </div>
+              ) : (
+              <div>
+                  <SectionLabel C={C}>Weights are in</SectionLabel>
+                  <div role="radiogroup" aria-label="Weight unit" style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    {["lbs", "kg"].map(u => (
+                      <button key={u} role="radio" aria-checked={unit === u} onClick={() => setUnit(u)} style={{
+                        flex: 1, padding: "10px", borderRadius: RADIUS.sm, fontFamily: F, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                        border: `1px solid ${unit === u ? C.primary : C.border}`,
+                        background: unit === u ? C.primary : "transparent", color: unit === u ? C.onPrimary : C.text,
+                      }}>{u}</button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.sub, marginTop: 6 }}>Strong exports in whatever unit you used there.</div>
+                </div>
+              )}
 
               {unanswered.length > 0 && (
                 <div data-import-needs>
@@ -490,7 +502,7 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
               <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
                 {stage === "importing" ? "Importing — keep Seshd open." :
                   progress.failed ? `${progress.total - progress.failed} imported, ${progress.failed} didn't save. Run the import again to finish — nothing will be duplicated.` :
-                  "Done. Your PRs and charts now include your Strong history."}
+                  "Done. Your PRs and charts now include your imported history."}
               </div>
               {stage === "done" && <button onClick={onBack} style={{ ...primaryBtn(false), marginTop: 18 }}>Done</button>}
             </div>

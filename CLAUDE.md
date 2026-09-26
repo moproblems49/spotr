@@ -3503,10 +3503,23 @@ refresh max-merges the stale server row straight back. Server deletes are counte
 rows (an RLS-filtered DELETE returns 0 rows and raises nothing). Notes and pr_events for those ids go
 too. Guard: `pw_strongimport` §7, red-proofed — an undo that skips the PR step fails exactly the two
 PR checks (254 stays instead of the native 200), everything else green.
-**Adding Hevy is a parser job, not a rename**:
-its export has different columns (`title`, `start_time`, `exercise_title`, `set_type`,
-`weight_lbs`/`weight_kg`, `reps`, `duration_seconds`, `rpe`) — build it against a REAL Hevy file,
-same as Strong was, and add a row to the list when it lands.
+**★ HEVY IS SUPPORTED (Sep 26 2026), built against a REAL export** Mo made for the purpose (3
+workouts, two on one day). `parseWorkoutExport` picks the parser from the HEADER, never the file
+name. What Hevy does differently and what the parser does about it: **the unit is in the header**
+(`weight_lbs` vs `weight_kg`), so the screen shows "Weights are in kg, read from the file" instead
+of the picker; times are "26 Sep 2026, 17:52" and duration is end - start (same 5min-5h honesty
+rule, so a 2-minute test session is unknown, not 2 minutes); two same-day workouts are separated by
+start_time, which is part of the grouping key AND the id seed, so they get different ids; set_type
+`dropset` -> `drop`. **`MAX_HOLD_SECS` (5 min) is new and shared with Strong**: Hevy's "Warm Up" is a
+300s duration with no weight, which the old 30-minute cap imported as **300 reps of Warm Up** — a
+bodyweight hold that long is a warm-up or cardio block, not a set, so it is skipped and counted.
+Two resolver synonyms were added from the real file (`seated shoulder press|machine|dumbbell`);
+"Cable Fly Crossovers" is deliberately left for the user, since which of the three cable-fly
+angles it means is their call. Guards: `sim_strongimport` [hevy] (18 checks) and `pw_strongimport`
+§8 (the real screen, a kg file). Red-proofed twice: removing the hold cap imports the Warm Up, and
+dropping the header-unit line writes every row as lbs (`["lbs","lbs","lbs"]`) — a 2.2x error on
+every weight that would otherwise look perfectly fine. **Fitbod etc. remain a parser job** — build
+against a real file, never from memory.
 **Guards:** `sim_strongimport` (parser/resolver, 41 checks) and `pw_strongimport` (the screen,
 against a stateful stub that models the uuid/user_id constraints and the 1,000-row cap).
 Red-proofed: reverting to a single history query fails "1,120 sessions" at exactly 1000; counting

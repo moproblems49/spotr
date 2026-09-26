@@ -221,14 +221,14 @@ await p3.getByRole("button", { name: /^Done$/ }).click().catch(() => {}); await 
 await openImporter(p3);
 const bad = path.join(os.tmpdir(), "seshd_not_strong.csv"); fs.writeFileSync(bad, "name,age\nbob,3\n");
 await p3.locator("input[data-strong-file]").setInputFiles(bad); await p3.waitForTimeout(700);
-check("it is refused with a readable message", /doesn't look like a Strong export/.test(await overlayText(p3)));
+check("it is refused with a readable message", /doesn't look like a Strong or Hevy export/.test(await overlayText(p3)));
 // The screen is named "Import workouts", so it must say up front which app actually works, and a
 // refused file must not answer with parser jargon (the old message listed missing column names).
 const t4 = await overlayText(p3);
 check("the error names no CSV columns", !/missing|Workout Name|Set Order/.test(t4), t4.slice(0, 200));
 const src4 = await p3.evaluate(() => document.querySelector("[data-import-sources]")?.innerText || "");
 check("the first screen lists Strong as supported", /Strong\s*SUPPORTED/i.test(src4), src4.slice(0, 120));
-check("the Strong export is numbered steps naming Strong's own menu", /Export Strong Data/.test(src4) && await p3.locator("[data-import-steps] li").count() === 3, src4.slice(0, 200));
+check("the Strong export is numbered steps naming Strong's own menu", /Export Strong Data/.test(src4) && await p3.locator("[data-import-source=\"Strong\"] li").count() === 3, src4.slice(0, 200));
 check("and says other apps are not supported yet", /aren't supported yet/.test(src4), src4.slice(0, 200));
 await p3.locator("button[data-import-request]").click().catch(() => {}); await p3.waitForTimeout(900);
 const fb = await p3.evaluate(() => [...document.querySelectorAll("textarea")].map(t => t.value).find(v => /import my workouts from/.test(v)) || null);
@@ -305,6 +305,43 @@ check("the toast says how many were removed", /Removed 119 imported workouts/.te
 check("the undo section disappears once nothing imported is left", await p7.locator("[data-import-undo]").count() === 0);
 check("no page errors in [7]", p7._errors.length === 0, p7._errors.join(" | "));
 await p7.close();
+
+
+// ── 8. a HEVY export through the real screen ─────────────────────────────────────────────────────
+// Synthetic, shaped like a real Hevy export: the unit is in the header (kg here, so a picker that
+// silently stayed on lbs would write every weight wrong by 2.2x), and two workouts share a day.
+console.log("\n[8] a Hevy export");
+const hevyFile = path.join(os.tmpdir(), "seshd_hevy_fixture.csv");
+fs.writeFileSync(hevyFile, [
+  '"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"',
+  '"Pull","12 Mar 2024, 17:52","12 Mar 2024, 18:40","","Bent Over Row (Barbell)",,"",0,"normal",60,6,,,',
+  '"Push","12 Mar 2024, 07:10","12 Mar 2024, 08:05","","Warm Up",,"",0,"normal",,,,300,',
+  '"Push","12 Mar 2024, 07:10","12 Mar 2024, 08:05","","Bench Press (Barbell)",,"",0,"dropset",80,6,,,',
+  '"Legs","10 Mar 2024, 17:50","10 Mar 2024, 18:50","","Squat (Barbell)",,"",0,"normal",100,5,,,',
+].join("\n"));
+const s8 = makeServer({});
+const p8 = await open(s8);
+await openImporter(p8);
+const src8 = await p8.evaluate(() => document.querySelector("[data-import-sources]")?.innerText || "");
+check("Hevy is listed as supported, with its export steps", /Hevy\s*SUPPORTED/i.test(src8) && /Export Workouts/.test(src8), src8.slice(0, 240));
+await p8.locator("input[data-strong-file]").setInputFiles(hevyFile); await p8.waitForTimeout(900);
+const t8 = await overlayText(p8);
+check("[control] the Hevy file reached the review", /3 workouts/.test(t8), t8.slice(0, 160));
+check("the unit is read from the file, so there is no picker", await p8.locator('[role="radiogroup"][aria-label="Weight unit"]').count() === 0
+  && /Weights are in\s*kg/.test(await p8.locator("[data-import-unit]").innerText().catch(() => "")));
+await answerAll(p8);
+const go8 = p8.locator("[data-import-go]");
+check("[control] nothing needs a choice, so import is offered", /Import 3 workouts/.test(await go8.innerText()), await go8.innerText());
+await go8.click(); await watchText(p8, 5000);
+const rows8 = [...s8.hist.values()];
+check("all three workouts landed as rows", rows8.length === 3, rows8.map(r => r.day_name).join(","));
+check("every row carries the file's unit (kg)", rows8.every(r => r.unit === "kg"), JSON.stringify(rows8.map(r => r.unit)));
+check("two same-day workouts stayed two rows", rows8.filter(r => r.workout_date === "2024-03-12").length === 2);
+const push8 = rows8.find(r => r.day_name === "Push");
+check("the 5-minute Warm Up was not imported as 300 reps", push8 && !push8.exercises.some(e => /warm up/i.test(e.name)), JSON.stringify(push8?.exercises?.map(e => e.name)));
+check("a Hevy dropset keeps its type", push8?.exercises?.[0]?.sets?.[0]?.type === "drop", JSON.stringify(push8?.exercises?.[0]?.sets));
+check("no page errors in [8]", p8._errors.length === 0, p8._errors.join(" | "));
+await p8.close();
 
 await b.close();
 console.log(`\n${fails ? "FAIL" : "PASS"} pw_strongimport (${fails} failure${fails === 1 ? "" : "s"})`);

@@ -92,6 +92,10 @@ const MOVE_EQUIP_SYNONYMS = {
   "pec deck|machine": "Pec Deck Machine",
   "hip abductor|machine": "Hip Abduction Machine",
   "hip adductor|machine": "Adduction Machine",
+  // From a REAL Hevy export (Sep 2026). "Cable Fly Crossovers" is deliberately NOT mapped: which of
+  // the three cable-fly angles it means is the lifter's call, so it surfaces for them to answer.
+  "seated shoulder press|machine": "Machine Shoulder Press",
+  "seated shoulder press|dumbbell": "Seated DB Shoulder Press",
 };
 
 const titleCase = (s) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
@@ -284,6 +288,8 @@ export function isImportedSessionId(id) {
 }
 
 const MAX_TIMED_SECS = 30 * 60; // a "set" longer than this is a timer someone forgot to stop
+// A bodyweight hold this long is a warm-up or cardio block, not a set (Hevy's "Warm Up" is 300s).
+const MAX_HOLD_SECS = 5 * 60;
 
 // Parse a Strong export into the raw workouts it contains, without resolving any names. Throws a
 // user-readable Error if the file isn't a Strong export, so the screen can say so plainly.
@@ -361,6 +367,115 @@ export function parseStrongExport(text) {
     out.push({ ...w, exercises });
   }
   return { workouts: out, skippedSets, skippedTimed };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// HEVY. Read off a real export (Sep 2026, made for this purpose: 3 workouts, 2 on one day) rather
+// than written from memory. One row per set; what differs from Strong, and why each matters:
+//   * The UNIT IS IN THE HEADER (`weight_lbs` or `weight_kg`), so unlike Strong nobody has to be
+//     asked -- the parser returns it and the screen hides the picker.
+//   * `start_time` / `end_time` are "26 Sep 2026, 17:52" (English month abbreviations), so the
+//     duration is end - start, not a free-text field.
+//   * Two workouts on one day are told apart by start_time, which is part of the grouping key.
+//   * set_type is normal / warmup / dropset / failure. Timed sets (Plank, "Warm Up") carry
+//     duration_seconds with no reps; cardio carries a distance.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+const HEVY_REQUIRED = ["title", "start_time", "exercise_title", "set_type", "reps"];
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+const pad2 = (n) => String(n).padStart(2, "0");
+// -> "YYYY-MM-DD HH:MM:00" (local wall-clock, the same shape Strong's Date column has), or "".
+export function parseHevyTime(v) {
+  const s = String(v || "").trim();
+  let m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})/);
+  if (m) {
+    const mo = MONTHS[m[2].toLowerCase()];
+    if (!mo) return "";
+    return `${m[3]}-${pad2(mo)}-${pad2(+m[1])} ${pad2(+m[4])}:${m[5]}:00`;
+  }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:00`;
+  return "";
+}
+export function isHevyExport(head) {
+  return HEVY_REQUIRED.every((c) => head.includes(c)) && (head.includes("weight_lbs") || head.includes("weight_kg"));
+}
+const HEVY_TYPE = { warmup: "warmup", dropset: "drop", failure: "failure" };
+export function parseHevyExport(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) throw new Error("That file is empty.");
+  const head = rows[0].map((h) => h.trim());
+  if (!isHevyExport(head)) throw new Error("That doesn't look like a Hevy export.");
+  const unit = head.includes("weight_kg") ? "kg" : "lbs";
+  const col = (n) => head.indexOf(n);
+  const C = {
+    title: col("title"), start: col("start_time"), end: col("end_time"), desc: col("description"),
+    ex: col("exercise_title"), exNote: col("exercise_notes"), type: col("set_type"),
+    w: col(unit === "kg" ? "weight_kg" : "weight_lbs"), r: col("reps"), rpe: col("rpe"),
+    secs: col("duration_seconds"),
+    dist: head.includes("distance_km") ? col("distance_km") : col("distance_miles"),
+  };
+  const get = (row, i) => (i >= 0 ? (row[i] ?? "") : "");
+  const workouts = new Map();
+  let skippedSets = 0, skippedTimed = 0;
+  for (const row of rows.slice(1)) {
+    const date = parseHevyTime(get(row, C.start));
+    if (!date) continue;
+    const wName = get(row, C.title).trim() || "Imported workout";
+    const key = date + "\u0000" + wName;
+    let w = workouts.get(key);
+    if (!w) {
+      const end = parseHevyTime(get(row, C.end));
+      let duration = 0;
+      if (end) {
+        const secs = (new Date(end.replace(" ", "T")) - new Date(date.replace(" ", "T"))) / 1000;
+        // Same honesty rule as Strong: a duration outside 5min-5h is a timer, not a session.
+        if (secs >= 5 * 60 && secs <= 5 * 3600) duration = secs;
+      }
+      w = { date, name: wName, duration, workoutNote: get(row, C.desc).trim(), exercises: new Map() };
+      workouts.set(key, w);
+    }
+    const exName = get(row, C.ex).trim();
+    if (!exName) continue;
+    let ex = w.exercises.get(exName);
+    if (!ex) { ex = { rawName: exName, sets: [], note: "" }; w.exercises.set(exName, ex); }
+    const n = get(row, C.exNote).trim();
+    if (n && !ex.note) ex.note = n;
+
+    const type = HEVY_TYPE[get(row, C.type).trim().toLowerCase()] || "normal";
+    const weight = cleanNum(get(row, C.w));
+    let reps = cleanNum(get(row, C.r));
+    const secs = parseFloat(get(row, C.secs)) || 0;
+    const dist = parseFloat(get(row, C.dist)) || 0;
+    if (!reps && dist > 0) { skippedTimed++; continue; }
+    if (!reps && secs > 0) {
+      // A hold (plank) goes in as seconds-in-reps, like the app logs it. A loaded carry or a
+      // 5-minute "Warm Up" is not a hold: the first would mint fake volume and PRs, the second
+      // would read as 300 reps of something.
+      if (parseFloat(weight) > 0 || secs >= MAX_HOLD_SECS) { skippedTimed++; continue; }
+      reps = String(Math.round(secs));
+    }
+    if (!reps) { skippedSets++; continue; }
+    const set = { weight, reps, done: true, type };
+    const rpe = parseFloat(get(row, C.rpe));
+    if (isFinite(rpe) && rpe > 0 && rpe <= 10) set.rpe = rpe;
+    ex.sets.push(set);
+  }
+  const out = [];
+  for (const w of workouts.values()) {
+    const exercises = [...w.exercises.values()].filter((e) => e.sets.length);
+    if (exercises.length) out.push({ ...w, exercises });
+  }
+  return { workouts: out, skippedSets, skippedTimed, unit, source: "hevy" };
+}
+
+// One entry point for the screen: decide the format from the HEADER, never from the file name.
+export function parseWorkoutExport(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) throw new Error("That file is empty.");
+  const head = rows[0].map((h) => h.trim());
+  if (isHevyExport(head)) return parseHevyExport(text);
+  if (STRONG_REQUIRED.every((c) => head.includes(c))) return { ...parseStrongExport(text), source: "strong" };
+  throw new Error("That doesn't look like a Strong or Hevy export. Seshd can read files exported from those two apps.");
 }
 
 // Turn parsed workouts into rows the app can store, given a name map (Strong name -> Seshd name)

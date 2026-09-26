@@ -122,5 +122,50 @@ ok(/No mapping/.test(threw), "an unmapped exercise REFUSES rather than importing
   ok(ex2("Bench Press (Barbell)")?.sets[0]?.type === "normal", "[control] 1 -> normal");
 }
 
+// ── HEVY ──────────────────────────────────────────────────────────────────────────────────────
+// Synthetic, shaped exactly like a real Hevy export (Sep 2026): one row per set, the unit in the
+// HEADER, "26 Sep 2026, 17:52" times, and two workouts on one day told apart only by start_time.
+{
+  console.log("\n[hevy]");
+  const { parseWorkoutExport, parseHevyTime } = await import("../src/engine/strongimport.js");
+  const H = [
+    '"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"',
+    '"Pull","26 Sep 2026, 17:52","26 Sep 2026, 18:40","Late one","Plank",,"",0,"normal",,,,60,',
+    '"Pull","26 Sep 2026, 17:52","26 Sep 2026, 18:40","Late one","Bent Over Row (Barbell)",,"elbows in",0,"warmup",40,10,,,',
+    '"Pull","26 Sep 2026, 17:52","26 Sep 2026, 18:40","Late one","Bent Over Row (Barbell)",,"",1,"normal",60,6,,,8',
+    '"Push","26 Sep 2026, 07:10","26 Sep 2026, 08:05","","Warm Up",,"",0,"normal",,,,300,',
+    '"Push","26 Sep 2026, 07:10","26 Sep 2026, 08:05","","Bench Press (Barbell)",,"",0,"dropset",80,6,,,',
+    '"Push","26 Sep 2026, 07:10","26 Sep 2026, 08:05","","Bench Press (Barbell)",,"",1,"failure",80,4,,,',
+    '"Push","26 Sep 2026, 07:10","26 Sep 2026, 08:05","","Farmers Walk",,"",0,"normal",30,,,60,',
+    '"Legs","24 Sep 2026, 17:50","24 Sep 2026, 17:52","","Running",,"",0,"normal",,,3.2,1200,',
+    '"Legs","24 Sep 2026, 17:50","24 Sep 2026, 17:52","","Squat (Barbell)",,"",0,"normal",100,5,,,',
+  ].join("\n");
+  const r = parseWorkoutExport(H);
+  ok(r.source === "hevy" && r.unit === "kg", "a Hevy file is recognised and its unit read from the header", JSON.stringify([r.source, r.unit]));
+  ok(r.workouts.length === 3, "two workouts on one day stay two workouts", r.workouts.map(w => w.date + " " + w.name).join(" | "));
+  const pull = r.workouts.find(w => w.name === "Pull"), push = r.workouts.find(w => w.name === "Push"), legs = r.workouts.find(w => w.name === "Legs");
+  ok(pull?.date === "2026-09-26 17:52:00" && push?.date === "2026-09-26 07:10:00", "start times parse to local wall-clock", JSON.stringify([pull?.date, push?.date]));
+  ok(pull?.duration === 48 * 60, "duration is end minus start", String(pull?.duration));
+  ok(legs?.duration === 0, "a 2-minute session is an unknown duration, not a real one", String(legs?.duration));
+  ok(pull?.workoutNote === "Late one", "the workout description becomes the workout note");
+  const row = pull?.exercises.find(e => e.rawName === "Bent Over Row (Barbell)");
+  ok(row?.sets[0]?.type === "warmup" && row?.sets[1]?.rpe === 8 && row?.note === "elbows in", "warm-up type, RPE and exercise note survive", JSON.stringify(row));
+  const bench = push?.exercises.find(e => e.rawName === "Bench Press (Barbell)");
+  ok(bench?.sets[0]?.type === "drop" && bench?.sets[1]?.type === "failure", "dropset -> drop, failure -> failure", JSON.stringify(bench?.sets));
+  ok(pull?.exercises.find(e => e.rawName === "Plank")?.sets[0]?.reps === "60", "a plank hold imports as seconds-in-reps");
+  ok(!push?.exercises.some(e => e.rawName === "Warm Up"), "a 5-minute Warm Up block is not imported as 300 reps");
+  ok(!push?.exercises.some(e => e.rawName === "Farmers Walk"), "a LOADED timed set is not imported as reps");
+  ok(!legs?.exercises.some(e => e.rawName === "Running"), "cardio with a distance is not imported");
+  ok(r.skippedTimed === 3, "the three timed/cardio sets are COUNTED, so the review can say so", String(r.skippedTimed));
+  const ses = strongToSessions([pull, push], { userId: "u1", unit: r.unit, nameMap: { "Plank": "Plank", "Bent Over Row (Barbell)": "Barbell Row", "Bench Press (Barbell)": "Barbell Bench Press" } });
+  ok(ses[0].date === ses[1].date && ses[0].id !== ses[1].id, "same-day workouts get DIFFERENT ids", JSON.stringify(ses.map(x => x.id)));
+  ok(ses.every(x => x.unit === "kg"), "sessions carry the unit from the file");
+  ok(parseHevyTime("5 Jan 2025, 09:03") === "2025-01-05 09:03:00" && parseHevyTime("nonsense") === "", "[control] time parser: valid and invalid");
+  let err = "";
+  try { parseWorkoutExport("name,age\nbob,3\n"); } catch (e) { err = e.message; }
+  ok(/Strong or Hevy/.test(err) && !/column|missing/i.test(err), "an unknown file names the two supported apps, not CSV columns", err);
+  ok(parseWorkoutExport(CSV).source === "strong", "[control] a Strong file still routes to the Strong parser");
+}
+
 console.log(`\n${fails ? "FAIL" : "PASS"} sim_strongimport (${fails} failure${fails === 1 ? "" : "s"})`);
 process.exit(fails ? 1 : 0);
