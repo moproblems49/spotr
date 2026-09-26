@@ -3488,7 +3488,22 @@ apps … aren't supported yet" — plus **Request an app**, which closes the imp
 feedback sheet with "I'd like to import my workouts from: " pre-typed (never over a draft). A
 generic name that silently refuses a Hevy file would be worse than the old specific one, which is
 why the list exists. The wrong-file error dropped its CSV column list for plain English. Checks in
-`pw_strongimport` §4, red-proofed at 3 failures. **Adding Hevy is a parser job, not a rename**:
+`pw_strongimport` §4, red-proofed at 3 failures. **★ UNDO IMPORT (Sep 26 2026), copied from Hevy's import page along with numbered export steps.**
+The importer offers "Remove imported workouts" once any exist. **There is no separate record of what
+was imported: the id IS the record.** Imported ids carry UUID version nibble **8**
+(`strongSessionId`), and nothing else in the app mints one — `genUUID` and `crypto.randomUUID` are
+both v4. Measured on prod before relying on it: 128 native rows all v4, 327 imported rows all v8.
+`isImportedSessionId` is the one test; if any other code ever mints a non-v4 uuid for
+`workout_history`, this feature starts deleting real workouts, so keep it v4.
+**The PRs are the half that bites.** loadUserData takes the MAX of personal_records, history and
+the in-memory store, so deleting rows alone leaves every imported best standing forever. The undo
+recomputes the affected exercises from the REMAINING history (`historyMaxPRs` + e1RM/volume inline),
+lowers the local maps, and **awaits** the personal_records upserts/deletes BEFORE the refresh, or the
+refresh max-merges the stale server row straight back. Server deletes are counted from the returned
+rows (an RLS-filtered DELETE returns 0 rows and raises nothing). Notes and pr_events for those ids go
+too. Guard: `pw_strongimport` §7, red-proofed — an undo that skips the PR step fails exactly the two
+PR checks (254 stays instead of the native 200), everything else green.
+**Adding Hevy is a parser job, not a rename**:
 its export has different columns (`title`, `start_time`, `exercise_title`, `set_type`,
 `weight_lbs`/`weight_kg`, `reps`, `duration_seconds`, `rpe`) — build it against a REAL Hevy file,
 same as Strong was, and add a row to the list when it lands.

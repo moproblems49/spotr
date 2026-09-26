@@ -275,6 +275,14 @@ export function strongSessionId(userId, date, workoutName) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+// Was this session created by an import? Every imported id carries version nibble 8, and nothing
+// else in the app mints one (genUUID and crypto.randomUUID are both v4) -- measured on prod: 128
+// native rows are all v4, 327 imported rows all v8. This is what makes "undo import" possible
+// without storing a separate list of what was imported: the id IS the record.
+export function isImportedSessionId(id) {
+  return typeof id === "string" && id.length === 36 && id[14] === "8" && id[8] === "-";
+}
+
 const MAX_TIMED_SECS = 30 * 60; // a "set" longer than this is a timer someone forgot to stop
 
 // Parse a Strong export into the raw workouts it contains, without resolving any names. Throws a

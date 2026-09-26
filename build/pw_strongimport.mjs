@@ -37,7 +37,7 @@ fs.writeFileSync(csvFile, lines.join("\n"));
 
 // ── stub server ────────────────────────────────────────────────────────────────────────────────
 function makeServer({ failDay = null, preseed = 0, native = [] } = {}) {
-  const hist = new Map(); let notes = {}; const posts = [];
+  const hist = new Map(); let notes = {}; const posts = []; const prs = new Map(); const deletes = [];
   const iso = (ms) => new Date(ms).toISOString();
   for (let k = 0; k < preseed; k++) {   // pre-existing history, so the total crosses the 1,000 cap
     const id = `00000000-0000-4000-8000-${String(k).padStart(12, "0")}`;
@@ -50,7 +50,7 @@ function makeServer({ failDay = null, preseed = 0, native = [] } = {}) {
     hist.set(id, { id, user_id: ME, day_name: "Native", exercises: [{ name: "Barbell Bench Press", sets: [{ weight: "200", reps: "5", done: true, type: "normal" }] }],
       duration_secs: 3000, unit: "lbs", note: "", workout_date: day, created_at: `${day}T20:00:00.000Z` });
   });
-  return { hist, posts, get notes() { return notes; }, async handle(r) {
+  return { hist, posts, prs, deletes, get notes() { return notes; }, async handle(r) {
     const q = r.request(), u = q.url(), m = q.method(); let status = 200, body = "[]";
     if (/\/rest\/v1\/workout_history/.test(u)) {
       if (m === "POST") {
@@ -61,6 +61,15 @@ function makeServer({ failDay = null, preseed = 0, native = [] } = {}) {
         else if (arr.some(x => !x.user_id)) { status = 400; body = '{"code":"23502"}'; }
         else if (!/on_conflict=id/.test(u) && arr.some(x => hist.has(x.id))) { status = 409; body = '{"code":"23505"}'; }
         else { arr.forEach(x => hist.set(x.id, x)); body = JSON.stringify(arr); }
+      } else if (m === "DELETE") {
+        // Model PostgREST: only rows matching BOTH filters go, and the reply is the rows removed
+        // (the app sends return=representation), so a refused delete is visibly 0 rows.
+        const sp = new URL(u).searchParams;
+        const want = (sp.get("id") || "").replace(/^in\.\(|\)$/g, "").split(",").filter(Boolean);
+        const uid = (sp.get("user_id") || "").replace(/^eq\./, "");
+        const gone = want.filter(id => hist.has(id) && hist.get(id).user_id === uid).map(id => hist.get(id));
+        gone.forEach(x => hist.delete(x.id)); deletes.push(gone.length);
+        body = JSON.stringify(gone);
       } else {
         // PostgREST silently caps every response at "Max rows" (Supabase default 1,000).
         const sp = new URL(u).searchParams;
@@ -68,6 +77,10 @@ function makeServer({ failDay = null, preseed = 0, native = [] } = {}) {
         const all = [...hist.values()].sort((a, c) => c.created_at.localeCompare(a.created_at) || c.id.localeCompare(a.id));
         body = JSON.stringify(all.slice(off, off + lim));
       }
+    } else if (/\/rest\/v1\/personal_records/.test(u)) {
+      if (m === "POST") { [].concat(JSON.parse(q.postData())).forEach(x => prs.set(x.exercise_name, x.weight_lbs)); }
+      else if (m === "DELETE") { const n = decodeURIComponent((new URL(u).searchParams.get("exercise_name") || "").replace(/^eq\./, "")); prs.delete(n); }
+      else body = JSON.stringify([...prs].map(([exercise_name, weight_lbs]) => ({ user_id: ME, exercise_name, weight_lbs })));
     } else if (/\/rest\/v1\/profiles/.test(u) && m === "PATCH") {
       const d = JSON.parse(q.postData() || "{}"); if (d.workout_notes) notes = d.workout_notes;
     } else if (/\/rest\/v1\/(profiles|public_profiles)\?/.test(u)) {
@@ -215,6 +228,7 @@ const t4 = await overlayText(p3);
 check("the error names no CSV columns", !/missing|Workout Name|Set Order/.test(t4), t4.slice(0, 200));
 const src4 = await p3.evaluate(() => document.querySelector("[data-import-sources]")?.innerText || "");
 check("the first screen lists Strong as supported", /Strong\s*SUPPORTED/i.test(src4), src4.slice(0, 120));
+check("the Strong export is numbered steps naming Strong's own menu", /Export Strong Data/.test(src4) && await p3.locator("[data-import-steps] li").count() === 3, src4.slice(0, 200));
 check("and says other apps are not supported yet", /aren't supported yet/.test(src4), src4.slice(0, 200));
 await p3.locator("button[data-import-request]").click().catch(() => {}); await p3.waitForTimeout(900);
 const fb = await p3.evaluate(() => [...document.querySelectorAll("textarea")].map(t => t.value).find(v => /import my workouts from/.test(v)) || null);
@@ -255,6 +269,42 @@ check("switched off, the button counts all 120", /Import 120 workouts/.test(awai
 await p6.locator("[data-import-go]").click(); await watchText(p6, 5000);
 check("switched off, the overlapping day gets the Strong workout too", [...s6.hist.values()].filter(r => r.workout_date === "2023-01-11").length === 2);
 await p6.close();
+
+// ── 7. undo an import ────────────────────────────────────────────────────────────────────────────
+// Deleting the rows is the easy half. The PRs are the half that bites: loadUserData takes the MAX of
+// the server row, history and the in-memory store, so an undo that only deleted history would leave
+// the imported bench best (254) standing forever over a native 200.
+console.log("\n[7] undo an import");
+const s7 = makeServer({ native: ["2023-01-11"] });
+const p7 = await open(s7);
+await openImporter(p7);
+check("[control] no undo offered before anything was imported", await p7.locator("[data-import-undo]").count() === 0);
+await p7.locator("input[data-strong-file]").setInputFiles(csvFile); await p7.waitForTimeout(900);
+await answerAll(p7);
+await p7.locator("[data-import-go]").click(); await watchText(p7, 5000);
+await p7.getByRole("button", { name: /^Done$/ }).click().catch(() => {}); await p7.waitForTimeout(3000);
+const prBefore = await p7.evaluate(() => JSON.parse(localStorage.getItem("seshd_v1") || "{}").prs?.["Barbell Bench Press"]);
+check("[control] after import the bench PR is the imported best", prBefore >= 250, String(prBefore));
+await openImporter(p7);
+const undoTxt = await p7.locator("[data-import-undo]").innerText().catch(() => "");
+check("the importer offers to remove the 119 imported workouts", /119 workouts/.test(undoTxt), undoTxt.slice(0, 120));
+await p7.locator("button[data-import-remove]").click(); await p7.waitForTimeout(700);
+check("it asks before deleting", /Remove imported workouts\?/.test(await p7.evaluate(() => document.body.innerText)));
+await p7.getByRole("button", { name: /^Remove$/ }).click(); 
+const seen7 = await watchText(p7, 6000);
+const left = [...s7.hist.values()];
+check("every imported row is gone from the server", left.every(r => r.day_name === "Native"), `${left.length} rows left`);
+check("the workout logged in Seshd survived", left.length === 1 && left[0].workout_date === "2023-01-11");
+check("the server PR fell back to the native best (200)", s7.prs.get("Barbell Bench Press") === 200, String(s7.prs.get("Barbell Bench Press")));
+await p7.waitForTimeout(1500);
+const st7 = await p7.evaluate(() => JSON.parse(localStorage.getItem("seshd_v1") || "{}"));
+check("the phone's PR fell back too (and the refresh didn't put it back)", st7.prs?.["Barbell Bench Press"] === 200, String(st7.prs?.["Barbell Bench Press"]));
+check("the phone's history holds only the native session", Object.values(st7.history || {}).flatMap(d => Object.keys(d)).length === 1);
+check("the imported notes were removed from the private column", !JSON.stringify(s7.notes).includes("5 lb lighter"), JSON.stringify(s7.notes).slice(0, 120));
+check("the toast says how many were removed", /Removed 119 imported workouts/.test(seen7));
+check("the undo section disappears once nothing imported is left", await p7.locator("[data-import-undo]").count() === 0);
+check("no page errors in [7]", p7._errors.length === 0, p7._errors.join(" | "));
+await p7.close();
 
 await b.close();
 console.log(`\n${fails ? "FAIL" : "PASS"} pw_strongimport (${fails} failure${fails === 1 ? "" : "s"})`);
