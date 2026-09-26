@@ -24,7 +24,7 @@ import { parseStrongExport, resolveImportNames, strongToSessions } from "../engi
 const SKIP = "\u0000skip";
 const BATCH = 50;
 
-export default function StrongImport({ C, store, setStore, token, currentUserId, unit: defaultUnit, onBack, onDone }) {
+export default function StrongImport({ C, store, setStore, token, currentUserId, unit: defaultUnit, onBack, onDone, onRequestApp }) {
   const fileRef = useRef(null);
   const [stage, setStage] = useState("pick"); // pick | review | importing | done
   const [err, setErr] = useState("");
@@ -226,17 +226,40 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
             fontSize: 20, color: C.text, background: "none", border: "none", cursor: "pointer", padding: "12px 14px 12px 6px",
             opacity: stage === "importing" ? 0.3 : 1,
           }}>‹</button>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>Import from Strong</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>Import workouts</div>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
           {stage === "pick" && (
             <>
               <div style={{ fontSize: 14, color: C.text, lineHeight: 1.5 }}>
-                Bring your whole Strong history across — workouts, sets, warm-ups and notes. Your PRs and charts rebuild from it.
+                Bring your training history from another app — workouts, sets, warm-ups and notes. Your PRs and charts rebuild from it.
               </div>
-              <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
-                In Strong, open <b style={{ color: C.text }}>Settings → Export Data</b>, save the CSV file, then choose it here.
+              {/* The screen is named for the job, not for one competitor — but the parser only reads
+                  Strong's CSV today, so the supported list says so plainly rather than letting a Hevy
+                  file find out by being refused. Add a row here when a second format lands. */}
+              <div data-import-sources style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.divider}` }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Strong</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.green, letterSpacing: 0.5 }}>SUPPORTED</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5, marginTop: 4 }}>
+                    In Strong, open <b style={{ color: C.text }}>Settings → Export Data</b>, save the CSV file, then choose it below.
+                  </div>
+                </div>
+                <div style={{ padding: "12px 14px" }}>
+                  <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Other apps</div>
+                  <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5, marginTop: 4 }}>
+                    Hevy, Fitbod and others aren't supported yet. Tell us which one you use and we'll prioritise it.
+                  </div>
+                  {onRequestApp && (
+                    <button data-import-request onClick={onRequestApp} style={{
+                      marginTop: 8, padding: 0, background: "none", border: "none", cursor: "pointer",
+                      fontSize: 13, fontWeight: 600, color: C.accentInk, fontFamily: "inherit", textAlign: "left",
+                    }}>Request an app</button>
+                  )}
+                </div>
               </div>
               <input ref={fileRef} type="file" accept=".csv,text/csv,text/comma-separated-values"
                 onChange={e => { onFile(e.target.files?.[0]); e.target.value = ""; }}

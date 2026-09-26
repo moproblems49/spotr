@@ -59,7 +59,7 @@ for (const width of [402, 375]) {
   if (!info) continue;
   const want = ["PREFERENCES", "TRAINING", "PRIVACY", "YOUR DATA", "SUPPORT", "ACCOUNT"];
   check(`[${width}] sections in order`, JSON.stringify(info.heads) === JSON.stringify(want), JSON.stringify(info.heads));
-  for (const want of ["Coaching", "Import from Strong", "Send feedback", "Export my data", "Sign Out", "Delete account"])
+  for (const want of ["Coaching", "Import workouts", "Send feedback", "Export my data", "Sign Out", "Delete account"])
     check(`[${width}] row "${want}" is present`, info.rows.some(r => r.text.startsWith(want)));
   // ── Disclosures: Notifications and Custom exercises start COLLAPSED, say what is inside, and open.
   const disc = await page.evaluate(() => [...document.querySelectorAll("[data-disclosure]")].map(b => ({

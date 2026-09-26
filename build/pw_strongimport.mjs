@@ -98,7 +98,7 @@ async function open(server) {
 async function openImporter(p) {
   await p.locator('button[aria-label="Profile"]').first().click({ force: true }).catch(() => {}); await p.waitForTimeout(900);
   await p.locator('button[aria-label="Settings"]').first().click({ force: true }).catch(() => {}); await p.waitForTimeout(900);
-  const row = p.getByText("Import from Strong", { exact: true }).locator("visible=true").first();
+  const row = p.getByText("Import workouts", { exact: true }).locator("visible=true").first();
   const n = await row.count();
   if (n) { await row.click({ force: true }); await p.waitForTimeout(1200); }
   return n;
@@ -140,7 +140,7 @@ const s1 = makeServer({ preseed: 1000 });
 const p1 = await open(s1);
 check("[control] the pre-existing 1,000 sessions loaded", Object.values(JSON.parse(await p1.evaluate(() => localStorage.getItem("seshd_v1"))).history || {})
   .reduce((a, d) => a + Object.keys(d).length, 0) === 1000);
-check("Settings has an 'Import from Strong' row", await openImporter(p1) > 0);
+check("Settings has an 'Import workouts' row", await openImporter(p1) > 0);
 await p1.locator("input[data-strong-file]").setInputFiles(csvFile); await p1.waitForTimeout(900);
 let t = await overlayText(p1);
 check("review counts the file (120 workouts)", /120 workouts/.test(t), t.split("\n").slice(2, 4).join(" / "));
@@ -209,6 +209,18 @@ await openImporter(p3);
 const bad = path.join(os.tmpdir(), "seshd_not_strong.csv"); fs.writeFileSync(bad, "name,age\nbob,3\n");
 await p3.locator("input[data-strong-file]").setInputFiles(bad); await p3.waitForTimeout(700);
 check("it is refused with a readable message", /doesn't look like a Strong export/.test(await overlayText(p3)));
+// The screen is named "Import workouts", so it must say up front which app actually works, and a
+// refused file must not answer with parser jargon (the old message listed missing column names).
+const t4 = await overlayText(p3);
+check("the error names no CSV columns", !/missing|Workout Name|Set Order/.test(t4), t4.slice(0, 200));
+const src4 = await p3.evaluate(() => document.querySelector("[data-import-sources]")?.innerText || "");
+check("the first screen lists Strong as supported", /Strong\s*SUPPORTED/i.test(src4), src4.slice(0, 120));
+check("and says other apps are not supported yet", /aren't supported yet/.test(src4), src4.slice(0, 200));
+await p3.locator("button[data-import-request]").click().catch(() => {}); await p3.waitForTimeout(900);
+const fb = await p3.evaluate(() => [...document.querySelectorAll("textarea")].map(t => t.value).find(v => /import my workouts from/.test(v)) || null);
+check("'Request an app' opens feedback with the sentence started", !!fb, String(fb));
+check("[control] the importer closed so the feedback sheet is not buried under it",
+  await p3.evaluate(() => !document.querySelector("input[data-strong-file]")));
 await p3.close();
 
 // ── 5. a Strong workout on a day already logged IN SESHD ─────────────────────────────────────────

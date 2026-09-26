@@ -284,7 +284,9 @@ export function parseStrongExport(text) {
   if (!rows.length) throw new Error("That file is empty.");
   const head = rows[0].map((h) => h.trim());
   const missing = STRONG_REQUIRED.filter((c) => !head.includes(c));
-  if (missing.length) throw new Error("That doesn't look like a Strong export (missing " + missing.join(", ") + ").");
+  // Named for the person reading it, not for the parser: a Hevy file lands here, and a list of
+  // missing column names tells them nothing they can act on.
+  if (missing.length) throw new Error("That doesn't look like a Strong export. Right now Seshd can only read files exported from Strong.");
   const col = (name) => head.indexOf(name);
   const C = {
     date: col("Date"), name: col("Workout Name"), dur: col("Duration"), ex: col("Exercise Name"),

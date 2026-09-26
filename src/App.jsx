@@ -1,4 +1,4 @@
-// v178091717071
+// v178091717072
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17663,7 +17663,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       {showStrongImport && (
         <Suspense fallback={null}>
           <StrongImport C={C} store={store} setStore={setStore} currentUserId={currentUserId} token={token}
-            unit={displayUnit} onBack={() => setShowStrongImport(false)} onDone={onRefresh}/>
+            unit={displayUnit} onBack={() => setShowStrongImport(false)} onDone={onRefresh}
+            onRequestApp={() => {
+              // "My app isn't listed" goes straight to the feedback sheet with the sentence started,
+              // so the ask costs one line of typing. Never clobbers a draft already in progress.
+              setShowStrongImport(false);
+              setFeedbackText(t => t.trim() ? t : "I'd like to import my workouts from: ");
+              setShowFeedback(true);
+            }}/>
         </Suspense>
       )}
       <Sheet open={showFeedback} onClose={() => setShowFeedback(false)} z={1000} dragHandle
@@ -18135,8 +18142,8 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                   cursor:"pointer", fontFamily:F
                 }}>
                   <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:14, color:C.text }}>Import from Strong</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Bring your workout history across</div>
+                    <div style={{ fontSize:14, color:C.text }}>Import workouts</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Bring your history from another app</div>
                   </div>
                   <span style={{ display:"flex", flexShrink:0 }}><Icon name="chevron-right" size={16} color={C.sub}/></span>
                 </button>

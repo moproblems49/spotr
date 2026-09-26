@@ -3481,6 +3481,17 @@ personal data and **never enters this public repo** — both guards use syntheti
 - **Known side effect:** after import, `loadUserData`'s PR self-heal bumps `personal_records` for
   every improved best, and the `updated_at` trigger stamps them NOW — so the importer's weekly PR
   count on Friends Activity can read high that week. The dated log (`pr_events`) is untouched.
+**★ RENAMED "Import workouts" (Mo, Sep 26 2026): "so it doesn't look like we're targeting one
+app".** The Settings row and the screen are named for the JOB now, but the parser still reads
+Strong's CSV ONLY, so the first screen carries a plain supported list — Strong SUPPORTED, "Other
+apps … aren't supported yet" — plus **Request an app**, which closes the importer and opens the
+feedback sheet with "I'd like to import my workouts from: " pre-typed (never over a draft). A
+generic name that silently refuses a Hevy file would be worse than the old specific one, which is
+why the list exists. The wrong-file error dropped its CSV column list for plain English. Checks in
+`pw_strongimport` §4, red-proofed at 3 failures. **Adding Hevy is a parser job, not a rename**:
+its export has different columns (`title`, `start_time`, `exercise_title`, `set_type`,
+`weight_lbs`/`weight_kg`, `reps`, `duration_seconds`, `rpe`) — build it against a REAL Hevy file,
+same as Strong was, and add a row to the list when it lands.
 **Guards:** `sim_strongimport` (parser/resolver, 41 checks) and `pw_strongimport` (the screen,
 against a stateful stub that models the uuid/user_id constraints and the 1,000-row cap).
 Red-proofed: reverting to a single history query fails "1,120 sessions" at exactly 1000; counting
