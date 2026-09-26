@@ -197,42 +197,30 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
   // are the half that bites. Nothing else in the app ever LOWERS a PR on its own: loadUserData
   // takes the MAX of the server's personal_records, history, and the in-memory store. So an undo
   // that only deleted history would leave every imported best standing forever. Order matters:
-  //   1. delete the rows, counting what the server CONFIRMED (return=representation);
-  //   2. lower the local PR maps for the affected exercises to what the REMAINING history holds;
-  //   3. await the personal_records writes BEFORE the refresh, or the refresh max-merges the stale
-  //      server row straight back in (the t-bar scar);
-  //   4. drop their private notes, then refresh.
+  //   1. work out, from local history alone, what every affected PR falls to without the imports;
+  //   2. write those PRs FIRST and stop, changing nothing, if any write fails. loadUserData
+  //      max-merges the server row over local, so a PR write that lands after the refresh (or
+  //      never) puts the imported best straight back -- the t-bar scar. The reverse order fails
+  //      safe: a lowered PR with some imported rows still on the server is healed upward by the
+  //      next refresh, which rebuilds PRs from history;
+  //   3. delete the rows, counting what the server CONFIRMED (return=representation);
+  //   4. drop their private notes and PR events, then refresh.
   const removeImported = async () => {
     if (removing || !imported.length) return;
     setRemoving(true);
     const ids = imported.map(x => x.sid);
-    const gone = new Set();
-    let failed = 0;
-    for (let i = 0; i < ids.length; i += 40) {
-      const chunk = ids.slice(i, i + 40);
-      const del = () => sb.query(`workout_history?user_id=eq.${currentUserId}&id=in.(${chunk.join(",")})`, { method: "DELETE" }, token);
-      let rows = null;
-      try { rows = await del(); } catch (e) { try { rows = await del(); } catch (e2) { devError("undo import batch:", e2); } }
-      // A DELETE that RLS filters changes 0 rows and raises nothing, so only a returned row counts.
-      if (Array.isArray(rows)) rows.forEach(r => r?.id && gone.add(r.id)); else failed += chunk.length;
-    }
-    if (!gone.size) {
-      setRemoving(false);
-      toast("Couldn't remove imported workouts — check your connection");
-      return;
-    }
+    const idSet = new Set(ids);
 
-    const history = {};
+    const remaining = {};
     Object.entries(store.history || {}).forEach(([date, day]) => {
-      const kept = Object.fromEntries(Object.entries(day || {}).filter(([sid]) => !gone.has(sid)));
-      if (Object.keys(kept).length) history[date] = kept;
+      const kept = Object.fromEntries(Object.entries(day || {}).filter(([sid]) => !idSet.has(sid)));
+      if (Object.keys(kept).length) remaining[date] = kept;
     });
-    const names = [...new Set(imported.filter(x => gone.has(x.sid))
-      .flatMap(x => (x.sess?.exercises || []).map(e => e?.name).filter(Boolean)))];
-    const maxW = historyMaxPRs(history, names);
+    const names = [...new Set(imported.flatMap(x => (x.sess?.exercises || []).map(e => e?.name).filter(Boolean)))];
+    const maxW = historyMaxPRs(remaining, names);
     const e1 = {}, vol = {};
     names.forEach(n => { e1[n] = 0; vol[n] = 0; });
-    Object.values(history).forEach(day => Object.values(day).forEach(w => {
+    Object.values(remaining).forEach(day => Object.values(day).forEach(w => {
       const wu = w?.unit || "lbs";
       (w?.exercises || []).forEach(ex => {
         if (!(ex?.name in e1)) return;
@@ -248,41 +236,76 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
       });
     }));
 
+    const prWrites = names.map(n => maxW[n] > 0
+      ? [`personal_records?on_conflict=user_id,exercise_name`, { method: "POST", headers_extra: { Prefer: "resolution=merge-duplicates" },
+          body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: maxW[n] }) }]
+      : [`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(n)}`, { method: "DELETE" }]);
+    const once = async ([url, opts]) => {
+      try { await sb.query(url, opts, token); return true; }
+      catch (e) { try { await sb.query(url, opts, token); return true; } catch (e2) { devError("undo import PR:", e2); return false; } }
+    };
+    const prOk = await Promise.all(prWrites.map(once));
+    if (prOk.includes(false)) {
+      setRemoving(false);
+      toast("Couldn't remove imported workouts — check your connection and try again");
+      return;
+    }
+
+    const gone = new Set();
+    for (let i = 0; i < ids.length; i += 40) {
+      const chunk = ids.slice(i, i + 40);
+      const del = () => sb.query(`workout_history?user_id=eq.${currentUserId}&id=in.(${chunk.join(",")})`, { method: "DELETE" }, token);
+      let rows = null;
+      try { rows = await del(); } catch (e) { try { rows = await del(); } catch (e2) { devError("undo import batch:", e2); } }
+      // A DELETE that RLS filters changes 0 rows and raises nothing, so only a returned row counts.
+      if (Array.isArray(rows)) rows.forEach(r => r?.id && gone.add(r.id));
+    }
+    // Counted from what came back, not from which requests threw: a chunk that returns fewer rows
+    // than it sent is a partial removal too.
+    const failed = ids.length - gone.size;
+
     const notes = Object.fromEntries(Object.entries(store.workoutNotes || {}).filter(([sid]) => !gone.has(sid)));
     const notesChanged = Object.keys(notes).length !== Object.keys(store.workoutNotes || {}).length;
     const prEvents = (store.prEvents || []).filter(e => !gone.has(e.sid));
     const eventsChanged = prEvents.length !== (store.prEvents || []).length;
 
     setStore(p => {
+      // Filter the CURRENT history rather than writing a click-time snapshot over it, so a session
+      // that landed while this ran is not dropped.
+      const h = {};
+      Object.entries(p.history || {}).forEach(([date, day]) => {
+        const kept = Object.fromEntries(Object.entries(day || {}).filter(([sid]) => !gone.has(sid)));
+        if (Object.keys(kept).length) h[date] = kept;
+      });
       const dates = { ...(p.workoutDates || {}) };
-      Object.keys(dates).forEach(d => { if (!history[d]) delete dates[d]; });
+      Object.keys(dates).forEach(d => { if (!h[d]) delete dates[d]; });
       const prs = { ...(p.prs || {}) }, prsE1rm = { ...(p.prsE1rm || {}) }, prsVolume = { ...(p.prsVolume || {}) };
       names.forEach(n => {
         if (maxW[n] > 0) { prs[n] = maxW[n]; prsE1rm[n] = e1[n]; prsVolume[n] = vol[n]; }
         else { delete prs[n]; delete prsE1rm[n]; delete prsVolume[n]; }
       });
-      return { ...p, history, workoutDates: dates, prs, prsE1rm, prsVolume, prEvents,
-        workoutNotes: notesChanged ? notes : p.workoutNotes };
+      return { ...p, history: h, workoutDates: dates, prs, prsE1rm, prsVolume,
+        prEvents: (p.prEvents || []).filter(e => !gone.has(e.sid)),
+        workoutNotes: notesChanged ? Object.fromEntries(Object.entries(p.workoutNotes || {}).filter(([sid]) => !gone.has(sid))) : p.workoutNotes };
     });
 
-    const writes = names.map(n => maxW[n] > 0
-      ? [`personal_records?on_conflict=user_id,exercise_name`, { method: "POST", headers_extra: { Prefer: "resolution=merge-duplicates" },
-          body: JSON.stringify({ user_id: currentUserId, exercise_name: n, weight_lbs: maxW[n] }) }]
-      : [`personal_records?user_id=eq.${currentUserId}&exercise_name=eq.${encodeURIComponent(n)}`, { method: "DELETE" }]);
     const patch = {};
     if (notesChanged) patch.workout_notes = notes;
     if (eventsChanged) patch.pr_events = prEvents;
-    if (Object.keys(patch).length) writes.push([`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify(patch) }]);
-    if (notesChanged) markSettingsEdit();
-    // Awaited, with the durable queue as the fallback so an offline undo still lands eventually.
-    await Promise.all(writes.map(([url, opts]) =>
-      sb.query(url, opts, token).catch(() => sb.queueWrite(url, opts, token).catch(() => {}))));
+    if (Object.keys(patch).length) {
+      if (notesChanged) markSettingsEdit();
+      // A PATCH is replayable, so the durable queue genuinely holds it if the network drops here.
+      try { await sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method: "PATCH", body: JSON.stringify(patch) }, token); }
+      catch (e) { devError("undo import profile patch:", e); }
+    }
 
     try { await onDone?.(); } catch (e) { devError("undo import refresh:", e); }
     setRemoving(false);
-    toast(failed
-      ? `Removed ${gone.size} of ${ids.length} — run it again to finish`
-      : `Removed ${gone.size} imported workout${gone.size === 1 ? "" : "s"}`);
+    toast(!gone.size
+      ? "Couldn't remove imported workouts — check your connection and try again"
+      : failed
+        ? `Removed ${gone.size} of ${ids.length} — run it again to finish`
+        : `Removed ${gone.size} imported workout${gone.size === 1 ? "" : "s"}`);
   };
 
   const askRemoveImported = () => confirmAction({
@@ -416,7 +439,7 @@ export default function StrongImport({ C, store, setStore, token, currentUserId,
                 )}
                 {parsed.skippedTimed > 0 && (
                   <div style={{ fontSize: 12, color: C.sub, marginTop: 6, lineHeight: 1.45 }} data-import-timed>
-                    {parsed.skippedTimed} cardio or weighted timed set{parsed.skippedTimed === 1 ? "" : "s"} won't come across — Seshd logs weight × reps, not distance or time.
+                    {parsed.skippedTimed} timed or cardio set{parsed.skippedTimed === 1 ? "" : "s"} won't come across — Seshd logs weight × reps, not distance or long timers.
                   </div>
                 )}
               </div>

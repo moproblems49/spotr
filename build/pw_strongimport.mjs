@@ -50,8 +50,11 @@ function makeServer({ failDay = null, preseed = 0, native = [] } = {}) {
     hist.set(id, { id, user_id: ME, day_name: "Native", exercises: [{ name: "Barbell Bench Press", sets: [{ weight: "200", reps: "5", done: true, type: "normal" }] }],
       duration_secs: 3000, unit: "lbs", note: "", workout_date: day, created_at: `${day}T20:00:00.000Z` });
   });
-  return { hist, posts, prs, deletes, get notes() { return notes; }, async handle(r) {
+  const srv = { hist, posts, prs, deletes, failPrWrites: false, get notes() { return notes; }, async handle(r) {
     const q = r.request(), u = q.url(), m = q.method(); let status = 200, body = "[]";
+    if (srv.failPrWrites && /\/rest\/v1\/personal_records/.test(u) && m !== "GET") {
+      return r.fulfill({ status: 503, contentType: "application/json", body: '{"message":"unavailable"}' });
+    }
     if (/\/rest\/v1\/workout_history/.test(u)) {
       if (m === "POST") {
         const arr = [].concat(JSON.parse(q.postData()));
@@ -88,6 +91,7 @@ function makeServer({ failDay = null, preseed = 0, native = [] } = {}) {
     }
     r.fulfill({ status, contentType: "application/json", body });
   } };
+  return srv;
 }
 
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
@@ -306,6 +310,30 @@ check("the undo section disappears once nothing imported is left", await p7.loca
 check("no page errors in [7]", p7._errors.length === 0, p7._errors.join(" | "));
 await p7.close();
 
+// 7b. A PR write that fails must stop the undo BEFORE anything is deleted. The old order deleted
+// first and let the PR write fail silently, so the refresh max-merged the stale imported best (254)
+// back in permanently while the toast said "Removed".
+console.log("\n[7b] undo with the PR write failing");
+const s7b = makeServer({ native: ["2023-01-11"] });
+const p7b = await open(s7b);
+await openImporter(p7b);
+await p7b.locator("input[data-strong-file]").setInputFiles(csvFile); await p7b.waitForTimeout(900);
+await answerAll(p7b);
+await p7b.locator("[data-import-go]").click(); await watchText(p7b, 5000);
+await p7b.getByRole("button", { name: /^Done$/ }).click().catch(() => {}); await p7b.waitForTimeout(3000);
+const before7b = s7b.hist.size;
+check("[control] the import landed before the undo", before7b === 120, String(before7b));
+s7b.failPrWrites = true;
+await openImporter(p7b);
+await p7b.locator("button[data-import-remove]").click(); await p7b.waitForTimeout(700);
+await p7b.getByRole("button", { name: /^Remove$/ }).click();
+const seen7b = await watchText(p7b, 5000);
+check("nothing was deleted when the PR write failed", s7b.hist.size === before7b, `${s7b.hist.size} of ${before7b} left`);
+check("the user is told it didn't work (no 'Removed' toast)", /Couldn't remove imported workouts/.test(seen7b) && !/Removed \d/.test(seen7b), seen7b.slice(0, 200));
+check("the undo is still offered, so it can be retried", await p7b.locator("button[data-import-remove]").count() === 1);
+check("no page errors in [7b]", p7b._errors.length === 0, p7b._errors.join(" | "));
+await p7b.close();
+
 
 // ── 8. a HEVY export through the real screen ─────────────────────────────────────────────────────
 // Synthetic, shaped like a real Hevy export: the unit is in the header (kg here, so a picker that
@@ -329,6 +357,12 @@ const t8 = await overlayText(p8);
 check("[control] the Hevy file reached the review", /3 workouts/.test(t8), t8.slice(0, 160));
 check("the unit is read from the file, so there is no picker", await p8.locator('[role="radiogroup"][aria-label="Weight unit"]').count() === 0
   && /Weights are in\s*kg/.test(await p8.locator("[data-import-unit]").innerText().catch(() => "")));
+// Checked at the REVIEW, before answerAll: "Warm Up" resolves to no library name, so if the hold cap
+// ever went it would surface here as a name needing a choice -- and answerAll would then quietly
+// Skip it, which is why a check on the imported rows alone could never go red.
+check("the 5-minute Warm Up is not offered as an exercise to map", await p8.locator('[data-import-row="Warm Up"]').count() === 0);
+check("the review says the timed sets were left out", /\b1 timed or cardio set won't/.test(await p8.locator("[data-import-timed]").innerText().catch(() => "")),
+  await p8.locator("[data-import-timed]").innerText().catch(() => "(none)"));
 await answerAll(p8);
 const go8 = p8.locator("[data-import-go]");
 check("[control] nothing needs a choice, so import is offered", /Import 3 workouts/.test(await go8.innerText()), await go8.innerText());

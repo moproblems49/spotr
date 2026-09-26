@@ -120,6 +120,14 @@ ok(/No mapping/.test(threw), "an unmapped exercise REFUSES rather than importing
   ok(ex2("Plank")?.sets[0]?.reps === "90", "[control] a bodyweight hold still imports as seconds-in-reps", JSON.stringify(ex2("Plank")?.sets));
   ok(ex2("Bench Press (Barbell)")?.sets[1]?.type === "drop", "D -> drop set (not normal)", ex2("Bench Press (Barbell)")?.sets[1]?.type);
   ok(ex2("Bench Press (Barbell)")?.sets[0]?.type === "normal", "[control] 1 -> normal");
+  // The hold cap is SHARED with Hevy: a Strong "Warm Up" logged as a 5-minute timer is not 300 reps.
+  const r3 = parseStrongExport([H2,
+    '2024-06-01 10:00:00,"Mix",1h,"Warm Up",1,0,0,0,300,,,',
+    '2024-06-01 10:00:00,"Mix",1h,"Plank",1,0,0,0,299,,,',
+  ].join("\n"));
+  const ex3 = (n) => r3.workouts[0]?.exercises.find((e) => e.rawName === n);
+  ok(!ex3("Warm Up") && r3.skippedTimed === 1, "a 5-minute bodyweight timer in a STRONG file is skipped and counted, not 300 reps", JSON.stringify([ex3("Warm Up")?.sets, r3.skippedTimed]));
+  ok(ex3("Plank")?.sets[0]?.reps === "299", "[control] a 299 s hold still imports");
 }
 
 // ── HEVY ──────────────────────────────────────────────────────────────────────────────────────
@@ -161,6 +169,17 @@ ok(/No mapping/.test(threw), "an unmapped exercise REFUSES rather than importing
   ok(ses[0].date === ses[1].date && ses[0].id !== ses[1].id, "same-day workouts get DIFFERENT ids", JSON.stringify(ses.map(x => x.id)));
   ok(ses.every(x => x.unit === "kg"), "sessions carry the unit from the file");
   ok(parseHevyTime("5 Jan 2025, 09:03") === "2025-01-05 09:03:00" && parseHevyTime("nonsense") === "", "[control] time parser: valid and invalid");
+  ok(parseHevyTime("26 Sep 2026, 5:52 PM") === "2026-09-26 17:52:00" && parseHevyTime("26 Sep 2026, 12:30 AM") === "2026-09-26 00:30:00"
+    && parseHevyTime("26 Sep 2026, 12:30 PM") === "2026-09-26 12:30:00", "a 12-hour export reads PM as afternoon (no negative durations, no AM/PM merge)",
+    JSON.stringify(["5:52 PM", "12:30 AM", "12:30 PM"].map(t => parseHevyTime("26 Sep 2026, " + t))));
+  {
+    // Two instants with DIFFERENT offsets: a parser that ignores the zone can match local time in at
+    // most one of them, so this goes red in every timezone (one instant alone passes vacuously in UTC).
+    const local = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:00`;
+    const insts = ["2026-09-27T02:00:00Z", "2026-09-26T22:00:00-05:00"];
+    const got = insts.map(parseHevyTime), want = insts.map(i => local(new Date(i)));
+    ok(got.join() === want.join(), "an ISO time with a zone is read as an instant, into local wall-clock", `${got} vs ${want}`);
+  }
   let err = "";
   try { parseWorkoutExport("name,age\nbob,3\n"); } catch (e) { err = e.message; }
   ok(/Strong or Hevy/.test(err) && !/column|missing/i.test(err), "an unknown file names the two supported apps, not CSV columns", err);

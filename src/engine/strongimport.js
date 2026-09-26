@@ -350,7 +350,9 @@ export function parseStrongExport(text) {
       // A LOADED timed set (farmer's walk 100 lb x 60 s) must not become 60 reps: that is 6,000 lb
       // of volume and a 140 lb "estimated 1RM" out of nothing, i.e. fake PRs. Only a bodyweight
       // hold (plank) goes in as seconds-in-reps, the way it is logged in the app.
-      if (parseFloat(weight) > 0) { skippedTimed++; continue; }
+      // And a bodyweight "hold" of five minutes or more is a warm-up or cardio block, not a set --
+      // the same cap the Hevy parser uses, so the two can't disagree about one timed row.
+      if (parseFloat(weight) > 0 || secs >= MAX_HOLD_SECS) { skippedTimed++; continue; }
       reps = String(Math.round(secs));
     }
     if (!reps) { skippedSets++; continue; } // an empty set: nothing was done
@@ -386,11 +388,23 @@ const pad2 = (n) => String(n).padStart(2, "0");
 // -> "YYYY-MM-DD HH:MM:00" (local wall-clock, the same shape Strong's Date column has), or "".
 export function parseHevyTime(v) {
   const s = String(v || "").trim();
-  let m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})/);
+  let m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp])?\.?[Mm]?/);
   if (m) {
     const mo = MONTHS[m[2].toLowerCase()];
     if (!mo) return "";
-    return `${m[3]}-${pad2(mo)}-${pad2(+m[1])} ${pad2(+m[4])}:${m[5]}:00`;
+    // A 12-hour export ("5:52 PM") must not read as 05:52: that turns an afternoon session's
+    // duration negative and merges two same-titled workouts at 5 AM and 5 PM into one.
+    let h = +m[4];
+    const ap = (m[6] || "").toLowerCase();
+    if (ap === "p" && h < 12) h += 12;
+    if (ap === "a" && h === 12) h = 0;
+    return `${m[3]}-${pad2(mo)}-${pad2(+m[1])} ${pad2(h)}:${m[5]}:00`;
+  }
+  // ISO carrying a zone (Z or +hh:mm) is an INSTANT; read it into local wall-clock time, or a late
+  // UTC evening lands on the wrong day west of Greenwich. Without a zone it already is local.
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i.test(s)) {
+    const d = new Date(s.replace(" ", "T"));
+    if (!isNaN(d)) return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:00`;
   }
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
   if (m) return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:00`;

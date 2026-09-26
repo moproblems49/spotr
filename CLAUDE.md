@@ -3520,6 +3520,32 @@ angles it means is their call. Guards: `sim_strongimport` [hevy] (18 checks) and
 dropping the header-unit line writes every row as lbs (`["lbs","lbs","lbs"]`) — a 2.2x error on
 every weight that would otherwise look perfectly fine. **Fitbod etc. remain a parser job** — build
 against a real file, never from memory.
+**★ THE COLD-CONTEXT AUDIT OF UNDO + HEVY (Sep 26) FOUND THREE REAL ONES, TWO OF THEM MINE.**
+- **Undo deleted FIRST and wrote the lowered PRs second, with a fallback that did nothing.** The
+  PR upsert is a POST, and `queueWrite` only queues a POST that passes `idempotent:true` — it did
+  not — so offline the write was re-sent once, thrown, swallowed, and the refresh max-merged the
+  imported best (254) back in FOR GOOD while the toast said "Removed". Even a queued write could not
+  have helped: the queue flushes on boot/reconnect, the refresh runs immediately. **Now the PRs are
+  written FIRST and the undo stops, changing nothing, if any fails.** The reverse order fails safe:
+  a lowered PR with imported rows still on the server is healed UPWARD by the next refresh, which
+  rebuilds PRs from history. *When a write can only be undone by a max-merge, write the lowering
+  first.* Also: partial deletes are counted from returned rows (a short chunk was reported as
+  success), and the local history is filtered from the CURRENT store, not a click-time snapshot.
+- **The hold cap this entry claimed was "shared with Strong" was not** — `parseStrongExport` still
+  only had the 30-minute forgotten-timer cap, so a Strong "Warm Up" of 300s imported as 300 reps.
+  The documentation was right about the intent and wrong about the code; one guard not copied again.
+- **`pw_strongimport` §8's Warm Up check was VACUOUS**: "Warm Up" resolves to no library name, so
+  without the cap it surfaces as a name to map and `answerAll` Skips it — the rows look right
+  either way. It now asserts at the REVIEW that no `[data-import-row="Warm Up"]` exists and that
+  the skipped-timed notice counts it. **A check on the final rows cannot see a bug that a
+  "skip everything unmapped" test helper cleans up.**
+- `parseHevyTime` now reads 12-hour exports (`5:52 PM` was 05:52, a negative duration) and zoned
+  ISO as an instant. **The ISO check uses two instants with different offsets** — the single-instant
+  version passed vacuously in a UTC sandbox, i.e. on the machine this repo tests on.
+Red-proofed: 3 sim failures + 5 pw failures (7b's three and §8's two) on the old code, controls
+green. Not fixed, deliberately: an exercise done twice in one workout merges into its first
+position (volume right, order lost), and the undo's e1RM/volume recompute is an inline third copy
+of loadUserData's formula (matches today).
 **Guards:** `sim_strongimport` (parser/resolver, 41 checks) and `pw_strongimport` (the screen,
 against a stateful stub that models the uuid/user_id constraints and the 1,000-row cap).
 Red-proofed: reverting to a single history query fails "1,120 sessions" at exactly 1000; counting
