@@ -262,39 +262,67 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     } else { fails++; console.log(`FAIL 4j3. ${theme}: could not reach the Discover tab`); }
     await pm.close();
   }
-  // ── 4l. Summer's palm is the one ornament with its OWN layer, and its z is the whole point:
-  //     it must sit BELOW the floating nav (50) so the trunks pass behind the pill instead of
-  //     drawing over the Home button, which is what happens at the decor layer's 150.
-  {
-    const { page: ps } = await boot("summer");
-    const back = await ps.evaluate(() => {
-      const el = document.querySelector(".seshd-decor-back");
-      if (!el) return null;
-      const cs = getComputedStyle(el);
-      return { z: +cs.zIndex, pe: cs.pointerEvents, parent: el.parentElement.tagName,
-               aria: el.getAttribute("aria-hidden"), paths: el.querySelectorAll("path").length,
-               autos: [...el.querySelectorAll("*")].filter(e => getComputedStyle(e).pointerEvents !== "none").length };
+  // ── 4l. SCENE BACKDROPS (THEME_BACKDROPS). Halloween, Fall and Summer paint a scene on the app
+  //     root and the shell layers above it go transparent; the scene replaced each theme's ground
+  //     ornament. Every clause here is a way it can break silently: the image URL 404s on device
+  //     (a hashed asset missing from the bundle), a shell layer stays opaque and hides the scene
+  //     entirely, a retired ground ornament comes back on top of the scene's own, or the LIVE
+  //     WORKOUT — where you read weights between sets — loses its flat background.
+  for (const theme of ["halloween", "fall", "summer"]) {
+    const { page: pb } = await boot(theme);
+    const bd = await pb.evaluate(async () => {
+      const root = document.querySelector("#root > div");
+      const img = getComputedStyle(root).backgroundImage;
+      const m = img.match(/url\("?([^")]+)"?\)/);
+      let ok = false, type = "";
+      if (m) { try { const r = await fetch(m[1]); ok = r.ok; type = r.headers.get("content-type") || ""; } catch (e) {} }
+      // The swipe frame and its three panels: the only full-screen layers that paint the theme bg.
+      const frame = [...root.children].find(el => el.getBoundingClientRect().height > 600 && getComputedStyle(el).overflow === "hidden");
+      const panels = frame ? [...(frame.querySelector("div[style*='300%']")?.children || [])] : [];
+      const opaque = [frame, ...panels].filter(Boolean).map(el => getComputedStyle(el).backgroundColor)
+        .filter(c => c !== "rgba(0, 0, 0, 0)" && c !== "transparent");
+      return { img: m ? m[1].split("/").pop() : null, ok, type, panels: panels.length, opaque,
+               ground: document.querySelectorAll(".seshd-decor-back").length };
     });
-    check("4l. summer renders the palm layer", !!back, String(back));
-    if (back) {
-      check("4l2. it is portaled to <body>", back.parent === "BODY", back.parent);
-      check("4l3. it sits BELOW the nav so the trunks pass behind the pill", back.z > 0 && back.z < 50, String(back.z));
-      check("4l4. it cannot eat a tap", back.pe === "none" && back.autos === 0, JSON.stringify(back));
-      check("4l5. it is hidden from screen readers", back.aria === "true", String(back.aria));
-      check("4l6. it actually draws the scene", back.paths >= 15, String(back.paths));
-      // The nav must still be the topmost thing where they overlap — the pill spans y 868-918.
-      const navOnTop = await ps.evaluate(() => {
-        const el = document.elementFromPoint(390, 892);
-        return el ? !el.closest(".seshd-decor-back") : false;
+    check(`4l. ${theme} paints a scene on the app root`, !!bd.img && /\.svg$/.test(bd.img), JSON.stringify(bd));
+    check(`4l2. ${theme}'s scene actually loads`, bd.ok && /svg/.test(bd.type), JSON.stringify(bd));
+    check(`4l3. ${theme}: the swipe frame and all three panels are transparent over it`,
+      bd.panels === 3 && bd.opaque.length === 0, JSON.stringify(bd));
+    check(`4l4. ${theme}: no retired ground ornament renders over the scene`, bd.ground === 0, JSON.stringify(bd));
+    if (theme === "halloween") {
+      // The live workout must stay flat: whatever paints behind the middle of the screen during a
+      // workout has to be an opaque layer that is NOT the root carrying the scene.
+      await pb.getByText("Quick Start").first().click({ force: true });
+      await pb.waitForTimeout(1500);
+      const wk = await pb.evaluate(() => {
+        const root = document.querySelector("#root > div");
+        if (!/Discard/.test(document.body.innerText)) return { err: "workout did not start" };
+        let el = document.elementFromPoint(214, 700);
+        while (el && el !== document.body) {
+          const c = getComputedStyle(el).backgroundColor;
+          if (c !== "rgba(0, 0, 0, 0)" && c !== "transparent") return { painter: el === root ? "root" : el.tagName, c };
+          el = el.parentElement;
+        }
+        return { painter: "none" };
       });
-      check("4l7. the nav bar is still on top where the palm overlaps it", navOnTop);
+      check("4l5. the live workout keeps a flat background over the scene",
+        !wk.err && wk.painter !== "root" && wk.painter !== "none", JSON.stringify(wk));
     }
-    await ps.close();
+    await pb.close();
   }
   {
     const { page: pd } = await boot("dark");
-    check("4k2. a non-seasonal theme renders no palm layer",
+    check("4k2. a non-seasonal theme renders no ground layer",
       await pd.evaluate(() => document.querySelectorAll(".seshd-decor-back").length === 0));
+    // And no scene: a theme without a backdrop keeps its flat, opaque shell exactly as before.
+    const flat = await pd.evaluate(() => {
+      const root = document.querySelector("#root > div");
+      return { img: getComputedStyle(root).backgroundImage,
+               frame: [...root.children].map(el => getComputedStyle(el).backgroundColor)
+                 .filter(c => c !== "rgba(0, 0, 0, 0)").length };
+    });
+    check("4k3. a theme without a backdrop paints no scene and keeps an opaque shell",
+      flat.img === "none" && flat.frame >= 1, JSON.stringify(flat));
     check("4k. a non-seasonal theme renders no mark",
       await pd.evaluate(() => document.querySelectorAll("[data-theme-mark]").length === 0));
     await pd.close();
@@ -324,31 +352,20 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
                && d.getBoundingClientRect().width > 300;
       });
       const cat = document.querySelector('[data-ornament="navcat"]');
-      const scene = document.querySelector('[data-ornament="hauntedcorner"]');
-      if (!pill || !cat || !scene) return { pill: !!pill, cat: !!cat, scene: !!scene };
+      if (!pill || !cat) return { pill: !!pill, cat: !!cat };
       const pr = pill.getBoundingClientRect(), cr = cat.getBoundingClientRect();
       // The wrapper that carries the nav's shrink, and which must hold BOTH.
       const wrap = cat.parentElement.parentElement;
-      // ★ MEASURE THE INK, NOT THE BOX. `getBoundingClientRect()` on the <svg> returns the
-      //   ELEMENT, which keeps its declared height however small the drawing inside it gets — so
-      //   the first version of this check reported a healthy 152px rise for a scene shrunk to 62.
-      //   Same class as the planted-mark guard, which had to stop reading rects for this reason.
-      const srect = scene.getBoundingClientRect();
-      const vb = (scene.getAttribute("viewBox") || "0 0 1 1").split(/[\s,]+/).map(Number);
-      const bb = scene.getBBox();
-      const inkTop = srect.top + bb.y * (srect.height / vb[3]);
       return {
         insidePill: pill.contains(cat),                       // must be false
         sitsOnBar: Math.abs(cr.bottom - pr.top) <= 6,
         onScreen: cr.top >= 0 && cr.left >= 0,
         ridesShrink: wrap.contains(pill) && getComputedStyle(wrap).transform !== "none",
         pe: getComputedStyle(cat).pointerEvents !== "auto",
-        // How far the scene's tallest ink rises above the viewport bottom.
-        sceneRise: Math.round(innerHeight - inkTop),
       };
     });
-    check("4n. halloween's ground scene clears the nav as it sits ON DEVICE (>=92px), not as Chromium draws it",
-      pk && pk.sceneRise >= 92, JSON.stringify(pk));
+    // (4n itself — the haunted-house ground scene clearing the device nav — retired with that
+    //  ornament: the house is part of the backdrop scene now, which 4l covers.)
     check("4n1b. the cat sits ON the nav pill, outside its clip, and rides the nav's shrink",
       pk && pk.insidePill === false && pk.sitsOnBar && pk.onScreen && pk.ridesShrink && pk.pe,
       JSON.stringify(pk));
@@ -393,7 +410,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   //     which no other check here can see because the decor layer still has plenty of children
   //     without it. Selected by `data-ornament`, not by size or animation-name, so a restyle
   //     cannot make the guard stop seeing the thing it guards.
-  for (const [theme, want] of [["spring", { bee: 2 }], ["halloween", { bat: 1, hauntedcorner: 1 }]]) {
+  for (const [theme, want] of [["spring", { bee: 2 }], ["halloween", { bat: 1 }]]) {
     const { page: po } = await boot(theme);
     const got = await po.evaluate(() => {
       const out = {};
@@ -419,7 +436,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
   //     STATIC ornaments are deliberately excluded (icicles, webs, palm, hoops, branch, sun) and
   //     so are the two ground anchors that sway in place (grass, and the sun's rotation) — Mo asked
   //     for the things that MOVE across the screen, which are the ones that cross copy.
-  for (const [theme, n] of [["winter", 15], ["spring", 12], ["fall", 10],
+  for (const [theme, n] of [["winter", 15], ["spring", 12], ["fall", 7],
                             ["summer", 6], ["halloween", 9], ["quadball", 4]]) {
     const { page: pm } = await boot(theme);
     const got = await pm.evaluate(() => {

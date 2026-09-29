@@ -6014,6 +6014,38 @@ light themes; the strength ladder's `Advanced` is still the volt accent literall
 and the silhouette's `bodyCol` key on `isDark` rather than the palette, so they are neutral greys
 on Arctic/Halloween rather than tuned to them.
 
+## ★★ SCENE BACKDROPS: Halloween, Fall and Summer paint a picture behind the app (Sep 29)
+Mo, after a real-app mockup: "Add to the app." `THEME_BACKDROPS` maps a theme id to an SVG in
+`src/assets/themebg/`, referenced via `new URL(…, import.meta.url)` (not `?url`, which esbuild cannot load and which broke every sim) so Vite emits each as its own hashed file: it is
+downloaded only when that theme is active and adds nothing to the JS bundle.
+**Measured before building, not assumed: exactly FIVE full-screen layers paint `C.bg`.** They are the
+app root, the swipe frame and its three panels. Every tab body is already transparent. So the scene
+goes on the ROOT (`center bottom / cover`) and those four layers use `shellPaint` ("transparent" when a
+backdrop is active). Cards keep their own opaque surfaces, so no text sits on the picture.
+**The live workout stays flat for free.** WorkoutTracker's `if (session)` root already paints
+`C.bg` and covers the tab.
+**The scene REPLACED the ground ornaments, and they were DELETED rather than gated.** The haunted
+house (`HauntedCorner`, and the `house`/`tree` keys of `HW_ART`), the summer palm (`PalmCorner`,
+`PALM_SCENE`, `PALM_GEO`) and Fall's skittering leaves (`GroundLeaf`, `seshd-skitter`) were all
+removed. A ground behind a condition that is always true is dead UI. The palm geometry is baked
+into `summer.svg`, and git history has the generator.
+**Composition rule for any new scene:** plain sky across the top, interesting art in the bottom
+third. The header, the tabs and your numbers live at the top, and the empty band above the nav is
+where screens actually have room.
+**Size:** the Fall scene came out of the mockup at 197 KB because 42 leaves each repeated their
+full path data. Moving the unique leaves into `<defs>` and drawing them with `<use>` took it to
+29 KB. Keep ~4 significant figures on `scale()` values: rounding 0.0936 to 0.09 visibly resized
+every leaf. A pixel diff against the original is what caught that.
+**Winter, Spring and Quadball have no licensed art yet.** Adding one is an SVG plus one line in
+`THEME_BACKDROPS`. **Guard: `pw_themes` 4l/4l2-5 and 4k3.** These check:
+- the scene URL actually loads (a missing hashed asset would 404 on device);
+- the frame and all three panels are transparent;
+- no retired ground ornament comes back;
+- the live workout is painted by something other than the root;
+- a theme without a scene keeps an opaque shell.
+Red-proofed twice. Opaque panels fail 4l3 on all three themes. A transparent workout root fails
+4l5 with `painter:"root"`.
+
 ## ★★ Quadball, and the mark whose identity IS a colour (Sep 8)
 Mo: "make a Quidditch theme because my friends play real life quidditch/quadball." Named **Quadball**
 — the sport renamed in 2022 and the older word is a live Warner Bros. trademark that would ship in a

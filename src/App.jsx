@@ -1,4 +1,4 @@
-// v178091717075
+// v178091717076
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1333,6 +1333,32 @@ function themeDecorOf(key) {
   const id = themeIdOf(key);
   return (THEME_META.find(t => t.id === id) || {}).decor || null;
 }
+// ★ A SCENE BEHIND THE SHELL, for the themes whose licensed art can carry one (Mo, Sep 29, from the
+// mockup). The scene is painted on the app ROOT and the four shell layers above it (the swipe
+// frame and its three panels) go transparent, which were measured as the ONLY full-screen layers
+// that paint C.bg — every tab body is already transparent. Cards keep their own opaque surfaces,
+// so nothing you read changes. Three constraints:
+//   * the art sits in the bottom third and the top is plain sky, because the header, the tabs and
+//     the numbers you care about live at the top;
+//   * the LIVE WORKOUT stays flat: its root paints C.bg itself and covers the tab, which is where
+//     you read weights between sets;
+//   * the scene REPLACES the theme's ground ornament — the haunted house, the palm and the
+//     skittering leaves were DELETED with it, since two grounds on one screen reads as a bug and a
+//     ground that can never render is dead UI.
+// Winter / Spring / Quadball have no licensed art yet; adding one is a file plus a line here.
+// `new URL(literal, import.meta.url)` rather than an `import … ?url`: Vite emits each file as its
+// own hashed asset either way (downloaded only when that theme is active, nothing added to the JS
+// bundle), but esbuild — which builds the sim battery's bundle — has no loader for `?url` and
+// failed every sim. Wrapped in arrows so nothing resolves at module load.
+const THEME_BACKDROPS = {
+  halloween: () => new URL("./assets/themebg/halloween.svg", import.meta.url).href,
+  fall:      () => new URL("./assets/themebg/fall.svg", import.meta.url).href,
+  summer:    () => new URL("./assets/themebg/summer.svg", import.meta.url).href,
+};
+function themeBackdropOf(key) {
+  const f = THEME_BACKDROPS[themeIdOf(key)];
+  return f ? f() : null;
+}
 // Two inks, because a web and a spider have different jobs. The web is ambience and must lose to
 // the wordmark it sits behind; the spider is the punchline and gets to be seen. Both are well
 // under the text-contrast floor on purpose — decoration that competes with the copy is the bug.
@@ -1495,136 +1521,6 @@ const HW_ART = {
       "18.9 18.8 15.7 19.7C15 17 13.6 14.4 11.1 13.1C7.8 10.9 3.7 11.1 0 11.1ZM46.3 14.1C45.9 15.6 46.4 16 47.8 15." +
       "6C48.3 14.2 47.8 13.7 46.3 14.1ZM51.8 14.1C51.8 14.5 51.8 15.1 51.8 15.5C54.2 17.5 54.3 11.9 51.8 14.1Z",
     "M46.3 14.1C47.8 13.7 48.3 14.2 47.8 15.6C46.4 16 45.9 15.6 46.3 14.1Z",
-  ] },
-  house: { w: 93.4, h: 100, d: [
-    "M40.1 .2C41 1.6 41.1 3.4 41.6 5C45.1 5.2 48.6 5.5 52.1 4.9C52.6 3.3 52.7 1.5 53.4 0" +
-      "C53.7 2.7 53.4 5.5 53.9 8.2C55.1 13.7 57.8 18.7 60.8 23.4C59.5 23.4 58.3 23.5 57 23.6" +
-      "C56.9 28.9 56.6 34.1 56.6 39.3C62.5 34.4 67.8 28.5 70.9 21.4C73 26.8 75.1 32.3 78.8 36.8" +
-      "C79.1 34.6 78.8 32.5 78.2 30.3C80.5 30.3 82.8 30.4 85.1 30.7C85.1 31.7 84.7 32.7 84.1 33.5" +
-      "C83.9 36.5 83.8 39.5 83.6 42.5C86 44.9 88.2 47.5 90.7 49.8C88.6 49.9 86.4 50 84.3 50" +
-      "C83.9 56.5 83.5 63.1 83 69.6C84.6 70 86.7 69.8 87.7 71.3C89.5 73.6 91.5 75.5 93.4 77.6" +
-      "C92.4 77.7 91.5 77.7 90.5 77.7C89.8 83.8 89.3 90 88.8 96.1C90.2 96.2 91.6 96.1 92.9 96.5" +
-      "C92.9 97.6 92.9 98.7 92.9 99.8C91.6 99.9 90.3 100 89 100C59.6 99.9 30.3 100 .9 100" +
-      "C.9 98.7 .8 97.5 .8 96.3C2 96.2 3.2 96.2 4.4 96.2C4.1 90.1 3.4 84 2.5 78C1.9 77.9 .6 77.9 0 77.8" +
-      "C2 75.3 4.2 72.9 6.1 70.3C8.1 70.3 10 70.2 11.9 70.2C11.6 64.9 10.7 59.6 10.2 54.2" +
-      "C8 54 5.8 53.9 3.6 53.8C8 47 12.3 40.2 15.9 32.9C18.1 28.1 21.5 23.6 21.3 18" +
-      "C22.4 19.6 21.8 21.7 23.1 23.2C27.4 29.4 31.6 35.8 36.9 41.3C36.7 35.4 36.6 29.6 36.2 23.7" +
-      "C35.1 23.6 34 23.4 32.9 23.2C35.9 18.2 38.6 13 39.8 7.3C40.2 4.9 39.8 2.5 40.1 .2ZM45 14.3" +
-      "C44.6 16.5 44.8 18.8 44.8 21.1C46.1 21.2 47.4 21.1 48.7 21.1C48.7 19 48.9 16.9 48.6 14.8" +
-      "C48.1 13.1 45.9 12.8 45 14.3ZM43.5 31.9C44.4 32 45.3 32 46.2 32.1C46.2 30.7 46.2 29.4 46.2 28" +
-      "C44.6 28.7 43.9 30.3 43.5 31.9ZM47.3 28C47.3 29.3 47.4 30.7 47.4 32.1C48.3 32 49.2 32 50.1 31.9" +
-      "C49.6 30.3 48.8 28.8 47.3 28ZM43.5 39.4C44.4 39.4 45.3 39.4 46.3 39.4C46.3 37.3 46.3 35.3 46.3 33.3" +
-      "C45.6 33.3 44.2 33.3 43.6 33.3C43.5 35.3 43.5 37.4 43.5 39.4ZM47.4 33.3C47.4 35.3 47.4 37.3 47.4 39.3" +
-      "C48 39.4 49.4 39.4 50 39.4C50 37.4 50 35.3 50 33.3C49.4 33.3 48 33.3 47.4 33.3ZM67.4 39.2" +
-      "C68.1 39.3 68.8 39.4 69.5 39.5C69.5 38.2 69.5 36.9 69.5 35.6C68.4 36.5 67.1 37.5 67.4 39.2ZM70.7 35.5" +
-      "C70.6 36.8 70.6 38.1 70.6 39.4C71.4 39.4 72.2 39.4 73 39.3C72.7 37.8 71.9 36.5 70.7 35.5ZM19.8 42.1" +
-      "C20.7 42.2 21.6 42.2 22.5 42.3C22.5 40.9 22.5 39.4 22.3 38C21 39 20.2 40.5 19.8 42.1ZM23.6 38.1" +
-      "C23.6 39.5 23.6 40.9 23.7 42.3C24.5 42.3 25.4 42.2 26.2 42.2C25.8 40.6 24.9 39.2 23.6 38.1ZM47.3 40.7" +
-      "C47.3 42.1 47.3 43.5 47.3 44.8C48.2 44.8 49.1 44.8 50 44.8C50 43.4 50 42 50 40.6" +
-      "C49.1 40.6 48.2 40.6 47.3 40.7ZM67.4 40.6C67.4 41.8 67.5 43 67.5 44.3C68 44.3 69 44.4 69.5 44.4" +
-      "C69.5 43.1 69.5 41.7 69.5 40.3C68.8 40.4 68.1 40.5 67.4 40.6ZM70.6 40.5C70.6 41.8 70.6 43.1 70.6 44.4" +
-      "C71.2 44.3 71.9 44.3 72.5 44.3C72.5 43 72.6 41.7 72.6 40.4C71.9 40.4 71.3 40.4 70.6 40.5ZM43.7 40.5" +
-      "C43.6 41.9 43.6 43.4 43.5 44.8C44.2 44.8 45.5 44.8 46.2 44.8C46.2 43.4 46.2 41.9 46.2 40.5" +
-      "C45.6 40.5 44.3 40.5 43.7 40.5ZM19.9 43.4C19.9 45.3 20 47.1 20 48.9C20.8 49 21.7 49 22.5 49" +
-      "C22.6 47.1 22.6 45.3 22.5 43.4C21.7 43.4 20.8 43.4 19.9 43.4ZM23.7 43.4C23.7 45.2 23.7 47.1 23.7 48.9" +
-      "C24.6 49 25.5 49 26.4 49C26.4 47.1 26.4 45.3 26.3 43.4C25.4 43.4 24.6 43.4 23.7 43.4ZM20.1 50" +
-      "C20.1 51.5 20.1 53.1 20.1 54.7C21 54.7 21.9 54.7 22.8 54.7C22.7 53.1 22.8 51.6 22.6 50.1" +
-      "C21.8 50 20.9 50 20.1 50ZM23.8 50C23.8 51.5 23.9 53 23.9 54.6C24.7 54.6 25.6 54.6 26.5 54.6" +
-      "C26.5 53.1 26.5 51.5 26.5 50C25.6 50 24.7 50 23.8 50ZM61.8 57.7C62.3 57.8 63.4 57.8 64 57.8" +
-      "C64 56.4 64 55 63.9 53.6C62.9 54.8 62.2 56.2 61.8 57.7ZM65.1 53.6C65 54.8 65 56 64.9 57.2" +
-      "C65.3 57.6 65.7 58.1 66.1 58.5C64.2 59.4 65.3 61.8 65 63.5C65.7 63.5 66.5 63.5 67.2 63.5" +
-      "C67.6 61.2 66.2 58.9 67 56.7C66.7 55.5 66 54.5 65.1 53.6ZM71.5 56.7C71.9 57.7 72 58.9 71.3 59.9" +
-      "C71.3 61.1 71.2 62.2 71.3 63.4C71.9 63.5 72.9 63.6 73.4 63.6C73.5 61.5 73.2 59.4 72.7 57.3L73.5 57.6" +
-      "C73.5 56.3 73.5 55.1 73.4 53.8C72.6 54.6 71.9 55.6 71.5 56.7ZM74.6 53.7C74.5 54.9 74.5 56 74.4 57.2" +
-      "C75 57.7 75.5 58.2 76.1 58.7L74.5 59C74.5 60.5 74.5 62 74.4 63.5C75 63.5 76.1 63.5 76.7 63.6" +
-      "C76.7 61.1 76.3 58.6 76.3 56.2C76.3 55.1 75.2 54.5 74.6 53.7ZM42.9 59C42.9 60.3 44.1 60.9 44.8 61.8" +
-      "C44.3 61.8 43.3 61.7 42.9 61.6C43.1 62 43.7 62.6 44 63C45.8 61.9 45.1 59.6 45 57.9" +
-      "C44.3 58.2 43.6 58.6 42.9 59ZM46.2 58.6C45.2 60.7 48.5 58.6 46.2 58.6ZM48.1 58.1" +
-      "C48.1 59.4 48.1 60.8 48.1 62.2C49.1 61.2 50.1 60.2 50.8 59C49.9 58.7 49 58.4 48.1 58.1ZM62 58.8" +
-      "C61.9 60.4 61.9 61.9 61.8 63.4C62.5 63.5 63.2 63.5 63.9 63.6C63.9 62 63.9 60.4 64 58.9" +
-      "C63.5 58.9 62.5 58.8 62 58.8ZM40.3 62.5C41.3 62.4 42.3 62.4 43.2 62.3C42.7 61.4 42.2 60.6 41.6 59.8" +
-      "C41.2 60.7 40.7 61.6 40.3 62.5ZM50.1 62.1C51 62.3 51.9 62.4 52.8 62.6C52.5 61.6 52 60.7 51.6 59.8" +
-      "C51.2 60.3 50.5 61.5 50.1 62.1ZM49.6 61.8C50 62.3 50 62.3 49.6 61.8ZM40.6 63.5" +
-      "C40.4 64 40.1 64.6 39.9 65.1C40.9 65.3 41.9 65.4 42.9 65.5C42.8 65 42.6 64 42.5 63.5" +
-      "C42 63.5 41 63.5 40.6 63.5ZM43.8 63.3C42.9 63.9 43.7 66 44.8 65.1C45.6 64.5 44.9 62.5 43.8 63.3Z" +
-      "M48.4 63.1C48.4 63.6 48.3 64.6 48.3 65.2C48.9 65.2 49.9 65.2 50.4 65.2C50.4 64.7 50.3 63.7 50.2 63.2" +
-      "C49.8 63.1 48.8 63.1 48.4 63.1ZM51.3 63.3C51.2 63.8 51.2 64.8 51.2 65.3C52 65.2 52.9 65.2 53.8 65.2" +
-      "C53.7 63.7 52.6 63.2 51.3 63.3ZM61.8 68.7C62.5 68.7 63.2 68.8 63.9 68.9C63.9 67.4 63.9 65.9 63.9 64.5" +
-      "C63.4 64.5 62.4 64.7 61.9 64.8C61.7 66.1 61.8 67.4 61.8 68.7ZM65 64.6C65 66 65 67.4 65 68.8" +
-      "C65.7 68.8 66.4 68.7 67.1 68.7C67.1 67.4 67.1 66 67.1 64.6C66.4 64.6 65.7 64.6 65 64.6ZM71.2 64.7" +
-      "C71.2 66.1 71.1 67.5 71.1 68.8C71.8 68.8 72.6 68.7 73.3 68.7C73.3 67.3 73.3 66 73.3 64.6" +
-      "C72.6 64.7 71.9 64.7 71.2 64.7ZM74.4 64.5C74.3 66 74.3 67.5 74.3 68.9C75.1 68.8 75.9 68.7 76.7 68.7" +
-      "C76.6 67.3 76.6 65.9 76.6 64.6C76 64.6 74.9 64.5 74.4 64.5ZM21.2 74.2C22 74.2 22.9 74.2 23.7 74.3" +
-      "C23.8 73.2 23.7 72 24 71C26.2 69.4 23.7 74.9 25.9 74.2C26.3 74.2 27.2 74.2 27.6 74.2" +
-      "C27.3 72.6 26.8 70.5 24.9 70.1C22.4 68.7 21.4 72.4 21.2 74.2ZM42.4 78.4C42.4 83.2 42.5 87.9 42.5 92.6" +
-      "C45.3 92.7 48.1 92.7 50.9 92.7C51.1 87.9 51.1 83.2 51.1 78.5C51.3 75.8 48.6 73.7 46.1 74.1" +
-      "C43.9 74.2 42.2 76.3 42.4 78.4ZM25 75.3C25.1 77.1 25.1 78.9 25.1 80.6C25.8 80.6 27.1 80.6 27.8 80.7" +
-      "C27.7 78.9 27.7 77.1 27.6 75.3C26.8 75.3 25.9 75.3 25 75.3ZM21.3 75.3C21.3 77.1 21.3 78.9 21.3 80.7" +
-      "C22 80.7 23.3 80.7 24 80.6C23.9 78.9 23.8 77.1 23.9 75.4C23.2 75.4 22 75.3 21.3 75.3ZM61.5 81.1" +
-      "C62.2 81.2 63 81.2 63.8 81.2C63.8 79.5 63.8 77.8 63.7 76.2C62.4 77.5 61.8 79.3 61.5 81.1ZM64.9 76.2" +
-      "C64.7 77.9 64.7 79.6 64.7 81.3C65.3 81.3 66.5 81.3 67.1 81.3C66.9 79.4 66.5 77.4 64.9 76.2ZM70.6 81.5" +
-      "C71.1 81.4 72.1 81.3 72.6 81.3C73.1 79.7 72.8 78 72.8 76.3C71.3 77.6 70.8 79.5 70.6 81.5ZM73.8 80.7" +
-      "C74.4 81.2 74.9 81.8 75.5 82.3L73.8 82.5C73.8 84.3 73.8 86 73.7 87.8C74.3 87.8 75.4 87.8 76 87.8" +
-      "C76.2 85.3 75.3 82.8 75.9 80.3C75.7 78.7 75 77.4 74.1 76.2C73.9 77.7 73.9 79.2 73.8 80.7ZM4.9 77.7" +
-      "C5.2 80.9 5.6 84 5.8 87.1C8.2 87.1 10.7 87 13.1 87.1C12.9 83.9 12.6 80.7 12.4 77.6" +
-      "C9.9 77.6 7.4 77.6 4.9 77.7ZM82.3 77.3C82 82.7 81.7 88.1 81.2 93.5C83.1 93.5 85.1 93.5 87.1 93.6" +
-      "C87.5 88.3 88 82.9 88.5 77.6C86.4 77.5 84.3 77.4 82.3 77.3ZM21.4 86.3C22.4 86.3 23.3 86.3 24.2 86.3" +
-      "C24.1 84.8 24.1 83.3 24.1 81.8C23.4 81.7 22.1 81.7 21.4 81.7C21.4 83.2 21.4 84.8 21.4 86.3ZM25.3 81.8" +
-      "C25.4 83.2 25.4 84.7 25.3 86.2C26.2 86.2 27.1 86.2 28 86.3C28 84.7 28 83.2 28 81.7" +
-      "C27.3 81.7 26 81.8 25.3 81.8ZM61.7 82.4C61.6 84.2 61.6 86 61.6 87.8C62.3 87.8 63 87.8 63.8 87.9" +
-      "C63.8 86 63.7 84.2 63.7 82.4C63.1 82.4 62.4 82.4 61.7 82.4ZM64.8 82.4C64.7 84.2 64.7 86.1 64.8 87.9" +
-      "C65.5 87.9 66.2 87.8 66.9 87.7C66.9 86 67 84.2 67 82.5C66.2 82.4 65.5 82.4 64.8 82.4ZM70.7 87.8" +
-      "C71.4 87.8 72.1 87.8 72.8 87.8C72.8 86 72.8 84.1 72.8 82.3C72.3 82.4 71.3 82.5 70.9 82.6" +
-      "C70.6 84.3 70.7 86.1 70.7 87.8ZM6.1 88.5C6.2 90.1 6.2 91.8 6.3 93.5C6.7 93.6 7.4 93.6 7.8 93.6" +
-      "C7.7 92 7.6 90.3 7.6 88.6C7.2 88.6 6.4 88.5 6.1 88.5ZM8.8 88.4C8.7 90.2 8.7 91.9 8.8 93.6" +
-      "C9.2 93.6 10 93.6 10.5 93.5C10.4 91.9 10.4 90.2 10.4 88.6C10 88.6 9.2 88.5 8.8 88.4ZM11.6 88.6" +
-      "C11.6 90.2 11.6 91.9 11.6 93.5C12.1 93.5 12.9 93.6 13.4 93.6C13.3 91.9 13.2 90.2 13.2 88.6" +
-      "C12.8 88.6 12 88.6 11.6 88.6ZM46.2 58.6C48.5 58.6 45.2 60.7 46.2 58.6Z",
-  ] },
-  tree: { w: 78.5, h: 100, d: [
-    "M47.1 0C48.3 2.7 48.3 5.9 49.8 8.5C51.4 10.2 53.7 11.1 55.5 12.6C54.5 9.6 52.9 5.8 55.5 3.2" +
-      "C55 5.9 55.4 8.8 57 11.2C58.5 9.4 59 7.1 60 5C61.3 3 63.2 1.5 65.3 .3C63.9 2.9 61.3 4.8 60.4 7.7" +
-      "C59.5 10 59.1 12.7 57.2 14.5C55.7 15.9 54.2 17.4 53.1 19.2C56.3 17.6 60.7 18.9 63.4 16.2" +
-      "C65 12.8 67.3 9.1 71.5 8.9C69.2 10.7 67 12.6 65.7 15.3C67.4 15.5 69.1 15.9 70.8 16.1" +
-      "C72.4 15.5 73.9 14.7 75.6 14.4C74.4 15.4 73.1 16.4 71.7 17.1C69.5 17.5 67.4 16.9 65.3 16.7" +
-      "C64.3 17.6 63.4 18.6 62.3 19.3C59.6 19.9 56.7 20.1 54.3 21.6C51.9 22.6 51.3 25.3 50 27.3" +
-      "C47.4 31.3 47.7 36.4 46.7 40.9C48.7 39.9 50.8 38.9 52.6 37.6C54.6 36 54.9 33.3 56.5 31.4" +
-      "C59 29.7 62.1 28.9 65.1 28.4C62.4 30.8 57.4 30.9 56.8 35.3C59.4 35.4 62 35.7 64.7 36.1" +
-      "C67.1 34.5 69.4 32.7 72.3 32.2C70 34 67.6 35.8 65.3 37.5C62.1 38 58.4 36.5 55.5 38.1" +
-      "C53.7 41.6 49.3 42.2 47.4 45.5C49.2 49.6 48.5 54.1 47.6 58.3C49.3 57.4 51.1 56.9 52.8 56.1" +
-      "C54.7 53.8 57.2 51.7 57.6 48.6C57.9 46.5 59.6 45.1 61.3 44.1C60.2 45.9 58.8 47.7 58.6 50" +
-      "C60.4 49.4 62.1 48.7 64 48.2C62.6 49.5 61 50.4 59.4 51.3C57.6 52.3 56.8 54.4 55.7 56.1" +
-      "C58.1 56.1 60.5 56.6 62.8 56.3C65.5 54.5 67.2 50.9 70.7 50.5C73.3 51 75.9 50.7 78.5 50.2" +
-      "C76.4 52.3 73.3 52 70.6 52.1C68.1 53.2 66.5 55.7 64.7 57.6C64.6 59.6 67.7 59.2 68.9 58.6" +
-      "C71.4 57.3 73.9 59.2 75.6 61C74 60.5 72.5 59.6 70.8 59.4C69 59.9 67.4 61.3 65.5 60.8" +
-      "C63.6 60.4 62.1 58.6 60 59.1C56.8 59.6 53.3 59 50.5 60.9C47.4 63.4 44.7 67 44.6 71.2" +
-      "C45.6 71.4 47.1 71.2 47.3 72.6C48.3 74.9 45.3 76.4 45.8 78.7C45.1 81.1 48.2 81.8 48.6 83.9" +
-      "C49.1 85.6 49.4 87.5 50.8 88.6C52.6 90.5 55.6 89.8 57.6 91.2C60.3 93 64 93.2 65.7 96.1" +
-      "C59.3 94.7 52.8 93.1 46.2 92.8C49.2 95.3 53.7 96 55.5 100C54 99.6 52.6 99 51.3 98.3" +
-      "C48.8 97 45.8 97.7 43.4 96.2C41.9 95.5 40.8 94.2 39.3 93.5C37.2 92.7 36 95.2 34.7 96.3" +
-      "C33.4 97.9 31.4 98 29.6 98.5C27.7 99 25.8 99.6 23.8 100C26 96.6 30.7 96 32.5 92.3" +
-      "C29.1 93 25.9 94.5 22.3 94C18.8 95.3 15.5 97.4 11.6 97C14.1 95.2 17.1 94.1 19.5 92" +
-      "C21 90.5 23.2 90.4 25.2 90C27.1 88.5 29.3 87.4 30.9 85.6C31.7 82.6 30.5 79.4 31.6 76.4" +
-      "C32.4 74.4 31.5 72.3 31.5 70.2C32.2 66.5 35.2 63.9 36.5 60.5C33.9 57.6 31.6 54.3 30.1 50.7" +
-      "C27.6 50.6 25.1 51 23.2 52.7C20.9 54.7 17.6 55.9 14.8 54.1C18.1 54.5 21.1 52.9 23.6 50.8" +
-      "C22.4 49.6 21.3 47.6 19.3 47.8C17.4 47.8 15.4 47.8 13.6 46.8C15.6 46.7 17.6 46.7 19.5 46.6" +
-      "C18 45.2 16.4 43.8 15.4 42C19 44 21.9 46.9 25.3 49.1C27.3 48.9 29.6 47.5 31.4 48.9" +
-      "C33.2 50.9 34.6 53.2 36.7 54.9C37 52.4 38.1 49.7 37 47.3C35.5 44.2 34.6 40 31 38.7" +
-      "C28.7 37.9 26.8 36.2 24.8 34.8C21.9 34.5 18.8 34.5 16.1 33C13.3 34.3 11.4 37.1 8.2 37.2" +
-      "C8.2 37 8.1 36.6 8.1 36.4C10.9 35.6 12.8 33.1 15.3 31.6C13.9 29.8 11.7 29.4 9.6 28.9" +
-      "C11.7 28.2 14.1 28.5 15.7 30.2C17.7 32.3 20.6 32.6 23.4 33C22.3 28.6 19.7 24.6 16.2 21.7" +
-      "C13.3 21 10.3 21.6 7.5 22.2C6.4 21.6 5.2 21 4.6 19.8C3.5 17.8 1.7 16.5 0 15C3 15.4 4.8 17.8 6.7 19.9" +
-      "C9.5 20.7 12.6 19.4 15.5 19.3C14.1 16.4 11.2 15.1 9.2 12.9C11.4 13.8 14.2 14.1 15.5 16.4" +
-      "C17.2 19.5 19.9 21.9 22.5 24.3C23 22.3 23.8 20.2 23.9 18.1C23.6 16.2 21.6 14.8 21.8 12.8" +
-      "C21.7 11.5 22.2 10.1 21.6 9C20.5 7.8 19.2 6.8 18.1 5.6C20.6 6.4 23.8 8.1 23.3 11.2" +
-      "C23 13.5 24.4 15.2 25.6 16.9C28.3 16 29.1 13.2 30.6 11.1C30.3 12.7 30 14.4 29.3 15.8" +
-      "C28.5 16.8 27.3 17.4 26.3 18.2C25.7 21.5 23.9 24.9 25.3 28.2C26.2 31.7 29.8 33.2 32.7 34.7" +
-      "C31.4 31.3 31.9 27.6 30.3 24.2C31.5 25.5 32.4 27 33.2 28.6C33.9 27.6 34.5 26.7 35.2 25.8" +
-      "C35.1 27.6 34 29.2 33.6 31.1C33.8 32.4 34.1 33.7 34.7 34.9C36.7 36.5 38.6 38.3 40.3 40.2" +
-      "C40.6 37.5 41.7 35 43 32.7C44.7 30 43 27 42.3 24.3C40.1 22.8 37.5 21.6 36.7 18.9L38.7 20.4" +
-      "C38.5 17.4 38.1 14.5 37.2 11.6C39.4 13.7 39.6 16.8 39.6 19.6C39.4 21.1 41 21.5 41.9 22.2" +
-      "C41.5 19.3 42.7 16.7 44.6 14.6C44.4 16.4 43.8 18 43.4 19.7C43.2 22.3 44.6 24.6 45.9 26.7" +
-      "C48.5 22.3 50.7 17.6 53.7 13.4C51.8 11.8 49.2 10.9 48 8.6C46.8 5.9 46.6 2.9 47.1 0Z",
   ] },
   cat: { w: 95.2, h: 100, d: [
     "M75.3 2.7C77.6 2.6 79.3 1 81.4 .3C86.2 0 91.5 2.1 93.5 6.7C95.2 10.6 94.8 16.2 90.7 18.4" +
@@ -1936,114 +1832,9 @@ function Seagull({ top, size, dur, delay }) {
     </svg>
   );
 }
-// ★ THE PALM — Mo picked v3 of six drawn by a cold-context agent, after five of my own attempts
-// missed. What ended it was a REFERENCE PICTURE, not another adjective: once there was an image to
-// copy the right answer was obvious in one look. **When two or three redraws in a row miss, stop
-// iterating on words and ask for an example.**
-// Each of my failed attempts was nameable, and the names generalise to any icon work here:
-//   (1) shapes rotated EVENLY through 360deg is a pinwheel, not a crown;
-//   (2) a blade that WIDENS toward its tip is an agave leaf, not a frond;
-//   (3) a stroked trunk cannot taper, so it reads as a pole — fill a wedge;
-//   (4) a rachis with drawn pinnae reads as a FERN; what makes a frond legible small is a SOLID
-//       silhouette with deep serrations, not a skeleton with ribs;
-//   (5) one tree reads as a sticker, two of different heights read as a place.
-// Three more the agent found that none of those cover, and they are the interesting ones:
-//   * the teeth must be ASYMMETRIC sawteeth — a long ramp out to each peak and a short sharp cut
-//     back on the tipward side — or the frond reads as holly/oak. That single change is what made
-//     it read as palm.
-//   * each frond's arch bends DOWNWARD whichever way it points; rotating one fixed arched shape
-//     around the crown is exactly what produces the pinwheel in (1).
-//   * a small dark hub disc under each crown closes the star-shaped hole where seven tapering
-//     blade bases meet at a point.
-// Geometry is generated once at module load so the sawteeth stay even as each blade tapers —
-// hand-authored path data drifts, generated teeth do not. Deterministic: no randomness.
-// PALM GEOMETRY, SHARED. The corner scene and the small Groups mark are the same tree at two
-// sizes, so they are the same three generators — the N-copies-drift rule applied to path maths.
-// The mark used to have its own hand-authored palm and it reproduced, exactly, every failure the
-// scene's six redraws catalogued: a STROKED trunk (cannot taper, so it reads as a pole), and one
-// teardrop blade rotated evenly around a point (a pinwheel of agave leaves, not a crown).
-const PALM_GEO = (() => {
-  const frond = (cx, cy, angDeg, len, wmax, droopDeg, teeth = 8) => {
-    const a = angDeg * Math.PI / 180;
-    const droop = (Math.cos(a) >= 0 ? 1 : -1) * droopDeg * Math.PI / 180;
-    const a2 = a + droop;
-    const P0 = [cx, cy];
-    const P1 = [cx + Math.cos(a) * len * 0.55, cy + Math.sin(a) * len * 0.55];
-    const P2 = [cx + Math.cos(a2) * len, cy + Math.sin(a2) * len];
-    const at = t => { const u = 1 - t; return [
-      u * u * P0[0] + 2 * u * t * P1[0] + t * t * P2[0],
-      u * u * P0[1] + 2 * u * t * P1[1] + t * t * P2[1]]; };
-    const tan = t => { const d = [
-      2 * (1 - t) * (P1[0] - P0[0]) + 2 * t * (P2[0] - P1[0]),
-      2 * (1 - t) * (P1[1] - P0[1]) + 2 * t * (P2[1] - P1[1])];
-      const m = Math.hypot(d[0], d[1]) || 1; return [d[0] / m, d[1] / m]; };
-    const w = t => wmax * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.6)), 0.75);
-    const t0 = 0.05, dt = (0.99 - t0) / teeth;
-    const pt = (t, sd, f) => {
-      const [x, y] = at(t); const [tx, ty] = tan(t);
-      return [x + (-ty * sd) * w(t) * f, y + (tx * sd) * w(t) * f];
-    };
-    const side = sd => {
-      const pts = [pt(t0, sd, 0.5)];
-      for (let i = 0; i < teeth; i++) {
-        pts.push(pt(t0 + (i + 0.62) * dt, sd, 1));      // peak
-        pts.push(pt(t0 + (i + 0.86) * dt, sd, 0.55));   // notch, cut sharply toward the tip
-      }
-      return pts;
-    };
-    const pts = [[cx, cy], ...side(1), at(1), ...side(-1).reverse()];
-    return "M" + pts.map((q, i) => (i ? "L" : "") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join("") + "Z";
-  };
-  const trunk = (spine, wBase, wTop) => {
-    const [P0, P1, P2, P3] = spine;
-    const at = t => { const u = 1 - t; return [
-      u*u*u*P0[0] + 3*u*u*t*P1[0] + 3*u*t*t*P2[0] + t*t*t*P3[0],
-      u*u*u*P0[1] + 3*u*u*t*P1[1] + 3*u*t*t*P2[1] + t*t*t*P3[1]]; };
-    const tan = t => { const u = 1 - t; const d = [
-      3*u*u*(P1[0]-P0[0]) + 6*u*t*(P2[0]-P1[0]) + 3*t*t*(P3[0]-P2[0]),
-      3*u*u*(P1[1]-P0[1]) + 6*u*t*(P2[1]-P1[1]) + 3*t*t*(P3[1]-P2[1])];
-      const m = Math.hypot(d[0], d[1]) || 1; return [d[0]/m, d[1]/m]; };
-    const L = [], R = [];
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10, [x, y] = at(t), [tx, ty] = tan(t);
-      const w = (wBase + (wTop - wBase) * t) / 2;
-      L.push([x + ty * w, y - tx * w]); R.push([x - ty * w, y + tx * w]);
-    }
-    const pts = [...L, ...R.reverse()];
-    return "M" + pts.map((q, i) => (i ? "L" : "") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join("") + "Z";
-  };
-  const disc = (cx, cy, rx, ry) =>
-    `M${cx - rx} ${cy}A${rx} ${ry} 0 1 0 ${cx + rx} ${cy}A${rx} ${ry} 0 1 0 ${cx - rx} ${cy}Z`;
-  return { frond, trunk, disc };
-})();
-
-const PALM_SCENE = (() => {
-  const { frond, trunk, disc } = PALM_GEO;
-  const GREEN = "#6AAE43", DARK = "#5B9838", BROWN = "#A0703A", NUT = "#8A5A2E", SAND = "#E8D5A8";
-  const TALL = { c: [60, 60], len: 56, w: 12, wb: 13, wt: 5.5,
-    spine: [[88, 196], [84, 150], [76, 100], [60, 62]],
-    f: [[187, 0.88, 1, 46], [-155, 1.0, 0, 26], [-120, 0.9, 1, 22], [-85, 0.97, 0, 20],
-        [-52, 0.85, 1, 22], [-18, 1.02, 0, 24], [6, 0.9, 1, 52]],
-    nuts: [[55, 68, 3.4], [64.5, 69, 3.1], [59.5, 74, 2.9]] };
-  const SHORT = { c: [143, 120], len: 38, w: 9, wb: 10, wt: 4.5,
-    spine: [[112, 198], [120, 172], [133, 148], [143, 122]],
-    f: [[192, 0.8, 0, 44], [-158, 0.92, 1, 24], [-122, 0.98, 0, 22], [-88, 0.9, 1, 20],
-        [-50, 0.96, 0, 24], [-14, 0.98, 1, 26], [10, 0.82, 0, 50]],
-    nuts: [[139, 126, 2.6], [147, 127, 2.4]] };
-
-  const out = [];
-  for (const T of [TALL, SHORT]) out.push([trunk(T.spine, T.wb, T.wt), BROWN]);
-  for (const T of [TALL, SHORT]) {
-    const [cx, cy] = T.c;
-    out.push([disc(cx, cy + 1, T.w * 0.5, T.w * 0.42), DARK]);
-    for (const [a, k, d, dr] of T.f) out.push([frond(cx, cy, a, T.len * k, T.w, dr), d ? DARK : GREEN]);
-    // Coconuts after this crown's fronds so they are not buried — they hang at the crown.
-    for (const [nx, ny, r] of T.nuts) out.push([disc(nx, ny, r, r), NUT]);
-  }
-  // Sand LAST of all so both trunks vanish into it: no roots, no visible base.
-  out.push(["M0 210C22 184 56 174 95 174S168 184 190 210Z", SAND]);
-  return out;
-})();
+// (The summer palm scene — PALM_GEO + PALM_SCENE, "v3 of six" — is baked into
+// src/assets/themebg/summer.svg now; the backdrop replaced its corner layer. Git history has the
+// generator if the palm is ever needed as a live ornament again.)
 // ★ SNOW ON THE NAV BAR, DRAWN INSIDE THE PILL RATHER THAN OVER IT. The pill already carries
 // `overflow:hidden` and `borderRadius:26`, so a band placed at its top edge is clipped to the
 // rounded corners for free and follows them exactly — no second copy of the nav's geometry, which
@@ -2086,19 +1877,6 @@ function DecorBack({ style, children }) {
       style={{ position:"fixed", zIndex:45, pointerEvents:"none", ...style }}>
       {children}
     </div>, document.body);
-}
-function PalmCorner() {
-  // Mo, from the device: lighter and about 20% smaller. Both are safe to change together because
-  // the SAND MOUND is inside the viewBox — it is what hides the trunk bases, so it scales with
-  // the tree and the "no roots, no visible base" property survives any size.
-  return (
-    // Opacity 0.36 -> 0.29 (Mo, Sep 8: "about 20% more see through"). 0.36 x 0.8 = 0.288.
-    <DecorBack style={{ bottom:0, right:0, width:165, height:182, opacity:0.29 }}>
-      <svg viewBox="0 0 190 210" width="100%" height="100%">
-        {PALM_SCENE.map(([d, f], i) => <path key={i} d={d} fill={f}/>)}
-      </svg>
-    </DecorBack>
-  );
 }
 
 // ── The STATIC anchors. Every seasonal theme has the three-part shape Halloween proved out:
@@ -2390,23 +2168,6 @@ function SunRays() {
     </svg>
   );
 }
-function GroundLeaf({ left, dur, delay, tone }) {
-  // Fall's third element: a leaf skittering along the BOTTOM edge, which is where wind actually
-  // moves them. Different axis and different height band from the fallers, so the two never
-  // read as one effect.
-  // Draws from the same FALL_ART set as the fallers rather than keeping its own tinted copy of the
-  // old blob: one glyph source, so a species added above shows up here too instead of the two
-  // drifting apart (the N-copies rule, applied to a leaf).
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"
-      style={{ position:"absolute", bottom:"7%", left:`${left}%`, opacity:0,
-               animation:`seshd-skitter ${dur}s ${delay}s linear infinite` }}>
-      <g opacity={DECOR_MOVING}>
-        {FALL_SHAPES.leaves(0.85, tone)}
-      </g>
-    </svg>
-  );
-}
 
 function GrassTuft({ left, size, delay, flip }) {
   // Spring's bottom anchor, and the reason it exists is an asymmetry rather than a wish for more
@@ -2551,37 +2312,6 @@ function NavCat() {
   );
 }
 
-function HauntedCorner() {
-  // ★ THE GROUND SCENE MOVED TO THE BOTTOM *RIGHT* AND CHANGED WHAT IT IS (Mo, from his phone:
-  // "The stuff you added for Halloween on bottom left, move to bottom right and change them to
-  // something else"). The slot it fills is unchanged and is still the reason it exists: Winter
-  // settles snow on the nav, Spring grows grass, Fall skitters leaves, Summer plants the palm,
-  // Quadball stands the hoops — Halloween needs something standing on the ground too.
-  // A house among dead trees rather than three grave markers: the graveyard was three variations
-  // on one idea (cross, headstone, clawing hand) where this is a PLACE with a thing in it.
-  // ★ AND THE HEIGHTS ARE SET BY THE NAV, NOT BY TASTE. With `env(safe-area-inset-bottom)` at 0
-  // the pill occupies 8..58px above the bottom; on a real iPhone the inset is ~34pt and the nav's
-  // padding carries it, so it occupies 42..92 and RISES over anything anchored to the bottom.
-  // Anything shorter than ~92px here is invisible on device while looking fine in Chromium —
-  // exactly how the pumpkins were lost. These clear it by 60 and 46px.
-  // The tree is on the RIGHT and the house inboard of it on purpose: the group bleeds off the
-  // screen edge, and a tree cut by the edge reads as continuing past it while a half a house
-  // reads as broken.
-  const place = (g, h, x) => (
-    <g transform={`translate(${x} ${152 - h}) scale(${h / 100})`}>
-      {g.d.map((d, i) => <path key={i} d={d}/>)}
-    </g>
-  );
-  return (
-    <DecorBack style={{ bottom:0, right:-14, lineHeight:0 }}>
-      <svg data-ornament="hauntedcorner" width="250" height="152" viewBox="0 0 250 152"
-        style={{ opacity:0.19 }} fill="rgba(214,205,226,0.9)">
-        {place(HW_ART.house, 138, 0)}
-        {place(HW_ART.tree, 152, 129)}
-      </svg>
-    </DecorBack>
-  );
-}
 
 // ── SEASONAL MARK GLYPHS ────────────────────────────────────────────────────────────────────
 // One per (theme, button) pair rather than one per theme: three identical glyphs across Quick
@@ -3145,7 +2875,6 @@ function ThemeDecor({ kind }) {
       // Workout/Exercises/History labels — the sun and its rays carry Summer's visibility now, so
       // the clouds can afford to be the quiet element.
       clouds: [0, 1, 2].map(() => ({ top: r(0, 6), size: r(64, 88), dur: r(70, 105), delay: -r(0, 90) })),
-      groundLeaves: [0, 1, 2].map(i => ({ left: r(-6, 40), dur: r(14, 24), delay: -r(0, 20), tone: i })),
       // Pinned to the two OUTER thirds. The tufts render inside DecorBack (zIndex 45, BELOW the
       // nav), so they cannot cover a button — but the pill is translucent and its middle is the
       // search control, so leaving the centre clear keeps the busiest one visually clean too.
@@ -3241,19 +2970,12 @@ function ThemeDecor({ kind }) {
           91% { opacity:1; }
           100% { opacity:0; transform: translate3d(122vw,2vh,0); }
         }
-        @keyframes seshd-skitter {
-          0% { opacity:0; transform: translate3d(0,0,0) rotate(0deg); }
-          8% { opacity:1; }
-          50% { transform: translate3d(46vw,-3vh,0) rotate(420deg); }
-          92% { opacity:1; }
-          100% { opacity:0; transform: translate3d(102vw,0,0) rotate(900deg); }
-        }
         @media (prefers-reduced-motion: reduce) { .seshd-decor * { animation: none !important; } }
       `}</style>
       {kind === "halloween" && <>
         <Web/>
         <Web flip/>
-        <HauntedCorner/>
+        {/* No ground anchor here: the backdrop scene (THEME_BACKDROPS) draws the house and trees. */}
         {bits.bats.map((bt, i) => <Bat key={i} {...bt}/>)}
         {bits.spiders.map((sp, i) => <Spider key={i} {...sp}/>)}
         {bits.ghosts.map((g, i) => <Ghost key={i} {...g}/>)}
@@ -3273,15 +2995,11 @@ function ThemeDecor({ kind }) {
       {kind === "leaves" && <>
         <CornerBranch/>
         {bits.leaves.map((x, i) => <Faller key={i} shape="leaves" {...x}/>)}
-        {/* Ground leaves move to the sub-nav layer for the same reason the grass did: at 150 a
-            skittering leaf crossed the nav pill and sat on the Home button. Everything that
-            touches the bottom edge belongs behind the nav, not over it. */}
-        <DecorBack style={{ inset:0 }}>{bits.groundLeaves.map((g, i) => <GroundLeaf key={i} {...g}/>)}</DecorBack>
+        {/* The skittering ground leaves retired with the backdrop scene, which lays its own. */}
       </>}
       {kind === "summer" && <>
         <SunRays/>
         <Sun/>
-        <PalmCorner/>
         {bits.clouds.map((c2, i) => <Cloud key={i} {...c2}/>)}
         {bits.gulls.map((g, i) => <Seagull key={i} {...g}/>)}
       </>}
@@ -22973,13 +22691,18 @@ function AppInner() {
     setSwipeX(0);
   }, 240);
   }
+  // See THEME_BACKDROPS: the scene is painted on the root, and the swipe frame + its panels go
+  // transparent over it. Without a backdrop they paint C.bg exactly as before.
+  const shellBackdrop = themeBackdropOf(store.theme);
+  const shellPaint = shellBackdrop ? "transparent" : C.bg;
   return (
     <div
       ref={setSwipeContainer}
       onTouchStart={handleSwipeStart}
       onTouchEnd={handleSwipeEnd}
       onTouchCancel={handleSwipeEnd}
-      style={{ background:C.bg, height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"pan-y" }}
+      style={{ background: shellBackdrop ? `${C.bg} url("${shellBackdrop}") center bottom / cover no-repeat` : C.bg,
+        height:"100dvh", maxWidth:480, margin:"0 auto", fontFamily:F, color:C.text, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", touchAction:"pan-y" }}
     >
       {/* Global iOS-safe styles — prevent accidental text selection, callout menus, and tap highlights */}
       <style>{`
@@ -23615,7 +23338,7 @@ function AppInner() {
         // at its actual position instead of snapping to a stale value.
         const dragPx = swipeRelease ? swipeRelease.toPx : (isDragging ? swipeDX.current : 0);
         return (
-          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative", background:C.bg }}>
+          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", position:"relative", background:shellPaint }}>
             <style>{`
               @keyframes slideInLeft { from { transform:translateX(100%);} to { transform:translateX(0);} }
               @keyframes slideInRight { from { transform:translateX(-100%);} to { transform:translateX(0);} }
@@ -23638,19 +23361,19 @@ function AppInner() {
               }}
             >
               {/* LEFT (prev tab) — only populated while a swipe is active */}
-              <div style={{ width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg }}>
+              <div style={{ width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:shellPaint }}>
                 {isActive && leftTab ? TabBody(leftTab) : null}
               </div>
               {/* CENTER (current tab) — always mounted; this is the touched node */}
               <div key={animKey} style={{
-                width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg,
+                width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:shellPaint,
                 animation: slideAnim
                   ? `${slideAnim.dir === "left" ? "slideInLeft" : "slideInRight"} 0.3s ${EASE_NAV}` : "none",
               }}>
                 {TabBody(tab)}
               </div>
               {/* RIGHT (next tab) — only populated while a swipe is active */}
-              <div style={{ width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:C.bg }}>
+              <div style={{ width:"33.3333%", height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", background:shellPaint }}>
                 {isActive && rightTab ? TabBody(rightTab) : null}
               </div>
             </div>
