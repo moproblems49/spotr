@@ -1,4 +1,4 @@
-// v178091717081
+// v178091717082
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3406,6 +3406,20 @@ function ScaleStrip({ topLabel, bottomLabel, colors, C }) {
     </div>
   );
 }
+// ♂ / ♀ drawn as SVG strokes — ONE definition for both switches (the muscle map's body switch and
+// the Strength card's standards switch), so the two can never draw different symbols. Not the
+// U+2642/U+2640 text glyphs: iOS can render those as colour emoji, and as text they are
+// hairline-thin at button size.
+function SexGlyph({ sex }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {sex === "male"
+        ? <><circle cx="6.5" cy="9.5" r="4"/><path d="M9.4 6.6L14 2M10 2h4v4"/></>
+        : <><circle cx="8" cy="6" r="4"/><path d="M8 10v5M5.5 12.8h5"/></>}
+    </svg>
+  );
+}
+
 function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C }) {
   const [mode, setMode] = useState("readiness"); // "readiness" | "volume" | "strength"
   const [showBatteryDetail, setShowBatteryDetail] = useState(false);
@@ -3542,11 +3556,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
               color: sex === val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
               cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:0
             }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                {val === "male"
-                  ? <><circle cx="6.5" cy="9.5" r="4"/><path d="M9.4 6.6L14 2M10 2h4v4"/></>
-                  : <><circle cx="8" cy="6" r="4"/><path d="M8 10v5M5.5 12.8h5"/></>}
-              </svg>
+              <SexGlyph sex={val}/>
             </button>
           ))}
         </div>
@@ -3818,10 +3828,13 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                       // because it's under some fixed hour count. If the watch hasn't synced yet, this tile
                       // stays honest about it instead — "Resting pulse · yesterday"/"· Nd ago", never
                       // "Today's pulse" for data that isn't today's.
-                      const label = rec.restingHrAgeDays === 0 ? "Today's pulse"
-                        : rec.restingHrAgeDays === 1 ? "Resting pulse · yesterday"
-                        : rec.restingHrAgeDays > 1 ? `Resting pulse · ${rec.restingHrAgeDays}d ago`
-                        : "Resting pulse";
+                      // Mo (Nov 12): "is Today's Pulse that resting heart rate? name could be confusing."
+                      // It is, so it says so — "pulse" read as any heart rate, and the card below calls
+                      // the same measurement "resting heart rate". One name for one measurement.
+                      const label = rec.restingHrAgeDays === 0 ? "Resting HR · today"
+                        : rec.restingHrAgeDays === 1 ? "Resting HR · yesterday"
+                        : rec.restingHrAgeDays > 1 ? `Resting HR · ${rec.restingHrAgeDays}d ago`
+                        : "Resting HR";
                       tiles.push({ label, value:`${rec.restingHr}`, unit:"bpm", arrow: good ? "▼" : "▲", note:`${good ? "below" : "above"} your usual ${base}`, good });
                     }
                     if (rec.sleepHours != null) {
@@ -3879,7 +3892,7 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                     return (
                       <div data-rhr-trend style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · 60 days</div>
+                          <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting HR · 60-day change</div>
                           <div data-rhr-change style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color: d ? col : C.text, marginTop:2 }}>{d ? `${down ? "▼ " : "▲ +"}${Math.abs(d)}` : "Steady"}{d ? <span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span> : null}</div>
                           <div style={{ fontSize:10, fontWeight:600, color:C.sub, marginTop:2 }}>{from} → {to} bpm{down ? " — stronger heart" : ""}</div>
                         </div>
@@ -17168,12 +17181,17 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
             const levelBadgeInk = C.isDark ? "#0a0a0a" : "#ffffff";
             const SexToggle = () => (
               <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
+                {/* ♂ / ♀ like the muscle map's switch (Mo, Nov 12); "Other" stays a WORD — there is
+                    no widely-read symbol for it, and a made-up one would be the least clear option
+                    on a control whose whole job is to be understood. The words survive as the
+                    accessible names. */}
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
-                  <button key={val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); _lastSettingsEditAt = Date.now(); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} className="seshd-hit-y" style={{
+                  <button key={val} data-strength-sex={val} aria-label={val === "other" ? "Other (neutral standards)" : `${label} standards`} aria-pressed={sex===val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); _lastSettingsEditAt = Date.now(); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} className="seshd-hit-y" style={{
                     padding:"4px 10px", background: sex===val ? C.primary : "transparent",
                     color: sex===val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
-                    fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
-                  }}>{label}</button>
+                    fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F,
+                    display:"flex", alignItems:"center", justifyContent:"center", minHeight:24
+                  }}>{val === "other" ? label : <SexGlyph sex={val}/>}</button>
                 ))}
               </div>
             );

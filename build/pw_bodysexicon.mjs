@@ -19,8 +19,13 @@ for (const theme of ["dark", "light"]) {
   page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0,160)); });
   const patches = [];
   await page.addInitScript(([me, theme]) => {
-    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme, unit:"lbs", bodyType:"male",
-      programs:[], history:{}, workoutDates:{}, weeklyTarget:3, bodyLog:[], prs:{}, prEvents:[], posts:[],
+    const dk = n => { const d = new Date(Date.now() - n * 864e5); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+    const st = (w, r) => ({ weight:String(w), reps:String(r), done:true, type:"normal" });
+    // A bodyweight + a few big lifts, so the Strength card is unlocked and its switch renders.
+    const history = { [dk(3)]: { a: { unit:"lbs", dayName:"Full", exercises:[
+      { name:"Bench Press", sets:[st(185,5)] }, { name:"Deadlift", sets:[st(315,3)] }, { name:"Back Squat", sets:[st(225,5)] } ] } } };
+    localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme, unit:"lbs", bodyType:"male", strengthSex:"male",
+      programs:[], history, workoutDates:{}, weeklyTarget:3, bodyLog:[{ date: dk(0), weight:"205" }], prs:{}, prEvents:[], posts:[],
       profile:{ username:"momo", name:"Mo" }, users:[{ id: me, username:"momo", name:"Mo", followers:[], following:[] }] }));
     localStorage.setItem("seshd_session", JSON.stringify({ access_token:"t", user:{ id: me } }));
     localStorage.setItem("seshd_onboarded", "1"); localStorage.setItem("seshd_custom_merge_v1", "1");
@@ -55,6 +60,20 @@ for (const theme of ["dark", "light"]) {
   if (SHOT) {
     const card = page.locator("[data-body-sex]").first().locator("xpath=ancestor::div[contains(@style,'border-radius: 18px')][1]");
     await card.screenshot({ path: `${SHOT}-${theme}.png` }).catch(e => console.log("shot failed", e.message));
+  }
+  // The Strength card's standards switch: ♂ / ♀ as icons, "Other" stays a word.
+  const ss = await page.evaluate(() => [...document.querySelectorAll("[data-strength-sex]")].map(b => ({
+    val: b.dataset.strengthSex, text: (b.textContent || "").trim(), svg: !!b.querySelector("svg"), label: b.getAttribute("aria-label") })));
+  check(`[${theme}] Strength card: ♂ ♀ icons and the word Other`,
+    ss.length === 3 && ss[0].svg && ss[0].text === "" && ss[1].svg && ss[1].text === "" && !ss[2].svg && ss[2].text === "Other",
+    JSON.stringify(ss));
+  check(`[${theme}] Strength card: icons keep a spoken name`, ss.length === 3 && ss.every(x => x.label), JSON.stringify(ss.map(x => x.label)));
+  if (SHOT) {
+    const sc = page.locator("[data-strength-sex]").first();
+    await sc.scrollIntoViewIfNeeded().catch(() => {}); await page.waitForTimeout(300);
+    const card = sc.locator("xpath=ancestor::div[contains(@style,'border-radius')][2]");
+    await card.screenshot({ path: `${SHOT}-strength-${theme}.png` }).catch(e => console.log("shot failed", e.message));
+    await sw.first().scrollIntoViewIfNeeded().catch(() => {});
   }
   await sw.nth(1).click();
   await page.waitForTimeout(600);

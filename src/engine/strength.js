@@ -598,7 +598,10 @@ function computeStrengthScore(store, unit, sex = "male", asOf = null) {
       const lo = bounds[winner.lvlIdx], hi = bounds[winner.lvlIdx + 1];
       const within = hi > lo ? Math.min(1, Math.max(0, (winner.ratio - lo) / (hi - lo))) : 1;
       const pct = Math.min(100, Math.round(((winner.lvlIdx + within) / (STRENGTH_LEVELS.length - 1)) * 1000) / 10);
-      lifts.push({ lift: winner.lift, best: winner.best, ratio: winner.ratio, level: winner.level, pattern: winner.pattern, pct });
+      // `best` is ROUNDED for display: a best older than four months is decayed by a per-day
+      // fraction, which left Mo's Deadlift reading "342.1996257107037" on the Strength card. The
+      // ratio and the level above were computed from the unrounded value, so nothing else moves.
+      lifts.push({ lift: winner.lift, best: Math.round(winner.best), ratio: winner.ratio, level: winner.level, pattern: winner.pattern, pct });
       usedLifts.add(winner.lift);
       // `cont` = the lift's CONTINUOUS level position (integer level + how far it is
       // into the band toward the next tier), the same measure the per-lift bar shows.

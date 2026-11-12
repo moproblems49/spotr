@@ -70,8 +70,12 @@ check("elevated overnight signals show a heads-up warning", /Heads up/i.test(txt
 // The card now names its window. It was labelled "trend" and "vs earlier", which says nothing
 // about what it covers — Mo read the sparkline as the last 24 hours; it is 60 days, one
 // point per day. The copy has to state that, so the check asserts it.
+// Mo (Nov 12): "is Today's Pulse that resting heart rate? name could be confusing." It is; the
+// tile and the card now use ONE name for the one measurement, and the card says it is a CHANGE
+// (he asked whether it was an average — it never was).
+check("the driver tile names it resting HR, not 'pulse'", !/Today's pulse/i.test(txt) && /Resting HR/i.test(txt));
 check("Resting-HR trend card renders and names its 60-day window",
-  /Resting heart rate . 60 days/i.test(txt) && /64 → 58 bpm/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
+  /Resting HR . 60-day change/i.test(txt) && /64 → 58 bpm/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
 // Mo (Nov 12): "60 days and today's pulse seem to always be the same." The card headlined
 // rec.restingHr, which the Today's-pulse tile already prints. Its headline is the CHANGE now.
 const chg = document.querySelector("[data-rhr-change]");
