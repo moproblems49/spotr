@@ -1,4 +1,4 @@
-// v178091717079
+// v178091717080
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -15046,12 +15046,48 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
 // ═════════════════════════════════════════════════════════════════════════════
 // AI COACH MODAL
 // ═════════════════════════════════════════════════════════════════════════════
+// One exercise row in the Day Preview's EDIT mode, made sortable (Mo, Nov 12: "when editing a
+// workout day, be able to reorder exercises by hold and drag"). Same sensors and the same handle
+// rule as the program editor's cards: the grip carries `touch-action:none`, because a `pan-y`
+// handle hands WebKit the vertical axis and hold-to-reorder is then dead on device while every
+// Chromium check passes (pw_reorder's scar). Only the grip starts a drag — the row holds two text
+// fields, and a row-wide drag would fight every tap into them.
+function SortableDayPreviewRow({ id, C, children }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div ref={setNodeRef} data-dp-row style={{
+      transform: CSS.Transform.toString(transform), transition,
+      position:"relative", zIndex: isDragging ? 100 : 1,
+      background: isDragging ? C.surface : "transparent",
+      boxShadow: isDragging ? "0 16px 36px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.10)" : "none",
+      borderRadius: isDragging ? 12 : 0,
+    }}>
+      {children({ ref: setActivatorNodeRef, ...attributes, ...listeners })}
+    </div>
+  );
+}
+
 function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveProgram, token }) {
   const [editMode, setEditMode] = useState(false);
   const [editDay, setEditDay] = useState(() => JSON.parse(JSON.stringify(previewDay.day)));
   const [viewingExercise, setViewingExercise] = useState(null);
   const [shareModal, setShareModal] = useState(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  // Hold-and-drag reorder in edit mode — the program editor's exact sensors, so a press means the
+  // same thing on both screens (6px for a mouse, a 200ms hold for a finger).
+  const reorderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  function handleReorderEnd({ active, over }) {
+    if (!over || active.id === over.id) return;
+    const from = parseInt(String(active.id).split("-")[1]);
+    const to = parseInt(String(over.id).split("-")[1]);
+    if (isNaN(from) || isNaN(to)) return;
+    haptic("light");
+    setEditDay(d => ({ ...d, exercises: arrayMove(d.exercises, from, to) }));
+  }
 
   // Share sheet is a modal dialog: move VoiceOver focus into it on open (it took none before, so a
   // screen-reader user who tapped Share was left reading the exercise list underneath it). Keyed on
@@ -15175,7 +15211,12 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
         <button onClick={() => {
           if (editMode && onSaveProgram) {
             const prog = findOwningProgram();
-            if (prog) onSaveProgram({ ...prog, days: prog.days.map(d => d.id === editDay.id ? editDay : d) });
+            // `_silent`: an edit to a day is an EDIT, not an activation. The plain path also PATCHed
+            // active_program_id, so tapping Done on a day of a program you weren't running switched
+            // your active program and toasted "Program activated"; and it was a one-shot write, so
+            // an offline reorder or edit was simply lost. The silent path saves locally and queues
+            // the write durably (flushWriteQueue owns the retry), which is what a reorder needs.
+            if (prog) onSaveProgram({ ...prog, _silent: true, days: prog.days.map(d => d.id === editDay.id ? editDay : d) });
           }
           setEditMode(m => !m);
         }} className="seshd-hit" style={{
@@ -15517,12 +15558,19 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                 critique's consistency finding). Same hairline rows, same muscle dot, same left
                 edge now; only the fields change. The inputs sit on C.bg with the shared border
                 token instead of per-theme hex literals. */}
+            <DndContext sensors={reorderSensors} collisionDetection={closestCenter} onDragEnd={handleReorderEnd} onDragStart={() => haptic("medium")}>
+            <SortableContext items={editDay.exercises.map((_, i) => `dp-${i}`)} strategy={verticalListSortingStrategy}>
             {editDay.exercises.map((ex, i) => {
               const exInfo = getExEntry(ex.name);
               const muscleColor = muscleStripeColor(exInfo?.muscle, isDark);
               return (
-                <div key={i} style={{ padding:"14px 2px", borderTop: i === 0 ? "none" : `1px solid ${C.border}` }}>
+                <SortableDayPreviewRow key={i} id={`dp-${i}`} C={C}>{handle => (
+                <div style={{ padding:"14px 2px", borderTop: i === 0 ? "none" : `1px solid ${C.border}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                    <div {...handle} data-dp-grip aria-label={`Drag to reorder ${ex.name}`} className="seshd-hit"
+                      style={{ touchAction:"none", cursor:"grab", color:C.muted, display:"flex", alignItems:"center", flexShrink:0, padding:"2px 0", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none" }}>
+                      <svg width="12" height="18" viewBox="0 0 12 18" fill={C.muted} aria-hidden="true"><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg>
+                    </div>
                     <div style={{ width:8, height:8, borderRadius:4, background:muscleColor, flexShrink:0, boxShadow:`0 0 0 3px ${muscleColor}22` }}/>
                     <div style={{ flex:1, fontSize:15, fontWeight:600, color:TXT, letterSpacing:-0.2, minWidth:0 }}>{ex.name}</div>
                     {/* This removes an exercise from a SAVED program and "Done" makes it permanent —
@@ -15536,7 +15584,7 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                       onConfirm: () => removeEx(i),
                     })} aria-label={`Remove ${ex.name}`} className="seshd-hit" style={{ background:"none", border:"none", color:"#EF4444", fontSize:20, cursor:"pointer", padding:"0 2px", lineHeight:1 }}>×</button>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, paddingLeft:18 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, paddingLeft:40 }}>
                     <div>
                       <div style={{ fontSize:10, fontWeight:600, color:SUB, letterSpacing:0.5, marginBottom:4 }}>SETS × REPS</div>
                       <input value={ex.reps||""} onChange={e => updateEx(i,{reps:e.target.value})} placeholder="3×8–12"
@@ -15549,8 +15597,11 @@ function DayPreviewModal({ previewDay, store, unit, C, onClose, onStart, onSaveP
                     </div>
                   </div>
                 </div>
+                )}</SortableDayPreviewRow>
               );
             })}
+            </SortableContext>
+            </DndContext>
             <button onClick={() => setShowExercisePicker(true)} style={{
               width:"100%", background:"transparent", border:`1.5px dashed ${BORD}`,
               borderRadius:10, padding:"13px", cursor:"pointer", fontFamily:F, marginTop:10,
