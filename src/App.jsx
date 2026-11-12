@@ -1,4 +1,4 @@
-// v178091717077
+// v178091717078
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3856,15 +3856,20 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
                   {/* Resting-HR trend — a DROPPING resting pulse means a stronger heart (down = good,
                       the opposite of VO₂ Max direction). */}
                   {rec.restingHr != null && rec.rhrSeries && rec.rhrSeries.length >= 2 && (() => {
-                    const s = rec.rhrSeries, d = rec.rhrTrendDelta || 0;
-                    const down = d < -0.5, up = d > 0.5;
+                    // Mo (Nov 12): "60 days and today's pulse seem to always be the same." They were —
+                    // this card headlined rec.restingHr, the exact value the "Today's pulse" tile above
+                    // already prints. Its own job is the CHANGE across the window, so that is the
+                    // headline now, with where it started and where it is beneath it. The delta is
+                    // read off the series' own endpoints so the two lines can never disagree by rounding.
+                    const s = rec.rhrSeries, from = s[0], to = s[s.length - 1], d = to - from;
+                    const down = d < 0, up = d > 0;
                     const col = down ? C.green : up ? C.gold : C.accent;   // steady = accent, never grey
                     return (
-                      <div style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                      <div data-rhr-trend style={{ width:"100%", maxWidth:340, boxSizing:"border-box", margin:"6px auto 0", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase", color:C.muted }}>Resting heart rate · 60 days</div>
-                          <div style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color:C.text, marginTop:2 }}>{rec.restingHr}<span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span></div>
-                          {(up || down) && <div style={{ fontSize:10, fontWeight:600, color:col, marginTop:2 }}>{down ? "▼ " : "▲ +"}{d} bpm over 60 days{down ? " — stronger heart" : ""}</div>}
+                          <div data-rhr-change style={{ fontFamily:MONO, fontSize:18, fontWeight:800, color: d ? col : C.text, marginTop:2 }}>{d ? `${down ? "▼ " : "▲ +"}${Math.abs(d)}` : "Steady"}{d ? <span style={{ fontSize:10, color:C.sub, fontWeight:600, marginLeft:2 }}>bpm</span> : null}</div>
+                          <div style={{ fontSize:10, fontWeight:600, color:C.sub, marginTop:2 }}>{from} → {to} bpm{down ? " — stronger heart" : ""}</div>
                         </div>
                         <TrendSparkline series={s} color={col} C={C}/>
                       </div>

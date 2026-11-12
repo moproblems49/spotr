@@ -71,7 +71,12 @@ check("elevated overnight signals show a heads-up warning", /Heads up/i.test(txt
 // about what it covers — Mo read the sparkline as the last 24 hours; it is 60 days, one
 // point per day. The copy has to state that, so the check asserts it.
 check("Resting-HR trend card renders and names its 60-day window",
-  /Resting heart rate . 60 days/i.test(txt) && /-6 bpm over 60 days/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
+  /Resting heart rate . 60 days/i.test(txt) && /64 → 58 bpm/.test(txt) && /stronger heart/i.test(txt), `rhr-trend`);
+// Mo (Nov 12): "60 days and today's pulse seem to always be the same." The card headlined
+// rec.restingHr, which the Today's-pulse tile already prints. Its headline is the CHANGE now.
+const chg = document.querySelector("[data-rhr-change]");
+check("Resting-HR trend headline is the 60-day change, not today's pulse again",
+  !!chg && /▼\s*6\s*bpm/.test(chg.textContent) && !/^58/.test(chg.textContent.trim()), chg ? chg.textContent : "no [data-rhr-change]");
 
 // Tracker tab → History sub-tab — per-workout HR line.
 click(qa('button[aria-label="Workout"]')[0]); await settle(500);
