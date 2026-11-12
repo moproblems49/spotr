@@ -64,7 +64,7 @@ const stalled = mkStore("Bench Press", [
 const sStall = suggestNextSet(stalled, "Bench Press", "3×5-8", "lbs", 0);
 check("four flat sessions trigger a deload", sStall?.type === "deload", `got ${sStall?.type}`);
 check("deload is ~10% and lands on a real plate", sStall?.weight === 165, `${sStall?.weight}`);
-check("deload explains itself", /stuck/i.test(sStall?.reason||""), `"${sStall?.reason}"`);
+check("deload explains itself", /no gain in weight or reps/i.test(sStall?.reason||""), `"${sStall?.reason}"`);
 
 // Same weight but reps CLIMBING is double progression working — must NOT be called a stall.
 const working = mkStore("Bench Press", [

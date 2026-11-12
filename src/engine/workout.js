@@ -390,12 +390,49 @@ function exerciseProgressed(sessions, unit) {
 // contradict. The AI coach passes nothing, deliberately: it writes prose about the big compounds
 // with no chip beside it to disagree with, and a flat bench for four sessions is a stall whatever
 // a program has written in its reps column.
+// THE RULE IS TIME, NOT A SESSION COUNT (Mo, Nov 12): "deload after 3 weeks of no workout or no
+// increase in weight or reps." It used to be "4 flat sessions", which is a month for someone who
+// trains a lift weekly and ten days for someone who trains it twice a week — the same words, a
+// threefold difference in what they meant. Two triggers now, both measured in days:
+//   * LAYOFF — the lift was last done STALL_WINDOW_DAYS or more ago. Coming back at the old weight
+//     is how people get hurt, so the advice is to start lighter, by more the longer the break.
+//   * STALL — no gain in weight or reps across a span of at least STALL_WINDOW_DAYS. The window runs
+//     from the newest session back to the first one that is that far behind it, so the verdict is
+//     about three weeks of training whatever the frequency, and it still needs three sessions in
+//     it: two points are a coincidence, not a plateau.
+const STALL_WINDOW_DAYS = 21;
+
 function detectDeloadNeeded(store, exName, unit, repsTarget = null) {
-  // Require 4 flat sessions (not 3) so the plateau banner only fires on a genuine, sustained
-  // stall — fewer false positives, less nagging.
-  const sessions = getExerciseSessions(store, exName, 6);
-  if (sessions.length < 4) return { stalled: false };
-  const norm = sessions.map(s => ({
+  const sessions = getExerciseSessions(store, exName, 24);
+  if (!sessions.length) return { stalled: false };
+  const step = unit === "lbs" ? 5 : 2.5;
+  const snap = w => Math.max(step, Math.round(w / step) * step);
+
+  // LAYOFF. Measured from TODAY: the live session being logged is not in history yet, and once it
+  // is finished its daysSince is 0, so the banner cannot fire about a gap the lifter just closed.
+  const gap = sessions[0].daysSince;
+  if (gap >= STALL_WINDOW_DAYS) {
+    const last = cvt(sessions[0].topWeight, sessions[0].unit, unit);
+    const weeks = Math.floor(gap / 7);
+    // 10% back for three to five weeks off, 20% from six — a month's detraining is mostly
+    // neuromuscular and comes back fast; two months is real lost strength.
+    const dl = snap(last * (weeks >= 6 ? 0.8 : 0.9));
+    if (dl >= last) return { stalled: false };   // nothing lighter to suggest (a bodyweight lift)
+    return {
+      stalled: true, kind: "layoff",
+      sessions: 1, topWeight: last, deloadWeight: dl, daysOff: gap,
+      title: "Welcome back",
+      reason: `Last done ${weeks} weeks ago`,
+      suggestion: `${weeks} weeks off this lift — start around ${dl} ${unit} and build back up`,
+    };
+  }
+
+  const k = sessions.findIndex(s => s.daysSince - sessions[0].daysSince >= STALL_WINDOW_DAYS);
+  if (k < 0) return { stalled: false };            // less than three weeks of history to judge
+  const win = sessions.slice(0, k + 1);
+  if (win.length < 3) return { stalled: false };
+  const spanDays = win[win.length - 1].daysSince - sessions[0].daysSince;
+  const norm = win.map(s => ({
     wU: cvt(s.topWeight, s.unit, unit),
     // `Math.max(1, …)`: a set marked done with a blank reps field gives topReps 0, and epley1RM
     // rightly refuses to estimate from that — but a 0 dropped into this series reads as a
@@ -404,8 +441,8 @@ function detectDeloadNeeded(store, exName, unit, repsTarget = null) {
     // itself), which is what this line computed before the estimator was consolidated.
     e1rm: epley1RM(cvt(s.topWeight, s.unit, unit), Math.max(1, s.topReps || 0), 12),
   }));
-  const recentRaw = sessions.slice(0, 4);
-  const recent = norm.slice(0, 4);
+  const recentRaw = win;
+  const recent = norm;
   const topWeights = recent.map(s => s.wU);
   const maxTop = Math.max(...topWeights);
   const minTop = Math.min(...topWeights);
@@ -425,12 +462,14 @@ function detectDeloadNeeded(store, exName, unit, repsTarget = null) {
   const earnedTheJump = !!range && range.high > 0 && (recentRaw[0]?.topReps || 0) >= range.high;
   if (weightFlat && !progressed && e1rmNotProgressing && !earnedTheJump) {
     const dl = unit === "lbs" ? Math.round((maxTop * 0.9) / 5) * 5 : Math.round((maxTop * 0.9) / 2.5) * 2.5;
+    const weeks = Math.floor(spanDays / 7);
     return {
-      stalled: true,
+      stalled: true, kind: "stall",
       sessions: recent.length,
       topWeight: maxTop,
       deloadWeight: dl,
-      reason: `Stalled at ${maxTop} ${unit} for ${recent.length} sessions`,
+      title: "Plateau detected",
+      reason: `No gain in weight or reps at ${maxTop} ${unit} in ${weeks} weeks`,
       suggestion: `Try a deload: drop to ~${dl} ${unit} and rebuild with clean reps`,
     };
   }
@@ -506,14 +545,20 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
   // 25%). Earn it with reps first, and only jump once you're clear of the top of the range.
   const jumpIsBig = lastWeight > 0 && (step / lastWeight) > 0.10;
 
-  // Deload if it's been 14+ days
-  if (last.daysSince >= 14) {
-    const dl = unit === "lbs" ? Math.round((lastWeight * 0.9) / 5) * 5 : Math.round((lastWeight * 0.9) / 2.5) * 2.5;
+  // A break off this lift — and a stall — come from ONE verdict, the one the banner reads. The
+  // chips used to have their own 14-day layoff rule while the banner had none, so a lifter back
+  // after a fortnight saw "deload" on every row and no explanation above them. It is 21 days now
+  // (Mo: "3 weeks of no workout"), and the chip's weight follows the verdict's fraction, so a long
+  // layoff takes the same 20% off every row that it takes off the banner's top set.
+  const verdict = detectDeloadNeeded(store, exName, unit, repsTarget);
+  if (verdict.stalled && verdict.kind === "layoff") {
+    const frac = verdict.deloadWeight / verdict.topWeight;
+    const dl = Math.max(step, Math.round((lastWeight * frac) / step) * step);
     return {
       type: "deload",
       weight: dl,
       reps: range ? range.low : lastReps,
-      note: "Deload (off " + last.daysSince + "d)",
+      note: "Deload (off " + verdict.daysOff + "d)",
       deltaWeight: dl - lastWeight,
       reason: "Back after a break — start lighter",
     };
@@ -531,7 +576,7 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
   // nothing to be stuck short of. `detectDeloadNeeded` re-checks the exercise-wide progress
   // signals (total reps and volume, not just the top set), so a lifter adding reps anywhere in the
   // run is never told to back off.
-  if (range && detectDeloadNeeded(store, exName, unit, repsTarget).stalled) {
+  if (range && verdict.stalled) {
     // Scale from THIS set's own weight rather than the exercise's top weight — on a descending or
     // drop-set arrangement a single flat number for every row would be a different workout, not a
     // deload of the one being done.
@@ -542,7 +587,7 @@ function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
       reps: range.high,
       note: `−${+(lastWeight - dl).toFixed(1)} ${unit}`,
       deltaWeight: dl - lastWeight,
-      reason: `Stuck at ${lastWeight} ${unit} for 4 sessions — drop 10% and build back`,
+      reason: `${verdict.reason} — drop 10% and build back`,
     };
   }
 
@@ -735,4 +780,4 @@ function trainingLoadRatio(store, unit = "lbs") {
 }
 
 
-export { ACWR_MIN_DAYS, ACWR_MIN_OLDER_DAYS, ACWR_MIN_SESSIONS, bestPair, exerciseProgressed, getExerciseSessions, getExerciseTrend, loadIncrement, parseRepRange, plateStep, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio };
+export { STALL_WINDOW_DAYS, ACWR_MIN_DAYS, ACWR_MIN_OLDER_DAYS, ACWR_MIN_SESSIONS, bestPair, exerciseProgressed, getExerciseSessions, getExerciseTrend, loadIncrement, parseRepRange, plateStep, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio };

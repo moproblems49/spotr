@@ -1,4 +1,4 @@
-// v178091717078
+// v178091717079
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5153,7 +5153,8 @@ function buildCoachContext(store, unit) {
   const stalls = [];
   ["Barbell Bench Press","Barbell Back Squat","Deadlift","Overhead Press (Barbell)"].forEach(l => {
     const dl = detectDeloadNeeded(store, l, unit);
-    if (dl.stalled) stalls.push({ lift: l, detail: dl.reason });
+    // A layoff is not a plateau — the coach is told about lifts that are STUCK.
+    if (dl.stalled && dl.kind !== "layoff") stalls.push({ lift: l, detail: dl.reason });
   });
   const mr = muscleReadiness(store);
   const fatiguedMuscles = Object.entries(mr.readiness || {})
@@ -13282,7 +13283,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                     <div style={{ margin:"0 14px 8px", padding:"10px 12px", borderRadius:10, background:C.isDark?"rgba(180,83,9,0.15)":"#FEF3C7", border:`1px solid ${C.isDark?"rgba(180,83,9,0.4)":"#FDE68A"}`, display:"flex", alignItems:"flex-start", gap:9 }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.isDark?"#FBBF24":"#B45309"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:1 }}><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.isDark?"#FBBF24":"#B45309" }}>Plateau detected</div>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.isDark?"#FBBF24":"#B45309" }}>{dl.title || "Plateau detected"}</div>
                         <div style={{ fontSize:11, color:C.isDark?"#FCD34D":"#92400E", marginTop:2, lineHeight:1.4 }}>{dl.suggestion}.</div>
                         <div style={{ display:"flex", gap:8, marginTop:7 }}>
                           <button onClick={() => {
