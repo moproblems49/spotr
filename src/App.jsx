@@ -1,4 +1,4 @@
-// v178091717080
+// v178091717081
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -3530,12 +3530,24 @@ function MuscleHeatmap({ store, setStore, currentUserId, token, unit = "lbs", C 
           <div style={{ fontSize:16, fontWeight:800, color:C.text, marginTop:2, fontFamily:DISPLAY, letterSpacing:0.4, textTransform:"uppercase" }}>{title}</div>
         </div>
         <div style={{ display:"flex", background:C.divider, borderRadius:14, padding:2, gap:1 }}>
+          {/* ♂ / ♀ instead of the words (Mo, Nov 12). Drawn as SVG strokes, not the text glyphs:
+              U+2642/U+2640 can render as COLOUR EMOJI on iOS, and as text they are hairline-thin
+              at button size (the mockup showed them unreadable). The word survives as the
+              accessible name, and aria-pressed says which one is chosen. data-body-sex is the
+              selector contract for pw_bodysexicon. */}
           {[["Male","male"],["Female","female"]].map(([label, val]) => (
-            <button key={val} onClick={() => setSex(val)} className="seshd-hit-y" style={{
-              padding:"4px 11px", background: sex === val ? C.primary : "transparent",
+            <button key={val} onClick={() => setSex(val)} className="seshd-hit-y" data-body-sex={val}
+              aria-label={`${label} body map`} aria-pressed={sex === val} style={{
+              padding:"4px 12px", background: sex === val ? C.primary : "transparent",
               color: sex === val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
-              fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F
-            }}>{label}</button>
+              cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:0
+            }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {val === "male"
+                  ? <><circle cx="6.5" cy="9.5" r="4"/><path d="M9.4 6.6L14 2M10 2h4v4"/></>
+                  : <><circle cx="8" cy="6" r="4"/><path d="M8 10v5M5.5 12.8h5"/></>}
+              </svg>
+            </button>
           ))}
         </div>
       </div>
