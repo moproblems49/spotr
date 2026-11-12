@@ -360,6 +360,8 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
         insidePill: pill.contains(cat),                       // must be false
         sitsOnBar: Math.abs(cr.bottom - pr.top) <= 6,
         onScreen: cr.top >= 0 && cr.left >= 0,
+        // Mo, Nov 12: the cat moved to the RIGHT end of the bar.
+        rightHalf: (cr.left + cr.right) / 2 > (pr.left + pr.right) / 2,
         ridesShrink: wrap.contains(pill) && getComputedStyle(wrap).transform !== "none",
         pe: getComputedStyle(cat).pointerEvents !== "auto",
       };
@@ -367,7 +369,7 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     // (4n itself — the haunted-house ground scene clearing the device nav — retired with that
     //  ornament: the house is part of the backdrop scene now, which 4l covers.)
     check("4n1b. the cat sits ON the nav pill, outside its clip, and rides the nav's shrink",
-      pk && pk.insidePill === false && pk.sitsOnBar && pk.onScreen && pk.ridesShrink && pk.pe,
+      pk && pk.insidePill === false && pk.sitsOnBar && pk.onScreen && pk.ridesShrink && pk.pe && pk.rightHalf,
       JSON.stringify(pk));
     // A nav ornament that covers a button is the exact failure that put the palm and the grass on
     // their own layer. Hit-test rather than reason about z — the palm's 4l7 lesson.
@@ -535,6 +537,26 @@ const txt = p => p.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     });
     check("4s. halloween draws all six ghost glyphs, not one repeated",
       g.spawned === 6 && g.distinct === 6 && g.indices.length === 6, JSON.stringify(g));
+    // ── 4t. NEVER MORE THAN THREE GHOSTS ON SCREEN (Mo: "sometimes it's too many"). A single
+    //     screenshot cannot see this — whether four are up depends on the moment — so SEEK every
+    //     ghost animation to the same instant across a whole period and count the visible ones at
+    //     each step. The floor matters as much as the cap: a "fix" that hides them all passes a
+    //     cap-only check.
+    const counts = await pg.evaluate(() => {
+      const anims = [...document.querySelectorAll('[data-ornament="ghost"]')]
+        .map(el => ({ el, a: el.getAnimations()[0] })).filter(x => x.a);
+      if (anims.length !== 6) return { err: "ghost animations: " + anims.length };
+      const period = Math.max(...anims.map(x => x.a.effect.getTiming().duration));
+      anims.forEach(x => x.a.pause());
+      const out = [];
+      for (let t = 0; t < period * 2; t += period / 40) {
+        anims.forEach(x => { x.a.currentTime = t; });
+        out.push(anims.filter(x => parseFloat(getComputedStyle(x.el).opacity) > 0.05).length);
+      }
+      return { max: Math.max(...out), min: Math.min(...out) };
+    });
+    check("4t. at most three ghosts are visible at any moment, and never none",
+      !counts.err && counts.max <= 3 && counts.min >= 2, JSON.stringify(counts));
     await pg.close();
   }
 

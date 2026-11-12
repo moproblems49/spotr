@@ -1,4 +1,4 @@
-// v178091717076
+// v178091717077
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -1587,6 +1587,9 @@ function Spider({ left, drop, delay }) {
     </div>
   );
 }
+// One shared period for every ghost: half rising, half resting (see the spawn in ThemeDecor).
+// 56s total = the same ~28s crossing the ghosts had before.
+const GHOST_PERIOD_S = 56;
 function Ghost({ left, size, dur, delay, art }) {
   // The hand-drawn version was a rounded rectangle with a scalloped hem and two eyes painted in
   // "#0f0a16" — the Halloween background, hardcoded. The traced glyph carries its eyes and mouth
@@ -2297,10 +2300,9 @@ function NavCat() {
   // it has something to sit on, so it is not a sticker floating in space.
   const g = HW_ART.cat;
   return (
-    // 55% rather than a corner: at 22% the cat sat directly on the haunted house's own tower and
-    // vanished into it — two ornaments in the same ink, one behind the other. This puts it over
-    // empty canvas, between the Home and Workout icons.
-    <span aria-hidden="true" style={{ position:"absolute", right:"55%", bottom:"100%",
+    // Moved right (Mo, Nov 12). The haunted house it used to collide with at 22% now lives in the
+    // backdrop scene on the LEFT, so the right-hand end of the bar is open canvas again.
+    <span aria-hidden="true" style={{ position:"absolute", right:"14%", bottom:"100%",
                                       marginBottom:-2, lineHeight:0, pointerEvents:"none" }}>
       <svg data-ornament="navcat" width={38 * g.w / g.h} height="38" viewBox={`0 0 ${g.w} ${g.h}`}
         // DECOR_INK_SOLID already carries a 0.5 alpha, so the two multiply: at 0.5 here the cat came
@@ -2840,8 +2842,15 @@ function ThemeDecor({ kind }) {
       // One spawn per drawing, so every ghost on the sheet actually gets used. `left` is spread by
       // INDEX rather than drawn freely: six independent randoms over the same range clump often
       // enough to look like a bug, and a ghost is on screen for ~30s so a clump is a long one.
+      // ★ NEVER MORE THAN THREE AT ONCE (Mo: "sometimes it's too many"). Each ghost used to be
+      // visible for its WHOLE cycle with a random phase, so all six could be up together. Now they
+      // share ONE period and each spends the first half rising and the second half resting
+      // off-screen (seshd-drift's keyframes), with phases a sixth of a period apart — so at any
+      // instant exactly three of the six are in their visible half. That count is a property of
+      // the phases, which is why `dur` is no longer randomised per ghost: unequal periods drift
+      // out of step and the cap stops holding. All six drawings still get used.
       ghosts: HW_ART.ghosts.map((_, i) => ({ art: i, left: 6 + i * 13 + r(0, 9),
-        size: r(20, 34), dur: r(22, 34), delay: -r(0, 30) })),
+        size: r(20, 34), dur: GHOST_PERIOD_S, delay: -(i * GHOST_PERIOD_S / HW_ART.ghosts.length) })),
       snow: fallers(11, { min: 9, max: 17, aMin: 0.5, aMax: 0.9 }),
       petals: fallers(8, { spin: true, min: 13, max: 21, aMin: 0.6, aMax: 0.95 }),
       leaves: fallers(7, { spin: true, min: 15, max: 25, aMin: 0.75, aMax: 1 }),
@@ -2891,8 +2900,9 @@ function ThemeDecor({ kind }) {
         @keyframes seshd-dangle { 0%,100% { transform: rotate(-3.5deg); } 50% { transform: rotate(3.5deg); } }
         @keyframes seshd-drift {
           0% { opacity:0; transform: translate3d(0,0,0); }
-          12% { opacity:0.85; }
-          80% { opacity:0.65; }
+          6% { opacity:0.85; }
+          40% { opacity:0.65; }
+          50% { opacity:0; transform: translate3d(26px,-105vh,0); }
           100% { opacity:0; transform: translate3d(26px,-105vh,0); }
         }
         @keyframes seshd-fall {
