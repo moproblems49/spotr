@@ -3415,6 +3415,19 @@ reviewer-visible path, and touching `updated_at` re-opens the 57-PRs class.
   worked example of a reasoned-not-observed fix that turned out right — and of why `pw_reorder`
   now asserts the computed `touch-action` PROPERTY rather than trying to drive the gesture.
 
+## ★ EXPLORE ON DISCOVER (Nov 18 2026) — strangers' public posts, and RLS decides who appears
+`ExploreSection` (src/lazy/DiscoverScreen.jsx), above the leaderboard: recent `posts` from people
+you do not follow, photo/PR posts first, newest first within each. **Who may appear is RLS's call,
+not the component's** — `posts` returns a stranger's row only when their profile is public and never
+across a block — so the local filter only removes self, followed (home feed), blocked, and stories.
+A tile opens the post through `seshd:open-post`, the shared-link overlay, so kudos/comments/Report/
+the author's profile all work with no second copy. No strangers' posts -> the section is absent, not
+an empty box. The Public-profile copy in Settings now says posts can appear in Explore. Measured at
+launch: 5 accounts, 12 public posts in 30 days, all from one person — expect it to look thin until
+others post. Guard: `pw_explore` (red-proofed: a loosened filter leaks the followed and blocked
+posts). Also fixed here: Discover's "Share your profile" link used `window.location.origin`
+(capacitor://localhost on device) — now `shareOrigin()`.
+
 ## ★ SETTINGS REGROUPED, AND A <button> CENTRES ITS TEXT BY DEFAULT (Sep 25 2026)
 Mo, from his phone: "coaching and import are pushed off." They were `<button>` rows whose child
 is a block `<div>` (title + subtitle), and **a button's default `text-align` is CENTER** — the
