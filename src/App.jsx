@@ -1,4 +1,4 @@
-// v178091717082
+// v178091717083
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -17918,7 +17918,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     {/* Follow approval changed what this toggle actually does, and the old copy
                         only mentioned the share link — the far bigger consequence is that people
                         now have to ask before they can see anything. */}
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>On: anyone can see your workouts and follow you straight away. Off: people must ask to follow, and until you approve them they see nothing.</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2, lineHeight:1.4 }}>On: anyone can see your workouts, your posts can appear in Explore, and people can follow you straight away. Off: people must ask to follow, and until you approve them they see nothing.</div>
                   </div>
                   <Switch
                     checked={store.isPublic === true} // default off (private) until opted in

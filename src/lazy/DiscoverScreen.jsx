@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { cvt, dKey, dateFromKey, devWarn, uid } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
 import { EXERCISE_DB } from "../engine/exercises.js";
 import { calcWeeklyStreak, storeStreak } from "../engine/insights.js";
-import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark } from "../App.jsx";
+import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark, normalizePostRow, safeMediaSrc, shareOrigin } from "../App.jsx";
 
 // GROUP DETAIL — lazy-loaded (src/lazy/GroupDetail.jsx). Most sessions never open a group.
 const GroupDetail = lazy(() => import("./GroupDetail.jsx"));
@@ -254,6 +254,10 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
             </button>
           </div>
 
+          {/* Above the leaderboard on purpose: for a new account the leaderboard is a column of
+              dashes, and Explore is the thing on this screen that has something in it. */}
+          <ExploreSection store={store} currentUserId={currentUserId} following={following} token={token} C={C} unit={unit}/>
+
           {following.length > 0 && (
             <div style={{ marginBottom:20 }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
@@ -467,7 +471,9 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
                     haptic("warn");
                     return;
                   }
-                  const link = `${window.location.origin}/u/${currentUserId}`;
+                  // shareOrigin(), never window.location: inside the native shell the origin is
+                  // capacitor://localhost, so this link opened nothing for whoever received it.
+                  const link = `${shareOrigin()}/u/${currentUserId}`;
                   shareLink({ title: "My Seshd profile", url: link }, () => toast("Profile link copied", "success"));
                   haptic("tap");
                 }} style={{
@@ -507,6 +513,91 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
           })()}
         </div>
       )}
+    </div>
+  );
+}
+
+// EXPLORE — recent posts from PUBLIC accounts you don't follow (Mo, Nov 18: "a discover tab since
+// we're new, might help to see what others are posting"). It is how a new person finds someone to
+// follow; without it their home feed is empty until they already know someone.
+//
+// Who can appear is decided by the database, not by this component: `posts` RLS returns a stranger's
+// posts only when their profile is public (and never across a block), so a private account cannot
+// leak in here however this filter is written. Locally we drop our own posts, people we already
+// follow (they are in the home feed), anyone blocked, and stories (they live in the story ring and
+// expire). Group-only shares never reach the `posts` table at all.
+//
+// Order: posts with a photo or a PR first, newest first within each — with a handful of people
+// posting, the interesting ones should lead. A tile opens the real post through `seshd:open-post`,
+// the same overlay a shared link opens, so kudos, comments, Report/Block and the author's profile
+// (where Follow is) all work without a second copy of any of them.
+const EXPLORE_LIMIT = 18;
+function ExploreSection({ store, currentUserId, following, token, C, unit }) {
+  const [posts, setPosts] = useState(null);   // null = loading, [] = nothing to show
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await sb.query(
+          `posts?select=id,user_id,type,caption,image_url,workout,is_pr,unit,created_at&type=neq.story&order=created_at.desc&limit=60`,
+          {}, token);
+        if (!cancelled) setPosts((Array.isArray(rows) ? rows : []).map(r => normalizePostRow(r)));
+      } catch (e) { devWarn("explore load failed:", e); if (!cancelled) setPosts([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+  const shown = useMemo(() => {
+    if (!posts) return [];
+    const skip = new Set([currentUserId, ...following, ...(store.blockedUsers || [])]);
+    const lead = p => (safeMediaSrc(p.imageData) || p.isPR || p.workout?.exercises?.some(e => e.isPR)) ? 0 : 1;
+    return posts
+      .filter(p => p.userId && !skip.has(p.userId) && (p.imageData || p.workout || p.caption))
+      .sort((a, b) => lead(a) - lead(b) || b.createdAt - a.createdAt)
+      .slice(0, EXPLORE_LIMIT);
+  }, [posts, currentUserId, following.join(","), (store.blockedUsers || []).join(",")]);
+  if (posts === null || !shown.length) return null;   // nothing from strangers yet: no empty box
+  return (
+    <div data-explore style={{ marginBottom:18 }}>
+      <SectionLabel C={C}>Explore</SectionLabel>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:4 }}>
+        {shown.map(p => {
+          const author = store.users.find(u => u.id === p.userId);
+          const img = safeMediaSrc(p.imageData);
+          const w = p.workout;
+          const pr = p.isPR || w?.exercises?.some(e => e.isPR);
+          const vol = w?.volume ? Math.round(Number(w.volume)) : 0;
+          return (
+            <button key={p.id} data-explore-post={p.id}
+              onClick={() => { haptic("tap"); window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id: p.id } })); }}
+              aria-label={`${author?.username ? "@" + author.username + "'s " : ""}${w?.name ? w.name + " " : ""}post`}
+              style={{ position:"relative", aspectRatio:"1 / 1", overflow:"hidden", border:"none", padding:0, cursor:"pointer",
+                borderRadius:8, background:C.surface, boxShadow:`inset 0 0 0 1px ${C.border}`, textAlign:"left", fontFamily:F }}>
+              {img ? (
+                <img src={img} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = "none"; }} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+              ) : (
+                <div style={{ position:"absolute", inset:0, padding:"9px 9px 24px", display:"flex", flexDirection:"column", gap:3, minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.text, lineHeight:1.25, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical", paddingRight: pr ? 34 : 0 }}>
+                    {w?.name || p.caption || "Workout"}
+                  </div>
+                  {vol > 0 && <div style={{ fontSize:11, color:C.sub, fontFamily:MONO, fontVariantNumeric:"tabular-nums" }}>{vol.toLocaleString()} {p.unit || unit}</div>}
+                </div>
+              )}
+              {pr && (
+                <span style={{ position:"absolute", top:6, right:6, display:"flex", alignItems:"center", gap:2, padding:"2px 5px", borderRadius:6,
+                  background:"rgba(0,0,0,0.55)", color:C.gold, fontSize:10, fontWeight:800 }}>
+                  <Icon name="trophy" size={10}/>PR
+                </span>
+              )}
+              {author?.username && (
+                <span style={{ position:"absolute", left:0, right:0, bottom:0, padding:"14px 7px 5px", fontSize:10, fontWeight:700, color:"#fff",
+                  background:"linear-gradient(to top, rgba(0,0,0,0.62), rgba(0,0,0,0))", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  @{author.username}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
