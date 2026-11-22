@@ -6,12 +6,12 @@ import { createPortal } from "react-dom";
 import { cvt, dKey, dateFromKey, devWarn, uid } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
 import { EXERCISE_DB } from "../engine/exercises.js";
 import { calcWeeklyStreak, storeStreak } from "../engine/insights.js";
-import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark, normalizePostRow, safeMediaSrc, shareOrigin } from "../App.jsx";
+import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark, normalizePostRow, safeMediaSrc, shareOrigin, PostCard, pinnedPostIds } from "../App.jsx";
 
 // GROUP DETAIL — lazy-loaded (src/lazy/GroupDetail.jsx). Most sessions never open a group.
 const GroupDetail = lazy(() => import("./GroupDetail.jsx"));
 
-export default function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow }) {
+export default function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow, postHandlers }) {
   const [q, setQ] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [subTab, _setSubTab] = useState(() => getDiscoverSubTab());
@@ -115,7 +115,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
   if (subTab === "explore") {
     return (
       <div className="seshd-push-in" style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
-        <ExploreFeedScreen store={store} currentUserId={currentUserId} following={following} token={token} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick}/>
+        <ExploreFeedScreen store={store} setStore={setStore} currentUserId={currentUserId} following={following} token={token} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick} postHandlers={postHandlers}/>
       </div>
     );
   }
@@ -540,7 +540,8 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
 // (where Follow is) all work without a second copy of any of them.
 const EXPLORE_LIMIT = 9;          // the strip on Discover: three rows of three
 const EXPLORE_PAGE = 30;          // rows fetched per page by the full feed
-const EXPLORE_SELECT = "select=id,user_id,type,caption,image_url,workout,is_pr,unit,created_at,kudos(user_id),comments(id)";
+// The feed renders real PostCards, so it needs the full comment rows (text, likes), not just ids.
+const EXPLORE_SELECT = "select=id,user_id,type,caption,image_url,workout,is_pr,unit,created_at,kudos(user_id),comments(id,user_id,text,likes,created_at)";
 // ONE definition of "may this post appear in Explore", shared by the strip and the full feed so the
 // two can never disagree about who belongs there.
 function useExploreSkip(currentUserId, following, store) {
@@ -555,13 +556,6 @@ async function fetchExplore(token, offset, limit) {
 }
 const openPost = id => { haptic("tap"); window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } })); };
 const fmtMins = secs => { const m = Math.round((Number(secs) || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`; };
-const agoLabel = ms => {
-  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d`;
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-};
 
 function ExploreSection({ store, currentUserId, following, token, C, unit, onSeeAll }) {
   const [posts, setPosts] = useState(null);   // null = loading, [] = nothing to show
@@ -643,12 +637,17 @@ function ExploreSection({ store, currentUserId, following, token, C, unit, onSee
 }
 
 // THE FULL EXPLORE FEED ("See all"). Newest first, like X or Reddit — the strip's photo/PR-first
-// order is for picking the best few, and a feed you scroll should be chronological. Each card is a
-// rich PREVIEW and a tap opens the real post (the shared-link overlay), so kudos, comments,
-// Report/Block and the author's profile all come from the one place that already does them.
+// order is for picking the best few, and a feed you scroll should be chronological. Every row is
+// the REAL PostCard the home feed uses, so kudos and comments work in place (Mo: "should be able
+// to like and tap on the comment to open them instead of clicking on the post").
+// ★ handleKudos/handleComment start with `store.posts.find(id)`, so these strangers' posts are
+// MERGED into store.posts and PINNED (pinnedPostIds) so neither refresh path evicts them while
+// this screen is open — the shared-post overlay's scar. Rows render from the LIVE store copy so an
+// optimistic kudos shows; the fetched row is only a fallback. Unpinned on leave; a leftover copy
+// is harmless because the home feed filters on `following`.
 // Paging is by RAW row offset; the local filter runs after, so a page can show fewer than it
 // fetched — `done` is decided by the server returning a short page, never by the filtered count.
-function ExploreFeedScreen({ store, currentUserId, following, token, C, unit, onBack, onUserClick }) {
+function ExploreFeedScreen({ store, setStore, currentUserId, following, token, C, unit, onBack, onUserClick, postHandlers }) {
   const [rows, setRows] = useState(null);
   const [done, setDone] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -656,97 +655,57 @@ function ExploreFeedScreen({ store, currentUserId, following, token, C, unit, on
   const load = useCallback(async (offset) => {
     try {
       const page = await fetchExplore(token, offset, EXPLORE_PAGE);
+      page.forEach(r => pinnedPostIds.add(r.id));
+      setStore(prev => {
+        const have = new Set((prev.posts || []).map(p => p.id));
+        const add = page.filter(r => !have.has(r.id));
+        return add.length ? { ...prev, posts: [...(prev.posts || []), ...add] } : prev;
+      });
       setRows(prev => { const seen = new Set((prev || []).map(r => r.id)); return [...(offset ? prev || [] : []), ...page.filter(r => !seen.has(r.id))]; });
       if (page.length < EXPLORE_PAGE) setDone(true);
       setFailed(false);
     } catch (e) { devWarn("explore feed load failed:", e); setFailed(true); if (!offset) setRows(r => r || []); }
-  }, [token]);
+  }, [token, setStore]);
   useEffect(() => { load(0); }, [load]);
+  useEffect(() => () => { pinnedPostIds.clear(); }, []);
   const skip = useExploreSkip(currentUserId, following, store);
-  const shown = useMemo(() => (rows || []).filter(exploreKeep(skip)).sort((a, b) => b.createdAt - a.createdAt), [rows, skip]);
+  const live = useMemo(() => new Map((store.posts || []).map(p => [p.id, p])), [store.posts]);
+  const shown = useMemo(() => (rows || []).map(r => live.get(r.id) || r)
+    .filter(exploreKeep(skip)).sort((a, b) => b.createdAt - a.createdAt), [rows, live, skip]);
   const more = async () => { if (loadingMore || done) return; setLoadingMore(true); await load((rows || []).length); setLoadingMore(false); };
+  const h = postHandlers || {};
+  const noop = () => {};
   return (
     <div data-explore-feed style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
         <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>&#8249;</button>
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Explore</div>
       </div>
-      <div style={{ padding:"4px 14px 0" }}>
-        {rows === null && [0, 1, 2].map(i => (
-          <div key={i} style={{ padding:"14px 0", borderTop: i ? `1px solid ${C.divider}` : "none" }}>
-            <Skeleton width="45%" height={12} C={C} style={{ marginBottom:10 }}/>
-            <Skeleton width="100%" height={70} radius={10} C={C}/>
-          </div>
-        ))}
-        {rows !== null && !shown.length && (
-          <div style={{ padding:"40px 10px", textAlign:"center", color:C.sub, fontSize:14, lineHeight:1.5 }}>
-            {failed ? "Couldn't load posts. Check your connection and try again." : "No posts from people you don't follow yet. Check back soon."}
-          </div>
-        )}
-        {shown.map((p, i) => <ExploreFeedCard key={p.id} post={p} idx={i} store={store} C={C} unit={unit} onUserClick={onUserClick}/>)}
-        {rows !== null && !done && (
-          <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 24px" }}>
-            <button data-explore-more onClick={more} disabled={loadingMore} style={{ background:"transparent", color:C.sub, border:`1px solid ${C.border}`,
-              borderRadius:20, padding:"9px 22px", fontSize:13, fontWeight:600, cursor: loadingMore ? "default" : "pointer", fontFamily:F, opacity: loadingMore ? 0.5 : 1 }}>
-              {loadingMore ? "Loading…" : failed ? "Try again" : "Load more"}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ExploreFeedCard({ post: p, idx, store, C, unit, onUserClick }) {
-  const author = store.users.find(u => u.id === p.userId);
-  const img = safeMediaSrc(p.imageData);
-  const w = p.workout;
-  const pr = isPRPost(p);
-  const vol = w?.volume ? Math.round(Number(w.volume)) : 0;
-  const exs = w?.exercises || [];
-  const kudos = (p.kudos || []).length, comments = (p.comments || []).length;
-  const top = s => (s || []).reduce((b, x) => (Number(x.w) || 0) > (Number(b?.w) || 0) ? x : b, null);
-  return (
-    <div data-explore-card={p.id} style={{ padding:"14px 0", borderTop: idx ? `1px solid ${C.divider}` : "none" }}>
-      <button onClick={() => author && onUserClick && onUserClick(author.id)}
-        style={{ display:"flex", alignItems:"center", gap:9, background:"none", border:"none", padding:0, cursor:"pointer", fontFamily:F, textAlign:"left", marginBottom:9 }}>
-        <Avatar user={author || { username:"?" }} size={32} C={C}/>
-        <span style={{ fontSize:14, fontWeight:700, color:C.text }}>{author?.username ? "@" + author.username : "Someone"}</span>
-        <span style={{ fontSize:12, color:C.sub }}>· {agoLabel(p.createdAt)}</span>
-      </button>
-      <button onClick={() => openPost(p.id)} aria-label={`Open ${w?.name || "post"}`}
-        style={{ display:"block", width:"100%", background:"none", border:"none", padding:0, cursor:"pointer", textAlign:"left", fontFamily:F }}>
-        {p.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.4, marginBottom:8, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical" }}>{p.caption}</div>}
-        {img && <img src={img} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = "none"; }}
-          style={{ display:"block", width:"100%", maxHeight:340, objectFit:"cover", borderRadius:10, marginBottom: w ? 8 : 0, background:C.surface }}/>}
-        {w && (
-          <div style={{ background:C.surface, borderRadius:10, boxShadow:`inset 0 0 0 1px ${C.border}`, padding:"11px 12px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <div style={{ flex:1, minWidth:0, fontSize:15, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{w.name || "Workout"}</div>
-              {pr && <span style={{ display:"flex", alignItems:"center", gap:3, color:C.gold, fontSize:11, fontWeight:800 }}><Icon name="trophy" size={12}/>PR</span>}
-            </div>
-            <div style={{ fontSize:12, color:C.sub, marginTop:2, fontVariantNumeric:"tabular-nums" }}>
-              {[exs.length ? `${exs.length} exercise${exs.length === 1 ? "" : "s"}` : null, w.duration ? fmtMins(w.duration) : null, vol > 0 ? `${vol.toLocaleString()} ${p.unit || unit}` : null].filter(Boolean).join(" · ")}
-            </div>
-            {exs.slice(0, 3).map(e => {
-              const t = top(e.sets);
-              return (
-                <div key={e.name} style={{ display:"flex", gap:8, marginTop:7, fontSize:13 }}>
-                  <span style={{ flex:1, minWidth:0, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {e.isPR && <span style={{ color:C.gold, marginRight:4 }}><Icon name="trophy" size={11}/></span>}{e.name}
-                  </span>
-                  {t && Number(t.w) > 0 && <span style={{ color:C.sub, fontFamily:MONO, fontVariantNumeric:"tabular-nums", flexShrink:0 }}>{Number(t.w)}×{t.r}</span>}
-                </div>
-              );
-            })}
-            {exs.length > 3 && <div style={{ fontSize:12, color:C.sub, marginTop:6 }}>+{exs.length - 3} more</div>}
-          </div>
-        )}
-      </button>
-      {(kudos > 0 || comments > 0) && (
-        <div style={{ display:"flex", gap:14, marginTop:8, fontSize:12, color:C.sub }}>
-          {kudos > 0 && <span>{kudos} kudos</span>}
-          {comments > 0 && <span>{comments} comment{comments === 1 ? "" : "s"}</span>}
+      {rows === null && [0, 1, 2].map(i => (
+        <div key={i} style={{ padding:"14px", borderTop: i ? `1px solid ${C.divider}` : "none" }}>
+          <Skeleton width="45%" height={12} C={C} style={{ marginBottom:10 }}/>
+          <Skeleton width="100%" height={70} radius={10} C={C}/>
+        </div>
+      ))}
+      {rows !== null && !shown.length && (
+        <div style={{ padding:"40px 24px", textAlign:"center", color:C.sub, fontSize:14, lineHeight:1.5 }}>
+          {failed ? "Couldn't load posts. Check your connection and try again." : "No posts from people you don't follow yet. Check back soon."}
+        </div>
+      )}
+      {shown.map(p => (
+        <div key={p.id} data-explore-card={p.id}>
+          <PostCard post={p} store={store} currentUserId={currentUserId} displayUnit={unit} C={C}
+            onKudos={h.onKudos || noop} onComment={h.onComment || noop} onEditComment={h.onEditComment || noop}
+            onDeleteComment={h.onDeleteComment || noop} onLikeComment={h.onLikeComment || noop}
+            onUserClick={onUserClick} onEdit={noop} onDelete={noop}/>
+        </div>
+      ))}
+      {rows !== null && !done && (
+        <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 24px" }}>
+          <button data-explore-more onClick={more} disabled={loadingMore} style={{ background:"transparent", color:C.sub, border:`1px solid ${C.border}`,
+            borderRadius:20, padding:"9px 22px", fontSize:13, fontWeight:600, cursor: loadingMore ? "default" : "pointer", fontFamily:F, opacity: loadingMore ? 0.5 : 1 }}>
+            {loadingMore ? "Loading…" : failed ? "Try again" : "Load more"}
+          </button>
         </div>
       )}
     </div>

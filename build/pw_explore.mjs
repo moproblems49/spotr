@@ -36,6 +36,8 @@ let strangerRows = true;   // flip to model "only me and people I follow have po
 // Extra older stranger posts so the full feed has a second page to load.
 const BULK = Array.from({ length: 34 }, (_, i) => row(P("e" + String(i).padStart(2, "0")), STR, 100 + i, { workout: { name: "Bulk " + i, duration: 1800, volume: 1000, exercises: [{ name: "Deadlift", sets: [{ w: 225, r: 5 }] }] } }));
 let withBulk = false;
+const writes = [];
+const gets = [];
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 async function boot() {
@@ -53,7 +55,8 @@ async function boot() {
   await page.route("**/rest/v1/**", r => {
     const u = r.request().url(), m = r.request().method();
     const json = b => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(b) });
-    if (m !== "GET") return json([]);
+    gets.push(u);
+    if (m !== "GET") { writes.push({ m, u, body: r.request().postData() }); return json([]); }
     const idm = u.match(/posts\?id=eq\.([0-9a-f-]+)/);
     if (idm) return json(ROWS.filter(x => x.id === idm[1]));
     if (/\/posts\?select=id,user_id,type/.test(u)) {   // the Explore query — honour its own filters
@@ -135,7 +138,35 @@ async function boot() {
     f1.length > 0 && !f1.some(id => [P("b1"), P("c1"), P("d1"), S_STORY].includes(id)), JSON.stringify(f1.slice(0, 6)));
   check("the feed is newest first", f1[0] === S_PLAIN && f1[1] === S_PHOTO && f1[2] === S_PR, JSON.stringify(f1.slice(0, 3)));
   const card = await page.evaluate(id => document.querySelector(`[data-explore-card="${id}"]`)?.innerText.replace(/\s+/g, " ") || "", S_PR);
-  check("a feed card names the author, the session, its exercises and the top set", /@liftlady/.test(card) && /Heavy Legs/.test(card) && /Back Squat/.test(card) && /315×3/.test(card), card);
+  check("a feed card is the full post: author, session and its exercises", /liftlady|Lift Lady/.test(card) && /Heavy Legs/.test(card) && /Back Squat/.test(card), card);
+  // Kudos IN the feed, without opening the post — and it must reach the server, not just the screen.
+  writes.length = 0;
+  await page.locator(`[data-explore-card="${S_PR}"] button[aria-label="Give kudos"]`).click();
+  await page.waitForTimeout(700);
+  check("tapping kudos in the feed writes a kudos for THAT post", writes.some(w => w.m === "POST" && /\/kudos/.test(w.u) && (w.body || "").includes(S_PR)), JSON.stringify(writes));
+  // Comments open inline, and a comment sent there reaches the server.
+  await page.locator(`[data-explore-card="${S_PR}"] button[aria-label="Comments"]`).click();
+  await page.waitForTimeout(400);
+  const box = page.locator(`[data-explore-card="${S_PR}"] input, [data-explore-card="${S_PR}"] textarea`).first();
+  check("tapping the comment icon opens comments right in the feed", await box.count() > 0, "");
+  if (await box.count()) {
+    await box.fill("nice squat");
+    await box.press("Enter");
+    await page.waitForTimeout(700);
+    check("...and a comment typed there reaches the server", writes.some(w => w.m === "POST" && /\/comments/.test(w.u) && (w.body || "").includes("nice squat")), JSON.stringify(writes.map(w => w.u)));
+  }
+  // A foreground refresh must not evict these posts — or kudos goes silently dead (the shared-post scar).
+  // The foreground refresh is throttled to once per 30s, so firing it sooner is a silent no-op
+  // (pw_switch's scar) — wait the throttle out, then PROVE the refresh ran before trusting the check.
+  await page.waitForTimeout(31000);
+  gets.length = 0;
+  await page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+  await page.waitForTimeout(1200);
+  check("[control] the foreground refresh actually ran", gets.some(u => /\/profiles\?/.test(u)), String(gets.length));
+  writes.length = 0;
+  await page.locator(`[data-explore-card="${S_PLAIN}"] button[aria-label="Give kudos"]`).click();
+  await page.waitForTimeout(700);
+  check("[after a refresh] kudos in the feed still writes", writes.some(w => /\/kudos/.test(w.u) && (w.body || "").includes(S_PLAIN)), JSON.stringify(writes));
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(/\.png$/, "_feed.png") });
   // Page 1 is 30 raw rows; 3 of them are filtered out locally, so the second page must be fetched.
   await page.locator("[data-explore-more]").click();
@@ -143,18 +174,6 @@ async function boot() {
   const f2 = await feed();
   check("Load more fetches the next page", f2.length === 37 && new Set(f2).size === f2.length, `${f1.length} -> ${f2.length}`);
   check("...and the button goes away at the end", !(await page.locator("[data-explore-more]").count()), "");
-  await page.locator(`[data-explore-card="${S_PR}"] button[aria-label^="Open"]`).click();
-  await page.waitForTimeout(1500);
-  const opened = await page.evaluate(() => {
-    let el = document.elementFromPoint(200, 300);
-    while (el && el !== document.body) {
-      const cs = getComputedStyle(el);
-      if ((cs.position === "fixed" || cs.position === "absolute") && parseInt(cs.zIndex) >= 60) return el.innerText.replace(/\s+/g, " ").slice(0, 200);
-      el = el.parentElement;
-    }
-    return null;
-  });
-  check("tapping a feed card opens the real post on top", !!opened && /Back Squat/.test(opened), String(opened));
   await page.close();
   withBulk = false;
 }

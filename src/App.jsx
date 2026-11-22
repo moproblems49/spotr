@@ -1,4 +1,4 @@
-// v178091717084
+// v178091717085
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9057,7 +9057,14 @@ export function PRTag({ C, size = 9 }) {
   );
 }
 
-const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onLikeComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
+// Posts a screen OUTSIDE the home feed is showing as live cards (the Explore feed). They are
+// merged into store.posts so handleKudos/handleComment can find them, and both refresh paths
+// below keep them, exactly like the open shared post — otherwise the next foreground refresh
+// evicts them and every kudos/comment tap on that screen goes silently dead. A Set mutated in
+// place, because an imported binding cannot be reassigned across the lazy-file boundary.
+export const pinnedPostIds = new Set();
+
+export const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onLikeComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
   const bodyMapData = useBodyMapData();
   const user = store.users.find(u => u.id === post.userId);
   const hasKudos = (post.kudos||[]).includes(currentUserId);
@@ -20051,7 +20058,7 @@ function AppInner() {
       // prev.posts was already empty and there was nothing left to carry. Both sites have to
       // agree, or the post opened from a shared link silently loses every action it offers on the
       // next foreground refresh.
-      setStore(prev => ({ ...prev, posts: (prev.posts || []).filter(p => p.id === openPostIdRef.current) }));
+      setStore(prev => ({ ...prev, posts: (prev.posts || []).filter(p => p.id === openPostIdRef.current || pinnedPostIds.has(p.id)) }));
 
       // Load posts (from people user follows + own)
       await loadFeed(tok, currentUserId, profiles || []);
@@ -20519,7 +20526,7 @@ function AppInner() {
         // added to fix, reintroduced 30 seconds later by a foreground refresh.
         const openId = openPostIdRef.current;
         const carried = (prev.posts || []).filter(o =>
-          !incomingIds.has(o.id) && (o.id === openId || (o.createdAt && (now - o.createdAt) < 120000))
+          !incomingIds.has(o.id) && (o.id === openId || pinnedPostIds.has(o.id) || (o.createdAt && (now - o.createdAt) < 120000))
         );
         const all = [...merged, ...carried];
         all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -23373,7 +23380,8 @@ function AppInner() {
 
         {which === "discover" && (
           <Suspense fallback={null}>
-            <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}/>
+            <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}
+              postHandlers={{ onKudos: handleKudos, onComment: handleComment, onEditComment: handleEditComment, onDeleteComment: handleDeleteComment, onLikeComment: handleLikeComment }}/>
           </Suspense>
         )}
 
