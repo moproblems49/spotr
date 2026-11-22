@@ -92,12 +92,14 @@ async function boot() {
   check("Explore renders on Discover", ids.length > 0, JSON.stringify(ids));
   check("only strangers' posts: not mine, not followed, not blocked, no stories",
     ids.length === 3 && ids.every(id => [S_PHOTO, S_PR, S_PLAIN].includes(id)), JSON.stringify(ids));
+  // The strip is a DRAW now (shuffled within each group), so the photo and the PR lead in either order.
   check("a photo and a PR lead; the newer plain post comes after them",
-    ids[0] === S_PHOTO && ids[1] === S_PR && ids[2] === S_PLAIN, JSON.stringify(ids));
+    new Set(ids.slice(0, 2)).size === 2 && ids.slice(0, 2).every(id => [S_PHOTO, S_PR].includes(id)) && ids[2] === S_PLAIN, JSON.stringify(ids));
   const tiles = await page.evaluate(() => [...document.querySelectorAll("[data-explore-post]")].map(b => ({
     img: !!b.querySelector("img"), text: b.innerText.replace(/\s+/g, " ").trim() })));
-  check("the photo post shows its photo", tiles[0]?.img === true, JSON.stringify(tiles[0]));
-  check("the PR post carries a PR badge and its author", /PR/.test(tiles[1]?.text || "") && /@liftlady/.test(tiles[1]?.text || ""), JSON.stringify(tiles[1]));
+  const ti = id => tiles[ids.indexOf(id)];
+  check("the photo post shows its photo", ti(S_PHOTO)?.img === true, JSON.stringify(ti(S_PHOTO)));
+  check("the PR post carries a PR badge and its author", /PR/.test(ti(S_PR)?.text || "") && /@liftlady/.test(ti(S_PR)?.text || ""), JSON.stringify(ti(S_PR)));
   check("a workout tile names the session", /Easy Pull/.test(tiles[2]?.text || ""), JSON.stringify(tiles[2]));
   await page.locator(`[data-explore-post="${S_PLAIN}"]`).click();
   await page.waitForTimeout(1500);
@@ -174,6 +176,58 @@ async function boot() {
   const f2 = await feed();
   check("Load more fetches the next page", f2.length === 37 && new Set(f2).size === f2.length, `${f1.length} -> ${f2.length}`);
   check("...and the button goes away at the end", !(await page.locator("[data-explore-more]").count()), "");
+  await page.close();
+  withBulk = false;
+}
+// ── the strip rotates; pull to refresh on Discover and on the feed (Mo, Nov 22) ─────────────
+// A real downward drag as TouchEvents on an element inside the scroller (PullToRefresh only counts
+// touches whose target is within its own scroller) — `page.mouse` fires no touch handlers.
+async function pull(page, sel) {
+  return page.evaluate(async (sel) => {
+    const el = document.querySelector(sel); if (!el) return false;
+    const fire = (type, y) => {
+      const t = new Touch({ identifier: 1, target: el, clientX: 200, clientY: y });
+      el.dispatchEvent(new TouchEvent(type, { touches: type === "touchend" ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true }));
+    };
+    fire("touchstart", 200);
+    for (let y = 220; y <= 420; y += 20) { fire("touchmove", y); await new Promise(r => setTimeout(r, 16)); }
+    fire("touchend", 420);
+    return true;
+  }, sel);
+}
+{
+  withBulk = true;
+  const page = await boot();
+  const strip = () => page.evaluate(() => [...document.querySelectorAll("[data-explore-post]")].map(b => b.dataset.explorePost));
+  const d1 = await strip();
+  check("[control] the strip drew 9", d1.length === 9, String(d1.length));
+  // Sticky: going to See all and back does not reshuffle under you.
+  await page.locator("[data-explore-all]").click();
+  await page.waitForTimeout(1000);
+  await page.locator('[data-explore-feed] button[aria-label="Back"]').click();
+  await page.waitForTimeout(1200);
+  const d1b = await strip();
+  check("coming back from See all keeps the same strip", JSON.stringify(d1b) === JSON.stringify(d1), JSON.stringify([d1, d1b]));
+  // Pull to refresh on Discover: a fresh draw of posts NOT shown before (the pool has plenty).
+  gets.length = 0;
+  check("[control] the pull gesture reached Discover", await pull(page, "[data-discover-main]"), "");
+  await page.waitForTimeout(1800);
+  check("pulling Discover re-fetches Explore", gets.some(u => /\/posts\?select=id,user_id,type/.test(u)), String(gets.length));
+  check("pulling Discover reloads the account data too", gets.some(u => /\/profiles\?/.test(u)), "");
+  const d2 = await strip();
+  check("after a refresh the strip shows 9 different posts, none already seen",
+    d2.length === 9 && !d2.some(id => d1.includes(id)), JSON.stringify({ d1, d2 }));
+  const seen = await page.evaluate(() => JSON.parse(localStorage.getItem("seshd_explore_seen") || "[]"));
+  check("posts shown are remembered as seen", d1.concat(d2).every(id => seen.includes(id)), String(seen.length));
+  // Pull to refresh on the full feed re-fetches from the newest page.
+  await page.locator("[data-explore-all]").click();
+  await page.waitForTimeout(1200);
+  gets.length = 0;
+  check("[control] the pull gesture reached the feed", await pull(page, "[data-explore-card]"), "");
+  await page.waitForTimeout(1500);
+  check("pulling the feed re-fetches its newest page", gets.some(u => /\/posts\?select=id,user_id,type/.test(u) && /offset=0/.test(u)), JSON.stringify(gets.slice(0, 3)));
+  const dbg = await page.evaluate(() => ({ cards: document.querySelectorAll("[data-explore-card]").length, feed: !!document.querySelector("[data-explore-feed]"), txt: (document.querySelector("[data-explore-feed]")?.innerText || document.body.innerText).slice(0, 300) }));
+  check("...and the feed still shows posts after the refresh", dbg.cards > 0, JSON.stringify(dbg));
   await page.close();
   withBulk = false;
 }

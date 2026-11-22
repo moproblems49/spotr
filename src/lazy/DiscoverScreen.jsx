@@ -1,17 +1,19 @@
 // Lazy-loaded: the Discover tab (search, leaderboard, suggested people, plus its two pushed
 // sub-screens Groups and Friends Activity, and the Exercise Detail sheet reached from search).
 // Not the default landing tab, so this only needs to load once someone actually switches to it.
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { cvt, dKey, dateFromKey, devWarn, uid } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
 import { EXERCISE_DB } from "../engine/exercises.js";
 import { calcWeeklyStreak, storeStreak } from "../engine/insights.js";
-import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark, normalizePostRow, safeMediaSrc, shareOrigin, PostCard, pinnedPostIds } from "../App.jsx";
+import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark, normalizePostRow, safeMediaSrc, shareOrigin, PostCard, pinnedPostIds, PullToRefresh } from "../App.jsx";
 
 // GROUP DETAIL — lazy-loaded (src/lazy/GroupDetail.jsx). Most sessions never open a group.
 const GroupDetail = lazy(() => import("./GroupDetail.jsx"));
 
-export default function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow, postHandlers }) {
+export default function DiscoverScreen({ store, setStore, currentUserId, onUserClick, setTab, C, token, onFollow, postHandlers, onRefresh }) {
+  // Bumped by pull-to-refresh: re-fetches Explore (with a fresh draw) and the friends' PRs.
+  const [refreshTick, setRefreshTick] = useState(0);
   const [q, setQ] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [subTab, _setSubTab] = useState(() => getDiscoverSubTab());
@@ -66,7 +68,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, following.join(",")]);
+  }, [token, following.join(","), refreshTick]);
 
   const blocked = store.blockedUsers || [];
   // Memoized so each keystroke doesn't rescan the user list + 590-entry exercise DB
@@ -127,8 +129,15 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
     );
   }
 
+  // Pull-to-refresh reloads everything this tab shows: the account data (people, groups, follows —
+  // via the app's own refresh), a NEW Explore draw, and the leaderboard's PRs.
+  const refreshDiscover = async () => {
+    setRefreshTick(t => t + 1);
+    try { await onRefresh?.(); } catch (e) { devWarn("discover refresh failed:", e); }
+  };
   return (
-    <div style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE, display:"flex", flexDirection:"column" }}>
+    <PullToRefresh onRefresh={refreshDiscover} C={C}>
+    <div data-discover-main style={{ display:"flex", flexDirection:"column" }}>
       {/* Search bar */}
       <div style={{ padding:"14px 16px 10px", position:"relative" }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:30, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
@@ -263,7 +272,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
 
           {/* Above the leaderboard on purpose: for a new account the leaderboard is a column of
               dashes, and Explore is the thing on this screen that has something in it. */}
-          <ExploreSection store={store} currentUserId={currentUserId} following={following} token={token} C={C} unit={unit} onSeeAll={() => setSubTab("explore")}/>
+          <ExploreSection store={store} currentUserId={currentUserId} following={following} token={token} C={C} unit={unit} refreshTick={refreshTick} onSeeAll={() => setSubTab("explore")}/>
 
           {following.length > 0 && (
             <div style={{ marginBottom:20 }}>
@@ -521,6 +530,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }
 
@@ -557,24 +567,66 @@ async function fetchExplore(token, offset, limit) {
 const openPost = id => { haptic("tap"); window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } })); };
 const fmtMins = secs => { const m = Math.round((Number(secs) || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`; };
 
-function ExploreSection({ store, currentUserId, following, token, C, unit, onSeeAll }) {
+// THE STRIP IS A DRAW, NOT A FIXED TOP 9 (Mo: "random recent posts you have not seen… refresh to see
+// different posts"). From the newest EXPLORE_POOL strangers' posts it picks 9, preferring posts it
+// has NOT shown you before, then photo/PR posts, shuffled within each group. The draw is STICKY
+// (module-level) so coming back from "See all" or another tab does not reshuffle under you; only a
+// pull-to-refresh draws again. Posts already shown are remembered per device (capped), so a refresh
+// rotates through the pool before repeating; once everything recent has been seen it falls back to
+// seen posts rather than showing fewer than 9. The full feed stays chronological on purpose.
+const EXPLORE_POOL = 60;
+const EXPLORE_SEEN_KEY = "seshd_explore_seen";
+const EXPLORE_SEEN_MAX = 300;
+let _exploreDraw = null;   // ids of the current strip, survives remounts within a session
+function readExploreSeen() {
+  try { const a = JSON.parse(localStorage.getItem(EXPLORE_SEEN_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+function rememberExploreSeen(ids) {
+  try {
+    const next = [...readExploreSeen().filter(id => !ids.includes(id)), ...ids].slice(-EXPLORE_SEEN_MAX);
+    localStorage.setItem(EXPLORE_SEEN_KEY, JSON.stringify(next));
+  } catch {}
+}
+function drawExplore(candidates) {
+  const seen = new Set(readExploreSeen());
+  const lead = p => (safeMediaSrc(p.imageData) || isPRPost(p)) ? 0 : 1;
+  const keyed = candidates.map(p => ({ p, k: [seen.has(p.id) ? 1 : 0, lead(p), Math.random()] }));
+  keyed.sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2]);
+  return keyed.slice(0, EXPLORE_LIMIT).map(x => x.p.id);
+}
+
+function ExploreSection({ store, currentUserId, following, token, C, unit, onSeeAll, refreshTick = 0 }) {
   const [posts, setPosts] = useState(null);   // null = loading, [] = nothing to show
+  const [draw, setDraw] = useState(() => _exploreDraw);
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try { const rows = await fetchExplore(token, 0, 60); if (!cancelled) setPosts(rows); }
+      try { const rows = await fetchExplore(token, 0, EXPLORE_POOL); if (!cancelled) setPosts(rows); }
       catch (e) { devWarn("explore load failed:", e); if (!cancelled) setPosts([]); }
     })();
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, refreshTick]);
   const skip = useExploreSkip(currentUserId, following, store);
+  const candidates = useMemo(() => (posts || []).filter(exploreKeep(skip)), [posts, skip]);
+  // A new draw on a refresh, or when there is none / the current one no longer fits the pool
+  // (a post was deleted, or you followed its author). A draw that still fits is kept as-is.
+  const drawnTick = useRef(-1);
+  useEffect(() => {
+    if (!posts) return;
+    const ids = new Set(candidates.map(p => p.id));
+    const fits = !!(draw && draw.length && draw.every(id => ids.has(id))
+      && (draw.length >= EXPLORE_LIMIT || draw.length >= candidates.length));
+    const refreshed = refreshTick > 0 && drawnTick.current !== refreshTick;
+    drawnTick.current = refreshTick;
+    if (fits && !refreshed) return;
+    const next = drawExplore(candidates);
+    _exploreDraw = next; setDraw(next); rememberExploreSeen(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts, candidates]);
   const shown = useMemo(() => {
-    if (!posts) return [];
-    const lead = p => (safeMediaSrc(p.imageData) || isPRPost(p)) ? 0 : 1;
-    return posts.filter(exploreKeep(skip))
-      .sort((a, b) => lead(a) - lead(b) || b.createdAt - a.createdAt)
-      .slice(0, EXPLORE_LIMIT);
-  }, [posts, skip]);
+    const byId = new Map(candidates.map(p => [p.id, p]));
+    return (draw || []).map(id => byId.get(id)).filter(Boolean);
+  }, [draw, candidates]);
   if (posts === null || !shown.length) return null;   // nothing from strangers yet: no empty box
   return (
     <div data-explore style={{ marginBottom:18 }}>
@@ -661,7 +713,13 @@ function ExploreFeedScreen({ store, setStore, currentUserId, following, token, C
         const add = page.filter(r => !have.has(r.id));
         return add.length ? { ...prev, posts: [...(prev.posts || []), ...add] } : prev;
       });
-      setRows(prev => { const seen = new Set((prev || []).map(r => r.id)); return [...(offset ? prev || [] : []), ...page.filter(r => !seen.has(r.id))]; });
+      // offset 0 (first load or a pull-to-refresh) REPLACES the list, so it must not dedupe against
+      // the old rows — doing that emptied the feed on every refresh.
+      setRows(prev => {
+        if (!offset) return page;
+        const seen = new Set((prev || []).map(r => r.id));
+        return [...(prev || []), ...page.filter(r => !seen.has(r.id))];
+      });
       if (page.length < EXPLORE_PAGE) setDone(true);
       setFailed(false);
     } catch (e) { devWarn("explore feed load failed:", e); setFailed(true); if (!offset) setRows(r => r || []); }
@@ -675,12 +733,16 @@ function ExploreFeedScreen({ store, setStore, currentUserId, following, token, C
   const more = async () => { if (loadingMore || done) return; setLoadingMore(true); await load((rows || []).length); setLoadingMore(false); };
   const h = postHandlers || {};
   const noop = () => {};
+  // Pull to refresh = start over from the newest page (new posts land on top). `done` resets so
+  // Load more comes back if the fresh page is full.
+  const refresh = async () => { setDone(false); await load(0); };
   return (
-    <div data-explore-feed style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+    <div data-explore-feed style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, flexShrink:0 }}>
         <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>&#8249;</button>
         <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Explore</div>
       </div>
+      <PullToRefresh onRefresh={refresh} C={C}>
       {rows === null && [0, 1, 2].map(i => (
         <div key={i} style={{ padding:"14px", borderTop: i ? `1px solid ${C.divider}` : "none" }}>
           <Skeleton width="45%" height={12} C={C} style={{ marginBottom:10 }}/>
@@ -708,6 +770,7 @@ function ExploreFeedScreen({ store, setStore, currentUserId, following, token, C
           </button>
         </div>
       )}
+      </PullToRefresh>
     </div>
   );
 }

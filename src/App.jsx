@@ -1,4 +1,4 @@
-// v178091717085
+// v178091717086
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -23380,7 +23380,7 @@ function AppInner() {
 
         {which === "discover" && (
           <Suspense fallback={null}>
-            <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow}
+            <DiscoverScreen store={store} setStore={setStore} currentUserId={currentUserId} onUserClick={setProfileUserId} setTab={setTab} C={C} token={token} onFollow={handleFollow} onRefresh={handleRefresh}
               postHandlers={{ onKudos: handleKudos, onComment: handleComment, onEditComment: handleEditComment, onDeleteComment: handleDeleteComment, onLikeComment: handleLikeComment }}/>
           </Suspense>
         )}

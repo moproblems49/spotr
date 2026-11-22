@@ -3441,6 +3441,15 @@ post. Cleared when the screen unmounts. Handlers arrive as DiscoverScreen's `pos
 `pw_explore` drives kudos + an inline comment and asserts the WRITES; its after-refresh check waits
 out the 30s refresh throttle and carries a `[control]` that the refresh ran. Red-proofed: without
 the pin, kudos after a refresh writes nothing.
+**The strip is a DRAW and both screens pull-to-refresh (Nov 22).** The 9 tiles are picked from the
+newest 60 strangers' posts: not-yet-shown first, then photo/PR, shuffled within each group. The draw
+is sticky (module-level `_exploreDraw`) so returning from See all does not reshuffle; only a pull on
+Discover draws again. Shown ids are remembered in `seshd_explore_seen` (capped 300) so refreshes
+rotate before repeating. See all stays CHRONOLOGICAL on purpose and its pull re-fetches page 0.
+Discover's pull also runs `handleRefresh` (passed as `onRefresh`) and re-fetches the leaderboard PRs.
+**Scar: a page-0 reload must REPLACE the rows, not dedupe against them** — the first cut deduped
+and every pull-to-refresh emptied the feed; `pw_explore` caught it. Red-proofed: a draw that
+ignores "seen" fails "none already seen".
 
 ## ★ SETTINGS REGROUPED, AND A <button> CENTRES ITS TEXT BY DEFAULT (Sep 25 2026)
 Mo, from his phone: "coaching and import are pushed off." They were `<button>` rows whose child
