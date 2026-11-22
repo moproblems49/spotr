@@ -3427,6 +3427,13 @@ launch: 5 accounts, 12 public posts in 30 days, all from one person — expect i
 others post. Guard: `pw_explore` (red-proofed: a loosened filter leaks the followed and blocked
 posts). Also fixed here: Discover's "Share your profile" link used `window.location.origin`
 (capacitor://localhost on device) — now `shareOrigin()`.
+**See all + richer tiles (Nov 22):** the strip is now 9 tiles (3x3), each with the poster's avatar
+and "N exercises · duration"; **See all** (always shown when the strip is) pushes the Discover
+sub-screen `explore` — `ExploreFeedScreen`, newest first, rich preview cards (author, time, caption,
+photo, exercise list with top set, kudos/comment counts), paged 30 raw rows at a time by OFFSET.
+`done` comes from a short SERVER page, never the filtered count (local filtering can shrink a page).
+Cards open the real post via `seshd:open-post`; it is a preview, not a second PostCard, so kudos and
+comments live in exactly one place. Strip and feed share `exploreKeep`/`useExploreSkip`.
 
 ## ★ SETTINGS REGROUPED, AND A <button> CENTRES ITS TEXT BY DEFAULT (Sep 25 2026)
 Mo, from his phone: "coaching and import are pushed off." They were `<button>` rows whose child

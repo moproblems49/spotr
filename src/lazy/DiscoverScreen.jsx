@@ -112,6 +112,13 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
       </div>
     );
   }
+  if (subTab === "explore") {
+    return (
+      <div className="seshd-push-in" style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+        <ExploreFeedScreen store={store} currentUserId={currentUserId} following={following} token={token} C={C} unit={store.unit||"lbs"} onBack={() => setSubTab("discover")} onUserClick={onUserClick}/>
+      </div>
+    );
+  }
   if (subTab === "activity") {
     return (
       <div className="seshd-push-in" style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
@@ -256,7 +263,7 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
 
           {/* Above the leaderboard on purpose: for a new account the leaderboard is a column of
               dashes, and Explore is the thing on this screen that has something in it. */}
-          <ExploreSection store={store} currentUserId={currentUserId} following={following} token={token} C={C} unit={unit}/>
+          <ExploreSection store={store} currentUserId={currentUserId} following={following} token={token} C={C} unit={unit} onSeeAll={() => setSubTab("explore")}/>
 
           {following.length > 0 && (
             <div style={{ marginBottom:20 }}>
@@ -531,55 +538,87 @@ export default function DiscoverScreen({ store, setStore, currentUserId, onUserC
 // posting, the interesting ones should lead. A tile opens the real post through `seshd:open-post`,
 // the same overlay a shared link opens, so kudos, comments, Report/Block and the author's profile
 // (where Follow is) all work without a second copy of any of them.
-const EXPLORE_LIMIT = 18;
-function ExploreSection({ store, currentUserId, following, token, C, unit }) {
+const EXPLORE_LIMIT = 9;          // the strip on Discover: three rows of three
+const EXPLORE_PAGE = 30;          // rows fetched per page by the full feed
+const EXPLORE_SELECT = "select=id,user_id,type,caption,image_url,workout,is_pr,unit,created_at,kudos(user_id),comments(id)";
+// ONE definition of "may this post appear in Explore", shared by the strip and the full feed so the
+// two can never disagree about who belongs there.
+function useExploreSkip(currentUserId, following, store) {
+  return useMemo(() => new Set([currentUserId, ...following, ...(store.blockedUsers || [])]),
+    [currentUserId, following.join(","), (store.blockedUsers || []).join(",")]);
+}
+const exploreKeep = skip => p => p.userId && !skip.has(p.userId) && p.type !== "story" && (p.imageData || p.workout || p.caption);
+const isPRPost = p => !!(p.isPR || p.workout?.exercises?.some(e => e.isPR));
+async function fetchExplore(token, offset, limit) {
+  const rows = await sb.query(`posts?${EXPLORE_SELECT}&type=neq.story&order=created_at.desc&limit=${limit}&offset=${offset}`, {}, token);
+  return (Array.isArray(rows) ? rows : []).map(r => normalizePostRow(r));
+}
+const openPost = id => { haptic("tap"); window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } })); };
+const fmtMins = secs => { const m = Math.round((Number(secs) || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`; };
+const agoLabel = ms => {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d`;
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+
+function ExploreSection({ store, currentUserId, following, token, C, unit, onSeeAll }) {
   const [posts, setPosts] = useState(null);   // null = loading, [] = nothing to show
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const rows = await sb.query(
-          `posts?select=id,user_id,type,caption,image_url,workout,is_pr,unit,created_at&type=neq.story&order=created_at.desc&limit=60`,
-          {}, token);
-        if (!cancelled) setPosts((Array.isArray(rows) ? rows : []).map(r => normalizePostRow(r)));
-      } catch (e) { devWarn("explore load failed:", e); if (!cancelled) setPosts([]); }
+      try { const rows = await fetchExplore(token, 0, 60); if (!cancelled) setPosts(rows); }
+      catch (e) { devWarn("explore load failed:", e); if (!cancelled) setPosts([]); }
     })();
     return () => { cancelled = true; };
   }, [token]);
+  const skip = useExploreSkip(currentUserId, following, store);
   const shown = useMemo(() => {
     if (!posts) return [];
-    const skip = new Set([currentUserId, ...following, ...(store.blockedUsers || [])]);
-    const lead = p => (safeMediaSrc(p.imageData) || p.isPR || p.workout?.exercises?.some(e => e.isPR)) ? 0 : 1;
-    return posts
-      .filter(p => p.userId && !skip.has(p.userId) && (p.imageData || p.workout || p.caption))
+    const lead = p => (safeMediaSrc(p.imageData) || isPRPost(p)) ? 0 : 1;
+    return posts.filter(exploreKeep(skip))
       .sort((a, b) => lead(a) - lead(b) || b.createdAt - a.createdAt)
       .slice(0, EXPLORE_LIMIT);
-  }, [posts, currentUserId, following.join(","), (store.blockedUsers || []).join(",")]);
+  }, [posts, skip]);
   if (posts === null || !shown.length) return null;   // nothing from strangers yet: no empty box
   return (
     <div data-explore style={{ marginBottom:18 }}>
-      <SectionLabel C={C}>Explore</SectionLabel>
+      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between" }}>
+        <SectionLabel C={C}>Explore</SectionLabel>
+        {/* Always offered: the feed is not a bigger copy of the strip — it shows each workout's
+            exercises, kudos and comments, which a 120px tile has no room for. */}
+        <button data-explore-all onClick={() => { haptic("tap"); onSeeAll && onSeeAll(); }}
+          className="seshd-hit-y"
+          style={{ background:"none", border:"none", padding:"0 0 10px", cursor:"pointer", fontFamily:F, fontSize:13, fontWeight:600, color:C.accentInk }}>
+          See all ›
+        </button>
+      </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:4 }}>
         {shown.map(p => {
           const author = store.users.find(u => u.id === p.userId);
           const img = safeMediaSrc(p.imageData);
           const w = p.workout;
-          const pr = p.isPR || w?.exercises?.some(e => e.isPR);
+          const pr = isPRPost(p);
           const vol = w?.volume ? Math.round(Number(w.volume)) : 0;
+          const nEx = w?.exercises?.length || 0;
           return (
             <button key={p.id} data-explore-post={p.id}
-              onClick={() => { haptic("tap"); window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id: p.id } })); }}
+              onClick={() => openPost(p.id)}
               aria-label={`${author?.username ? "@" + author.username + "'s " : ""}${w?.name ? w.name + " " : ""}post`}
               style={{ position:"relative", aspectRatio:"1 / 1", overflow:"hidden", border:"none", padding:0, cursor:"pointer",
                 borderRadius:8, background:C.surface, boxShadow:`inset 0 0 0 1px ${C.border}`, textAlign:"left", fontFamily:F }}>
               {img ? (
                 <img src={img} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = "none"; }} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
               ) : (
-                <div style={{ position:"absolute", inset:0, padding:"9px 9px 24px", display:"flex", flexDirection:"column", gap:3, minWidth:0 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:C.text, lineHeight:1.25, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical", paddingRight: pr ? 34 : 0 }}>
+                <div style={{ position:"absolute", inset:0, padding:"9px 9px 28px", display:"flex", flexDirection:"column", gap:2, minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.text, lineHeight:1.25, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", paddingRight: pr ? 34 : 0 }}>
                     {w?.name || p.caption || "Workout"}
                   </div>
-                  {vol > 0 && <div style={{ fontSize:11, color:C.sub, fontFamily:MONO, fontVariantNumeric:"tabular-nums" }}>{vol.toLocaleString()} {p.unit || unit}</div>}
+                  {vol > 0 && <div style={{ fontSize:11, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums" }}>{vol.toLocaleString()} {p.unit || unit}</div>}
+                  {nEx > 0 && <div data-explore-meta style={{ fontSize:10, color:C.sub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                    {nEx} exercise{nEx === 1 ? "" : "s"}{w?.duration ? ` · ${fmtMins(w.duration)}` : ""}
+                  </div>}
                 </div>
               )}
               {pr && (
@@ -589,15 +628,127 @@ function ExploreSection({ store, currentUserId, following, token, C, unit }) {
                 </span>
               )}
               {author?.username && (
-                <span style={{ position:"absolute", left:0, right:0, bottom:0, padding:"14px 7px 5px", fontSize:10, fontWeight:700, color:"#fff",
-                  background:"linear-gradient(to top, rgba(0,0,0,0.62), rgba(0,0,0,0))", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                  @{author.username}
+                <span style={{ position:"absolute", left:0, right:0, bottom:0, padding:"14px 6px 5px", display:"flex", alignItems:"center", gap:4,
+                  fontSize:10, fontWeight:700, color:"#fff", background:"linear-gradient(to top, rgba(0,0,0,0.66), rgba(0,0,0,0))" }}>
+                  <span data-explore-avatar style={{ flexShrink:0, display:"flex" }}><Avatar user={author} size={16} C={C}/></span>
+                  <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>@{author.username}</span>
                 </span>
               )}
             </button>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// THE FULL EXPLORE FEED ("See all"). Newest first, like X or Reddit — the strip's photo/PR-first
+// order is for picking the best few, and a feed you scroll should be chronological. Each card is a
+// rich PREVIEW and a tap opens the real post (the shared-link overlay), so kudos, comments,
+// Report/Block and the author's profile all come from the one place that already does them.
+// Paging is by RAW row offset; the local filter runs after, so a page can show fewer than it
+// fetched — `done` is decided by the server returning a short page, never by the filtered count.
+function ExploreFeedScreen({ store, currentUserId, following, token, C, unit, onBack, onUserClick }) {
+  const [rows, setRows] = useState(null);
+  const [done, setDone] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const load = useCallback(async (offset) => {
+    try {
+      const page = await fetchExplore(token, offset, EXPLORE_PAGE);
+      setRows(prev => { const seen = new Set((prev || []).map(r => r.id)); return [...(offset ? prev || [] : []), ...page.filter(r => !seen.has(r.id))]; });
+      if (page.length < EXPLORE_PAGE) setDone(true);
+      setFailed(false);
+    } catch (e) { devWarn("explore feed load failed:", e); setFailed(true); if (!offset) setRows(r => r || []); }
+  }, [token]);
+  useEffect(() => { load(0); }, [load]);
+  const skip = useExploreSkip(currentUserId, following, store);
+  const shown = useMemo(() => (rows || []).filter(exploreKeep(skip)).sort((a, b) => b.createdAt - a.createdAt), [rows, skip]);
+  const more = async () => { if (loadingMore || done) return; setLoadingMore(true); await load((rows || []).length); setLoadingMore(false); };
+  return (
+    <div data-explore-feed style={{ overflowY:"auto", flex:1, paddingBottom:NAV_CLEARANCE }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
+        <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.text, padding:"0 8px 0 0" }}>&#8249;</button>
+        <div style={{ flex:1, fontSize:18, fontWeight:700, color:C.text }}>Explore</div>
+      </div>
+      <div style={{ padding:"4px 14px 0" }}>
+        {rows === null && [0, 1, 2].map(i => (
+          <div key={i} style={{ padding:"14px 0", borderTop: i ? `1px solid ${C.divider}` : "none" }}>
+            <Skeleton width="45%" height={12} C={C} style={{ marginBottom:10 }}/>
+            <Skeleton width="100%" height={70} radius={10} C={C}/>
+          </div>
+        ))}
+        {rows !== null && !shown.length && (
+          <div style={{ padding:"40px 10px", textAlign:"center", color:C.sub, fontSize:14, lineHeight:1.5 }}>
+            {failed ? "Couldn't load posts. Check your connection and try again." : "No posts from people you don't follow yet. Check back soon."}
+          </div>
+        )}
+        {shown.map((p, i) => <ExploreFeedCard key={p.id} post={p} idx={i} store={store} C={C} unit={unit} onUserClick={onUserClick}/>)}
+        {rows !== null && !done && (
+          <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 24px" }}>
+            <button data-explore-more onClick={more} disabled={loadingMore} style={{ background:"transparent", color:C.sub, border:`1px solid ${C.border}`,
+              borderRadius:20, padding:"9px 22px", fontSize:13, fontWeight:600, cursor: loadingMore ? "default" : "pointer", fontFamily:F, opacity: loadingMore ? 0.5 : 1 }}>
+              {loadingMore ? "Loading…" : failed ? "Try again" : "Load more"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExploreFeedCard({ post: p, idx, store, C, unit, onUserClick }) {
+  const author = store.users.find(u => u.id === p.userId);
+  const img = safeMediaSrc(p.imageData);
+  const w = p.workout;
+  const pr = isPRPost(p);
+  const vol = w?.volume ? Math.round(Number(w.volume)) : 0;
+  const exs = w?.exercises || [];
+  const kudos = (p.kudos || []).length, comments = (p.comments || []).length;
+  const top = s => (s || []).reduce((b, x) => (Number(x.w) || 0) > (Number(b?.w) || 0) ? x : b, null);
+  return (
+    <div data-explore-card={p.id} style={{ padding:"14px 0", borderTop: idx ? `1px solid ${C.divider}` : "none" }}>
+      <button onClick={() => author && onUserClick && onUserClick(author.id)}
+        style={{ display:"flex", alignItems:"center", gap:9, background:"none", border:"none", padding:0, cursor:"pointer", fontFamily:F, textAlign:"left", marginBottom:9 }}>
+        <Avatar user={author || { username:"?" }} size={32} C={C}/>
+        <span style={{ fontSize:14, fontWeight:700, color:C.text }}>{author?.username ? "@" + author.username : "Someone"}</span>
+        <span style={{ fontSize:12, color:C.sub }}>· {agoLabel(p.createdAt)}</span>
+      </button>
+      <button onClick={() => openPost(p.id)} aria-label={`Open ${w?.name || "post"}`}
+        style={{ display:"block", width:"100%", background:"none", border:"none", padding:0, cursor:"pointer", textAlign:"left", fontFamily:F }}>
+        {p.caption && <div style={{ fontSize:14, color:C.text, lineHeight:1.4, marginBottom:8, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical" }}>{p.caption}</div>}
+        {img && <img src={img} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = "none"; }}
+          style={{ display:"block", width:"100%", maxHeight:340, objectFit:"cover", borderRadius:10, marginBottom: w ? 8 : 0, background:C.surface }}/>}
+        {w && (
+          <div style={{ background:C.surface, borderRadius:10, boxShadow:`inset 0 0 0 1px ${C.border}`, padding:"11px 12px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div style={{ flex:1, minWidth:0, fontSize:15, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{w.name || "Workout"}</div>
+              {pr && <span style={{ display:"flex", alignItems:"center", gap:3, color:C.gold, fontSize:11, fontWeight:800 }}><Icon name="trophy" size={12}/>PR</span>}
+            </div>
+            <div style={{ fontSize:12, color:C.sub, marginTop:2, fontVariantNumeric:"tabular-nums" }}>
+              {[exs.length ? `${exs.length} exercise${exs.length === 1 ? "" : "s"}` : null, w.duration ? fmtMins(w.duration) : null, vol > 0 ? `${vol.toLocaleString()} ${p.unit || unit}` : null].filter(Boolean).join(" · ")}
+            </div>
+            {exs.slice(0, 3).map(e => {
+              const t = top(e.sets);
+              return (
+                <div key={e.name} style={{ display:"flex", gap:8, marginTop:7, fontSize:13 }}>
+                  <span style={{ flex:1, minWidth:0, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {e.isPR && <span style={{ color:C.gold, marginRight:4 }}><Icon name="trophy" size={11}/></span>}{e.name}
+                  </span>
+                  {t && Number(t.w) > 0 && <span style={{ color:C.sub, fontFamily:MONO, fontVariantNumeric:"tabular-nums", flexShrink:0 }}>{Number(t.w)}×{t.r}</span>}
+                </div>
+              );
+            })}
+            {exs.length > 3 && <div style={{ fontSize:12, color:C.sub, marginTop:6 }}>+{exs.length - 3} more</div>}
+          </div>
+        )}
+      </button>
+      {(kudos > 0 || comments > 0) && (
+        <div style={{ display:"flex", gap:14, marginTop:8, fontSize:12, color:C.sub }}>
+          {kudos > 0 && <span>{kudos} kudos</span>}
+          {comments > 0 && <span>{comments} comment{comments === 1 ? "" : "s"}</span>}
+        </div>
+      )}
     </div>
   );
 }

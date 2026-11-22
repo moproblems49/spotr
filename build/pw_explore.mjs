@@ -33,6 +33,9 @@ const ROWS = [
   row(P("d1"), BLK, 5),    // blocked
 ];
 let strangerRows = true;   // flip to model "only me and people I follow have posted"
+// Extra older stranger posts so the full feed has a second page to load.
+const BULK = Array.from({ length: 34 }, (_, i) => row(P("e" + String(i).padStart(2, "0")), STR, 100 + i, { workout: { name: "Bulk " + i, duration: 1800, volume: 1000, exercises: [{ name: "Deadlift", sets: [{ w: 225, r: 5 }] }] } }));
+let withBulk = false;
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 async function boot() {
@@ -54,9 +57,11 @@ async function boot() {
     const idm = u.match(/posts\?id=eq\.([0-9a-f-]+)/);
     if (idm) return json(ROWS.filter(x => x.id === idm[1]));
     if (/\/posts\?select=id,user_id,type/.test(u)) {   // the Explore query — honour its own filters
-      let out = ROWS.filter(x => strangerRows || (x.user_id !== STR));
+      let out = [...ROWS, ...(withBulk ? BULK : [])].filter(x => strangerRows || (x.user_id !== STR));
       if (/type=neq\.story/.test(u)) out = out.filter(x => x.type !== "story");
-      return json(out.sort((a, b) => b.created_at.localeCompare(a.created_at)));
+      out.sort((a, b) => b.created_at.localeCompare(a.created_at));
+      const off = +(u.match(/offset=(\d+)/)?.[1] || 0), lim = +(u.match(/limit=(\d+)/)?.[1] || 1000);
+      return json(out.slice(off, off + lim));
     }
     if (/\/posts\?/.test(u)) return json([]);
     if (/blocked_users\?/.test(u)) return json([{ blocked_id: BLK }]);
@@ -111,6 +116,47 @@ async function boot() {
   });
   check("Explore comes before the leaderboard", order.ex >= 0 && (order.lb < 0 || order.ex < order.lb), JSON.stringify(order));
   await page.close();
+}
+// ── tiles carry the poster's photo and the session's shape; See all opens the full feed ────
+{
+  withBulk = true;
+  const page = await boot();
+  const t = await page.evaluate(() => [...document.querySelectorAll("[data-explore-post]")].map(b => ({
+    av: !!b.querySelector("[data-explore-avatar]"), meta: b.querySelector("[data-explore-meta]")?.innerText || "" })));
+  check("the strip is capped at three rows of three", t.length === 9, String(t.length));
+  check("every tile shows the poster's avatar", t.length > 0 && t.every(x => x.av), JSON.stringify(t.map(x => x.av)));
+  check("a workout tile says how many exercises and how long", t.some(x => /^1 exercise · \d+m$/.test(x.meta)), JSON.stringify(t.map(x => x.meta)));
+  await page.locator("[data-explore-all]").click();
+  await page.waitForTimeout(1200);
+  const feed = () => page.evaluate(() => [...document.querySelectorAll("[data-explore-card]")].map(c => c.dataset.exploreCard));
+  const f1 = await feed();
+  check("See all opens the Explore feed", f1.length > 0, String(f1.length));
+  check("the feed holds only strangers' posts (none of mine, followed, blocked, or stories)",
+    f1.length > 0 && !f1.some(id => [P("b1"), P("c1"), P("d1"), S_STORY].includes(id)), JSON.stringify(f1.slice(0, 6)));
+  check("the feed is newest first", f1[0] === S_PLAIN && f1[1] === S_PHOTO && f1[2] === S_PR, JSON.stringify(f1.slice(0, 3)));
+  const card = await page.evaluate(id => document.querySelector(`[data-explore-card="${id}"]`)?.innerText.replace(/\s+/g, " ") || "", S_PR);
+  check("a feed card names the author, the session, its exercises and the top set", /@liftlady/.test(card) && /Heavy Legs/.test(card) && /Back Squat/.test(card) && /315×3/.test(card), card);
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(/\.png$/, "_feed.png") });
+  // Page 1 is 30 raw rows; 3 of them are filtered out locally, so the second page must be fetched.
+  await page.locator("[data-explore-more]").click();
+  await page.waitForTimeout(1200);
+  const f2 = await feed();
+  check("Load more fetches the next page", f2.length === 37 && new Set(f2).size === f2.length, `${f1.length} -> ${f2.length}`);
+  check("...and the button goes away at the end", !(await page.locator("[data-explore-more]").count()), "");
+  await page.locator(`[data-explore-card="${S_PR}"] button[aria-label^="Open"]`).click();
+  await page.waitForTimeout(1500);
+  const opened = await page.evaluate(() => {
+    let el = document.elementFromPoint(200, 300);
+    while (el && el !== document.body) {
+      const cs = getComputedStyle(el);
+      if ((cs.position === "fixed" || cs.position === "absolute") && parseInt(cs.zIndex) >= 60) return el.innerText.replace(/\s+/g, " ").slice(0, 200);
+      el = el.parentElement;
+    }
+    return null;
+  });
+  check("tapping a feed card opens the real post on top", !!opened && /Back Squat/.test(opened), String(opened));
+  await page.close();
+  withBulk = false;
 }
 // ── nothing from strangers ────────────────────────────────────────────────────────────
 {
