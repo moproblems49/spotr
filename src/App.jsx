@@ -1,4 +1,4 @@
-// v178091717086
+// v178091717087
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -28,6 +28,7 @@ import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _ex
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
 import { plateColor, calcPlatesPerSide, generateWarmupSets } from "./engine/plates.js";
 import { storeStreak, recordTargetChange, getProgressInsights, reconstructPrEvents } from "./engine/insights.js";
+import { buildWorkoutShareSVG, appStoreFooterSVG, APP_STORE_URL, APP_STORE_ID } from "./engine/sharecard.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DURABLE NATIVE STORAGE
@@ -8593,7 +8594,7 @@ function PlateCalcModal({ onClose, unit, C }) {
 
 // Rasterizes an SVG string to a PNG and shares it via the native share sheet (files), falling back
 // to a download. Returns true on success, false if rasterization/sharing failed (caller can text-share).
-export async function shareSvgCard(svg, filename, title, outW = 1080, outH = 1350) {
+export async function shareSvgCard(svg, filename, title, outW = 1080, outH = 1350, text = "") {
   try {
     const blob = await new Promise((resolve, reject) => {
       const img = new Image();
@@ -8611,7 +8612,8 @@ export async function shareSvgCard(svg, filename, title, outW = 1080, outH = 135
     });
     const file = new File([blob], filename, { type: "image/png" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title });
+      // `text` carries the App Store link where a caller supplies one; Messages renders it as a link.
+      await navigator.share(text ? { files: [file], title, text } : { files: [file], title });
     } else {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = filename;
@@ -13781,6 +13783,24 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   })()}
                 </div>
 
+                {/* SHARE AS IMAGE — the card above, drawn as a picture that ends with an App Store
+                    footer + QR, so a workout posted to a story or a group chat can bring someone to
+                    Seshd. Built from the SAME summary object as the card, so the numbers agree. The
+                    share sheet also gets the App Store link as text (tappable in Messages). This is
+                    separate from Feed/Groups below, which post inside the app. */}
+                <button data-share-image onClick={async () => {
+                  const s = workoutSummary;
+                  const dateLabel = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+                  const svg = buildWorkoutShareSVG(s, unit, dateLabel);
+                  const ok = await shareSvgCard(svg, "seshd-workout.png", "My Seshd workout", 1080, 1350,
+                    `Logged on Seshd — ${APP_STORE_URL}`);
+                  if (!ok) toast("Couldn't make the image — try again", "error");
+                }} style={{ width:"100%", marginBottom:16, background:C.surface, color:C.text, border:`1px solid ${C.border}`,
+                  borderRadius:12, padding:"12px 12px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:F,
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  <Icon name="share" size={15} color={C.text}/> Share as image
+                </button>
+
                 {/* Offer to save mid-workout changes back to the program */}
                 {workoutSummary.programChange && !workoutSummary.programUpdated && (
                   <div style={{ marginBottom:14, padding:"14px", borderRadius:12, background:C.surface, border:`1px solid ${C.border}` }}>
@@ -16050,16 +16070,18 @@ export function ExerciseDetail({ name, store, unit, C, onClose }) {
       + `<rect width="${W}" height="${H}" fill="#0A0A0A"/>`
       + `<text x="${pad}" y="150" fill="rgba(255,255,255,0.5)" font-size="26" font-weight="700" letter-spacing="6" font-family="Arial">SESHD</text>`
       + `<text x="${pad}" y="240" fill="#fff" font-size="68" font-weight="800" font-family="Arial">${name.replace(/&/g,"&amp;").replace(/</g,"&lt;").slice(0,22)}</text>`
-      + `<text x="${pad}" y="300" fill="rgba(255,255,255,0.6)" font-size="30" font-family="Arial">${exInfo.muscle}</text>`
+      + `<text x="${pad}" y="300" fill="rgba(255,255,255,0.6)" font-size="30" font-family="Arial">${exInfo.muscle} · ${sessions} session${sessions === 1 ? "" : "s"}</text>`
       + (area ? `<path d="${area}" fill="#c8f135" opacity="0.12"/>` : "")
       + (pts.length > 1 ? `<path d="${line}" stroke="#c8f135" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : "")
       + dots
       + `<text x="${pad}" y="900" fill="rgba(255,255,255,0.5)" font-size="28" font-weight="700" letter-spacing="3" font-family="Arial">CURRENT PR</text>`
       + `<text x="${pad}" y="990" fill="#c8f135" font-size="92" font-weight="800" font-family="Arial">${prDisp}</text>`
       + (improvePct > 0 ? `<text x="${pad}" y="1080" fill="#fff" font-size="38" font-weight="700" font-family="Arial">▲ ${improvePct}% since you started</text>` : "")
-      + `<text x="${pad}" y="1270" fill="rgba(255,255,255,0.35)" font-size="26" font-family="Arial">${sessions} sessions logged · seshd</text>`
+      // App Store footer + QR (replaces the old "N sessions logged · seshd" line, whose count now
+      // rides on the muscle line above) so a shared progress card can bring someone to the app.
+      + appStoreFooterSVG({ W, top: 1124, pad, size: 160 })
       + `</svg>`;
-    try { await shareSvgCard(svg, "seshd-progress.png", `My ${name} progress`, W, H); } catch (e) {}
+    try { await shareSvgCard(svg, "seshd-progress.png", `My ${name} progress`, W, H, `Tracked on Seshd — ${APP_STORE_URL}`); } catch (e) {}
   }
   // Last 5 sessions for the recent list (newest first). It was 3, with a SECOND "RECENT SESSIONS"
   // list of 5 further down the same screen — the same data twice, and the lower copy was the
@@ -19204,9 +19226,13 @@ function AppInner() {
     // /p/<uuid> (vercel.json rewrites that to the SPA), so the path has to be read once at mount.
     // Cleared from the URL afterwards so a refresh doesn't reopen a post the user closed.
     try {
+      // Two shapes reach here: /p/<uuid> (direct), and /?p=<uuid> — the "View in browser" link on
+      // the landing page vercel.json now serves at /p/ for people without the app (api/post-landing).
       const seg = (window.location?.pathname || "").match(/^\/p\/([\w-]+)/);
-      if (seg && POST_ID_RE.test(seg[1])) {
-        setPostView({ id: seg[1], post: null });
+      const q = new URLSearchParams(window.location?.search || "").get("p");
+      const pid = seg ? seg[1] : q;
+      if (pid && POST_ID_RE.test(pid)) {
+        setPostView({ id: pid, post: null });
         window.history.replaceState(null, "", "/");
       }
     } catch (e) {}

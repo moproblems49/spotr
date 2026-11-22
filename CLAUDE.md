@@ -3451,6 +3451,37 @@ Discover's pull also runs `handleRefresh` (passed as `onRefresh`) and re-fetches
 and every pull-to-refresh emptied the feed; `pw_explore` caught it. Red-proofed: a draw that
 ignores "seen" fails "none already seen".
 
+## ★ SHARE CARDS BRING PEOPLE BACK, AND /p/ LINKS LAND NON-USERS ON THE APP STORE (Nov 22 2026)
+Mo approved Muse's top growth fix: every shared image used to end at the app NAME, so a story or
+group-chat post sold the workout and never the app. **`src/engine/sharecard.js`** owns it:
+`APP_STORE_URL`/`APP_STORE_ID` (id6780334417), `appStoreFooterSVG` (copy + QR) and
+`buildWorkoutShareSVG(summary, unit, dateLabel)`, the per-workout 1080x1350 card drawn from the
+SAME `workoutSummary` the finish sheet renders, so the image and the screen cannot disagree.
+- **"Share as image"** sits under `#workout-card` in the finish sheet's scroller (`data-share-image`),
+  NOT in the two-row footer — `pw_finishcard` measures that footer. It is separate from Feed/Groups,
+  which post inside the app.
+- `shareSvgCard` grew a `text` argument; all three callers (workout card, exercise progress card,
+  Wrapped) send the App Store link, which Messages shows as a tappable link. The progress card also
+  carries the footer (its old "N sessions logged · seshd" line moved onto the muscle line).
+- **The QR is STATIC path data generated once** (qrcode@1.5.4, EC level M) — a runtime QR library
+  is ~25 kB to re-derive a constant. Regenerate it if `APP_STORE_URL` ever changes, or the QR and
+  the text point at different places. Verified by DECODING the rendered PNG with jsQR, not by eye.
+- **`/p/:id` now rewrites to `api/post-landing.js`**, a page for people WITHOUT the app (with the
+  app, the AASA claim opens the app and this never runs). App Store button, Safari smart banner
+  (`apple-itunes-app`, also added to `index.html`), and "View in browser" -> `/?p=<uuid>`, which
+  the SPA's boot read now accepts alongside `/p/<uuid>`. **The preview is GENERIC on purpose** —
+  same decision as `api/profile-og.js`: an unfurl must not publish someone's workout to every chat
+  a link reaches. Do not look the post up there. A share CODE (`IGNITE-…`) gets "a program" copy
+  and no `?p=` link. The landing page is a serverless function and is NOT in the OTA bundle — it
+  deploys with the push.
+- Guards: `sim_sharecard` (card numbers, escaping, footer, landing page incl. a hostile id) and
+  `pw_sharecard` (the real finish sheet hands a 1080x1350 PNG + the link to a stubbed
+  `navigator.share`; `/?p=` opens the post and clears the URL). Red-proofed: dropping the link
+  text fails 1e, dropping the `?p=` read fails 2a/2b.
+- **Not done, deliberately:** the finish screen's default is still the in-app Feed/Groups share
+  (Muse suggested making the image the default — that is a product call, ask Mo); the Wrapped card
+  got the link text but not the footer (its layout is full).
+
 ## ★ SETTINGS REGROUPED, AND A <button> CENTRES ITS TEXT BY DEFAULT (Sep 25 2026)
 Mo, from his phone: "coaching and import are pushed off." They were `<button>` rows whose child
 is a block `<div>` (title + subtitle), and **a button's default `text-align` is CENTER** — the

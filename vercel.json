@@ -6,7 +6,7 @@
     },
     {
       "source": "/p/:id",
-      "destination": "/index.html"
+      "destination": "/api/post-landing?id=:id"
     }
   ]
 }

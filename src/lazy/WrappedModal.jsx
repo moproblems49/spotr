@@ -7,6 +7,7 @@
 import { cvt } from "../engine/core.js";
 import { weeklyMuscleVolume } from "../engine/strength.js";
 import { calcStreak } from "../engine/insights.js";
+import { APP_STORE_URL } from "../engine/sharecard.js";
 import { Icon, DISPLAY, F, MONO, fmtVol, toast, useBodyMapData, shareSvgCard, svgToDataURL, PR_TYPE_LABEL_SHORT, BODY_FUSE } from "../App.jsx";
 
 // Builds a self-contained 1080×1350 share-card SVG (dark, branded) with the week's trained-muscle
@@ -278,7 +279,7 @@ export default function WrappedModal({ store, C, onClose, onPostToFeed, range })
             e.currentTarget.dataset.sharing = "1";
             try {
               const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta, bodyMapData });
-              const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd");
+              const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd", 1080, 1350, `My week on Seshd — ${APP_STORE_URL}`);
               if (!ok) {
                 const text = `My week on Seshd\n${workouts} workout${workouts === 1 ? "" : "s"} · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PR${weekPRs === 1 ? "" : "s"} · ${streak} day streak`;
                 if (navigator.clipboard) { await navigator.clipboard.writeText(text); if (typeof toast === "function") toast("Copied to clipboard", "success"); }
