@@ -3432,8 +3432,15 @@ and "N exercises · duration"; **See all** (always shown when the strip is) push
 sub-screen `explore` — `ExploreFeedScreen`, newest first, rich preview cards (author, time, caption,
 photo, exercise list with top set, kudos/comment counts), paged 30 raw rows at a time by OFFSET.
 `done` comes from a short SERVER page, never the filtered count (local filtering can shrink a page).
-Cards open the real post via `seshd:open-post`; it is a preview, not a second PostCard, so kudos and
-comments live in exactly one place. Strip and feed share `exploreKeep`/`useExploreSkip`.
+Strip and feed share `exploreKeep`/`useExploreSkip`.
+**The feed rows are the REAL `PostCard` now (Nov 22, Mo: like and comment without opening the
+post).** `handleKudos`/`handleComment` begin with `store.posts.find(id)`, so the feed MERGES its
+posts into `store.posts` and adds their ids to the exported `pinnedPostIds` Set, which BOTH refresh
+paths (the `loadUserData` wipe and `loadFeed`'s carry filter) keep, exactly like the open shared
+post. Cleared when the screen unmounts. Handlers arrive as DiscoverScreen's `postHandlers` prop.
+`pw_explore` drives kudos + an inline comment and asserts the WRITES; its after-refresh check waits
+out the 30s refresh throttle and carries a `[control]` that the refresh ran. Red-proofed: without
+the pin, kudos after a refresh writes nothing.
 
 ## ★ SETTINGS REGROUPED, AND A <button> CENTRES ITS TEXT BY DEFAULT (Sep 25 2026)
 Mo, from his phone: "coaching and import are pushed off." They were `<button>` rows whose child
