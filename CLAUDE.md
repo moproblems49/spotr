@@ -3478,6 +3478,14 @@ SAME `workoutSummary` the finish sheet renders, so the image and the screen cann
   `pw_sharecard` (the real finish sheet hands a 1080x1350 PNG + the link to a stubbed
   `navigator.share`; `/?p=` opens the post and clears the URL). Red-proofed: dropping the link
   text fails 1e, dropping the `?p=` read fails 2a/2b.
+- **★ AND "VIEW IN BROWSER" WAS A DEAD END FOR EXACTLY THE PEOPLE THE PAGE EXISTS FOR (audit, same
+  day).** A signed-out visitor landed on `/?p=<id>`, the post was FETCHED, and the no-session early
+  return rendered only the welcome screen — the overlay lived in the main return. Measured, not
+  read: `postFetched:1, showsPost:false`. `renderPostOverlay(signedOut)` is now drawn over
+  `AuthScreen` too, read-only: every action and a "Join Seshd" button close it onto the sign-up
+  screen beneath (every action needs an account). `pw_sharecard` §3, red-proofed at 2 failures.
+  **Same lesson as the chat overlay: when adding an overlay, check EVERY return in `AppInner` —
+  including the signed-out one.**
 - **Not done, deliberately:** the finish screen's default is still the in-app Feed/Groups share
   (Muse suggested making the image the default — that is a product call, ask Mo); the Wrapped card
   got the link text but not the footer (its layout is full).

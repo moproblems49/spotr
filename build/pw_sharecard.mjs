@@ -28,11 +28,12 @@ const POST_ROW = { id: POST, user_id: ME, type: "workout", caption: "Leg day fro
   kudos: [], comments: [] };
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
-async function boot({ active, path }) {
+async function boot({ active, path, signedOut = false }) {
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
   page.setDefaultTimeout(5000);
   page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
-  await page.addInitScript(([me, sess, active]) => {
+  await page.addInitScript(([me, sess, active, signedOut]) => {
+    if (signedOut) { window.__shared = []; return; }
     localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
       programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [], groups: [],
       profile: { username:"momo", name:"Mo" }, users: [{ id: me, username:"momo", name:"Mo", followers:[], following:[] }] }));
@@ -51,7 +52,7 @@ async function boot({ active, path }) {
         await new Promise(r => { img.onload = r; img.onerror = r; img.src = url; }); w = img.naturalWidth; h = img.naturalHeight; }
       window.__shared.push({ text: d.text || "", title: d.title || "", name: f && f.name, size, type, w, h });
     };
-  }, [ME, SESSION, active]);
+  }, [ME, SESSION, active, signedOut]);
   await page.route("**/auth/v1/**", r => r.fulfill({ status:200, contentType:"application/json", body: JSON.stringify({ access_token:"t", user:{ id: ME } }) }));
   await page.route("**/rest/v1/**", r => {
     const u = r.request().url();
@@ -94,6 +95,21 @@ await p2.close();
 const p3 = await boot({ active: false, path: `/?p=not-a-uuid` });
 check("2c. a malformed ?p= opens nothing", !(await p3.evaluate(() => document.body.innerText.includes("isn't available"))));
 await p3.close();
+
+// ── 3. A visitor WITHOUT an account (the landing page's whole audience) sees the post ────────
+// The first cut fetched the post and rendered only the welcome screen, because the no-session
+// early return never drew the post overlay. "View in browser" was a dead end for exactly the
+// people the landing page exists for.
+const p4 = await boot({ active: false, path: `/?p=${POST}`, signedOut: true });
+check("3a. a signed-out visitor sees the shared post", await p4.evaluate(() => document.body.innerText.includes("Leg day from a link")));
+const join = p4.locator("[data-post-join] button");
+check("3b. it offers a way to join", (await join.count()) === 1);
+if (await join.count()) {
+  await join.click(); await p4.waitForTimeout(700);
+  const under = await p4.evaluate(() => { const e = document.elementFromPoint(201, 437); return !e?.closest('[data-fullscreen-overlay]'); });
+  check("3c. Join closes the post onto the welcome/sign-up screen", under && /Track everything|Create|Sign in/i.test(await p4.innerText("body")));
+}
+await p4.close();
 
 await browser.close();
 console.log(fails ? `FAIL ${fails}` : "ALL PASS");

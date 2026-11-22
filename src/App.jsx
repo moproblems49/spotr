@@ -1,4 +1,4 @@
-// v178091717087
+// v178091717088
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -22188,7 +22188,7 @@ function AppInner() {
 
   // ── Show auth screen if not logged in AND not a guest ─────────
   if (!session && !isGuest) {
-    return <Suspense fallback={authScreenFallback}><AuthScreen
+    return <>{renderPostOverlay(true)}<Suspense fallback={authScreenFallback}><AuthScreen
       onAuth={handleAuth}
       onGuest={() => {
         try { localStorage.setItem("seshd_guest", "1"); } catch {}
@@ -22206,7 +22206,7 @@ function AppInner() {
       }}
       C={C}
       theme={store.theme || "light"}
-    /></Suspense>;
+    /></Suspense></>;
   }
 
   // Guest → upgrade prompt overlay
@@ -22628,8 +22628,14 @@ function AppInner() {
     );
   }
 
-  function renderPostOverlay() {
+  // `signedOut`: a visitor with no account (the /p/ landing page's "View in browser" link, or a
+  // universal link tapped while signed out). Every action on a post needs an account, so in that
+  // mode the card is read-only and any action — or the Join button — closes the overlay onto the
+  // welcome screen underneath, which is where sign-up lives. Without this the post was fetched
+  // and never shown: the no-session early return rendered only the welcome screen.
+  function renderPostOverlay(signedOut = false) {
     if (!postView) return null;
+    const toSignup = () => setPostView(null);
     // Portaled and fixed at zIndex 60 for the same reasons the profile overlay is (see its
     // comment): it must cover the app's own top bar, and PostCard contains fixed children of its
     // own. Because it sits ABOVE the nav's zIndex 50 the nav is covered rather than tappable, so
@@ -22679,15 +22685,25 @@ function AppInner() {
                   currentUserId={currentUserId}
                   displayUnit={unit}
                   C={C}
-                  onKudos={handleKudos}
-                  onComment={handleComment}
-                  onEditComment={handleEditComment}
-                  onDeleteComment={handleDeleteComment}
-                  onLikeComment={handleLikeComment}
-                  onUserClick={presentProfile}
-                  onEdit={setEditingPost}
-                  onDelete={(id_) => { setPostView(null); handleDelete(id_); }}
+                  onKudos={signedOut ? toSignup : handleKudos}
+                  onComment={signedOut ? toSignup : handleComment}
+                  onEditComment={signedOut ? toSignup : handleEditComment}
+                  onDeleteComment={signedOut ? toSignup : handleDeleteComment}
+                  onLikeComment={signedOut ? toSignup : handleLikeComment}
+                  onUserClick={signedOut ? toSignup : presentProfile}
+                  onEdit={signedOut ? toSignup : setEditingPost}
+                  onDelete={signedOut ? toSignup : ((id_) => { setPostView(null); handleDelete(id_); })}
                 />
+              )}
+              {signedOut && (
+                <div data-post-join style={{ padding:"22px 20px 0", textAlign:"center" }}>
+                  <div style={{ fontSize:13, color:C.sub, lineHeight:1.5, marginBottom:12 }}>
+                    Join Seshd to give kudos, comment and track your own lifts.
+                  </div>
+                  <button onClick={toSignup}
+                    style={{ padding:"13px 26px", borderRadius:14, border:"none", background:C.primary, color:C.onPrimary,
+                             fontSize:15, fontWeight:700, fontFamily:F, cursor:"pointer" }}>Join Seshd</button>
+                </div>
               )}
             </div>
           </EdgeSwipeBack>
