@@ -889,6 +889,13 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   physical-keyboard typing into the set pad is desktop-only; a guest workout never appears in the
   FEED by design (unposted workouts live on History and your own profile). The full-screen rest timer
   after every set is a PRODUCT call, left for Mo.
+- **★ AUDIT OF THE MUSE FIXES (Nov 23): two more.** History printed a cardio set (30 min, 5 mi) as
+  "30×5 lbs" — `historySetsSummary` now takes a `cardio` flag (Cardio/Yoga muscle) and reads
+  minutes + distance, parseFloat for fractional km (`sim_historysets` [cardio], red-proofed). And
+  the feed's follow-filter was re-decided on a LATER page whenever page 0's lookup had failed, which
+  switched the query mid-pagination; it is decided on page 0 only now. Known and left: the
+  username-path "Resend confirmation" can be called for any username, spending the shared 30/hour
+  email budget — same class as `/recover`, and captcha is the real fix.
 - **★ HISTORY'S EXERCISE LINE INVENTED STRAIGHT SETS.** It printed `count × firstSet.reps · topWeight`,
   so 185×8, 155×10 drop, 185×6 read "3 × 8 reps · 185 lbs". `historySetsSummary` (engine/workout.js)
   keeps the compact form only when every set is identical and otherwise lists the sets as performed
@@ -4412,6 +4419,22 @@ portrait lock, and the app icon are already committed — no Xcode work needed f
    `api.push.apple.com` error = APNs key/entitlement pairing wrong.
 
 **Step 4 — TestFlight:** archive, upload, add Mo as internal tester.
+
+**★★ THE MAC DAY LIST AS OF NOV 23 2026 — read this first, it supersedes the order below.**
+1. **Rebuild the store binary from current `main`** (`git pull && npm install && npm run build &&
+   npx cap sync ios`, archive, submit) and set `BUILTIN_BUNDLE` in `api/app-update.js` to the new
+   build number + `LATEST_VERSION` IN THE SAME COMMIT. The store build predates the 2-screen
+   onboarding, the sex/body-map field, Explore, share cards and the signup/confirm fixes, and a new
+   downloader who signs up before first backgrounding the app sees the OLD first-run screens.
+2. **Confirm `aps-environment` is `production` in the archived build** and that a push lands on a
+   TestFlight install (the key is production-only).
+3. **OTA bundle SIGNING** — a private key held off-repo, public half compiled into the binary. The
+   checksum is integrity only; signing is what protects the OTA channel from a compromised GitHub
+   account (ranked #1 future risk).
+4. Optional experiments, only with a phone in hand: interactive keyboard drag-to-dismiss (private
+   `WKChildScrollView` swizzle), Live Activity rest timer, home-screen widgets, Apple Watch app,
+   video posts, direct Instagram Stories share, Sign in with Apple (required before any social
+   login ships).
 
 **★ NEXT MAC DAY — TOP OF THE LIST (rewritten Sep 3; the Aug 31 version of this item was wrong).**
 The old entry said `Keyboard.resize:"none"` is a Mac-day item and "not OTA-able". **Both halves are

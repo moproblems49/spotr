@@ -1,4 +1,4 @@
-// v178091717091
+// v178091717092
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -14968,7 +14968,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           const doneSets = workingDone(ex.sets);
                           if (!doneSets.length) return null;
                           const isPR = sessPRs.has(ex.name);
-                          const setsLabel = historySetsSummary(doneSets, sess.unit || "lbs");
+                          const exMuscle = getMuscle(ex.name);
+                          const setsLabel = historySetsSummary(doneSets, sess.unit || "lbs", 4, exMuscle === "Cardio" || exMuscle === "Yoga");
                           return (
                             <div key={j} style={{ display:"flex", alignItems:"center", gap:8 }}>
                               <div style={{ flex:1, minWidth:0 }}>
@@ -20560,7 +20561,10 @@ function AppInner() {
       // follow's older workout never surfaced (Muse, Nov 23). Fetching the follow list here
       // (it is loaded later in loadUserData) lets the server filter. Falls back to the old
       // unfiltered page if the lookup fails or the list is too long for a URL.
-      if (offset === 0 || !feedAuthorIdsRef.current) {
+      // Only page 0 decides the filter. Re-deciding on a later page (because page 0's lookup
+      // failed) would switch the query mid-pagination, and the offset would then index a
+      // different list than the one page 0 came from.
+      if (offset === 0) {
         feedAuthorIdsRef.current = null;
         try {
           const fl = await sb.query(`follows?follower_id=eq.${uid}&status=eq.accepted&select=following_id`, {}, tok);

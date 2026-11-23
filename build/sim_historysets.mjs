@@ -28,6 +28,11 @@ check("a long list is capped with +N, in the session's unit", long === "105×5 �
 const mixed = f([S(20, 10), S("", 12)], "lbs");
 check("a weighted set beside a bodyweight one says BW", mixed === "20×10 · BW×12 lbs", mixed);
 check("{w,r} pairs are accepted too", f([{ w: 100, r: 5 }, { w: 90, r: 8 }], "kg") === "100×5 · 90×8 kg");
+const run = f([S(30, 5)], "lbs", 4, true);
+check("[cardio] a run reads minutes + distance, never 30×5 lbs", run === "30 min · 5 mi", run);
+const runKm = f([S(25, "4.2")], "kg", 4, true);
+check("[cardio] fractional km survives (no parseInt)", runKm === "25 min · 4.2 km", runKm);
+check("[cardio] time-only set", f([S(20, "")], "lbs", 4, true) === "20 min");
 check("no sets -> empty", f([], "lbs") === "" && f(undefined) === "");
 console.log(fails ? `${fails} FAIL(S)` : "ok");
 process.exit(fails ? 1 : 0);

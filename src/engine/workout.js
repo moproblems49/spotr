@@ -786,13 +786,23 @@ function trainingLoadRatio(store, unit = "lbs") {
 // truth; otherwise the sets are listed in the order performed (capped, with a "+N" for the rest).
 // Takes LIVE-shape sets ({weight, reps}) and also tolerates {w, r}. Weights print in the
 // session's own unit, which is what the caller passes.
-function historySetsSummary(sets, unit = "lbs", cap = 4) {
+function historySetsSummary(sets, unit = "lbs", cap = 4, cardio = false) {
   const rows = (sets || []).map(s => ({
     w: parseFloat(s?.weight ?? s?.w) || 0,
-    r: parseInt(s?.reps ?? s?.r, 10) || 0,
+    // Cardio stores DISTANCE in the reps field, and 3.1 mi is a real answer — parseInt would
+    // print it as 3.
+    r: cardio ? (parseFloat(s?.reps ?? s?.r) || 0) : (parseInt(s?.reps ?? s?.r, 10) || 0),
   })).filter(x => x.r > 0 || x.w > 0);
   if (!rows.length) return "";
   const fmtW = (w) => String(Math.round(w * 100) / 100);
+  // A cardio set is minutes + distance (the live row labels them "min" and "mi"/"km"), so the
+  // strength shape printed a 30-minute 5-mile run as "30×5 lbs".
+  if (cardio) {
+    const dist = unit === "kg" ? "km" : "mi";
+    const one = (x) => [x.w > 0 ? `${fmtW(x.w)} min` : "", x.r > 0 ? `${fmtW(x.r)} ${dist}` : ""].filter(Boolean).join(" · ");
+    const shown = rows.slice(0, cap).map(one);
+    return shown.join(" / ") + (rows.length > cap ? ` +${rows.length - cap}` : "");
+  }
   const same = rows.every(x => x.w === rows[0].w && x.r === rows[0].r);
   if (same) {
     const { w, r } = rows[0];
