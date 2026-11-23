@@ -872,6 +872,23 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   screen offers **Resend confirmation email** (`sb.resendConfirmation`: `/auth/v1/resend` for an
   email, `username-auth` action `resend` for a username — always answers ok, no enumeration).
   `username-auth` is v4; source committed with it. Guard: `pw_signupguard` §4, red-proofed.
+- **★ MUSE'S DESKTOP PASS (Nov 23 2026): FOUR REAL, THREE NOT.** Guard: `pw_musefixes` (14 checks,
+  red-proofed at 7 failures). Real: (1) **a guest program with a short `uid()` id 22P02'd on
+  `programs.id` (uuid)** — "1 item didn't transfer", and the next refresh deleted the program. Seen in
+  the Postgres log, not inferred. Migration now re-mints non-uuid program ids, repoints
+  `activeProgramId`, and writes both to the local store. (2) **a migrated workout was stamped noon
+  TODAY** — in the future before noon — so its profile card read "-40306s". Uses `sess.finishedAt`,
+  capped at now; `timeAgo` also clamps at 0. (3) **the weekly card counts training DAYS and said
+  "workouts"**, so two sessions in a day read "1/3 workouts" beside Friends Activity's "2 sessions".
+  Caption is "days" now. (4) **the home feed paged the newest posts from EVERYONE then hid strangers**
+  — since Explore that can be a whole page of nothing, so "Load older posts" looked dead. `loadFeed`
+  now fetches your accepted follows first and filters with `user_id=in.(…)` (falls back to the
+  unfiltered page if the lookup fails or you follow >150). Also: the pad shows last time's value
+  greyed instead of "—". NOT bugs: Change photo opens the picker signed-in AND as a guest (driven,
+  file picked, avatar updated) — Muse's browser automation likely cannot work an OS file dialog;
+  physical-keyboard typing into the set pad is desktop-only; a guest workout never appears in the
+  FEED by design (unposted workouts live on History and your own profile). The full-screen rest timer
+  after every set is a PRODUCT call, left for Mo.
 - **★ HISTORY'S EXERCISE LINE INVENTED STRAIGHT SETS.** It printed `count × firstSet.reps · topWeight`,
   so 185×8, 155×10 drop, 185×6 read "3 × 8 reps · 185 lbs". `historySetsSummary` (engine/workout.js)
   keeps the compact form only when every set is identical and otherwise lists the sets as performed

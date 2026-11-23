@@ -1,4 +1,4 @@
-// v178091717090
+// v178091717091
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -4755,7 +4755,9 @@ export function normalizeShareCode(input) {
   return String(input).toUpperCase().replace(/[^A-Z0-9-]/g, "").trim();
 }
 export const timeAgo = ts => {
-  const s = Math.floor((Date.now()-ts)/1000);
+  // Clamped at 0: a timestamp slightly in the future (clock skew, or a row stamped at noon of a
+  // date that is still today) must read "0s", never a negative count.
+  const s = Math.max(0, Math.floor((Date.now()-ts)/1000));
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s/60)}m`;
   if (s < 86400) return `${Math.floor(s/3600)}h`;
@@ -7624,7 +7626,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
 // (weight only), backspace, quick +/- steppers, and a Next button to jump weight→reps→
 // next set. Inputs are read-only so iOS never opens its own keyboard.
 // ═════════════════════════════════════════════════════════════════════════════
-function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onClose, C }) {
+function NumberPad({ field, value, hint, unit, isCardio, onInput, onStep, onNext, onClose, C }) {
   // SLIDE, DON'T BLINK. The pad used to appear and vanish on a frame, which reads as a glitch
   // rather than a panel — every sheet on iOS travels. `shown` flips on the first frame AFTER
   // mount so there is a from-state to transition out of; `closing` runs the same transition in
@@ -7724,7 +7726,10 @@ function NumberPad({ field, value, unit, isCardio, onInput, onStep, onNext, onCl
           into its neighbour (see the tap-steal note in CLAUDE.md). */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"2px 8px 8px" }}>
         <div style={{ textAlign:"left", minWidth:90 }}>
-          <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{value !== "" && value != null ? value : "—"}</div>
+          <div style={{ fontSize:20, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>{value !== "" && value != null ? value : (hint !== "" && hint != null
+            // The row shows last time's value greyed; an em dash here read as "the pad lost my
+            // number" (Muse, Nov 23). Same grey here, and ticking the set still commits it.
+            ? <span style={{ color:C.muted }}>{hint}</span> : "—")}</div>
           <div style={{ fontSize:10, fontWeight:700, color:C.muted, letterSpacing:1, marginTop:3 }}>{fieldLabel}</div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -14200,10 +14205,15 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           };
           const onClose = () => { haptic("tap"); setFocusedSet(null); };
 
+          const hintSet = (set.type !== "warmup" && ex.name)
+            ? getPrev(store, ex.name, ex.sets.slice(0, focusedSet.si).filter(s => s.type !== "warmup").length, unit)
+            : null;
+          const hint = hintSet ? (field === "weight" ? hintSet.w : hintSet.r) : null;
           return (
             <NumberPad
               field={field}
               value={curVal}
+              hint={hint}
               unit={unit}
               isCardio={isCardio}
               onInput={onInput}
@@ -14372,9 +14382,13 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           layout change. The caption's job here is to name what the numbers ARE.
                           The streak branch below is unaffected and already reads correctly
                           ("WEEKLY STREAK / 3 / wks · 1/3"). */}
+                      {/* "days", not "workouts": the streak counts TRAINING DAYS (one per date in
+                          workoutDates, the unit onboarding asks for — "N days a week"), so two
+                          sessions in one day read "1/3 workouts" beside a Friends Activity tile
+                          saying "2 sessions" (Muse, Nov 23). The number was right; the noun lied. */}
                       {ws.count > 0
                         ? `wk${ws.count === 1 ? "" : "s"} · ${ws.thisWeek}/${ws.target}`
-                        : `workout${ws.target === 1 ? "" : "s"}`}
+                        : `day${ws.target === 1 ? "" : "s"}`}
                     </div>
                   </div>
                 </div>
@@ -17853,7 +17867,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px" }}>
                   <div>
                     <div style={{ fontSize:14, color:C.text }}>Weekly target</div>
-                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Hit this each week to keep your streak</div>
+                    <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Training days a week to keep your streak</div>
                   </div>
                   <div style={{ display:"flex", background:C.divider, borderRadius:20, padding:3, gap:1 }}>
                     {[2, 3, 4, 5].map(n => (
@@ -20521,6 +20535,7 @@ function AppInner() {
   }
 
   const FEED_PAGE_SIZE = 30;
+  const feedAuthorIdsRef = useRef(null);
   async function loadFeed(tok, uid, profiles, offset = 0) {
     try {
       // Paginated: first page replaces, later pages append. range header would also work, but
@@ -20538,8 +20553,24 @@ function AppInner() {
       // Only on the FIRST page: later pages append, and re-fetching your own posts each time would
       // just churn the same rows.
       const SEL = "select=*,kudos(user_id),comments(id,user_id,text,likes,created_at)";
+      // ★ PAGE ONLY THE PEOPLE THE FEED SHOWS. The page used to be the newest N posts across
+      // EVERYONE RLS lets you read — and since Explore, that includes every public stranger —
+      // while `feedPosts` then keeps only you + people you follow. So a page could come back
+      // full of strangers and render nothing: "Load older posts" did nothing visible, and a
+      // follow's older workout never surfaced (Muse, Nov 23). Fetching the follow list here
+      // (it is loaded later in loadUserData) lets the server filter. Falls back to the old
+      // unfiltered page if the lookup fails or the list is too long for a URL.
+      if (offset === 0 || !feedAuthorIdsRef.current) {
+        feedAuthorIdsRef.current = null;
+        try {
+          const fl = await sb.query(`follows?follower_id=eq.${uid}&status=eq.accepted&select=following_id`, {}, tok);
+          const ids = [uid, ...(fl || []).map(f => f.following_id)].filter(v => UUID_RE.test(String(v)));
+          if (ids.length && ids.length <= 150) feedAuthorIdsRef.current = ids;
+        } catch (e) { devError("feed follow lookup:", e); }
+      }
+      const authorFilter = feedAuthorIdsRef.current ? `&user_id=in.(${feedAuthorIdsRef.current.join(",")})` : "";
       const [pagePosts, ownPosts] = await Promise.all([
-        sb.query(`posts?${SEL}&order=created_at.desc&offset=${offset}&limit=${FEED_PAGE_SIZE}`, {}, tok),
+        sb.query(`posts?${SEL}${authorFilter}&order=created_at.desc&offset=${offset}&limit=${FEED_PAGE_SIZE}`, {}, tok),
         offset === 0 && uid
           ? sb.query(`posts?user_id=eq.${uid}&${SEL}&order=created_at.desc&limit=200`, {}, tok).catch(() => [])
           : Promise.resolve([]),
@@ -20689,7 +20720,21 @@ function AppInner() {
       // Naming the conflict target is what makes the retry safe: a bare POST re-sent after a
       // 20s timeout whose write had actually landed would 409 on the primary key.
       const programRetry = [];
-      for (const prog of (store.programs || [])) {
+      // ★ A GUEST PROGRAM CAN CARRY A SHORT `uid()` ID, AND `programs.id` IS A uuid COLUMN. Every
+      // such POST 22P02'd on both attempts, the toast said "1 item didn't transfer", and the next
+      // refresh replaced `programs` from the server — the program the guest had built was gone
+      // (found in the Postgres log from a real guest→account sign-in, Nov 23). Mint a uuid, keep
+      // it in the local store, and repoint `activeProgramId` at it, or that PATCH 22P02s too.
+      const progIdMap = {};
+      for (const prog of (store.programs || [])) if (!UUID_RE.test(String(prog.id))) progIdMap[prog.id] = genUUID();
+      const migratedPrograms = (store.programs || []).map(pg => progIdMap[pg.id] ? { ...pg, id: progIdMap[pg.id] } : pg);
+      const migratedActiveProgramId = progIdMap[store.activeProgramId] || store.activeProgramId;
+      if (Object.keys(progIdMap).length) setStore(p => ({
+        ...p,
+        programs: (p.programs || []).map(pg => progIdMap[pg.id] ? { ...pg, id: progIdMap[pg.id] } : pg),
+        activeProgramId: progIdMap[p.activeProgramId] || p.activeProgramId,
+      }));
+      for (const prog of migratedPrograms) {
         const row = { id: prog.id, user_id: newUserId, name: prog.name, days: prog.days };
         try {
           await sb.query("programs?on_conflict=id", {
@@ -20713,10 +20758,10 @@ function AppInner() {
         } catch (e) { failedRows++; devError("migrate program retry:", e); }
       }
       // Active program is a single FK on the profile row.
-      if (store.activeProgramId) {
+      if (migratedActiveProgramId && UUID_RE.test(String(migratedActiveProgramId))) {
         try {
           await sb.query(`profiles?id=eq.${newUserId}`, {
-            method: "PATCH", body: JSON.stringify({ active_program_id: store.activeProgramId })
+            method: "PATCH", body: JSON.stringify({ active_program_id: migratedActiveProgramId })
           }, tok);
         } catch (e) { devError("migrate active program:", e); }
       }
@@ -20779,7 +20824,12 @@ function AppInner() {
             // when a row has no timestamp. `new Date(date)` parses as midnight UTC, which is
             // the PREVIOUS evening anywhere west of Greenwich — it put every migrated workout
             // an evening early and is what made these rows identifiable at all.
-            created_at: new Date(date + "T12:00:00").toISOString(),
+            // ★ BUT NEVER IN THE FUTURE. A guest who trains at 9am and signs up straight after
+            // got a row stamped noon TODAY, which the profile's post card rendered as "-10800s"
+            // until noon (Muse, Nov 23). The session's own finish time wins when it has one.
+            created_at: new Date(Math.min(
+              Number.isFinite(sess.finishedAt) ? sess.finishedAt : new Date(date + "T12:00:00").getTime(),
+              Date.now())).toISOString(),
           };
           try {
             await sb.query("workout_history?on_conflict=id", {
