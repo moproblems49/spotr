@@ -78,6 +78,22 @@ check("a 200 does NOT surface an error", !/already taken|went wrong|failed/i.tes
 check("a 200 leaves the signup form (authenticated)", !/create your account/i.test(ok.txt),
   ok.txt.slice(0, 150).replace(/\n/g, " | "));
 
+// ── 3. An already-registered email (GoTrue's fake 200, no email sent) ─────────────────────────
+console.log("  ── a signup for an email that is already registered");
+const dup = await runSignup({ signupStatus: 200,
+  signupBody: { id: "22222222-2222-4222-8222-222222222222", email: "x@example.com", identities: [] } });
+check("[control] the signup request was made", dup.signupCalled);
+check("does NOT claim the account was created / say check your email", !/account created|check your email/i.test(dup.txt),
+  dup.txt.slice(0, 200).replace(/\n/g, " | "));
+check("tells them the email already has an account", /already exists/i.test(dup.txt),
+  dup.txt.slice(0, 200).replace(/\n/g, " | "));
+
+// A real new user with confirmation on: 200, no session, ONE identity -> still the honest notice.
+const fresh = await runSignup({ signupStatus: 200,
+  signupBody: { id: "33333333-3333-4333-8333-333333333333", email: "y@example.com", identities: [{ id: "i1" }] } });
+check("a genuine new signup still says check your email", /check your email/i.test(fresh.txt),
+  fresh.txt.slice(0, 200).replace(/\n/g, " | "));
+
 await browser.close();
 console.log(fails ? `${fails} FAIL(S)` : "ok");
 process.exit(fails ? 1 : 0);

@@ -1,4 +1,4 @@
-// v178091717088
+// v178091717089
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -280,6 +280,15 @@ const sb = (() => {
         throw new Error("An account with that email already exists — try signing in instead.");
       throw new Error(raw || "Signup failed");
     }
+    // ★ A REPEATED SIGNUP IS A FAKE 200. With email confirmation on, GoTrue answers a signup for an
+    // ALREADY-REGISTERED email with 200 and a placeholder user whose `identities` array is EMPTY,
+    // and sends NO email (its anti-enumeration behaviour; the auth log records
+    // `user_repeated_signup`). AuthScreen saw no access_token and told the person "Account created!
+    // Check your email" — an email that can never arrive, for an account that already exists.
+    // Seen live Nov 23 2026. A genuinely new user always carries one identity.
+    const ids = (data.user || data).identities;
+    if (!data.access_token && Array.isArray(ids) && ids.length === 0)
+      throw new Error("An account with that email already exists — sign in, or tap Forgot password if you don't remember it.");
     return data;
   }
 

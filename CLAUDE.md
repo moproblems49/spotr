@@ -852,6 +852,16 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   to the MOST RECENTLY REGISTERED matching route**, so a catch-all `**/auth/v1/**` added last
   swallows the specific `/signup` stub — the first draft reported four app failures that were
   entirely its own (`signupCalled` was false, which is what gave it away).
+- **★ A SIGNUP FOR AN ALREADY-REGISTERED EMAIL IS A FAKE 200, AND THE APP SAID "CHECK YOUR EMAIL"
+  (Nov 23 2026, reported as "someone signed up and didn't get an email").** With confirmation on,
+  GoTrue answers it with 200, a placeholder user whose `identities` is `[]`, and SENDS NOTHING (the
+  auth log shows `user_repeated_signup`). AuthScreen saw no access_token, tried the password (wrong
+  for the existing account), and showed "Account created! Check your email". `sb.signUp` now throws
+  "An account with that email already exists" when there is no session and `identities` is empty; a
+  genuinely new user always has one identity. Diagnose these from `auth_logs` `event_message`, not
+  the flattened `log_attributes` — the action name only appears there. Guard: `pw_signupguard` §3,
+  red-proofed (old code prints the false notice). Note this tells a caller the email exists — an
+  accepted trade, since usernames are already public and the alternative is a dead end.
 - **★ `Prefer: resolution=merge-duplicates` WITHOUT `?on_conflict=` RESOLVES AGAINST THE PRIMARY
   KEY — WHICH A FRESH INSERT NEVER HITS — SO EVERY "UPSERT" ON A SECONDARY UNIQUE KEY WAS AN
   INSERT THAT 23505'D.** Found by a routine logs sweep, not a report: **1,650 identical Postgres
