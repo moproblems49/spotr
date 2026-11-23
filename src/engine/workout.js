@@ -779,5 +779,30 @@ function trainingLoadRatio(store, unit = "lbs") {
   return { ratio, acutePerDay: Math.round(acutePerDay), chronicPerDay: Math.round(chronicPerDay), sessions28, ...band };
 }
 
+// ★ ONE LINE THAT SUMMARISES AN EXERCISE'S WORKING SETS, AND IT MUST NOT INVENT A STRAIGHT SET.
+// History printed `${count} × ${firstSet.reps} reps · ${topWeight}`, so 185×8, 155×10 (drop),
+// 185×6 read "3 × 8 reps · 185 lbs" — three sets of eight at 185, which never happened. Only when
+// every set really is the same weight and reps does the compact "N × R reps · W" form tell the
+// truth; otherwise the sets are listed in the order performed (capped, with a "+N" for the rest).
+// Takes LIVE-shape sets ({weight, reps}) and also tolerates {w, r}. Weights print in the
+// session's own unit, which is what the caller passes.
+function historySetsSummary(sets, unit = "lbs", cap = 4) {
+  const rows = (sets || []).map(s => ({
+    w: parseFloat(s?.weight ?? s?.w) || 0,
+    r: parseInt(s?.reps ?? s?.r, 10) || 0,
+  })).filter(x => x.r > 0 || x.w > 0);
+  if (!rows.length) return "";
+  const fmtW = (w) => String(Math.round(w * 100) / 100);
+  const same = rows.every(x => x.w === rows[0].w && x.r === rows[0].r);
+  if (same) {
+    const { w, r } = rows[0];
+    return `${rows.length} × ${r || "—"} reps${w > 0 ? ` · ${fmtW(w)} ${unit}` : ""}`;
+  }
+  const anyW = rows.some(x => x.w > 0);
+  const shown = rows.slice(0, cap).map(x =>
+    anyW ? (x.w > 0 ? `${fmtW(x.w)}×${x.r}` : `BW×${x.r}`) : `${x.r}`);
+  const more = rows.length > cap ? ` +${rows.length - cap}` : "";
+  return anyW ? `${shown.join(" · ")}${more} ${unit}` : `${shown.join(" · ")}${more} reps`;
+}
 
-export { STALL_WINDOW_DAYS, ACWR_MIN_DAYS, ACWR_MIN_OLDER_DAYS, ACWR_MIN_SESSIONS, bestPair, exerciseProgressed, getExerciseSessions, getExerciseTrend, loadIncrement, parseRepRange, plateStep, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio };
+export { historySetsSummary, STALL_WINDOW_DAYS, ACWR_MIN_DAYS, ACWR_MIN_OLDER_DAYS, ACWR_MIN_SESSIONS, bestPair, exerciseProgressed, getExerciseSessions, getExerciseTrend, loadIncrement, parseRepRange, plateStep, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio };

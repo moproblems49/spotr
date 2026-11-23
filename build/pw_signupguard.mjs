@@ -94,6 +94,51 @@ const fresh = await runSignup({ signupStatus: 200,
 check("a genuine new signup still says check your email", /check your email/i.test(fresh.txt),
   fresh.txt.slice(0, 200).replace(/\n/g, " | "));
 
+// ── 4. Signing in before confirming the email ───────────────────────────────────────────────
+// GoTrue answers the RIGHT password on an unconfirmed account with email_not_confirmed (and a
+// wrong password with invalid_credentials — measured live). The app must say "confirm your email"
+// and offer to resend, not "incorrect password".
+async function runSignin(tokenBody) {
+  const page = await browser.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  page.setDefaultTimeout(6000);
+  page.on("pageerror", e => { fails++; console.log("  PAGEERROR:", e.message.slice(0, 140)); });
+  const resends = [];
+  await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.route("**/auth/v1/token**", r => r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify(tokenBody) }));
+  await page.route("**/auth/v1/resend**", r => { resends.push(r.request().postDataJSON()); return r.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
+  await page.route("**/rest/v1/**", r => r.abort());
+  await page.goto("http://127.0.0.1:8199/", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => /^already have an account/i.test((x.textContent || "").trim())); b && b.click(); });
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    const set = (el, v) => { const s = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set; s.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); };
+    for (const i of [...document.querySelectorAll("input")].filter(x => x.offsetParent)) {
+      if (i.type === "password") set(i, "testpass123"); else if (i.type !== "checkbox") set(i, "newuser@example.com");
+    }
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].filter(x => x.offsetParent).find(x => /^sign in$/i.test((x.textContent || "").trim())); b && b.click(); });
+  await page.waitForTimeout(1500);
+  const txt = await page.evaluate(() => document.body.innerText);
+  const hasResend = await page.locator("[data-resend-confirm]").count();
+  let after = txt;
+  if (hasResend) { await page.locator("[data-resend-confirm]").click(); await page.waitForTimeout(800); after = await page.evaluate(() => document.body.innerText); }
+  await page.close();
+  return { txt, hasResend, resends, after };
+}
+console.log("  ── signing in before the email is confirmed");
+const nc = await runSignin({ code: 400, error_code: "email_not_confirmed", msg: "Email not confirmed" });
+check("tells them to confirm their email", /isn.t confirmed yet/i.test(nc.txt), nc.txt.slice(0, 220).replace(/\n/g, " | "));
+check("does NOT say the password is wrong", !/incorrect/i.test(nc.txt));
+check("offers to resend the confirmation email", nc.hasResend === 1);
+check("tapping it asks Supabase to resend a SIGNUP email to that address",
+  nc.resends.length === 1 && nc.resends[0]?.type === "signup" && nc.resends[0]?.email === "newuser@example.com", JSON.stringify(nc.resends));
+check("...and says it was sent", /sent\. check your inbox/i.test(nc.after));
+const wp = await runSignin({ code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" });
+check("[control] a wrong password still says incorrect", /incorrect email or password/i.test(wp.txt), wp.txt.slice(0, 220).replace(/\n/g, " | "));
+check("[control] ...with no resend offer", wp.hasResend === 0);
+
 await browser.close();
 console.log(fails ? `${fails} FAIL(S)` : "ok");
 process.exit(fails ? 1 : 0);

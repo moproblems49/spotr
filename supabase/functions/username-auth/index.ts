@@ -95,6 +95,21 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true });
   }
 
+  if (action === "resend") {
+    // Resend the signup confirmation for a username. Same rules as recover: the address never
+    // leaves this function, and the answer is always ok so it cannot be used to probe usernames.
+    if (email) {
+      try {
+        await fetch(`${SUPABASE_URL}/auth/v1/resend`, {
+          method: "POST",
+          headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "signup", email }),
+        });
+      } catch { /* still answer ok */ }
+    }
+    return json({ ok: true });
+  }
+
   // ── sign in ──────────────────────────────────────────────────────────────────────────────────
   const password = String(body.password || "");
   if (!password || password.length > 200) return json(INVALID, 400);
@@ -124,6 +139,11 @@ Deno.serve(async (req: Request) => {
     if (!t.ok || !session?.access_token) {
       // Pass through a rate-limit signal so the app can say something useful, but nothing else.
       if (t.status === 429) return json({ error: "rate_limited", message: "Too many attempts. Try again shortly." }, 429);
+      // GoTrue only reports email_not_confirmed when the password was RIGHT (measured Nov 23 2026:
+      // a wrong password on an unconfirmed account still returns invalid_credentials), so passing
+      // it through reveals nothing a caller without the password could learn. Without it a new
+      // user signing in by username before confirming was told their password was wrong.
+      if (session?.error_code === "email_not_confirmed") return json({ error: "email_not_confirmed" }, 400);
       return json(INVALID, 400);
     }
     return json(session);

@@ -862,6 +862,20 @@ Recipe (worked examples in `build/shots.mjs` (App Store screenshots), `build/pol
   the flattened `log_attributes` — the action name only appears there. Guard: `pw_signupguard` §3,
   red-proofed (old code prints the false notice). Note this tells a caller the email exists — an
   accepted trade, since usernames are already public and the alternative is a dead end.
+- **★ SIGNING IN BEFORE CONFIRMING SAID "INCORRECT PASSWORD", AND "EMAIL NOT CONFIRMED" IS SAFE TO
+  SAY (Nov 23 2026, from Muse).** The username path's edge function folded every failure into
+  `invalid_credentials`, so a new user was told their password was wrong; the email path showed
+  GoTrue's bare "Email not confirmed" with nothing to do about it. **Measured with a throwaway
+  unconfirmed account through the real `/auth/v1/token`: a WRONG password returns
+  `invalid_credentials`, only the RIGHT one returns `email_not_confirmed`** — so naming it cannot be
+  used to learn whether an email has an account. Both paths now throw `needsConfirm`, and the sign-in
+  screen offers **Resend confirmation email** (`sb.resendConfirmation`: `/auth/v1/resend` for an
+  email, `username-auth` action `resend` for a username — always answers ok, no enumeration).
+  `username-auth` is v4; source committed with it. Guard: `pw_signupguard` §4, red-proofed.
+- **★ HISTORY'S EXERCISE LINE INVENTED STRAIGHT SETS.** It printed `count × firstSet.reps · topWeight`,
+  so 185×8, 155×10 drop, 185×6 read "3 × 8 reps · 185 lbs". `historySetsSummary` (engine/workout.js)
+  keeps the compact form only when every set is identical and otherwise lists the sets as performed
+  (capped at 4, "+N"). Guard: `sim_historysets`, red-proofed at 7 failures.
 - **★ `Prefer: resolution=merge-duplicates` WITHOUT `?on_conflict=` RESOLVES AGAINST THE PRIMARY
   KEY — WHICH A FRESH INSERT NEVER HITS — SO EVERY "UPSERT" ON A SECONDARY UNIQUE KEY WAS AN
   INSERT THAT 23505'D.** Found by a routine logs sweep, not a report: **1,650 identical Postgres

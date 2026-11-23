@@ -21,6 +21,10 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   // your email…" used to render through the red error slot — a success dressed as a failure.
   const [notice, setNotice] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  // Set when a sign-in came back "email not confirmed" (only possible with the RIGHT password), so
+  // the screen can offer to resend the link instead of leaving a new user stuck.
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [resendState, setResendState] = useState("");
   // Top-align the form while a field is focused instead of vertically centering it. Capacitor's
   // default iOS keyboard resize mode is `native`, which SHRINKS the whole webview when the keyboard
   // opens — so this fixed-height (100dvh) form re-centers into the smaller box about a second later,
@@ -50,7 +54,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   }
 
   async function handleSubmit() {
-    setError(""); setNotice("");
+    setError(""); setNotice(""); setNeedsConfirm(false); setResendState("");
     if (!email || !password) { setError("Email and password required"); return; }
     if (mode === "signup" && !username) { setError("Username required"); return; }
     if (mode === "signup" && username.length < 3) { setError("Username must be at least 3 characters"); return; }
@@ -135,6 +139,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
       // friendly connection message for that, and the specific reason (e.g. "Incorrect email or
       // password") for everything the server actually answered.
       const netFail = !!(e && e.transportFailure) || (typeof navigator !== "undefined" && navigator.onLine === false);
+      if (e && e.needsConfirm) setNeedsConfirm(true);
       setError(netFail
         ? "Couldn't reach the server. Check your connection and try again."
         : (e.message || "Sign in failed. Please try again."));
@@ -469,6 +474,23 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         {error && (
           <div style={{ fontSize:13, color:C.red, marginBottom:10, textAlign:"center", lineHeight:1.4 }}>
             {error}
+          </div>
+        )}
+        {needsConfirm && error && (
+          <div style={{ textAlign:"center", marginTop:-2, marginBottom:12 }}>
+            <button data-resend-confirm onClick={async () => {
+              setResendState("sending");
+              const r = await sb.resendConfirmation(email);
+              setResendState(r);
+            }} disabled={resendState === "sending" || resendState === "sent"} style={{
+              background:"none", border:"none", padding:"6px 4px", cursor:"pointer", fontFamily:F,
+              fontSize:13, fontWeight:600, color:C.accentInk, textDecoration:"underline",
+            }}>{resendState === "sending" ? "Sending…" : resendState === "sent" ? "Sent. Check your inbox and spam." : "Resend confirmation email"}</button>
+            {(resendState === "wait" || resendState === "failed") && (
+              <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>
+                {resendState === "wait" ? "Just sent one. Wait a minute before asking again." : "Couldn't send it. Check your connection and try again."}
+              </div>
+            )}
           </div>
         )}
         {notice && !error && (

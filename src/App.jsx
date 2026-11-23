@@ -1,4 +1,4 @@
-// v178091717089
+// v178091717090
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -23,7 +23,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, s
 import { CSS } from "@dnd-kit/utilities";
 import { LBS_PER_KG, cvt, dKey, dateFromKey, dateKeyOf, devError, devWarn, freshRecovery, uid, workingDone } from "./engine/core.js";
 import { recoveryTimeHours, recoveryVerdict, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom } from "./engine/health.js";
-import { getExerciseSessions, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio } from "./engine/workout.js";
+import { historySetsSummary, getExerciseSessions, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio } from "./engine/workout.js";
 import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
 import { plateColor, calcPlatesPerSide, generateWarmupSets } from "./engine/plates.js";
@@ -292,6 +292,19 @@ const sb = (() => {
     return data;
   }
 
+  // ★ "EMAIL NOT CONFIRMED" ONLY COMES BACK FOR THE RIGHT PASSWORD, SO SAYING IT LEAKS NOTHING.
+  // Measured against the live project (Nov 23 2026) with a throwaway unconfirmed account: a WRONG
+  // password returns invalid_credentials, the RIGHT one returns email_not_confirmed. So telling the
+  // person to confirm cannot be used to learn whether an email has an account. Before this, a new
+  // user signing in by username was told "Incorrect username or password" and by email saw a bare
+  // "Email not confirmed" — either way, no hint of what to do. `needsConfirm` lets the sign-in
+  // screen offer to resend the link.
+  function notConfirmedError() {
+    const e = new Error("Your email isn't confirmed yet. Tap the link we emailed you (check spam too), then sign in.");
+    e.needsConfirm = true;
+    return e;
+  }
+
   async function signIn(emailOrUsername, password) {
     const input = (emailOrUsername || "").trim();
     // USERNAME sign-in goes through the `username-auth` edge function, which resolves the username
@@ -319,6 +332,7 @@ const sb = (() => {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.access_token) return data;
       if (res.status === 429) throw new Error(data.message || "Too many attempts. Please try again shortly.");
+      if (data.error === "email_not_confirmed") throw notConfirmedError();
       if (data.error === "invalid_credentials") throw new Error("Incorrect username or password.");
       // Anything else is our problem, not theirs — send them to the path that always works instead
       // of leaving them staring at a dead login.
@@ -344,6 +358,7 @@ const sb = (() => {
     // surfaces as a clear error instead of falling through to a hung "setting up" screen.
     if (!res.ok || data.error || data.error_description || data.msg || !data.access_token) {
       const raw = data.error_description || data.msg || data.error || "";
+      if (data.error_code === "email_not_confirmed" || /email not confirmed/i.test(raw)) throw notConfirmedError();
       const friendly = /invalid login credentials/i.test(raw)
         ? "Incorrect email or password."
         : (raw || "Sign in failed. Please try again.");
@@ -535,6 +550,25 @@ const sb = (() => {
       method: "POST", headers, body: JSON.stringify({ email }),
     });
   }
+  // Resend the signup confirmation email. Username sign-ins go through the edge function, which
+  // resolves the address server-side and always answers ok (no enumeration). Returns "sent",
+  // "wait" (GoTrue's per-address resend limit) or "failed".
+  async function resendConfirmation(emailOrUsername) {
+    const input = (emailOrUsername || "").trim();
+    try {
+      const res = !input.includes("@")
+        ? await fetch(`${SUPABASE_URL}/functions/v1/username-auth`, {
+            method: "POST",
+            headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "resend", username: input }),
+          })
+        : await fetch(`${SUPABASE_URL}/auth/v1/resend`, {
+            method: "POST", headers, body: JSON.stringify({ type: "signup", email: input }),
+          });
+      if (res.status === 429) return "wait";
+      return res.ok ? "sent" : "failed";
+    } catch { return "failed"; }
+  }
   // Password reset step 2: set the new password using the recovery session's access token.
   async function updatePassword(token, password) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -549,7 +583,7 @@ const sb = (() => {
     return data;
   }
 
-  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, signOut, refreshToken, signInWithOAuth, signInWithApple, recover, updatePassword, WRITE_QUEUE_CAP };
+  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, resendConfirmation, signOut, refreshToken, signInWithOAuth, signInWithApple, recover, updatePassword, WRITE_QUEUE_CAP };
 })();
 
 // Upload image to Supabase Storage, return public URL
@@ -5504,7 +5538,7 @@ export function aiAuthHeaders() {
 export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, muscleReadiness, markSettingsEdit, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
 
 
-export { exerciseProgressed, getExerciseTrend, loadIncrement, parseRepRange } from "./engine/workout.js";
+export { historySetsSummary, exerciseProgressed, getExerciseTrend, loadIncrement, parseRepRange } from "./engine/workout.js";
 export { activityRawSinceWake, earliestActiveHourToday, hrvReading, personalBaseline, pickSleepBlock, pinToLastNight, recoveryScoreFrom, sessionDrain, sleepQualityMult, softCapActivity, softCapHour, softCapWorkout, stageMinutes, trustedSleepWindow } from "./engine/health.js";
 
 // The 24h Body Battery curve (used inside the detail sheet). Extracted into its own component
@@ -14920,8 +14954,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           const doneSets = workingDone(ex.sets);
                           if (!doneSets.length) return null;
                           const isPR = sessPRs.has(ex.name);
-                          const setsLabel = doneSets.length + " × " + (doneSets[0]?.reps||doneSets[0]?.r||"—");
-                          const topWeight = Math.max(0,...doneSets.map(s=>parseFloat(s.weight||s.w)||0));
+                          const setsLabel = historySetsSummary(doneSets, sess.unit || "lbs");
                           return (
                             <div key={j} style={{ display:"flex", alignItems:"center", gap:8 }}>
                               <div style={{ flex:1, minWidth:0 }}>
@@ -14930,7 +14963,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                                   {isPR && <PRTag C={C}/>}
                                 </div>
                                 <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>
-                                  {setsLabel} reps{topWeight > 0 ? ` · ${topWeight} ${sess.unit||"lbs"}` : ""}
+                                  {setsLabel}
                                 </div>
                                 {(() => {
                                   const exNote = store.workoutNotes?.[sid]?.[ex.name];
