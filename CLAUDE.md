@@ -3528,6 +3528,12 @@ ignores "seen" fails "none already seen".
   protection with the Turnstile SECRET, pasted only in the dashboard, never the repo.
   Guard: `pw_captcha` — builds its own dist with a test key on :8299 and fakes Turnstile; red-proofed
   two ways (tokens never attached: 5 fails; spent token re-sent: `["tok-1","tok-1"]`).
+- **The Sunday streak push now judges last week against the target that applied THEN.**
+  `streak_target_for_week(wk, cur, hist)` (plpgsql, mirrors `targetForWeek`; malformed entries are
+  SKIPPED, never thrown, because one bad row would stop the job for everyone) is used by
+  `get_streak_at_risk_candidates` for the previous week; this week keeps the current target, as the
+  card does. Verified in SQL (raised-after-last-week -> old target, this week -> current, earliest
+  `until` wins, junk skipped); live candidates unchanged (no user has a history yet).
 
 ## ★ SHARE CARDS BRING PEOPLE BACK, AND /p/ LINKS LAND NON-USERS ON THE APP STORE (Nov 22 2026)
 Mo approved Muse's top growth fix: every shared image used to end at the app NAME, so a story or
