@@ -7,7 +7,7 @@
 import { cvt } from "../engine/core.js";
 import { weeklyMuscleVolume } from "../engine/strength.js";
 import { calcStreak } from "../engine/insights.js";
-import { APP_STORE_URL } from "../engine/sharecard.js";
+import { APP_STORE_URL, appStoreFooterSVG } from "../engine/sharecard.js";
 import { Icon, DISPLAY, F, MONO, fmtVol, toast, useBodyMapData, shareSvgCard, svgToDataURL, PR_TYPE_LABEL_SHORT, BODY_FUSE } from "../App.jsx";
 
 // Builds a self-contained 1080×1350 share-card SVG (dark, branded) with the week's trained-muscle
@@ -86,16 +86,23 @@ function buildWrappedSVG({ store, unit, sex, workouts, volume, weekPRs, streak, 
 
 // Wraps a 1080×1350 card SVG in a 1080×1920 story-format frame (IG/TikTok stories):
 // card centered on the dark canvas with a small wordmark at the bottom.
-function wrapStorySVG(cardSvg) {
+function wrapStorySVG(cardSvg, { footer = false } = {}) {
   // The card carries its own lowercase "seshd" watermark for standalone shares. In a story we add
-  // the bottom "SESHD" below, so strip the card's copy to avoid the wordmark appearing twice.
+  // our own branding below, so strip the card's copy to avoid the wordmark appearing twice.
+  // footer:true is the version that leaves the app (Share as image): the 1350-tall card is full,
+  // so the App Store line + QR go in the story frame's spare space below it instead, and replace
+  // the bare wordmark (the footer already says "Seshd"). The in-app story keeps the plain frame —
+  // the people who see it already have the app. The card rides 60px higher with a footer so the
+  // QR ends ~170px above the bottom edge, clear of a story app's reply bar.
   const inner = cardSvg
-    .replace(/^<svg /, '<svg y="220" ')
+    .replace(/^<svg /, `<svg y="${footer ? 160 : 220}" `)
     .replace(/<text[^>]*>seshd<\/text>/, '');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">`
     + `<rect width="1080" height="1920" fill="#0A0A0A"/>`
     + inner
-    + `<text x="540" y="1782" fill="#5a5a64" font-family="Helvetica, Arial" font-size="30" font-weight="700" letter-spacing="10" text-anchor="middle">SESHD</text>`
+    + (footer
+      ? appStoreFooterSVG({ W: 1080, top: 1550, pad: 96, size: 170 })
+      : `<text x="540" y="1782" fill="#5a5a64" font-family="Helvetica, Arial" font-size="30" font-weight="700" letter-spacing="10" text-anchor="middle">SESHD</text>`)
     + `</svg>`;
 }
 
@@ -279,7 +286,7 @@ export default function WrappedModal({ store, C, onClose, onPostToFeed, range })
             e.currentTarget.dataset.sharing = "1";
             try {
               const svg = buildWrappedSVG({ store, unit, sex, workouts, volume: Math.round(volume), weekPRs, streak, prList, weekLabel, volDeltaPct, woDelta, bodyMapData });
-              const ok = await shareSvgCard(svg, "seshd-week.png", "My week on Seshd", 1080, 1350, `My week on Seshd — ${APP_STORE_URL}`);
+              const ok = await shareSvgCard(wrapStorySVG(svg, { footer: true }), "seshd-week.png", "My week on Seshd", 1080, 1920, `My week on Seshd — ${APP_STORE_URL}`);
               if (!ok) {
                 const text = `My week on Seshd\n${workouts} workout${workouts === 1 ? "" : "s"} · ${fmtVol(Math.round(volume), unit)} volume\n${weekPRs} PR${weekPRs === 1 ? "" : "s"} · ${streak} day streak`;
                 if (navigator.clipboard) { await navigator.clipboard.writeText(text); if (typeof toast === "function") toast("Copied to clipboard", "success"); }

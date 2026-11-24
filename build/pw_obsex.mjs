@@ -173,6 +173,10 @@ const pA = await onboardPatch();
 check("2d the onboarding profile write happened", !!pA, JSON.stringify(server.profilePatches));
 check("2e ...and carries NO strength_sex", pA && !("strength_sex" in pA), JSON.stringify(pA));
 check("2f ...and NO body_type", pA && !("body_type" in pA), JSON.stringify(pA));
+// The skipper's store must hold NO sex either — loadUserData used to hard-default it to "male",
+// which then rendered Male as PRESSED on the Strength card for someone who never chose.
+const localA = await settledStore();
+check("2g the LOCAL store holds no strengthSex for a skipper", !localA.strengthSex, JSON.stringify({ strengthSex: localA.strengthSex }));
 
 // ---------------------------------------------------------------- 3. "Other", body map skipped
 // RED on the pre-Other code: there is no Other button, so the walk answers nothing and finishes

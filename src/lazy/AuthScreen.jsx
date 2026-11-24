@@ -1,9 +1,67 @@
 // Lazy-loaded: the signed-out welcome/sign-in/sign-up/reset screen. It is NEVER rendered for an
 // already-signed-in session — which is nearly every app open, since a session persists in the
 // iOS Keychain — so it was dead weight in the eager bundle for the overwhelming majority of opens.
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { devWarn } from "../engine/core.js";
-import { F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, SUPABASE_URL, SUPABASE_KEY } from "../App.jsx";
+import { F, DISPLAY, RADIUS, OAUTH_ENABLED, SeshdLogo, sb, track, SUPABASE_URL, SUPABASE_KEY, CAPTCHA_SITE_KEY } from "../App.jsx";
+
+// Cloudflare Turnstile, loaded only when a site key is configured AND an auth form is on screen.
+// One script per page; the promise is cached and CLEARED on failure so a bad network moment does
+// not poison every later attempt (the loadBodyMapData lesson).
+let _turnstilePromise = null;
+function loadTurnstile() {
+  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
+  if (window.turnstile) return Promise.resolve(window.turnstile);
+  if (!_turnstilePromise) {
+    _turnstilePromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      s.async = true;
+      s.onload = () => window.turnstile ? resolve(window.turnstile) : reject(new Error("turnstile missing"));
+      s.onerror = () => reject(new Error("turnstile failed to load"));
+      document.head.appendChild(s);
+    }).catch(e => { _turnstilePromise = null; throw e; });
+  }
+  return _turnstilePromise;
+}
+
+// Renders the widget and reports each fresh token (or null when one expires/fails). A token is
+// SINGLE-USE, so the parent bumps `resetKey` after every auth call to get a new one.
+function CaptchaWidget({ onToken, resetKey, theme }) {
+  const boxRef = useRef(null);
+  const idRef = useRef(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    loadTurnstile().then(ts => {
+      if (!alive || !boxRef.current || idRef.current != null) return;
+      idRef.current = ts.render(boxRef.current, {
+        sitekey: CAPTCHA_SITE_KEY,
+        theme: theme === "dark" ? "dark" : "light",
+        callback: (t) => onToken(t),
+        "expired-callback": () => onToken(null),
+        "error-callback": () => onToken(null),
+      });
+    }).catch(() => { if (alive) setFailed(true); });
+    return () => {
+      alive = false;
+      try { if (idRef.current != null) window.turnstile?.remove(idRef.current); } catch {}
+      idRef.current = null;
+      onToken(null);
+    };
+  }, []);
+  useEffect(() => {
+    if (!resetKey || idRef.current == null) return;
+    onToken(null);
+    try { window.turnstile?.reset(idRef.current); } catch {}
+  }, [resetKey]);
+  return (
+    <div data-captcha style={{ display:"flex", flexDirection:"column", alignItems:"center", margin:"4px 0 10px", minHeight:65 }}>
+      <div ref={boxRef}/>
+      {failed && <div style={{ fontSize:12, color:"#888", marginTop:4, textAlign:"center" }}>Couldn't load the security check. Check your connection and reopen this screen.</div>}
+    </div>
+  );
+}
 
 export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome", promptReason = null, theme = "light" }) {
   const [mode, setMode] = useState(initialMode); // "welcome" | "signin" | "signup" | "reset"
@@ -25,6 +83,14 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   // the screen can offer to resend the link instead of leaving a new user stuck.
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [resendState, setResendState] = useState("");
+  // Captcha: a fresh single-use token from the widget, mirrored into sb so every auth call sends
+  // it. `captchaReset` bumps after each call so the next attempt gets a new one.
+  const [captchaToken, setCaptchaTokenState] = useState(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const onCaptchaToken = (t) => { setCaptchaTokenState(t || null); sb.setCaptchaToken(t || null); };
+  const needCaptcha = !!CAPTCHA_SITE_KEY;
+  const captchaPending = needCaptcha && !captchaToken;
+  const spendCaptcha = () => { if (needCaptcha) setCaptchaReset(n => n + 1); };
   // Top-align the form while a field is focused instead of vertically centering it. Capacitor's
   // default iOS keyboard resize mode is `native`, which SHRINKS the whole webview when the keyboard
   // opens — so this fixed-height (100dvh) form re-centers into the smaller box about a second later,
@@ -47,8 +113,10 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
   async function handleReset() {
     setError(""); setNotice("");
     if (!email.trim()) { setError("Enter your email or username first"); return; }
+    if (captchaPending) { setError("One moment, finishing the security check."); return; }
     setLoading(true);
     try { await sb.recover(email); } catch (e) { /* silent by design */ }
+    spendCaptcha();
     setResetSent(true);
     setLoading(false);
   }
@@ -59,6 +127,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
     if (mode === "signup" && !username) { setError("Username required"); return; }
     if (mode === "signup" && username.length < 3) { setError("Username must be at least 3 characters"); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (captchaPending) { setError("One moment, finishing the security check."); return; }
     setLoading(true);
     try {
       if (mode === "signup") {
@@ -116,8 +185,10 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           track("signup_completed");
           onAuth(data);
         } else {
-          // Email confirmation is on — try signing in immediately in case it went through.
-          try {
+          // Email confirmation is on — try signing in immediately in case it went through. Skipped
+          // under captcha: the signup just spent the single-use token, so this call could only be
+          // refused, and with confirmation on it cannot succeed anyway.
+          if (!needCaptcha) try {
             const signInData = await sb.signIn(email, password);
             if (signInData.access_token) { onAuth(signInData); return; }
           } catch (e2) {}
@@ -144,6 +215,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         ? "Couldn't reach the server. Check your connection and try again."
         : (e.message || "Sign in failed. Please try again."));
     } finally {
+      spendCaptcha();
       setLoading(false);
     }
   }
@@ -479,16 +551,18 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
         {needsConfirm && error && (
           <div style={{ textAlign:"center", marginTop:-2, marginBottom:12 }}>
             <button data-resend-confirm onClick={async () => {
+              if (captchaPending) { setResendState("captcha"); return; }
               setResendState("sending");
               const r = await sb.resendConfirmation(email);
+              spendCaptcha();
               setResendState(r);
             }} disabled={resendState === "sending" || resendState === "sent"} style={{
               background:"none", border:"none", padding:"6px 4px", cursor:"pointer", fontFamily:F,
               fontSize:13, fontWeight:600, color:C.accentInk, textDecoration:"underline",
             }}>{resendState === "sending" ? "Sending…" : resendState === "sent" ? "Sent. Check your inbox and spam." : "Resend confirmation email"}</button>
-            {(resendState === "wait" || resendState === "failed") && (
+            {(resendState === "wait" || resendState === "failed" || resendState === "captcha") && (
               <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>
-                {resendState === "wait" ? "Just sent one. Wait a minute before asking again." : "Couldn't send it. Check your connection and try again."}
+                {resendState === "wait" ? "Just sent one. Wait a minute before asking again." : resendState === "captcha" ? "One moment, finishing the security check." : "Couldn't send it. Check your connection and try again."}
               </div>
             )}
           </div>
@@ -504,6 +578,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           </div>
         )}
 
+        {needCaptcha && <CaptchaWidget onToken={onCaptchaToken} resetKey={captchaReset} theme={theme}/>}
         <button onClick={mode === "reset" ? handleReset : handleSubmit} disabled={loading} style={{
           width:"100%", background:loading ? C.sub : C.text, color:C.bg,
           border:"none", borderRadius:12, padding:"15px",

@@ -56,6 +56,12 @@ Deno.serve(async (req: Request) => {
   // rather than quietly acting as an open proxy for arbitrary email addresses.
   if (username.includes("@")) return json({ error: "use_email_endpoint" }, 400);
 
+  // Captcha token from the app's Turnstile widget. This function calls GoTrue from the edge, where
+  // no widget can run, so the client's token is forwarded as-is. Empty = bot protection off, and
+  // every body below is byte-identical to before.
+  const captcha = String(body.captchaToken || "").slice(0, 4096);
+  const meta = captcha ? { gotrue_meta_security: { captcha_token: captcha } } : {};
+
   // Resolve username -> email with the SERVICE ROLE. This value never enters a response.
   let email: string | null = null;
   try {
@@ -88,7 +94,7 @@ Deno.serve(async (req: Request) => {
         await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
           method: "POST",
           headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({ email, ...meta }),
         });
       } catch { /* still answer ok */ }
     }
@@ -103,7 +109,7 @@ Deno.serve(async (req: Request) => {
         await fetch(`${SUPABASE_URL}/auth/v1/resend`, {
           method: "POST",
           headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "signup", email }),
+          body: JSON.stringify({ type: "signup", email, ...meta }),
         });
       } catch { /* still answer ok */ }
     }
@@ -133,7 +139,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
         ...(callerIp ? { "X-Forwarded-For": callerIp } : {}),
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...meta }),
     });
     const session = await t.json();
     if (!t.ok || !session?.access_token) {
@@ -144,6 +150,9 @@ Deno.serve(async (req: Request) => {
       // it through reveals nothing a caller without the password could learn. Without it a new
       // user signing in by username before confirming was told their password was wrong.
       if (session?.error_code === "email_not_confirmed") return json({ error: "email_not_confirmed" }, 400);
+      // A refused captcha says nothing about the account, so it is safe to name — and without it
+      // the person would be told their password was wrong when it was the security check.
+      if (session?.error_code === "captcha_failed") return json({ error: "captcha_failed" }, 400);
       return json(INVALID, 400);
     }
     return json(session);

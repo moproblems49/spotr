@@ -1,4 +1,4 @@
-// v178091717092
+// v178091717093
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -129,6 +129,12 @@ async function hydrateFromNative() {
 
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 export const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Cloudflare Turnstile site key — PUBLIC by design (it is in every page that renders the widget).
+// Empty = captcha off: no widget, no script load, no token, auth bodies unchanged. The SECRET half
+// lives only in Supabase (Authentication -> Bot protection), never in this repo.
+// The env read exists so pw_captcha can build a dist with a test key; the published bundle takes
+// the literal fallback. Guarded because the sim harness's esbuild bundle has no import.meta.env.
+export const CAPTCHA_SITE_KEY = (import.meta.env && import.meta.env.VITE_CAPTCHA_SITE_KEY) || "";
 export const NAV_CLEARANCE = "calc(86px + env(safe-area-inset-bottom))"; // bottom-padding so scrollable content clears the floating bottom nav overlay
 // ── Auth callback fragment ────────────────────────────────────────────────────
 // OAuth callbacks and password-recovery links both land with the tokens in the URL FRAGMENT
@@ -249,6 +255,18 @@ const sb = (() => {
     return text ? JSON.parse(text) : null;
   }
 
+  // ★ CAPTCHA (Cloudflare Turnstile). AuthScreen renders the widget only when CAPTCHA_SITE_KEY is
+  // set, and hands each fresh token here. Every call that GoTrue protects — signup, password
+  // token, recover, resend — carries it as gotrue_meta_security.captcha_token, and the
+  // username-auth function forwards it on the username paths (it calls /token and /recover from
+  // the edge, where no widget can run). With no site key there is never a token, so every body is
+  // byte-identical to before. ORDER MATTERS: ship a bundle that SENDS tokens before turning on
+  // Supabase's bot protection, or every sign-in on an older bundle is refused.
+  let captchaToken = null;
+  function setCaptchaToken(t) { captchaToken = t || null; }
+  const captchaMeta = () => captchaToken ? { gotrue_meta_security: { captcha_token: captchaToken } } : {};
+  const captchaField = () => captchaToken ? { captchaToken } : {};
+
   // Auth helpers
   async function signUp(email, password, username, name) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
@@ -256,7 +274,8 @@ const sb = (() => {
       headers,
       body: JSON.stringify({
         email, password,
-        data: { username, name }
+        data: { username, name },
+        ...captchaMeta(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -276,6 +295,8 @@ const sb = (() => {
       // availability check before submit, so this message is the only thing that tells the user.
       if (/database error saving new user/i.test(raw))
         throw new Error("That username is already taken — please pick another.");
+      if (data.error_code === "captcha_failed" || /captcha/i.test(raw))
+        throw new Error("The security check didn't go through. Please try again.");
       if (/already registered|already been registered|user_already_exists/i.test(raw))
         throw new Error("An account with that email already exists — try signing in instead.");
       throw new Error(raw || "Signup failed");
@@ -322,7 +343,7 @@ const sb = (() => {
         res = await fetch(`${SUPABASE_URL}/functions/v1/username-auth`, {
           method: "POST",
           headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "signin", username: input, password }),
+          body: JSON.stringify({ action: "signin", username: input, password, ...captchaField() }),
         });
       } catch (e) {
         // Same transport flag the email path sets, so the UI can tell "offline" from "wrong password".
@@ -333,6 +354,7 @@ const sb = (() => {
       if (res.ok && data.access_token) return data;
       if (res.status === 429) throw new Error(data.message || "Too many attempts. Please try again shortly.");
       if (data.error === "email_not_confirmed") throw notConfirmedError();
+      if (data.error === "captcha_failed") throw new Error("The security check didn't go through. Please try again.");
       if (data.error === "invalid_credentials") throw new Error("Incorrect username or password.");
       // Anything else is our problem, not theirs — send them to the path that always works instead
       // of leaving them staring at a dead login.
@@ -344,7 +366,7 @@ const sb = (() => {
       res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...captchaMeta() }),
       });
     } catch (e) {
       // The request never reached the server (offline / DNS / native transport error). Flag it so
@@ -359,6 +381,7 @@ const sb = (() => {
     if (!res.ok || data.error || data.error_description || data.msg || !data.access_token) {
       const raw = data.error_description || data.msg || data.error || "";
       if (data.error_code === "email_not_confirmed" || /email not confirmed/i.test(raw)) throw notConfirmedError();
+      if (data.error_code === "captcha_failed" || /captcha/i.test(raw)) throw new Error("The security check didn't go through. Please try again.");
       const friendly = /invalid login credentials/i.test(raw)
         ? "Incorrect email or password."
         : (raw || "Sign in failed. Please try again.");
@@ -542,12 +565,12 @@ const sb = (() => {
       await fetch(`${SUPABASE_URL}/functions/v1/username-auth`, {
         method: "POST",
         headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "recover", username: email, redirectTo }),
+        body: JSON.stringify({ action: "recover", username: email, redirectTo, ...captchaField() }),
       }).catch(() => {});
       return;
     }
     await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
-      method: "POST", headers, body: JSON.stringify({ email }),
+      method: "POST", headers, body: JSON.stringify({ email, ...captchaMeta() }),
     });
   }
   // Resend the signup confirmation email. Username sign-ins go through the edge function, which
@@ -560,10 +583,10 @@ const sb = (() => {
         ? await fetch(`${SUPABASE_URL}/functions/v1/username-auth`, {
             method: "POST",
             headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "resend", username: input }),
+            body: JSON.stringify({ action: "resend", username: input, ...captchaField() }),
           })
         : await fetch(`${SUPABASE_URL}/auth/v1/resend`, {
-            method: "POST", headers, body: JSON.stringify({ type: "signup", email: input }),
+            method: "POST", headers, body: JSON.stringify({ type: "signup", email: input, ...captchaMeta() }),
           });
       if (res.status === 429) return "wait";
       return res.ok ? "sent" : "failed";
@@ -583,7 +606,7 @@ const sb = (() => {
     return data;
   }
 
-  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, resendConfirmation, signOut, refreshToken, signInWithOAuth, signInWithApple, recover, updatePassword, WRITE_QUEUE_CAP };
+  return { query, rpc, queueWrite, flushWriteQueue, queuedCount, signUp, signIn, resendConfirmation, signOut, refreshToken, signInWithOAuth, signInWithApple, recover, updatePassword, setCaptchaToken, WRITE_QUEUE_CAP };
 })();
 
 // Upload image to Supabase Storage, return public URL
@@ -17254,6 +17277,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
           <MuscleHeatmap store={store} setStore={setStore} currentUserId={currentUserId} token={token} unit={displayUnit} C={C}/>
           {(() => {
             const sex = store.strengthSex || "male";
+            const chosenSex = store.strengthSex || null;
             const ss = strengthScore;
             // One fixed hex map served both themes — as TEXT (below, and on each lift row) every
             // tier failed light-theme contrast (1.31-3.67:1: Advanced/Elite/Proficient/Intermediate
@@ -17272,9 +17296,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     on a control whose whole job is to be understood. The words survive as the
                     accessible names. */}
                 {[["Male","male"],["Female","female"],["Other","other"]].map(([label,val]) => (
-                  <button key={val} data-strength-sex={val} aria-label={val === "other" ? "Other (neutral standards)" : `${label} standards`} aria-pressed={sex===val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); _lastSettingsEditAt = Date.now(); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} className="seshd-hit-y" style={{
-                    padding:"4px 10px", background: sex===val ? C.primary : "transparent",
-                    color: sex===val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
+                  <button key={val} data-strength-sex={val} aria-label={val === "other" ? "Other (neutral standards)" : `${label} standards`} aria-pressed={chosenSex===val} onClick={() => { setStore(p => ({ ...p, strengthSex: val })); _lastSettingsEditAt = Date.now(); const tok = token || (typeof loadSession==="function" && loadSession()?.access_token); if (tok && currentUserId) { sb.queueWrite(`profiles?id=eq.${currentUserId}`, { method:"PATCH", body: JSON.stringify({ strength_sex: val }) }, tok).catch(()=>{}); } haptic("tap"); }} className="seshd-hit-y" style={{
+                    padding:"4px 10px", background: chosenSex===val ? C.primary : "transparent",
+                    color: chosenSex===val ? C.onPrimary : C.sub, border:"none", borderRadius:12,
                     fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:F,
                     display:"flex", alignItems:"center", justifyContent:"center", minHeight:24
                   }}>{val === "other" ? label : <SexGlyph sex={val}/>}</button>
@@ -17328,6 +17352,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
                       <SexToggle/>
+                      {!chosenSex && <span data-sex-unset style={{ fontSize:10, color:C.muted, fontWeight:600 }}>Pick one · male standards for now</span>}
                       <span style={{ fontSize:10, color:C.muted, fontWeight:600 }}>{store.age ? `Age ${store.age}` : "Set age in Edit Profile"}</span>
                     </div>
                   </div>
@@ -20292,7 +20317,12 @@ function AppInner() {
           return Array.from(byKey.values());
         })(),
         onboardingAnswers: (me?.onboarding_answers && Object.keys(me.onboarding_answers).length) ? me.onboarding_answers : (prev.currentUserId === currentUserId ? (prev.onboardingAnswers || {}) : {}),
-        strengthSex: me?.strength_sex || (prev.currentUserId === currentUserId ? prev.strengthSex : null) || "male",
+        // No hard "male" default any more: a skipped sex field must stay UNSET, or the Strength
+        // card renders Male as pressed for someone who never chose it. Every reader already
+        // defaults to male standards on its own. When the row exists it is the truth (a local
+        // "male" left over from the old default must not outrank an empty server column); the
+        // local copy is only a fallback for a missing row.
+        strengthSex: me ? (me.strength_sex || null) : ((prev.currentUserId === currentUserId ? prev.strengthSex : null) || null),
         // Standing per-exercise notes + bar-type overrides and the Close Friends picks now persist
         // server-side (profiles.exercise_notes / bar_types / close_friends) so they survive a
         // reinstall / new device instead of silently resetting — a lost bar-type override in

@@ -28,7 +28,7 @@ const POST_ROW = { id: POST, user_id: ME, type: "workout", caption: "Leg day fro
   kudos: [], comments: [] };
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
-async function boot({ active, path, signedOut = false }) {
+async function boot({ active, path, signedOut = false, history = [] }) {
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
   page.setDefaultTimeout(5000);
   page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0, 160)); });
@@ -60,6 +60,7 @@ async function boot({ active, path, signedOut = false }) {
     if (r.request().method() !== "GET") return J([{}]);
     if (/\/rest\/v1\/(public_)?profiles\?/.test(u)) return J([{ id: ME, username:"momo", name:"Mo", unit:"lbs", theme:"dark", seen_onboarding:true }]);
     if (/\/rest\/v1\/posts\?id=eq\./.test(u)) return J(u.includes(POST) ? [POST_ROW] : []);
+    if (/\/rest\/v1\/workout_history\?/.test(u)) return J(u.includes("offset=") && !/offset=0(&|$)/.test(u) ? [] : history);
     return J([]);
   });
   await page.goto(`http://127.0.0.1:${PORT}${path}`, { waitUntil: "domcontentloaded" });
@@ -110,6 +111,32 @@ if (await join.count()) {
   check("3c. Join closes the post onto the welcome/sign-up screen", under && /Track everything|Create|Sign in/i.test(await p4.innerText("body")));
 }
 await p4.close();
+
+// ── 4. The Wrapped recap leaves the app WITH the App Store footer ───────────────────────────
+// The 1350-tall recap card is full, so "Share as image" now sends the 1080x1920 story frame with
+// the App Store line + QR in the space under the card (the in-app story keeps the plain frame).
+// RED on the old code: it shared the bare 1080x1350 card.
+const lastWeek = (() => { const n = new Date(); const dow = (n.getDay() + 6) % 7;
+  const d = new Date(n.getFullYear(), n.getMonth(), n.getDate() - dow - 4);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
+const HROW = { id: "55555555-5555-4555-8555-555555555555", user_id: ME, workout_date: lastWeek, day_name: "Push A", unit: "lbs",
+  created_at: new Date(lastWeek + "T18:00:00").toISOString(), duration_secs: 3000,
+  exercises: [{ name: "Barbell Bench Press", sets: [{ weight: "185", reps: "8", done: true, type: "normal" }, { weight: "185", reps: "7", done: true, type: "normal" }] }] };
+const p5 = await boot({ active: false, path: "/", history: [HROW] });
+await p5.evaluate(() => document.querySelector('button[aria-label="Home"]')?.click());
+await p5.waitForTimeout(900);
+const recap = p5.getByRole("button", { name: "Share recap" });
+check("[control] the weekly recap card offers Share recap", (await recap.count()) === 1);
+if (await recap.count()) {
+  await recap.click(); await p5.waitForTimeout(1200);
+  await p5.evaluate(() => document.querySelector("[data-share-main]")?.click());
+  await p5.waitForFunction(() => window.__shared.length > 0, null, { timeout: 8000 }).catch(() => {});
+  const w = (await p5.evaluate(() => window.__shared))[0] || {};
+  check("4a. Wrapped's Share as image sends the 1080x1920 frame (room for the footer)", w.w === 1080 && w.h === 1920, `${w.w}x${w.h}`);
+  check("4b. ...as a real PNG", w.type === "image/png" && w.size > 20000, `${w.type} ${w.size}B`);
+  check("4c. ...with the App Store link as text", (w.text || "").includes(APP_STORE), w.text);
+}
+await p5.close();
 
 await browser.close();
 console.log(fails ? `FAIL ${fails}` : "ALL PASS");

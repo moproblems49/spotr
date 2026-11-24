@@ -3499,6 +3499,36 @@ Discover's pull also runs `handleRefresh` (passed as `onRefresh`) and re-fetches
 and every pull-to-refresh emptied the feed; `pw_explore` caught it. Red-proofed: a draw that
 ignores "seen" fails "none already seen".
 
+## ★★ NOV 24 2026: SEX LEFT BLANK, THE WRAPPED FOOTER, AND CAPTCHA PLUMBING (switched OFF)
+- **A skipped sex no longer reads as "Male".** `loadUserData` resolved `strength_sex` with a hard
+  `|| "male"`, so a user who skipped the optional field saw Male PRESSED on the Strength card. It is
+  `me ? (me.strength_sex || null) : (sameUser ? prev.strengthSex : null)` now (the server row is the
+  truth when present, so an old local "male" from the default is cleared too). Every READER still
+  falls back to male standards itself; the card shows no toggle pressed plus "Pick one · male
+  standards for now" (`data-sex-unset`). Guard: `pw_obsex` 2g, red-proofed.
+- **The Wrapped "Share as image" carries the App Store footer.** The 1350px card is full, so the
+  footer lives in the 1920 story frame: `wrapStorySVG(svg, { footer: true })` moves the card up and
+  draws `appStoreFooterSVG` where the SESHD wordmark was. ONLY the outside share — the in-app Share
+  to Story keeps the plain frame (an App Store ad inside the app is noise). Guard: `pw_sharecard` §4
+  (1080x1920 + the link text), red-proofed against the old 1080x1350 share.
+- **★ CAPTCHA IS PLUMBED AND OFF. Turning Supabase bot protection on before the bundle that sends
+  tokens is on every phone LOCKS EVERYONE OUT.** `CAPTCHA_SITE_KEY` (Cloudflare Turnstile, PUBLIC
+  site key; `VITE_CAPTCHA_SITE_KEY` or the literal fallback) is empty, and empty means byte-identical
+  behaviour: no widget, no script fetched, no `gotrue_meta_security` (pw_captcha §A proves it).
+  With a key: AuthScreen renders `CaptchaWidget`, `sb.setCaptchaToken` feeds
+  `gotrue_meta_security.captcha_token` into signup / password token / recover / resend, and the
+  username path sends `captchaToken` to `username-auth` (**v5**, source committed) which forwards it
+  to GoTrue from the edge. Tokens are SINGLE-USE: every submit spends it and resets the widget, and
+  the post-signup auto sign-in is skipped when captcha is on (it would reuse a spent token).
+  `captcha_failed` maps to "The security check didn't go through." on all three paths.
+  **Activation order, and it is load-bearing:** (1) Mo creates a Turnstile widget (domains
+  spotr-drab.vercel.app + localhost) and gives the SITE key; (2) set the fallback, publish; (3) wait
+  for phones to take it (two relaunches); (4) Mo signs in on device — Turnstile inside the
+  `capacitor://localhost` WebView is UNVERIFIED here; (5) only then enable Authentication → Bot
+  protection with the Turnstile SECRET, pasted only in the dashboard, never the repo.
+  Guard: `pw_captcha` — builds its own dist with a test key on :8299 and fakes Turnstile; red-proofed
+  two ways (tokens never attached: 5 fails; spent token re-sent: `["tok-1","tok-1"]`).
+
 ## ★ SHARE CARDS BRING PEOPLE BACK, AND /p/ LINKS LAND NON-USERS ON THE APP STORE (Nov 22 2026)
 Mo approved Muse's top growth fix: every shared image used to end at the app NAME, so a story or
 group-chat post sold the workout and never the app. **`src/engine/sharecard.js`** owns it:
