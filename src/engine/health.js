@@ -374,19 +374,9 @@ function computeBodyBattery(store) {
   } else if (rec && typeof rec.sleepHours === "number") {
     charge0 = Math.max(40, Math.min(90, Math.round(40 + rec.sleepHours * 6)));
   } else {
-    // No health data: infer from recent training. Rest days raise the floor.
-    const daysSinceWorkout = (() => {
-      const now_ = Date.now();
-      for (let d = 0; d < 14; d++) {
-        // History keys are LOCAL dates — toISOString() is UTC and shifts a day for
-        // evening users west of Greenwich, which made "trained today" read as yesterday.
-        const dt = new Date(now_ - d * 864e5);
-        const k = dateKeyOf(dt);
-        if (Object.keys((store.history || {})[k] || {}).length > 0) return d;
-      }
-      return 14;
-    })();
-    charge0 = Math.min(88, 70 + Math.min(daysSinceWorkout, 2) * 4 + (daysSinceWorkout >= 3 ? 4 : 0));
+    // No health data: inferred from recent training — but only AFTER the wake anchor is known,
+    // below, where the comment explains why the order matters.
+    charge0 = null;
   }
   // Baseline awake drain: ~0.9/h since wake. Real wake time from HealthKit when fresh
   // (within 20h — actually last night); otherwise assume 7am, rolling to yesterday's 7am
@@ -404,6 +394,29 @@ function computeBodyBattery(store) {
     if (ea != null && ea < wakeAnchor.getTime() && dateKeyOf(wakeAnchor) === dateKeyOf(now)) {
       wakeAnchor = new Date(ea);
     }
+  }
+  // ★ NO-HEALTH-DATA MORNING CHARGE, MEASURED AS OF WAKE (Muse, Nov 24). It used to count days
+  // since the last workout from NOW, so finishing a session mid-day moved the estimate from
+  // "trained yesterday" (74) to "trained today" (70): Est. start changed under the user's feet
+  // mid-workout, and the same session was charged twice — once as a lower morning charge and
+  // again as training drain. The morning charge describes the state you WOKE in, so only
+  // sessions finished before the wake anchor can move it.
+  if (charge0 == null) {
+    const wakeMs_ = wakeAnchor.getTime();
+    const daysSinceWorkout = (() => {
+      for (let d = 0; d < 14; d++) {
+        // History keys are LOCAL dates — toISOString() is UTC and shifts a day for
+        // evening users west of Greenwich, which made "trained today" read as yesterday.
+        const k = dateKeyOf(new Date(now.getTime() - d * 864e5));
+        const before = Object.values((store.history || {})[k] || {}).some(sess => {
+          const end = Number.isFinite(sess?.finishedAt) ? sess.finishedAt : new Date(k + "T12:00:00").getTime();
+          return end < wakeMs_;
+        });
+        if (before) return d;
+      }
+      return 14;
+    })();
+    charge0 = Math.min(88, 70 + Math.min(daysSinceWorkout, 2) * 4 + (daysSinceWorkout >= 3 ? 4 : 0));
   }
   const awakeHours = Math.max(0, (now - wakeAnchor) / 36e5);
   let baselineDrain = Math.min(18, Math.round(awakeHours * 0.9));

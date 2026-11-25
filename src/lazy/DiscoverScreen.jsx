@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } fro
 import { createPortal } from "react-dom";
 import { cvt, dKey, dateFromKey, devWarn, uid } from "../engine/core.js";import { sessionVolume } from "../engine/workout.js";
 import { EXERCISE_DB } from "../engine/exercises.js";
-import { calcWeeklyStreak, storeStreak } from "../engine/insights.js";
+import { calcWeeklyStreak, storeStreak, prsBySession } from "../engine/insights.js";
 import { F, MONO, Icon, Avatar, MuscleIcon, Skeleton, Sheet, NAV_CLEARANCE, toast, haptic, sb, shareLink, getDiscoverSubTab, setDiscoverSubTabValue, SUPABASE_URL, SUPABASE_KEY, ExerciseDetail, SectionLabel, FlatRow, ThemeMark, normalizePostRow, safeMediaSrc, shareOrigin, PostCard, pinnedPostIds, PullToRefresh } from "../App.jsx";
 
 // GROUP DETAIL — lazy-loaded (src/lazy/GroupDetail.jsx). Most sessions never open a group.
@@ -1047,12 +1047,16 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
     // with 57 lifts on record, whatever they had actually done that week. `prEvents` is the dated
     // PR-hit log written at finish and is what Wrapped already counts; dedupe by exercise so an
     // exercise that set a weight AND an e1RM PR in one session counts once.
-    const prNamesThisWeek = new Set(
-      (store.prEvents || [])
-        .filter(e => e?.date && dateFromKey(e.date).getTime() >= weekAgo)
-        .map(e => e.name)
-    );
-    return { sessions, volume: Math.round(volume), streak: ws.count, prs: prNamesThisWeek.size, loaded:true };
+    //
+    // ★ AND IT MUST AGREE WITH HISTORY'S PR BADGES (Muse, Nov 24: "11 PRs" here, 3 badges there).
+    // Both now read prsBySession — one definition, rebuilt from history — and this counts exactly
+    // what History badges: one per exercise per session inside the window. The stored prEvents
+    // log is not used here because its sids go stale when a session is re-keyed.
+    let prsThisWeek = 0;
+    for (const v of prsBySession(history).values()) {
+      if (v.date && dateFromKey(v.date).getTime() >= weekAgo) prsThisWeek += v.names.size;
+    }
+    return { sessions, volume: Math.round(volume), streak: ws.count, prs: prsThisWeek, loaded:true };
   }
 
   // Compute stats for one friend from their fetched workout_history rows.

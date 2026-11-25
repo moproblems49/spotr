@@ -17,7 +17,7 @@ import { calc1RM, epley1RM, sessionVolume } from "./workout.js";
 // beats any running max — so the very first time you do an exercise counts, same as the app would
 // have recorded it. Used only when the stored log is empty (the log is otherwise append-only at
 // finish, so an edited workout or a finish whose PR write didn't land leaves it blank or short).
-function reconstructPrEvents(history) {
+function reconstructPrEvents(history, cap = 300) {
   const sessions = [];
   Object.entries(history || {}).forEach(([dk, day]) => {
     Object.entries(day || {}).forEach(([sid, s]) => {
@@ -57,7 +57,24 @@ function reconstructPrEvents(history) {
       if (types.length) events.push({ date: sess.dk, sid: sess.sid, name: ex.name, weightLbs: bw, types });
     }
   }
-  return events.slice(-300); // same cap the finish-time appender uses
+  return events.slice(-cap); // same cap the finish-time appender uses (pass Infinity for all)
+}
+
+// ★ ONE PR DEFINITION FOR EVERY SURFACE THAT SHOWS ONE (Muse, Nov 24). Friends Activity counted the
+// stored PR-event log (11 in a week) while History badged sessions whose top set merely sat within
+// 1% of today's lifetime best (3) — two answers to "how many PRs did I set". Both now read this:
+// the reconstructed running-max log (weight / est. 1RM / single-set volume, first time an exercise
+// is logged counts, exactly the finish-time rule), keyed by session id. Rebuilt from HISTORY rather
+// than the stored log because stored sids go stale when a session is re-keyed (the guest migration
+// re-mints short ids) and the stored log is capped at 300. Map<sid, {date, names:Set}>.
+function prsBySession(history) {
+  const out = new Map();
+  for (const e of reconstructPrEvents(history, Infinity)) {
+    let v = out.get(e.sid);
+    if (!v) { v = { date: e.date, names: new Set() }; out.set(e.sid, v); }
+    v.names.add(e.name);
+  }
+  return out;
 }
 
 
@@ -475,4 +492,4 @@ function getProgressInsights(store, unit) {
 // Exported: what App.jsx and src/lazy/ import — calcStreak looked internal from App.jsx alone,
 // but WrappedModal imports it directly (the closure tool reads App.jsx only; grep src/lazy/ before
 // calling anything private). getProgressInsight stays internal: getProgressInsights is the caller.
-export { calcStreak, calcWeeklyStreak, storeStreak, recordTargetChange, targetForWeek, STREAK_GRACE_EVERY_WEEKS, getProgressInsights, reconstructPrEvents };
+export { calcStreak, calcWeeklyStreak, storeStreak, recordTargetChange, targetForWeek, STREAK_GRACE_EVERY_WEEKS, getProgressInsights, reconstructPrEvents, prsBySession };

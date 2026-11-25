@@ -1,4 +1,4 @@
-// v178091717093
+// v178091717094
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -27,7 +27,7 @@ import { historySetsSummary, getExerciseSessions, topSet, calc1RM, detectDeloadN
 import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
 import { plateColor, calcPlatesPerSide, generateWarmupSets } from "./engine/plates.js";
-import { storeStreak, recordTargetChange, getProgressInsights, reconstructPrEvents } from "./engine/insights.js";
+import { storeStreak, recordTargetChange, getProgressInsights, reconstructPrEvents, prsBySession } from "./engine/insights.js";
 import { buildWorkoutShareSVG, appStoreFooterSVG, APP_STORE_URL, APP_STORE_ID } from "./engine/sharecard.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -9137,6 +9137,39 @@ export function PRTag({ C, size = 9 }) {
 // place, because an imported binding cannot be reassigned across the lazy-file boundary.
 export const pinnedPostIds = new Set();
 
+// A post's photo. ★ IT RESERVES SPACE UNTIL THE IMAGE ARRIVES (Muse, Nov 24: "blank posts in
+// Explore — only author/time + kudos"). A lazy <img> has NO height until its bytes land, so a photo
+// post with no caption rendered as a header sitting directly on its action row: the photo existed
+// and the post looked empty. A tinted square holds the slot while loading, and a failed load falls
+// back to the same placeholder a missing image already uses instead of collapsing to nothing.
+function PhotoPlaceholder({ C, label }) {
+  return (
+    <div data-photo-placeholder="true" role={label ? "img" : undefined} aria-label={label} style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}>
+      {/* an image glyph reads as "photo", not a magnifying-glass "search" */}
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+    </div>
+  );
+}
+function PostImage({ src: rawSrc, C, maxHeight, rounded }) {
+  const src = safeMediaSrc(rawSrc);   // gated here so no caller can hand it an unchecked URL
+  const [state, setState] = useState("loading");   // loading | ok | error
+  const imgRef = useRef(null);
+  // A cached image can finish before its load listener is attached; read `complete` once mounted.
+  useEffect(() => {
+    const el = imgRef.current;
+    setState(el && el.complete && el.naturalWidth > 0 ? "ok" : "loading");
+  }, [src]);
+  if (!src || state === "error") return <PhotoPlaceholder C={C} label="Photo couldn't load"/>;
+  const loading = state === "loading";
+  return (
+    <div data-post-image={state} style={{ width:"100%", minHeight: loading ? Math.min(maxHeight, 300) : 0, background: loading ? C.divider : "transparent", borderRadius: rounded ? 16 : 0, overflow:"hidden" }}>
+      <img ref={imgRef} src={src} alt="" loading="lazy" decoding="async"
+        onLoad={() => setState("ok")} onError={() => setState("error")}
+        style={{ width:"100%", maxHeight, objectFit:"cover", display:"block", borderRadius: rounded ? 16 : 0, border: rounded ? `1px solid ${C.border}` : "none" }}/>
+    </div>
+  );
+}
+
 export const PostCard = memo(function PostCard({ post, store, currentUserId, onKudos, onComment, onEditComment, onDeleteComment, onLikeComment, onUserClick, onEdit, onDelete, displayUnit, C }) {
   const bodyMapData = useBodyMapData();
   const user = store.users.find(u => u.id === post.userId);
@@ -9328,11 +9361,11 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
         // so the card's header still lands on screen with the photo.
         post.type === "workout"
           ? <div style={{ margin:"0 14px 8px" }}>
-              <img src={safeMediaSrc(post.imageData)} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:380, objectFit:"cover", display:"block", borderRadius:16, border:`1px solid ${C.border}` }}/>
+              <PostImage src={post.imageData} C={C} maxHeight={380} rounded/>
             </div>
-          : <img src={safeMediaSrc(post.imageData)} alt="" loading="lazy" decoding="async" style={{ width:"100%", maxHeight:500, objectFit:"cover", display:"block" }}/>
+          : <PostImage src={post.imageData} C={C} maxHeight={500}/>
       ) : (post.type === "photo" || post.type === "form_check") ? (
-        <div style={{ width:"100%", aspectRatio:"1", background:C.divider, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted }}>{/* image placeholder — shows when a photo post's blob isn't cached (offline/cold-start); an image glyph reads as "photo", not a magnifying-glass "search" */}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
+        <PhotoPlaceholder C={C}/>
       ) : null}
 
       {post.type === "run" && post.run && (
@@ -11726,6 +11759,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       ))])
       .filter(([, sessions]) => Object.keys(sessions).length);
   }, [store.history, histQuery]);
+  // One PR definition shared with Friends Activity and the cards — see prsBySession.
+  const prBySid = useMemo(() => prsBySession(store.history), [store.history]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [prefilledCode, setPrefilledCode] = useState(null);
   const [showAICoach, setShowAICoach] = useState(false);
@@ -14923,7 +14958,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                   // to include warmups, giving "5 sets · 3,850 lbs" for a volume drawn from 3.
                   const done = (sess.exercises || []).reduce((a, ex) => a + workingDone(ex.sets).length, 0);
                   const vol = sessionVolume(sess);
-                  const sessPRs = sessionPRNames(sess, store.prs);
+                  const sessPRs = prBySid.get(sid)?.names || new Set();
                   const prExercises = (sess.exercises || []).filter(ex => ex.name && sessPRs.has(ex.name));
                   return (
                     <div key={i} className="seshd-content-fade seshd-float" style={{ animationDelay:`${Math.min(i * 0.03, 0.2)}s`, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", marginBottom:8 }}>
@@ -14996,7 +15031,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           return (
                             <div key={j} style={{ display:"flex", alignItems:"center", gap:8 }}>
                               <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                                <div data-history-pr={isPR ? ex.name : undefined} style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                                   <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{ex.name}</span>
                                   {isPR && <PRTag C={C}/>}
                                 </div>
@@ -16697,14 +16732,14 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
     myWorkoutPosts.filter(p => !p.clientId)
       .map(p => `${p.workout?.name}|${dKey(new Date(p.createdAt))}`)
   );
-  const profileHistoryItems = isMe ? Object.entries(store.history||{}).flatMap(([date, sessions]) =>
+  const profileHistoryItems = isMe ? (() => { const prBy = prsBySession(store.history); return Object.entries(store.history||{}).flatMap(([date, sessions]) =>
     Object.entries(sessions).map(([sid, sess]) => {
       if (sharedSids.has(String(sid))) return null;
       if (legacySharedKeys.has(`${sess.dayName}|${date}`)) return null;
       // Same builder as every other workout card (see postWorkoutPayload). This was a sixth
       // hand-rolled copy: it got the warmup exclusion right but used a 0.98 PR threshold where the
       // feed used 0.99, so the same session could show a PR badge here and not there.
-      const card = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
+      const card = postWorkoutPayload(sess.exercises, store.prs, prBy.get(sid)?.names || new Set(), sess.unit || "lbs");
       return {
         // The id carries the SESSION ID, not the day name. It used to be
         // `hist_<date>_<dayName>`, so two same-day sessions with the same name produced two cards
@@ -16725,7 +16760,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         _isHistory: true,
       };
     }).filter(Boolean)
-  ) : [];
+  ); })() : [];
   // Fetch this profile's posts directly. The global feed only ever holds the latest page,
   // so a user's posts silently vanish from their profile once they fall off it (or if RLS
   // filters them from the unscoped feed query). Merged into store.posts, deduped by id.
@@ -18316,7 +18351,7 @@ function NewPostModal({ C, onClose, onPost, initialKind = "photo", recentWorkout
       // workingDone() requires `done` to be truthy, where isDoneSet also accepted a legacy set with
       // `done === undefined` and reps > 0. Prod has zero such rows, and matching workingDone is
       // what keeps this card agreeing with History and the profile.
-      const built = postWorkoutPayload(selectedWorkout.exercises, prs, null, selectedWorkout.unit || "lbs");
+      const built = postWorkoutPayload(selectedWorkout.exercises, prs, selectedWorkout.prNames || null, selectedWorkout.unit || "lbs");
       onPost({ type:"workout", caption: caption || `${selectedWorkout.dayName} — done.`,
         unit: selectedWorkout.unit || "lbs",
         // Stamp the session id so this card can always be found again by id rather than guessed at.
@@ -19259,7 +19294,8 @@ function AppInner() {
     if (!showNewPost) return [];
     // Carry the session id: without it the post is written with client_id NULL and every later
     // "which post is this workout?" lookup falls back to guessing by name + a 24h window.
-    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.entries(sessions).map(([sid,s])=>({...s,sid,_date:date}))).filter(sess=>{
+    const prBy = prsBySession(store.history);   // one PR definition — see prsBySession
+    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,sessions])=>Object.entries(sessions).map(([sid,s])=>({...s,sid,_date:date,prNames:prBy.get(sid)?.names || new Set()}))).filter(sess=>{
       const hasDone=(sess.exercises||[]).some(ex=>(ex.sets||[]).some(s=>s.done===true||(s.done!==false&&(parseFloat(s.reps)>0||parseFloat(s.r)>0))));
       return hasDone;
     }).slice(0,10);

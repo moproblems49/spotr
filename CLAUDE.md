@@ -3499,6 +3499,42 @@ Discover's pull also runs `handleRefresh` (passed as `onRefresh`) and re-fetches
 and every pull-to-refresh emptied the feed; `pw_explore` caught it. Red-proofed: a draw that
 ignores "seen" fails "none already seen".
 
+## ★★ MUSE'S SECOND PASS (Nov 25 2026): THREE REAL, TWO NOT
+Mo forwarded Muse's list unread with "check these are real bugs". Measured each before touching it.
+- **★ "Est. start" MOVED MID-WORKOUT — REAL.** With no health data, `computeBodyBattery` estimated
+  the morning charge from days since the last workout counted from NOW, so finishing a session
+  flipped "trained yesterday" (74) to "trained today" (70) and that session was charged TWICE: once
+  as a lower start and again as training drain, which is why the breakdown never reconciled. The
+  estimate now runs AFTER the wake anchor and only sessions finished BEFORE the wake can move it
+  (the start describes how you woke). `computeBodyBatteryTimeline` reads `bb.charge0`, so the
+  chart inherits it. Guard: `sim_bbstart` (red-proofed: `74 -> 70`). Muse's "−10 for 28 sets" was
+  the 01:50 session being pre-wake (counted in the start, correctly not as drain), and the 39 -> 49
+  evening jump most likely came from the guest-migration noon stamp fixed Nov 23.
+- **★ PRs 11 vs 3 — REAL, TWO DEFINITIONS.** Friends Activity counted the stored PR-event log
+  (distinct names); History badged any session whose top set sat within 1% of TODAY's lifetime
+  best (so old PR sessions lost their badge and a session merely matching your best gained one).
+  **`prsBySession(history)` (engine/insights.js) is the one definition now**: the reconstructed
+  running-max log (weight / e1RM / single-set volume, first time logged counts — the finish-time
+  rule), keyed by sid, rebuilt from HISTORY because stored sids go stale when the guest migration
+  re-mints them. History's per-exercise PR tags, the profile's unposted cards, the new-post picker,
+  GroupDetail's picker and Friends Activity's own row all read it; Friends Activity counts one per
+  exercise per session, i.e. exactly the tags History draws. `sessionPRNames` has no UI caller
+  left. NOT changed: EditHistoryModal still rebuilds an edited post's card from the stored-max
+  rule, and friends' rows still count `personal_records.updated_at`. Guard: `pw_weeklyprs`, now
+  seeded through `workout_history` and asserting History == Friends == 4 (old code: 3 and 3,
+  equal and both wrong). History tags carry `data-history-pr`.
+  **Open product question for Mo**: first-time-logged counts as a PR everywhere (finish screen,
+  Wrapped, now both surfaces). A new user's first week therefore reads as many PRs.
+- **★ "BLANK POSTS IN EXPLORE" — REAL, BUT NOT MISSING DATA.** Those were caption-less PHOTO posts
+  whose image was still loading: a lazy `<img>` has no height until its bytes land, so the header
+  sat on the action row. `PostImage` reserves a tinted slot while loading and falls back to
+  `PhotoPlaceholder` ("Photo couldn't load") on error; it gates its own src through
+  `safeMediaSrc` so `sim_mediasrc` stays structural. Guard: `pw_postimage` (held / 404 / released
+  image; red-proofed at 4 failures).
+- **NOT bugs:** the weekly "1/3" vs 2 sessions is days vs sessions (labelled so since Nov 23); the
+  "UTC timestamps" were real `created_at` values (the noon-stamped one came from the pre-Nov-23
+  guest migration) and `timeAgo` already clamps at 0.
+
 ## ★★ NOV 24 2026: SEX LEFT BLANK, THE WRAPPED FOOTER, AND CAPTCHA PLUMBING (switched OFF)
 - **A skipped sex no longer reads as "Male".** `loadUserData` resolved `strength_sex` with a hard
   `|| "male"`, so a user who skipped the optional field saw Male PRESSED on the Strength card. It is

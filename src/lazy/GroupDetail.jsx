@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { devError, dateFromKey, workingDone } from "../engine/core.js";
 import { postWorkoutPayload, sessionVolume } from "../engine/workout.js";
+import { prsBySession } from "../engine/insights.js";
 import { F, MONO, Icon, Avatar, Spinner, Sheet, HrStat, toast, haptic, confirmAction, reportContent, SUPABASE_URL, SUPABASE_KEY, uploadGroupImage, signGroupImage, deleteGroupImage, timeAgo, fmtTime, hrInline, asUuidOrNull, SharedPostLink, NAV_CLEARANCE, safeMediaSrc, KB_SAFE_INSET } from "../App.jsx";
 
 export default function GroupDetail({ g, members, notMembers, currentUserId, store, setStore, C, token, onBack, onUpdateMembers, onLeave }) {
@@ -18,7 +19,9 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
     if (!showWorkoutPicker) return [];
     // Carry the session id — the card this creates needs it as client_id, or re-sharing the same
     // workout inserts a duplicate group post (the finish-time group share already dedups on it).
-    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([d,s])=>Object.entries(s).map(([sid,sess])=>({...sess,sid,date:d}))).slice(0,10);
+    // PR flags come from the one shared definition (prsBySession), not the stored-max guess.
+    const prBy = prsBySession(store.history);
+    return Object.entries(store.history||{}).sort(([a],[b])=>b.localeCompare(a)).flatMap(([d,s])=>Object.entries(s).map(([sid,sess])=>({...sess,sid,date:d,prNames:prBy.get(sid)?.names || new Set()}))).slice(0,10);
   }, [showWorkoutPicker, store.history]);
   const [loading, setLoading] = useState(true);
   const [caption, setCaption] = useState("");
@@ -476,7 +479,7 @@ export default function GroupDetail({ g, members, notMembers, currentUserId, sto
                       // `volume` at all (so the card's VOL tile was suppressed, `volume > 0` being
                       // false). The picker ROW ten lines above already used workingDone() +
                       // sessionVolume() — the row you tapped and the card it made disagreed.
-                      const workoutData = postWorkoutPayload(sess.exercises, store.prs, null, sess.unit || "lbs");
+                      const workoutData = postWorkoutPayload(sess.exercises, store.prs, sess.prNames || null, sess.unit || "lbs");
                       try {
                         // `group_posts` has UNIQUE (group_id, client_id), and the finish-time group
                         // share already writes that row with the same id — so sending client_id
