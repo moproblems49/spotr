@@ -53,6 +53,10 @@ function getSetPRTypes(store, exName, weight, reps, unit) {
   const e1rmLbs = Math.round(epley1RM(wLbs, r, 12));
   const volLbs = wLbs * r;
   const types = [];
+  // First-log rule (Nov 26): no record of this lift at all means this set is the baseline, not a
+  // PR — so the live badge/confetti stays quiet, matching finish-time and reconstructPrEvents.
+  const known = (store.prs?.[exName] || 0) > 0 || (store.prsE1rm?.[exName] || 0) > 0 || (store.prsVolume?.[exName] || 0) > 0;
+  if (!known) return { types, wLbs, e1rmLbs, volLbs };
   if (wLbs > (store.prs?.[exName] || 0)) types.push("weight");
   if (e1rmLbs > (store.prsE1rm?.[exName] || 0)) types.push("e1rm");
   if (volLbs > (store.prsVolume?.[exName] || 0)) types.push("volume");

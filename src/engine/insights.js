@@ -14,10 +14,10 @@ import { calc1RM, epley1RM, sessionVolume } from "./workout.js";
 // by replaying every session in chronological order and tracking a running max per exercise for
 // each PR category (weight, estimated 1RM, single-set volume), exactly mirroring the live
 // finish-time check in getSetPRTypes/finishWorkout. A PR event is emitted the first time a set
-// beats any running max — so the very first time you do an exercise counts, same as the app would
-// have recorded it. Used only when the stored log is empty (the log is otherwise append-only at
+// beats any running max — EXCEPT the very first time you do an exercise, which is a baseline
+// (first-log rule, Nov 26). Used only when the stored log is empty (the log is otherwise append-only at
 // finish, so an edited workout or a finish whose PR write didn't land leaves it blank or short).
-function reconstructPrEvents(history, cap = 300) {
+function reconstructPrEvents(history, cap = 300, opts = {}) {
   const sessions = [];
   Object.entries(history || {}).forEach(([dk, day]) => {
     Object.entries(day || {}).forEach(([sid, s]) => {
@@ -32,7 +32,7 @@ function reconstructPrEvents(history, cap = 300) {
   // Chronological: oldest first, so each running max reflects only prior sessions.
   sessions.sort((a, b) => a.finishedAt - b.finishedAt);
   const maxW = {}, maxE = {}, maxV = {};
-  const events = [];
+  const events = [], firstLogs = [];
   for (const sess of sessions) {
     const toLbs = w => sess.unit === "lbs" ? w : cvt(w, "kg", "lbs");
     for (const ex of sess.exercises) {
@@ -50,21 +50,36 @@ function reconstructPrEvents(history, cap = 300) {
         if (e1 > be) be = e1;
         if (v > bv) bv = v;
       }
+      // ★ The FIRST time an exercise is logged is a baseline, not a record (Mo, Nov 26): it sets
+      // the running max and emits nothing. Same rule as finish-time (see isFirstLog there).
+      const seen = (maxW[ex.name] || 0) > 0 || (maxE[ex.name] || 0) > 0 || (maxV[ex.name] || 0) > 0;
       const types = [];
       if (bw > 0 && bw > (maxW[ex.name] || 0)) { maxW[ex.name] = bw; types.push("weight"); }
       if (be > 0 && be > (maxE[ex.name] || 0)) { maxE[ex.name] = be; types.push("e1rm"); }
       if (bv > 0 && bv > (maxV[ex.name] || 0)) { maxV[ex.name] = bv; types.push("volume"); }
-      if (types.length) events.push({ date: sess.dk, sid: sess.sid, name: ex.name, weightLbs: bw, types });
+      if (types.length && !seen) firstLogs.push({ date: sess.dk, sid: sess.sid, name: ex.name });
+      else if (types.length) events.push({ date: sess.dk, sid: sess.sid, name: ex.name, weightLbs: bw, types });
     }
   }
+  if (opts.firstLogs) return firstLogs;
   return events.slice(-cap); // same cap the finish-time appender uses (pass Infinity for all)
+}
+
+// The stored pr_events log predates the first-log rule, so it still carries an event for the
+// first session of every exercise. Drop those on load rather than rewriting the server copy:
+// idempotent, and it also catches any old device that still appends them.
+function dropFirstLogEvents(events, history) {
+  const first = reconstructPrEvents(history, Infinity, { firstLogs: true });
+  const bySid = new Set(first.map(f => f.sid + "|" + f.name));
+  const byDate = new Set(first.map(f => f.date + "|" + f.name));
+  return (events || []).filter(e => !(e && (bySid.has(e.sid + "|" + e.name) || (!e.sid && byDate.has(e.date + "|" + e.name)))));
 }
 
 // ★ ONE PR DEFINITION FOR EVERY SURFACE THAT SHOWS ONE (Muse, Nov 24). Friends Activity counted the
 // stored PR-event log (11 in a week) while History badged sessions whose top set merely sat within
 // 1% of today's lifetime best (3) — two answers to "how many PRs did I set". Both now read this:
-// the reconstructed running-max log (weight / est. 1RM / single-set volume, first time an exercise
-// is logged counts, exactly the finish-time rule), keyed by session id. Rebuilt from HISTORY rather
+// the reconstructed running-max log (weight / est. 1RM / single-set volume; the first time an
+// exercise is logged is a baseline, not a PR — exactly the finish-time rule), keyed by session id. Rebuilt from HISTORY rather
 // than the stored log because stored sids go stale when a session is re-keyed (the guest migration
 // re-mints short ids) and the stored log is capped at 300. Map<sid, {date, names:Set}>.
 function prsBySession(history) {
@@ -492,4 +507,4 @@ function getProgressInsights(store, unit) {
 // Exported: what App.jsx and src/lazy/ import — calcStreak looked internal from App.jsx alone,
 // but WrappedModal imports it directly (the closure tool reads App.jsx only; grep src/lazy/ before
 // calling anything private). getProgressInsight stays internal: getProgressInsights is the caller.
-export { calcStreak, calcWeeklyStreak, storeStreak, recordTargetChange, targetForWeek, STREAK_GRACE_EVERY_WEEKS, getProgressInsights, reconstructPrEvents, prsBySession };
+export { calcStreak, calcWeeklyStreak, storeStreak, recordTargetChange, targetForWeek, STREAK_GRACE_EVERY_WEEKS, getProgressInsights, reconstructPrEvents, prsBySession, dropFirstLogEvents };

@@ -1,4 +1,4 @@
-// v178091717095
+// v178091717096
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -27,7 +27,7 @@ import { historySetsSummary, getExerciseSessions, topSet, calc1RM, detectDeloadN
 import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
 import { plateColor, calcPlatesPerSide, generateWarmupSets } from "./engine/plates.js";
-import { storeStreak, recordTargetChange, getProgressInsights, reconstructPrEvents, prsBySession } from "./engine/insights.js";
+import { storeStreak, recordTargetChange, getProgressInsights, reconstructPrEvents, prsBySession, dropFirstLogEvents } from "./engine/insights.js";
 import { buildWorkoutShareSVG, appStoreFooterSVG, APP_STORE_URL, APP_STORE_ID } from "./engine/sharecard.js";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -12413,6 +12413,10 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const maxVolLbs = Math.max(0, ...doneSets.map(s => toLbs(parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0)));
 
         const types = [];
+        // ★ FIRST-LOG RULE (Mo, Nov 26): the first time an exercise is logged sets the baseline and
+        // is NOT a PR — otherwise a new user's first week reads "11 PRs" for nothing special. The
+        // maxes still update below; only the hit is withheld. Same rule in reconstructPrEvents.
+        const isFirstLog = !((newPRs[ex.name] || 0) > 0 || (newPRsE1rm[ex.name] || 0) > 0 || (newPRsVolume[ex.name] || 0) > 0);
         const prevW = newPRs[ex.name] || 0;
         if (maxLbs > 0 && maxLbs > prevW) { newPRs[ex.name] = maxLbs; types.push("weight"); }
         const prevE1rm = newPRsE1rm[ex.name] || 0;
@@ -12420,7 +12424,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
         const prevVol = newPRsVolume[ex.name] || 0;
         if (maxVolLbs > 0 && maxVolLbs > prevVol) { newPRsVolume[ex.name] = maxVolLbs; types.push("volume"); }
 
-        if (types.length) {
+        if (types.length && !isFirstLog) {
           // firstEver: no prior weight PR existed, so `increase` would be the full weight, which
           // as a delta ("+225 over your previous best") is meaningless on a first-ever record.
           // The flag survives because it is the cheap guard against that copy coming back; the
@@ -20339,7 +20343,7 @@ function AppInner() {
         // it from history so Wrapped/recaps reflect real PRs instead of 0 (see reconstructPrEvents).
         prEvents: (() => {
           const stored = (Array.isArray(me?.pr_events) && me.pr_events.length) ? me.pr_events : (prev.currentUserId === currentUserId ? (prev.prEvents || []) : []);
-          return stored.length ? stored : reconstructedPrEvents;
+          return stored.length ? dropFirstLogEvents(stored, appHistory) : reconstructedPrEvents;
         })(),
         // Custom exercises persist on the profile (profiles.custom_exercises). Merge server + local
         // by id/name so nothing is lost if either side has entries the other doesn't.

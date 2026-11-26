@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import { cvt, devError, uid } from "../engine/core.js";import { historyMaxPRs, matchesSession, postWorkoutPayload } from "../engine/workout.js";
 import { EXERCISE_DB, _exNorm } from "../engine/exercises.js";
+import { prsBySession } from "../engine/insights.js";
 import { F, MONO, sb, toast, haptic, CreateExercisePicker, confirmAction , KB_SAFE_INSET} from "../App.jsx";
 
 export default function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setStore, onClose }) {
@@ -234,13 +235,16 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
         }
       }
     } catch (e) { devError("PR recompute on edit failed:", e); }
+    // One PR definition (prsBySession) for the rebuilt cards too — the old stored-max guess
+    // flagged any top set equal to your best, including a first-ever log.
+    const editPrNames = () => prsBySession({ ...(store.history || {}), [date]: { ...((store.history || {})[date] || {}), [sid]: { ...(sess || {}), exercises, unit: eu } } }).get(sid)?.names || new Set();
     // 3. Update the feed post built from THIS session (see matchesSession).
     setStore(prev => {
       const newPosts = (prev.posts || []).map(p => {
         if (p.userId !== currentUserId) return p;
         if (!matchesSession(p, sid, sess, date)) return p;
         // Rebuild the post.workout.exercises to reflect new numbers
-        const rebuilt = postWorkoutPayload(exercises, prev.prs, null, eu);
+        const rebuilt = postWorkoutPayload(exercises, prev.prs, editPrNames(), eu);
         return { ...p, workout: { ...p.workout, exercises: rebuilt.exercises, volume: rebuilt.volume } };
       });
       return { ...prev, posts: newPosts };
@@ -253,7 +257,7 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
         );
         if (match && !String(match.id).startsWith("hist_")) {
           // Recompute the workout payload to mirror local state
-          const rebuilt = postWorkoutPayload(exercises, store.prs, null, eu);
+          const rebuilt = postWorkoutPayload(exercises, store.prs, editPrNames(), eu);
           await sb.query(`posts?id=eq.${match.id}`, {
             method: "PATCH",
             body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: rebuilt.exercises, volume: rebuilt.volume } })
@@ -271,7 +275,7 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
         );
         if (myGroups.length > 0) {
           // Recompute the workout payload once (same shape used for feed posts)
-          const rebuilt = postWorkoutPayload(exercises, store.prs, null, eu);
+          const rebuilt = postWorkoutPayload(exercises, store.prs, editPrNames(), eu);
 
           // For each group I'm in, fetch my recent workout posts and patch the matching one.
           // Run all groups in parallel — sequential awaits would be slow for users in many groups.

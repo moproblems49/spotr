@@ -3549,6 +3549,26 @@ Mo forwarded Muse's list unread with "check these are real bugs". Measured each 
   "UTC timestamps" were real `created_at` values (the noon-stamped one came from the pre-Nov-23
   guest migration) and `timeAgo` already clamps at 0.
 
+## ★ THE FIRST TIME AN EXERCISE IS LOGGED IS NOT A PR (Mo, Nov 26 2026)
+It sets the baseline. Counting it made a new user's first week read "11 PRs" for nothing special.
+One rule, applied at every place a PR is decided:
+- the finish screen (`isFirstLog` in `finishWorkout`, so no hitPR and no prEvent);
+- the live set badge and confetti (`getSetPRTypes` returns no types for a lift with no record);
+- History, the profile cards, the pickers and Friends Activity (`reconstructPrEvents`, and so
+  `prsBySession`);
+- the edited-post card (`EditHistoryModal` now passes `prsBySession` names instead of the
+  stored-max guess).
+
+"Known" means ANY of the three maxes (weight / e1RM / volume) is above 0.
+
+**The stored `pr_events` log still holds the old first-log rows, so they are filtered on LOAD**
+(`dropFirstLogEvents(stored, appHistory)`), not rewritten on the server. The filter is idempotent,
+and it also catches an old device that still appends them. That covers Wrapped, the Weekly Review
+and the strength history, which read `store.prEvents`.
+
+Guard: `sim_firstlog`, red-proofed at 5 failures. The running maxes still update on a first log,
+so the SECOND session is judged against the first.
+
 ## ★★ NOV 24 2026: SEX LEFT BLANK, THE WRAPPED FOOTER, AND CAPTCHA PLUMBING (switched OFF)
 - **A skipped sex no longer reads as "Male".** `loadUserData` resolved `strength_sex` with a hard
   `|| "male"`, so a user who skipped the optional field saw Male PRESSED on the Strength card. It is
