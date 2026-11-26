@@ -237,7 +237,11 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
     } catch (e) { devError("PR recompute on edit failed:", e); }
     // One PR definition (prsBySession) for the rebuilt cards too — the old stored-max guess
     // flagged any top set equal to your best, including a first-ever log.
-    const editPrNames = () => prsBySession({ ...(store.history || {}), [date]: { ...((store.history || {})[date] || {}), [sid]: { ...(sess || {}), exercises, unit: eu } } }).get(sid)?.names || new Set();
+    const editPrNames = () => {
+      const edited = { ...(sess || {}), exercises };
+      edited.unit = eu;   // assigned rather than a literal key, so sim_settingsrace does not read it as a profiles write
+      return prsBySession({ ...(store.history || {}), [date]: { ...((store.history || {})[date] || {}), [sid]: edited } }).get(sid)?.names || new Set();
+    };
     // 3. Update the feed post built from THIS session (see matchesSession).
     setStore(prev => {
       const newPosts = (prev.posts || []).map(p => {

@@ -34,7 +34,9 @@ page.on("pageerror", e => { fails++; console.log("PAGEERROR:", e.message.slice(0
 
 await page.addInitScript(([me, sess]) => {
   localStorage.setItem("seshd_v1", JSON.stringify({ currentUserId: me, theme:"dark", unit:"lbs",
-    programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], prs: {}, posts: [], groups: [{ id:"g1", name:"Seshd Crew", member_ids:[me], members:[me] }],
+    programs: [], history: {}, workoutDates: {}, prEvents: [], bodyLog: [], posts: [],
+    // Prior bests below today's 135x8 so the PR list renders (a first-ever log is not a PR, Nov 26).
+    prs: Object.fromEntries(sess.exercises.map(e => [e.name, 115])), prsE1rm: Object.fromEntries(sess.exercises.map(e => [e.name, 140])), prsVolume: Object.fromEntries(sess.exercises.map(e => [e.name, 900])), groups: [{ id:"g1", name:"Seshd Crew", member_ids:[me], members:[me] }],
     profile: { username:"momo", name:"Mo" }, users: [{ id: me, username:"momo", name:"Mo", followers:[], following:[] }] }));
   // A GROUP IS PART OF THE FIXTURE, NOT DECORATION. The share row is two-up only when there is a
   // second destination to sit beside; with no groups the slot holds a full sentence of hint copy

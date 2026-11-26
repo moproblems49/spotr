@@ -25,6 +25,13 @@ const ROW = {
   exercises: [{ name: "Barbell Bench Press", sets: [s(185, 8), s(185, 8)] }],
 };
 
+// An EARLIER, lighter bench session so ROW's 185 is a real PR (a first-ever log is not, Nov 26).
+const _d0 = new Date(Date.now() - 7 * 864e5);
+const DK0 = `${_d0.getFullYear()}-${String(_d0.getMonth()+1).padStart(2,"0")}-${String(_d0.getDate()).padStart(2,"0")}`;
+const ROW0 = { id: "aaaaaaaa-2222-4222-8222-222222222222", user_id: ME, day_name: "Bench Day", duration_secs: 3000,
+  unit: "lbs", note: null, workout_date: DK0, created_at: _d0.toISOString(),
+  exercises: [{ name: "Barbell Bench Press", sets: [s(155, 8)] }] };
+
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
 const page = await b.newPage({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 page.setDefaultTimeout(4000);
@@ -47,7 +54,7 @@ await page.route("**/auth/v1/**", r => r.fulfill({ status: 200, contentType: "ap
 await page.route("**/rest/v1/**", r => {
   const u = r.request().url();
   let body = "[]";
-  if (/\/rest\/v1\/workout_history\?/.test(u)) body = JSON.stringify([ROW]);
+  if (/\/rest\/v1\/workout_history\?/.test(u)) body = JSON.stringify([ROW, ROW0]);
   else if (/\/rest\/v1\/(profiles|public_profiles)\?/.test(u))
     body = JSON.stringify([{ id: ME, username: "momo", name: "Mo", unit: "lbs", is_public: true, seen_onboarding: true, theme: "dark" }]);
   r.fulfill({ status: 200, contentType: "application/json", body });
@@ -134,7 +141,8 @@ check("6. avg and peak sit together in one small block, not scattered across the
     // The EXERCISE ROW must carry no filled PR chip — the trophy is its marker now, and the one
     // loud badge lives in the post header. An earlier draft asserted "<= 1 per row", which a row
     // holding exactly one restored chip satisfies, so it passed on the build it was meant to fail.
-    const rows = [...document.querySelectorAll("div")].filter(d => /Barbell Bench Press/.test(d.textContent||""));
+    // 185x8 pins it to the Heart Day card: the earlier 155x8 baseline session renders below it.
+    const rows = [...document.querySelectorAll("div")].filter(d => /Barbell Bench Press[\s\S]*185×8/.test(d.textContent||"") && !/155×8/.test(d.textContent||""));
     const row = rows.length ? rows[rows.length - 1] : null;
     const filledPR = row ? [...row.querySelectorAll("span")].filter(x => x.textContent.trim() === "PR"
                        && getComputedStyle(x).backgroundColor !== "rgba(0, 0, 0, 0)").length : null;

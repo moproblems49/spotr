@@ -46,7 +46,10 @@ async function summaryVsSaved(blankName) {
   await page.addInitScript(([me, s]) => {
     localStorage.setItem("seshd_v1", JSON.stringify({
       currentUserId: me, theme: "dark", unit: "lbs", programs: [], history: {}, workoutDates: {},
-      weeklyTarget: 3, prEvents: [], bodyLog: [], prs: {}, posts: [],
+      weeklyTarget: 3, prEvents: [], bodyLog: [], posts: [],
+      // A prior best below today's 225x5: a first-ever log is a baseline, not a PR (Nov 26), so
+      // the PR-reporting checks below need a record to beat.
+      prs: { "Barbell Bench Press": 205 }, prsE1rm: { "Barbell Bench Press": 230 }, prsVolume: { "Barbell Bench Press": 1025 },
       profile: { username: "momo", name: "Mo" },
       users: [{ id: me, username: "momo", name: "Mo", followers: [], following: [] }],
     }));
@@ -107,8 +110,7 @@ async function summaryVsSaved(blankName) {
 
   // NO PR CELEBRATION POPUP. It fired 300ms after finishing and covered the summary, which
   // already lists the same PRs — Mo: "pops up after workout is done and i dont think we need it".
-  // This session sets a first-ever PR on the bench (prs seeded empty), so the popup had every
-  // reason to fire.
+  // This session beats a seeded prior best on the bench, so the popup had every reason to fire.
   // Singular with one PR, plural with several — the first cut only matched the plural and so
   // passed vacuously against the code that still had the popup.
   check("no PR popup covers the finish summary", !/PERSONAL RECORDS?/.test(r.text), r.text.slice(0, 240));

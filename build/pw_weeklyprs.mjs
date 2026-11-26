@@ -28,10 +28,12 @@ const dk = daysAgo => { const d = new Date(Date.now() - daysAgo * 864e5);
 // definitions. Both now read prsBySession (rebuilt from HISTORY), so the fixture seeds history
 // through the stub (loadUserData replaces history wholesale) and the suite checks the two
 // surfaces AGAINST EACH OTHER, plus the expected number.
-//   dk30: Lift 0 200x5, Lift 7 185x5     (outside the window; first-evers)
-//   dk6 : Lift 0 230x5 (PR), Lift 1 135x5 (first ever -> PR)
+// A first-ever log is a BASELINE, not a PR (Nov 26), so every lift is first logged at dk40.
+//   dk40: Lift 0 190, Lift 1 130, Lift 2 300, Lift 7 185   (baselines: no tags)
+//   dk30: Lift 0 200x5 (PR, outside the window)
+//   dk6 : Lift 0 230x5 (PR), Lift 1 135x5 (PR)
 //   dk3 : Lift 0 220x5 (no PR), Lift 1 140x5 (PR)
-//   dk2 : Lift 2 315x3 (first ever -> PR)
+//   dk2 : Lift 2 315x3 (PR), Lift 3 100x5 (FIRST EVER -> baseline, no tag)
 // => History tags 4 (one per exercise per session); Friends Activity counts the distinct lifts
 // among those tags, 3 (Lift 1 improved twice = one lift that improved — the 57-PRs dedupe rule).
 // Old History tagged a session only while its top set sat within 1% of TODAY's best, so Lift 0's
@@ -48,10 +50,11 @@ const row = (daysAgo, exs) => ({ id: `aaaaaaaa-0000-4000-8000-00000000000${++n}`
   created_at: new Date(Date.now() - daysAgo * 864e5).toISOString(),
   exercises: exs.map(([name, w, r]) => ({ name, sets: [set(w, r)] })) });
 const HISTORY_ROWS = [
-  row(30, [["Lift 0", 200, 5], ["Lift 7", 185, 5]]),
+  row(40, [["Lift 0", 190, 5], ["Lift 1", 130, 5], ["Lift 2", 300, 3], ["Lift 7", 185, 5]]),
+  row(30, [["Lift 0", 200, 5]]),
   row(6, [["Lift 0", 230, 5], ["Lift 1", 135, 5]]),
   row(3, [["Lift 0", 220, 5], ["Lift 1", 140, 5]]),
-  row(2, [["Lift 2", 315, 3]]),
+  row(2, [["Lift 2", 315, 3], ["Lift 3", 100, 5]]),
 ];
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] });
@@ -145,11 +148,12 @@ const hist = await page.evaluate((weekAgoKey) => {
 });
 const weekKey = dk(7);
 const histWeek = hist.all.filter(x => x.d > weekKey);
-check("2a. History rendered the seeded sessions", hist.groups === 4, `groups ${hist.groups}`);
+check("2a. History rendered the seeded sessions", hist.groups === 5, `groups ${hist.groups}`);
 check(`2b. History tags ${EXPECTED_WEEK_TAGS} PRs this week`, histWeek.length === EXPECTED_WEEK_TAGS, JSON.stringify(hist.all));
 const histDistinct = new Set(histWeek.map(x => x.name)).size;
 check("2c. History and Friends Activity agree (distinct lifts tagged == the count)", histDistinct === myPrs, `history ${histDistinct} vs friends ${myPrs}`);
-check("2e. History tags the first-ever session of a lift (Lift 1, 6 days ago)", hist.all.some(x => x.d === dk(6) && x.name === "Lift 1"), JSON.stringify(hist.all));
+check("2e. a first-ever log is NOT tagged (Lift 3 this week, every lift at dk40)", !hist.all.some(x => x.name === "Lift 3" || x.d === dk(40)), JSON.stringify(hist.all));
+check("2e2. a second session that beats the first IS tagged (Lift 1, 6 days ago)", hist.all.some(x => x.d === dk(6) && x.name === "Lift 1"), JSON.stringify(hist.all));
 check("2f. a PR keeps its tag after a later session beats it (Lift 0, 30 days ago)", hist.all.some(x => x.d === dk(30) && x.name === "Lift 0"), JSON.stringify(hist.all));
 check("2d. a session that set no PR has no tag (Lift 0 220x5)", !hist.all.some(x => x.d === dk(3) && x.name === "Lift 0"), JSON.stringify(hist.all));
 // (An "and it is not the lifetime count" check used to sit here. It PASSED against the broken
