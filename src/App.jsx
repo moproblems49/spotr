@@ -1,4 +1,4 @@
-// v178091717096
+// v178091717097
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9135,7 +9135,16 @@ export function PRTag({ C, size = 9 }) {
 // below keep them, exactly like the open shared post — otherwise the next foreground refresh
 // evicts them and every kudos/comment tap on that screen goes silently dead. A Set mutated in
 // place, because an imported binding cannot be reassigned across the lazy-file boundary.
-export const pinnedPostIds = new Set();
+// ★ OWNED PINS (Nov 26, Mo: a stranger's profile opened from Explore read "0 Posts" after a
+// pull-to-refresh). A foreign profile is the second screen that needs this, and the Explore feed
+// clears its pins when it closes — so with one flat Set, closing Explore would unpin a profile
+// still on screen. Each screen pins under its own owner and clears only its own.
+const _pinOwners = new Map();
+export const pinnedPostIds = {
+  has(id) { for (const s of _pinOwners.values()) if (s.has(id)) return true; return false; },
+  add(id, owner = "explore") { if (!_pinOwners.has(owner)) _pinOwners.set(owner, new Set()); _pinOwners.get(owner).add(id); },
+  clear(owner = "explore") { _pinOwners.delete(owner); },
+};
 
 // A post's photo. ★ IT RESERVES SPACE UNTIL THE IMAGE ARRIVES (Muse, Nov 24: "blank posts in
 // Explore — only author/time + kudos"). A lazy <img> has NO height until its bytes land, so a photo
@@ -16805,6 +16814,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         }));
         // Merge: replace existing posts of THIS user with the fresh server copy (so edits/
         // kudos update), keep everyone else's posts untouched, and add any new ones.
+        // Pin them while this profile is open: the next refresh wipes store.posts down to pinned
+        // ids, and loadFeed only fetches people you follow, so a stranger's posts (opened from
+        // Explore) would vanish and the profile would read "0 Posts". Own posts come back via
+        // loadFeed's own-posts fetch and need no pin.
+        if (!isMe) { pinnedPostIds.clear("profile"); mapped.forEach(p => pinnedPostIds.add(p.id, "profile")); }
         setStore(prev => {
           const freshIds = new Set(mapped.map(p => p.id));
           const others = (prev.posts || []).filter(p => p.userId !== userId || !freshIds.has(p.id));
@@ -16815,7 +16829,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       } catch (e) { /* offline / RLS — profile falls back to feed page + history items */ }
       finally { if (alive) setPostsSettled(true); }
     })();
-    return () => { alive = false; };
+    return () => { alive = false; pinnedPostIds.clear("profile"); };
   }, [userId, token]);
   // Foreign-profile top lifts: personal_records is readable by an accepted follower or on a
   // public profile (RLS: owner OR profile_is_public(user_id) OR follower — the "private account"

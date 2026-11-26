@@ -3549,6 +3549,24 @@ Mo forwarded Muse's list unread with "check these are real bugs". Measured each 
   "UTC timestamps" were real `created_at` values (the noon-stamped one came from the pre-Nov-23
   guest migration) and `timeAgo` already clamps at 0.
 
+## ★ A STRANGER'S PROFILE EMPTIED ON REFRESH (Mo, Nov 26 2026)
+**Symptom:** open an account from Explore, pull to refresh, and it reads "0 Posts / hasn't posted
+yet".
+
+**Cause:** ProfileScreen merges that person's posts into `store.posts`. The refresh then wipes
+`store.posts` down to PINNED ids, and since Nov 23 `loadFeed` only fetches people you follow. So a
+followed or own profile came back and a stranger's did not.
+
+**Fix:** the profile pins the posts it fetched while it is open (owner `"profile"`).
+
+**`pinnedPostIds` is now an owner-keyed object, not a flat Set** (`add(id, owner)`, `clear(owner)`,
+`has(id)`). The Explore feed clears its own pins on unmount. With one Set, closing Explore would
+have unpinned a profile still on screen. The default owner is `"explore"`, so DiscoverScreen is
+unchanged.
+
+Guard: `pw_profilerefresh`, red-proofed (count=0 without the pin). Note that the post card shows the
+USERNAME, not the display name, so match the author on the handle.
+
 ## ★ THE FIRST TIME AN EXERCISE IS LOGGED IS NOT A PR (Mo, Nov 26 2026)
 It sets the baseline. Counting it made a new user's first week read "11 PRs" for nothing special.
 One rule, applied at every place a PR is decided:
