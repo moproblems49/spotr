@@ -3517,8 +3517,8 @@ Mo forwarded Muse's list unread with "check these are real bugs". Measured each 
   running-max log (weight / e1RM / single-set volume, first time logged counts — the finish-time
   rule), keyed by sid, rebuilt from HISTORY because stored sids go stale when the guest migration
   re-mints them. History's per-exercise PR tags, the profile's unposted cards, the new-post picker,
-  GroupDetail's picker and Friends Activity's own row all read it; Friends Activity counts one per
-  exercise per session, i.e. exactly the tags History draws. `sessionPRNames` has no UI caller
+  GroupDetail's picker and Friends Activity's own row all read it; Friends Activity counts the
+  distinct lifts among the tags History draws. `sessionPRNames` has no UI caller
   left. NOT changed: EditHistoryModal still rebuilds an edited post's card from the stored-max
   rule, and friends' rows still count `personal_records.updated_at`. Guard: `pw_weeklyprs`, now
   seeded through `workout_history` and asserting History == Friends == 4 (old code: 3 and 3,
@@ -3531,6 +3531,20 @@ Mo forwarded Muse's list unread with "check these are real bugs". Measured each 
   `PhotoPlaceholder` ("Photo couldn't load") on error; it gates its own src through
   `safeMediaSrc` so `sim_mediasrc` stays structural. Guard: `pw_postimage` (held / 404 / released
   image; red-proofed at 4 failures).
+- **★ THE COLD-CONTEXT AUDIT (run before publishing) FOUND TWO MORE, BOTH FIXED.** (1) The start
+  still jumped at MIDNIGHT: pre-dawn the anchor is yesterday's 07:00, but days were counted back
+  from NOW's date, so 00:00 added a day (74 -> 78, battery +3 with no rest). Counted from the wake
+  date now; `sim_bbstart` §5, red-proofed. (2) The first cut summed per-session tags for Friends
+  Activity, which un-did the 57-PRs dedupe (Monday + Thursday bench = 2). It counts DISTINCT lifts
+  among the tags now; `pw_weeklyprs` asserts the distinct names History tags equal the count, and
+  that an old PR keeps its tag after a later session beats it. Also: the captcha widget took its
+  dark/light from the theme ID (`=== "dark"`), so every dark theme but Dark got a light widget — it
+  reads `C.isDark`. **Known and left:** Wrapped and the Weekly Review still count the STORED
+  prEvents log (same rule, different source — they diverge after edits/imports); a null
+  `profiles.strength_sex` now beats a local choice whose PATCH has not landed (deliberate: falling
+  back to local brought back the old false "male"; the 20s edit window covers the common case);
+  `reconstructPrEvents` treats a legacy `done:undefined` set with reps as done where `workingDone`
+  does not (prod has none).
 - **NOT bugs:** the weekly "1/3" vs 2 sessions is days vs sessions (labelled so since Nov 23); the
   "UTC timestamps" were real `created_at` values (the noon-stamped one came from the pre-Nov-23
   guest migration) and `timeAgo` already clamps at 0.

@@ -407,7 +407,9 @@ function computeBodyBattery(store) {
       for (let d = 0; d < 14; d++) {
         // History keys are LOCAL dates — toISOString() is UTC and shifts a day for
         // evening users west of Greenwich, which made "trained today" read as yesterday.
-        const k = dateKeyOf(new Date(now.getTime() - d * 864e5));
+        // Counted back from the WAKE date, not today's: pre-dawn the anchor is still yesterday's
+        // wake, and counting from now's date added a day at 00:00 (start 74 -> 78 at midnight).
+        const k = dateKeyOf(new Date(wakeMs_ - d * 864e5));
         const before = Object.values((store.history || {})[k] || {}).some(sess => {
           const end = Number.isFinite(sess?.finishedAt) ? sess.finishedAt : new Date(k + "T12:00:00").getTime();
           return end < wakeMs_;

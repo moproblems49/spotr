@@ -32,12 +32,15 @@ const dk = daysAgo => { const d = new Date(Date.now() - daysAgo * 864e5);
 //   dk6 : Lift 0 230x5 (PR), Lift 1 135x5 (first ever -> PR)
 //   dk3 : Lift 0 220x5 (no PR), Lift 1 140x5 (PR)
 //   dk2 : Lift 2 315x3 (first ever -> PR)
-// => 4 PRs this week, one per exercise per session. Old code: own row 3 (distinct names from the
-// log), History 3 (top set within 1% of today's best) — equal to each other and both wrong.
+// => History tags 4 (one per exercise per session); Friends Activity counts the distinct lifts
+// among those tags, 3 (Lift 1 improved twice = one lift that improved — the 57-PRs dedupe rule).
+// Old History tagged a session only while its top set sat within 1% of TODAY's best, so Lift 0's
+// month-old PR lost its tag once beaten, and Lift 1's first session was never tagged.
 const LIFETIME_PRS = {};
 for (let i = 0; i < 20; i++) LIFETIME_PRS[`Lift ${i}`] = 100 + i;
 const prEvents = [];
-const EXPECTED_WEEK_PRS = 4;
+const EXPECTED_WEEK_PRS = 3;   // distinct lifts
+const EXPECTED_WEEK_TAGS = 4;  // per-session tags
 const set = (w, r) => ({ weight: String(w), reps: String(r), done: true, type: "normal" });
 let n = 0;
 const row = (daysAgo, exs) => ({ id: `aaaaaaaa-0000-4000-8000-00000000000${++n}`, user_id: ME, day_name: `Day ${n}`,
@@ -143,8 +146,11 @@ const hist = await page.evaluate((weekAgoKey) => {
 const weekKey = dk(7);
 const histWeek = hist.all.filter(x => x.d > weekKey);
 check("2a. History rendered the seeded sessions", hist.groups === 4, `groups ${hist.groups}`);
-check(`2b. History tags ${EXPECTED_WEEK_PRS} PRs this week`, histWeek.length === EXPECTED_WEEK_PRS, JSON.stringify(hist.all));
-check("2c. History and Friends Activity agree", histWeek.length === myPrs, `history ${histWeek.length} vs friends ${myPrs}`);
+check(`2b. History tags ${EXPECTED_WEEK_TAGS} PRs this week`, histWeek.length === EXPECTED_WEEK_TAGS, JSON.stringify(hist.all));
+const histDistinct = new Set(histWeek.map(x => x.name)).size;
+check("2c. History and Friends Activity agree (distinct lifts tagged == the count)", histDistinct === myPrs, `history ${histDistinct} vs friends ${myPrs}`);
+check("2e. History tags the first-ever session of a lift (Lift 1, 6 days ago)", hist.all.some(x => x.d === dk(6) && x.name === "Lift 1"), JSON.stringify(hist.all));
+check("2f. a PR keeps its tag after a later session beats it (Lift 0, 30 days ago)", hist.all.some(x => x.d === dk(30) && x.name === "Lift 0"), JSON.stringify(hist.all));
 check("2d. a session that set no PR has no tag (Lift 0 220x5)", !hist.all.some(x => x.d === dk(3) && x.name === "Lift 0"), JSON.stringify(hist.all));
 // (An "and it is not the lifetime count" check used to sit here. It PASSED against the broken
 // build — the lifetime map picks up an extra entry at boot, so the buggy number was 21 while the

@@ -578,7 +578,7 @@ export default function AuthScreen({ onAuth, onGuest, C, initialMode = "welcome"
           </div>
         )}
 
-        {needCaptcha && <CaptchaWidget onToken={onCaptchaToken} resetKey={captchaReset} theme={theme}/>}
+        {needCaptcha && <CaptchaWidget onToken={onCaptchaToken} resetKey={captchaReset} theme={C.isDark ? "dark" : "light"}/>}
         <button onClick={mode === "reset" ? handleReset : handleSubmit} disabled={loading} style={{
           width:"100%", background:loading ? C.sub : C.text, color:C.bg,
           border:"none", borderRadius:12, padding:"15px",

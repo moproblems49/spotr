@@ -61,5 +61,14 @@ check("4. four rest days -> 82", rested.charge0 === 82, `got ${rested.charge0}`)
 const none = computeBodyBattery({ history: {} });
 check("4b. no history at all -> 82", none.charge0 === 82, `got ${none.charge0}`);
 
+// 5. Midnight must not move it either: pre-dawn the anchor is still yesterday's 07:00 wake, so
+// counting days back from NOW's date added one at 00:00 (audit, Nov 25: 74 -> 78, +3 battery).
+NOW = at(23, 59);
+const lateNight = computeBodyBattery(withSess(yest));
+NOW = at(0, 30, 1);
+const afterMidnight = computeBodyBattery(withSess(yest));
+check("5a. Est. start does not change at midnight", afterMidnight.charge0 === lateNight.charge0, `${lateNight.charge0} -> ${afterMidnight.charge0}`);
+check("5b. the battery does not rise across midnight with no rest data", afterMidnight.level <= lateNight.level, `${lateNight.level} -> ${afterMidnight.level}`);
+
 console.log(fails ? `FAIL ${fails}` : "PASS all");
 process.exit(fails ? 1 : 0);

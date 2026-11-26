@@ -1050,13 +1050,14 @@ function FriendsActivityScreen({ store, currentUserId, C, unit, onBack, onUserCl
     //
     // ★ AND IT MUST AGREE WITH HISTORY'S PR BADGES (Muse, Nov 24: "11 PRs" here, 3 badges there).
     // Both now read prsBySession — one definition, rebuilt from history — and this counts exactly
-    // what History badges: one per exercise per session inside the window. The stored prEvents
-    // log is not used here because its sids go stale when a session is re-keyed.
-    let prsThisWeek = 0;
+    // what History tags, deduped by exercise (a bench PR on Monday and again on Thursday is one
+    // lift that improved — the rule the 57-PRs fix set). The stored prEvents log is not used here
+    // because its sids go stale when a session is re-keyed.
+    const prNamesThisWeek = new Set();
     for (const v of prsBySession(history).values()) {
-      if (v.date && dateFromKey(v.date).getTime() >= weekAgo) prsThisWeek += v.names.size;
+      if (v.date && dateFromKey(v.date).getTime() >= weekAgo) v.names.forEach(n => prNamesThisWeek.add(n));
     }
-    return { sessions, volume: Math.round(volume), streak: ws.count, prs: prsThisWeek, loaded:true };
+    return { sessions, volume: Math.round(volume), streak: ws.count, prs: prNamesThisWeek.size, loaded:true };
   }
 
   // Compute stats for one friend from their fetched workout_history rows.
