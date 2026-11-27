@@ -1,4 +1,4 @@
-// v178091717097
+// v178091717098
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -7866,6 +7866,9 @@ function SwipeToDismissRow({ onDismiss, C, children }) {
       if (hintRef.current) hintRef.current.style.transition = "";
     }, 200);
     setArmed(false);
+    // A drag that became a swipe must not also count as a tap on the row (rows open a post or a
+    // profile on tap), so a click arriving right after one is swallowed below.
+    if (g.active) g.swipedAt = Date.now();
     g.active = false; g.decided = false; g.dx = 0;
     if (committed) { haptic("delete"); onDismiss(); }
   };
@@ -7876,6 +7879,7 @@ function SwipeToDismissRow({ onDismiss, C, children }) {
         <Icon name="trash" size={17} color="#fff" strokeWidth={2.4}/>
       </div>
       <div ref={nodeRef} onTouchStart={start} onTouchMove={move} onTouchEnd={end} onTouchCancel={end}
+        onClickCapture={e => { if (g.swipedAt && Date.now() - g.swipedAt < 400) { e.stopPropagation(); e.preventDefault(); } }}
         style={{ position:"relative", background:C.bg, touchAction:"pan-y" }}>
         {children}
       </div>
@@ -9373,7 +9377,10 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
               <PostImage src={post.imageData} C={C} maxHeight={380} rounded/>
             </div>
           : <PostImage src={post.imageData} C={C} maxHeight={500}/>
-      ) : (post.type === "photo" || post.type === "form_check") ? (
+      ) : (post.type === "photo" || post.type === "form_check") && !(post.caption || "").trim() ? (
+        // A "photo" post with no image is a TEXT post: New Post writes type "photo" for a
+        // caption-only share too (Muse, Nov 27: a gray broken-image tile under a quote). The
+        // placeholder is for a post that has nothing else to show, not for one that is all words.
         <PhotoPlaceholder C={C}/>
       ) : null}
 
@@ -16821,7 +16828,9 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
         if (!isMe) { pinnedPostIds.clear("profile"); mapped.forEach(p => pinnedPostIds.add(p.id, "profile")); }
         setStore(prev => {
           const freshIds = new Set(mapped.map(p => p.id));
-          const others = (prev.posts || []).filter(p => p.userId !== userId || !freshIds.has(p.id));
+          // Dedupe on the post id alone: a post can only be one post, whoever store.posts thinks
+          // wrote it, and keying on userId too let the same id be held twice.
+          const others = (prev.posts || []).filter(p => !freshIds.has(p.id));
           // Posts of this user not returned by the server (e.g. still syncing) are kept too.
           const kept = others;
           return { ...prev, posts: [...kept, ...mapped] };
@@ -16884,6 +16893,11 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
       return hr ? { ...p, workout: { ...p.workout, hrSummary: hr } } : p;
     }), [store.posts, userId, sessionHr]);
   const posts = [...ownPosts, ...profileHistoryItems].sort((a, b) => b.createdAt - a.createdAt);
+  // Your own header says WORKOUTS, so it counts workouts only — posted workout cards plus the
+  // unposted sessions above. It counted every card in `posts`, so a text or photo post read as a
+  // workout (Muse, Nov 27: "Workouts 5" beside a History total of 4). A foreign profile's tile
+  // says Posts and keeps counting all of them.
+  const headerCount = isMe ? posts.filter(p => p.type === "workout").length : posts.length;
   const avatarRef = useRef(null);
   const coverRef = useRef(null);
   const [coverDraft, setCoverDraft] = useState(null);   // dataURL pending position+upload
@@ -17191,7 +17205,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
                 a plain div with none, so its number/label sat 4px higher than theirs (measured:
                 the inner number's top was 180 here vs 184 in the buttons). Not a device quirk,
                 a real padding mismatch, reproducible in any browser. */}
-            <div style={{ padding:"4px 8px" }}><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={posts.length} duration={500} settled={postsSettled}/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (posts.length === 1 ? "Workout" : "Workouts") : (posts.length === 1 ? "Post" : "Posts")}</div></div>
+            <div style={{ padding:"4px 8px" }}><div style={{ fontSize:17, fontWeight:700, color:C.text, fontFamily:MONO, letterSpacing:-0.5 }}><AnimatedNumber value={headerCount} duration={500} settled={postsSettled}/></div><div style={{ fontSize:12, color:C.sub }}>{isMe ? (headerCount === 1 ? "Workout" : "Workouts") : (headerCount === 1 ? "Post" : "Posts")}</div></div>
             {/* No `settled` here — these read store.users, not the posts fetch postsSettled tracks,
                 and loadUserData writes `users` with EMPTY followers/following arrays first, then
                 backfills the real counts several awaits later (two separate setStore calls) — on
@@ -19536,9 +19550,11 @@ function AppInner() {
                 break;
               case "kudos":
               case "comments":
-                // No single-post route exists; the Activity overlay lists these. Opening it
-                // marks them seen, clearing the badge.
+                // Activity first (opening it marks these seen, clearing the badge), then the post
+                // on top of it, so Back from the post lands on Activity. The push carries the
+                // post id; presentActivity clears postView, and the later set wins in the batch.
                 presentActivity();
+                if (data.postId && POST_ID_RE.test(String(data.postId))) setPostView({ id: String(data.postId), post: null });
                 break;
               case "streak":
                 dismissOverlays();
@@ -23892,10 +23908,20 @@ function AppInner() {
                 <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:6 }}>No activity yet</div>
                 <div style={{ fontSize:13, lineHeight:1.5 }}>Follows, likes, comments, replies and mentions all land here.</div>
               </div>
-            ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => (
+            ) : visible.slice(0, ACTIVITY_RENDER_CAP).map((ev, i) => {
+              // TAPPING A ROW OPENS WHAT IT IS ABOUT (Mo, Nov 27). A row about a post (kudos,
+              // comment, mention, a like on my comment, a reply) opens that post over Activity, so
+              // Back returns here. A row with no post (a follow, a coach code) opens the person.
+              // The Accept/Decline/Dismiss buttons stop propagation so they keep their own job.
+              const rowPostId = ev.post?.id || ev.myComment?.postId || ev.comment?.postId || null;
+              const openRow = rowPostId ? () => setPostView({ id: String(rowPostId), post: null })
+                : ev.user ? () => presentProfile(ev.user.id) : null;
+              return (
               <SwipeToDismissRow key={keyOfEvent(ev)} C={C} onDismiss={() => dismissActivity(keyOfEvent(ev))}>
-              <div className="seshd-content-fade" style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}` }}>
-                <Avatar user={ev.user} size={40} C={C} onClick={ev.user ? () => presentProfile(ev.user.id) : undefined}/>
+              <div className="seshd-content-fade" data-activity-row={ev.type} role={openRow ? "button" : undefined}
+                onClick={openRow ? () => { haptic("tap"); openRow(); } : undefined}
+                style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, cursor: openRow ? "pointer" : "default" }}>
+                <Avatar user={ev.user} size={40} C={C} onClick={ev.user ? (e) => { e?.stopPropagation?.(); presentProfile(ev.user.id); } : undefined}/>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, color:C.text, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden", lineHeight:1.35 }}>
                     {/* A coach redemption is the one row that may have no known actor — it is
@@ -23923,7 +23949,7 @@ function AppInner() {
                     here would be the dominant bug class in this app (it would look approved and
                     be pending again on the next foreground). */}
                 {ev.type === "follow_request" && (
-                  <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                  <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, flexShrink:0 }}>
                     <button onClick={() => handleFollowRequest(ev.user.id, true)}
                       style={{ background:C.primary, color:C.onPrimary, border:"none", borderRadius:RADIUS.pill, padding:"6px 12px", fontSize:12, fontWeight:700, fontFamily:F, cursor:"pointer" }}>Accept</button>
                     <button onClick={() => handleFollowRequest(ev.user.id, false)}
@@ -23934,11 +23960,12 @@ function AppInner() {
                 {/* Dismiss. Nothing is deleted server-side — the row is a computation over your
                     posts, and the kudos or comment itself still exists on the post. This only
                     says "stop showing me this one", and the header offers it back. */}
-                <button onClick={() => dismissActivity(keyOfEvent(ev))} aria-label="Dismiss" className="seshd-hit"
+                <button onClick={(e) => { e.stopPropagation(); dismissActivity(keyOfEvent(ev)); }} aria-label="Dismiss" className="seshd-hit"
                   style={{ background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:15, lineHeight:1, padding:"6px 2px 6px 6px", flexShrink:0 }}>×</button>
               </div>
               </SwipeToDismissRow>
-            ))}
+              );
+            })}
           </div>
         );
             })()}

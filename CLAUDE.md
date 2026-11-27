@@ -3549,6 +3549,30 @@ Mo forwarded Muse's list unread with "check these are real bugs". Measured each 
   "UTC timestamps" were real `created_at` values (the noon-stamped one came from the pre-Nov-23
   guest migration) and `timeAgo` already clamps at 0.
 
+## ★ MUSE'S THIRD PASS + TAPPABLE NOTIFICATIONS (Nov 27 2026): TWO REAL, TWO NOT
+Checked against the Muse account's live rows before touching anything.
+- **REAL: a text-only post drew a gray broken-image tile.** New Post writes `type:"photo"` for a
+  caption-only share too, and PostCard drew `PhotoPlaceholder` for any photo post with no image.
+  The placeholder now shows only when the post has no caption either. No schema change (posts.type
+  has no CHECK constraint; checked).
+- **REAL: your own "Workouts" counted every card**, so that text post made it 5 beside History's 4.
+  The header counts `type === "workout"` cards on your own profile; a foreign profile still says
+  Posts and counts all of them.
+- **NOT A BUG: share card 11,134 / 12,087 vs 12,785.** The PNG is built from `volumeRaw`, the same
+  number the feed card uses (12,785 on the server row). The two lower numbers are frames of the
+  finish screen's 1.1s count-up (`AnimatedNumber animateOnMount`).
+- **NOT A BUG: Friends Activity PRs = 0.** All six lifts in that session were logged for the first
+  time, and the first-log rule (Nov 26) makes a first log a baseline. pr_events has no rows for it.
+- **Activity rows are tappable now (Mo).** A row about a post (kudos, comment, mention, a like on
+  my comment, a reply) opens that post OVER Activity (z70 over z40), so Back returns to the list; a
+  follow/coach row opens the person. Accept/Decline/Dismiss and the avatar stop propagation, and
+  `SwipeToDismissRow` swallows a click within 400ms of a swipe. A tapped kudos/comment PUSH opens
+  Activity and then the post on top (the push already carried `postId`).
+- **Also fixed: ProfileScreen's merge deduped only posts it believed belonged to that profile**
+  (`p.userId !== userId || !freshIds.has(p.id)`), so a post id could be held twice. Dedupes on id
+  alone now. Found because the suite's stub returned my posts for another user's query.
+Guard: `pw_notiftap` (red-proofed: placeholder=1, count=3, no rows on the old build).
+
 ## ★ A STRANGER'S PROFILE EMPTIED ON REFRESH (Mo, Nov 26 2026)
 **Symptom:** open an account from Explore, pull to refresh, and it reads "0 Posts / hasn't posted
 yet".
