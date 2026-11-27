@@ -5751,6 +5751,21 @@ because an overlay does not remove the DOM beneath it — the confirm sheet was 
 whole time and I reported Finish as broken three times before asking what was actually PAINTED.
 A guard that greps `innerText` for a word the covered screen also contains is worth nothing.
 
+## Sweep #10 (Nov 27, 2026): clean, and the first real activation numbers
+**Postgres: zero errors** (83 log lines in 24h, all LOG; the 6 `08P01` are realtime replication
+reconnects, not app errors). Auth: two `email_not_confirmed` 400s from one new signup a minute apart,
+then a confirmed sign-in. That is the Nov 23 "Resend confirmation" path doing its job.
+`client_errors` 103, newest Nov 15, none in 7 days. Storage 28 objects / 31 MB, **0 orphans**.
+Orphaned `member_ids` 0. pg_net tripwire correct (not exposed / 0 wrappers / guard 1).
+`code_redeem_failures` 0. Advisors: nothing new beyond the documented deliberate set, plus two
+leftover backup tables (`demo_backup_20260918`, `demo_shift_backup_20260913`) that can be dropped
+whenever. The 3 `reports` rows are all test reports (2 from `seshdreview`, 1 from Mo), still `open`.
+**Activation (step 7), still under the ~20-signup threshold, so a baseline, not a verdict:** 5
+non-staff signups in 12 weeks, 4 of them since Nov 16. 1 logged a workout within 7 days (alexlifts,
+the Muse test account, so arguably not organic). The other 4 confirmed their email, signed in once,
+logged nothing, followed nobody and never came back. With n=4 that is not a pattern, but it is the
+number to watch: every organic signup so far stopped after the first session.
+
 ## ★ Sweep #9 (Sep 6, 2026) — ZERO Postgres errors, and the push fix is confirmed by USE
 **Postgres errors: none at all.** 49 log lines in 24h, every one severity `LOG` — no ERROR, no
 FATAL, no WARNING. The trend across sweeps is 1,650 -> 953 -> 83 -> 58 -> 31 -> 9 -> 2 -> **0**.
