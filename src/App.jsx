@@ -1,4 +1,4 @@
-// v178091717098
+// v178091717099
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -23912,13 +23912,15 @@ function AppInner() {
               // TAPPING A ROW OPENS WHAT IT IS ABOUT (Mo, Nov 27). A row about a post (kudos,
               // comment, mention, a like on my comment, a reply) opens that post over Activity, so
               // Back returns here. A row with no post (a follow, a coach code) opens the person.
-              // The Accept/Decline/Dismiss buttons stop propagation so they keep their own job.
+              // The Accept/Decline/Dismiss buttons stop propagation so they keep their own job. No
+              // role="button" on the row: it CONTAINS buttons, and a button inside a button gives
+              // both the same accessible name (pw_activityevents' "Accept" matched two).
               const rowPostId = ev.post?.id || ev.myComment?.postId || ev.comment?.postId || null;
               const openRow = rowPostId ? () => setPostView({ id: String(rowPostId), post: null })
                 : ev.user ? () => presentProfile(ev.user.id) : null;
               return (
               <SwipeToDismissRow key={keyOfEvent(ev)} C={C} onDismiss={() => dismissActivity(keyOfEvent(ev))}>
-              <div className="seshd-content-fade" data-activity-row={ev.type} role={openRow ? "button" : undefined}
+              <div className="seshd-content-fade" data-activity-row={ev.type}
                 onClick={openRow ? () => { haptic("tap"); openRow(); } : undefined}
                 style={{ animationDelay:`${Math.min(i * 0.03, 0.25)}s`, display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.divider}`, cursor: openRow ? "pointer" : "default" }}>
                 <Avatar user={ev.user} size={40} C={C} onClick={ev.user ? (e) => { e?.stopPropagation?.(); presentProfile(ev.user.id); } : undefined}/>
