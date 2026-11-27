@@ -83,6 +83,23 @@ check("[control] the text post renders on my profile", prof.quote);
 check("a text-only post draws no broken-image tile", prof.placeholders === 0, `placeholders=${prof.placeholders}`);
 check("Workouts counts workouts only (1 posted + 1 unposted = 2)", prof.count === "2", `count=${prof.count}`);
 
+// A text post reads like Threads: the words are the body under the header, larger, not a
+// "username caption" line under the action row.
+const tp = await page.evaluate(() => {
+  const body = document.querySelector("[data-text-post-body]");
+  if (!body) return { body: false };
+  let card = body.parentElement;
+  while (card && !card.querySelector('button[aria-label="Share"]')) card = card.parentElement;
+  const share = card?.querySelector('button[aria-label="Share"]');
+  const dup = [...(card?.querySelectorAll("div") || [])].filter(d => d !== body && d.children.length && /The only bad workout/.test(d.textContent) && !d.contains(body)).length;
+  return { body: /The only bad workout/.test(body.textContent), size: parseFloat(getComputedStyle(body).fontSize),
+           above: share ? body.getBoundingClientRect().bottom <= share.getBoundingClientRect().top : false, dup };
+});
+check("a text post renders its words as the post body", tp.body, JSON.stringify(tp));
+check("...at body size (>=16px), not caption size", tp.size >= 16, `size=${tp.size}`);
+check("...above the action row", tp.above);
+check("...and not repeated as a caption line below it", tp.dup === 0, `dup=${tp.dup}`);
+
 // ── 3: Activity rows open what they are about ──
 await page.getByLabel("Activity").click();
 await page.waitForTimeout(900);

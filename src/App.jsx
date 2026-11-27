@@ -1,4 +1,4 @@
-// v178091717099
+// v178091717100
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9203,6 +9203,7 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
   const displayCaption = postCode
     ? post.caption.replace(/\s*·?\s*Try my (program|workout):?\s*(IGNITE-[A-Z0-9]{4,8}|WO-[A-Z0-9]{4,8})/i, "").trim()
     : (post.caption || "");
+  const isTextPost = !post.imageData && !post.workout && !post.run && !!displayCaption.trim();
   const [showCmts, setShowCmts] = useState(false);
   const [cmtText, setCmtText] = useState("");
   const [mentionQuery, setMentionQuery] = useState(null); // active @query string, or null
@@ -9383,6 +9384,16 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
         // placeholder is for a post that has nothing else to show, not for one that is all words.
         <PhotoPlaceholder C={C}/>
       ) : null}
+
+      {/* A TEXT POST READS LIKE THREADS (Mo, Nov 27): with no photo, card or run, the words ARE the
+          post, so they sit under the header as the body, larger, instead of the "username caption"
+          line under the action row, which made a quote look like a comment on nothing. */}
+      {isTextPost && (
+        <div data-text-post-body style={{ padding:"2px 16px 6px", fontSize:16, lineHeight:1.45, color:C.text,
+          whiteSpace:"pre-wrap", overflowWrap:"anywhere" }}>
+          {displayCaption}
+        </div>
+      )}
 
       {post.type === "run" && post.run && (
         <div style={{ margin:"0 14px", background:"linear-gradient(135deg,#0ea5e9,#0284c7)", borderRadius:12, padding:"18px 18px" }}>
@@ -9586,7 +9597,7 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
 
       {/* Caption + comments */}
       <div style={{ padding:"2px 16px 14px" }}>
-        {displayCaption && (
+        {displayCaption && !isTextPost && (
           <div style={{ fontSize:13, color:C.text, lineHeight:1.45, marginBottom:5 }}>
             <span style={{ fontWeight:600, marginRight:6 }}>{user?.username}</span>
             {displayCaption}
