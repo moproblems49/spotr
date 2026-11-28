@@ -1,4 +1,4 @@
-// v178091717101
+// v178091717102
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -5560,7 +5560,7 @@ export function aiAuthHeaders() {
 }
 
 
-export { daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, muscleReadiness, markSettingsEdit, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
+export { trainedForAWeek, daysSinceMuscleTrained, computeBodyBatteryTimeline, computeBodyBattery, freshRecovery, muscleReadiness, markSettingsEdit, trainingLoadRatio, strengthScoreHistory, readRecoveryFrom, recoveryVerdict, postWorkoutPayload, epley1RM, calc1RM, getSetPRTypes, suggestNextSet, detectDeloadNeeded, dominantSource, sessionVolume, workingDone, progSetCount, stripProgramPlug, sessionWins, topSet, alreadyWroteHealth, markWroteHealth, plateColor, readWorkoutHeartRate, attachWorkoutHr, backfillMissingHr, recoveryTimeHours, sb }; // for the sim harness — pure functions
 
 
 export { historySetsSummary, exerciseProgressed, getExerciseTrend, loadIncrement, parseRepRange } from "./engine/workout.js";
@@ -17481,7 +17481,7 @@ function ProfileScreen({ userId, store, setStore, onOpenCoach, currentUserId, on
               }}>
                 <span>Weekly Review</span>
                 <span style={{ fontSize:11, fontWeight:700, opacity:0.8 }}>
-                  {current ? (nTotal ? `${nDone}/${nTotal} targets done` : "ready") : "lands Sunday"}
+                  {current ? (nTotal ? `${nDone}/${nTotal} targets done` : "ready") : (store.weeklyReview || trainedForAWeek(store) ? "lands Sunday" : "after week one")}
                 </span>
               </button>
             );
@@ -18856,6 +18856,26 @@ function trainedInLastWeek(store) {
     return !isNaN(t) && t >= cutoff && Object.keys(store.history[d] || {}).length > 0;
   });
 }
+// A brand-new account got its first review on day one, written from a single session, and it then
+// read as a stale summary of the week still in progress (Muse, Nov 28). Mo's call: no review until
+// the person has been training for a week, i.e. their FIRST logged session is at least 7 days old.
+// Keys are local date keys, so compare local days (noon-anchored via dateFromKey) rather than
+// instants — a session logged at 23:00 seven days ago must count as seven days.
+function firstTrainingDayKey(store) {
+  let first = null;
+  for (const d of Object.keys(store.history || {})) {
+    if (!Object.keys(store.history[d] || {}).length) continue;
+    if (isNaN(dateFromKey(d).getTime())) continue;
+    if (first === null || d < first) first = d;
+  }
+  return first;
+}
+function trainedForAWeek(store, now = Date.now()) {
+  const first = firstTrainingDayKey(store);
+  if (!first) return false;
+  const days = Math.round((dateFromKey(dKey(new Date(now))).getTime() - dateFromKey(first).getTime()) / 864e5);
+  return days >= 7;
+}
 async function generateWeeklyReview(store, unit) {
   // Fresh recovery snapshot on native so the review can factor it in (no-op on web).
   try { const rec = await readRecovery(); if (rec) store.recovery = rec; } catch (e) {}
@@ -18974,7 +18994,7 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
         {reviewStatus !== "generating" && !review && (
           <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
             <svg width="44" height="62" viewBox="0 0 40 56" style={{ display:"block", margin:"2px auto 10px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
-            Your first weekly review lands on Sunday. Train at least once this week and it'll be waiting when you open the app.
+            Your first weekly review lands on the Sunday after your first full week of training. Keep logging and it'll be waiting when you open the app.
           </div>
         )}
         {review && review.stats && (() => {
@@ -19151,6 +19171,7 @@ function AppInner() {
     const wk = weekKeyFor();
     if (store.weeklyReview?.weekKey === wk) return;   // this week's review already exists
     if (!trainedInLastWeek(store)) return;            // inactive week → save the API call
+    if (!trainedForAWeek(store)) return;              // first week of training → no review yet
     const attemptKey = `${currentUserId}:${wk}`;
     if (reviewAttemptRef.current === attemptKey) return; // one attempt per app run
     reviewAttemptRef.current = attemptKey;

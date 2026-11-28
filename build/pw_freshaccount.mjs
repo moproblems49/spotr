@@ -127,7 +127,7 @@ const wr = await page.evaluate(() => {
   });
   return c.length ? c[c.length - 1].innerText : "";
 });
-check("[weekly review] zero-data copy, not an error state", /weekly review lands on Sunday/i.test(wr), JSON.stringify(wr.slice(0, 160)));
+check("[weekly review] zero-data copy, not an error state", /weekly review lands on the Sunday after your first full week/i.test(wr), JSON.stringify(wr.slice(0, 160)));
 check("[weekly review] no junk", wr.length > 0 && !JUNK.test(wr));
 
 // 4 — Body Battery on an account with no HealthKit and no workouts. It must say "Est. start"
