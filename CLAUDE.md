@@ -3570,6 +3570,18 @@ recomputed), `pw_explore` (<1m), `pw_sheets3` (review header), each red-proofed 
   on day one at all.
 - **NOT A BUG: Push A missing from Home.** It was never posted (a guest-migrated session); unposted
   workouts live in History and your profile, never the feed.
+- **★ THE WEEKLY REVIEW NOW WAITS FOR A WEEK OF TRAINING (Mo's answer to the open question).**
+  `trainedForAWeek` gates generation on the FIRST logged session being 7+ local days old (local
+  date keys compared at noon, so DST and a 23:00 session can't shift it). Guard: `sim_reviewgate`.
+- **★ AND THE AUDIT OF CLOSING THE EDIT SHEET EARLY FOUND THE NEW BUG IT CREATED.** `onClose` is
+  `setEditingHistory(null)`, which clears whatever edit sheet is open NOW. So the trailing
+  `onClose()` at the end of a background save tore down a SECOND sheet the user had opened in the
+  meantime, typing and all (measured in jsdom). The trailing calls are gone, and saves of the same
+  session are serialised through `_saveChain`, because the early close also removed the `saving`
+  guard that had stopped two PATCHes racing. `pw_edithistory` reopens the sheet mid-save and
+  asserts it survives (red-proofed). **When a callback closes "the" sheet, check what it closes
+  once there can be more than one.** The Explore strip tile now floors like the card, and a
+  malformed-key check in `sim_reviewgate` was made able to fail (`"0bad"` sorts before real keys).
 
 ## ★ MUSE'S THIRD PASS + TAPPABLE NOTIFICATIONS (Nov 27 2026): TWO REAL, TWO NOT
 Checked against the Muse account's live rows before touching anything.
