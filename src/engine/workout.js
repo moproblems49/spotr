@@ -9,6 +9,7 @@
 //
 // Pure and UI-free: no React, no theme, no DOM. Takes sessions/sets/stores in, returns numbers.
 import { workingDone, dKey, LBS_PER_KG, cvt } from "./core.js";
+import { isLiftExercise } from "./exercises.js";
 
 // Detect exercises where weight is loaded on ONE end of the bar only (T-bar row, landmine
 // variants). For these, the "bar" doesn't add resistance — the user enters total plate
@@ -48,7 +49,7 @@ function calc1RM(weight, reps) {
 // store.prs holds weight bests (synced); prsE1rm/prsVolume are additive, local-only extensions.
 function getSetPRTypes(store, exName, weight, reps, unit) {
   const w = parseFloat(weight), r = parseInt(reps);
-  if (!exName || !w || !r || w <= 0 || r < 1) return { types: [], wLbs: 0, e1rmLbs: 0, volLbs: 0 };
+  if (!exName || !w || !r || w <= 0 || r < 1 || !isLiftExercise(exName)) return { types: [], wLbs: 0, e1rmLbs: 0, volLbs: 0 };
   const wLbs = unit === "lbs" ? w : cvt(w, "kg", "lbs");
   const e1rmLbs = Math.round(epley1RM(wLbs, r, 12));
   const volLbs = wLbs * r;
@@ -67,7 +68,8 @@ function getSetPRTypes(store, exName, weight, reps, unit) {
 // Volume in the session's OWN unit (callers convert if they need to) — matches what every one of
 // these call sites was already doing with raw weights.
 function sessionVolume(sess) {
-  return (sess?.exercises || []).reduce((a, ex) => a + workingDone(ex.sets)
+  // Lifts only: a cardio row's minutes × distance and a plank's seconds are not pounds moved.
+  return (sess?.exercises || []).filter(ex => isLiftExercise(ex.name)).reduce((a, ex) => a + workingDone(ex.sets)
     .reduce((b, s) => b + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0), 0);
 }
 
@@ -92,11 +94,12 @@ function postWorkoutPayload(exercises, prs, prNames, unit = "lbs") {
     const maxLbs = cvt(Math.max(0, ...done.map(s => parseFloat(s.weight) || 0)), unit, "lbs");
     return {
       name: ex.name,
-      isPR: prNames ? prNames.has(ex.name) : (maxLbs > 0 && maxLbs >= ((prs || {})[ex.name] || 0) * 0.99),
+      isPR: !isLiftExercise(ex.name) ? false : prNames ? prNames.has(ex.name) : (maxLbs > 0 && maxLbs >= ((prs || {})[ex.name] || 0) * 0.99),
       sets: done.map(s => ({ w: parseFloat(s.weight) || 0, r: parseFloat(s.reps) || 0 })),
     };
   }).filter(ex => ex.sets.length > 0);   // an exercise with nothing logged isn't part of the card
-  return { exercises: out, volume: Math.round(out.reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0)) };
+  // The card still LISTS cardio and holds; it just doesn't add them to pounds moved.
+  return { exercises: out, volume: Math.round(out.filter(ex => isLiftExercise(ex.name)).reduce((a, ex) => a + ex.sets.reduce((b, s) => b + s.w * s.r, 0), 0)) };
 }
 
 
@@ -122,7 +125,7 @@ function historyMaxPRs(history, names) {
     Object.values(day || {}).forEach(w => {
       const wu = w?.unit || "lbs";
       (w?.exercises || []).forEach(ex => {
-        if (!ex?.name || !want.has(ex.name)) return;
+        if (!ex?.name || !want.has(ex.name) || !isLiftExercise(ex.name)) return;
         (ex.sets || []).forEach(s => {
           const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
           if (!done || s?.type === "warmup") return;
@@ -407,6 +410,7 @@ function exerciseProgressed(sessions, unit) {
 const STALL_WINDOW_DAYS = 21;
 
 function detectDeloadNeeded(store, exName, unit, repsTarget = null) {
+  if (!isLiftExercise(exName)) return { stalled: false };   // no plateau verdict on a run or a plank
   const sessions = getExerciseSessions(store, exName, 24);
   if (!sessions.length) return { stalled: false };
   const step = unit === "lbs" ? 5 : 2.5;
@@ -527,6 +531,7 @@ function getExerciseTrend(store, exName, unit, setIndex = 0, n = 4) {
 }
 
 function suggestNextSet(store, exName, repsTarget, unit, setIndex = 0) {
+  if (!isLiftExercise(exName)) return null;
   const last = getLastExerciseSession(store, exName);
   if (!last) return null;
 
@@ -790,7 +795,10 @@ function trainingLoadRatio(store, unit = "lbs") {
 // truth; otherwise the sets are listed in the order performed (capped, with a "+N" for the rest).
 // Takes LIVE-shape sets ({weight, reps}) and also tolerates {w, r}. Weights print in the
 // session's own unit, which is what the caller passes.
-function historySetsSummary(sets, unit = "lbs", cap = 4, cardio = false) {
+// `kind` is setKindOf's answer ("lift" | "cardio" | "timed"); `true` still means cardio.
+function historySetsSummary(sets, unit = "lbs", cap = 4, kind = false) {
+  const cardio = kind === true || kind === "cardio";
+  const timed = kind === "timed";
   const rows = (sets || []).map(s => ({
     w: parseFloat(s?.weight ?? s?.w) || 0,
     // Cardio stores DISTANCE in the reps field, and 3.1 mi is a real answer — parseInt would
@@ -806,6 +814,12 @@ function historySetsSummary(sets, unit = "lbs", cap = 4, cardio = false) {
     const one = (x) => [x.w > 0 ? `${fmtW(x.w)} min` : "", x.r > 0 ? `${fmtW(x.r)} ${dist}` : ""].filter(Boolean).join(" · ");
     const shown = rows.slice(0, cap).map(one);
     return shown.join(" / ") + (rows.length > cap ? ` +${rows.length - cap}` : "");
+  }
+  // A hold stores SECONDS in the reps field, with any added load in weight: "60s · 45s", or
+  // "25 lbs × 60s" for a weighted plank. Printing "0×60 reps" read as sixty reps at nothing.
+  if (timed) {
+    const one = (x) => `${x.w > 0 ? `${fmtW(x.w)} ${unit} × ` : ""}${x.r}s`;
+    return rows.slice(0, cap).map(one).join(" · ") + (rows.length > cap ? ` +${rows.length - cap}` : "");
   }
   const same = rows.every(x => x.w === rows[0].w && x.r === rows[0].r);
   if (same) {

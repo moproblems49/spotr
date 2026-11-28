@@ -472,6 +472,22 @@ function getMuscle(name) {
   return resolveMuscle(name);
 }
 
+// ★ WHAT A SET'S TWO NUMBERS MEAN. A set row always stores {weight, reps}, but only a LIFT means
+// load × repetitions. A cardio row stores minutes + distance, and a timed hold (plank) stores an
+// optional added load + SECONDS. Multiplying either as if it were a lift put "15 min × 1 mi" into
+// lifting volume and minted "Treadmill Run 15lbs" as a PR (Muse, Nov 28). Every volume, PR and
+// e1RM path asks this ONE question and skips anything that is not a lift.
+const TIMED_HOLDS = new Set(["Plank", "Side Plank", "Hollow Body Hold", "Wall Sit", "Dead Hang", "L-Sit"]);
+function setKindOf(name) {
+  if (!name) return "lift";
+  const m = getMuscle(name);
+  if (m === "Cardio" || m === "Yoga") return "cardio";
+  const e = getExEntry(name);
+  if (TIMED_HOLDS.has(e?.name || name)) return "timed";
+  return "lift";
+}
+function isLiftExercise(name) { return setKindOf(name) === "lift"; }
+
 function suggestExerciseSubstitutes(name, limit = 8) {
   if (!name) return [];
   // Exact match first; then fuzzy — many logged exercises are custom or named slightly
@@ -576,4 +592,4 @@ const _cleanMuscle = (m) => ({ RearDelts: "Rear Delts", LowerBack: "Lower Back" 
 // detail of the resolution above, and `_customExercises` in particular must only ever be written
 // through setCustomExerciseRegistry (an imported binding is read-only, so a direct assignment
 // from another module would be a hard error rather than a silent no-op).
-export { EXERCISE_DB, MUSCLE_REGION_MAP, EXERCISE_SECONDARIES, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, _regionsFor, _cleanMuscle };
+export { setKindOf, isLiftExercise, TIMED_HOLDS, EXERCISE_DB, MUSCLE_REGION_MAP, EXERCISE_SECONDARIES, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, _regionsFor, _cleanMuscle };

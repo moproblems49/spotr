@@ -1,4 +1,4 @@
-// v178091717103
+// v178091717104
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -24,7 +24,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { LBS_PER_KG, cvt, dKey, dateFromKey, dateKeyOf, devError, devWarn, freshRecovery, uid, workingDone } from "./engine/core.js";
 import { recoveryTimeHours, recoveryVerdict, computeBodyBattery, computeBodyBatteryTimeline, readRecoveryFrom } from "./engine/health.js";
 import { historySetsSummary, getExerciseSessions, topSet, calc1RM, detectDeloadNeeded, epley1RM, getLastExerciseSession, getSetPRTypes, historyMaxPRs, isOneSidedBarbell, matchesSession, postWorkoutPayload, progSetCount, progSetsReps, sessionPRNames, sessionVolume, sessionWins, suggestNextSet, trainingLoadRatio } from "./engine/workout.js";
-import { EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
+import { setKindOf, isLiftExercise, EXERCISE_DB, exEquipment, resolveMuscle, setCustomExerciseRegistry, _exNorm, canonicalExName, getExEntry, getMuscle, suggestExerciseSubstitutes, getExerciseSecondaries, MUSCLE_REGION_MAP, _regionsFor, _cleanMuscle } from "./engine/exercises.js";
 import { weeklyMuscleVolume, muscleReadiness, STRENGTH_LEVELS, _strengthDisplayFrac, strengthScoreHistory, computeStrengthScore, muscleStrength, daysSinceMuscleTrained } from "./engine/strength.js";
 import { plateColor, calcPlatesPerSide, generateWarmupSets } from "./engine/plates.js";
 import { storeStreak, recordTargetChange, getProgressInsights, reconstructPrEvents, prsBySession, dropFirstLogEvents } from "./engine/insights.js";
@@ -5284,6 +5284,7 @@ function buildCoachContext(store, unit) {
       let counted = false;
       for (const ex of (s.exercises || [])) for (const st of (ex.sets || [])) {
         if (st.type === "warmup") continue;
+        if (!isLiftExercise(ex.name)) { if (st.done) counted = true; continue; }
         const done = st.done === true || (st.done === undefined && parseFloat(st.reps) > 0);
         if (!done) continue;
         counted = true;
@@ -7649,7 +7650,7 @@ export function ExercisePickerSheet({ open, onClose, onSelect, C, recentExercise
 // (weight only), backspace, quick +/- steppers, and a Next button to jump weight→reps→
 // next set. Inputs are read-only so iOS never opens its own keyboard.
 // ═════════════════════════════════════════════════════════════════════════════
-function NumberPad({ field, value, hint, unit, isCardio, onInput, onStep, onNext, onClose, C }) {
+function NumberPad({ field, value, hint, unit, isCardio, isTimed, onInput, onStep, onNext, onClose, C }) {
   // SLIDE, DON'T BLINK. The pad used to appear and vanish on a frame, which reads as a glitch
   // rather than a panel — every sheet on iOS travels. `shown` flips on the first frame AFTER
   // mount so there is a from-state to transition out of; `closing` runs the same transition in
@@ -7671,9 +7672,11 @@ function NumberPad({ field, value, hint, unit, isCardio, onInput, onStep, onNext
       if (exitTimer.current) clearTimeout(exitTimer.current);
     };
   }, []);
-  const decimalAllowed = field === "weight"; // reps are whole numbers
-  // Reps step by 1; weight by 2.5 (the common micro-plate jump); cardio fields by 1.
-  const step = (field === "reps" || isCardio) ? 1 : 2.5;
+  // Reps are whole numbers — but on a CARDIO row the second field is DISTANCE, and 1.2 mi is a real
+  // answer. The blank key there turned 1.2 into 12 (Muse, Nov 28).
+  const decimalAllowed = field === "weight" || (isCardio && field === "reps");
+  // Reps step by 1; weight by 2.5 (the common micro-plate jump); cardio fields by 1; a hold by 5s.
+  const step = (isTimed && field === "reps") ? 5 : (field === "reps" || isCardio) ? 1 : 2.5;
   // Closing happens on pointerdown, which unmounts the pad synchronously — so the
   // browser's follow-up click lands on whatever is now under the finger (the bottom
   // tab bar → Profile). Swallow that one ghost click at the document capture level.
@@ -7708,7 +7711,7 @@ function NumberPad({ field, value, hint, unit, isCardio, onInput, onStep, onNext
   );
   const fieldLabel = isCardio
     ? (field === "weight" ? "MINUTES" : (unit === "kg" ? "KM" : "MI"))
-    : (field === "weight" ? (unit || "lbs").toUpperCase() : "REPS");
+    : (field === "weight" ? (unit || "lbs").toUpperCase() : (isTimed ? "SECONDS" : "REPS"));
   // Portaled to document.body: opened from inside the active-workout tab content, so without
   // a portal it renders nested under the tab-swipe track and inherits that ancestor's transform,
   // breaking this fixed bottom sheet's sizing (the "number pad zoomed out" bug).
@@ -8033,13 +8036,16 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
   // Cardio (running, biking) tracks duration + distance. Yoga tracks duration only.
   const exMuscle = useMemo(() => exName ? EXERCISE_DB.find(e => e.name === exName)?.muscle : null, [exName]);
   const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
+  // A timed hold (plank): optional added load + SECONDS in the reps field. Not a lift, so no
+  // e1RM, no plates, no PR — and the second box says "sec", not "reps".
+  const isTimed = !isCardio && setKindOf(exName) === "timed";
 
   // Barbell detection — show plate breakdown inline ONLY for true barbell-loaded movements.
   const isBarbell = isBarbellExercise(exName);
   const oneSided = exName ? isOneSidedBarbell(exName) : false;
   const barWeight = useMemo(() => getBarWeight(barType, unit), [barType, unit]);
   const platesBreakdown = useMemo(() => {
-    if (!isBarbell || isCardio) return null;
+    if (!isBarbell || isCardio || isTimed) return null;
     // Use the entered weight, or fall back to the grayed placeholder (previous weeks' weight)
     // so the plate diagram shows before you type, matching what the input displays.
     const effWeight = (set.weight !== "" && set.weight != null) ? set.weight : (prev?.w ?? null);
@@ -8184,7 +8190,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
         )}
 
         <div style={{ flex:1, textAlign:"center", fontSize:11, color:C.muted, fontFamily:MONO }}>
-          {isCardio ? (prev ? `${prev.w||"—"}m${prev.r?` · ${prev.r}`:""}` : "—") : (prev ? `${prev.w}×${prev.r}` : "—")}
+          {isCardio ? (prev ? `${prev.w||"—"}m${prev.r?` · ${prev.r}`:""}` : "—") : isTimed ? (prev ? `${Number(prev.w) > 0 ? `${prev.w}×` : ""}${prev.r}s` : "—") : (prev ? `${prev.w}×${prev.r}` : "—")}
         </div>
 
         {isCardio ? (
@@ -8219,7 +8225,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
                 style={{ width:"100%", background:isDone?`${C.green}10`:C.bg, border:`1.5px solid ${isDone?C.green+"30":C.divider}`, borderRadius:9, padding:"6px 18px 6px 6px", fontSize:15, fontWeight:700, color:isDone?doneGreenInk:C.text, textAlign:"center", outline:"none", fontFamily:MONO, boxSizing:"border-box", cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", lineHeight:"21px" }}>
                   {set.reps || <span style={{ color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{prev?.r||"0"}</span>}
                 </div>
-              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>reps</span>
+              <span style={{ position:"absolute", right:3, top:"50%", transform:"translateY(-50%)", fontSize:10, color:isDone?doneMutedInk:C.muted, fontWeight:600 }}>{isTimed ? "sec" : "reps"}</span>
             </div>
           </>
         )}
@@ -8241,6 +8247,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
             const r = set.reps || prev?.r || "0";
             return isCardio
               ? `Set ${si+1}, ${w} min${r !== "0" ? `, ${r} ${unit==="kg"?"km":"mi"}` : ""}`
+              : isTimed ? `Set ${si+1}, ${r} seconds${w !== "0" ? `, plus ${w} ${unit}` : ""}`
               : `Set ${si+1}, ${w} ${unit} times ${r} reps`;
           })()} style={{
           width:32, height:32, borderRadius:9, flexShrink:0,
@@ -8302,7 +8309,7 @@ const SetRow = memo(function SetRow({ set, si, prevIndex, ei, exName, store, uni
               {set.prTypes.map(t => PR_TYPE_LABEL_SHORT[t]).join("+")} PR
             </div>
           )}
-          {est1RM && !isCardio && set.type !== "warmup" && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
+          {est1RM && !isCardio && !isTimed && set.type !== "warmup" && <div style={{ fontSize:10, color:C.muted, fontFamily:MONO, background:C.divider, padding:"2px 6px", borderRadius:5 }}>e1RM {est1RM}</div>}
           {/* RPE tag — only for completed working sets. Tap to set/clear how hard the set felt
               (6-10, RPE = reps-in-reserve scale). Kept out of the main row to avoid clutter. */}
           {isDone && !isCardio && set.type !== "warmup" && (
@@ -9493,7 +9500,25 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
                       contrast, tabular mono so the columns line up down the card — and the reps
                       hang off it, dimmer and smaller. No boxes. */}
                   <div style={{ display:"flex", gap:14, flexWrap:"wrap", alignItems:"baseline" }}>
-                    {ex.sets.map((s,j) => (
+                    {ex.sets.map((s,j) => {
+                      // Cardio rows are minutes + distance and holds are seconds; derived from the
+                      // NAME so cards shared before Nov 28 (which printed "15×1") read right too.
+                      const kind = setKindOf(ex.name);
+                      if (kind !== "lift") {
+                        const big = kind === "cardio" ? (s.w > 0 ? `${s.w}` : `${s.r}`) : `${s.r}`;
+                        const bigUnit = kind === "cardio" ? (s.w > 0 ? "min" : (postUnit === "kg" ? "km" : "mi")) : "s";
+                        const tail = kind === "cardio"
+                          ? (s.w > 0 && s.r > 0 ? ` · ${s.r} ${postUnit === "kg" ? "km" : "mi"}` : "")
+                          : (s.w > 0 ? ` · +${cvt(s.w, postUnit, displayUnit)}` : "");
+                        return (
+                          <span key={j} data-set-kind={kind} style={{ fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1.3 }}>
+                            <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{big}</span>
+                            <span style={{ fontSize:10, fontWeight:600, color:C.sub, marginLeft:2 }}>{bigUnit}</span>
+                            {tail && <span style={{ fontSize:11, fontWeight:600, color:C.sub }}>{tail}</span>}
+                          </span>
+                        );
+                      }
+                      return (
                       <span key={j} style={{ fontFamily:MONO, fontVariantNumeric:"tabular-nums", lineHeight:1.3 }}>
                         {s.w > 0 ? (
                           <>
@@ -9508,7 +9533,8 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
                           </>
                         )}
                       </span>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -12428,7 +12454,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
       // tracked independently per exercise; a session can hit more than one category at once.
       const toLbs = w => unit === "lbs" ? w : cvt(w, "kg", "lbs");
       session.exercises.forEach(ex => {
-        if (!ex.name) return;
+        if (!ex.name || !isLiftExercise(ex.name)) return;   // minutes/distance/seconds are not a PR
         const doneSets = ex.sets.filter(s => s.done && s.weight && s.reps && s.type !== "warmup");
         if (!doneSets.length) return;
         const maxW = Math.max(0, ...doneSets.map(s => parseFloat(s.weight) || 0));
@@ -14237,6 +14263,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
           if (!ex || !set) return null;
           const exMuscle = ex.name ? getMuscle(ex.name) : null;
           const isCardio = exMuscle === "Cardio" || exMuscle === "Yoga";
+          const isTimed = setKindOf(ex.name) === "timed";
           const field = focusedSet.field || "weight";
           const curVal = field === "weight" ? set.weight : set.reps;
 
@@ -14277,7 +14304,8 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                 : null;
               base = prevSet ? (parseFloat(field === "weight" ? prevSet.w : prevSet.r) || 0) : 0;
             }
-            const next = field === "reps"
+            // Distance keeps one decimal (1.2 + 1 = 2.2, not 2); reps and seconds are whole.
+            const next = (field === "reps" && !isCardio)
               ? String(Math.max(0, Math.round(base + d)))
               : String(Math.max(0, Math.round((base + d) * 10) / 10));
             updateSet(focusedSet.ei, focusedSet.si, field === "weight" ? { weight: next } : { reps: next });
@@ -14305,6 +14333,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
               hint={hint}
               unit={unit}
               isCardio={isCardio}
+              isTimed={isTimed}
               onInput={onInput}
               onStep={onStep}
               onNext={onNext}
@@ -15058,7 +15087,7 @@ function WorkoutTracker({ store, setStore, onShareWorkout, onSaveWorkout, onSave
                           if (!doneSets.length) return null;
                           const isPR = sessPRs.has(ex.name);
                           const exMuscle = getMuscle(ex.name);
-                          const setsLabel = historySetsSummary(doneSets, sess.unit || "lbs", 4, exMuscle === "Cardio" || exMuscle === "Yoga");
+                          const setsLabel = historySetsSummary(doneSets, sess.unit || "lbs", 4, setKindOf(ex.name));
                           return (
                             <div key={j} style={{ display:"flex", alignItems:"center", gap:8 }}>
                               <div style={{ flex:1, minWidth:0 }}>
@@ -19774,7 +19803,7 @@ function AppInner() {
           const mult = (sess.unit || "lbs") === unit ? 1 : (sess.unit === "kg" ? LBS_PER_KG : 1 / LBS_PER_KG);
           for (const ex of (sess.exercises || [])) {
             const done = (ex.sets || []).filter(s => (s.done === true || (s.done === undefined && parseFloat(s.reps) > 0)) && s.type !== "warmup");
-            volume += done.reduce((a, s) => a + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0) * mult;
+            if (isLiftExercise(ex.name)) volume += done.reduce((a, s) => a + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0) * mult;
             const m = getMuscle(ex.name);
             if (m && done.length) muscleSets[m] = (muscleSets[m] || 0) + done.length;
           }
@@ -20187,7 +20216,9 @@ function AppInner() {
 
       // Convert PRs to app format { exerciseName: weightLbs }
       const appPrs = {};
-      (prs || []).forEach(pr => { appPrs[pr.exercise_name] = pr.weight_lbs; });
+      // A server row for a cardio/hold exercise is a pre-Nov-28 artifact ("Treadmill Run 15lbs"):
+      // minutes stored as pounds. Ignore it, and the prev-merges below drop the local copy too.
+      (prs || []).forEach(pr => { if (isLiftExercise(pr.exercise_name)) appPrs[pr.exercise_name] = pr.weight_lbs; });
 
       // Convert history to app format
       const appHistory = {};
@@ -20244,7 +20275,7 @@ function AppInner() {
         Object.values(day || {}).forEach(w => {
           const wu = w?.unit || "lbs";
           (w?.exercises || []).forEach(ex => {
-            if (!ex?.name) return;
+            if (!ex?.name || !isLiftExercise(ex.name)) return;
             (ex.sets || []).forEach(s => {
               const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
               if (!done || s?.type === "warmup") return;
@@ -20326,6 +20357,7 @@ function AppInner() {
               if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
             });
           }
+          Object.keys(merged).forEach(n => { if (!isLiftExercise(n)) delete merged[n]; });
           return merged;
         })(),
         // e1RM / volume PR baselines: rebuilt from history (there's no server copy), max-wins with
@@ -20338,6 +20370,7 @@ function AppInner() {
               if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
             });
           }
+          Object.keys(merged).forEach(n => { if (!isLiftExercise(n)) delete merged[n]; });
           return merged;
         })(),
         prsVolume: (() => {
@@ -20347,6 +20380,7 @@ function AppInner() {
               if (typeof w === "number" && w > (merged[name] || 0)) merged[name] = w;
             });
           }
+          Object.keys(merged).forEach(n => { if (!isLiftExercise(n)) delete merged[n]; });
           return merged;
         })(),
         history: appHistory,

@@ -7,7 +7,7 @@
 // the closure that included them dragged in the HealthKit auth chain and the API base URL, which
 // is how you know a "pure" function isn't.
 import { dateFromKey, dateKeyOf, workingDone, dKey, cvt } from "./core.js";
-import { getMuscle } from "./exercises.js";
+import { getMuscle, isLiftExercise } from "./exercises.js";
 import { calc1RM, epley1RM, sessionVolume } from "./workout.js";
 
 // Rebuild the dated PR-hit log (store.prEvents — what Wrapped/recaps count) from workout history
@@ -36,7 +36,7 @@ function reconstructPrEvents(history, cap = 300, opts = {}) {
   for (const sess of sessions) {
     const toLbs = w => sess.unit === "lbs" ? w : cvt(w, "kg", "lbs");
     for (const ex of sess.exercises) {
-      if (!ex?.name) continue;
+      if (!ex?.name || !isLiftExercise(ex.name)) continue;
       let bw = 0, be = 0, bv = 0;
       for (const s of (ex.sets || [])) {
         const done = s?.done === true || (s?.done === undefined && parseFloat(s?.reps) > 0);
@@ -72,7 +72,8 @@ function dropFirstLogEvents(events, history) {
   const first = reconstructPrEvents(history, Infinity, { firstLogs: true });
   const bySid = new Set(first.map(f => f.sid + "|" + f.name));
   const byDate = new Set(first.map(f => f.date + "|" + f.name));
-  return (events || []).filter(e => !(e && (bySid.has(e.sid + "|" + e.name) || (!e.sid && byDate.has(e.date + "|" + e.name)))));
+  // Also drops any event for a cardio/hold exercise (pre-Nov-28 builds minted "Treadmill Run 15lbs").
+  return (events || []).filter(e => e && isLiftExercise(e.name) && !(bySid.has(e.sid + "|" + e.name) || (!e.sid && byDate.has(e.date + "|" + e.name))));
 }
 
 // ★ ONE PR DEFINITION FOR EVERY SURFACE THAT SHOWS ONE (Muse, Nov 24). Friends Activity counted the

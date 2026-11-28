@@ -3549,6 +3549,33 @@ Mo forwarded Muse's list unread with "check these are real bugs". Measured each 
   "UTC timestamps" were real `created_at` values (the noon-stamped one came from the pre-Nov-23
   guest migration) and `timeAgo` already clamps at 0.
 
+## ★★ A SET'S TWO NUMBERS ARE NOT ALWAYS LOAD × REPS (Muse's fifth pass, Nov 28 2026)
+Three real bugs, one cause: every set stores `{weight, reps}`, and every volume/PR path multiplied
+them as if it were a lift. A cardio row stores MINUTES + DISTANCE; a plank stores optional load +
+SECONDS. So 15 + 10 cardio minutes added 25 lbs to a session's volume (2,315 vs a true 2,290), the
+finish screen minted "Treadmill Run 15lbs" / "Rowing Machine 10lbs" as PRs, the feed printed the
+run as "15×1", and a plank could only be logged as "0×60 reps".
+**`setKindOf(name)` (engine/exercises.js) is the ONE answer: "lift" | "cardio" | "timed".** Cardio
+is muscle Cardio/Yoga; timed is `TIMED_HOLDS` (Plank, Side Plank, Hollow Body Hold, Wall Sit, Dead
+Hang, L-Sit). `isLiftExercise` gates: `sessionVolume`, `postWorkoutPayload` (the card still LISTS
+cardio/holds, it just doesn't add them to volume or flag them PR), `getSetPRTypes`, `historyMaxPRs`,
+`suggestNextSet`, `detectDeloadNeeded`, `reconstructPrEvents`, the finish-time PR loop, the
+loadUserData PR rebuild, the coach-context and weekly-recap volume. A lift added later needs nothing;
+a NEW volume or PR path must ask `isLiftExercise` or it re-opens this. Set COUNTS still include
+cardio and holds — they are sets, just not pounds.
+**Pre-fix data heals on load, not by migration**: server `personal_records` rows and stored
+`pr_events` for a non-lift name are ignored/dropped on load, and the local prs maps are scrubbed of
+them. The only two such server rows (Muse's) were also deleted, and her one shared card's frozen
+volume corrected to 2,290.
+**Keypad:** "." works on the DISTANCE field (it was blank, so 1.2 mi became 12), and the stepper
+keeps one decimal there. A hold row's second box reads "sec" and its pad says SECONDS (steps of 5).
+History prints a hold as "60s · 45s" / "25 lbs × 45s"; the post card derives the kind from the
+exercise NAME, so cards shared before the fix read "15 min · 1.2 mi" too.
+**Not a bug:** Friends Activity PRs = 1 was right. Run through the rule, her week holds exactly one
+PR (Romanian Deadlift 200×8, up from 190×8); every other lift was a first log.
+Guards: `sim_setkind` (engine, red at 10) and `pw_setkind` (keypad, plank label, card ledger, card
+VOL; red at 7 with both controls green). Probe note: the card shortens 1,080 to "1.1k".
+
 ## ★ MUSE'S FOURTH PASS (Nov 28 2026): FIVE ITEMS, TWO REAL, ONE DATA, TWO NOT
 Checked against alexlifts's live rows first. Guards: `pw_edithistory` (closes on Save; is_pr
 recomputed), `pw_explore` (<1m), `pw_sheets3` (review header), each red-proofed against HEAD.
