@@ -33,7 +33,10 @@ const ROW = {
 const POST_ROW = {
   id: "bbbbbbbb-3333-4333-8333-333333333333", user_id: ME, type: "workout", caption: "",
   image_url: null, location: null, run: null, yoga: null, achievement: null, unit: "lbs",
-  is_pr: false, client_id: SID, created_at: new Date().toISOString(),
+  // is_pr TRUE on purpose: a card shared before the first-log rule kept a stale header PR tag that
+  // the edit never recomputed (Muse, Nov 28). A one-session history makes this a first log, so the
+  // honest answer after the edit is false.
+  is_pr: true, client_id: SID, created_at: new Date().toISOString(),
   workout: { name: "Push Day A", duration: 3600, volume: 1350,
     exercises: [{ name: "Barbell Bench Press", isPR: false, sets: [{ w: 135, r: 5 }, { w: 135, r: 5 }] }] },
 };
@@ -67,6 +70,8 @@ await page.route("**/rest/v1/**", r => {
   else if (m === "GET" && /\/rest\/v1\/posts\?/.test(u)) body = JSON.stringify([POST_ROW]);
   else if (m === "GET" && /\/rest\/v1\/(profiles|public_profiles)\?/.test(u))
     body = JSON.stringify([{ id: ME, username: "momo", name: "Mo", unit: "lbs", is_public: true, seen_onboarding: true, theme: "dark" }]);
+  // The history PATCH is SLOW on purpose: the sheet must not wait on the network to close.
+  if (m === "PATCH" && /\/rest\/v1\/workout_history\?/.test(u)) { setTimeout(() => r.fulfill({ status: 200, contentType: "application/json", body }), 2500); return; }
   r.fulfill({ status: 200, contentType: "application/json", body });
 });
 
@@ -93,7 +98,11 @@ check("the edit modal rendered its weight inputs", n > 0, `found ${n}`);
 if (n > 0) { await weightBoxes.first().fill("150"); await page.waitForTimeout(250); }
 const saveBtn = page.getByText("Save", { exact: false }).locator("visible=true").first();
 if (await saveBtn.count()) { await saveBtn.click(); }
-await page.waitForTimeout(1800);
+await page.waitForTimeout(900);
+// ── The sheet must close itself on Save, not after the server round trips (Muse, Nov 28) ──
+const cancelLeft = await page.getByText("Cancel", { exact: true }).locator("visible=true").count();
+check("the edit sheet closes on Save without waiting for the server", cancelLeft === 0, `visible Cancel buttons: ${cancelLeft}`);
+await page.waitForTimeout(3500);
 
 const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
 await page.screenshot({ path: "/home/user/spotr/build/_edithistory.png" });
@@ -109,6 +118,11 @@ const patch = writes.find(w => w.method === "PATCH" && /workout_history\?id=eq\.
 check("the history row is patched with the corrected weight", !!patch && /"150"/.test(patch.body),
   patch ? patch.body.slice(0, 160) : "no PATCH issued");
 check("the corrected weight is on screen afterwards", /150/.test(body), body.slice(0, 300));
+
+// ── The card's post-level PR flag is recomputed, not left frozen ─────────────────────────────
+const postPatch = writes.find(w => w.method === "PATCH" && /^posts\?id=eq\./.test(w.url));
+check("the edited post's PATCH recomputes is_pr", !!postPatch && /"is_pr":false/.test(postPatch.body),
+  postPatch ? postPatch.body.slice(0, 120) : "no posts PATCH issued");
 
 await b.close();
 console.log(`\n${fails === 0 ? "ALL PASS" : fails + " FAIL(S)"}`);

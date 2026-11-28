@@ -1,4 +1,4 @@
-// v178091717100
+// v178091717101
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -9444,7 +9444,7 @@ export const PostCard = memo(function PostCard({ post, store, currentUserId, onK
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
                   <div style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums" }}>{Math.floor(post.workout.duration/60)}m</div>
+                    <div style={{ fontSize:12, fontWeight:800, color:C.text, fontFamily:MONO, fontVariantNumeric:"tabular-nums" }}>{post.workout.duration > 0 && post.workout.duration < 60 ? "<1m" : `${Math.floor(post.workout.duration/60)}m`}</div>
                     <div style={{ fontSize:10, color:C.sub, letterSpacing:0.8, marginTop:1 }}>TIME</div>
                   </div>
                   <div style={{ textAlign:"center" }}>
@@ -18944,12 +18944,12 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
       return { ...p, weeklyReview: { ...wr, actions }, coachLog: log };
     });
   };
-  const fmtRange = (wk) => {
+  const fmtCover = (r) => {
     try {
-      const sun = new Date(wk + "T12:00:00");
-      const sat = new Date(sun.getTime() + 6 * 864e5);
+      const end = dateFromKey(r.date || r.weekKey);
+      const start = new Date(end.getTime() - 6 * 864e5);
       const f = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      return `${f(sun)} – ${f(sat)}`;
+      return `Covers ${f(start)} – ${f(end)}`;
     } catch { return ""; }
   };
   return (
@@ -18958,7 +18958,11 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div>
             <div style={{ fontSize:18, fontWeight:800, color:C.text, letterSpacing:-0.3 }}>Weekly Review</div>
-            {review && <div style={{ fontSize:11, color:C.sub, marginTop:2 }}>Week of {fmtRange(review.weekKey)}</div>}
+            {/* The review is written ONCE, on the first open of a new week, from the 7 days before that
+                moment, and is not rewritten until next Sunday. It used to say "Week of <Sun – Sat>",
+                which claims the whole current week, so a review written on day one read as a stale
+                summary of a week still in progress (Muse, Nov 28). Say what it actually covers. */}
+            {review && <div data-review-range style={{ fontSize:11, color:C.sub, marginTop:2 }}>{fmtCover(review)} · next review Sunday</div>}
           </div>
           <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:C.sub, fontSize:24, cursor:"pointer", lineHeight:1, padding:"6px 10px" }}>×</button>
         </div>

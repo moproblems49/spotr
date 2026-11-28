@@ -175,6 +175,10 @@ const panel = (page) => page.evaluate(() => {
   await page.waitForTimeout(700);
   const txt = await page.evaluate(() => document.body.innerText);
   check("AICoachSheet: opens", opened && /Weekly Review/i.test(txt) && /Solid week/i.test(txt), `clicked=${opened} ${txt.slice(0,100).replace(/\n/g," | ")}`);
+  // The header must say what the review COVERS (the 7 days before it was written), not "Week of"
+  // the current week — a day-one review read as a stale summary of a week in progress (Muse, Nov 28).
+  const range = await page.evaluate(() => document.querySelector("[data-review-range]")?.innerText || "");
+  check("AICoachSheet: the header names the window the review covers", /^Covers Aug 9 – Aug 15/.test(range) && /next review Sunday/.test(range) && !/Week of/.test(range), range);
   if (/Solid week/i.test(txt)) {
     const rest = await panel(page);
     check("AICoachSheet: sits at rest while open", rest && Math.abs(rest.y) < 4, JSON.stringify(rest));

@@ -3549,6 +3549,28 @@ Mo forwarded Muse's list unread with "check these are real bugs". Measured each 
   "UTC timestamps" were real `created_at` values (the noon-stamped one came from the pre-Nov-23
   guest migration) and `timeAgo` already clamps at 0.
 
+## ★ MUSE'S FOURTH PASS (Nov 28 2026): FIVE ITEMS, TWO REAL, ONE DATA, TWO NOT
+Checked against alexlifts's live rows first. Guards: `pw_edithistory` (closes on Save; is_pr
+recomputed), `pw_explore` (<1m), `pw_sheets3` (review header), each red-proofed against HEAD.
+- **REAL: an edited card kept its header PR tag.** `posts.is_pr` is frozen at share time and
+  EditHistoryModal rebuilt the exercises but never the post flag (`group_posts` has no `is_pr`).
+  It recomputes `isPR`/`is_pr` from the rebuilt exercises now. Two cards were repaired by SQL
+  (Upper A shared before the first-log rule had every exercise tagged; Lower A had `is_pr` with no
+  exercise tagged). Backup: `stale_pr_card_backup_20261128`. **Friends Activity = 1 was RIGHT** —
+  the only real PR that week was the RDL; the "badges" disagreeing with it were these stale cards.
+  "The edit created another" was not supported: the edited leg press was a first log.
+- **REAL: the edit sheet waited on 3-4 sequential server round trips before closing**, so it looked
+  hung and Muse tapped Cancel. It closes right after the local save; the syncs finish in the
+  background (closure values + module-level toast only).
+- **COSMETIC: a 25-second session read "0m".** PostCard and Explore both print "<1m" now.
+- **NOT A BUG, BAD LABEL: the Weekly Review is a once-a-week snapshot** written on the first open of
+  a new week from the 7 days before it, and it said "Week of <Sun – Sat>" — so a review written on
+  day one read as a stale summary of the week in progress. The header says "Covers <date-6> – <date>
+  · next review Sunday". Open product question for Mo: whether a brand-new user should get a review
+  on day one at all.
+- **NOT A BUG: Push A missing from Home.** It was never posted (a guest-migrated session); unposted
+  workouts live in History and your profile, never the feed.
+
 ## ★ MUSE'S THIRD PASS + TAPPABLE NOTIFICATIONS (Nov 27 2026): TWO REAL, TWO NOT
 Checked against the Muse account's live rows before touching anything.
 - **REAL: a text-only post drew a gray broken-image tile.** New Post writes `type:"photo"` for a

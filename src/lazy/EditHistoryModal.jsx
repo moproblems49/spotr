@@ -75,6 +75,11 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
       }
       return { ...prev, history: { ...prev.history, [date]: dayHistory } };
     });
+    // Close now. The edit is on screen the moment the local store takes it, and the server syncs
+    // below run 3-4 round trips in sequence, so the sheet used to sit open on "..." long enough
+    // that people tapped Cancel thinking it had hung (Muse, Nov 28). Everything below reads only
+    // closure values and module-level toast, so it finishes fine after the sheet unmounts.
+    onClose();
     // 2. Patch DB row.
     // If this session hasn't reached the server yet it is sitting in seshd_pending_workouts, and a
     // PATCH matching zero rows returns 204 with no error — so the edit reported "Workout updated",
@@ -249,7 +254,10 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
         if (!matchesSession(p, sid, sess, date)) return p;
         // Rebuild the post.workout.exercises to reflect new numbers
         const rebuilt = postWorkoutPayload(exercises, prev.prs, editPrNames(), eu);
-        return { ...p, workout: { ...p.workout, exercises: rebuilt.exercises, volume: rebuilt.volume } };
+        // The card's header PR tag reads the POST-level isPR, which was frozen at share time. A card
+        // shared before the first-log rule (or edited down) kept its tag after the edit while every
+        // exercise row lost theirs (Muse, Nov 28). Recompute it from the rebuilt exercises.
+        return { ...p, isPR: rebuilt.exercises.some(e => e.isPR), workout: { ...p.workout, exercises: rebuilt.exercises, volume: rebuilt.volume } };
       });
       return { ...prev, posts: newPosts };
     });
@@ -264,7 +272,7 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
           const rebuilt = postWorkoutPayload(exercises, store.prs, editPrNames(), eu);
           await sb.query(`posts?id=eq.${match.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ workout: { ...(match.workout || {}), exercises: rebuilt.exercises, volume: rebuilt.volume } })
+            body: JSON.stringify({ is_pr: rebuilt.exercises.some(e => e.isPR), workout: { ...(match.workout || {}), exercises: rebuilt.exercises, volume: rebuilt.volume } })
           }, token);
         }
       }

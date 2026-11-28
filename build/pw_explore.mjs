@@ -26,7 +26,7 @@ const S_PHOTO = P("a1"), S_PR = P("a2"), S_PLAIN = P("a3"), S_STORY = P("a4");
 const ROWS = [
   row(S_PLAIN, STR, 1, { workout: { name: "Easy Pull", duration: 2400, volume: 7200, exercises: [{ name: "Barbell Row", sets: [{ w: 135, r: 8 }] }] } }),
   row(S_PHOTO, STR, 30, { image_url: IMG, type: "photo", workout: null, caption: "Gym views" }),
-  row(S_PR, STR, 50, { is_pr: true, workout: { name: "Heavy Legs", duration: 3600, volume: 15000, exercises: [{ name: "Back Squat", isPR: true, sets: [{ w: 315, r: 3 }] }] } }),
+  row(S_PR, STR, 50, { is_pr: true, workout: { name: "Heavy Legs", duration: 25, volume: 15000, exercises: [{ name: "Back Squat", isPR: true, sets: [{ w: 315, r: 3 }] }] } }),
   row(S_STORY, STR, 2, { type: "story", image_url: IMG, workout: null }),
   row(P("b1"), PAL, 3),    // followed: belongs in the home feed, not Explore
   row(P("c1"), ME, 4),     // mine
@@ -130,6 +130,7 @@ async function boot() {
     av: !!b.querySelector("[data-explore-avatar]"), meta: b.querySelector("[data-explore-meta]")?.innerText || "" })));
   check("the strip is capped at three rows of three", t.length === 9, String(t.length));
   check("every tile shows the poster's avatar", t.length > 0 && t.every(x => x.av), JSON.stringify(t.map(x => x.av)));
+  check("a sub-minute session's tile reads <1m, not 0m", !t.some(x => /· 0m$/.test(x.meta)) && t.some(x => /· <1m$/.test(x.meta)), JSON.stringify(t.map(x => x.meta)));
   check("a workout tile says how many exercises and how long", t.some(x => /^1 exercise · \d+m$/.test(x.meta)), JSON.stringify(t.map(x => x.meta)));
   await page.locator("[data-explore-all]").click();
   await page.waitForTimeout(1200);
@@ -141,6 +142,8 @@ async function boot() {
   check("the feed is newest first", f1[0] === S_PLAIN && f1[1] === S_PHOTO && f1[2] === S_PR, JSON.stringify(f1.slice(0, 3)));
   const card = await page.evaluate(id => document.querySelector(`[data-explore-card="${id}"]`)?.innerText.replace(/\s+/g, " ") || "", S_PR);
   check("a feed card is the full post: author, session and its exercises", /liftlady|Lift Lady/.test(card) && /Heavy Legs/.test(card) && /Back Squat/.test(card), card);
+  // A real session under a minute must not read "0m" beside its own volume (Muse, Nov 28).
+  check("a sub-minute session reads <1m on its card, not 0m", /<1m/.test(card) && !/\b0m\b/.test(card), card.slice(0, 160));
   // Kudos IN the feed, without opening the post — and it must reach the server, not just the screen.
   writes.length = 0;
   await page.locator(`[data-explore-card="${S_PR}"] button[aria-label="Give kudos"]`).click();
