@@ -17,7 +17,9 @@ check("first session 6 days ago -> no review yet", trainedForAWeek({ history: hi
 check("first session exactly 7 days ago -> review", trainedForAWeek({ history: hist(7, 1) }, NOW) === true);
 check("long history -> review", trainedForAWeek({ history: hist(60, 30, 2) }, NOW) === true);
 check("an empty day key does not count as training", trainedForAWeek({ history: { [day(30)]: {}, [day(1)]: { s: {} } } }, NOW) === false);
-check("a malformed key is ignored, not crashed on", trainedForAWeek({ history: { "garbage": { s: {} }, [day(2)]: { s: {} } } }, NOW) === false);
+// "0bad" sorts BEFORE every real key, so without the guard it becomes the first day, yields NaN
+// days and blocks the review forever. Expecting TRUE is what makes this check able to fail.
+check("a malformed key is ignored, not crashed on", trainedForAWeek({ history: { "0bad": { s: {} }, [day(30)]: { s: {} } } }, NOW) === true);
 // 23:00 seven local days ago still counts as seven days (local-day comparison, not instants).
 const late = new Date(NOW - 7 * 864e5); late.setHours(23, 0, 0, 0);
 check("a late-evening first session seven days ago counts", trainedForAWeek({ history: { [dk(late.getTime())]: { s: {} } } }, NOW) === true);

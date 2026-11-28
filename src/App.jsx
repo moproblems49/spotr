@@ -1,4 +1,4 @@
-// v178091717102
+// v178091717103
 // PATCHED v35 - BUILD 2026-06-13 - unified 12 card outlines from divider->border (matches the
 //   documented intent: border = card edges); bumped MUSCLE BALANCE / MOST TRAINED / STRENGTH SCORE
 //   headings from muted->sub for contrast. Internal divider separators untouched.
@@ -18994,7 +18994,7 @@ function AICoachSheet({ open, store, setStore, unit, C, onClose, reviewStatus })
         {reviewStatus !== "generating" && !review && (
           <div style={{ padding:"30px 6px", color:C.sub, fontSize:14, lineHeight:1.6, textAlign:"center" }}>
             <svg width="44" height="62" viewBox="0 0 40 56" style={{ display:"block", margin:"2px auto 10px", opacity:0.5 }}>{_MI_BODY(C.muted, C.muted)}</svg>
-            Your first weekly review lands on the Sunday after your first full week of training. Keep logging and it'll be waiting when you open the app.
+            Your first weekly review arrives once you've been training for a week. Keep logging and it'll be waiting when you open the app.
           </div>
         )}
         {review && review.stats && (() => {

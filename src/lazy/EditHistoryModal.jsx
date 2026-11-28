@@ -8,6 +8,9 @@ import { EXERCISE_DB, _exNorm } from "../engine/exercises.js";
 import { prsBySession } from "../engine/insights.js";
 import { F, MONO, sb, toast, haptic, CreateExercisePicker, confirmAction , KB_SAFE_INSET} from "../App.jsx";
 
+// sid -> the promise of the save currently syncing for that session (see handleSave).
+const _saveChain = new Map();
+
 export default function EditHistoryModal({ editing, unit, C, token, currentUserId, store, setStore, onClose }) {
   const { date, sid, sess } = editing;
   const [exercises, setExercises] = useState(() => JSON.parse(JSON.stringify(sess.exercises || [])));
@@ -80,6 +83,15 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
     // that people tapped Cancel thinking it had hung (Muse, Nov 28). Everything below reads only
     // closure values and module-level toast, so it finishes fine after the sheet unmounts.
     onClose();
+    // Serialise server writes per session. Closing early removed the sheet's own "saving" guard,
+    // so save -> reopen the same workout -> save again could put two PATCHes in flight at once,
+    // and if the older one landed last the server (and so the next loadUserData) kept the older
+    // edit. Each save waits for the previous save of the SAME session before it writes anything.
+    const prevSave = _saveChain.get(sid);
+    let releaseSave; const mySave = new Promise(r => { releaseSave = r; });
+    _saveChain.set(sid, mySave);
+    try {
+    if (prevSave) await prevSave;
     // 2. Patch DB row.
     // If this session hasn't reached the server yet it is sitting in seshd_pending_workouts, and a
     // PATCH matching zero rows returns 204 with no error — so the edit reported "Workout updated",
@@ -116,7 +128,9 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
       devError("edit workout failed:", e);
       toast("Saved locally — couldn't sync to server", "error");
       setSaving(false);
-      onClose();
+      // No onClose() here or below: the sheet already closed above, and onClose clears whatever
+      // edit sheet is open NOW — a second sheet the user opened while this one was syncing would
+      // be torn down with its unsaved typing (audit, Nov 28; measured in jsdom).
       return;
     }
     // 2b. Recompute raw-weight PRs from the edited sets and raise any that now beat the stored PR.
@@ -314,7 +328,10 @@ export default function EditHistoryModal({ editing, unit, C, token, currentUserI
     toast("Workout updated", "success");
     haptic("complete");
     setSaving(false);
-    onClose();
+    } finally {
+      releaseSave();
+      if (_saveChain.get(sid) === mySave) _saveChain.delete(sid);
+    }
   }
 
   return (

@@ -102,7 +102,19 @@ await page.waitForTimeout(900);
 // ── The sheet must close itself on Save, not after the server round trips (Muse, Nov 28) ──
 const cancelLeft = await page.getByText("Cancel", { exact: true }).locator("visible=true").count();
 check("the edit sheet closes on Save without waiting for the server", cancelLeft === 0, `visible Cancel buttons: ${cancelLeft}`);
-await page.waitForTimeout(3500);
+// ── A save still syncing must not close the NEXT sheet (audit, Nov 28) ──────────────────────
+// onClose clears whatever edit sheet is open, so a trailing onClose() at the end of the first
+// save tore down a sheet the user had opened in the meantime, typing and all.
+const dots2 = page.getByText("···", { exact: true }).locator("visible=true").first();
+if (await dots2.count()) { await dots2.click(); await page.waitForTimeout(500); }
+const edit2 = page.getByText("Edit", { exact: false }).locator("visible=true").first();
+if (await edit2.count()) { await edit2.click(); await page.waitForTimeout(600); }
+const reopened = await page.getByText("Cancel", { exact: true }).locator("visible=true").count();
+check("[control] the sheet can be reopened while the first save syncs", reopened > 0, `visible Cancel: ${reopened}`);
+await page.waitForTimeout(3500);   // the first save's slow PATCH (2.5s) and its tail finish here
+const stillOpen = await page.getByText("Cancel", { exact: true }).locator("visible=true").count();
+check("...and the first save finishing does NOT close the reopened sheet", stillOpen > 0, `visible Cancel: ${stillOpen}`);
+if (stillOpen) { await page.getByText("Cancel", { exact: true }).locator("visible=true").first().click(); await page.waitForTimeout(500); }
 
 const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
 await page.screenshot({ path: "/home/user/spotr/build/_edithistory.png" });

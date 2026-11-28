@@ -566,7 +566,8 @@ async function fetchExplore(token, offset, limit) {
 }
 const openPost = id => { haptic("tap"); window.dispatchEvent(new CustomEvent("seshd:open-post", { detail: { id } })); };
 // A real session shorter than a minute read "0m" beside its own volume (Muse, Nov 28).
-const fmtMins = secs => { const n = Number(secs) || 0; if (n > 0 && n < 30) return "<1m"; const m = Math.round(n / 60); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`; };
+// Floors, like PostCard's TIME tile, so the strip tile and the card it opens never disagree.
+const fmtMins = secs => { const n = Number(secs) || 0; if (n > 0 && n < 60) return "<1m"; const m = Math.floor(n / 60); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`; };
 
 // THE STRIP IS A DRAW, NOT A FIXED TOP 9 (Mo: "random recent posts you have not seen… refresh to see
 // different posts"). From the newest EXPLORE_POOL strangers' posts it picks 9, preferring posts it
